@@ -4,7 +4,6 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { exampleExerciseLibrary, exampleGoals, exampleUser } from "../engine/sample-data";
-import { buildV2AcceptedPlannerIntentDto } from "@/lib/engine/planning/v2";
 import * as selectionV2 from "@/lib/engine/selection-v2";
 import type { Exercise } from "@/lib/engine/types";
 import { getEffectiveStimulusByMuscle, toMuscleId } from "@/lib/engine/stimulus";
@@ -2030,7 +2029,7 @@ describe("generateSessionFromIntent", () => {
     }
   });
 
-  it("uses persisted slotPlanSeedJson only for seeded next-slot composition", async () => {
+  it("generates the selected strength plan from its accepted next-slot seed", async () => {
     loadWorkoutContextMock.mockResolvedValue({
       profile: { id: "profile" },
       goals: { primaryGoal: "HYPERTROPHY", secondaryGoal: "NONE" },
@@ -2107,6 +2106,10 @@ describe("generateSessionFromIntent", () => {
       daysPerWeek: 4,
       splitType: "upper_lower",
       weeklySchedule: ["upper", "lower", "upper", "lower"],
+    });
+    mapGoalsMock.mockReturnValue({
+      primary: "strength",
+      secondary: "none",
     });
     mapExercisesMock.mockReturnValue([
       {
@@ -2186,9 +2189,14 @@ describe("generateSessionFromIntent", () => {
       deloadSessionsCompleted: 0,
       durationWeeks: 5,
       sessionsPerWeek: 4,
+      macroCycle: {
+        id: "strength-plan",
+        userId: "user-1",
+        primaryGoal: "STRENGTH",
+      },
       slotSequenceJson: {
         version: 1,
-        source: "handoff_draft",
+        source: "strength_plan_policy_v1",
         sequenceMode: "ordered_flexible",
         slots: [
           { slotId: "upper_a", intent: "UPPER" },
@@ -2199,8 +2207,7 @@ describe("generateSessionFromIntent", () => {
       },
       slotPlanSeedJson: {
         version: 1,
-        source: "handoff_slot_plan_projection",
-        acceptedPlannerIntent: buildV2AcceptedPlannerIntentDto(),
+        source: "strength_plan_policy_v1",
         slots: [
           {
             slotId: "upper_a",
@@ -2252,6 +2259,14 @@ describe("generateSessionFromIntent", () => {
       ]);
       expect(result.workout.mainLifts[0]?.sets).toHaveLength(5);
       expect(result.workout.accessories[0]?.sets).toHaveLength(4);
+      expect(
+        result.workout.mainLifts[0]?.sets.every(
+          (set) =>
+            (set.targetReps ?? 0) >= 3 &&
+            (set.targetReps ?? 0) <= 6 &&
+            set.restSeconds === 300,
+        ),
+      ).toBe(true);
       expect(result.selection.perExerciseSetTargets).toMatchObject({
         "incline-db-press": 5,
         "lat-pulldown": 4,

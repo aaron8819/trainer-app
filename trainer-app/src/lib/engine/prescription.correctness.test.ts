@@ -80,6 +80,14 @@ describe("prescription correctness", () => {
     expect(strMainReps).toBeGreaterThanOrEqual(3);
     expect(strMainReps).toBeLessThanOrEqual(6);
     expect(hypoAccessoryMin).toBeGreaterThan(strAccessoryMin);
+    expect(
+      strength.workout.mainLifts[0].sets[0].restSeconds,
+    ).toBeGreaterThanOrEqual(240);
+    expect(
+      strength.workout.mainLifts[0].sets[0].restSeconds,
+    ).toBeGreaterThan(
+      hypertrophy.workout.mainLifts[0].sets[0].restSeconds ?? 0,
+    );
     expect(hypertrophy.workout.mainLifts[0].sets[0].restSeconds).toBeGreaterThanOrEqual(
       hypertrophy.workout.accessories[0].sets[0].restSeconds ?? 0
     );

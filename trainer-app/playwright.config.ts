@@ -29,11 +29,12 @@ export default defineConfig({
     ? {
         webServer: {
           command: `npx next dev --hostname 127.0.0.1 --port ${auditPort}`,
-          url: baseURL,
+          url: `${baseURL}/plans`,
           reuseExistingServer: false,
           timeout: 120_000,
           env: {
             UI_AUDIT_FIXTURE_MODE: "1",
+            UI_AUDIT_FIXTURE_SCENARIO: "active",
             UI_AUDIT_NEXT_DIST_DIR: auditDistDir,
           },
         },

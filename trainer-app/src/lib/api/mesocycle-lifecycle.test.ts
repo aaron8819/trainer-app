@@ -149,6 +149,39 @@ describe("mesocycle-lifecycle", () => {
     );
   });
 
+  it("completes a terminal strength plan after its final deload session", async () => {
+    mocks.txMesoFindUnique.mockResolvedValue({
+      id: "strength-meso",
+      state: "ACTIVE_DELOAD",
+      accumulationSessionsCompleted: 16,
+      deloadSessionsCompleted: 4,
+      durationWeeks: 5,
+      sessionsPerWeek: 4,
+      macroCycle: { primaryGoal: "STRENGTH" },
+    });
+    mocks.txMesoUpdate.mockResolvedValue({
+      id: "strength-meso",
+      state: "COMPLETED",
+      isActive: false,
+    });
+
+    const updated = await transitionMesocycleState("strength-meso");
+
+    expect(updated).toMatchObject({
+      state: "COMPLETED",
+      isActive: false,
+    });
+    expect(mocks.txMesoUpdate).toHaveBeenCalledWith({
+      where: { id: "strength-meso" },
+      data: {
+        state: "COMPLETED",
+        isActive: false,
+        closedAt: expect.any(Date),
+      },
+    });
+    expect(mocks.txMesoCreate).not.toHaveBeenCalled();
+  });
+
   it("transitions ACTIVE_DELOAD to AWAITING_HANDOFF at session 3 and persists handoff artifacts", async () => {
     // Save transaction has already incremented deloadSessionsCompleted to 3; transitionMesocycleState reads 3 >= threshold.
     mocks.txMesoFindUnique.mockResolvedValue({

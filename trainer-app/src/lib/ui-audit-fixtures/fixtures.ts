@@ -7,7 +7,10 @@ import type { SettingsPageData } from "@/lib/api/settings-page";
 import type { WorkoutListSurfaceSummary } from "@/lib/ui/workout-list-items";
 import type { ExerciseListItem } from "@/lib/exercise-library/types";
 import type { SectionedExercises } from "@/components/log-workout/types";
-import type { PlanManagementData } from "@/lib/api/plan-management";
+import type {
+  PlanManagementData,
+  PlanReview,
+} from "@/lib/api/plan-management";
 
 export const UI_AUDIT_FIXTURE_SCENARIOS = ["active", "empty", "handoff", "timer-visible"] as const;
 
@@ -45,6 +48,7 @@ export type UiAuditFixture = {
   settings?: SettingsPageData;
   analytics?: AnalyticsFixtures;
   plans?: PlanManagementData;
+  planReviews?: Record<string, PlanReview>;
   logWorkouts?: Record<string, LogWorkoutFixture>;
 };
 
@@ -978,7 +982,96 @@ const activeFixture: UiAuditFixture = {
         createdAt: "2026-04-09T00:00:00.000Z",
         updatedAt: "2026-04-09T00:00:00.000Z",
       },
+      {
+        id: "10000000-0000-4000-8000-000000000004",
+        name: "Strength Base",
+        primaryGoal: "STRENGTH",
+        status: "PREPARING",
+        isActive: false,
+        activeMesocycleId: null,
+        reviewMesocycleId: "ui-audit-meso-strength",
+        startDate: "2027-07-05T00:00:00.000Z",
+        endDate: "2027-08-09T00:00:00.000Z",
+        durationWeeks: 5,
+        mesocycleCount: 1,
+        createdAt: "2026-04-10T00:00:00.000Z",
+        updatedAt: "2026-04-10T00:00:00.000Z",
+      },
     ],
+  },
+  planReviews: {
+    "10000000-0000-4000-8000-000000000004": {
+      id: "10000000-0000-4000-8000-000000000004",
+      name: "Strength Base",
+      primaryGoal: "STRENGTH",
+      status: "PREPARING",
+      isActive: false,
+      activeMesocycleId: null,
+      reviewMesocycleId: "ui-audit-meso-strength",
+      startDate: "2027-07-05T00:00:00.000Z",
+      endDate: "2027-08-09T00:00:00.000Z",
+      durationWeeks: 5,
+      mesocycleCount: 1,
+      createdAt: "2026-04-10T00:00:00.000Z",
+      updatedAt: "2026-04-10T00:00:00.000Z",
+      strengthConfiguration: {
+        emphasis: "BALANCED",
+        daysPerWeek: 4,
+        sessionDurationMinutes: 60,
+        equipmentProfile: "FULL_GYM",
+        preferredLifts: {
+          squat: "AUTO",
+          press: "AUTO",
+          hinge: "AUTO",
+        },
+      },
+      weeklyStructure: [
+        {
+          slotId: "lower_a",
+          label: "Lower A",
+          intent: "SQUAT",
+          estimatedMinutes: 58,
+          primaryLifts: ["Back Squat"],
+          assistance: ["Romanian Deadlift", "Leg Curl"],
+        },
+        {
+          slotId: "upper_a",
+          label: "Upper A",
+          intent: "PRESS",
+          estimatedMinutes: 55,
+          primaryLifts: ["Barbell Bench Press"],
+          assistance: ["Chest-Supported Row", "Triceps Pushdown"],
+        },
+        {
+          slotId: "lower_b",
+          label: "Lower B",
+          intent: "HINGE",
+          estimatedMinutes: 60,
+          primaryLifts: ["Conventional Deadlift"],
+          assistance: ["Front Squat", "Leg Curl"],
+        },
+        {
+          slotId: "upper_b",
+          label: "Upper B",
+          intent: "PRESS",
+          estimatedMinutes: 54,
+          primaryLifts: ["Overhead Press"],
+          assistance: ["Lat Pulldown", "Dumbbell Bench Press"],
+        },
+      ],
+      mesocycles: [
+        {
+          id: "ui-audit-meso-strength",
+          mesoNumber: 1,
+          startWeek: 0,
+          durationWeeks: 5,
+          focus: "Balanced Strength",
+          volumeTarget: "MODERATE",
+          intensityBias: "STRENGTH",
+          blockCount: 3,
+        },
+      ],
+    },
   },
   home: {
     pendingHandoff: null,

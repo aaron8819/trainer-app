@@ -279,11 +279,16 @@ function resolveTargetRpe(
 export function getRestSeconds(
   exercise: Exercise,
   isMainLift: boolean,
-  targetReps?: number
+  targetReps?: number,
+  primaryGoal?: Goals["primary"],
 ) {
   const fatigueCost = exercise.fatigueCost ?? 3;
   const isCompound = exercise.isCompound ?? false;
   const reps = targetReps ?? (isMainLift ? 5 : 10);
+
+  if (primaryGoal === "strength" && isMainLift) {
+    return fatigueCost >= 4 ? 300 : 240;
+  }
 
   // Heavy compounds (1-5 reps)
   if (isMainLift && reps <= 5) {

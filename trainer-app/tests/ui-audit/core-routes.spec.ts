@@ -90,9 +90,10 @@ test.describe("lightweight fixture interaction checks", () => {
     await expect(page.getByText("Current Hypertrophy")).toBeVisible();
     await expect(page.getByText("Fall Hypertrophy")).toBeVisible();
     await expect(page.getByText("Plan in Review")).toBeVisible();
+    await expect(page.getByText("Strength Base")).toBeVisible();
     await expect(page.getByRole("button", { name: "Make active" })).toBeVisible();
     await expect(
-      page.getByRole("link", { name: "Review and finalize" }),
+      page.getByRole("link", { name: "Review and finalize" }).first(),
     ).toBeVisible();
     await expectMainWithinViewport(page);
 
@@ -103,6 +104,44 @@ test.describe("lightweight fixture interaction checks", () => {
     await expect(page.getByLabel("Plan name")).toBeVisible();
     await expect(page.getByLabel("Start date")).toBeVisible();
     await expect(page.getByLabel("Duration")).toBeVisible();
+
+    await page.getByRole("radio", { name: /Strength/i }).check({ force: true });
+    await expect(
+      page.getByRole("heading", { name: "New strength plan" }),
+    ).toBeVisible();
+    await expect(page.getByLabel("Main emphasis")).toBeVisible();
+    await expect(page.getByLabel("Training days")).toBeVisible();
+    await expect(page.getByLabel("Time per session")).toBeVisible();
+    await expect(page.getByLabel("Available equipment")).toBeVisible();
+    await expect(page.getByLabel("Squat pattern")).toBeVisible();
+    await expect(page.getByLabel("Main press")).toBeVisible();
+    await expect(page.getByLabel("Hinge pattern")).toBeVisible();
+    await expectMainWithinViewport(page);
+    await expectNoAppError(page);
+  });
+
+  test("strength review is readable without mutating fixture data", async ({
+    page,
+  }) => {
+    await page.setExtraHTTPHeaders({ [FIXTURE_HEADER]: "active" });
+    await installMutationGuards(page);
+    await page.goto(
+      "/plans/10000000-0000-4000-8000-000000000004/review",
+      { waitUntil: "domcontentloaded" },
+    );
+    await waitForStableRoute(page);
+
+    await expect(
+      page.getByRole("heading", { name: "Strength Base" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Weekly strength structure" }),
+    ).toBeVisible();
+    await expect(page.getByText("Back Squat")).toBeVisible();
+    await expect(page.getByText("Conventional Deadlift")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Finalize as READY" }),
+    ).toBeVisible();
     await expectMainWithinViewport(page);
     await expectNoAppError(page);
   });

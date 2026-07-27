@@ -3,6 +3,13 @@ import {
   V2_CAPACITY_PRODUCT_CHOICES,
   V2_CAPACITY_TIME_PRIORITIES,
 } from "@/lib/engine/planning/v2/capacity-selection";
+import {
+  STRENGTH_EMPHASIS_VALUES,
+  STRENGTH_EQUIPMENT_PROFILE_VALUES,
+  STRENGTH_HINGE_PREFERENCE_VALUES,
+  STRENGTH_PRESS_PREFERENCE_VALUES,
+  STRENGTH_SQUAT_PREFERENCE_VALUES,
+} from "@/lib/engine/strength-plan-policy";
 
 export const WORKOUT_STATUS_VALUES = ["PLANNED", "IN_PROGRESS", "PARTIAL", "COMPLETED", "SKIPPED"] as const;
 export const WORKOUT_SAVE_ACTION_VALUES = [
@@ -367,6 +374,58 @@ export const createHypertrophyPlanSchema = z.object({
   startDate: z.coerce.date(),
   durationWeeks: z.number().int().min(8).max(52),
 });
+
+export const strengthPlanConfigurationSchema = z
+  .object({
+    emphasis: z.enum(STRENGTH_EMPHASIS_VALUES),
+    daysPerWeek: z.union([
+      z.literal(2),
+      z.literal(3),
+      z.literal(4),
+      z.literal(5),
+    ]),
+    sessionDurationMinutes: z.union([
+      z.literal(45),
+      z.literal(60),
+      z.literal(75),
+      z.literal(90),
+    ]),
+    equipmentProfile: z.enum(STRENGTH_EQUIPMENT_PROFILE_VALUES),
+    preferredLifts: z
+      .object({
+        squat: z.enum(STRENGTH_SQUAT_PREFERENCE_VALUES),
+        press: z.enum(STRENGTH_PRESS_PREFERENCE_VALUES),
+        hinge: z.enum(STRENGTH_HINGE_PREFERENCE_VALUES),
+      })
+      .strict(),
+  })
+  .strict();
+
+const createPlanInputSchema = z.discriminatedUnion("planType", [
+  createHypertrophyPlanSchema
+    .extend({ planType: z.literal("HYPERTROPHY") })
+    .strict(),
+  z
+    .object({
+      planType: z.literal("STRENGTH"),
+      name: planNameSchema.default("Strength Plan"),
+      startDate: z.coerce.date(),
+      configuration: strengthPlanConfigurationSchema,
+    })
+    .strict(),
+]);
+
+export const createPlanSchema = z.preprocess((value) => {
+  if (
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    !("planType" in value)
+  ) {
+    return { ...value, planType: "HYPERTROPHY" };
+  }
+  return value;
+}, createPlanInputSchema);
 
 export const renamePlanSchema = z.object({
   name: planNameSchema,

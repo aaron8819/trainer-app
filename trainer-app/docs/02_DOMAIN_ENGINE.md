@@ -45,6 +45,15 @@ Sources of truth:
 - `trainer-app/src/lib/api/workout-context.ts`
 - `trainer-app/src/components/log-workout/useWorkoutSessionFlow.ts`
 
+## Strength plan policy
+
+- `src/lib/engine/strength-plan-policy.ts` is the pure, deterministic plan-specific policy boundary for the first non-hypertrophy type. It consumes validated emphasis, frequency, session duration, equipment profile, saved training age, active injury limitations, preferred lifts, and the canonical exercise catalog.
+- The policy emits a stable two-to-five-day weekly slot sequence plus a minimal seed candidate. Primary lanes favor equipment-compatible major compounds or deterministic substitutes; assistance is capped at two sets per identity and short-session profiles reduce exercise count before required primary work.
+- Beginner, intermediate, and advanced strength blocks run for four, five, and six weeks respectively. Accumulation starts conservatively at 3–4 RIR, intensification reaches 1–2 RIR, advanced plans include realization, and the final deload returns to 4–5 RIR.
+- This first Strength plan is a single complete block. Its final deload transitions the plan to `COMPLETED`; it does not invoke the existing hypertrophy successor-handoff authoring policy.
+- Strength generation still uses the shared template-session, load assignment, progression, deload, save, receipt, and history paths. The selected `MacroCycle.primaryGoal`, not the user's global onboarding goal, dispatches goal-specific rep/rest/effort behavior. Main work uses the engine's 3–6 rep strength range and 240–300 second rest; missing performance history stays on the existing conservative load-calibration path and never invents a 1RM.
+- The policy's configuration, resolved lifts, substitutions, labels, and duration estimates are review evidence in `slotSequenceJson`. Accepted executable truth remains only ordered `slotId -> exercises[{ exerciseId, role, setCount }]`; plan-specific explanation metadata is not promoted into runtime seed meaning or receipts.
+
 ## Selection and generation
 - Intent and template generation both rely on engine-level session construction and selection primitives.
 - Selection-v2 beam search implementation is under `src/lib/engine/selection-v2`.

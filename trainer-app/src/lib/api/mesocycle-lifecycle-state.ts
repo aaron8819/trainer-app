@@ -9,6 +9,10 @@ import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-s
 import { getAccumulationWeeks } from "./mesocycle-lifecycle-math";
 import { enterMesocycleHandoffInTransaction } from "./mesocycle-handoff";
 import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
+import {
+  isSupportedPlanType,
+  planTypeLifecyclePolicy,
+} from "@/lib/plan-types";
 import type { SessionCapacityReductionManifest } from "@/lib/engine/planning/v2";
 import {
   claimSelectedPlanForTransitionInTransaction,
@@ -52,7 +56,9 @@ type MesoWithLifecycle = Pick<
 export type ActiveMesocycleWithBlocks = Prisma.MesocycleGetPayload<{
   include: { blocks: true };
 }> & {
-  macroCycle?: Partial<Pick<MacroCycle, "startDate" | "userId">>;
+  macroCycle?: Partial<
+    Pick<MacroCycle, "startDate" | "userId" | "primaryGoal">
+  >;
   currentSeedRevision?: {
     id: string;
     revision: number;
@@ -94,6 +100,30 @@ export async function initializeNextMesocycle(
 }
 
 type LifecycleTx = Prisma.TransactionClient;
+
+async function completeOrEnterHandoffInTransaction(
+  tx: LifecycleTx,
+  mesocycle: {
+    id: string;
+    macroCycle?: { primaryGoal?: string | null } | null;
+  },
+): Promise<Mesocycle> {
+  const planType = mesocycle.macroCycle?.primaryGoal;
+  if (
+    isSupportedPlanType(planType) &&
+    planTypeLifecyclePolicy(planType).completionMode === "TERMINAL"
+  ) {
+    return tx.mesocycle.update({
+      where: { id: mesocycle.id },
+      data: {
+        state: "COMPLETED",
+        isActive: false,
+        closedAt: new Date(),
+      },
+    });
+  }
+  return enterMesocycleHandoffInTransaction(tx, mesocycle.id);
+}
 
 const EARLY_FINISH_INCOMPLETE_WORKOUT_STATUSES = [
   WorkoutStatus.PLANNED,
@@ -226,6 +256,7 @@ export async function finishMesocycleEarlyInTransaction(
       handoffSummaryJson: true,
       nextSeedDraftJson: true,
       closedAt: true,
+      macroCycle: { select: { primaryGoal: true } },
     },
   });
 
@@ -298,7 +329,7 @@ export async function finishMesocycleEarlyInTransaction(
     });
   }
 
-  const updated = await enterMesocycleHandoffInTransaction(tx, input.mesocycleId);
+  const updated = await completeOrEnterHandoffInTransaction(tx, mesocycle);
   return {
     mesocycle: updated,
     skippedWorkoutIds: incompleteWorkouts.map((workout) => workout.id),
@@ -321,6 +352,9 @@ export async function transitionMesocycleStateInTransaction(
 ): Promise<{ mesocycle: Mesocycle; advanced: boolean }> {
   const mesocycle = await tx.mesocycle.findUnique({
     where: { id: mesocycleId },
+    include: {
+      macroCycle: { select: { primaryGoal: true } },
+    },
   });
   if (!mesocycle) {
     throw new Error(`Mesocycle not found: ${mesocycleId}`);
@@ -347,7 +381,7 @@ export async function transitionMesocycleStateInTransaction(
   if (mesocycle.deloadSessionsCompleted < getDeloadSessionThreshold(mesocycle)) {
     return { mesocycle, advanced: false };
   }
-  const updated = await enterMesocycleHandoffInTransaction(tx, mesocycle.id);
+  const updated = await completeOrEnterHandoffInTransaction(tx, mesocycle);
   return { mesocycle: updated, advanced: true };
 }
 
@@ -383,6 +417,7 @@ export async function finishDeloadEarlyInTransaction(
       handoffSummaryJson: true,
       nextSeedDraftJson: true,
       closedAt: true,
+      macroCycle: { select: { primaryGoal: true } },
     },
   });
 
@@ -463,7 +498,7 @@ export async function finishDeloadEarlyInTransaction(
     });
   }
 
-  const updated = await enterMesocycleHandoffInTransaction(tx, input.mesocycleId);
+  const updated = await completeOrEnterHandoffInTransaction(tx, mesocycle);
   return {
     mesocycle: updated,
     skippedWorkoutIds: incompleteWorkouts.map((workout) => workout.id),

@@ -2,8 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PlanFinalizeButton } from "@/components/plans/PlanFinalizeButton";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { loadPlanReview } from "@/lib/api/plan-management";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { loadConfiguredPlanReview } from "@/lib/api/plan-management";
+import { planTypeLabel } from "@/lib/plan-types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -23,9 +23,10 @@ export default async function PlanReviewPage({
 }: {
   params: Params;
 }) {
-  const [{ id }, owner] = await Promise.all([params, resolveOwner()]);
-  const plan = await loadPlanReview(owner.id, id);
+  const { id } = await params;
+  const plan = await loadConfiguredPlanReview(id);
   if (!plan) notFound();
+  const planType = planTypeLabel(plan.primaryGoal);
 
   return (
     <main className="min-h-screen bg-white text-slate-900">
@@ -39,7 +40,7 @@ export default async function PlanReviewPage({
         <div className="mt-5 flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Generated hypertrophy plan
+              Generated {planType.toLowerCase()} plan
             </p>
             <h1 className="page-title mt-2">{plan.name}</h1>
             <p className="mt-2 text-sm text-slate-600">
@@ -59,7 +60,7 @@ export default async function PlanReviewPage({
               <dt className="text-xs uppercase tracking-wide text-slate-500">
                 Goal
               </dt>
-              <dd className="mt-1 font-medium">Hypertrophy</dd>
+              <dd className="mt-1 font-medium">{planType}</dd>
             </div>
             <div>
               <dt className="text-xs uppercase tracking-wide text-slate-500">
@@ -81,6 +82,86 @@ export default async function PlanReviewPage({
             </div>
           </dl>
         </section>
+
+        {plan.primaryGoal === "STRENGTH" &&
+        plan.weeklyStructure.length > 0 ? (
+          <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h2 className="font-semibold text-slate-900">
+                  Weekly strength structure
+                </h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Primary lifts stay stable so performance can progress. Focused
+                  assistance supports balance and resilience without
+                  bodybuilding-level volume.
+                </p>
+              </div>
+              {plan.strengthConfiguration ? (
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                  {plan.strengthConfiguration.daysPerWeek} days · about{" "}
+                  {plan.strengthConfiguration.sessionDurationMinutes} min
+                </span>
+              ) : null}
+            </div>
+            {plan.strengthConfiguration ? (
+              <dl className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 text-sm">
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-slate-500">
+                    Main emphasis
+                  </dt>
+                  <dd className="mt-1 font-medium text-slate-900">
+                    {formatLabel(plan.strengthConfiguration.emphasis)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-slate-500">
+                    Equipment
+                  </dt>
+                  <dd className="mt-1 font-medium text-slate-900">
+                    {formatLabel(
+                      plan.strengthConfiguration.equipmentProfile,
+                    )}
+                  </dd>
+                </div>
+              </dl>
+            ) : null}
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {plan.weeklyStructure.map((slot) => (
+                <article
+                  key={slot.slotId}
+                  className="rounded-xl border border-slate-200 bg-slate-50 p-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="font-semibold text-slate-900">
+                      {slot.label}
+                    </h3>
+                    {slot.estimatedMinutes ? (
+                      <span className="shrink-0 text-xs text-slate-500">
+                        ~{slot.estimatedMinutes} min
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-2 text-sm text-slate-700">
+                    <span className="font-medium">Primary:</span>{" "}
+                    {slot.primaryLifts.join(", ")}
+                  </p>
+                  {slot.assistance.length > 0 ? (
+                    <p className="mt-1 text-sm text-slate-600">
+                      <span className="font-medium">Assistance:</span>{" "}
+                      {slot.assistance.join(", ")}
+                    </p>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+            <p className="mt-4 text-xs text-slate-500">
+              Main work uses lower rep ranges and longer rests. Loads start from
+              relevant history when available and otherwise use conservative
+              calibration; no 1RM is assumed.
+            </p>
+          </section>
+        ) : null}
 
         <div className="mt-5 grid gap-3">
           {plan.mesocycles.map((mesocycle) => (
@@ -114,9 +195,10 @@ export default async function PlanReviewPage({
         <section className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 p-4 sm:p-5">
           <h2 className="font-semibold text-slate-900">Ready to finalize?</h2>
           <p className="mt-2 text-sm text-slate-700">
-            This locks in the generated plan’s readiness state. It does not
-            rewrite plan content, accepted seeds, workouts, or historical
-            records.
+            This locks in the generated plan’s readiness state and accepts its
+            executable session structure when required. It does not activate
+            the plan or rewrite existing workouts, receipts, logs, or
+            historical records.
           </p>
           <div className="mt-4">
             {plan.status === "PREPARING" ? (

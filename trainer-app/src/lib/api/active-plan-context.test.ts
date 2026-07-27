@@ -13,6 +13,7 @@ import {
 function makeReader(input: {
   activeMacroCycleId: string | null;
   macroCycleOwnerId?: string;
+  primaryGoal?: string;
   activeMesocycles?: unknown[];
   pendingHandoffs?: unknown[];
 }) {
@@ -43,6 +44,7 @@ function makeReader(input: {
                 startDate: new Date("2026-01-01"),
                 endDate: new Date("2026-06-01"),
                 durationWeeks: 20,
+                primaryGoal: input.primaryGoal ?? "HYPERTROPHY",
               }
             : null
         ),
@@ -104,6 +106,43 @@ describe("active plan context", () => {
       activeMacroCycle: { id: "plan-b" },
       activeMesocycle: { id: "meso-b" },
     });
+  });
+
+  it("resolves an owned selected strength plan through the shared execution context", async () => {
+    const strengthMeso = activeMesocycle();
+    strengthMeso.macroCycle.primaryGoal = "STRENGTH";
+    const { client } = makeReader({
+      activeMacroCycleId: "plan-b",
+      primaryGoal: "STRENGTH",
+      activeMesocycles: [strengthMeso],
+    });
+
+    await expect(
+      resolveActivePlanContextInTransaction(client, "user-1"),
+    ).resolves.toMatchObject({
+      status: "READY",
+      activeMacroCycle: { id: "plan-b" },
+      activeMesocycle: {
+        id: "meso-b",
+        macroCycle: { primaryGoal: "STRENGTH" },
+      },
+    });
+  });
+
+  it("fails a selected unknown plan type closed before execution", async () => {
+    const { client, mesocycleFindMany } = makeReader({
+      activeMacroCycleId: "plan-b",
+      primaryGoal: "CONDITIONING",
+    });
+
+    await expect(
+      resolveActivePlanContextInTransaction(client, "user-1"),
+    ).resolves.toMatchObject({
+      status: "CORRUPT_STATE",
+      reason: "SELECTED_PLAN_TYPE_UNSUPPORTED",
+      affectedMesocycleIds: [],
+    });
+    expect(mesocycleFindMany).not.toHaveBeenCalled();
   });
 
   it("fails closed when the selected plan has no active mesocycle", async () => {

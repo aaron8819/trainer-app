@@ -25,6 +25,7 @@ Sources of truth:
 ## Commands
 - `npm run test:db:multi-plan -- --confirm-disposable`: provisions an isolated PostgreSQL 16 container; applies the full prior migration chain; verifies the active-plan foundation plus plan-management metadata migration, ambiguity rollback, deterministic name backfill, target schema objects, and the old-app handoff ordering risk; then runs partial-unique, READY-only selection, in-progress-workout blocking, finalization-without-selection, optimistic rename/archive, history preservation, and concurrent compare-and-swap coverage. It is database-mutating and must only run with the exact disposable-target confirmation.
 - Focused credential-free plan-management coverage: `npm run test -- src/lib/api/plan-management.test.ts src/lib/validation.plan-management.test.ts src/lib/api/active-plan-context.test.ts src/app/api/plans/[id]/activate/route.test.ts src/components/plans/PlanManagementClient.test.tsx src/components/navigation/AppNavigation.test.tsx src/lib/api/workout-mutation.test.ts src/lib/workout-workflow.test.ts src/lib/ui/workout-list-items.test.ts`.
+- Focused Strength coverage: `npm run test -- src/lib/plan-types.test.ts src/lib/engine/strength-plan-policy.test.ts src/lib/engine/prescription.correctness.test.ts src/lib/engine/periodization.correctness.test.ts src/lib/engine/apply-loads.correctness.test.ts src/lib/api/plan-management.test.ts src/lib/api/active-plan-context.test.ts src/lib/api/template-session/context-loader.test.ts src/lib/api/template-session.test.ts src/lib/validation.plan-management.test.ts src/components/plans/PlanManagementClient.test.tsx src/components/HistoryClient.test.tsx`. This protects deterministic policy output, immutable executable seed normalization, equipment/limitation substitutions, plan-type generation dispatch, lower-rep/longer-rest prescriptions, conservative shared progression, selected-plan enforcement, review/finalization, and Hypertrophy compatibility.
 - `npm run test:preflight`: sanitized, dependency-free launcher plus typed capability report.
   It performs no database connection or Docker daemon probe. It reports the dependency
   arrangement, resolved-install validation, generated Prisma Client compatibility, every
@@ -322,10 +323,10 @@ Disposable PostgreSQL verification must cover migration apply, unique one-to-one
 - Setup: `vitest.setup.ts`
 - `npm run test:inventory:credential-free` intentionally prevents database execution. Disposable
   DB and Playwright coverage remain explicit separate commands and must be reported separately.
-- Playwright config: `playwright.config.ts`; by default it starts a managed local Next dev server on port `3100` with `UI_AUDIT_FIXTURE_MODE=1`, uses the isolated `.next-ui-audit/managed` output directory, and runs the core-route audit at mobile (`390x844`) and desktop (`1366x768`) viewport sizes.
+- Playwright config: `playwright.config.ts`; by default it starts a managed local Next dev server on port `3100` with `UI_AUDIT_FIXTURE_MODE=1`, probes readiness through the fixture-backed `/plans` route, uses the isolated `.next-ui-audit/managed` output directory, and runs the core-route audit at mobile (`390x844`) and desktop (`1366x768`) viewport sizes.
 - The UI audit fixture harness is development-only. Fixture mode requires `UI_AUDIT_FIXTURE_MODE=1`, is disabled when `NODE_ENV=production`, and selects a named scenario through the `x-ui-audit-fixture` request header.
 - Current UI audit fixture scenarios:
-  - `active`: fixture-backed Home, Program, History, Analytics, Settings, and lightweight log-workout interaction state with populated representative data.
+  - `active`: fixture-backed Home, Program, History, Analytics, Settings, Plan Management (including Strength configuration and review), and lightweight log-workout interaction state with populated representative data.
   - `empty`: fixture-backed Home and Program empty-ish setup state.
   - `handoff`: fixture-backed Home pending-handoff state.
   - `timer-visible`: fixture-backed log-workout state with one logged set and an active rest timer for direct layout audit coverage.

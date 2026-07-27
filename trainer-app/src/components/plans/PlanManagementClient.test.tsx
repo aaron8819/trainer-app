@@ -179,4 +179,104 @@ describe("PlanManagementClient", () => {
       "Active",
     );
   });
+
+  it("collects and submits the concise strength configuration", async () => {
+    const user = userEvent.setup();
+    const strength = plan({
+      id: "strength-plan",
+      name: "Strength Plan 1",
+      primaryGoal: "STRENGTH",
+      status: "PREPARING",
+    });
+    const fetchMock = vi.fn<
+      (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+    >();
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ ok: true, plan: strength }), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <PlanManagementClient
+        initialData={{ activeMacroCycleId: null, plans: [] }}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("radio", { name: /^StrengthImprove performance/ }),
+    );
+    expect(screen.getByDisplayValue("Strength Plan 1")).toBeInTheDocument();
+    expect(screen.getByLabelText("Main emphasis")).toBeInTheDocument();
+    expect(
+      screen.getByText(/saved experience level and active exercise limitations/i),
+    ).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Main emphasis"), "BENCH");
+    await user.selectOptions(screen.getByLabelText("Training days"), "3");
+    await user.selectOptions(
+      screen.getByLabelText("Time per session"),
+      "45",
+    );
+    await user.selectOptions(
+      screen.getByLabelText("Available equipment"),
+      "DUMBBELLS",
+    );
+    await user.selectOptions(
+      screen.getByLabelText("Main press"),
+      "DUMBBELL_BENCH",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Generate and review" }),
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const request = fetchMock.mock.calls[0]![1]!;
+    expect(JSON.parse(String(request.body))).toMatchObject({
+      planType: "STRENGTH",
+      name: "Strength Plan 1",
+      configuration: {
+        emphasis: "BENCH",
+        daysPerWeek: 3,
+        sessionDurationMinutes: 45,
+        equipmentProfile: "DUMBBELLS",
+        preferredLifts: {
+          squat: "AUTO",
+          press: "DUMBBELL_BENCH",
+          hinge: "AUTO",
+        },
+      },
+    });
+    expect(router.push).toHaveBeenCalledWith("/plans/strength-plan/review");
+  });
+
+  it("distinguishes strength and hypertrophy plans in the shared list", () => {
+    render(
+      <PlanManagementClient
+        initialData={{
+          activeMacroCycleId: null,
+          plans: [
+            plan({
+              id: "hypertrophy",
+              name: "Muscle Plan",
+              status: "READY",
+            }),
+            plan({
+              id: "strength",
+              name: "Strength Plan",
+              primaryGoal: "STRENGTH",
+              status: "READY",
+            }),
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Muscle Plan").closest("article")).toHaveTextContent(
+      "Hypertrophy",
+    );
+    expect(
+      screen.getByText("Strength Plan").closest("article"),
+    ).toHaveTextContent("Strength");
+  });
 });

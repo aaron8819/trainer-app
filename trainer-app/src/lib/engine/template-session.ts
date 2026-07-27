@@ -260,7 +260,12 @@ function buildTemplateExercise(
   );
   const topSetReps =
     prescribedSets.length > 0 ? resolveSetTargetReps(prescribedSets[0]) : undefined;
-  const restSeconds = getRestSeconds(exercise, isMainLift, topSetReps);
+  const restSeconds = getRestSeconds(
+    exercise,
+    isMainLift,
+    topSetReps,
+    goals.primary,
+  );
   const sets = prescribedSets.map((set) => ({
     ...set,
     role,

@@ -4,13 +4,27 @@ import {
   type AdaptationType,
   type BlockType,
   type IntensityBias,
+  type SplitType,
   type TrainingAge,
   type VolumeTarget,
 } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { generateMacroCycle } from "@/lib/engine";
+import {
+  buildStrengthPlanPolicy,
+  toStrengthSlotPlanSeed,
+  toStrengthSlotSequence,
+  type StrengthPlanConfiguration,
+} from "@/lib/engine/strength-plan-policy";
+import {
+  isSupportedPlanType,
+  SUPPORTED_PLAN_TYPES,
+  type SupportedPlanType,
+} from "@/lib/plan-types";
 import { resolveOwner } from "./workout-context";
 import { getUiAuditFixtureForServer } from "@/lib/ui-audit-fixtures/server";
+import { createInitialAcceptedSeedRevisionInTransaction } from "./mesocycle-seed-revision";
+import { strengthPlanConfigurationSchema } from "@/lib/validation";
 
 export type PlanLifecycleStatus =
   | "PREPARING"
@@ -22,7 +36,7 @@ export type PlanLifecycleStatus =
 export type PlanSummary = {
   id: string;
   name: string;
-  primaryGoal: "HYPERTROPHY";
+  primaryGoal: SupportedPlanType;
   status: PlanLifecycleStatus;
   isActive: boolean;
   activeMesocycleId: string | null;
@@ -158,11 +172,14 @@ function toPlanSummary(
   },
   activeMacroCycleId: string | null,
 ): PlanSummary {
+  if (!isSupportedPlanType(plan.primaryGoal)) {
+    throw new PlanManagementError("PLAN_INVALID");
+  }
   const lifecycle = derivePlanLifecycle(plan.mesocycles);
   return {
     id: plan.id,
     name: plan.name,
-    primaryGoal: "HYPERTROPHY",
+    primaryGoal: plan.primaryGoal,
     status: lifecycle.status,
     isActive: activeMacroCycleId === plan.id,
     activeMesocycleId: lifecycle.activeMesocycleId,
@@ -186,7 +203,7 @@ export async function loadPlanManagementData(
       macroCycles: {
         where: {
           archivedAt: null,
-          primaryGoal: "HYPERTROPHY",
+          primaryGoal: { in: [...SUPPORTED_PLAN_TYPES] },
         },
         orderBy: [{ createdAt: "desc" }, { id: "asc" }],
         select: {
@@ -231,6 +248,15 @@ export async function loadConfiguredPlanManagementData(): Promise<PlanManagement
 }
 
 export type PlanReview = PlanSummary & {
+  strengthConfiguration: StrengthPlanConfiguration | null;
+  weeklyStructure: Array<{
+    slotId: string;
+    label: string;
+    intent: string;
+    estimatedMinutes: number | null;
+    primaryLifts: string[];
+    assistance: string[];
+  }>;
   mesocycles: Array<{
     id: string;
     mesoNumber: number;
@@ -242,6 +268,90 @@ export type PlanReview = PlanSummary & {
     blockCount: number;
   }>;
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readStrengthReview(input: {
+  slotSequenceJson: unknown;
+  slotPlanSeedJson: unknown;
+}): Pick<PlanReview, "strengthConfiguration" | "weeklyStructure"> {
+  const sequence = isRecord(input.slotSequenceJson)
+    ? input.slotSequenceJson
+    : null;
+  const seed = isRecord(input.slotPlanSeedJson) ? input.slotPlanSeedJson : null;
+  if (
+    sequence?.source !== "strength_plan_policy_v1" ||
+    seed?.source !== "strength_plan_policy_v1" ||
+    !Array.isArray(sequence.slots) ||
+    !Array.isArray(seed.slots)
+  ) {
+    return { strengthConfiguration: null, weeklyStructure: [] };
+  }
+
+  const rawConfiguration = isRecord(sequence.strengthConfiguration)
+    ? sequence.strengthConfiguration
+    : null;
+  const parsedConfiguration =
+    rawConfiguration?.version === 1
+      ? strengthPlanConfigurationSchema.safeParse({
+          emphasis: rawConfiguration.emphasis,
+          daysPerWeek: rawConfiguration.daysPerWeek,
+          sessionDurationMinutes:
+            rawConfiguration.sessionDurationMinutes,
+          equipmentProfile: rawConfiguration.equipmentProfile,
+          preferredLifts: rawConfiguration.preferredLifts,
+        })
+      : null;
+  const configuration =
+    parsedConfiguration?.success === true ? parsedConfiguration.data : null;
+  const seedBySlot = new Map(
+    seed.slots.flatMap((value) => {
+      const slot = isRecord(value) ? value : null;
+      return typeof slot?.slotId === "string" && Array.isArray(slot.exercises)
+        ? [[slot.slotId, slot.exercises] as const]
+        : [];
+    }),
+  );
+
+  const weeklyStructure = sequence.slots.flatMap((value) => {
+    const slot = isRecord(value) ? value : null;
+    if (
+      typeof slot?.slotId !== "string" ||
+      typeof slot.intent !== "string"
+    ) {
+      return [];
+    }
+    const exercises = (seedBySlot.get(slot.slotId) ?? []).flatMap((entry) => {
+      const exercise = isRecord(entry) ? entry : null;
+      return typeof exercise?.name === "string" &&
+        (exercise.role === "CORE_COMPOUND" || exercise.role === "ACCESSORY")
+        ? [{ name: exercise.name, role: exercise.role }]
+        : [];
+    });
+    return [
+      {
+        slotId: slot.slotId,
+        label:
+          typeof slot.label === "string" ? slot.label : slot.slotId,
+        intent: slot.intent,
+        estimatedMinutes:
+          typeof slot.estimatedMinutes === "number"
+            ? slot.estimatedMinutes
+            : null,
+        primaryLifts: exercises
+          .filter((exercise) => exercise.role === "CORE_COMPOUND")
+          .map((exercise) => exercise.name),
+        assistance: exercises
+          .filter((exercise) => exercise.role === "ACCESSORY")
+          .map((exercise) => exercise.name),
+      },
+    ];
+  });
+
+  return { strengthConfiguration: configuration, weeklyStructure };
+}
 
 export async function loadPlanReview(
   userId: string,
@@ -257,7 +367,7 @@ export async function loadPlanReview(
         id: planId,
         userId,
         archivedAt: null,
-        primaryGoal: "HYPERTROPHY",
+        primaryGoal: { in: [...SUPPORTED_PLAN_TYPES] },
       },
       select: {
         id: true,
@@ -278,6 +388,8 @@ export async function loadPlanReview(
             focus: true,
             volumeTarget: true,
             intensityBias: true,
+            slotSequenceJson: true,
+            slotPlanSeedJson: true,
             state: true,
             isActive: true,
             _count: { select: { blocks: true } },
@@ -289,8 +401,16 @@ export async function loadPlanReview(
   if (!owner || !plan) return null;
 
   const summary = toPlanSummary(plan, owner.activeMacroCycleId);
+  const strengthReview =
+    summary.primaryGoal === "STRENGTH" && plan.mesocycles[0]
+      ? readStrengthReview({
+          slotSequenceJson: plan.mesocycles[0].slotSequenceJson,
+          slotPlanSeedJson: plan.mesocycles[0].slotPlanSeedJson,
+        })
+      : { strengthConfiguration: null, weeklyStructure: [] };
   return {
     ...summary,
+    ...strengthReview,
     mesocycles: plan.mesocycles.map((mesocycle) => ({
       id: mesocycle.id,
       mesoNumber: mesocycle.mesoNumber,
@@ -304,6 +424,17 @@ export async function loadPlanReview(
   };
 }
 
+export async function loadConfiguredPlanReview(
+  planId: string,
+): Promise<PlanReview | null> {
+  const fixture = await getUiAuditFixtureForServer();
+  const fixtureReview = fixture?.planReviews?.[planId];
+  if (fixtureReview) return fixtureReview;
+
+  const owner = await resolveOwner();
+  return loadPlanReview(owner.id, planId);
+}
+
 export async function loadPlanActivationTarget(
   userId: string,
   planId: string,
@@ -315,7 +446,7 @@ export async function loadPlanActivationTarget(
     where: {
       id: planId,
       userId,
-      primaryGoal: "HYPERTROPHY",
+      primaryGoal: { in: [...SUPPORTED_PLAN_TYPES] },
     },
     select: {
       archivedAt: true,
@@ -433,6 +564,191 @@ export async function createHypertrophyPlan(input: {
   return toPlanSummary(created, owner.activeMacroCycleId);
 }
 
+function activeContraindicationKeys(value: unknown): string[] {
+  if (!isRecord(value)) return [];
+  return Object.entries(value).flatMap(([key, enabled]) =>
+    enabled === true ? [key] : [],
+  );
+}
+
+export async function createStrengthPlan(input: {
+  userId: string;
+  name: string;
+  startDate: Date;
+  configuration: StrengthPlanConfiguration;
+}): Promise<PlanSummary> {
+  const [owner, exerciseRows] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: input.userId },
+      select: {
+        activeMacroCycleId: true,
+        profile: { select: { trainingAge: true } },
+        injuries: {
+          where: { isActive: true },
+          select: { bodyPart: true },
+        },
+      },
+    }),
+    prisma.exercise.findMany({
+      select: {
+        id: true,
+        name: true,
+        movementPatterns: true,
+        isMainLiftEligible: true,
+        isCompound: true,
+        fatigueCost: true,
+        contraindications: true,
+        exerciseEquipment: {
+          select: { equipment: { select: { type: true } } },
+        },
+      },
+    }),
+  ]);
+  if (!owner?.profile) {
+    throw new PlanManagementError("PLAN_OWNER_NOT_READY");
+  }
+
+  const trainingAge = owner.profile.trainingAge.toLowerCase() as
+    | "beginner"
+    | "intermediate"
+    | "advanced";
+  let policy;
+  try {
+    policy = buildStrengthPlanPolicy({
+      configuration: input.configuration,
+      trainingAge,
+      limitations: owner.injuries.map((injury) => injury.bodyPart),
+      exercises: exerciseRows.map((exercise) => ({
+        id: exercise.id,
+        name: exercise.name,
+        movementPatterns: exercise.movementPatterns.map((pattern) =>
+          pattern.toLowerCase(),
+        ) as Parameters<typeof buildStrengthPlanPolicy>[0]["exercises"][number]["movementPatterns"],
+        equipment: exercise.exerciseEquipment.map(
+          (entry) => entry.equipment.type,
+        ),
+        contraindications: activeContraindicationKeys(
+          exercise.contraindications,
+        ),
+        isMainLiftEligible: exercise.isMainLiftEligible,
+        isCompound: exercise.isCompound,
+        fatigueCost: exercise.fatigueCost,
+      })),
+    });
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.startsWith("STRENGTH_PLAN_")
+    ) {
+      throw new PlanManagementError("PLAN_INVALID");
+    }
+    throw error;
+  }
+
+  const generated = generateMacroCycle({
+    userId: input.userId,
+    startDate: input.startDate,
+    durationWeeks: policy.mesocycleWeeks,
+    trainingAge,
+    primaryGoal: "strength",
+  });
+  const generatedMesocycle = generated.mesocycles[0];
+  if (!generatedMesocycle || generated.mesocycles.length !== 1) {
+    throw new PlanManagementError("PLAN_INVALID");
+  }
+
+  const slotSequence = toStrengthSlotSequence(policy);
+  const slotPlanSeed = toStrengthSlotPlanSeed(policy);
+  const created = await prisma.macroCycle.create({
+    data: {
+      id: generated.id,
+      userId: input.userId,
+      name: input.name,
+      startDate: generated.startDate,
+      endDate: generated.endDate,
+      durationWeeks: generated.durationWeeks,
+      trainingAge: enumValue<TrainingAge>(trainingAge),
+      primaryGoal: "STRENGTH",
+      mesocycles: {
+        create: {
+          id: generatedMesocycle.id,
+          mesoNumber: generatedMesocycle.mesoNumber,
+          startWeek: generatedMesocycle.startWeek,
+          durationWeeks: generatedMesocycle.durationWeeks,
+          focus: policy.focus,
+          volumeTarget: enumValue<VolumeTarget>(
+            generatedMesocycle.volumeTarget,
+          ),
+          intensityBias: "STRENGTH",
+          sessionsPerWeek: policy.sessionsPerWeek,
+          daysPerWeek: policy.sessionsPerWeek,
+          splitType: policy.splitType as SplitType,
+          slotSequenceJson: slotSequence as Prisma.InputJsonValue,
+          slotPlanSeedJson: slotPlanSeed as Prisma.InputJsonValue,
+          isActive: false,
+          blocks: {
+            create: generatedMesocycle.blocks.map((block) => ({
+              id: block.id,
+              blockNumber: block.blockNumber,
+              blockType: enumValue<BlockType>(block.blockType),
+              startWeek: block.startWeek,
+              durationWeeks: block.durationWeeks,
+              volumeTarget: enumValue<VolumeTarget>(block.volumeTarget),
+              intensityBias: enumValue<IntensityBias>(block.intensityBias),
+              adaptationType: enumValue<AdaptationType>(
+                block.adaptationType,
+              ),
+            })),
+          },
+        },
+      },
+    },
+    select: {
+      id: true,
+      name: true,
+      primaryGoal: true,
+      startDate: true,
+      endDate: true,
+      durationWeeks: true,
+      createdAt: true,
+      updatedAt: true,
+      mesocycles: {
+        orderBy: [{ mesoNumber: "asc" }, { id: "asc" }],
+        select: {
+          id: true,
+          mesoNumber: true,
+          state: true,
+          isActive: true,
+        },
+      },
+    },
+  });
+  return toPlanSummary(created, owner.activeMacroCycleId);
+}
+
+export async function createPlan(input:
+  | {
+      planType: "HYPERTROPHY";
+      userId: string;
+      name: string;
+      startDate: Date;
+      durationWeeks: number;
+    }
+  | {
+      planType: "STRENGTH";
+      userId: string;
+      name: string;
+      startDate: Date;
+      configuration: StrengthPlanConfiguration;
+    }): Promise<PlanSummary> {
+  switch (input.planType) {
+    case "HYPERTROPHY":
+      return createHypertrophyPlan(input);
+    case "STRENGTH":
+      return createStrengthPlan(input);
+  }
+}
+
 async function translateSerializableConflict<T>(
   operation: () => Promise<T>,
 ): Promise<T> {
@@ -462,10 +778,11 @@ export async function finalizePlan(input: {
             id: input.planId,
             userId: input.userId,
             archivedAt: null,
-            primaryGoal: "HYPERTROPHY",
+            primaryGoal: { in: [...SUPPORTED_PLAN_TYPES] },
           },
           select: {
             id: true,
+            primaryGoal: true,
             updatedAt: true,
             mesocycles: {
               orderBy: [{ mesoNumber: "asc" }, { id: "asc" }],
@@ -474,6 +791,8 @@ export async function finalizePlan(input: {
                 mesoNumber: true,
                 state: true,
                 isActive: true,
+                slotPlanSeedJson: true,
+                currentSeedRevisionId: true,
               },
             },
           },
@@ -520,6 +839,20 @@ export async function finalizePlan(input: {
         });
         if (activated.count !== 1) {
           throw new PlanManagementError("PLAN_MUTATION_CONFLICT");
+        }
+        if (plan.primaryGoal === "STRENGTH") {
+          if (
+            !targetMesocycle.slotPlanSeedJson ||
+            targetMesocycle.currentSeedRevisionId
+          ) {
+            throw new PlanManagementError("PLAN_INVALID");
+          }
+          await createInitialAcceptedSeedRevisionInTransaction(tx, {
+            mesocycleId: targetMesocycle.id,
+            seedPayload: targetMesocycle.slotPlanSeedJson,
+            creationReason: "strength_plan_finalization",
+            actorSource: "plan_management",
+          });
         }
 
         const ready = await tx.macroCycle.findUniqueOrThrow({
@@ -568,7 +901,7 @@ export async function renamePlan(input: {
       id: input.planId,
       userId: input.userId,
       archivedAt: null,
-      primaryGoal: "HYPERTROPHY",
+      primaryGoal: { in: [...SUPPORTED_PLAN_TYPES] },
       updatedAt: expectedUpdatedAt,
     },
     data: { name: input.name, updatedAt },
@@ -579,7 +912,7 @@ export async function renamePlan(input: {
         id: input.planId,
         userId: input.userId,
         archivedAt: null,
-        primaryGoal: "HYPERTROPHY",
+        primaryGoal: { in: [...SUPPORTED_PLAN_TYPES] },
       },
       select: { updatedAt: true },
     });
@@ -612,7 +945,7 @@ export async function archivePlan(input: {
             id: input.planId,
             userId: input.userId,
             archivedAt: null,
-            primaryGoal: "HYPERTROPHY",
+            primaryGoal: { in: [...SUPPORTED_PLAN_TYPES] },
           },
           select: { updatedAt: true },
         });

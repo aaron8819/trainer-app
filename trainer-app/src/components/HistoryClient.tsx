@@ -16,12 +16,17 @@ import {
   type WorkoutListSurfaceSummary,
 } from "@/lib/ui/workout-list-items";
 import { formatWorkoutSessionSnapshotLabel } from "@/lib/ui/workout-session-snapshot";
+import {
+  planTypeLabel,
+  type SupportedPlanType,
+} from "@/lib/plan-types";
 
 export type HistoryWorkoutItem = WorkoutListSurfaceSummary;
 
 export type MesocycleOption = {
   id: string;
   planName: string;
+  planType?: SupportedPlanType;
   startDate: string;
   isActive: boolean;
   mesoNumber: number;
@@ -230,7 +235,9 @@ export default function HistoryClient({
               {mesocycles.map((meso) => (
                 <option key={meso.id} value={meso.id}>
                   {meso.isActive ? "Active - " : ""}
-                  {meso.planName} · Meso {meso.mesoNumber} -{" "}
+                  {meso.planName}
+                  {meso.planType ? ` (${planTypeLabel(meso.planType)})` : ""} ·
+                  Meso {meso.mesoNumber} -{" "}
                   {new Date(meso.startDate).toLocaleDateString()}
                 </option>
               ))}

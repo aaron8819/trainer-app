@@ -128,6 +128,7 @@ describe("HistoryClient", () => {
           {
             id: "meso-archived",
             planName: "Foundation Archive Candidate",
+            planType: "STRENGTH",
             startDate: "2026-07-27T00:00:00.000Z",
             isActive: false,
             mesoNumber: 1,
@@ -143,7 +144,7 @@ describe("HistoryClient", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("option", {
-        name: /Foundation Archive Candidate · Meso 1/,
+        name: /Foundation Archive Candidate \(Strength\) · Meso 1/,
       })
     ).toBeInTheDocument();
   });

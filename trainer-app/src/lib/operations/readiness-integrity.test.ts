@@ -7,7 +7,9 @@ import {
 } from "@/lib/api/pre-session-readiness-identity";
 import type { PreSessionReadinessContract } from "@/lib/api/pre-session-readiness-contract";
 import {
+  checksumMigrationSql,
   EXPECTED_MIGRATION_CHAIN,
+  prismaCompatibleMigrationSqlChecksums,
   type CheckedInMigration,
   type LedgerRow,
 } from "./migration-integrity";
@@ -237,6 +239,84 @@ describe("readiness integrity schema-stage detection", () => {
         checkedIn: checkedIn(),
       }).stage,
     ).toBe("fully_migrated");
+  });
+
+  it.each([
+    {
+      label: "raw",
+      repositorySql: Buffer.from("SELECT 1;\n"),
+      ledgerSql: Buffer.from("SELECT 1;\n"),
+    },
+    {
+      label: "LF-compatible",
+      repositorySql: Buffer.from("SELECT 1;\r\n"),
+      ledgerSql: Buffer.from("SELECT 1;\n"),
+    },
+    {
+      label: "CRLF-compatible",
+      repositorySql: Buffer.from("SELECT 1;\n"),
+      ledgerSql: Buffer.from("SELECT 1;\r\n"),
+    },
+  ])("accepts a $label migration checksum", ({ repositorySql, ledgerSql }) => {
+    const migrations = checkedIn();
+    migrations[0] = {
+      ...migrations[0],
+      checksum: checksumMigrationSql(repositorySql),
+      compatibleChecksums: prismaCompatibleMigrationSqlChecksums(repositorySql),
+    };
+    const ledgerRows = migrations.map((migration, index) => ({
+      id: `ledger-${index}`,
+      migrationName: migration.name,
+      checksum:
+        index === 0 ? checksumMigrationSql(ledgerSql) : migration.checksum,
+      finishedAt: "2026-07-01 00:00:00+00",
+      rolledBackAt: null,
+      logs: null,
+      appliedStepsCount: 1,
+    }));
+
+    const result = classifyReadinessSchemaStage({
+      catalog: catalog("full"),
+      ledgerRows,
+      checkedIn: migrations,
+    });
+
+    expect(result.stage).toBe("fully_migrated");
+    expect(result.ledger.blockers).toEqual([]);
+  });
+
+  it("rejects a genuinely modified migration checksum", () => {
+    const migrations = checkedIn();
+    const repositorySql = Buffer.from("SELECT 1;\n");
+    migrations[0] = {
+      ...migrations[0],
+      checksum: checksumMigrationSql(repositorySql),
+      compatibleChecksums:
+        prismaCompatibleMigrationSqlChecksums(repositorySql),
+    };
+    const ledgerRows = migrations.map((migration, index) => ({
+      id: `ledger-${index}`,
+      migrationName: migration.name,
+      checksum:
+        index === 0
+          ? checksumMigrationSql(Buffer.from("SELECT 2;\r\n"))
+          : migration.checksum,
+      finishedAt: "2026-07-01 00:00:00+00",
+      rolledBackAt: null,
+      logs: null,
+      appliedStepsCount: 1,
+    }));
+
+    const result = classifyReadinessSchemaStage({
+      catalog: catalog("full"),
+      ledgerRows,
+      checkedIn: migrations,
+    });
+
+    expect(result.stage).toBe("partial_or_incompatible");
+    expect(result.ledger.blockers).toContain(
+      `checksum_mismatch:${migrations[0].name}`,
+    );
   });
 
   it("fails closed for a lone future column and a seed table without readiness migration", () => {

@@ -458,6 +458,18 @@ export function prismaCompatibleMigrationSqlChecksums(
   );
 }
 
+export function migrationChecksumMatches(
+  migration: CheckedInMigration,
+  ledgerChecksum: string | null,
+): boolean {
+  return (
+    ledgerChecksum != null &&
+    (migration.compatibleChecksums ?? [migration.checksum]).includes(
+      ledgerChecksum,
+    )
+  );
+}
+
 export function loadCheckedInMigrations(root = join(process.cwd(), "prisma", "migrations")): CheckedInMigration[] {
   return readdirSync(root, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
@@ -793,11 +805,7 @@ export function buildMigrationIntegrityReport(input: {
     const migration = checkedInByName.get(row.migrationName);
     if (!migration) {
       missingCheckedIn.push(row.migrationName);
-    } else if (
-      !(
-        migration.compatibleChecksums ?? [migration.checksum]
-      ).includes(row.checksum ?? "")
-    ) {
+    } else if (!migrationChecksumMatches(migration, row.checksum)) {
       mismatched.push(row.migrationName);
       mismatchContext.push({
         migrationName: row.migrationName,
@@ -905,7 +913,8 @@ export function buildMigrationIntegrityReport(input: {
     const checkedInMigration = checkedInByName.get(row.migrationName);
     if (
       row.appliedStepsCount === 0 &&
-      checkedInMigration?.checksum === row.checksum &&
+      checkedInMigration != null &&
+      migrationChecksumMatches(checkedInMigration, row.checksum) &&
       migrationSchemaEffectsVerified({
         migrationName: row.migrationName,
         catalog: input.catalog,
@@ -1081,9 +1090,7 @@ export function buildMigrationIntegrityReport(input: {
       return (
         migration != null &&
         row.checksum !== migration.checksum &&
-        (migration.compatibleChecksums ?? [migration.checksum]).includes(
-          row.checksum ?? "",
-        )
+        migrationChecksumMatches(migration, row.checksum)
       );
     })
     .map((row) => row.migrationName)

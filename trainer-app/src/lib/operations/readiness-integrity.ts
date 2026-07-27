@@ -13,6 +13,7 @@ import {
 } from "@/lib/api/pre-session-readiness-contract";
 import {
   EXPECTED_MIGRATION_CHAIN,
+  migrationChecksumMatches,
   type CheckedInMigration,
   type LedgerRow,
 } from "./migration-integrity";
@@ -272,7 +273,11 @@ function assessLedger(input: {
     if (!cleanReplacement) blockers.push(`ambiguous_ledger:${name}`);
     if (cleanReplacement) successfulRows.push(successful[0]);
     const checkedIn = checkedInByName.get(name);
-    if (cleanReplacement && checkedIn && successful[0].checksum !== checkedIn.checksum) {
+    if (
+      cleanReplacement &&
+      checkedIn &&
+      !migrationChecksumMatches(checkedIn, successful[0].checksum)
+    ) {
       blockers.push(`checksum_mismatch:${name}`);
     }
     if (incomplete.length > 0) {

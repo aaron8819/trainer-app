@@ -6,6 +6,7 @@ import {
   checksumMigrationSql,
   EXPECTED_GATE_A_PENDING,
   EXPECTED_MIGRATION_CHAIN,
+  migrationChecksumMatches,
   MIGRATION_AUTHORIZATION_POLICY,
   PENDING_ARCHITECTURE_MANIFEST,
   prismaCompatibleMigrationSqlChecksums,
@@ -274,6 +275,14 @@ describe("migration integrity", () => {
         checksumMigrationSql(lf),
       ]),
     );
+    const migration = {
+      name: "test",
+      checksum: checksumMigrationSql(crlf),
+      compatibleChecksums: prismaCompatibleMigrationSqlChecksums(crlf),
+      sqlPath: "migration.sql",
+    };
+    expect(migrationChecksumMatches(migration, checksumMigrationSql(crlf))).toBe(true);
+    expect(migrationChecksumMatches(migration, checksumMigrationSql(lf))).toBe(true);
   });
 
   it("does not normalize standalone carriage returns or genuine SQL drift", () => {
@@ -318,13 +327,22 @@ describe("migration integrity", () => {
       compatibleChecksums: prismaCompatibleMigrationSqlChecksums(crlf),
     };
     const rows = migrations.slice(0, -1).map(successfulRow);
-    rows[0] = { ...rows[0], checksum: checksumMigrationSql(lf) };
+    rows[0] = {
+      ...rows[0],
+      checksum: checksumMigrationSql(lf),
+      appliedStepsCount: 0,
+    };
     const result = report({ checkedIn: migrations, ledgerRows: rows });
     expect(result.checksums.mismatched).toEqual([]);
     expect(result.checksums.lineEndingCompatibilityUsed).toEqual([
       migrations[0].name,
     ]);
     expect(result.migrationChecksumsValid).toBe(true);
+    expect(result.ledger.successfulDetails).toContainEqual({
+      migrationName: migrations[0].name,
+      appliedMode: "resolved_applied",
+      appliedStepsCount: 0,
+    });
   });
 
   it("blocks a checksum mismatch and a missing ledger checksum", () => {

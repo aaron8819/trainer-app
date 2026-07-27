@@ -121,6 +121,7 @@ describe("L-5 — AppNavigation active tab on /log paths", () => {
     expect(linkLabels()).toEqual([
       "Home",
       "Program",
+      "Plans",
       "History",
       "Templates",
       "Library",

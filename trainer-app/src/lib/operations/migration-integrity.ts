@@ -19,16 +19,17 @@ export const EXPECTED_MIGRATION_CHAIN = [
   "20260714180000_add_post_session_review_snapshots",
   "20260714210000_make_pre_session_readiness_snapshots_atomic",
   "20260726120000_add_active_macrocycle_foundation",
+  "20260727010000_add_plan_management_fields",
 ] as const;
 
 export const MIGRATION_AUTHORIZATION_POLICY = {
-  targetMigration: "20260726120000_add_active_macrocycle_foundation",
+  targetMigration: "20260727010000_add_plan_management_fields",
   expectedPendingMigrations: [
-    "20260726120000_add_active_macrocycle_foundation",
+    "20260727010000_add_plan_management_fields",
   ],
-  requiredApplicationCommit: "aafb19bd1334e9edd51d202f9a185a2fe21bf311",
+  requiredApplicationCommit: "",
   compatibleProductionDeploymentCommits: [
-    "06c74a80c842924c9e79d93f0849ed385212bea5",
+    "d7b899584995b1289c73019265464ee749a993c2",
   ],
   operationalEvidenceMaxAgeMinutes: 30,
 } as const;
@@ -326,6 +327,48 @@ export const PENDING_ARCHITECTURE_MANIFEST: readonly PendingMigrationExpectation
           "COMPLETED",
           "AWAITING_HANDOFF",
         ],
+      },
+    ],
+  },
+  {
+    migration: "20260727010000_add_plan_management_fields",
+    effect: "objects",
+    objects: [
+      {
+        kind: "column",
+        table: "MacroCycle",
+        name: "name",
+        column: {
+          type: "character varying(60)",
+          nullable: false,
+          default: "'Hypertrophy Plan'::character varying",
+        },
+      },
+      {
+        kind: "column",
+        table: "MacroCycle",
+        name: "archivedAt",
+        column: {
+          type: "timestamp(3) without time zone",
+          nullable: true,
+          default: null,
+        },
+      },
+      {
+        kind: "index",
+        table: "MacroCycle",
+        name: "MacroCycle_userId_archivedAt_updatedAt_idx",
+        index: {
+          unique: false,
+          columns: ["userId", "archivedAt", "updatedAt"],
+          predicate: null,
+        },
+      },
+      {
+        kind: "constraint",
+        table: "MacroCycle",
+        name: "MacroCycle_name_length_check",
+        definitionIncludes: ["char_length", "name", "60"],
       },
     ],
   },

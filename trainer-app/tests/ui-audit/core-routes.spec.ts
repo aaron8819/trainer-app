@@ -77,6 +77,36 @@ test.describe("core route UI audit", () => {
 });
 
 test.describe("lightweight fixture interaction checks", () => {
+  test("plan management stays usable at representative viewport sizes", async ({
+    page,
+  }) => {
+    await page.setExtraHTTPHeaders({ [FIXTURE_HEADER]: "active" });
+    await page.goto("/plans", { waitUntil: "domcontentloaded" });
+    await waitForStableRoute(page);
+
+    await expect(
+      page.getByRole("heading", { name: "Training plans" }),
+    ).toBeVisible();
+    await expect(page.getByText("Current Hypertrophy")).toBeVisible();
+    await expect(page.getByText("Fall Hypertrophy")).toBeVisible();
+    await expect(page.getByText("Plan in Review")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Make active" })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Review and finalize" }),
+    ).toBeVisible();
+    await expectMainWithinViewport(page);
+
+    await page.getByRole("button", { name: "Create another plan" }).click();
+    await expect(
+      page.getByRole("heading", { name: "New hypertrophy plan" }),
+    ).toBeVisible();
+    await expect(page.getByLabel("Plan name")).toBeVisible();
+    await expect(page.getByLabel("Start date")).toBeVisible();
+    await expect(page.getByLabel("Duration")).toBeVisible();
+    await expectMainWithinViewport(page);
+    await expectNoAppError(page);
+  });
+
   test("logging screen active set and swap sheet survive safe interactions", async ({ page }) => {
     await page.setExtraHTTPHeaders({ [FIXTURE_HEADER]: "active" });
     await installMutationGuards(page);

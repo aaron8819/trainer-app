@@ -175,7 +175,15 @@ export default async function ProgramPage() {
     return (
       <main className="min-h-screen bg-white text-slate-900">
         <div className="page-shell max-w-5xl">
-          <h1 className="page-title">My Program</h1>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h1 className="page-title">My Program</h1>
+            <Link
+              href="/plans"
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-900"
+            >
+              Manage plans
+            </Link>
+          </div>
           <p className="mt-1.5 text-sm text-slate-600">
             Training is paused while the handoff is pending.
           </p>
@@ -242,7 +250,15 @@ export default async function ProgramPage() {
   return (
     <main className="min-h-screen bg-white text-slate-900">
       <div className="page-shell max-w-5xl pb-8">
-        <h1 className="page-title">My Program</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="page-title">My Program</h1>
+          <Link
+            href="/plans"
+            className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-900"
+          >
+            Manage plans
+          </Link>
+        </div>
         <p className="mt-1.5 hidden text-sm text-slate-600 sm:block">
           Your active mesocycle, next slot, and projected week landing. Use
           History for completed sessions and Analytics for longer-term trends.

@@ -36,6 +36,7 @@ export const workoutListItemSelect = {
   selectionMetadata: true,
   mesocycle: {
     select: {
+      macroCycleId: true,
       sessionsPerWeek: true,
       state: true,
       isActive: true,
@@ -204,7 +205,8 @@ function countLoggedSets(row: WorkoutListItemRow): number {
 }
 
 export function buildWorkoutListSurfaceSummary(
-  row: WorkoutListItemRow
+  row: WorkoutListItemRow,
+  selection?: { activeMacroCycleId: string | null },
 ): WorkoutListSurfaceSummary {
   const isGapFill = isGapFillWorkout({
     selectionMetadata: row.selectionMetadata,
@@ -249,7 +251,12 @@ export function buildWorkoutListSurfaceSummary(
     sessionTechnicalLabel,
     mesocycleId: row.mesocycleId ?? null,
     mesocycleState: row.mesocycle?.state ?? null,
-    mesocycleIsActive: row.mesocycle?.isActive ?? null,
+    mesocycleIsActive:
+      row.mesocycle == null
+        ? null
+        : row.mesocycle.isActive &&
+          (selection == null ||
+            row.mesocycle.macroCycleId === selection.activeMacroCycleId),
     sessionSnapshot: buildWorkoutSessionSnapshotSummary({
       week: displayWeek,
       session: displaySession,

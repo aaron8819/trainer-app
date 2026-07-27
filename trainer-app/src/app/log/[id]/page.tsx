@@ -212,6 +212,7 @@ export default async function LogWorkoutPage({
     include: {
       mesocycle: {
         select: {
+          macroCycleId: true,
           state: true,
           isActive: true,
         },
@@ -256,6 +257,8 @@ export default async function LogWorkoutPage({
     mesocycleId: workout.mesocycleId,
     mesocycleState: workout.mesocycle?.state ?? null,
     mesocycleIsActive: workout.mesocycle?.isActive ?? null,
+    mesocycleBelongsToSelectedPlan:
+      workout.mesocycle?.macroCycleId === owner.activeMacroCycleId,
   });
   if (pageState.mutability !== "editable") {
     const isBlocked = pageState.uiState === "blocked";

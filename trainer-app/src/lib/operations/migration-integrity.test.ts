@@ -20,6 +20,7 @@ const REPOSITORY_HEAD = "b".repeat(40);
 const EVALUATED_AT = "2026-07-26T18:00:00.000Z";
 const VERIFIED_AT = "2026-07-26T17:50:00.000Z";
 const TARGET_FINGERPRINT = "5952f3ffb454";
+const PENDING_MANIFEST_INDEX = PENDING_ARCHITECTURE_MANIFEST.length - 1;
 
 function checkedIn(): CheckedInMigration[] {
   return EXPECTED_MIGRATION_CHAIN.map((name) => ({
@@ -152,6 +153,7 @@ function fullEvidence(
     repositoryHead: REPOSITORY_HEAD,
     productionDeploymentCommit:
       MIGRATION_AUTHORIZATION_POLICY.compatibleProductionDeploymentCommits[0],
+    requiredApplicationCommit: REPOSITORY_HEAD,
     dataPreflight: {
       valid: true,
       verifiedAt: VERIFIED_AT,
@@ -214,15 +216,18 @@ function pendingObjectIndex(migrationIndex: number, kind: string): number {
 }
 
 describe("migration integrity", () => {
-  it("accepts 15 applied and the exact expected pending migration", () => {
+  it("accepts the applied prefix and the exact expected pending migration", () => {
     const result = report();
     expect(result.chain).toMatchObject({
       checkedIn: EXPECTED_MIGRATION_CHAIN.length,
-      applied: 15,
+      applied: EXPECTED_MIGRATION_CHAIN.length - 1,
       pending: EXPECTED_GATE_A_PENDING.length,
       pendingNames: EXPECTED_GATE_A_PENDING,
     });
-    expect(result.checksums).toMatchObject({ matched: 15, mismatched: [] });
+    expect(result.checksums).toMatchObject({
+      matched: EXPECTED_MIGRATION_CHAIN.length - 1,
+      mismatched: [],
+    });
     expect(result.technicalMigrationReady).toBe(true);
     expect(result.migrationAuthorizationReady).toBe(true);
     expect(result.executionAuthorized).toBe(false);
@@ -235,11 +240,13 @@ describe("migration integrity", () => {
     const result = report({ ledgerRows: rows });
 
     expect(result.chain).toMatchObject({
-      applied: 15,
+      applied: EXPECTED_MIGRATION_CHAIN.length - 1,
       pending: EXPECTED_GATE_A_PENDING.length,
       pendingNames: EXPECTED_GATE_A_PENDING,
     });
-    expect(result.ledger.successful).toHaveLength(15);
+    expect(result.ledger.successful).toHaveLength(
+      EXPECTED_MIGRATION_CHAIN.length - 1,
+    );
     expect(result.ledger.resolvedApplied).toEqual([
       EXPECTED_MIGRATION_CHAIN[0],
       EXPECTED_MIGRATION_CHAIN[9],
@@ -426,7 +433,7 @@ describe("migration integrity", () => {
     rows[4] = { ...rows[4], appliedStepsCount: 0 };
     const result = report({ ledgerRows: rows });
     expect(result.ledger.orderViolations).toEqual([]);
-    expect(result.chain.applied).toBe(15);
+    expect(result.chain.applied).toBe(EXPECTED_MIGRATION_CHAIN.length - 1);
   });
 
   it("blocks an unknown ledger migration", () => {
@@ -445,9 +452,21 @@ describe("migration integrity", () => {
   });
 
   it.each([
-    [5, pendingObjectIndex(5, "column"), "target column"],
-    [5, pendingObjectIndex(5, "index"), "target index"],
-    [5, pendingObjectIndex(5, "constraint"), "target constraint"],
+    [
+      PENDING_MANIFEST_INDEX,
+      pendingObjectIndex(PENDING_MANIFEST_INDEX, "column"),
+      "target column",
+    ],
+    [
+      PENDING_MANIFEST_INDEX,
+      pendingObjectIndex(PENDING_MANIFEST_INDEX, "index"),
+      "target index",
+    ],
+    [
+      PENDING_MANIFEST_INDEX,
+      pendingObjectIndex(PENDING_MANIFEST_INDEX, "constraint"),
+      "target constraint",
+    ],
   ])("blocks one unexpectedly present %s/%s %s", (migrationIndex, objectIndex) => {
     const catalog = cleanCatalog();
     addPendingObject(catalog, migrationIndex, objectIndex);
@@ -562,6 +581,20 @@ describe("migration integrity", () => {
     expect(result.technicalMigrationReady).toBe(true);
     expect(result.migrationAuthorizationReady).toBe(true);
     expect(result.executionAuthorized).toBe(false);
+  });
+
+  it("requires the operator to identify the exact post-migration application commit", () => {
+    const result = report({
+      authorizationEvidence: fullEvidence({
+        requiredApplicationCommit: undefined,
+      }),
+    });
+    expect(result.technicalMigrationReady).toBe(true);
+    expect(result.evidence.requiredApplicationCommitIdentified).toBe(false);
+    expect(result.blockingReasons).toContain(
+      "required_application_commit_not_identified",
+    );
+    expect(result.migrationAuthorizationReady).toBe(false);
   });
 
   it("blocks an incompatible applied definition and an unverifiable catalog category", () => {

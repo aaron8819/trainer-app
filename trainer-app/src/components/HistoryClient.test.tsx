@@ -111,6 +111,43 @@ describe("HistoryClient", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("disambiguates mesocycle filters by owning plan", () => {
+    render(
+      <HistoryClient
+        initialWorkouts={[]}
+        initialNextCursor={null}
+        initialTotalCount={0}
+        mesocycles={[
+          {
+            id: "meso-current",
+            planName: "Autumn Hypertrophy",
+            startDate: "2026-07-27T00:00:00.000Z",
+            isActive: true,
+            mesoNumber: 1,
+          },
+          {
+            id: "meso-archived",
+            planName: "Foundation Archive Candidate",
+            startDate: "2026-07-27T00:00:00.000Z",
+            isActive: false,
+            mesoNumber: 1,
+          },
+        ]}
+      />
+    );
+
+    expect(
+      screen.getByRole("option", {
+        name: /Active - Autumn Hypertrophy · Meso 1/,
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", {
+        name: /Foundation Archive Candidate · Meso 1/,
+      })
+    ).toBeInTheDocument();
+  });
+
   it("renders a Supplemental badge for strict supplemental sessions but not for gap-fill", () => {
     render(
       <HistoryClient

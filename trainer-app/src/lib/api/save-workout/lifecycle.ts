@@ -207,7 +207,7 @@ export async function resolveMesocycleForWorkoutSave(
     assertMesocycleAllowsWorkoutSave(resolvedMesocycle.state);
   }
 
-  if (input.shouldRequireForPerformedTransition && resolvedMesocycle) {
+  if (resolvedMesocycle) {
     await claimSelectedPlanForTransitionInTransaction(tx, {
       userId: input.userId,
       macroCycleId: resolvedMesocycle.macroCycleId,

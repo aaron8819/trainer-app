@@ -11,7 +11,8 @@ import {
 const containerName = `trainer-multi-plan-${process.pid}-${randomUUID().slice(0, 8)}`;
 const successDatabase = "trainer_success";
 const ambiguousDatabase = "trainer_ambiguous";
-const targetMigration = "20260726120000_add_active_macrocycle_foundation";
+const foundationMigration = "20260726120000_add_active_macrocycle_foundation";
+const planManagementMigration = "20260727010000_add_plan_management_fields";
 
 type CommandResult = {
   status: number;
@@ -223,8 +224,13 @@ try {
   psql("trainer", `CREATE DATABASE ${successDatabase};`);
   psql("trainer", `CREATE DATABASE ${ambiguousDatabase};`);
   const migrations = migrationNames();
-  const targetIndex = migrations.indexOf(targetMigration);
-  if (targetIndex !== migrations.length - 1 || targetIndex < 1) {
+  const targetIndex = migrations.indexOf(foundationMigration);
+  const planManagementIndex = migrations.indexOf(planManagementMigration);
+  if (
+    targetIndex < 1 ||
+    planManagementIndex !== targetIndex + 1 ||
+    planManagementIndex !== migrations.length - 1
+  ) {
     throw new Error("MULTI_PLAN_TARGET_MIGRATION_ORDER_INVALID");
   }
   const priorMigrations = migrations.slice(0, targetIndex);
@@ -247,7 +253,7 @@ try {
     email: "zero@example.test",
     macros: [],
   });
-  applyMigrations(successDatabase, [targetMigration]);
+  applyMigrations(successDatabase, [foundationMigration]);
 
   const successShape = psql(
     successDatabase,
@@ -322,7 +328,7 @@ try {
         process.cwd(),
         "prisma",
         "migrations",
-        targetMigration,
+        foundationMigration,
         "migration.sql",
       ),
       "utf8",
@@ -345,6 +351,51 @@ try {
   ).trim();
   if (columnAfterAbort !== "0") {
     throw new Error("MULTI_PLAN_AMBIGUITY_DID_NOT_ROLL_BACK");
+  }
+
+  psql(
+    successDatabase,
+    `
+      UPDATE "MacroCycle"
+      SET "createdAt" = '2026-01-01T00:00:00.000Z'
+      WHERE "id" = 'macro-one';
+
+      INSERT INTO "MacroCycle" (
+        "id", "userId", "startDate", "endDate", "durationWeeks",
+        "trainingAge", "primaryGoal", "createdAt", "updatedAt"
+      ) VALUES (
+        'macro-two', 'owner-one', '2027-01-01', '2027-12-31', 52,
+        'INTERMEDIATE', 'HYPERTROPHY', '2026-01-01T00:00:00.000Z',
+        CURRENT_TIMESTAMP
+      );
+    `,
+  );
+  applyMigrations(successDatabase, [planManagementMigration]);
+  const planManagementShape = psql(
+    successDatabase,
+    `
+      SELECT concat_ws('|',
+        (SELECT count(*) FROM "MacroCycle" WHERE "name" IS NULL),
+        (SELECT count(*) FROM "MacroCycle" WHERE "name" = ''),
+        (SELECT count(*) FROM "MacroCycle" WHERE char_length("name") > 60),
+        (SELECT string_agg(concat("id", ':', "name"), ',' ORDER BY "id")
+          FROM "MacroCycle" WHERE "userId" = 'owner-one'),
+        (SELECT count(*) FROM pg_indexes
+          WHERE schemaname = 'public'
+            AND indexname = 'MacroCycle_userId_archivedAt_updatedAt_idx'),
+        (SELECT count(*) FROM pg_constraint
+          WHERE conname = 'MacroCycle_name_length_check' AND contype = 'c')
+      );
+    `,
+    { tuplesOnly: true },
+  ).trim();
+  if (
+    planManagementShape !==
+    "0|0|0|macro-one:Hypertrophy Plan 1,macro-two:Hypertrophy Plan 2|1|1"
+  ) {
+    throw new Error(
+      `PLAN_MANAGEMENT_MIGRATION_SHAPE_INVALID:${planManagementShape}`,
+    );
   }
 
   const databaseUrl = `postgresql://trainer:trainer-multi-plan@127.0.0.1:${port}/${successDatabase}`;
@@ -383,7 +434,8 @@ try {
       result: "passed",
       postgres: 16,
       priorMigrationCount: priorMigrations.length,
-      targetMigration,
+      foundationMigration,
+      planManagementMigration,
       exactCandidateBackfill: "passed",
       zeroCandidateRemainsNull: "passed",
       ambiguityRollback: "passed",

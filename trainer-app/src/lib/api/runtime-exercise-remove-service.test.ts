@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => {
   const txWorkoutUpdate = vi.fn();
   const txWorkoutUpdateMany = vi.fn();
   const txWorkoutFindFirst = vi.fn();
+  const txMesocycleFindUnique = vi.fn();
+  const txUserUpdateMany = vi.fn();
 
   const tx = {
     workoutExercise: {
@@ -22,6 +24,12 @@ const mocks = vi.hoisted(() => {
       update: txWorkoutUpdate,
       updateMany: txWorkoutUpdateMany,
       findFirst: txWorkoutFindFirst,
+    },
+    mesocycle: {
+      findUnique: txMesocycleFindUnique,
+    },
+    user: {
+      updateMany: txUserUpdateMany,
     },
   };
 
@@ -38,6 +46,8 @@ const mocks = vi.hoisted(() => {
     txWorkoutUpdate,
     txWorkoutUpdateMany,
     txWorkoutFindFirst,
+    txMesocycleFindUnique,
+    txUserUpdateMany,
   };
 });
 
@@ -158,6 +168,10 @@ describe("removeRuntimeAddedWorkoutExercise", () => {
       status: "IN_PROGRESS",
       mesocycleId: "meso-1",
     });
+    mocks.txMesocycleFindUnique.mockResolvedValue({
+      macroCycleId: "macro-1",
+    });
+    mocks.txUserUpdateMany.mockResolvedValue({ count: 1 });
 
     mocks.txWorkoutExerciseFindFirst.mockResolvedValue(buildWorkoutExercise());
     mocks.txWorkoutSetDeleteMany.mockResolvedValue({ count: 2 });

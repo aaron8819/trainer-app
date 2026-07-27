@@ -38,11 +38,18 @@ export type WorkoutWorkflowMesocycleContext = {
   mesocycleId?: string | null;
   mesocycleState?: string | null;
   mesocycleIsActive?: boolean | null;
+  mesocycleBelongsToSelectedPlan?: boolean | null;
 };
 
 export function getClosedMesocycleWorkoutFenceReason(
   context: WorkoutWorkflowMesocycleContext
 ): string | null {
+  if (
+    context.mesocycleId &&
+    context.mesocycleBelongsToSelectedPlan === false
+  ) {
+    return "This workout belongs to an inactive training plan and can no longer be resumed.";
+  }
   if (!context.mesocycleId || context.mesocycleIsActive) {
     return null;
   }

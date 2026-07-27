@@ -42,6 +42,7 @@ export default async function WorkoutAuditPage({
       selectionMetadata: true,
       mesocycle: {
         select: {
+          macroCycleId: true,
           state: true,
           isActive: true,
         },
@@ -74,6 +75,8 @@ export default async function WorkoutAuditPage({
     mesocycleId: workout.mesocycleId,
     mesocycleState: workout.mesocycle?.state ?? null,
     mesocycleIsActive: workout.mesocycle?.isActive ?? null,
+    mesocycleBelongsToSelectedPlan:
+      workout.mesocycle?.macroCycleId === owner.activeMacroCycleId,
   });
   const startLoggingHref = workflow.isResumable ? `/log/${workout.id}` : null;
 

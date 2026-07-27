@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => {
   const workoutSetDeleteMany = vi.fn();
   const workoutExerciseDeleteMany = vi.fn();
   const reconcileMesocycleLifecycle = vi.fn();
+  const mesocycleFindUnique = vi.fn();
+  const userUpdateMany = vi.fn();
 
   const tx = {
     workout: {
@@ -27,7 +29,11 @@ const mocks = vi.hoisted(() => {
       deleteMany: setLogDeleteMany,
     },
     mesocycle: {
+      findUnique: mesocycleFindUnique,
       update: vi.fn(),
+    },
+    user: {
+      updateMany: userUpdateMany,
     },
   };
 
@@ -49,6 +55,8 @@ const mocks = vi.hoisted(() => {
     workoutSetDeleteMany,
     workoutExerciseDeleteMany,
     reconcileMesocycleLifecycle,
+    mesocycleFindUnique,
+    userUpdateMany,
   };
 });
 
@@ -72,6 +80,8 @@ describe("POST /api/workouts/delete", () => {
     mocks.workoutExerciseFindMany.mockResolvedValue([]);
     mocks.workoutUpdateMany.mockResolvedValue({ count: 1 });
     mocks.reconcileMesocycleLifecycle.mockResolvedValue({});
+    mocks.mesocycleFindUnique.mockResolvedValue({ macroCycleId: "macro-1" });
+    mocks.userUpdateMany.mockResolvedValue({ count: 1 });
   });
 
   it("returns 404 when the workout does not exist", async () => {

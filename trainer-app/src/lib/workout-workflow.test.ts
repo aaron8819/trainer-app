@@ -70,6 +70,21 @@ describe("workout workflow semantics", () => {
     ).toMatch(/handoff pending/i);
   });
 
+  it("fences a current mesocycle when its plan is not selected", () => {
+    expect(
+      getWorkoutWorkflowState("IN_PROGRESS", {
+        mesocycleId: "meso-old",
+        mesocycleState: "ACTIVE_ACCUMULATION",
+        mesocycleIsActive: true,
+        mesocycleBelongsToSelectedPlan: false,
+      }),
+    ).toMatchObject({
+      isResumable: false,
+      resumeBlockedReason:
+        "This workout belongs to an inactive training plan and can no longer be resumed.",
+    });
+  });
+
   it("derives detail titles from workflow state instead of raw terminal/performed checks", () => {
     expect(getWorkoutDetailTitle("PLANNED")).toBe("Session Overview");
     expect(getWorkoutDetailTitle("PARTIAL")).toBe("Partial Session");

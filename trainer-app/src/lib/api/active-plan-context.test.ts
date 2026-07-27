@@ -38,6 +38,8 @@ function makeReader(input: {
             ? {
                 id: input.activeMacroCycleId,
                 userId: input.macroCycleOwnerId ?? "user-1",
+                name: "Plan B",
+                archivedAt: null,
                 startDate: new Date("2026-01-01"),
                 endDate: new Date("2026-06-01"),
                 durationWeeks: 20,
@@ -63,6 +65,8 @@ function activeMesocycle(id = "meso-b") {
     macroCycle: {
       id: "plan-b",
       userId: "user-1",
+      name: "Plan B",
+      archivedAt: null,
       startDate: new Date("2026-01-01"),
       endDate: new Date("2026-06-01"),
       durationWeeks: 20,
@@ -215,7 +219,7 @@ describe("active plan context", () => {
 describe("active plan selection transition", () => {
   it("does not auto-select a newly created plan when another owned plan already exists", async () => {
     const macroCycleFindUnique = vi.fn();
-    const mesocycleFindUnique = vi.fn();
+    const mesocycleFindMany = vi.fn();
     const userUpdateMany = vi.fn();
     const tx = {
       user: {
@@ -227,7 +231,7 @@ describe("active plan selection transition", () => {
         findUnique: macroCycleFindUnique,
       },
       mesocycle: {
-        findUnique: mesocycleFindUnique,
+        findMany: mesocycleFindMany,
         updateMany: vi.fn(),
       },
     } as unknown as Prisma.TransactionClient;
@@ -240,7 +244,7 @@ describe("active plan selection transition", () => {
       })
     ).resolves.toBeNull();
     expect(macroCycleFindUnique).not.toHaveBeenCalled();
-    expect(mesocycleFindUnique).not.toHaveBeenCalled();
+    expect(mesocycleFindMany).not.toHaveBeenCalled();
     expect(userUpdateMany).not.toHaveBeenCalled();
   });
 
@@ -252,17 +256,25 @@ describe("active plan selection transition", () => {
       },
       macroCycle: {
         count: vi.fn(async () => 1),
-        findUnique: vi.fn(async () => ({ id: "plan-a", userId: "user-1" })),
+        findUnique: vi.fn(async () => ({
+          id: "plan-a",
+          userId: "user-1",
+          archivedAt: null,
+          primaryGoal: "HYPERTROPHY",
+        })),
       },
       mesocycle: {
-        findUnique: vi.fn(async () => ({
-          id: "meso-a",
-          macroCycleId: "plan-a",
-          state: "ACTIVE_ACCUMULATION",
-          isActive: false,
-        })),
+        findMany: vi.fn(async () => [
+          {
+            id: "meso-a",
+            macroCycleId: "plan-a",
+            state: "ACTIVE_ACCUMULATION",
+            isActive: true,
+          },
+        ]),
         updateMany: vi.fn(async () => ({ count: 1 })),
       },
+      workout: { findFirst: vi.fn(async () => null) },
     } as unknown as Prisma.TransactionClient;
 
     await expect(
@@ -299,27 +311,30 @@ describe("active plan selection transition", () => {
     });
   });
 
-  it("atomically selects Plan B and activates only its target mesocycle", async () => {
-    const mesocycleUpdateMany = vi
-      .fn()
-      .mockResolvedValueOnce({ count: 1 })
-      .mockResolvedValueOnce({ count: 1 });
+  it("atomically selects a READY Plan B without mutating its plan structure", async () => {
     const tx = {
       macroCycle: {
-        findUnique: vi.fn(async () => ({ id: "plan-b", userId: "user-1" })),
+        findUnique: vi.fn(async () => ({
+          id: "plan-b",
+          userId: "user-1",
+          archivedAt: null,
+          primaryGoal: "HYPERTROPHY",
+        })),
       },
       mesocycle: {
-        findUnique: vi.fn(async () => ({
-          id: "meso-b",
-          macroCycleId: "plan-b",
-          state: "ACTIVE_ACCUMULATION",
-          isActive: false,
-        })),
-        updateMany: mesocycleUpdateMany,
+        findMany: vi.fn(async () => [
+          {
+            id: "meso-b",
+            macroCycleId: "plan-b",
+            state: "ACTIVE_ACCUMULATION",
+            isActive: true,
+          },
+        ]),
       },
       user: {
         updateMany: vi.fn(async () => ({ count: 1 })),
       },
+      workout: { findFirst: vi.fn(async () => null) },
     } as unknown as Prisma.TransactionClient;
 
     await expect(
@@ -335,27 +350,32 @@ describe("active plan selection transition", () => {
       replayed: false,
     });
 
-    expect(mesocycleUpdateMany).toHaveBeenNthCalledWith(
-      1,
+    expect(tx.workout.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ macroCycleId: "plan-b" }),
-      })
+        where: { userId: "user-1", status: "IN_PROGRESS" },
+      }),
     );
   });
 
   it("returns a replayed success after an already-committed identical selection", async () => {
     const tx = {
       macroCycle: {
-        findUnique: vi.fn(async () => ({ id: "plan-b", userId: "user-1" })),
+        findUnique: vi.fn(async () => ({
+          id: "plan-b",
+          userId: "user-1",
+          archivedAt: null,
+          primaryGoal: "HYPERTROPHY",
+        })),
       },
       mesocycle: {
-        findUnique: vi.fn(async () => ({
-          id: "meso-b",
-          macroCycleId: "plan-b",
-          state: "ACTIVE_ACCUMULATION",
-          isActive: true,
-        })),
-        updateMany: vi.fn(),
+        findMany: vi.fn(async () => [
+          {
+            id: "meso-b",
+            macroCycleId: "plan-b",
+            state: "ACTIVE_ACCUMULATION",
+            isActive: true,
+          },
+        ]),
       },
       user: {
         updateMany: vi.fn(async () => ({ count: 0 })),
@@ -363,6 +383,7 @@ describe("active plan selection transition", () => {
           activeMacroCycleId: "plan-b",
         })),
       },
+      workout: { findFirst: vi.fn(async () => null) },
     } as unknown as Prisma.TransactionClient;
 
     await expect(
@@ -377,6 +398,79 @@ describe("active plan selection transition", () => {
       activeMesocycleId: "meso-b",
       replayed: true,
     });
-    expect(tx.mesocycle.updateMany).not.toHaveBeenCalled();
+    expect(tx.workout.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("rejects activation when the target plan is not READY", async () => {
+    const tx = {
+      macroCycle: {
+        findUnique: vi.fn(async () => ({
+          id: "plan-b",
+          userId: "user-1",
+          archivedAt: null,
+          primaryGoal: "HYPERTROPHY",
+        })),
+      },
+      mesocycle: {
+        findMany: vi.fn(async () => [
+          {
+            id: "meso-b",
+            macroCycleId: "plan-b",
+            state: "ACTIVE_ACCUMULATION",
+            isActive: false,
+          },
+        ]),
+      },
+    } as unknown as Prisma.TransactionClient;
+
+    await expect(
+      selectActivePlanInTransaction(tx, {
+        userId: "user-1",
+        targetMacroCycleId: "plan-b",
+        targetMesocycleId: "meso-b",
+        expectedActiveMacroCycleId: "plan-a",
+      }),
+    ).rejects.toMatchObject({ message: "ACTIVE_PLAN_TARGET_NOT_READY" });
+  });
+
+  it("rolls back switching while any owner workout is in progress", async () => {
+    const tx = {
+      macroCycle: {
+        findUnique: vi.fn(async () => ({
+          id: "plan-b",
+          userId: "user-1",
+          archivedAt: null,
+          primaryGoal: "HYPERTROPHY",
+        })),
+      },
+      mesocycle: {
+        findMany: vi.fn(async () => [
+          {
+            id: "meso-b",
+            macroCycleId: "plan-b",
+            state: "ACTIVE_ACCUMULATION",
+            isActive: true,
+          },
+        ]),
+      },
+      user: {
+        updateMany: vi.fn(async () => ({ count: 1 })),
+      },
+      workout: {
+        findFirst: vi.fn(async () => ({ id: "workout-in-progress" })),
+      },
+    } as unknown as Prisma.TransactionClient;
+
+    await expect(
+      selectActivePlanInTransaction(tx, {
+        userId: "user-1",
+        targetMacroCycleId: "plan-b",
+        targetMesocycleId: "meso-b",
+        expectedActiveMacroCycleId: "plan-a",
+      }),
+    ).rejects.toMatchObject({
+      message: "ACTIVE_WORKOUT_IN_PROGRESS",
+      workoutId: "workout-in-progress",
+    });
   });
 });

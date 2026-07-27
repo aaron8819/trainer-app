@@ -7,6 +7,7 @@ import type { SettingsPageData } from "@/lib/api/settings-page";
 import type { WorkoutListSurfaceSummary } from "@/lib/ui/workout-list-items";
 import type { ExerciseListItem } from "@/lib/exercise-library/types";
 import type { SectionedExercises } from "@/components/log-workout/types";
+import type { PlanManagementData } from "@/lib/api/plan-management";
 
 export const UI_AUDIT_FIXTURE_SCENARIOS = ["active", "empty", "handoff", "timer-visible"] as const;
 
@@ -43,6 +44,7 @@ export type UiAuditFixture = {
   history?: HistoryPageData;
   settings?: SettingsPageData;
   analytics?: AnalyticsFixtures;
+  plans?: PlanManagementData;
   logWorkouts?: Record<string, LogWorkoutFixture>;
 };
 
@@ -928,6 +930,56 @@ const activeAnalyticsVolume: AnalyticsVolumeResponse = {
 
 const activeFixture: UiAuditFixture = {
   scenario: "active",
+  plans: {
+    activeMacroCycleId: "10000000-0000-4000-8000-000000000001",
+    plans: [
+      {
+        id: "10000000-0000-4000-8000-000000000001",
+        name: "Current Hypertrophy",
+        primaryGoal: "HYPERTROPHY",
+        status: "READY",
+        isActive: true,
+        activeMesocycleId: "ui-audit-meso-active",
+        reviewMesocycleId: "ui-audit-meso-active",
+        startDate: "2026-03-16T00:00:00.000Z",
+        endDate: "2026-09-01T00:00:00.000Z",
+        durationWeeks: 24,
+        mesocycleCount: 4,
+        createdAt: "2026-03-01T00:00:00.000Z",
+        updatedAt: "2026-04-10T00:00:00.000Z",
+      },
+      {
+        id: "10000000-0000-4000-8000-000000000002",
+        name: "Fall Hypertrophy",
+        primaryGoal: "HYPERTROPHY",
+        status: "READY",
+        isActive: false,
+        activeMesocycleId: "ui-audit-meso-fall",
+        reviewMesocycleId: "ui-audit-meso-fall",
+        startDate: "2026-09-07T00:00:00.000Z",
+        endDate: "2027-02-22T00:00:00.000Z",
+        durationWeeks: 24,
+        mesocycleCount: 4,
+        createdAt: "2026-04-08T00:00:00.000Z",
+        updatedAt: "2026-04-10T00:00:00.000Z",
+      },
+      {
+        id: "10000000-0000-4000-8000-000000000003",
+        name: "Plan in Review",
+        primaryGoal: "HYPERTROPHY",
+        status: "PREPARING",
+        isActive: false,
+        activeMesocycleId: null,
+        reviewMesocycleId: "ui-audit-meso-review",
+        startDate: "2027-03-01T00:00:00.000Z",
+        endDate: "2027-06-21T00:00:00.000Z",
+        durationWeeks: 16,
+        mesocycleCount: 2,
+        createdAt: "2026-04-09T00:00:00.000Z",
+        updatedAt: "2026-04-09T00:00:00.000Z",
+      },
+    ],
+  },
   home: {
     pendingHandoff: null,
     programData: activeDashboard,
@@ -1170,6 +1222,10 @@ const activeFixture: UiAuditFixture = {
 
 const emptyFixture: UiAuditFixture = {
   scenario: "empty",
+  plans: {
+    activeMacroCycleId: null,
+    plans: [],
+  },
   home: {
     pendingHandoff: null,
     programData: emptyDashboard,

@@ -45,7 +45,7 @@ export type ResolvedActiveMesocycle = Prisma.MesocycleGetPayload<{
 type OwnerIdentity = Pick<User, "id" | "email" | "activeMacroCycleId">;
 type PlanIdentity = Pick<
   MacroCycle,
-  "id" | "userId" | "startDate" | "endDate" | "durationWeeks"
+  "id" | "userId" | "name" | "startDate" | "endDate" | "durationWeeks"
 >;
 type HandoffIdentity = Pick<
   Mesocycle,
@@ -86,6 +86,7 @@ export type ActivePlanContextResult =
       activeMesocycle: null;
       reason:
         | "SELECTED_PLAN_NOT_OWNED"
+        | "SELECTED_PLAN_ARCHIVED"
         | "MULTIPLE_ACTIVE_MESOCYCLES"
         | "ACTIVE_MESOCYCLE_INVALID_STATE"
         | "ACTIVE_AND_HANDOFF_PRESENT"
@@ -131,6 +132,8 @@ export async function resolveActivePlanContextInTransaction(
     select: {
       id: true,
       userId: true,
+      name: true,
+      archivedAt: true,
       startDate: true,
       endDate: true,
       durationWeeks: true,
@@ -143,6 +146,16 @@ export async function resolveActivePlanContextInTransaction(
       activeMacroCycle: null,
       activeMesocycle: null,
       reason: "SELECTED_PLAN_NOT_OWNED",
+      affectedMesocycleIds: [],
+    };
+  }
+  if (activeMacroCycle.archivedAt) {
+    return {
+      status: "CORRUPT_STATE",
+      owner,
+      activeMacroCycle: null,
+      activeMesocycle: null,
+      reason: "SELECTED_PLAN_ARCHIVED",
       affectedMesocycleIds: [],
     };
   }
@@ -309,6 +322,20 @@ export class ActivePlanSelectionConflictError extends Error {
   }
 }
 
+export class ActivePlanTargetNotReadyError extends Error {
+  constructor() {
+    super("ACTIVE_PLAN_TARGET_NOT_READY");
+    this.name = "ActivePlanTargetNotReadyError";
+  }
+}
+
+export class ActiveWorkoutInProgressError extends Error {
+  constructor(readonly workoutId: string) {
+    super("ACTIVE_WORKOUT_IN_PROGRESS");
+    this.name = "ActiveWorkoutInProgressError";
+  }
+}
+
 export type SelectActivePlanInput = {
   userId: string;
   targetMacroCycleId: string;
@@ -336,7 +363,7 @@ export async function selectSoleCreatedPlanInTransaction(
       select: { activeMacroCycleId: true },
     }),
     tx.macroCycle.count({
-      where: { userId: input.userId },
+      where: { userId: input.userId, archivedAt: null },
     }),
   ]);
   if (!owner) {
@@ -344,6 +371,23 @@ export async function selectSoleCreatedPlanInTransaction(
   }
   if (owner.activeMacroCycleId !== null || ownedPlanCount !== 1) {
     return null;
+  }
+
+  const prepared = await tx.mesocycle.updateMany({
+    where: {
+      id: input.targetMesocycleId,
+      macroCycleId: input.targetMacroCycleId,
+      state: {
+        notIn: [
+          MesocycleState.COMPLETED,
+          MesocycleState.AWAITING_HANDOFF,
+        ],
+      },
+    },
+    data: { isActive: true },
+  });
+  if (prepared.count !== 1) {
+    throw new ActivePlanTargetNotReadyError();
   }
 
   return selectActivePlanInTransaction(tx, {
@@ -382,14 +426,25 @@ export async function selectActivePlanInTransaction(
 ): Promise<SelectActivePlanResult> {
   const targetMacroCycle = await tx.macroCycle.findUnique({
     where: { id: input.targetMacroCycleId },
-    select: { id: true, userId: true },
+    select: {
+      id: true,
+      userId: true,
+      archivedAt: true,
+      primaryGoal: true,
+    },
   });
-  if (!targetMacroCycle || targetMacroCycle.userId !== input.userId) {
+  if (
+    !targetMacroCycle ||
+    targetMacroCycle.userId !== input.userId ||
+    targetMacroCycle.archivedAt ||
+    targetMacroCycle.primaryGoal !== "HYPERTROPHY"
+  ) {
     throw new Error("ACTIVE_PLAN_TARGET_NOT_FOUND");
   }
 
-  const targetMesocycle = await tx.mesocycle.findUnique({
-    where: { id: input.targetMesocycleId },
+  const targetMesocycles = await tx.mesocycle.findMany({
+    where: { macroCycleId: targetMacroCycle.id },
+    orderBy: [{ mesoNumber: "asc" }, { id: "asc" }],
     select: {
       id: true,
       macroCycleId: true,
@@ -397,14 +452,21 @@ export async function selectActivePlanInTransaction(
       isActive: true,
     },
   });
-  if (!targetMesocycle || targetMesocycle.macroCycleId !== targetMacroCycle.id) {
-    throw new Error("ACTIVE_PLAN_MESOCYCLE_NOT_IN_TARGET");
-  }
+  const activeTargetMesocycles = targetMesocycles.filter(
+    (mesocycle) =>
+      mesocycle.isActive &&
+      mesocycle.state !== MesocycleState.COMPLETED &&
+      mesocycle.state !== MesocycleState.AWAITING_HANDOFF,
+  );
+  const targetMesocycle = activeTargetMesocycles[0];
   if (
-    targetMesocycle.state === MesocycleState.COMPLETED ||
-    targetMesocycle.state === MesocycleState.AWAITING_HANDOFF
+    activeTargetMesocycles.length !== 1 ||
+    targetMesocycle?.id !== input.targetMesocycleId ||
+    targetMesocycles.some(
+      (mesocycle) => mesocycle.state === MesocycleState.AWAITING_HANDOFF,
+    )
   ) {
-    throw new Error("ACTIVE_PLAN_MESOCYCLE_INVALID_STATE");
+    throw new ActivePlanTargetNotReadyError();
   }
 
   const claimed = await tx.user.updateMany({
@@ -425,16 +487,9 @@ export async function selectActivePlanInTransaction(
     if (!current) {
       throw new Error("ACTIVE_PLAN_OWNER_NOT_FOUND");
     }
-    const replayedTarget = await tx.mesocycle.findUnique({
-      where: { id: input.targetMesocycleId },
-      select: { macroCycleId: true, isActive: true, state: true },
-    });
     if (
       current.activeMacroCycleId === input.targetMacroCycleId &&
-      replayedTarget?.macroCycleId === input.targetMacroCycleId &&
-      replayedTarget.isActive &&
-      replayedTarget.state !== MesocycleState.COMPLETED &&
-      replayedTarget.state !== MesocycleState.AWAITING_HANDOFF
+      targetMesocycle.macroCycleId === input.targetMacroCycleId
     ) {
       return {
         activeMacroCycleId: input.targetMacroCycleId,
@@ -445,29 +500,16 @@ export async function selectActivePlanInTransaction(
     throw new ActivePlanSelectionConflictError(current.activeMacroCycleId);
   }
 
-  await tx.mesocycle.updateMany({
+  const inProgressWorkout = await tx.workout.findFirst({
     where: {
-      macroCycleId: input.targetMacroCycleId,
-      id: { not: input.targetMesocycleId },
-      isActive: true,
+      userId: input.userId,
+      status: "IN_PROGRESS",
     },
-    data: { isActive: false },
+    orderBy: [{ scheduledDate: "desc" }, { id: "asc" }],
+    select: { id: true },
   });
-  const activated = await tx.mesocycle.updateMany({
-    where: {
-      id: input.targetMesocycleId,
-      macroCycleId: input.targetMacroCycleId,
-      state: {
-        notIn: [
-          MesocycleState.COMPLETED,
-          MesocycleState.AWAITING_HANDOFF,
-        ],
-      },
-    },
-    data: { isActive: true },
-  });
-  if (activated.count !== 1) {
-    throw new Error("ACTIVE_PLAN_MESOCYCLE_ACTIVATION_FAILED");
+  if (inProgressWorkout) {
+    throw new ActiveWorkoutInProgressError(inProgressWorkout.id);
   }
 
   return {

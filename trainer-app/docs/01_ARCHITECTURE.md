@@ -125,9 +125,11 @@ SetLog / logged performance
 
 ## Lifecycle ownership and data entities
 - `MacroCycle` is the plan boundary. `User.activeMacroCycleId` is the only selected-plan pointer; date overlap, creation order, and `Mesocycle.isActive` do not select a plan.
+- `src/lib/api/plan-management.ts` owns owner-scoped plan listing, derived lifecycle status, generated hypertrophy-plan creation, explicit readiness finalization, optimistic rename, and soft archive. Routes and pages do not recompute READY state.
 - `resolveActivePlanContext()` in `src/lib/api/active-plan-context.ts`, exported through the lifecycle facade, is the authoritative owner-scoped read. It returns explicit no-plan, missing-active-mesocycle, handoff, completed-plan, corrupt-state, or ready results. Execution consumers fail closed unless the result is `READY`.
-- `selectActivePlan()` owns compare-and-swap plan selection and target-mesocycle activation in one transaction. Competing stale transitions return `ACTIVE_PLAN_SELECTION_CONFLICT`.
+- `selectActivePlan()` owns compare-and-swap plan selection. It accepts only an owner-scoped, non-archived hypertrophy plan whose single current mesocycle is already READY, and it blocks while any owner workout is `IN_PROGRESS`. Competing stale transitions return `ACTIVE_PLAN_SELECTION_CONFLICT`; plan structure is not rewritten during a switch.
 - A selected plan has exactly one active mesocycle for execution. The database permits at most one active mesocycle per macrocycle and rejects active `COMPLETED` or `AWAITING_HANDOFF` rows. An unselected plan is never an implicit fallback.
+- Plan finalization changes only the generated plan's current-mesocycle readiness identity. It does not select the plan, rewrite accepted seed revisions, or mutate workout/receipt/history evidence. Archive is a soft `MacroCycle.archivedAt` transition and is forbidden for the selected plan.
 - Lifecycle state transitions (`ACTIVE_ACCUMULATION` -> `ACTIVE_DELOAD` -> `AWAITING_HANDOFF` -> `COMPLETED`) are executed through `transitionMesocycleState()` via `src/lib/api/mesocycle-lifecycle.ts` (state module: `src/lib/api/mesocycle-lifecycle-state.ts`), invoked from `src/app/api/workouts/save/route.ts` after first transition into a performed status.
 - Deload completion no longer auto-creates the successor mesocycle. The lifecycle transition only closes the source mesocycle into `AWAITING_HANDOFF` and freezes handoff artifacts through `enterMesocycleHandoffInTransaction()` in `src/lib/api/mesocycle-handoff.ts`.
 - Handoff ownership is intentionally split:

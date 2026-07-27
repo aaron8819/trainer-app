@@ -4,9 +4,15 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { closePrismaResourcesForAuditCli } from "@/lib/db/prisma";
 import {
+  resolveActivePlanContext,
   selectActivePlan,
   selectSoleCreatedPlanInTransaction,
 } from "./active-plan-context";
+import {
+  archivePlan,
+  finalizePlan,
+  renamePlan,
+} from "./plan-management";
 
 export function registerActivePlanContextDatabaseTests(
   databaseUrl: string
@@ -132,7 +138,7 @@ export function registerActivePlanContextDatabaseTests(
       ).resolves.toBe(0);
     });
 
-    it("atomically replaces the selected plan without mutating prior plan history", async () => {
+    it("atomically selects another READY plan without mutating prior plan history", async () => {
       const owner = await db.user.create({
         data: {
           id: crypto.randomUUID(),
@@ -145,6 +151,10 @@ export function registerActivePlanContextDatabaseTests(
       ]);
       await db.mesocycle.update({
         where: { id: planA.mesocycles[0].id },
+        data: { isActive: true },
+      });
+      await db.mesocycle.update({
+        where: { id: planB.mesocycles[0].id },
         data: { isActive: true },
       });
       await db.user.update({
@@ -173,6 +183,11 @@ export function registerActivePlanContextDatabaseTests(
       expect(planBActive.map((mesocycle) => mesocycle.id)).toEqual([
         planB.mesocycles[0].id,
       ]);
+      await expect(resolveActivePlanContext(owner.id)).resolves.toMatchObject({
+        status: "READY",
+        activeMacroCycle: { id: planB.id },
+        activeMesocycle: { id: planB.mesocycles[0].id },
+      });
     });
 
     it("allows one concurrent selection winner and leaves a valid context", async () => {
@@ -185,6 +200,16 @@ export function registerActivePlanContextDatabaseTests(
       const [planA, planB] = await Promise.all([
         createPlan(owner.id, "concurrent-a"),
         createPlan(owner.id, "concurrent-b"),
+      ]);
+      await Promise.all([
+        db.mesocycle.update({
+          where: { id: planA.mesocycles[0].id },
+          data: { isActive: true },
+        }),
+        db.mesocycle.update({
+          where: { id: planB.mesocycles[0].id },
+          data: { isActive: true },
+        }),
       ]);
 
       const attempts = await Promise.allSettled([
@@ -214,6 +239,184 @@ export function registerActivePlanContextDatabaseTests(
         },
       });
       expect(selectedActive).toHaveLength(1);
+    });
+
+    it("finalizes a generated plan as READY without silently selecting it", async () => {
+      const owner = await db.user.create({
+        data: {
+          id: crypto.randomUUID(),
+          email: `finalize-${crypto.randomUUID()}@test.local`,
+        },
+      });
+      const [planA, planB] = await Promise.all([
+        createPlan(owner.id, "finalize-a"),
+        createPlan(owner.id, "finalize-b"),
+      ]);
+      await db.mesocycle.update({
+        where: { id: planA.mesocycles[0].id },
+        data: { isActive: true },
+      });
+      await db.user.update({
+        where: { id: owner.id },
+        data: { activeMacroCycleId: planA.id },
+      });
+
+      const finalized = await finalizePlan({
+        userId: owner.id,
+        planId: planB.id,
+        expectedUpdatedAt: planB.updatedAt.toISOString(),
+      });
+
+      expect(finalized).toMatchObject({
+        id: planB.id,
+        status: "READY",
+        isActive: false,
+        activeMesocycleId: planB.mesocycles[0].id,
+      });
+      await expect(
+        db.user.findUniqueOrThrow({ where: { id: owner.id } }),
+      ).resolves.toMatchObject({ activeMacroCycleId: planA.id });
+    });
+
+    it("blocks switching while a workout is in progress and keeps the prior selection", async () => {
+      const owner = await db.user.create({
+        data: {
+          id: crypto.randomUUID(),
+          email: `in-progress-${crypto.randomUUID()}@test.local`,
+        },
+      });
+      const [planA, planB] = await Promise.all([
+        createPlan(owner.id, "in-progress-a"),
+        createPlan(owner.id, "in-progress-b"),
+      ]);
+      await Promise.all([
+        db.mesocycle.update({
+          where: { id: planA.mesocycles[0].id },
+          data: { isActive: true },
+        }),
+        db.mesocycle.update({
+          where: { id: planB.mesocycles[0].id },
+          data: { isActive: true },
+        }),
+      ]);
+      await db.user.update({
+        where: { id: owner.id },
+        data: { activeMacroCycleId: planA.id },
+      });
+      const workout = await db.workout.create({
+        data: {
+          userId: owner.id,
+          scheduledDate: new Date(),
+          status: "IN_PROGRESS",
+          mesocycleId: planA.mesocycles[0].id,
+        },
+      });
+
+      await expect(
+        selectActivePlan({
+          userId: owner.id,
+          targetMacroCycleId: planB.id,
+          targetMesocycleId: planB.mesocycles[0].id,
+          expectedActiveMacroCycleId: planA.id,
+        }),
+      ).rejects.toMatchObject({
+        message: "ACTIVE_WORKOUT_IN_PROGRESS",
+        workoutId: workout.id,
+      });
+      await expect(
+        db.user.findUniqueOrThrow({ where: { id: owner.id } }),
+      ).resolves.toMatchObject({ activeMacroCycleId: planA.id });
+    });
+
+    it("renames and archives only through fresh inactive-plan versions while preserving history", async () => {
+      const owner = await db.user.create({
+        data: {
+          id: crypto.randomUUID(),
+          email: `archive-${crypto.randomUUID()}@test.local`,
+        },
+      });
+      const [planA, planB] = await Promise.all([
+        createPlan(owner.id, "archive-a"),
+        createPlan(owner.id, "archive-b"),
+      ]);
+      await db.mesocycle.update({
+        where: { id: planA.mesocycles[0].id },
+        data: { isActive: true },
+      });
+      await db.user.update({
+        where: { id: owner.id },
+        data: { activeMacroCycleId: planA.id },
+      });
+      const historicalWorkout = await db.workout.create({
+        data: {
+          userId: owner.id,
+          scheduledDate: new Date("2026-06-01"),
+          status: "COMPLETED",
+          completedAt: new Date("2026-06-01T12:00:00Z"),
+          mesocycleId: planB.mesocycles[0].id,
+        },
+      });
+
+      const renamed = await renamePlan({
+        userId: owner.id,
+        planId: planB.id,
+        name: "Archived History",
+        expectedUpdatedAt: planB.updatedAt.toISOString(),
+      });
+      await expect(
+        renamePlan({
+          userId: owner.id,
+          planId: planB.id,
+          name: "Stale Rename",
+          expectedUpdatedAt: planB.updatedAt.toISOString(),
+        }),
+      ).rejects.toMatchObject({ code: "PLAN_MUTATION_CONFLICT" });
+      await archivePlan({
+        userId: owner.id,
+        planId: planB.id,
+        expectedUpdatedAt: renamed.updatedAt,
+      });
+
+      await expect(
+        db.macroCycle.findUniqueOrThrow({ where: { id: planB.id } }),
+      ).resolves.toMatchObject({
+        name: "Archived History",
+        archivedAt: expect.any(Date),
+      });
+      await expect(
+        db.workout.findUniqueOrThrow({ where: { id: historicalWorkout.id } }),
+      ).resolves.toMatchObject({
+        mesocycleId: planB.mesocycles[0].id,
+        status: "COMPLETED",
+      });
+    });
+
+    it("prevents archiving the active plan", async () => {
+      const owner = await db.user.create({
+        data: {
+          id: crypto.randomUUID(),
+          email: `archive-active-${crypto.randomUUID()}@test.local`,
+        },
+      });
+      const plan = await createPlan(owner.id, "archive-active");
+      await db.mesocycle.update({
+        where: { id: plan.mesocycles[0].id },
+        data: { isActive: true },
+      });
+      await db.user.update({
+        where: { id: owner.id },
+        data: { activeMacroCycleId: plan.id },
+      });
+
+      await expect(
+        archivePlan({
+          userId: owner.id,
+          planId: plan.id,
+          expectedUpdatedAt: plan.updatedAt.toISOString(),
+        }),
+      ).rejects.toMatchObject({
+        code: "ACTIVE_PLAN_ARCHIVE_FORBIDDEN",
+      });
     });
   });
 }

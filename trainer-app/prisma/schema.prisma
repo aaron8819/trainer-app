@@ -624,6 +624,8 @@ model MacroCycle {
   userId        String
   user          User   @relation("OwnedMacroCycles", fields: [userId], references: [id], onDelete: Cascade)
   activeForUser User?  @relation("ActiveMacroCycle")
+  name          String @default("Hypertrophy Plan") @db.VarChar(60)
+  archivedAt    DateTime?
 
   startDate     DateTime
   endDate       DateTime
@@ -638,6 +640,7 @@ model MacroCycle {
   updatedAt DateTime @updatedAt
 
   @@index([userId, startDate])
+  @@index([userId, archivedAt, updatedAt])
 }
 
 model Mesocycle {

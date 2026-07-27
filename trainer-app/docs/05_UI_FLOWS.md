@@ -36,18 +36,23 @@ Sources of truth:
 - `/history`: paginated workout history with intent/date/mesocycle filters, derived week/session snapshot badges, and explicit deload labeling (`src/app/history/page.tsx`, `src/components/HistoryClient.tsx`)
 - `/settings`: user settings (`src/app/settings/page.tsx`)
 - `/program`: mesocycle/block/program dashboard (`src/app/program/page.tsx`)
+- `/plans`: owner-scoped non-archived plan management, creation, activation, rename, and archive (`src/app/plans/page.tsx`)
+- `/plans/[id]/review`: explicit generated-plan review and readiness finalization (`src/app/plans/[id]/review/page.tsx`)
 - `/mesocycles/[id]/review`: mesocycle closeout review with frozen handoff summary plus live derived review metrics (`src/app/mesocycles/[id]/review/page.tsx`)
 - `/mesocycles/[id]/setup`: editable next-cycle setup for a pending handoff draft (`src/app/mesocycles/[id]/setup/page.tsx`)
 
 Route-purpose shorthand:
 - `/` = today’s operational dashboard
 - `/program` = live mesocycle and current-week decision support
+- `/plans` = training-plan management and explicit active-plan selection
 - `/history` = past session review and filtering
 - `/analytics` = longer-term trend review
 
 ## Core user flows
 - Home, Program, readiness, and workout generation resolve execution context from `User.activeMacroCycleId` through the canonical active-plan resolver. A pending handoff in an unselected macrocycle is not shown as a blocker.
-- Phase 1 adds no plan-switching UI. The internal atomic selection service is an architectural boundary for later UI work.
+- Plan Management lists non-archived hypertrophy plans, labels the selected plan separately from lifecycle status, and exposes `PREPARING` review/finalization, READY-only activation, rename, and inactive-only archive. Desktop navigation links directly to Plans; Program includes a touch-sized Manage plans action for mobile discovery.
+- Creating another plan uses the existing hypertrophy periodization generator, then routes to `/plans/[id]/review`. Finalization makes the generated plan READY but leaves the current plan selected until the user confirms `Make active`.
+- Activation confirmation names the target plan. Loading, success, validation, stale-conflict, in-progress-workout, and archive-conflict feedback is announced in the plan-management surface; actions remain touch-sized and stack on narrow viewports.
 
 1. Onboarding/profile setup
 - UI: `/onboarding`

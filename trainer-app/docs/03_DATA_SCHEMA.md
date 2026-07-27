@@ -24,6 +24,7 @@ Sources of truth:
 
 ## Core runtime models
 - Plan identity: `MacroCycle` is the user-owned plan boundary; nullable `User.activeMacroCycleId` is the selected-plan source of truth.
+- Plan management: `MacroCycle.name` is normalized user-facing metadata and `MacroCycle.archivedAt` is nullable soft-archive state. Neither field changes programming identity, mesocycle content, accepted seeds, workouts, reviews, or receipts.
 - User context: `User`, `Profile`, `Goals`, `Constraints`, `Injury`, `UserPreference`
 - Workout execution: `Workout`, `WorkoutExercise`, `WorkoutSet`, `SetLog`, `FilteredExercise`
 - Catalog/template: `Exercise`, `Muscle`, `Equipment`, `WorkoutTemplate`, `WorkoutTemplateExercise`
@@ -60,6 +61,9 @@ Canonical machine-readable values in `docs/contracts/runtime-contracts.json` cur
 
 ## Mesocycle lifecycle fields
 - `User.activeMacroCycleId`: nullable selected-plan pointer. `null` is a valid no-plan state. Its foreign key requires an existing macrocycle and restricts deletion while selected; the atomic selection service verifies `MacroCycle.userId`, and the canonical resolver fails closed if the pointer and owner disagree.
+- `MacroCycle.name`: required `VARCHAR(60)` display name. Create and rename normalize surrounding/repeated whitespace through `src/lib/validation.ts`; rename uses `MacroCycle.updatedAt` as an optimistic compare-and-swap version.
+- `MacroCycle.archivedAt`: nullable soft-archive timestamp. Normal plan lists require `archivedAt IS NULL`; archived rows and all descendants remain persisted. The application rejects archiving `User.activeMacroCycleId`.
+- Migration `20260727010000_add_plan_management_fields` deterministically backfills existing plans per owner, adds the length check and owner/archive/version lookup index, and does not delete or rewrite plan descendants.
 - `Mesocycle.isActive`: current-mesocycle identity only within its macrocycle. Partial unique index `Mesocycle_one_active_per_macrocycle` permits at most one active row per plan.
 - `Mesocycle_active_state_check`: rejects `isActive=true` for `COMPLETED` and `AWAITING_HANDOFF`.
 - `Mesocycle.state` (`MesocycleState`)

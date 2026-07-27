@@ -37,6 +37,15 @@ const ProgramIcon = () => (
   </svg>
 );
 
+const PlansIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <rect x="4" y="4" width="16" height="16" rx="2" />
+    <path d="M8 9h8" />
+    <path d="M8 13h8" />
+    <path d="M8 17h5" />
+  </svg>
+);
+
 const AnalyticsIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
     <line x1="18" y1="20" x2="18" y2="10" />
@@ -62,6 +71,7 @@ const SettingsIcon = () => (
 
 const HOME_NAV_ITEM = { href: "/", label: "Home", icon: <HomeIcon /> };
 const PROGRAM_NAV_ITEM = { href: "/program", label: "Program", icon: <ProgramIcon /> };
+const PLANS_NAV_ITEM = { href: "/plans", label: "Plans", icon: <PlansIcon /> };
 const HISTORY_NAV_ITEM = { href: "/history", label: "History", icon: <HistoryIcon /> };
 const TEMPLATES_NAV_ITEM = { href: "/templates", label: "Templates", icon: <TemplatesIcon /> };
 const LIBRARY_NAV_ITEM = { href: "/library", label: "Library", icon: <LibraryIcon /> };
@@ -71,6 +81,7 @@ const SETTINGS_NAV_ITEM = { href: "/settings", label: "Settings", icon: <Setting
 const DESKTOP_NAV_ITEMS = [
   HOME_NAV_ITEM,
   PROGRAM_NAV_ITEM,
+  PLANS_NAV_ITEM,
   HISTORY_NAV_ITEM,
   TEMPLATES_NAV_ITEM,
   LIBRARY_NAV_ITEM,

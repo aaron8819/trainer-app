@@ -351,6 +351,36 @@ export const generateMacroSchema = z.object({
   primaryGoal: primaryGoalSchema.optional(),
 });
 
+export function normalizePlanName(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+export const planNameSchema = z
+  .string()
+  .transform(normalizePlanName)
+  .pipe(z.string().min(1).max(60));
+
+const optimisticTimestampSchema = z.string().datetime({ offset: true });
+
+export const createHypertrophyPlanSchema = z.object({
+  name: planNameSchema,
+  startDate: z.coerce.date(),
+  durationWeeks: z.number().int().min(8).max(52),
+});
+
+export const renamePlanSchema = z.object({
+  name: planNameSchema,
+  expectedUpdatedAt: optimisticTimestampSchema,
+});
+
+export const planMutationSchema = z.object({
+  expectedUpdatedAt: optimisticTimestampSchema,
+});
+
+export const activatePlanSchema = z.object({
+  expectedActiveMacroCycleId: z.string().uuid().nullable(),
+});
+
 // Phase 3: Readiness & Autoregulation schemas
 export const readinessSignalSchema = z.object({
   subjective: z.object({

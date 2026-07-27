@@ -41,6 +41,7 @@ Sources of truth:
 - Logging: `src/app/api/logs/set/route.ts`
 - Logging support reads: `GET /api/workouts/[id]/logging-weekly-volume-check` (`src/app/api/workouts/[id]/logging-weekly-volume-check/route.ts`)
 - Mesocycles: `GET /api/mesocycles` (`src/app/api/mesocycles/route.ts`) plus handoff endpoints `POST /api/mesocycles/[id]/finish-deload`, `PATCH /api/mesocycles/[id]/draft`, `POST /api/mesocycles/[id]/refresh-next-seed-draft`, and `POST /api/mesocycles/[id]/accept-next-cycle`
+- Plans: `GET|POST /api/plans`, `PATCH /api/plans/[id]`, and explicit `POST /api/plans/[id]/finalize|activate|archive`
 - Week-close workflow: `POST /api/mesocycles/week-close/[id]/dismiss` and `POST|GET /api/mesocycles/week-close/[id]/closeout`
 - Program/periodization/readiness: `src/app/api/program/route.ts`, `src/app/api/periodization/macro/route.ts`, `src/app/api/readiness/submit/route.ts`, `src/app/api/pre-session-readiness/prepare/route.ts`, `src/app/api/stalls/route.ts`
 - Templates: `src/app/api/templates/**`
@@ -118,6 +119,15 @@ Sources of truth:
 - `profileSetupSchema` no longer accepts `sessionMinutes`; profile setup persists `daysPerWeek` and optional `splitType` through `POST /api/profile/setup` (`src/lib/validation.ts`, `src/app/api/profile/setup/route.ts`).
 - Session-decision request/response ownership follows the canonical flow in `docs/01_ARCHITECTURE.md`: save and generation contracts carry `selectionMetadata.sessionDecisionReceipt`, and validation rejects removed top-level session mirrors / top-level autoregulation inputs (`src/lib/validation.ts`, `src/app/api/workouts/save/route.ts`).
 - Mutation reconciliation is part of the persisted workout contract, not a read-side convenience. Structural mutation writers persist `selectionMetadata.workoutStructureState`, and the canonical write-side seam in `src/lib/api/runtime-edit-reconciliation.ts` may also append `selectionMetadata.runtimeEditReconciliation` edit facts for supported runtime mutations.
+
+## Plan management route contract
+- `GET /api/plans` returns owner-scoped, non-archived hypertrophy plans with server-derived `PREPARING|READY|HANDOFF_PENDING|COMPLETED|INVALID` status, `isActive`, and the exact active/review mesocycle identities. It never falls back by date or creation order.
+- `POST /api/plans` accepts `{ name, startDate, durationWeeks }`, generates only a hypertrophy macrocycle through the existing periodization engine, and persists it as `PREPARING`. It does not change `User.activeMacroCycleId`.
+- `POST /api/plans/[id]/finalize` accepts `{ expectedUpdatedAt }`, compare-and-swaps the generated plan, and makes its first valid mesocycle current so the plan becomes `READY`. Finalization does not activate the plan.
+- `POST /api/plans/[id]/activate` accepts `{ expectedActiveMacroCycleId }`. The serializable selection transaction requires an owner-scoped, non-archived `READY` hypertrophy plan, blocks any owner `IN_PROGRESS` workout, and updates only the selected-plan pointer. Stale selection returns `409 code=ACTIVE_PLAN_SELECTION_CONFLICT`; a non-READY target returns `409 code=ACTIVE_PLAN_TARGET_NOT_READY`; an in-progress workout returns `409 code=ACTIVE_WORKOUT_IN_PROGRESS`.
+- `PATCH /api/plans/[id]` accepts normalized `{ name, expectedUpdatedAt }`; it changes only display metadata. Stale versions return `409 code=PLAN_MUTATION_CONFLICT`.
+- `POST /api/plans/[id]/archive` accepts `{ expectedUpdatedAt }`, soft-archives only an inactive plan, and preserves all descendants. The selected plan returns `409 code=ACTIVE_PLAN_ARCHIVE_FORBIDDEN`; stale versions return `409 code=PLAN_MUTATION_CONFLICT`.
+- All plan mutations resolve the owner server-side, use the central production write gate, and return structured deterministic `code` values. Missing and foreign-owned plan IDs share the same `404 PLAN_NOT_FOUND` contract.
 
 ## Mesocycle handoff route contract
 - Handoff routes remain explicit-mesocycle operations, but acceptance is valid only when the source belongs to `User.activeMacroCycleId`. Pending handoff discovery for Home, next-session, and generation is restricted to the selected macrocycle; an unselected plan's pending handoff is historical state, not a runtime blocker.

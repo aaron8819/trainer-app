@@ -20,16 +20,17 @@ export const EXPECTED_MIGRATION_CHAIN = [
   "20260714210000_make_pre_session_readiness_snapshots_atomic",
   "20260726120000_add_active_macrocycle_foundation",
   "20260727010000_add_plan_management_fields",
+  "20260728120000_add_finishers_phase_1",
 ] as const;
 
 export const MIGRATION_AUTHORIZATION_POLICY = {
-  targetMigration: "20260727010000_add_plan_management_fields",
+  targetMigration: "20260728120000_add_finishers_phase_1",
   expectedPendingMigrations: [
-    "20260727010000_add_plan_management_fields",
+    "20260728120000_add_finishers_phase_1",
   ],
   requiredApplicationCommit: "",
   compatibleProductionDeploymentCommits: [
-    "d7b899584995b1289c73019265464ee749a993c2",
+    "14f7bb3a0106780fc70263d7282b2547bae5bbba",
   ],
   operationalEvidenceMaxAgeMinutes: 30,
 } as const;
@@ -369,6 +370,73 @@ export const PENDING_ARCHITECTURE_MANIFEST: readonly PendingMigrationExpectation
         table: "MacroCycle",
         name: "MacroCycle_name_length_check",
         definitionIncludes: ["char_length", "name", "60"],
+      },
+    ],
+  },
+  {
+    migration: "20260728120000_add_finishers_phase_1",
+    effect: "objects",
+    objects: [
+      { kind: "table", name: "FinisherRoutine" },
+      { kind: "table", name: "FinisherRoutineVersion" },
+      { kind: "table", name: "FinisherRoutineStep" },
+      { kind: "table", name: "FinisherRoutineStepAlternative" },
+      { kind: "table", name: "FinisherExecution" },
+      { kind: "table", name: "FinisherExecutionStep" },
+      ...[
+        "preparationActiveMs",
+        "recoveryActiveMs",
+        "preparationPausedMs",
+        "workPausedMs",
+        "recoveryPausedMs",
+      ].map((name) => ({
+        kind: "column" as const,
+        table: "FinisherExecution",
+        name,
+        column: {
+          type: "integer",
+          nullable: false,
+          default: "0",
+        },
+      })),
+      {
+        kind: "index",
+        table: "FinisherExecution",
+        name: "FinisherExecution_workoutId_key",
+        index: {
+          unique: true,
+          columns: ["workoutId"],
+          predicate: null,
+        },
+      },
+      {
+        kind: "constraint",
+        table: "FinisherExecution",
+        name: "FinisherExecution_workoutId_fkey",
+        definitionIncludes: ["workoutId", "Workout", "ON DELETE RESTRICT"],
+      },
+      {
+        kind: "function",
+        name: "reject_finisher_definition_mutation",
+        definitionIncludes: ["finisher routine versions are immutable"],
+      },
+      {
+        kind: "trigger",
+        table: "FinisherRoutineVersion",
+        name: "FinisherRoutineVersion_immutable",
+        definitionIncludes: ["reject_finisher_definition_mutation"],
+      },
+      {
+        kind: "trigger",
+        table: "FinisherRoutineStep",
+        name: "FinisherRoutineStep_immutable",
+        definitionIncludes: ["reject_finisher_definition_mutation"],
+      },
+      {
+        kind: "trigger",
+        table: "FinisherRoutineStepAlternative",
+        name: "FinisherRoutineStepAlternative_immutable",
+        definitionIncludes: ["reject_finisher_definition_mutation"],
       },
     ],
   },

@@ -396,7 +396,18 @@ export const finisherActionSchema = z.discriminatedUnion("action", [
       acknowledgeContraindication: z.boolean().optional(),
     })
     .strict(),
-  z.object({ action: z.literal("dismiss") }).strict(),
+  z
+    .object({
+      action: z.literal("dismiss"),
+      expectedRevision: z.number().int().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("sync"),
+      expectedRevision: z.number().int().min(1),
+    })
+    .strict(),
   z
     .object({
       action: z.literal("pause"),

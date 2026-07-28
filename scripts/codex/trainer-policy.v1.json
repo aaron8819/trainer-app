@@ -675,10 +675,11 @@
         "path": "trainer-app/prisma",
         "extensions": [".ts"],
         "recursive": false,
-        "ignored": [
-          "trainer-app/prisma/exercise-aliases.ts",
-          "trainer-app/prisma/muscle-seed-data.ts"
-        ]
+      "ignored": [
+        "trainer-app/prisma/exercise-aliases.ts",
+        "trainer-app/prisma/finisher-routine-seed-data.ts",
+        "trainer-app/prisma/muscle-seed-data.ts"
+      ]
       }
     ],
     "knownMutationFlags": [

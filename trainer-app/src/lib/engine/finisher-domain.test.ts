@@ -71,6 +71,12 @@ describe("timestamp-derived timer projection", () => {
       { stepIndex: 0, startedAt: at(10) },
       { stepIndex: 1, startedAt: at(70) },
     ]);
+    expect(projection.activeSlices).toEqual([
+      { segment: "PREPARATION", stepIndex: 0, activeMs: 10_000 },
+      { segment: "WORK", stepIndex: 0, activeMs: 40_000 },
+      { segment: "RECOVERY", stepIndex: 0, activeMs: 20_000 },
+    ]);
+    expect(projection.syncRequired).toBe(true);
   });
 
   it("completes only after an explicitly included final recovery", () => {
@@ -123,6 +129,48 @@ describe("timestamp-derived timer projection", () => {
     expect(projection.currentStepIndex).toBe(0);
     expect(projection.completedSteps).toEqual([]);
     expect(projection.pausedRemainingMs).toBe(25_000);
+  });
+
+  it("uses exact inclusive segment boundaries", () => {
+    const timer = {
+      state: "IN_PROGRESS" as const,
+      timerSegment: "WORK" as const,
+      currentStepIndex: 0,
+      segmentStartedAt: at(0),
+      segmentEndsAt: at(40),
+      pausedAt: null,
+      pausedRemainingMs: null,
+      startedAt: at(0),
+    };
+    const before = projectFinisherTimer({
+      timer,
+      steps: [steps[0]!],
+      includesFinalRecovery: true,
+      now: new Date(at(40).getTime() - 1),
+    });
+    expect(before.syncRequired).toBe(false);
+    expect(before.timerSegment).toBe("WORK");
+
+    const exact = projectFinisherTimer({
+      timer,
+      steps: [steps[0]!],
+      includesFinalRecovery: true,
+      now: at(40),
+    });
+    expect(exact.syncRequired).toBe(true);
+    expect(exact.timerSegment).toBe("RECOVERY");
+    expect(exact.activeSlices).toEqual([
+      { segment: "WORK", stepIndex: 0, activeMs: 40_000 },
+    ]);
+
+    const after = projectFinisherTimer({
+      timer,
+      steps: [steps[0]!],
+      includesFinalRecovery: true,
+      now: new Date(at(40).getTime() + 1),
+    });
+    expect(after.timerSegment).toBe("RECOVERY");
+    expect(after.segmentEndsAt).toEqual(at(60));
   });
 
   it("skips directly to the next work interval with no recovery", () => {
@@ -184,7 +232,7 @@ describe("deterministic finisher recommendation", () => {
     expect(result.recommendation?.routineVersionId).toBe("eligible");
   });
 
-  it("down-ranks demanding leg work after lower body and recent routines", () => {
+  it("excludes demanding leg work after lower body and keeps the reason truthful", () => {
     const result = recommendFinisher({
       routines: [
         routine("recent"),
@@ -202,7 +250,54 @@ describe("deterministic finisher recommendation", () => {
       availableEquipment: null,
     });
     expect(result.recommendation?.routineVersionId).toBe("fresh");
-    expect(result.recommendation?.reason).toMatch(/avoids.*lower-body/i);
+    expect(result.recommendation?.reason).toMatch(
+      /low impact.*low fatigue.*lower-body/i,
+    );
+  });
+
+  it("returns no recommendation when only an unsafe lower-body candidate remains", () => {
+    const result = recommendFinisher({
+      routines: [
+        routine("unsafe", {
+          category: "CONDITIONING",
+          fatigueCost: "HIGH",
+          impactLevel: "HIGH",
+          bodyRegions: ["legs"],
+        }),
+      ],
+      activeLimitations: [],
+      lowerBodyDemandingWorkout: true,
+      recentlyPerformedRoutineVersionIds: [],
+      availableEquipment: null,
+    });
+    expect(result.recommendation).toBeNull();
+    expect(result.blockedReason).toMatch(/no routine matched/i);
+  });
+
+  it("keeps low-impact low-fatigue leg movement eligible after lower body", () => {
+    const result = recommendFinisher({
+      routines: [
+        routine("unsafe", {
+          category: "CONDITIONING",
+          fatigueCost: "MODERATE",
+          impactLevel: "LOW",
+          bodyRegions: ["legs"],
+        }),
+        routine("safe", {
+          category: "CONDITIONING",
+          fatigueCost: "LOW",
+          impactLevel: "LOW",
+          bodyRegions: ["legs"],
+        }),
+      ],
+      activeLimitations: [],
+      lowerBodyDemandingWorkout: true,
+      recentlyPerformedRoutineVersionIds: [],
+      availableEquipment: null,
+    });
+    expect(result.recommendation?.routineVersionId).toBe("safe");
+    expect(result.recommendation?.reason).toContain("Low impact");
+    expect(result.recommendation?.reason).toContain("Low fatigue");
   });
 
   it("uses stable name and id ordering for tied candidates", () => {

@@ -9,14 +9,24 @@ or finishing without an add-on. A selected definition is not performed until
 the first work interval starts.
 
 The mobile-first timer shows preparation, work, recovery, paused, substitution,
-partial confirmation, and completed states. It derives countdown from server
-timestamps, refreshes on visibility recovery, requests screen wake lock while
-running, and exposes independent opt-in sound/vibration controls with textual
-fallbacks. Controls are semantic buttons/labels and remain keyboard operable;
-status does not rely only on color or device signals.
+partial confirmation, and completed states. Each response aligns `serverTime`
+to a monotonic client clock for display only; client wall-clock skew never
+drives state transitions. A revision/boundary token permits at most one
+non-overlapping `sync` mutation until the server returns a new revision.
+Visibility recovery refreshes the pure projection before synchronization.
+The timer requests screen wake lock while running and exposes independent
+opt-in sound/vibration controls with textual fallbacks.
+
+End confirmation uses a labeled and described modal dialog, moves focus to the
+safe continue action, supports Escape while no request is pending, restores the
+trigger on cancellation, and moves focus to the resulting summary after
+confirmation. A restrained polite live region announces segment/movement
+changes only; timer ticks are not announced. Controls remain keyboard operable
+and status does not rely only on color, sound, vibration, or motion.
 
 Completed and partial executions render in a separate Finisher section with
-routine/category, outcome, completed/skipped/substituted steps, actual duration,
+routine/category, outcome, completed/skipped/partially-performed/substituted
+steps, exact active performed duration,
 and optional difficulty. The normal post-session review remains the main workout
 summary whether a Finisher is declined or ended partial.
 

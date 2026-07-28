@@ -2,11 +2,12 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import {
   deriveTimedFinisherDurationSeconds,
-  normalizeFinisherLimitation,
   projectFinisherTimer,
   recommendFinisher,
   resolveTimerAfterSkippedStep,
+  type FinisherTimerProjection,
 } from "@/lib/engine/finisher-domain";
+import { resolveCanonicalLimitations } from "@/lib/engine/limitation-policy";
 
 const routineVersionInclude = {
   routine: true,
@@ -88,6 +89,8 @@ export type FinisherExecutionDto = {
     pausedAt: string | null;
     pausedRemainingMs: number | null;
     revision: number;
+    syncRequired: boolean;
+    syncToken: string | null;
   };
   resolvedStepCount: number;
   completedStepCount: number;
@@ -100,12 +103,20 @@ export type FinisherExecutionDto = {
     orderIndex: number;
     prescribedMovement: string;
     performedMovement: string;
-    status: "PENDING" | "COMPLETED" | "SKIPPED";
+    status: "PENDING" | "PARTIAL" | "COMPLETED" | "SKIPPED";
     startedAt: string | null;
     resolvedAt: string | null;
-    actualWorkMs: number | null;
+    actualWorkMs: number;
     performedAlternativeId: string | null;
   }>;
+  timing: {
+    preparationActiveMs: number;
+    activeWorkMs: number;
+    activeRecoveryMs: number;
+    preparationPausedMs: number;
+    workPausedMs: number;
+    recoveryPausedMs: number;
+  };
 };
 
 export class FinisherServiceError extends Error {
@@ -121,18 +132,17 @@ function fail(code: string, status: number): never {
   throw new FinisherServiceError(code, status);
 }
 
-function knownLimitationTags(bodyParts: string[]): string[] {
-  return bodyParts
-    .map(normalizeFinisherLimitation)
-    .filter((value): value is string => value != null);
-}
-
 function toRoutineDto(
   row: RoutineVersionRow,
   activeLimitations: string[]
 ): FinisherRoutineDto {
-  const known = knownLimitationTags(activeLimitations);
-  const conflicts = row.limitationTags.filter((tag) => known.includes(tag));
+  const resolved = resolveCanonicalLimitations(activeLimitations);
+  const known = new Set<string>(resolved.recognizedTags);
+  const conflicts = row.limitationTags.filter((tag) => known.has(tag));
+  const unknownWarnings = resolved.unrecognizedTexts.map(
+    (text) =>
+      `The active limitation "${text}" could not be matched to a canonical body region. Review this routine and acknowledge the uncertainty before choosing it.`,
+  );
   return {
     id: row.id,
     routineId: row.routineId,
@@ -156,9 +166,13 @@ function toRoutineDto(
     equipmentRequirements: row.equipmentRequirements,
     bodyRegions: row.bodyRegions,
     limitationTags: row.limitationTags,
-    warnings: conflicts.map(
-      (tag) => `This routine conflicts with your active ${tag.replace("_", " ")} limitation.`
-    ),
+    warnings: [
+      ...conflicts.map(
+        (tag) =>
+          `This routine conflicts with your active ${tag.replace("_", " ")} limitation.`,
+      ),
+      ...unknownWarnings,
+    ],
     steps: row.steps.map((step) => ({
       id: step.id,
       orderIndex: step.orderIndex,
@@ -177,64 +191,162 @@ function toRoutineDto(
 function toExecutionDto(
   row: ExecutionRow,
   activeLimitations: string[],
-  now: Date
+  now: Date,
+  projection = projectExecution(row, now),
 ): FinisherExecutionDto {
   const stepRows = new Map(
     row.stepExecutions.map((step) => [step.routineStepId, step])
   );
+  const workDeltaByStep = new Map<number, number>();
+  for (const slice of projection.activeSlices) {
+    if (slice.segment !== "WORK") continue;
+    workDeltaByStep.set(
+      slice.stepIndex,
+      (workDeltaByStep.get(slice.stepIndex) ?? 0) + slice.activeMs,
+    );
+  }
+  const completedByStep = new Map(
+    projection.completedSteps.map((step) => [step.stepIndex, step]),
+  );
+  const startedByStep = new Map(
+    projection.startedSteps.map((step) => [step.stepIndex, step]),
+  );
   const steps = row.routineVersion.steps.map((definition) => {
     const performed = stepRows.get(definition.id);
+    const completed = completedByStep.get(definition.orderIndex);
+    const started = startedByStep.get(definition.orderIndex);
     return {
       id: performed?.id ?? definition.id,
       orderIndex: definition.orderIndex,
       prescribedMovement: definition.movementName,
       performedMovement:
         performed?.performedAlternative?.movementName ?? definition.movementName,
-      status: performed?.status ?? ("PENDING" as const),
-      startedAt: performed?.startedAt?.toISOString() ?? null,
-      resolvedAt: performed?.resolvedAt?.toISOString() ?? null,
-      actualWorkMs: performed?.actualWorkMs ?? null,
+      status: completed ? ("COMPLETED" as const) : (performed?.status ?? ("PENDING" as const)),
+      startedAt:
+        performed?.startedAt?.toISOString() ??
+        started?.startedAt.toISOString() ??
+        null,
+      resolvedAt:
+        performed?.resolvedAt?.toISOString() ??
+        completed?.resolvedAt.toISOString() ??
+        null,
+      actualWorkMs:
+        (performed?.actualWorkMs ?? 0) +
+        (workDeltaByStep.get(definition.orderIndex) ?? 0),
       performedAlternativeId: performed?.performedAlternativeId ?? null,
     };
   });
-  const end = row.completedAt ?? row.endedAt ?? (row.startedAt ? now : null);
-  const actualDurationSeconds =
-    row.startedAt && end
+  const projectedPreparationMs = projection.activeSlices
+    .filter((slice) => slice.segment === "PREPARATION")
+    .reduce((sum, slice) => sum + slice.activeMs, 0);
+  const projectedRecoveryMs = projection.activeSlices
+    .filter((slice) => slice.segment === "RECOVERY")
+    .reduce((sum, slice) => sum + slice.activeMs, 0);
+  const runningActiveMs =
+    !projection.pausedAt &&
+    projection.segmentStartedAt &&
+    projection.timerSegment &&
+    projection.timerSegment !== "FINISHED" &&
+    projection.segmentEndsAt
       ? Math.max(
           0,
-          Math.round(
-            (end.getTime() - row.startedAt.getTime() - row.totalPausedMs) / 1000
-          )
+          Math.min(now.getTime(), projection.segmentEndsAt.getTime()) -
+            projection.segmentStartedAt.getTime(),
         )
-      : null;
+      : 0;
+  const runningWorkMs = projection.timerSegment === "WORK" ? runningActiveMs : 0;
+  const runningRecoveryMs =
+    projection.timerSegment === "RECOVERY" ? runningActiveMs : 0;
+  const runningPreparationMs =
+    projection.timerSegment === "PREPARATION" ? runningActiveMs : 0;
+  const activeWorkMs =
+    steps.reduce((sum, step) => sum + (step.actualWorkMs ?? 0), 0) +
+    runningWorkMs;
+  const activeRecoveryMs =
+    row.recoveryActiveMs + projectedRecoveryMs + runningRecoveryMs;
+  const preparationActiveMs =
+    row.preparationActiveMs + projectedPreparationMs + runningPreparationMs;
+  const hasPerformedTruth =
+    row.startedAt != null ||
+    activeWorkMs > 0 ||
+    activeRecoveryMs > 0 ||
+    row.state === "PARTIAL" ||
+    projection.state === "COMPLETED";
+  const currentPausedMs = row.pausedAt
+    ? Math.max(0, now.getTime() - row.pausedAt.getTime())
+    : 0;
   return {
     id: row.id,
     workoutId: row.workoutId,
     routine: toRoutineDto(row.routineVersion, activeLimitations),
-    state: row.state,
+    state: projection.state,
     selectedAt: row.selectedAt.toISOString(),
-    startedAt: row.startedAt?.toISOString() ?? null,
-    completedAt: row.completedAt?.toISOString() ?? null,
-    endedAt: row.endedAt?.toISOString() ?? null,
+    startedAt: projection.startedAt?.toISOString() ?? null,
+    completedAt:
+      row.completedAt?.toISOString() ??
+      projection.completedAt?.toISOString() ??
+      null,
+    endedAt:
+      row.endedAt?.toISOString() ??
+      projection.completedAt?.toISOString() ??
+      null,
     timer: {
-      segment: row.timerSegment,
-      currentStepIndex: row.currentStepIndex,
-      segmentStartedAt: row.segmentStartedAt?.toISOString() ?? null,
-      segmentEndsAt: row.segmentEndsAt?.toISOString() ?? null,
+      segment: projection.timerSegment,
+      currentStepIndex: projection.currentStepIndex,
+      segmentStartedAt: projection.segmentStartedAt?.toISOString() ?? null,
+      segmentEndsAt: projection.segmentEndsAt?.toISOString() ?? null,
       pausedAt: row.pausedAt?.toISOString() ?? null,
       pausedRemainingMs: row.pausedRemainingMs,
       revision: row.revision,
+      syncRequired: projection.syncRequired,
+      syncToken: projection.syncRequired
+        ? `${row.id}:${row.revision}:${row.timerSegment}:${row.segmentEndsAt?.toISOString() ?? "none"}`
+        : null,
     },
     resolvedStepCount: steps.filter((step) => step.status !== "PENDING").length,
     completedStepCount: steps.filter((step) => step.status === "COMPLETED").length,
     skippedStepCount: steps.filter((step) => step.status === "SKIPPED").length,
     substitutionCount: steps.filter(
-      (step) => step.performedAlternativeId != null
+      (step) =>
+        step.status !== "PENDING" && step.performedAlternativeId != null,
     ).length,
-    actualDurationSeconds,
+    actualDurationSeconds: hasPerformedTruth
+      ? Math.round((activeWorkMs + activeRecoveryMs) / 1000)
+      : null,
     difficultyFeedback: row.difficultyFeedback,
     steps,
+    timing: {
+      preparationActiveMs,
+      activeWorkMs,
+      activeRecoveryMs,
+      preparationPausedMs:
+        row.preparationPausedMs +
+        (row.timerSegment === "PREPARATION" ? currentPausedMs : 0),
+      workPausedMs:
+        row.workPausedMs + (row.timerSegment === "WORK" ? currentPausedMs : 0),
+      recoveryPausedMs:
+        row.recoveryPausedMs +
+        (row.timerSegment === "RECOVERY" ? currentPausedMs : 0),
+    },
   };
+}
+
+function projectExecution(row: ExecutionRow, now: Date): FinisherTimerProjection {
+  return projectFinisherTimer({
+    timer: {
+      state: row.state,
+      timerSegment: row.timerSegment,
+      currentStepIndex: row.currentStepIndex,
+      segmentStartedAt: row.segmentStartedAt,
+      segmentEndsAt: row.segmentEndsAt,
+      pausedAt: row.pausedAt,
+      pausedRemainingMs: row.pausedRemainingMs,
+      startedAt: row.startedAt,
+    },
+    steps: row.routineVersion.steps,
+    includesFinalRecovery: row.routineVersion.includesFinalRecovery,
+    now,
+  });
 }
 
 async function loadOwnedCompletedWorkout(
@@ -294,39 +406,24 @@ async function assertManualSelectionAllowed(
   acknowledged: boolean
 ) {
   const limitations = await loadActiveLimitations(tx, userId);
-  const known = knownLimitationTags(limitations);
-  const conflicts = version.limitationTags.filter((tag) => known.includes(tag));
-  if (conflicts.length > 0 && !acknowledged) {
+  const resolved = resolveCanonicalLimitations(limitations);
+  const known = new Set<string>(resolved.recognizedTags);
+  const conflicts = version.limitationTags.filter((tag) => known.has(tag));
+  if (
+    (conflicts.length > 0 || resolved.unrecognizedTexts.length > 0) &&
+    !acknowledged
+  ) {
     fail("FINISHER_CONTRAINDICATION_ACK_REQUIRED", 409);
   }
 }
 
-async function advanceExecutionInTransaction(
+async function persistElapsedProjectionInTransaction(
   tx: FinisherTransaction,
   row: ExecutionRow,
   now: Date
 ): Promise<ExecutionRow> {
-  const projected = projectFinisherTimer({
-    timer: {
-      state: row.state,
-      timerSegment: row.timerSegment,
-      currentStepIndex: row.currentStepIndex,
-      segmentStartedAt: row.segmentStartedAt,
-      segmentEndsAt: row.segmentEndsAt,
-      pausedAt: row.pausedAt,
-      pausedRemainingMs: row.pausedRemainingMs,
-      startedAt: row.startedAt,
-    },
-    steps: row.routineVersion.steps,
-    includesFinalRecovery: row.routineVersion.includesFinalRecovery,
-    now,
-  });
-  const changed =
-    projected.timerSegment !== row.timerSegment ||
-    projected.currentStepIndex !== row.currentStepIndex ||
-    projected.segmentEndsAt?.getTime() !== row.segmentEndsAt?.getTime() ||
-    projected.state !== row.state;
-  if (!changed) return row;
+  const projected = projectExecution(row, now);
+  if (!projected.syncRequired) return row;
 
   for (const started of projected.startedSteps) {
     const definition = row.routineVersion.steps[started.stepIndex];
@@ -338,6 +435,21 @@ async function advanceExecutionInTransaction(
         startedAt: null,
       },
       data: { startedAt: started.startedAt },
+    });
+  }
+  for (const slice of projected.activeSlices) {
+    if (slice.segment !== "WORK" || slice.activeMs === 0) continue;
+    const definition = row.routineVersion.steps[slice.stepIndex];
+    if (!definition) continue;
+    await tx.finisherExecutionStep.updateMany({
+      where: {
+        executionId: row.id,
+        routineStepId: definition.id,
+        status: "PENDING",
+      },
+      data: {
+        actualWorkMs: { increment: slice.activeMs },
+      },
     });
   }
   for (const completed of projected.completedSteps) {
@@ -352,10 +464,15 @@ async function advanceExecutionInTransaction(
       data: {
         status: "COMPLETED",
         resolvedAt: completed.resolvedAt,
-        actualWorkMs: definition.workSeconds * 1000,
       },
     });
   }
+  const preparationActiveMs = projected.activeSlices
+    .filter((slice) => slice.segment === "PREPARATION")
+    .reduce((sum, slice) => sum + slice.activeMs, 0);
+  const recoveryActiveMs = projected.activeSlices
+    .filter((slice) => slice.segment === "RECOVERY")
+    .reduce((sum, slice) => sum + slice.activeMs, 0);
   const updated = await tx.finisherExecution.updateMany({
     where: { id: row.id, revision: row.revision },
     data: {
@@ -373,6 +490,8 @@ async function advanceExecutionInTransaction(
         projected.state === "COMPLETED"
           ? (projected.completedAt ?? now)
           : row.endedAt,
+      preparationActiveMs: { increment: preparationActiveMs },
+      recoveryActiveMs: { increment: recoveryActiveMs },
       revision: { increment: 1 },
     },
   });
@@ -383,16 +502,14 @@ async function advanceExecutionInTransaction(
   }))!;
 }
 
-async function loadAndAdvanceExecution(
+async function loadExecution(
   tx: FinisherTransaction,
   workoutId: string,
-  now: Date
 ): Promise<ExecutionRow | null> {
-  const row = await tx.finisherExecution.findUnique({
+  return tx.finisherExecution.findUnique({
     where: { workoutId },
     include: executionInclude,
   });
-  return row ? advanceExecutionInTransaction(tx, row, now) : null;
 }
 
 export async function getFinisherOffer(input: {
@@ -430,7 +547,7 @@ export async function getFinisherOffer(input: {
         take: 8,
         select: { routineVersionId: true },
       }),
-      loadAndAdvanceExecution(tx, input.workoutId, now),
+      loadExecution(tx, input.workoutId),
     ]);
     const versions = routineRows.flatMap((routine) => routine.versions);
     const lowerBodyDemandingWorkout =
@@ -458,6 +575,7 @@ export async function getFinisherOffer(input: {
       availableEquipment: null,
     });
     return {
+      serverTime: now.toISOString(),
       routines: versions.map((version) => toRoutineDto(version, limitations)),
       recommendation: recommendation.recommendation,
       recommendationUnavailableReason: recommendation.blockedReason,
@@ -579,7 +697,7 @@ export async function startFinisher(input: {
           now
         );
         if (existing.timerSegment || existing.startedAt) {
-          return advanceExecutionInTransaction(tx, existing, now);
+          return persistElapsedProjectionInTransaction(tx, existing, now);
         }
         const hasPreparation = version.preparationSeconds > 0;
         const updated = await tx.finisherExecution.updateMany({
@@ -646,11 +764,13 @@ async function mutateExecution(input: {
   const now = input.now ?? new Date();
   return prisma.$transaction(async (tx) => {
     await loadOwnedCompletedWorkout(tx, input.userId, input.workoutId);
-    const loaded = await loadAndAdvanceExecution(tx, input.workoutId, now);
-    if (!loaded) fail("FINISHER_EXECUTION_NOT_FOUND", 404);
-    if (loaded.revision !== input.expectedRevision) {
+    const raw = await loadExecution(tx, input.workoutId);
+    if (!raw) fail("FINISHER_EXECUTION_NOT_FOUND", 404);
+    if (raw.revision !== input.expectedRevision) {
       fail("FINISHER_STALE_TRANSITION", 409);
     }
+    const loaded = await persistElapsedProjectionInTransaction(tx, raw, now);
+    if (!loaded) fail("FINISHER_EXECUTION_NOT_FOUND", 404);
     await input.mutate(tx, loaded, now);
     const next = await tx.finisherExecution.findUnique({
       where: { id: loaded.id },
@@ -665,9 +785,49 @@ async function mutateExecution(input: {
 export function syncFinisher(input: {
   userId: string;
   workoutId: string;
+  expectedRevision: number;
   now?: Date;
 }) {
-  return getFinisherOffer(input);
+  return mutateExecution({
+    ...input,
+    mutate: async () => undefined,
+  });
+}
+
+function currentActiveSliceMs(row: ExecutionRow, now: Date): number {
+  if (
+    row.pausedAt ||
+    !row.segmentStartedAt ||
+    !row.segmentEndsAt ||
+    row.timerSegment === "FINISHED" ||
+    !row.timerSegment
+  ) {
+    return 0;
+  }
+  return Math.max(
+    0,
+    Math.min(now.getTime(), row.segmentEndsAt.getTime()) -
+      row.segmentStartedAt.getTime(),
+  );
+}
+
+async function addCurrentWorkSlice(
+  tx: FinisherTransaction,
+  row: ExecutionRow,
+  activeMs: number,
+): Promise<void> {
+  if (row.timerSegment !== "WORK" || activeMs === 0) return;
+  const definition = row.routineVersion.steps[row.currentStepIndex];
+  if (!definition) fail("FINISHER_INVALID_TRANSITION", 409);
+  const updated = await tx.finisherExecutionStep.updateMany({
+    where: {
+      executionId: row.id,
+      routineStepId: definition.id,
+      status: "PENDING",
+    },
+    data: { actualWorkMs: { increment: activeMs } },
+  });
+  if (updated.count !== 1) fail("FINISHER_INVALID_TRANSITION", 409);
 }
 
 export function pauseFinisher(input: {
@@ -688,12 +848,23 @@ export function pauseFinisher(input: {
         fail("FINISHER_INVALID_TRANSITION", 409);
       }
       const remaining = Math.max(0, row.segmentEndsAt.getTime() - now.getTime());
+      const activeMs = currentActiveSliceMs(row, now);
+      await addCurrentWorkSlice(tx, row, activeMs);
       const updated = await tx.finisherExecution.updateMany({
         where: { id: row.id, revision: row.revision },
         data: {
           pausedAt: now,
           pausedRemainingMs: remaining,
           segmentEndsAt: null,
+          segmentStartedAt: null,
+          preparationActiveMs:
+            row.timerSegment === "PREPARATION"
+              ? { increment: activeMs }
+              : undefined,
+          recoveryActiveMs:
+            row.timerSegment === "RECOVERY"
+              ? { increment: activeMs }
+              : undefined,
           revision: { increment: 1 },
         },
       });
@@ -725,8 +896,18 @@ export function resumeFinisher(input: {
         data: {
           pausedAt: null,
           pausedRemainingMs: null,
+          segmentStartedAt: now,
           segmentEndsAt: new Date(now.getTime() + row.pausedRemainingMs),
-          totalPausedMs: { increment: pausedFor },
+          preparationPausedMs:
+            row.timerSegment === "PREPARATION"
+              ? { increment: pausedFor }
+              : undefined,
+          workPausedMs:
+            row.timerSegment === "WORK" ? { increment: pausedFor } : undefined,
+          recoveryPausedMs:
+            row.timerSegment === "RECOVERY"
+              ? { increment: pausedFor }
+              : undefined,
           revision: { increment: 1 },
         },
       });
@@ -753,6 +934,7 @@ export function skipFinisherStep(input: {
       }
       const definition = row.routineVersion.steps[row.currentStepIndex];
       if (!definition) fail("FINISHER_INVALID_TRANSITION", 409);
+      await addCurrentWorkSlice(tx, row, currentActiveSliceMs(row, now));
       await tx.finisherExecutionStep.updateMany({
         where: {
           executionId: row.id,
@@ -762,9 +944,6 @@ export function skipFinisherStep(input: {
         data: {
           status: "SKIPPED",
           resolvedAt: now,
-          actualWorkMs: row.segmentStartedAt
-            ? Math.max(0, now.getTime() - row.segmentStartedAt.getTime())
-            : 0,
         },
       });
       const nextTimer = resolveTimerAfterSkippedStep({
@@ -858,8 +1037,34 @@ export function endFinisher(input: {
   return mutateExecution({
     ...input,
     mutate: async (tx, row, now) => {
-      if (!row.startedAt) fail("FINISHER_NOT_PERFORMED", 409);
-      if (row.state !== "IN_PROGRESS") fail("FINISHER_INVALID_TRANSITION", 409);
+      if (row.state === "PARTIAL") return;
+      if (
+        row.state !== "IN_PROGRESS" &&
+        !(row.state === "SELECTED" && row.timerSegment === "PREPARATION")
+      ) {
+        fail("FINISHER_INVALID_TRANSITION", 409);
+      }
+      const activeMs = currentActiveSliceMs(row, now);
+      await addCurrentWorkSlice(tx, row, activeMs);
+      if (row.timerSegment === "WORK") {
+        const definition = row.routineVersion.steps[row.currentStepIndex];
+        if (!definition) fail("FINISHER_INVALID_TRANSITION", 409);
+        const resolved = await tx.finisherExecutionStep.updateMany({
+          where: {
+            executionId: row.id,
+            routineStepId: definition.id,
+            status: "PENDING",
+          },
+          data: {
+            status: "PARTIAL",
+            resolvedAt: now,
+          },
+        });
+        if (resolved.count !== 1) fail("FINISHER_INVALID_TRANSITION", 409);
+      }
+      const pausedFor = row.pausedAt
+        ? Math.max(0, now.getTime() - row.pausedAt.getTime())
+        : 0;
       const updated = await tx.finisherExecution.updateMany({
         where: { id: row.id, revision: row.revision },
         data: {
@@ -870,6 +1075,26 @@ export function endFinisher(input: {
           segmentEndsAt: now,
           pausedAt: null,
           pausedRemainingMs: null,
+          preparationActiveMs:
+            row.timerSegment === "PREPARATION"
+              ? { increment: activeMs }
+              : undefined,
+          recoveryActiveMs:
+            row.timerSegment === "RECOVERY"
+              ? { increment: activeMs }
+              : undefined,
+          preparationPausedMs:
+            row.timerSegment === "PREPARATION" && pausedFor > 0
+              ? { increment: pausedFor }
+              : undefined,
+          workPausedMs:
+            row.timerSegment === "WORK" && pausedFor > 0
+              ? { increment: pausedFor }
+              : undefined,
+          recoveryPausedMs:
+            row.timerSegment === "RECOVERY" && pausedFor > 0
+              ? { increment: pausedFor }
+              : undefined,
           revision: { increment: 1 },
         },
       });
@@ -906,18 +1131,27 @@ export function recordFinisherFeedback(input: {
 export async function dismissSelectedFinisher(input: {
   userId: string;
   workoutId: string;
+  expectedRevision: number;
 }) {
   return prisma.$transaction(async (tx) => {
     await loadOwnedCompletedWorkout(tx, input.userId, input.workoutId);
+    const deleted = await tx.finisherExecution.deleteMany({
+      where: {
+        workoutId: input.workoutId,
+        revision: input.expectedRevision,
+        state: "SELECTED",
+        startedAt: null,
+      },
+    });
+    if (deleted.count === 1) return { dismissed: true };
     const existing = await tx.finisherExecution.findUnique({
       where: { workoutId: input.workoutId },
-      select: { id: true, state: true, startedAt: true },
+      select: { state: true, startedAt: true, revision: true },
     });
     if (!existing) return { dismissed: true };
     if (existing.startedAt || existing.state !== "SELECTED") {
       fail("FINISHER_ALREADY_STARTED", 409);
     }
-    await tx.finisherExecution.delete({ where: { id: existing.id } });
-    return { dismissed: true };
+    fail("FINISHER_STALE_TRANSITION", 409);
   });
 }

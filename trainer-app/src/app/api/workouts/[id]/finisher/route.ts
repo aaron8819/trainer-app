@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { findOwnerReadOnly, resolveOwner } from "@/lib/api/workout-context";
 import {
   dismissSelectedFinisher,
   endFinisher,
@@ -12,6 +12,7 @@ import {
   skipFinisherStep,
   startFinisher,
   substituteFinisherStep,
+  syncFinisher,
 } from "@/lib/api/finisher-service";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { finisherActionSchema } from "@/lib/validation";
@@ -29,12 +30,19 @@ function errorResponse(error: unknown) {
   throw error;
 }
 
-async function resolveContext(params: Promise<{ id: string }>) {
+async function resolveContext(
+  params: Promise<{ id: string }>,
+  mode: "read" | "write",
+) {
   const resolvedParams = await params;
   if (!resolvedParams?.id) {
     throw new FinisherServiceError("MISSING_WORKOUT_ID", 400);
   }
-  const owner = await resolveOwner();
+  const owner =
+    mode === "read" ? await findOwnerReadOnly() : await resolveOwner();
+  if (!owner) {
+    throw new FinisherServiceError("WORKOUT_NOT_FOUND", 404);
+  }
   return { workoutId: resolvedParams.id, userId: owner.id };
 }
 
@@ -43,7 +51,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const context = await resolveContext(params);
+    const context = await resolveContext(params, "read");
     return NextResponse.json(await getFinisherOffer(context));
   } catch (error) {
     return errorResponse(error);
@@ -70,7 +78,7 @@ export async function POST(
   }
 
   try {
-    const context = await resolveContext(params);
+    const context = await resolveContext(params, "write");
     const action = parsed.data;
     switch (action.action) {
       case "select":
@@ -80,7 +88,10 @@ export async function POST(
         await startFinisher({ ...context, ...action });
         break;
       case "dismiss":
-        await dismissSelectedFinisher(context);
+        await dismissSelectedFinisher({ ...context, ...action });
+        break;
+      case "sync":
+        await syncFinisher({ ...context, ...action });
         break;
       case "pause":
         await pauseFinisher({ ...context, ...action });

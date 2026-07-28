@@ -74,8 +74,20 @@ export const FINISHER_ROUTINE_SEEDS: FinisherRoutineSeed[] = [
         ],
         alternatives: ["Captain's Chair Knee Raise"],
       },
-      { movementName: "Side Plank — Left" },
-      { movementName: "Side Plank — Right" },
+      {
+        movementName: "Side Plank — Left",
+        techniqueCues: [
+          "Stack the shoulders and hips, brace the core, and keep the hips lifted.",
+          "Maintain a straight line without rotating.",
+        ],
+      },
+      {
+        movementName: "Side Plank — Right",
+        techniqueCues: [
+          "Stack the shoulders and hips, brace the core, and keep the hips lifted.",
+          "Maintain a straight line without rotating.",
+        ],
+      },
       {
         movementName: "Reverse Crunch",
         techniqueCues: [

@@ -20,7 +20,8 @@ const authorizationEvidenceFile = join(
   `${containerName}-authorization-evidence.json`,
 );
 const preMigrationCount = 10;
-const currentProductionAppliedCount = 16;
+const currentProductionAppliedCount = 17;
+const targetMigration = "20260728120000_add_finishers_phase_1";
 
 type CommandResult = { status: number; stdout: string; stderr: string };
 
@@ -586,7 +587,7 @@ try {
     JSON.stringify({
       repositoryHead,
       productionDeploymentCommit:
-        "d7b899584995b1289c73019265464ee749a993c2",
+        "14f7bb3a0106780fc70263d7282b2547bae5bbba",
       requiredApplicationCommit: repositoryHead,
       dataPreflight: {
         valid: true,
@@ -623,7 +624,7 @@ try {
   );
 
   const migrations = migrationDirectories();
-  if (migrations.length !== 17) throw new Error(`Expected 17 migrations, found ${migrations.length}`);
+  if (migrations.length !== 18) throw new Error(`Expected 18 migrations, found ${migrations.length}`);
   const baselineMigration = migrations[0];
   const setIntentMigration = migrations[9];
 
@@ -779,9 +780,18 @@ try {
   if (beforeStateA !== afterStateA) throw new Error("State A migration integrity inspection changed disposable database state");
   const stateALedger = objectField(migrationStateA, "ledger");
   const stateASchema = objectField(migrationStateA, "schemaIntegrity");
+  const stateAChain = objectField(migrationStateA, "chain");
   if (
-    numberField(objectField(migrationStateA, "chain"), "applied") !== 10 ||
-    numberField(objectField(migrationStateA, "chain"), "pending") !== 7 ||
+    numberField(stateAChain, "applied") !== 10 ||
+    numberField(stateAChain, "pending") !== 8 ||
+    stateAChain.targetMigration !== targetMigration ||
+    stateAChain.exactExpectedPending !== false ||
+    JSON.stringify(arrayField(stateAChain, "expectedPendingMigrations")) !==
+      JSON.stringify([targetMigration]) ||
+    arrayField(migrationStateA, "unexpectedMigrations").length !== 7 ||
+    !arrayField(migrationStateA, "blockingReasons").includes(
+      "pending_migration_sequence_mismatch",
+    ) ||
     numberField(objectField(migrationStateA, "checksums"), "matched") !== 10 ||
     arrayField(stateALedger, "incomplete").length !== 0 ||
     arrayField(stateALedger, "orderViolations").length !== 0 ||
@@ -1011,7 +1021,7 @@ try {
     )::text;
   `, true);
   if (workoutEvidenceAfter !== workoutEvidenceBefore) {
-    throw new Error("Migrations 011-016 changed existing workout, exercise, set, or log evidence");
+    throw new Error("Migrations 011-017 changed existing workout, exercise, set, or log evidence");
   }
 
   const currentProductionState = cliWithExpectedStatus(
@@ -1043,7 +1053,7 @@ try {
   const afterStateE = databaseStateFingerprint();
   if (beforeStateE !== afterStateE) throw new Error("State E migration integrity inspection changed disposable database state");
   if (
-    numberField(objectField(migrationStateE, "chain"), "applied") !== 17 ||
+    numberField(objectField(migrationStateE, "chain"), "applied") !== 18 ||
     numberField(objectField(migrationStateE, "chain"), "pending") !== 0 ||
     objectField(migrationStateE, "chain").gateAApplicable !== false ||
     migrationStateE.migrationAuthorizationReady !== false
@@ -1181,11 +1191,11 @@ try {
       resolvedBaseline: "prisma_cli_zero_step_applied",
       resolvedSetIntent: "prisma_cli_zero_step_applied",
       repeatedResolve: "P3008_state_unchanged",
-      stateA: "legacy_10_applied_7_pending_rejected",
+      stateA: "legacy_10_applied_8_pending_rejected",
       stateB: "partial_object_blocked",
       stateC: "checksum_mismatch_blocked",
       stateD: "failed_rolled_back_and_unfinished_ledger_blocked",
-      currentProductionState: "16_applied_1_pending_authorization_ready_execution_not_authorized",
+      currentProductionState: "17_applied_1_pending_authorization_ready_execution_not_authorized",
       stateE: "fully_migrated_gate_a_not_applicable",
       baselineUniquenessVariants: "standalone_constraint_missing_wrong_order_non_unique_partial_predicate",
       readOnlyFingerprintsStable: true,

@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => {
   return {
     FinisherServiceError: MockFinisherServiceError,
     resolveOwner: vi.fn(),
+    findOwnerReadOnly: vi.fn(),
+    productionWritePauseResponse: vi.fn(),
     getFinisherOffer: vi.fn(),
     pauseFinisher: vi.fn(),
     selectFinisher: vi.fn(),
@@ -22,15 +24,18 @@ const mocks = vi.hoisted(() => {
     substituteFinisherStep: vi.fn(),
     endFinisher: vi.fn(),
     recordFinisherFeedback: vi.fn(),
+    syncFinisher: vi.fn(),
   };
 });
 
 vi.mock("@/lib/api/workout-context", () => ({
   resolveOwner: mocks.resolveOwner,
+  findOwnerReadOnly: mocks.findOwnerReadOnly,
 }));
 
 vi.mock("@/lib/operations/production-write-gate-http", () => ({
-  productionWritePauseResponse: vi.fn(() => null),
+  productionWritePauseResponse: (...args: unknown[]) =>
+    mocks.productionWritePauseResponse(...args),
 }));
 
 vi.mock("@/lib/api/finisher-service", () => {
@@ -46,6 +51,7 @@ vi.mock("@/lib/api/finisher-service", () => {
     substituteFinisherStep: mocks.substituteFinisherStep,
     endFinisher: mocks.endFinisher,
     recordFinisherFeedback: mocks.recordFinisherFeedback,
+    syncFinisher: mocks.syncFinisher,
   };
 });
 
@@ -56,6 +62,7 @@ const context = {
   params: Promise.resolve({ id: "workout-1" }),
 };
 const offer = {
+  serverTime: "2026-07-28T12:00:00.000Z",
   routines: [],
   recommendation: null,
   recommendationUnavailableReason: null,
@@ -65,6 +72,8 @@ const offer = {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.resolveOwner.mockResolvedValue({ id: "owner-1" });
+  mocks.findOwnerReadOnly.mockResolvedValue({ id: "owner-1" });
+  mocks.productionWritePauseResponse.mockReturnValue(null);
   mocks.getFinisherOffer.mockResolvedValue(offer);
 });
 
@@ -76,6 +85,9 @@ describe("/api/workouts/[id]/finisher", () => {
       userId: "owner-1",
       workoutId: "workout-1",
     });
+    expect(mocks.findOwnerReadOnly).toHaveBeenCalledTimes(1);
+    expect(mocks.resolveOwner).not.toHaveBeenCalled();
+    expect(mocks.productionWritePauseResponse).not.toHaveBeenCalled();
   });
 
   it("rejects invalid action payloads before service mutation", async () => {
@@ -108,6 +120,34 @@ describe("/api/workouts/[id]/finisher", () => {
       action: "pause",
       expectedRevision: 7,
     });
+  });
+
+  it("blocks synchronization before resolving an owner during a production write pause", async () => {
+    mocks.productionWritePauseResponse.mockReturnValue(
+      new Response(
+        JSON.stringify({
+          error: "Production writes are paused",
+          code: "PRODUCTION_WRITE_PAUSED",
+        }),
+        {
+          status: 503,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+
+    const response = await POST(
+      new Request("http://local.test", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "sync", expectedRevision: 7 }),
+      }),
+      context,
+    );
+
+    expect(response.status).toBe(503);
+    expect(mocks.resolveOwner).not.toHaveBeenCalled();
+    expect(mocks.syncFinisher).not.toHaveBeenCalled();
   });
 
   it("returns deterministic service conflict codes", async () => {

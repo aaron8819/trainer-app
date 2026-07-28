@@ -13,6 +13,7 @@ const successDatabase = "trainer_success";
 const ambiguousDatabase = "trainer_ambiguous";
 const foundationMigration = "20260726120000_add_active_macrocycle_foundation";
 const planManagementMigration = "20260727010000_add_plan_management_fields";
+const finisherMigration = "20260728120000_add_finishers_phase_1";
 
 type CommandResult = {
   status: number;
@@ -226,10 +227,12 @@ try {
   const migrations = migrationNames();
   const targetIndex = migrations.indexOf(foundationMigration);
   const planManagementIndex = migrations.indexOf(planManagementMigration);
+  const finisherIndex = migrations.indexOf(finisherMigration);
   if (
     targetIndex < 1 ||
     planManagementIndex !== targetIndex + 1 ||
-    planManagementIndex !== migrations.length - 1
+    finisherIndex !== planManagementIndex + 1 ||
+    finisherIndex !== migrations.length - 1
   ) {
     throw new Error("MULTI_PLAN_TARGET_MIGRATION_ORDER_INVALID");
   }
@@ -397,6 +400,7 @@ try {
       `PLAN_MANAGEMENT_MIGRATION_SHAPE_INVALID:${planManagementShape}`,
     );
   }
+  applyMigrations(successDatabase, [finisherMigration]);
 
   const databaseUrl = `postgresql://trainer:trainer-multi-plan@127.0.0.1:${port}/${successDatabase}`;
   const env = {
@@ -436,6 +440,7 @@ try {
       priorMigrationCount: priorMigrations.length,
       foundationMigration,
       planManagementMigration,
+      finisherMigration,
       exactCandidateBackfill: "passed",
       zeroCandidateRemainsNull: "passed",
       ambiguityRollback: "passed",

@@ -7,6 +7,7 @@ import type {
 } from "@/lib/api/finisher-service";
 
 type FinisherOffer = {
+  serverTime: string;
   routines: FinisherRoutineDto[];
   recommendation: {
     routineVersionId: string;
@@ -36,13 +37,27 @@ function displayEnum(value: string): string {
 
 function remainingMilliseconds(
   execution: FinisherExecutionDto,
-  now: number
+  serverNow: number,
 ): number {
   if (execution.timer.pausedAt) {
     return execution.timer.pausedRemainingMs ?? 0;
   }
   if (!execution.timer.segmentEndsAt) return 0;
-  return Math.max(0, new Date(execution.timer.segmentEndsAt).getTime() - now);
+  return Math.max(
+    0,
+    new Date(execution.timer.segmentEndsAt).getTime() - serverNow,
+  );
+}
+
+export function estimateServerEpochAtMonotonicOrigin(input: {
+  serverTime: string;
+  requestStartedAt: number;
+  responseReceivedAt: number;
+}): number {
+  const midpoint =
+    input.requestStartedAt +
+    (input.responseReceivedAt - input.requestStartedAt) / 2;
+  return new Date(input.serverTime).getTime() - midpoint;
 }
 
 export function FinisherExperience({
@@ -63,17 +78,34 @@ export function FinisherExperience({
   const [declined, setDeclined] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [showSubstitutions, setShowSubstitutions] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
+  const [monotonicNow, setMonotonicNow] = useState(() =>
+    typeof performance === "undefined" ? 0 : performance.now(),
+  );
+  const [serverEpochAtMonotonicOrigin, setServerEpochAtMonotonicOrigin] =
+    useState<number | null>(null);
+  const [announcement, setAnnouncement] = useState("");
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [vibrationEnabled, setVibrationEnabled] = useState(false);
   const priorSegment = useRef<string | null>(null);
+  const priorAnnouncementKey = useRef<string | null>(null);
   const wakeLock = useRef<WakeLockSentinel | null>(null);
+  const submittingRef = useRef(false);
+  const syncAttempts = useRef(new Set<string>());
+  const requestSequence = useRef(0);
+  const latestAppliedRequest = useRef(0);
+  const mounted = useRef(true);
+  const endButtonRef = useRef<HTMLButtonElement | null>(null);
+  const summaryRef = useRef<HTMLElement | null>(null);
+  const focusSummaryAfterMutation = useRef(false);
   const supportsWakeLock =
     typeof navigator !== "undefined" && "wakeLock" in navigator;
   const supportsVibration =
     typeof navigator !== "undefined" && "vibrate" in navigator;
 
   const load = useCallback(async () => {
+    if (submittingRef.current) return;
+    const sequence = ++requestSequence.current;
+    const requestStartedAt = performance.now();
     try {
       const response = await fetch(`/api/workouts/${workoutId}/finisher`, {
         cache: "no-store",
@@ -81,9 +113,20 @@ export function FinisherExperience({
       const body = (await response.json()) as FinisherOffer & {
         error?: string;
       };
+      const responseReceivedAt = performance.now();
       if (!response.ok) {
         throw new Error(body.error ?? "Unable to load finishers");
       }
+      if (!mounted.current || sequence < latestAppliedRequest.current) return;
+      latestAppliedRequest.current = sequence;
+      setServerEpochAtMonotonicOrigin(
+        estimateServerEpochAtMonotonicOrigin({
+          serverTime: body.serverTime,
+          requestStartedAt,
+          responseReceivedAt,
+        }),
+      );
+      setMonotonicNow(responseReceivedAt);
       setOffer(body);
       setError(null);
     } catch (loadError) {
@@ -100,8 +143,15 @@ export function FinisherExperience({
   }, [load]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 250);
-    return () => window.clearInterval(timer);
+    mounted.current = true;
+    const timer = window.setInterval(
+      () => setMonotonicNow(performance.now()),
+      250,
+    );
+    return () => {
+      mounted.current = false;
+      window.clearInterval(timer);
+    };
   }, []);
 
   useEffect(() => {
@@ -189,25 +239,39 @@ export function FinisherExperience({
     priorSegment.current = segment;
   }, [execution?.timer.segment, signalTransition]);
 
-  const remainingMs = execution ? remainingMilliseconds(execution, now) : 0;
   useEffect(() => {
-    if (
-      execution &&
-      execution.timer.segmentEndsAt &&
-      !execution.timer.pausedAt &&
-      execution.timer.segment !== "FINISHED" &&
-      remainingMs === 0
-    ) {
-      const id = window.setTimeout(() => void load(), 50);
-      return () => window.clearTimeout(id);
-    }
-  }, [execution, load, remainingMs]);
+    if (!execution?.timer.segment) return;
+    const movement =
+      execution.timer.segment === "WORK"
+        ? execution.steps[execution.timer.currentStepIndex]?.performedMovement
+        : execution.timer.segment === "RECOVERY"
+          ? "Recovery"
+          : execution.routine.steps[execution.timer.currentStepIndex]?.movementName;
+    const key = `${execution.timer.revision}:${execution.timer.segment}:${execution.timer.currentStepIndex}:${movement}`;
+    if (priorAnnouncementKey.current === key) return;
+    priorAnnouncementKey.current = key;
+    setAnnouncement(
+      `${execution.timer.segment === "PREPARATION" ? "Preparation" : displayEnum(execution.timer.segment)}: ${movement ?? "Finisher"}`,
+    );
+  }, [execution]);
+
+  const alignedServerNow =
+    serverEpochAtMonotonicOrigin == null
+      ? null
+      : serverEpochAtMonotonicOrigin + monotonicNow;
+  const remainingMs =
+    execution && alignedServerNow != null
+      ? remainingMilliseconds(execution, alignedServerNow)
+      : (execution?.timer.pausedRemainingMs ?? 0);
 
   const mutate = useCallback(
     async (body: Record<string, unknown>) => {
-      if (submitting) return;
+      if (submittingRef.current) return false;
+      submittingRef.current = true;
       setSubmitting(true);
       setError(null);
+      const sequence = ++requestSequence.current;
+      const requestStartedAt = performance.now();
       try {
         const response = await fetch(`/api/workouts/${workoutId}/finisher`, {
           method: "POST",
@@ -217,25 +281,79 @@ export function FinisherExperience({
         const result = (await response.json()) as FinisherOffer & {
           error?: string;
         };
+        const responseReceivedAt = performance.now();
         if (!response.ok) {
           throw new Error(result.error ?? "Finisher action failed");
         }
+        if (!mounted.current || sequence < latestAppliedRequest.current) {
+          return false;
+        }
+        latestAppliedRequest.current = sequence;
+        setServerEpochAtMonotonicOrigin(
+          estimateServerEpochAtMonotonicOrigin({
+            serverTime: result.serverTime,
+            requestStartedAt,
+            responseReceivedAt,
+          }),
+        );
+        setMonotonicNow(responseReceivedAt);
         setOffer(result);
         setPreview(null);
         setShowSubstitutions(false);
         setConfirmEnd(false);
+        return true;
       } catch (mutationError) {
-        setError(
-          mutationError instanceof Error
-            ? mutationError.message
-            : "Finisher action failed"
-        );
+        if (mounted.current) {
+          setError(
+            mutationError instanceof Error
+              ? mutationError.message
+              : "Finisher action failed",
+          );
+        }
+        return false;
       } finally {
-        setSubmitting(false);
+        submittingRef.current = false;
+        if (mounted.current) setSubmitting(false);
       }
     },
-    [submitting, workoutId]
+    [workoutId],
   );
+
+  useEffect(() => {
+    if (
+      execution &&
+      !execution.timer.pausedAt &&
+      (execution.timer.syncRequired ||
+        (execution.timer.segment !== "FINISHED" &&
+          execution.timer.segmentEndsAt &&
+          remainingMs === 0))
+    ) {
+      const token =
+        execution.timer.syncToken ??
+        `${execution.id}:${execution.timer.revision}:${execution.timer.segment}:${execution.timer.segmentEndsAt}`;
+      if (syncAttempts.current.has(token)) return;
+      syncAttempts.current.add(token);
+      const id = window.setTimeout(
+        () =>
+          void mutate({
+            action: "sync",
+            expectedRevision: execution.timer.revision,
+          }),
+        50,
+      );
+      return () => window.clearTimeout(id);
+    }
+  }, [execution, mutate, remainingMs]);
+
+  useEffect(() => {
+    if (
+      focusSummaryAfterMutation.current &&
+      (execution?.state === "PARTIAL" || execution?.state === "COMPLETED")
+    ) {
+      focusSummaryAfterMutation.current = false;
+      summaryRef.current?.focus();
+    }
+  }, [execution?.state]);
 
   const filteredRoutines = useMemo(
     () =>
@@ -290,6 +408,8 @@ export function FinisherExperience({
       <section
         aria-label="Finisher summary"
         className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:p-5"
+        ref={summaryRef}
+        tabIndex={-1}
       >
         <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
           Finisher
@@ -321,7 +441,11 @@ export function FinisherExperience({
                 {step.performedMovement !== step.prescribedMovement
                   ? ` (for ${step.prescribedMovement})`
                   : ""}
-                {step.status === "SKIPPED" ? " — skipped" : ""}
+                {step.status === "SKIPPED"
+                  ? " — skipped"
+                  : step.status === "PARTIAL"
+                    ? " — partially performed"
+                    : ""}
               </p>
             ))}
         </div>
@@ -368,6 +492,9 @@ export function FinisherExperience({
           : "Work";
     return (
       <section className="rounded-3xl bg-slate-950 p-5 text-white shadow-xl sm:p-7">
+        <p aria-live="polite" aria-atomic="true" className="sr-only">
+          {announcement}
+        </p>
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-300">
@@ -486,6 +613,7 @@ export function FinisherExperience({
             className="min-h-12 rounded-full border border-rose-500 px-5 text-sm font-semibold text-rose-200"
             disabled={submitting}
             onClick={() => setConfirmEnd(true)}
+            ref={endButtonRef}
             type="button"
           >
             End finisher
@@ -493,39 +621,22 @@ export function FinisherExperience({
         </div>
 
         {confirmEnd ? (
-          <div className="mt-5 rounded-2xl border border-rose-700 bg-rose-950 p-4">
-            <p className="font-semibold">End this finisher as partial?</p>
-            <p className="mt-1 text-sm text-rose-100">
-              Your completed workout will remain completed.
-            </p>
-            <div className="mt-3 flex gap-3">
-              <button
-                className="min-h-11 rounded-full bg-rose-200 px-5 text-sm font-semibold text-rose-950"
-                disabled={submitting}
-                onClick={() =>
-                  void mutate({
-                    ...(execution.startedAt
-                      ? {
-                          action: "end",
-                          expectedRevision: execution.timer.revision,
-                        }
-                      : { action: "dismiss" }),
-                  })
-                }
-                type="button"
-              >
-                {execution.startedAt ? "End partial" : "Dismiss before starting"}
-              </button>
-              <button
-                className="min-h-11 rounded-full border border-slate-600 px-5 text-sm font-semibold"
-                disabled={submitting}
-                onClick={() => setConfirmEnd(false)}
-                type="button"
-              >
-                Continue
-              </button>
-            </div>
-          </div>
+          <EndFinisherDialog
+            submitting={submitting}
+            onCancel={() => {
+              setConfirmEnd(false);
+              window.setTimeout(() => endButtonRef.current?.focus(), 0);
+            }}
+            onConfirm={() => {
+              focusSummaryAfterMutation.current = true;
+              void mutate({
+                action: "end",
+                expectedRevision: execution.timer.revision,
+              }).then((succeeded) => {
+                if (!succeeded) focusSummaryAfterMutation.current = false;
+              });
+            }}
+          />
         ) : null}
 
         <details className="mt-6 text-sm text-slate-300">
@@ -575,7 +686,12 @@ export function FinisherExperience({
             acknowledgeContraindication: acknowledged,
           })
         }
-        onBack={() => void mutate({ action: "dismiss" })}
+        onBack={() =>
+          void mutate({
+            action: "dismiss",
+            expectedRevision: execution.timer.revision,
+          })
+        }
       />
     );
   }
@@ -721,6 +837,81 @@ export function FinisherExperience({
   );
 }
 
+function EndFinisherDialog({
+  submitting,
+  onConfirm,
+  onCancel,
+}: {
+  submitting: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const dialogRef = useRef<HTMLDialogElement | null>(null);
+  const continueRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (typeof dialog.showModal === "function") {
+      if (!dialog.open) dialog.showModal();
+    } else {
+      dialog.setAttribute("open", "");
+    }
+    continueRef.current?.focus();
+    return () => {
+      if (dialog.open && typeof dialog.close === "function") dialog.close();
+    };
+  }, []);
+
+  return (
+    <dialog
+      aria-describedby="end-finisher-description"
+      aria-labelledby="end-finisher-title"
+      aria-modal="true"
+      className="fixed inset-0 m-auto w-[calc(100%-1.5rem)] max-w-md rounded-2xl border border-rose-300 bg-white p-5 text-slate-950 shadow-2xl backdrop:bg-slate-950/70"
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!submitting) onCancel();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && !submitting) {
+          event.preventDefault();
+          onCancel();
+        }
+      }}
+      ref={dialogRef}
+      role="dialog"
+    >
+      <h2 className="text-lg font-semibold" id="end-finisher-title">
+        End this finisher as partial?
+      </h2>
+      <p className="mt-2 text-sm text-slate-600" id="end-finisher-description">
+        Active work completed so far will be preserved. Your completed workout
+        will remain completed.
+      </p>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <button
+          className="min-h-11 rounded-full bg-rose-700 px-5 text-sm font-semibold text-white disabled:opacity-50"
+          disabled={submitting}
+          onClick={onConfirm}
+          type="button"
+        >
+          {submitting ? "Ending…" : "End partial"}
+        </button>
+        <button
+          className="min-h-11 rounded-full border border-slate-300 px-5 text-sm font-semibold"
+          disabled={submitting}
+          onClick={onCancel}
+          ref={continueRef}
+          type="button"
+        >
+          Continue finisher
+        </button>
+      </div>
+    </dialog>
+  );
+}
+
 function RoutinePreview({
   routine,
   acknowledged,
@@ -748,7 +939,7 @@ function RoutinePreview({
       <p className="mt-2 text-sm leading-6 text-slate-600">{routine.description}</p>
       <p className="mt-3 text-sm font-medium text-slate-700">
         {formatDuration(routine.durationSeconds)} · {displayEnum(routine.category)} ·{" "}
-        {displayEnum(routine.difficulty)} · 10-second optional preparation
+        {displayEnum(routine.difficulty)} · {routine.preparationSeconds}-second optional preparation
       </p>
       <ol className="mt-5 space-y-3">
         {routine.steps.map((step) => (

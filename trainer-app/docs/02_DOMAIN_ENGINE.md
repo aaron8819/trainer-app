@@ -12,14 +12,23 @@
   expired segments are not replayed after refresh or backgrounding. Skipping
   resolves the current step and starts the next work segment immediately, with
   no recovery for the skipped step.
+- Authoritative accounting accumulates active preparation separately, active
+  work on each step, active recovery on the execution, and paused time in
+  preparation/work/recovery buckets. Performed duration is exactly active work
+  plus active recovery. Pausing never adds active time, resuming preserves the
+  exact remaining active interval, and ending partial finalizes the current
+  active work slice once.
 
 Recommendation is deterministic. Active `Injury.bodyPart` values are normalized
 through the canonical injury seam; an unrecognized active limitation suppresses
 recommendation, known conflicts are excluded, reliable equipment context would
-filter unavailable routines, lower-body fatigue/impact conflicts and recent
-performance are down-ranked, and stable name/id ordering breaks ties. Manual
-browsing remains available, but a known contraindication requires explicit
-acknowledgement and substitutions must be predefined.
+filter unavailable routines, and recent performance is down-ranked. After a
+demanding lower-body workout, high-impact candidates and non-low-fatigue
+leg-focused candidates are excluded rather than down-ranked; no safe candidate
+means no recommendation. Stable name/id ordering breaks ties. Manual browsing
+remains available, but known contraindications and any unrecognized active
+limitation text require explicit acknowledgement. Substitutions must be
+predefined.
 
 Finishers do not contribute inputs to plan progression, workout-slot lifecycle,
 hypertrophy/strength volume, effective sets, exercise exposure, PRs, or future

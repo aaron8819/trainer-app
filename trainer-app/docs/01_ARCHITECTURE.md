@@ -10,7 +10,12 @@ workout is therefore terminal before a Finisher is offered and remains
 independent if the Finisher is dismissed, partial, corrected, or deleted.
 
 Pure interval recovery and deterministic recommendation policy live in
-`src/lib/engine/finisher-domain.ts`. Routes and client components consume that
+`src/lib/engine/finisher-domain.ts`; shared injury-text interpretation lives in
+`src/lib/engine/limitation-policy.ts` and is used for both recommendation and
+manual selection. GET uses `findOwnerReadOnly()` plus pure timestamp projection
+and never persists a transition. Only the explicit revision-guarded `sync`
+mutation promotes elapsed boundaries, and that mutation shares the production
+write gate with every other Finisher action. Routes and client components consume that
 owner rather than re-authoring timer or safety meaning. The generic seam is
 intentionally limited to `placement=POST_WORKOUT`, `kind=FINISHER`, and
 `protocol=TIMED_INTERVALS`. Those enum dimensions permit a reviewed future

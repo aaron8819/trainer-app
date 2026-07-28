@@ -8,7 +8,7 @@ CREATE TYPE "FinisherDemand" AS ENUM ('LOW', 'MODERATE', 'HIGH');
 CREATE TYPE "FinisherPublicationState" AS ENUM ('ACTIVE', 'RETIRED');
 CREATE TYPE "FinisherExecutionState" AS ENUM ('SELECTED', 'IN_PROGRESS', 'COMPLETED', 'PARTIAL', 'DISMISSED');
 CREATE TYPE "FinisherTimerSegment" AS ENUM ('PREPARATION', 'WORK', 'RECOVERY', 'FINISHED');
-CREATE TYPE "FinisherStepStatus" AS ENUM ('PENDING', 'COMPLETED', 'SKIPPED');
+CREATE TYPE "FinisherStepStatus" AS ENUM ('PENDING', 'PARTIAL', 'COMPLETED', 'SKIPPED');
 
 CREATE TABLE "FinisherRoutine" (
     "id" TEXT NOT NULL,
@@ -81,13 +81,21 @@ CREATE TABLE "FinisherExecution" (
     "segmentEndsAt" TIMESTAMP(3),
     "pausedAt" TIMESTAMP(3),
     "pausedRemainingMs" INTEGER,
-    "totalPausedMs" INTEGER NOT NULL DEFAULT 0,
+    "preparationActiveMs" INTEGER NOT NULL DEFAULT 0,
+    "recoveryActiveMs" INTEGER NOT NULL DEFAULT 0,
+    "preparationPausedMs" INTEGER NOT NULL DEFAULT 0,
+    "workPausedMs" INTEGER NOT NULL DEFAULT 0,
+    "recoveryPausedMs" INTEGER NOT NULL DEFAULT 0,
     "revision" INTEGER NOT NULL DEFAULT 1,
     "difficultyFeedback" INTEGER,
     CONSTRAINT "FinisherExecution_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "FinisherExecution_step_nonnegative" CHECK ("currentStepIndex" >= 0),
     CONSTRAINT "FinisherExecution_pause_nonnegative" CHECK ("pausedRemainingMs" IS NULL OR "pausedRemainingMs" >= 0),
-    CONSTRAINT "FinisherExecution_total_pause_nonnegative" CHECK ("totalPausedMs" >= 0),
+    CONSTRAINT "FinisherExecution_preparation_active_nonnegative" CHECK ("preparationActiveMs" >= 0),
+    CONSTRAINT "FinisherExecution_recovery_active_nonnegative" CHECK ("recoveryActiveMs" >= 0),
+    CONSTRAINT "FinisherExecution_preparation_pause_nonnegative" CHECK ("preparationPausedMs" >= 0),
+    CONSTRAINT "FinisherExecution_work_pause_nonnegative" CHECK ("workPausedMs" >= 0),
+    CONSTRAINT "FinisherExecution_recovery_pause_nonnegative" CHECK ("recoveryPausedMs" >= 0),
     CONSTRAINT "FinisherExecution_revision_positive" CHECK ("revision" > 0),
     CONSTRAINT "FinisherExecution_feedback_range" CHECK ("difficultyFeedback" IS NULL OR "difficultyFeedback" BETWEEN 1 AND 10)
 );
@@ -100,10 +108,10 @@ CREATE TABLE "FinisherExecutionStep" (
     "status" "FinisherStepStatus" NOT NULL DEFAULT 'PENDING',
     "startedAt" TIMESTAMP(3),
     "resolvedAt" TIMESTAMP(3),
-    "actualWorkMs" INTEGER,
+    "actualWorkMs" INTEGER NOT NULL DEFAULT 0,
     "note" TEXT,
     CONSTRAINT "FinisherExecutionStep_pkey" PRIMARY KEY ("id"),
-    CONSTRAINT "FinisherExecutionStep_actual_work_nonnegative" CHECK ("actualWorkMs" IS NULL OR "actualWorkMs" >= 0)
+    CONSTRAINT "FinisherExecutionStep_actual_work_nonnegative" CHECK ("actualWorkMs" >= 0)
 );
 
 CREATE UNIQUE INDEX "FinisherRoutine_code_key" ON "FinisherRoutine"("code");

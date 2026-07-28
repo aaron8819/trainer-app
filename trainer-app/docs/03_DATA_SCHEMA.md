@@ -10,10 +10,14 @@ Migration `20260728120000_add_finishers_phase_1` adds:
   Database triggers reject definition updates/deletes; executions use restrictive
   foreign keys so later catalog versions cannot rewrite history.
 - `FinisherExecution`: one database-unique row per `Workout`, explicit lifecycle,
-  interval timestamps, pause remainder/accounting, transition revision, and
-  optional difficulty feedback.
+  interval timestamps, exact pause remainder, separate active preparation and
+  recovery totals, per-segment paused totals, transition revision, and optional
+  difficulty feedback. Performed duration is active work plus active recovery;
+  preparation and all paused time are excluded.
 - `FinisherExecutionStep`: prescribed step identity, optional predefined
-  performed alternative, resolved status/timestamps, and actual work duration.
+  performed alternative, resolved status/timestamps, and accumulated active
+  work duration. `PARTIAL` distinguishes current work preserved by an early end
+  from `COMPLETED`, `SKIPPED`, and untouched `PENDING` work.
 
 The lifecycle is `SELECTED -> IN_PROGRESS -> COMPLETED|PARTIAL`; selection may be
 deleted when dismissed before work starts. `SELECTED` has no `startedAt` and is
@@ -21,6 +25,11 @@ excluded from performed history. The workout foreign key is restrictive and
 contains no cascade or reverse lifecycle field, so Finisher mutations cannot
 change workout completion. All schema changes are additive and existing workout
 history is untouched.
+
+The restrictive workout foreign key is also the history contract: workout
+deletion checks for any attached Finisher execution before child deletion and
+returns a deterministic conflict rather than cascading or leaking a database
+foreign-key error.
 
 Owner: Aaron  
 Last reviewed: 2026-03-19  

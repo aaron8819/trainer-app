@@ -5,18 +5,33 @@
 Both methods resolve the canonical owner and require an owner-scoped completed
 workout. GET returns active immutable routine details, derived durations,
 per-routine limitation warnings, one deterministic recommendation (or a safe
-unavailable reason), and the selected/active/historical execution. Reads also
-project elapsed interval timestamps so refresh and background recovery land on
-the current segment.
+unavailable reason), `serverTime`, and the selected/active/historical execution.
+GET is a pure read: it may project elapsed interval timestamps and step outcomes
+in the response so refresh and background recovery land on the current segment,
+but it never creates, updates, completes, resolves, or deletes Finisher state.
+Projected responses expose `timer.syncRequired` and a stable boundary token.
 
 POST validates a strict discriminated action contract from
 `src/lib/validation.ts`: `select`, `start`, `dismiss`, `pause`, `resume`, `skip`,
-`substitute`, `end`, and `feedback`. Started-execution uniqueness is protected
+`substitute`, `end`, `feedback`, and explicit `sync`. `sync` and `dismiss`
+require the current execution revision. Every POST action is registered as
+`finisher_execution` and is blocked by `TRAINER_WRITE_PAUSE=enabled`.
+Started-execution uniqueness is protected
 by the database and serializable selection/start transactions. Duplicate starts
 for the same immutable version are idempotent; incompatible or stale transitions
 return deterministic `409` codes. Mutable execution actions require the current
 execution revision. Client input never supplies ownership, workout completion,
 elapsed duration, routine metadata, step order, or arbitrary substitutions.
+
+Manual selection and recommendation both consume canonical limitation
+resolution. Unknown active text blocks recommendation and requires explicit
+acknowledgment before manual selection; known routine conflicts require the same
+acknowledgment.
+
+`POST /api/workouts/delete` rejects a workout with any attached Finisher
+execution with HTTP `409` and code `WORKOUT_FINISHER_HISTORY_CONFLICT`. The
+transaction rolls back its workout revision claim, leaves both records
+unchanged, and does not expose Prisma or foreign-key details.
 
 Owner: Aaron  
 Last reviewed: 2026-03-19

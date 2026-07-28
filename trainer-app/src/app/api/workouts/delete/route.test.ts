@@ -97,7 +97,10 @@ describe("POST /api/workouts/delete", () => {
     );
 
     expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toEqual({ error: "Workout not found" });
+    await expect(response.json()).resolves.toEqual({
+      error: "Workout not found",
+      code: "WORKOUT_NOT_FOUND",
+    });
     expect(mocks.workoutDelete).not.toHaveBeenCalled();
   });
 
@@ -170,6 +173,7 @@ describe("POST /api/workouts/delete", () => {
     await expect(response.json()).resolves.toEqual({
       error:
         "Cannot delete a historical workout from a completed mesocycle after closeout finalized lifecycle history.",
+      code: "WORKOUT_DELETE_CONFLICT",
     });
     expect(mocks.workoutExerciseFindMany).not.toHaveBeenCalled();
     expect(mocks.workoutDelete).not.toHaveBeenCalled();
@@ -208,4 +212,35 @@ describe("POST /api/workouts/delete", () => {
       })
     );
   });
+
+  it.each(["SELECTED", "IN_PROGRESS", "PARTIAL", "COMPLETED"])(
+    "rejects deletion atomically when %s Finisher truth is attached",
+    async (state) => {
+      mocks.workoutFindFirst.mockResolvedValue({
+        id: "workout-1",
+        mesocycleId: null,
+        mesocycle: null,
+        finisherExecution: { id: "finisher-1", state },
+      });
+
+      const response = await POST(
+        new Request("http://localhost/api/workouts/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workoutId: "workout-1",
+            expectedRevision: 1,
+          }),
+        }),
+      );
+
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toEqual({
+        error: "Workout cannot be deleted because Finisher history is attached.",
+        code: "WORKOUT_FINISHER_HISTORY_CONFLICT",
+      });
+      expect(mocks.workoutExerciseFindMany).not.toHaveBeenCalled();
+      expect(mocks.workoutDelete).not.toHaveBeenCalled();
+    },
+  );
 });

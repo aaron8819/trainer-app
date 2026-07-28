@@ -1,3 +1,5 @@
+import { readdirSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   APPLIED_SCHEMA_EXPECTATIONS,
@@ -216,6 +218,17 @@ function pendingObjectIndex(migrationIndex: number, kind: string): number {
 }
 
 describe("migration integrity", () => {
+  it("declares the checked-in migration directories in exact filesystem order", () => {
+    const directories = readdirSync(resolve("prisma/migrations"), {
+      withFileTypes: true,
+    })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
+
+    expect(directories).toEqual([...EXPECTED_MIGRATION_CHAIN]);
+  });
+
   it("accepts the applied prefix and the exact expected pending migration", () => {
     const result = report();
     expect(result.chain).toMatchObject({

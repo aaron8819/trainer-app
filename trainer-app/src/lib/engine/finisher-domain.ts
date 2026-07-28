@@ -1,3 +1,5 @@
+import { resolveCanonicalLimitations } from "./limitation-policy";
+
 export type TimedFinisherStep = {
   id: string;
   orderIndex: number;
@@ -19,7 +21,13 @@ export type FinisherTimerState = {
 export type FinisherTimerProjection = FinisherTimerState & {
   completedSteps: Array<{ stepIndex: number; resolvedAt: Date }>;
   startedSteps: Array<{ stepIndex: number; startedAt: Date }>;
+  activeSlices: Array<{
+    segment: "PREPARATION" | "WORK" | "RECOVERY";
+    stepIndex: number;
+    activeMs: number;
+  }>;
   completedAt: Date | null;
+  syncRequired: boolean;
 };
 
 export function deriveTimedFinisherDurationSeconds(input: {
@@ -82,7 +90,9 @@ export function projectFinisherTimer(input: {
     ...input.timer,
     completedSteps: [],
     startedSteps: [],
+    activeSlices: [],
     completedAt: input.timer.state === "COMPLETED" ? input.timer.segmentEndsAt : null,
+    syncRequired: false,
   };
 
   if (
@@ -113,6 +123,14 @@ export function projectFinisherTimer(input: {
     }
 
     if (projected.timerSegment === "PREPARATION") {
+      projected.activeSlices.push({
+        segment: "PREPARATION",
+        stepIndex: projected.currentStepIndex,
+        activeMs: projected.segmentStartedAt
+          ? Math.max(0, boundary.getTime() - projected.segmentStartedAt.getTime())
+          : 0,
+      });
+      projected.syncRequired = true;
       projected.timerSegment = "WORK";
       projected.state = "IN_PROGRESS";
       projected.startedAt ??= boundary;
@@ -126,6 +144,14 @@ export function projectFinisherTimer(input: {
     }
 
     if (projected.timerSegment === "WORK") {
+      projected.activeSlices.push({
+        segment: "WORK",
+        stepIndex: projected.currentStepIndex,
+        activeMs: projected.segmentStartedAt
+          ? Math.max(0, boundary.getTime() - projected.segmentStartedAt.getTime())
+          : 0,
+      });
+      projected.syncRequired = true;
       projected.completedSteps.push({
         stepIndex: projected.currentStepIndex,
         resolvedAt: boundary,
@@ -165,6 +191,14 @@ export function projectFinisherTimer(input: {
     }
 
     const hasNext = projected.currentStepIndex < input.steps.length - 1;
+    projected.activeSlices.push({
+      segment: "RECOVERY",
+      stepIndex: projected.currentStepIndex,
+      activeMs: projected.segmentStartedAt
+        ? Math.max(0, boundary.getTime() - projected.segmentStartedAt.getTime())
+        : 0,
+    });
+    projected.syncRequired = true;
     if (!hasNext) {
       projected.timerSegment = "FINISHED";
       projected.state = "COMPLETED";
@@ -185,28 +219,6 @@ export function projectFinisherTimer(input: {
   }
 
   return projected;
-}
-
-const LIMITATION_ALIASES: Record<string, string> = {
-  ankle: "ankle",
-  ankles: "ankle",
-  hip: "hip",
-  hips: "hip",
-  knee: "knee",
-  knees: "knee",
-  "low back": "lower_back",
-  "lower back": "lower_back",
-  lumbar: "lower_back",
-  neck: "neck",
-  shoulder: "shoulder",
-  shoulders: "shoulder",
-  wrist: "wrist",
-  wrists: "wrist",
-};
-
-export function normalizeFinisherLimitation(value: string): string | null {
-  const normalized = value.trim().toLowerCase().replace(/[_-]+/g, " ");
-  return LIMITATION_ALIASES[normalized] ?? null;
 }
 
 export type FinisherRecommendationCandidate = {
@@ -232,19 +244,17 @@ export function recommendFinisher(input: {
   recentlyPerformedRoutineVersionIds: string[];
   availableEquipment: string[] | null;
 }): { recommendation: FinisherRecommendation; blockedReason: string | null } {
-  const normalizedLimitations: string[] = [];
-  for (const limitation of input.activeLimitations) {
-    const recognized = normalizeFinisherLimitation(limitation);
-    if (!recognized) {
-      return {
-        recommendation: null,
-        blockedReason:
-          "A current limitation could not be matched safely. Browse manually instead.",
-      };
-    }
-    normalizedLimitations.push(recognized);
+  const limitations = resolveCanonicalLimitations(input.activeLimitations);
+  if (limitations.unrecognizedTexts.length > 0) {
+    return {
+      recommendation: null,
+      blockedReason: `These active limitations could not be matched safely: ${limitations.unrecognizedTexts.join(
+        ", ",
+      )}. Browse manually and review the warning before choosing.`,
+    };
   }
 
+  const recognizedLimitations = new Set<string>(limitations.recognizedTags);
   const availableEquipment = input.availableEquipment
     ? new Set(input.availableEquipment.map((item) => item.toUpperCase()))
     : null;
@@ -252,7 +262,7 @@ export function recommendFinisher(input: {
   const eligible = input.routines
     .filter(
       (routine) =>
-        !routine.limitationTags.some((tag) => normalizedLimitations.includes(tag))
+        !routine.limitationTags.some((tag) => recognizedLimitations.has(tag)),
     )
     .filter(
       (routine) =>
@@ -261,18 +271,20 @@ export function recommendFinisher(input: {
           availableEquipment.has(item.toUpperCase())
         )
     )
+    .filter(
+      (routine) =>
+        !input.lowerBodyDemandingWorkout ||
+        (routine.impactLevel !== "HIGH" &&
+          !(
+            routine.bodyRegions.includes("legs") &&
+            routine.fatigueCost !== "LOW"
+          )),
+    )
     .map((routine) => {
       let score = 0;
       if (routine.fatigueCost === "LOW") score += 4;
       if (routine.fatigueCost === "MODERATE") score += 2;
       if (routine.impactLevel === "LOW") score += 3;
-      if (
-        input.lowerBodyDemandingWorkout &&
-        (routine.impactLevel === "HIGH" ||
-          routine.bodyRegions.includes("legs"))
-      ) {
-        score -= 20;
-      }
       if (recent.has(routine.id)) score -= 8;
       return { routine, score };
     })
@@ -291,11 +303,15 @@ export function recommendFinisher(input: {
     };
   }
 
+  const impact = selected.routine.impactLevel.toLowerCase();
+  const fatigue = selected.routine.fatigueCost.toLowerCase();
   const reason = input.lowerBodyDemandingWorkout
-    ? "Low-impact choice that avoids adding demanding lower-body work."
+    ? `${displayDemand(impact)} impact and ${displayDemand(
+        fatigue,
+      )} fatigue fit a demanding lower-body workout without adding an unsafe conditioning conflict.`
     : recent.has(selected.routine.id)
-      ? "Best available low-fatigue option for this completed workout."
-      : "Low-fatigue option that has not been performed recently.";
+      ? `Best available ${displayDemand(fatigue)}-fatigue option for this completed workout.`
+      : `${displayDemand(fatigue)}-fatigue option that has not been performed recently.`;
   return {
     recommendation: {
       routineVersionId: selected.routine.id,
@@ -303,4 +319,8 @@ export function recommendFinisher(input: {
     },
     blockedReason: null,
   };
+}
+
+function displayDemand(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }

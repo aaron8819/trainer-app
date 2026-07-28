@@ -1,6 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FinisherExperience } from "./FinisherExperience";
+import {
+  estimateServerEpochAtMonotonicOrigin,
+  FinisherExperience,
+} from "./FinisherExperience";
 import type {
   FinisherExecutionDto,
   FinisherRoutineDto,
@@ -42,6 +45,7 @@ const routine: FinisherRoutineDto = {
 
 function offer(execution: FinisherExecutionDto | null = null) {
   return {
+    serverTime: "2026-07-28T12:00:25.000Z",
     routines: [routine],
     recommendation: {
       routineVersionId: routine.id,
@@ -72,6 +76,8 @@ function execution(
       pausedAt: null,
       pausedRemainingMs: null,
       revision: 3,
+      syncRequired: false,
+      syncToken: null,
     },
     resolvedStepCount: 1,
     completedStepCount: 0,
@@ -92,12 +98,21 @@ function execution(
         performedAlternativeId: null,
       },
     ],
+    timing: {
+      preparationActiveMs: 10_000,
+      activeWorkMs: 25_000,
+      activeRecoveryMs: 0,
+      preparationPausedMs: 0,
+      workPausedMs: 0,
+      recoveryPausedMs: 0,
+    },
     ...overrides,
   };
 }
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -150,6 +165,47 @@ describe("FinisherExperience", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("labels a substituted current step as partially performed without claiming completion", async () => {
+    const partial = execution({
+      resolvedStepCount: 1,
+      completedStepCount: 0,
+      skippedStepCount: 0,
+      substitutionCount: 1,
+      steps: [
+        {
+          id: "step-execution-1",
+          orderIndex: 0,
+          prescribedMovement: "Dead Bug",
+          performedMovement: "Heel Tap Dead Bug",
+          status: "PARTIAL",
+          startedAt: "2026-07-28T12:00:10.000Z",
+          resolvedAt: "2026-07-28T12:00:25.000Z",
+          actualWorkMs: 15_000,
+          performedAlternativeId:
+            "55555555-5555-4555-8555-555555555555",
+        },
+      ],
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => offer(partial),
+      }),
+    );
+
+    render(<FinisherExperience workoutId="workout-1" />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          /Heel Tap Dead Bug \(for Dead Bug\) — partially performed/,
+        ),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.getByText(/0 completed · 0 skipped · 1 substituted/)).toBeInTheDocument();
+  });
+
   it("restores a paused timer with Resume and End Finisher recovery actions", async () => {
     const paused = execution({
       state: "IN_PROGRESS",
@@ -165,6 +221,8 @@ describe("FinisherExperience", () => {
         pausedAt: "2026-07-28T12:00:25.000Z",
         pausedRemainingMs: 25_000,
         revision: 4,
+        syncRequired: false,
+        syncToken: null,
       },
       steps: [
         {
@@ -175,7 +233,7 @@ describe("FinisherExperience", () => {
           status: "PENDING",
           startedAt: "2026-07-28T12:00:10.000Z",
           resolvedAt: null,
-          actualWorkMs: null,
+          actualWorkMs: 0,
           performedAlternativeId: null,
         },
       ],
@@ -194,5 +252,221 @@ describe("FinisherExperience", () => {
     );
     expect(screen.getByRole("button", { name: "End finisher" })).toBeInTheDocument();
     expect(screen.getByLabelText("25 seconds remaining")).toBeInTheDocument();
+  });
+
+  it("aligns display time to server time independently of wall-clock skew", () => {
+    const origin = estimateServerEpochAtMonotonicOrigin({
+      serverTime: "2026-07-28T12:00:10.000Z",
+      requestStartedAt: 1_000,
+      responseReceivedAt: 1_200,
+    });
+    expect(origin + 1_100).toBe(
+      new Date("2026-07-28T12:00:10.000Z").getTime(),
+    );
+    expect(origin + 6_100).toBe(
+      new Date("2026-07-28T12:00:15.000Z").getTime(),
+    );
+  });
+
+  it.each([
+    ["materially ahead", "2036-07-28T12:00:00.000Z"],
+    ["materially behind", "2016-07-28T12:00:00.000Z"],
+  ])("ignores a client wall clock that is %s", (_label, clientTime) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(clientTime);
+    const origin = estimateServerEpochAtMonotonicOrigin({
+      serverTime: "2026-07-28T12:00:10.000Z",
+      requestStartedAt: 1_000,
+      responseReceivedAt: 1_200,
+    });
+    expect(origin + 1_100).toBe(
+      new Date("2026-07-28T12:00:10.000Z").getTime(),
+    );
+  });
+
+  it("renders the routine's actual preparation duration", async () => {
+    const twelveSecondPreparation = {
+      ...routine,
+      preparationSeconds: 12,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          ...offer(),
+          routines: [twelveSecondPreparation],
+        }),
+      }),
+    );
+    render(<FinisherExperience workoutId="workout-1" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Preview" }));
+    expect(
+      screen.getByText(/12-second optional preparation/),
+    ).toBeInTheDocument();
+  });
+
+  it("uses a labeled modal dialog, supports Escape, and restores trigger focus", async () => {
+    const running = execution({
+      state: "IN_PROGRESS",
+      endedAt: null,
+      resolvedStepCount: 0,
+      skippedStepCount: 0,
+      timer: {
+        segment: "WORK",
+        currentStepIndex: 0,
+        segmentStartedAt: "2026-07-28T12:00:10.000Z",
+        segmentEndsAt: "2026-07-28T12:00:50.000Z",
+        pausedAt: null,
+        pausedRemainingMs: null,
+        revision: 4,
+        syncRequired: false,
+        syncToken: null,
+      },
+      steps: [
+        {
+          id: "step-execution-1",
+          orderIndex: 0,
+          prescribedMovement: "Dead Bug",
+          performedMovement: "Dead Bug",
+          status: "PENDING",
+          startedAt: "2026-07-28T12:00:10.000Z",
+          resolvedAt: null,
+          actualWorkMs: 0,
+          performedAlternativeId: null,
+        },
+      ],
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => offer(running),
+      }),
+    );
+    render(<FinisherExperience workoutId="workout-1" />);
+    const trigger = await screen.findByRole("button", { name: "End finisher" });
+
+    fireEvent.click(trigger);
+    const dialog = screen.getByRole("dialog", {
+      name: "End this finisher as partial?",
+    });
+    expect(dialog).toHaveAttribute("aria-describedby", "end-finisher-description");
+    expect(
+      screen.getByRole("button", { name: "Continue finisher" }),
+    ).toHaveFocus();
+
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
+  it("sends at most one synchronization request for one revision boundary while the response is slow", async () => {
+    const projected = execution({
+      state: "IN_PROGRESS",
+      endedAt: null,
+      timer: {
+        segment: "RECOVERY",
+        currentStepIndex: 0,
+        segmentStartedAt: "2026-07-28T12:00:50.000Z",
+        segmentEndsAt: "2026-07-28T12:01:10.000Z",
+        pausedAt: null,
+        pausedRemainingMs: null,
+        revision: 7,
+        syncRequired: true,
+        syncToken: "execution:7:WORK:boundary",
+      },
+    });
+    let resolveSync: ((value: unknown) => void) | undefined;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => offer(projected),
+      })
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveSync = resolve;
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<FinisherExperience workoutId="workout-1" />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => window.setTimeout(resolve, 350));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchMock.mock.calls[1]![1]!.body as string)).toEqual({
+      action: "sync",
+      expectedRevision: 7,
+    });
+
+    resolveSync?.({
+      ok: true,
+      json: async () =>
+        offer(
+          execution({
+            ...projected,
+            timer: {
+              ...projected.timer,
+              revision: 8,
+              syncRequired: false,
+              syncToken: null,
+            },
+          }),
+        ),
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument(),
+    );
+  });
+
+  it("synchronizes a terminal projection when the read model requires persistence", async () => {
+    const projected = execution({
+      state: "COMPLETED",
+      completedAt: "2026-07-28T12:01:10.000Z",
+      endedAt: null,
+      timer: {
+        segment: "FINISHED",
+        currentStepIndex: 0,
+        segmentStartedAt: "2026-07-28T12:01:10.000Z",
+        segmentEndsAt: "2026-07-28T12:01:10.000Z",
+        pausedAt: null,
+        pausedRemainingMs: null,
+        revision: 7,
+        syncRequired: true,
+        syncToken: "execution:7:FINISHED:boundary",
+      },
+    });
+    const persisted = execution({
+      ...projected,
+      timer: {
+        ...projected.timer,
+        revision: 8,
+        syncRequired: false,
+        syncToken: null,
+      },
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => offer(projected),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => offer(persisted),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<FinisherExperience workoutId="workout-1" />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(JSON.parse(fetchMock.mock.calls[1]![1]!.body as string)).toEqual({
+      action: "sync",
+      expectedRevision: 7,
+    });
+    await new Promise((resolve) => window.setTimeout(resolve, 150));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

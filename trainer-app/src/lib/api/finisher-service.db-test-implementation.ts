@@ -4,6 +4,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import {
   endFinisher,
+  getFinisherOffer,
   pauseFinisher,
   resumeFinisher,
   selectFinisher,
@@ -11,7 +12,12 @@ import {
   startFinisher,
   substituteFinisherStep,
   syncFinisher,
+  dismissSelectedFinisher,
 } from "./finisher-service";
+import {
+  DeleteWorkoutError,
+  deleteOwnedWorkout,
+} from "./workout-deletion";
 
 export function registerFinisherServiceDatabaseTests(databaseUrl: string): void {
   describe("Finisher service (PostgreSQL)", () => {
@@ -21,6 +27,8 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
     let foreignOwnerId: string;
     let routineVersionId: string;
     let alternativeId: string;
+    let preparationRoutineVersionId: string;
+    let shoulderRoutineVersionId: string;
 
     const now = new Date("2026-07-28T12:00:00.000Z");
 
@@ -93,6 +101,68 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       });
       routineVersionId = routine.versions[0]!.id;
       alternativeId = routine.versions[0]!.steps[0]!.alternatives[0]!.id;
+      const preparationRoutine = await client.finisherRoutine.create({
+        data: {
+          code: `finisher-preparation-db-${suffix}`,
+          versions: {
+            create: {
+              version: 1,
+              name: `Preparation Finisher DB ${suffix}`,
+              description: "Disposable preparation and full-duration fixture",
+              category: "CORE",
+              difficulty: "EASY",
+              fatigueCost: "LOW",
+              impactLevel: "LOW",
+              preparationSeconds: 10,
+              includesFinalRecovery: true,
+              equipmentRequirements: ["BODYWEIGHT"],
+              bodyRegions: ["core"],
+              limitationTags: [],
+              steps: {
+                create: Array.from({ length: 10 }, (_, orderIndex) => ({
+                  orderIndex,
+                  movementName: `Timed Hold ${orderIndex + 1}`,
+                  workSeconds: 40,
+                  recoverySeconds: 20,
+                })),
+              },
+            },
+          },
+        },
+        include: { versions: true },
+      });
+      preparationRoutineVersionId = preparationRoutine.versions[0]!.id;
+      const shoulderRoutine = await client.finisherRoutine.create({
+        data: {
+          code: `finisher-shoulder-db-${suffix}`,
+          versions: {
+            create: {
+              version: 1,
+              name: `Shoulder Conflict Finisher DB ${suffix}`,
+              description: "Disposable limitation fixture",
+              category: "CORE",
+              difficulty: "EASY",
+              fatigueCost: "LOW",
+              impactLevel: "LOW",
+              preparationSeconds: 0,
+              includesFinalRecovery: false,
+              equipmentRequirements: ["BODYWEIGHT"],
+              bodyRegions: ["shoulders"],
+              limitationTags: ["shoulder"],
+              steps: {
+                create: {
+                  orderIndex: 0,
+                  movementName: "Shoulder Hold",
+                  workSeconds: 20,
+                  recoverySeconds: 0,
+                },
+              },
+            },
+          },
+        },
+        include: { versions: true },
+      });
+      shoulderRoutineVersionId = shoulderRoutine.versions[0]!.id;
     });
 
     afterAll(async () => {
@@ -197,6 +267,76 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       ).toBe(0);
     });
 
+    it("uses one canonical limitation interpretation for recommendation and manual selection", async () => {
+      const injury = await client.injury.create({
+        data: {
+          userId: ownerId,
+          bodyPart: "left shoulder",
+          severity: 2,
+          isActive: true,
+        },
+      });
+      try {
+        const knownWorkout = await createWorkout("COMPLETED");
+        await expect(
+          selectFinisher({
+            userId: ownerId,
+            workoutId: knownWorkout.id,
+            routineVersionId: shoulderRoutineVersionId,
+            now,
+          }),
+        ).rejects.toMatchObject({
+          code: "FINISHER_CONTRAINDICATION_ACK_REQUIRED",
+          status: 409,
+        });
+        const acknowledged = await selectFinisher({
+          userId: ownerId,
+          workoutId: knownWorkout.id,
+          routineVersionId: shoulderRoutineVersionId,
+          acknowledgeContraindication: true,
+          now,
+        });
+        await dismissSelectedFinisher({
+          userId: ownerId,
+          workoutId: knownWorkout.id,
+          expectedRevision: acknowledged.revision,
+        });
+
+        await client.injury.update({
+          where: { id: injury.id },
+          data: { bodyPart: "shoulder, mystery tendon" },
+        });
+        const unknownWorkout = await createWorkout("COMPLETED");
+        const offer = await getFinisherOffer({
+          userId: ownerId,
+          workoutId: unknownWorkout.id,
+          now,
+        });
+        expect(offer.recommendation).toBeNull();
+        expect(offer.recommendationUnavailableReason).toContain(
+          "mystery tendon",
+        );
+        expect(
+          offer.routines.find((routine) => routine.id === routineVersionId)
+            ?.warnings,
+        ).toEqual(
+          expect.arrayContaining([expect.stringContaining("mystery tendon")]),
+        );
+        await expect(
+          selectFinisher({
+            userId: ownerId,
+            workoutId: unknownWorkout.id,
+            routineVersionId,
+            now,
+          }),
+        ).rejects.toMatchObject({
+          code: "FINISHER_CONTRAINDICATION_ACK_REQUIRED",
+        });
+      } finally {
+        await client.injury.delete({ where: { id: injury.id } });
+      }
+    });
+
     it("retains prescribed and performed truth and never changes workout completion", async () => {
       const workout = await createWorkout("COMPLETED");
       const started = await startFinisher({
@@ -275,9 +415,9 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       expect(
         await client.finisherExecution.findUniqueOrThrow({
           where: { workoutId: workout.id },
-          select: { totalPausedMs: true },
+          select: { workPausedMs: true },
         })
-      ).toEqual({ totalPausedMs: 30_000 });
+      ).toEqual({ workPausedMs: 30_000 });
       expect(resumed.timer.segmentEndsAt).toBe(
         new Date(resumedAt.getTime() + 30_000).toISOString()
       );
@@ -291,16 +431,441 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       const completedOffer = await syncFinisher({
         userId: ownerId,
         workoutId: workout.id,
+        expectedRevision: skipped.timer.revision,
         now: new Date(resumedAt.getTime() + 130_000),
       });
-      expect(completedOffer.execution).toMatchObject({
+      expect(completedOffer).toMatchObject({
         state: "COMPLETED",
         completedStepCount: 1,
         skippedStepCount: 1,
       });
-      expect(completedOffer.execution?.timer.revision).toBeGreaterThan(
+      expect(completedOffer.timer.revision).toBeGreaterThan(
         skipped.timer.revision
       );
+    });
+
+    it("keeps GET projection read-only across an elapsed boundary", async () => {
+      const workout = await createWorkout("COMPLETED");
+      const started = await startFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        routineVersionId,
+        now,
+      });
+      const before = await client.finisherExecution.findUniqueOrThrow({
+        where: { workoutId: workout.id },
+        include: { stepExecutions: true },
+      });
+
+      const projected = await getFinisherOffer({
+        userId: ownerId,
+        workoutId: workout.id,
+        now: new Date(now.getTime() + 45_000),
+      });
+      const after = await client.finisherExecution.findUniqueOrThrow({
+        where: { workoutId: workout.id },
+        include: { stepExecutions: true },
+      });
+
+      expect(after).toEqual(before);
+      expect(projected.execution).toMatchObject({
+        state: "IN_PROGRESS",
+        completedStepCount: 1,
+        actualDurationSeconds: 45,
+        timer: {
+          segment: "RECOVERY",
+          revision: started.revision,
+          syncRequired: true,
+        },
+      });
+    });
+
+    it("does not subtract a preparation pause from 600 seconds of performed time", async () => {
+      const workout = await createWorkout("COMPLETED");
+      const started = await startFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        routineVersionId: preparationRoutineVersionId,
+        now,
+      });
+      const paused = await pauseFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        expectedRevision: started.revision,
+        now: new Date(now.getTime() + 5_000),
+      });
+      const resumed = await resumeFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        expectedRevision: paused.timer.revision,
+        now: new Date(now.getTime() + 35_000),
+      });
+      const completed = await syncFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        expectedRevision: resumed.timer.revision,
+        now: new Date(now.getTime() + 640_000),
+      });
+
+      expect(completed).toMatchObject({
+        state: "COMPLETED",
+        completedStepCount: 10,
+        actualDurationSeconds: 600,
+        timing: {
+          preparationActiveMs: 10_000,
+          activeWorkMs: 400_000,
+          activeRecoveryMs: 200_000,
+          preparationPausedMs: 30_000,
+        },
+      });
+    });
+
+    it("keeps 15 seconds of active work at 15 seconds through a 30-second paused partial ending", async () => {
+      const workout = await createWorkout("COMPLETED");
+      const started = await startFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        routineVersionId,
+        now,
+      });
+      const paused = await pauseFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        expectedRevision: started.revision,
+        now: new Date(now.getTime() + 15_000),
+      });
+      const partial = await endFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        expectedRevision: paused.timer.revision,
+        now: new Date(now.getTime() + 45_000),
+      });
+
+      expect(partial).toMatchObject({
+        state: "PARTIAL",
+        actualDurationSeconds: 15,
+        resolvedStepCount: 1,
+        completedStepCount: 0,
+        timing: {
+          activeWorkMs: 15_000,
+          workPausedMs: 30_000,
+        },
+      });
+      expect(partial.steps[0]).toMatchObject({
+        status: "PARTIAL",
+        actualWorkMs: 15_000,
+      });
+      expect(partial.steps[1]).toMatchObject({
+        status: "PENDING",
+        actualWorkMs: 0,
+      });
+    });
+
+    it("preserves a predefined substitution as partially performed truth", async () => {
+      const workout = await createWorkout("COMPLETED");
+      const started = await startFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        routineVersionId,
+        now,
+      });
+      const substituted = await substituteFinisherStep({
+        userId: ownerId,
+        workoutId: workout.id,
+        expectedRevision: started.revision,
+        alternativeId,
+        now: new Date(now.getTime() + 5_000),
+      });
+      const partial = await endFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        expectedRevision: substituted.timer.revision,
+        now: new Date(now.getTime() + 15_000),
+      });
+      expect(partial).toMatchObject({
+        state: "PARTIAL",
+        resolvedStepCount: 1,
+        completedStepCount: 0,
+        skippedStepCount: 0,
+        substitutionCount: 1,
+      });
+      expect(partial.steps[0]).toMatchObject({
+        prescribedMovement: "Prescribed Hold",
+        performedMovement: "Allowed Hold",
+        status: "PARTIAL",
+        actualWorkMs: 15_000,
+      });
+      expect(partial.steps[1]).toMatchObject({
+        status: "PENDING",
+        actualWorkMs: 0,
+      });
+    });
+
+    it("retains resumed work exactly and skips only active work accumulated across pauses", async () => {
+      const workout = await createWorkout("COMPLETED");
+      const started = await startFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        routineVersionId,
+        now,
+      });
+      const paused = await pauseFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        expectedRevision: started.revision,
+        now: new Date(now.getTime() + 15_000),
+      });
+      const resumedAt = new Date(now.getTime() + 45_000);
+      const resumed = await resumeFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        expectedRevision: paused.timer.revision,
+        now: resumedAt,
+      });
+      expect(resumed.timer.segmentEndsAt).toBe(
+        new Date(resumedAt.getTime() + 25_000).toISOString(),
+      );
+      const skipped = await skipFinisherStep({
+        userId: ownerId,
+        workoutId: workout.id,
+        expectedRevision: resumed.timer.revision,
+        now: new Date(resumedAt.getTime() + 5_000),
+      });
+      expect(skipped.steps[0]).toMatchObject({
+        status: "SKIPPED",
+        actualWorkMs: 20_000,
+      });
+      expect(skipped.timing).toMatchObject({
+        activeWorkMs: 20_000,
+        workPausedMs: 30_000,
+      });
+    });
+
+    it("accounts paused recovery separately from active recovery", async () => {
+      const workout = await createWorkout("COMPLETED");
+      const started = await startFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        routineVersionId,
+        now,
+      });
+      const recovery = await syncFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        expectedRevision: started.revision,
+        now: new Date(now.getTime() + 40_000),
+      });
+      const paused = await pauseFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        expectedRevision: recovery.timer.revision,
+        now: new Date(now.getTime() + 45_000),
+      });
+      const resumed = await resumeFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        expectedRevision: paused.timer.revision,
+        now: new Date(now.getTime() + 75_000),
+      });
+      const nextWork = await syncFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        expectedRevision: resumed.timer.revision,
+        now: new Date(now.getTime() + 90_000),
+      });
+
+      expect(nextWork).toMatchObject({
+        actualDurationSeconds: 60,
+        timing: {
+          activeWorkMs: 40_000,
+          activeRecoveryMs: 20_000,
+          recoveryPausedMs: 30_000,
+        },
+        timer: { segment: "WORK", currentStepIndex: 1 },
+      });
+    });
+
+    it("ends during preparation with zero invented performed work and is repeat-safe", async () => {
+      const workout = await createWorkout("COMPLETED");
+      const started = await startFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        routineVersionId: preparationRoutineVersionId,
+        now,
+      });
+      const partial = await endFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        expectedRevision: started.revision,
+        now: new Date(now.getTime() + 5_000),
+      });
+      expect(partial).toMatchObject({
+        state: "PARTIAL",
+        startedAt: null,
+        actualDurationSeconds: 0,
+        resolvedStepCount: 0,
+        timing: {
+          preparationActiveMs: 5_000,
+          activeWorkMs: 0,
+          activeRecoveryMs: 0,
+        },
+      });
+      const repeated = await endFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        expectedRevision: partial.timer.revision,
+        now: new Date(now.getTime() + 50_000),
+      });
+      expect(repeated.actualDurationSeconds).toBe(0);
+      expect(repeated.timer.revision).toBe(partial.timer.revision);
+      await expect(
+        endFinisher({
+          userId: ownerId,
+          workoutId: workout.id,
+          expectedRevision: started.revision,
+          now: new Date(now.getTime() + 50_000),
+        }),
+      ).rejects.toMatchObject({ code: "FINISHER_STALE_TRANSITION", status: 409 });
+    });
+
+    it("makes concurrent identical selected dismissals idempotent", async () => {
+      const workout = await createWorkout("COMPLETED");
+      const selected = await selectFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        routineVersionId,
+        now,
+      });
+      const results = await Promise.allSettled([
+        dismissSelectedFinisher({
+          userId: ownerId,
+          workoutId: workout.id,
+          expectedRevision: selected.revision,
+        }),
+        dismissSelectedFinisher({
+          userId: ownerId,
+          workoutId: workout.id,
+          expectedRevision: selected.revision,
+        }),
+      ]);
+      expect(results).toEqual([
+        expect.objectContaining({ status: "fulfilled" }),
+        expect.objectContaining({ status: "fulfilled" }),
+      ]);
+      expect(
+        await client.finisherExecution.count({
+          where: { workoutId: workout.id },
+        }),
+      ).toBe(0);
+    });
+
+    it("protects selected, in-progress, partial, and completed Finisher history from workout deletion", async () => {
+      const setupByState = {
+        SELECTED: async (workoutId: string) => {
+          await selectFinisher({
+            userId: ownerId,
+            workoutId,
+            routineVersionId,
+            now,
+          });
+        },
+        IN_PROGRESS: async (workoutId: string) => {
+          await startFinisher({
+            userId: ownerId,
+            workoutId,
+            routineVersionId,
+            now,
+          });
+        },
+        PARTIAL: async (workoutId: string) => {
+          const started = await startFinisher({
+            userId: ownerId,
+            workoutId,
+            routineVersionId,
+            now,
+          });
+          await endFinisher({
+            userId: ownerId,
+            workoutId,
+            expectedRevision: started.revision,
+            now: new Date(now.getTime() + 5_000),
+          });
+        },
+        COMPLETED: async (workoutId: string) => {
+          const started = await startFinisher({
+            userId: ownerId,
+            workoutId,
+            routineVersionId,
+            now,
+          });
+          await syncFinisher({
+            userId: ownerId,
+            workoutId,
+            expectedRevision: started.revision,
+            now: new Date(now.getTime() + 120_000),
+          });
+        },
+      } as const;
+
+      for (const [state, setup] of Object.entries(setupByState)) {
+        const workout = await createWorkout("COMPLETED");
+        await setup(workout.id);
+
+        await expect(
+          deleteOwnedWorkout({
+            userId: ownerId,
+            workoutId: workout.id,
+            expectedRevision: workout.revision,
+          }),
+        ).rejects.toMatchObject({
+          code: "WORKOUT_FINISHER_HISTORY_CONFLICT",
+          status: 409,
+        } satisfies Partial<DeleteWorkoutError>);
+
+        const preserved = await client.workout.findUniqueOrThrow({
+          where: { id: workout.id },
+          select: {
+            revision: true,
+            finisherExecution: { select: { state: true } },
+          },
+        });
+        expect(preserved).toEqual({
+          revision: workout.revision,
+          finisherExecution: { state },
+        });
+      }
+    });
+
+    it("deletes a workout without Finisher history and rejects a stale deletion without side effects", async () => {
+      const deletable = await createWorkout("COMPLETED");
+      await expect(
+        deleteOwnedWorkout({
+          userId: ownerId,
+          workoutId: deletable.id,
+          expectedRevision: deletable.revision,
+        }),
+      ).resolves.toMatchObject({ result: { status: "deleted" } });
+      await expect(
+        client.workout.findUnique({ where: { id: deletable.id } }),
+      ).resolves.toBeNull();
+
+      const stale = await createWorkout("COMPLETED");
+      await expect(
+        deleteOwnedWorkout({
+          userId: ownerId,
+          workoutId: stale.id,
+          expectedRevision: stale.revision + 1,
+        }),
+      ).rejects.toMatchObject({
+        code: "WORKOUT_REVISION_CONFLICT",
+        status: 409,
+      });
+      await expect(
+        client.workout.findUnique({
+          where: { id: stale.id },
+          select: { revision: true },
+        }),
+      ).resolves.toEqual({ revision: stale.revision });
     });
 
     it("rejects later edits to an immutable referenced routine version", async () => {

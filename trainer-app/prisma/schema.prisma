@@ -278,6 +278,7 @@ enum FinisherTimerSegment {
 
 enum FinisherStepStatus {
   PENDING
+  PARTIAL
   COMPLETED
   SKIPPED
 }
@@ -569,26 +570,30 @@ model FinisherRoutineStepAlternative {
 }
 
 model FinisherExecution {
-  id                 String                  @id @default(uuid())
-  workoutId          String                  @unique
-  workout            Workout                 @relation(fields: [workoutId], references: [id], onDelete: Restrict)
-  routineVersionId   String
-  routineVersion     FinisherRoutineVersion  @relation(fields: [routineVersionId], references: [id], onDelete: Restrict)
-  state              FinisherExecutionState  @default(SELECTED)
-  selectedAt         DateTime                @default(now())
-  startedAt          DateTime?
-  completedAt        DateTime?
-  endedAt            DateTime?
-  timerSegment       FinisherTimerSegment?
-  currentStepIndex   Int                     @default(0)
-  segmentStartedAt   DateTime?
-  segmentEndsAt      DateTime?
-  pausedAt           DateTime?
-  pausedRemainingMs  Int?
-  totalPausedMs      Int                     @default(0)
-  revision           Int                     @default(1)
-  difficultyFeedback Int?
-  stepExecutions     FinisherExecutionStep[]
+  id                  String                  @id @default(uuid())
+  workoutId           String                  @unique
+  workout             Workout                 @relation(fields: [workoutId], references: [id], onDelete: Restrict)
+  routineVersionId    String
+  routineVersion      FinisherRoutineVersion  @relation(fields: [routineVersionId], references: [id], onDelete: Restrict)
+  state               FinisherExecutionState  @default(SELECTED)
+  selectedAt          DateTime                @default(now())
+  startedAt           DateTime?
+  completedAt         DateTime?
+  endedAt             DateTime?
+  timerSegment        FinisherTimerSegment?
+  currentStepIndex    Int                     @default(0)
+  segmentStartedAt    DateTime?
+  segmentEndsAt       DateTime?
+  pausedAt            DateTime?
+  pausedRemainingMs   Int?
+  preparationActiveMs Int                     @default(0)
+  recoveryActiveMs    Int                     @default(0)
+  preparationPausedMs Int                     @default(0)
+  workPausedMs        Int                     @default(0)
+  recoveryPausedMs    Int                     @default(0)
+  revision            Int                     @default(1)
+  difficultyFeedback  Int?
+  stepExecutions      FinisherExecutionStep[]
 
   @@index([routineVersionId, startedAt])
   @@index([state, segmentEndsAt])
@@ -605,7 +610,7 @@ model FinisherExecutionStep {
   status                 FinisherStepStatus              @default(PENDING)
   startedAt              DateTime?
   resolvedAt             DateTime?
-  actualWorkMs           Int?
+  actualWorkMs           Int                             @default(0)
   note                   String?
 
   @@unique([executionId, routineStepId])

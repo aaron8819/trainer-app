@@ -16,5 +16,5 @@
   "finisherDemand": ["LOW", "MODERATE", "HIGH"],
   "finisherExecutionState": ["SELECTED", "IN_PROGRESS", "COMPLETED", "PARTIAL", "DISMISSED"],
   "finisherTimerSegment": ["PREPARATION", "WORK", "RECOVERY", "FINISHED"],
-  "finisherStepStatus": ["PENDING", "COMPLETED", "SKIPPED"]
+  "finisherStepStatus": ["PENDING", "PARTIAL", "COMPLETED", "SKIPPED"]
 }

@@ -46,6 +46,34 @@ describe("Phase 1 Finisher isolation", () => {
     expect(source).toContain("workout: { userId: input.userId }");
   });
 
+  it("keeps the GET owner projection pure and routes synchronization through the gated POST", () => {
+    const service = readFileSync("src/lib/api/finisher-service.ts", "utf8");
+    const route = readFileSync(
+      "src/app/api/workouts/[id]/finisher/route.ts",
+      "utf8",
+    );
+    const gateInventory = readFileSync(
+      "scripts/check-production-write-gate.ts",
+      "utf8",
+    );
+    const getOfferBody = service.slice(
+      service.indexOf("export async function getFinisherOffer"),
+      service.indexOf("async function createSelectedExecution"),
+    );
+
+    expect(getOfferBody).not.toMatch(
+      /persistElapsedProjectionInTransaction|\.create\(|\.update\(|\.updateMany\(|\.delete\(|\.deleteMany\(/,
+    );
+    expect(route).toContain('resolveContext(params, "read")');
+    expect(route).toContain('case "sync"');
+    expect(route.indexOf("productionWritePauseResponse")).toBeLessThan(
+      route.indexOf("finisherActionSchema.safeParse"),
+    );
+    expect(gateInventory).toContain(
+      '["workouts/[id]/finisher/route.ts#POST", "finisher_execution"]',
+    );
+  });
+
   it("protects one execution and immutable version truth in the database", () => {
     const schema = readFileSync("prisma/schema.prisma", "utf8");
     const migration = readFileSync(
@@ -65,5 +93,25 @@ describe("Phase 1 Finisher isolation", () => {
     const source = readFileSync("src/lib/api/finisher-service.ts", "utf8");
     expect(source).toContain("startedAt: { not: null }");
     expect(source).toContain('state: { in: ["COMPLETED", "PARTIAL"] }');
+  });
+
+  it("ships the reviewed bilateral side-plank cues for Core Stability 10", () => {
+    const core = FINISHER_ROUTINE_SEEDS.find(
+      (routine) => routine.code === "core-stability-10",
+    );
+    const sidePlanks = core?.steps.filter((step) =>
+      step.movementName.startsWith("Side Plank"),
+    );
+    expect(sidePlanks?.map((step) => step.movementName)).toEqual([
+      "Side Plank — Left",
+      "Side Plank — Right",
+    ]);
+    for (const step of sidePlanks ?? []) {
+      const cues = step.techniqueCues.join(" ").toLowerCase();
+      expect(cues).toContain("stack the shoulders and hips");
+      expect(cues).toContain("brace the core");
+      expect(cues).toContain("hips lifted");
+      expect(cues).toContain("straight line without rotating");
+    }
   });
 });

@@ -20,15 +20,15 @@ export function isUiAuditFixtureModeEnabled(input: {
   return input.mode === "1" && input.nodeEnv !== "production";
 }
 
-export function resolveUiAuditFixtureScenario(input: {
+export function authorizeUiAuditFixtureRequest(input: {
   mode: string | undefined;
   nodeEnv: string | undefined;
-  requestedScenario: string | null | undefined;
+  requestHeader: string | null | undefined;
 }): UiAuditFixtureScenario | null {
   if (!isUiAuditFixtureModeEnabled(input)) {
     return null;
   }
-  return isUiAuditFixtureScenario(input.requestedScenario)
-    ? input.requestedScenario
+  return isUiAuditFixtureScenario(input.requestHeader)
+    ? input.requestHeader
     : null;
 }

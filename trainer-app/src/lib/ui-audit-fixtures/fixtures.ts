@@ -10,7 +10,7 @@ import type { SectionedExercises } from "@/components/log-workout/types";
 import type {
   PlanManagementData,
   PlanReview,
-} from "@/lib/api/plan-management";
+} from "@/lib/ui/plan-management";
 
 export const UI_AUDIT_FIXTURE_SCENARIOS = [
   "active",
@@ -1626,6 +1626,40 @@ const strengthAfterLowerBFixture: UiAuditFixture = {
   },
 };
 
+const preparingStrengthReview =
+  activeFixture.planReviews!["10000000-0000-4000-8000-000000000004"]!;
+const activeFixtureWithReviewStates: UiAuditFixture = {
+  ...activeFixture,
+  planReviews: {
+    ...activeFixture.planReviews,
+    "10000000-0000-4000-8000-000000000006": {
+      ...preparingStrengthReview,
+      id: "10000000-0000-4000-8000-000000000006",
+      name: "Strength Ready",
+      status: "READY",
+      activeMesocycleId: "ui-audit-meso-strength-ready",
+      reviewMesocycleId: "ui-audit-meso-strength-ready",
+      mesocycles: preparingStrengthReview.mesocycles.map((mesocycle) => ({
+        ...mesocycle,
+        id: "ui-audit-meso-strength-ready",
+      })),
+    },
+    "10000000-0000-4000-8000-000000000007": {
+      ...preparingStrengthReview,
+      id: "10000000-0000-4000-8000-000000000007",
+      name: "Strength Empty Structure",
+      weeklyStructure: [],
+    },
+    "10000000-0000-4000-8000-000000000008": {
+      ...preparingStrengthReview,
+      id: "10000000-0000-4000-8000-000000000008",
+      name: "Strength Malformed Structure",
+      strengthConfiguration: null,
+      weeklyStructure: [],
+    },
+  },
+};
+
 const emptyFixture: UiAuditFixture = {
   scenario: "empty",
   plans: {
@@ -1710,7 +1744,7 @@ const timerVisibleFixture: UiAuditFixture = {
 };
 
 const fixtures: Record<UiAuditFixtureScenario, UiAuditFixture> = {
-  active: activeFixture,
+  active: activeFixtureWithReviewStates,
   empty: emptyFixture,
   handoff: handoffFixture,
   "timer-visible": timerVisibleFixture,

@@ -2,11 +2,10 @@ import Link from "next/link";
 import { DashboardGenerateSection } from "@/components/DashboardGenerateSection";
 import HistoryClient from "@/components/HistoryClient";
 import LogWorkoutClient from "@/components/LogWorkoutClient";
-import { PlanFinalizeButton } from "@/components/plans/PlanFinalizeButton";
 import { PlanManagementClient } from "@/components/plans/PlanManagementClient";
+import { PlanReviewView } from "@/components/plans/PlanReviewView";
 import { ProgramStatusCard } from "@/components/ProgramStatusCard";
 import RecentWorkouts from "@/components/RecentWorkouts";
-import { StatusBadge } from "@/components/ui/StatusBadge";
 import type {
   LogExerciseInput,
   LogWorkoutCapabilities,
@@ -15,7 +14,6 @@ import type {
 import type {
   UiAuditFixture,
 } from "@/lib/ui-audit-fixtures/fixtures";
-import { planTypeLabel } from "@/lib/plan-types";
 
 const UI_AUDIT_TIMER_STARTED_AT_MS = Date.now();
 
@@ -38,14 +36,6 @@ function isSessionIntent(value: string | null | undefined): value is SessionInte
     value === "full_body" ||
     value === "body_part"
   );
-}
-
-function formatLabel(value: string): string {
-  return value
-    .toLowerCase()
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
 }
 
 function FixtureHome({ fixture }: { fixture: UiAuditFixture }) {
@@ -286,99 +276,6 @@ function FixturePlans({ fixture }: { fixture: UiAuditFixture }) {
   );
 }
 
-function FixturePlanReview({
-  fixture,
-  planId,
-}: {
-  fixture: UiAuditFixture;
-  planId: string;
-}) {
-  const plan = fixture.planReviews?.[planId];
-  if (!plan) {
-    return <FixtureUnavailable label="Plan review" />;
-  }
-  const planType = planTypeLabel(plan.primaryGoal);
-  return (
-    <main className="min-h-screen bg-white text-slate-900">
-      <div className="page-shell max-w-4xl pb-10">
-        <Link
-          href="/plans"
-          className="text-sm font-medium text-slate-500 hover:text-slate-900"
-        >
-          Back to plans
-        </Link>
-        <div className="mt-5 flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Generated {planType.toLowerCase()} plan
-            </p>
-            <h1 className="page-title mt-2">{plan.name}</h1>
-          </div>
-          <StatusBadge tone="warning">{formatLabel(plan.status)}</StatusBadge>
-        </div>
-
-        {plan.primaryGoal === "STRENGTH" ? (
-          <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <h2 className="font-semibold text-slate-900">
-                  Weekly strength structure
-                </h2>
-                <p className="mt-1 text-sm text-slate-600">
-                  Frozen accepted-session rows drive review and runtime replay.
-                </p>
-              </div>
-              {plan.strengthConfiguration ? (
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                  {plan.strengthConfiguration.daysPerWeek} days · about{" "}
-                  {plan.strengthConfiguration.sessionDurationMinutes} min
-                </span>
-              ) : null}
-            </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {plan.weeklyStructure.map((slot) => (
-                <article
-                  key={slot.slotId}
-                  className="rounded-xl border border-slate-200 bg-slate-50 p-3"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-semibold">{slot.label}</h3>
-                    <span className="shrink-0 text-xs text-slate-500">
-                      ~{slot.estimatedMinutes} min
-                    </span>
-                  </div>
-                  <ul className="mt-2 space-y-1 text-sm text-slate-700">
-                    {[...slot.primaryLifts, ...slot.assistance].map(
-                      (exercise) => (
-                        <li key={exercise.exerciseId}>
-                          {exercise.setCount}{" "}
-                          {exercise.setCount === 1 ? "set" : "sets"} ·{" "}
-                          {exercise.name}
-                        </li>
-                      ),
-                    )}
-                  </ul>
-                </article>
-              ))}
-            </div>
-          </section>
-        ) : null}
-
-        <section className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 p-4 sm:p-5">
-          <h2 className="font-semibold text-slate-900">Ready to finalize?</h2>
-          <div className="mt-4">
-            <PlanFinalizeButton
-              planId={plan.id}
-              planName={plan.name}
-              expectedUpdatedAt={plan.updatedAt}
-            />
-          </div>
-        </section>
-      </div>
-    </main>
-  );
-}
-
 function countResolvedSets(exercise: LogExerciseInput): number {
   return exercise.sets.filter(
     (set) =>
@@ -535,11 +432,11 @@ export function UiAuditFixturePage({
 
   const reviewMatch = pathname.match(/^\/plans\/([^/]+)\/review\/?$/);
   if (reviewMatch?.[1]) {
-    return (
-      <FixturePlanReview
-        fixture={fixture}
-        planId={reviewMatch[1]}
-      />
+    const plan = fixture.planReviews?.[reviewMatch[1]];
+    return plan ? (
+      <PlanReviewView plan={plan} />
+    ) : (
+      <FixtureUnavailable label="Plan review" />
     );
   }
   const logMatch = pathname.match(/^\/log\/([^/]+)\/?$/);

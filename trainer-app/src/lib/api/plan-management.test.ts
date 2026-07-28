@@ -72,6 +72,60 @@ function mesocycle(
   return { id, state, isActive, mesoNumber };
 }
 
+const requiredStrengthRows = [
+  ["squat", "Bodyweight Squat", "SQUAT"],
+  ["hinge", "Bodyweight Hinge", "HINGE"],
+  ["horizontal-push", "Push-Up", "HORIZONTAL_PUSH"],
+  ["vertical-push", "Pike Push-Up", "VERTICAL_PUSH"],
+  ["horizontal-pull", "Inverted Row", "HORIZONTAL_PULL"],
+  ["vertical-pull", "Pull-Up", "VERTICAL_PULL"],
+] as const;
+
+function strengthExerciseRows(input?: {
+  incompatiblePattern?: string;
+  contraindicatedPattern?: string;
+}) {
+  return requiredStrengthRows.map(([id, name, pattern]) => ({
+    id,
+    name,
+    movementPatterns: [pattern],
+    isMainLiftEligible: true,
+    isCompound: true,
+    fatigueCost: 1,
+    contraindications:
+      pattern === input?.contraindicatedPattern ? { knee: true } : {},
+    exerciseEquipment: [
+      {
+        equipment: {
+          type:
+            pattern === input?.incompatiblePattern
+              ? "BARBELL"
+              : "BODYWEIGHT",
+        },
+      },
+    ],
+  }));
+}
+
+function infeasibilityInput() {
+  return {
+    userId: "user-1",
+    name: "Strength",
+    startDate: new Date("2026-08-03T00:00:00.000Z"),
+    configuration: {
+      emphasis: "BALANCED" as const,
+      daysPerWeek: 2 as const,
+      sessionDurationMinutes: 90 as const,
+      equipmentProfile: "BODYWEIGHT" as const,
+      preferredLifts: {
+        squat: "AUTO" as const,
+        press: "AUTO" as const,
+        hinge: "AUTO" as const,
+      },
+    },
+  };
+}
+
 describe("plan lifecycle derivation", () => {
   it("keeps generated plans PREPARING until explicit finalization", () => {
     expect(
@@ -287,6 +341,70 @@ describe("plan management persistence policy", () => {
       ),
     ).toBe(true);
     expect(mocks.prisma.user).not.toHaveProperty("updateMany");
+  });
+
+  it.each([
+    ["squat", "SQUAT"],
+    ["press", "HORIZONTAL_PUSH"],
+    ["hinge", "HINGE"],
+  ])(
+    "returns creation infeasibility before mutation when equipment removes the required %s lane",
+    async (_lane, pattern) => {
+      mocks.userFindUnique.mockResolvedValue({
+        activeMacroCycleId: null,
+        profile: { trainingAge: "INTERMEDIATE" },
+        injuries: [],
+      });
+      mocks.exerciseFindMany.mockResolvedValue(
+        strengthExerciseRows({ incompatiblePattern: pattern }),
+      );
+
+      await expect(
+        createStrengthPlan(infeasibilityInput()),
+      ).rejects.toMatchObject({
+        code: "PLAN_CREATION_INFEASIBLE",
+      });
+      expect(mocks.generateMacroCycle).not.toHaveBeenCalled();
+      expect(mocks.macroCycleCreate).not.toHaveBeenCalled();
+    },
+  );
+
+  it("returns creation infeasibility before mutation when limitations remove a required lane", async () => {
+    mocks.userFindUnique.mockResolvedValue({
+      activeMacroCycleId: null,
+      profile: { trainingAge: "INTERMEDIATE" },
+      injuries: [{ bodyPart: "knee" }],
+    });
+    mocks.exerciseFindMany.mockResolvedValue(
+      strengthExerciseRows({ contraindicatedPattern: "SQUAT" }),
+    );
+
+    await expect(
+      createStrengthPlan(infeasibilityInput()),
+    ).rejects.toMatchObject({
+      code: "PLAN_CREATION_INFEASIBLE",
+    });
+    expect(mocks.generateMacroCycle).not.toHaveBeenCalled();
+    expect(mocks.macroCycleCreate).not.toHaveBeenCalled();
+  });
+
+  it("does not mislabel an unexpected construction failure as user-correctable infeasibility", async () => {
+    mocks.userFindUnique.mockResolvedValue({
+      activeMacroCycleId: null,
+      profile: { trainingAge: "INTERMEDIATE" },
+      injuries: [],
+    });
+    mocks.exerciseFindMany.mockResolvedValue(
+      strengthExerciseRows(),
+    );
+    const invalidDirectInput = infeasibilityInput();
+    invalidDirectInput.configuration.sessionDurationMinutes = 1 as 90;
+
+    await expect(
+      createStrengthPlan(invalidDirectInput),
+    ).rejects.toThrow(/^STRENGTH_PLAN_DURATION_UNACHIEVABLE:/);
+    expect(mocks.generateMacroCycle).not.toHaveBeenCalled();
+    expect(mocks.macroCycleCreate).not.toHaveBeenCalled();
   });
 
   it("finalizes strength as READY with an accepted immutable seed and no selection write", async () => {
@@ -844,6 +962,24 @@ describe("plan management persistence policy", () => {
       code: "PLAN_LIMITATION_UNRECOGNIZED",
       details: { limitation: "left ankle" },
     });
+    expect(mocks.macroCycleCreate).not.toHaveBeenCalled();
+  });
+
+  it("preserves unrecognized-limitation precedence for mixed limitation input", async () => {
+    mocks.userFindUnique.mockResolvedValue({
+      activeMacroCycleId: null,
+      profile: { trainingAge: "INTERMEDIATE" },
+      injuries: [{ bodyPart: "knee" }, { bodyPart: "left ankle" }],
+    });
+    mocks.exerciseFindMany.mockResolvedValue(strengthExerciseRows());
+
+    await expect(
+      createStrengthPlan(infeasibilityInput()),
+    ).rejects.toMatchObject({
+      code: "PLAN_LIMITATION_UNRECOGNIZED",
+      details: { limitation: "left ankle" },
+    });
+    expect(mocks.generateMacroCycle).not.toHaveBeenCalled();
     expect(mocks.macroCycleCreate).not.toHaveBeenCalled();
   });
 

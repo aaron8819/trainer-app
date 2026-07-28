@@ -6,7 +6,7 @@ import {
   ActivePlanTargetNotReadyError,
   ActiveWorkoutInProgressError,
 } from "./active-plan-context";
-import { PlanManagementError } from "./plan-management";
+import { PlanManagementError } from "./plan-management-errors";
 
 export function planManagementErrorResponse(
   error: unknown,
@@ -95,6 +95,15 @@ export function planManagementErrorResponse(
       return NextResponse.json(
         {
           error: "The generated plan is incomplete and cannot be finalized.",
+          code: error.code,
+        },
+        { status: 409 },
+      );
+    case "PLAN_CREATION_INFEASIBLE":
+      return NextResponse.json(
+        {
+          error:
+            "The requested Strength plan could not be created because the available equipment and/or active limitations leave no compatible exercise for required programming. Adjust your available equipment, active limitations, training schedule or configuration, or lift preferences, then try again.",
           code: error.code,
         },
         { status: 409 },

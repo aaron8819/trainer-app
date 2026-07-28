@@ -7,6 +7,7 @@ const shouldStartManagedServer = !process.env.PLAYWRIGHT_BASE_URL;
 
 export default defineConfig({
   testDir: "./tests/ui-audit",
+  globalSetup: "./tests/ui-audit/global-setup.ts",
   outputDir: "./test-results/ui-audit",
   snapshotPathTemplate: "{testDir}/__screenshots__/{arg}{ext}",
   fullyParallel: false,
@@ -29,12 +30,11 @@ export default defineConfig({
     ? {
         webServer: {
           command: `node node_modules/next/dist/bin/next dev --hostname 127.0.0.1 --port ${auditPort}`,
-          url: `${baseURL}/ui-audit-fixture/ready`,
+          port: Number(auditPort),
           reuseExistingServer: false,
           timeout: 120_000,
           env: {
             UI_AUDIT_FIXTURE_MODE: "1",
-            UI_AUDIT_FIXTURE_SCENARIO: "active",
             UI_AUDIT_NEXT_DIST_DIR: auditDistDir,
           },
         },

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isUiAuditFixtureModeEnabled,
-  resolveUiAuditFixtureScenario,
+  authorizeUiAuditFixtureRequest,
 } from "./access";
 
 describe("UI audit fixture access", () => {
@@ -26,26 +26,45 @@ describe("UI audit fixture access", () => {
     ).toBe(false);
   });
 
-  it("does not allow a scenario value alone to expose fixtures", () => {
+  it("authorizes only an exact recognized request header in fixture mode", () => {
     expect(
-      resolveUiAuditFixtureScenario({
+      authorizeUiAuditFixtureRequest({
+        mode: "1",
+        nodeEnv: "development",
+        requestHeader: "active",
+      }),
+    ).toBe("active");
+    for (const requestHeader of [undefined, null, "", " ", "unknown", "ACTIVE"]) {
+      expect(
+        authorizeUiAuditFixtureRequest({
+          mode: "1",
+          nodeEnv: "development",
+          requestHeader,
+        }),
+      ).toBeNull();
+    }
+  });
+
+  it("fails closed when either the approved environment or header is absent", () => {
+    expect(
+      authorizeUiAuditFixtureRequest({
         mode: undefined,
         nodeEnv: "development",
-        requestedScenario: "active",
+        requestHeader: "active",
       }),
     ).toBeNull();
     expect(
-      resolveUiAuditFixtureScenario({
+      authorizeUiAuditFixtureRequest({
         mode: "1",
         nodeEnv: "production",
-        requestedScenario: "active",
+        requestHeader: "active",
       }),
     ).toBeNull();
     expect(
-      resolveUiAuditFixtureScenario({
+      authorizeUiAuditFixtureRequest({
         mode: "1",
         nodeEnv: "development",
-        requestedScenario: "unknown",
+        requestHeader: null,
       }),
     ).toBeNull();
   });

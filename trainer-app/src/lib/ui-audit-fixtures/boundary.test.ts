@@ -131,4 +131,52 @@ describe("database-free UI audit boundary", () => {
     expect(runner).toContain("delete childEnvironment.DATABASE_URL");
     expect(runner).toContain("delete childEnvironment.DIRECT_URL");
   });
+
+  it("renders plan reviews through the same database-free shared component", () => {
+    const productionRoute = readFileSync(
+      path.join(sourceRoot, "app", "plans", "[id]", "review", "page.tsx"),
+      "utf8",
+    );
+    const fixtureRoute = readFileSync(
+      path.join(
+        sourceRoot,
+        "components",
+        "ui-audit",
+        "UiAuditFixturePage.tsx",
+      ),
+      "utf8",
+    );
+    const sharedView = readFileSync(
+      path.join(
+        sourceRoot,
+        "components",
+        "plans",
+        "PlanReviewView.tsx",
+      ),
+      "utf8",
+    );
+    const fixtureData = readFileSync(
+      path.join(sourceRoot, "lib", "ui-audit-fixtures", "fixtures.ts"),
+      "utf8",
+    );
+
+    expect(productionRoute).toContain(
+      'import { PlanReviewView } from "@/components/plans/PlanReviewView"',
+    );
+    expect(productionRoute).toContain("<PlanReviewView plan={plan} />");
+    expect(fixtureRoute).toContain(
+      'import { PlanReviewView } from "@/components/plans/PlanReviewView"',
+    );
+    expect(fixtureRoute).toContain("<PlanReviewView plan={plan} />");
+    expect(fixtureRoute).not.toContain("function FixturePlanReview");
+    expect(sharedView).not.toMatch(
+      /@\/lib\/(?:api|db)|@prisma|prisma[\\/]/,
+    );
+    expect(fixtureData).toContain(
+      '} from "@/lib/ui/plan-management";',
+    );
+    expect(fixtureData).toContain(
+      "planReviews?: Record<string, PlanReview>;",
+    );
+  });
 });

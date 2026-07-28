@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
   UI_AUDIT_FIXTURE_HEADER,
-  resolveUiAuditFixtureScenario,
+  authorizeUiAuditFixtureRequest,
 } from "@/lib/ui-audit-fixtures/access";
 
 export function proxy(request: NextRequest) {
@@ -14,10 +14,10 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const scenario = resolveUiAuditFixtureScenario({
+  const scenario = authorizeUiAuditFixtureRequest({
     mode: process.env.UI_AUDIT_FIXTURE_MODE,
     nodeEnv: process.env.NODE_ENV,
-    requestedScenario: request.headers.get(UI_AUDIT_FIXTURE_HEADER),
+    requestHeader: request.headers.get(UI_AUDIT_FIXTURE_HEADER),
   });
   if (!scenario) {
     return NextResponse.next();
@@ -42,7 +42,6 @@ export function proxy(request: NextRequest) {
   fixtureUrl.pathname = "/ui-audit-fixture";
   fixtureUrl.search = "";
   fixtureUrl.searchParams.set("path", pathname);
-  fixtureUrl.searchParams.set("scenario", scenario);
   return NextResponse.redirect(fixtureUrl);
 }
 

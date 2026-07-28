@@ -13,6 +13,7 @@ import { generateMacroCycle } from "@/lib/engine";
 import {
   buildStrengthPlanPolicy,
   StrengthLimitationValidationError,
+  StrengthPlanInfeasibilityError,
   toStrengthSlotPlanSeed,
   toStrengthSlotSequence,
   type StrengthPlanConfiguration,
@@ -20,41 +21,33 @@ import {
 import {
   isSupportedPlanType,
   SUPPORTED_PLAN_TYPES,
-  type SupportedPlanType,
 } from "@/lib/plan-types";
 import { resolveOwner } from "./workout-context";
 import { getUiAuditFixtureForServer } from "@/lib/ui-audit-fixtures/server";
 import { createInitialAcceptedSeedRevisionInTransaction } from "./mesocycle-seed-revision";
 import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
 import { strengthPlanConfigurationSchema } from "@/lib/validation";
+import type {
+  PlanLifecycleStatus,
+  PlanManagementData,
+  PlanReview,
+  PlanReviewExercise,
+  PlanSummary,
+} from "@/lib/ui/plan-management";
+import { PlanManagementError } from "./plan-management-errors";
 
-export type PlanLifecycleStatus =
-  | "PREPARING"
-  | "READY"
-  | "HANDOFF_PENDING"
-  | "COMPLETED"
-  | "INVALID";
+export {
+  PlanManagementError,
+  type PlanManagementErrorCode,
+} from "./plan-management-errors";
 
-export type PlanSummary = {
-  id: string;
-  name: string;
-  primaryGoal: SupportedPlanType;
-  status: PlanLifecycleStatus;
-  isActive: boolean;
-  activeMesocycleId: string | null;
-  reviewMesocycleId: string | null;
-  startDate: string;
-  endDate: string;
-  durationWeeks: number;
-  mesocycleCount: number;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type PlanManagementData = {
-  activeMacroCycleId: string | null;
-  plans: PlanSummary[];
-};
+export type {
+  PlanLifecycleStatus,
+  PlanManagementData,
+  PlanReview,
+  PlanReviewExercise,
+  PlanSummary,
+} from "@/lib/ui/plan-management";
 
 type PlanLifecycleRow = {
   id: string;
@@ -132,25 +125,6 @@ export function derivePlanLifecycle(
     activeMesocycleId: null,
     reviewMesocycleId: ordered[0]?.id ?? null,
   };
-}
-
-export type PlanManagementErrorCode =
-  | "PLAN_NOT_FOUND"
-  | "PLAN_NOT_PREPARING"
-  | "PLAN_INVALID"
-  | "PLAN_LIMITATION_UNRECOGNIZED"
-  | "PLAN_MUTATION_CONFLICT"
-  | "ACTIVE_PLAN_ARCHIVE_FORBIDDEN"
-  | "PLAN_OWNER_NOT_READY";
-
-export class PlanManagementError extends Error {
-  constructor(
-    readonly code: PlanManagementErrorCode,
-    readonly details: Record<string, string | null> = {},
-  ) {
-    super(code);
-    this.name = "PlanManagementError";
-  }
 }
 
 function isExpectedTimestamp(actual: Date, expected: string): boolean {
@@ -249,35 +223,6 @@ export async function loadConfiguredPlanManagementData(): Promise<PlanManagement
   const owner = await resolveOwner();
   return loadPlanManagementData(owner.id);
 }
-
-export type PlanReview = PlanSummary & {
-  strengthConfiguration: StrengthPlanConfiguration | null;
-  weeklyStructure: Array<{
-    slotId: string;
-    label: string;
-    intent: string;
-    estimatedMinutes: number | null;
-    primaryLifts: PlanReviewExercise[];
-    assistance: PlanReviewExercise[];
-  }>;
-  mesocycles: Array<{
-    id: string;
-    mesoNumber: number;
-    startWeek: number;
-    durationWeeks: number;
-    focus: string;
-    volumeTarget: string;
-    intensityBias: string;
-    blockCount: number;
-  }>;
-};
-
-export type PlanReviewExercise = {
-  exerciseId: string;
-  name: string;
-  role: "CORE_COMPOUND" | "ACCESSORY";
-  setCount: number;
-};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -701,11 +646,8 @@ export async function createStrengthPlan(input: {
         limitation: error.limitation,
       });
     }
-    if (
-      error instanceof Error &&
-      error.message.startsWith("STRENGTH_PLAN_")
-    ) {
-      throw new PlanManagementError("PLAN_INVALID");
+    if (error instanceof StrengthPlanInfeasibilityError) {
+      throw new PlanManagementError("PLAN_CREATION_INFEASIBLE");
     }
     throw error;
   }

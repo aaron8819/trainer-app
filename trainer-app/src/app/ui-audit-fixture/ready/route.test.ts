@@ -9,7 +9,11 @@ describe("UI audit readiness route", () => {
   it("reports database-independent readiness only in explicit non-production fixture mode", async () => {
     vi.stubEnv("UI_AUDIT_FIXTURE_MODE", "1");
     vi.stubEnv("NODE_ENV", "development");
-    const response = GET();
+    const response = GET(
+      new Request("http://localhost/ui-audit-fixture/ready", {
+        headers: { "x-ui-audit-fixture": "active" },
+      }),
+    );
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
@@ -18,9 +22,30 @@ describe("UI audit readiness route", () => {
     });
   });
 
-  it("is unavailable in production", () => {
+  it("rejects missing and incorrect headers even in fixture mode", () => {
+    vi.stubEnv("UI_AUDIT_FIXTURE_MODE", "1");
+    vi.stubEnv("NODE_ENV", "development");
+    expect(
+      GET(new Request("http://localhost/ui-audit-fixture/ready")).status,
+    ).toBe(404);
+    expect(
+      GET(
+        new Request("http://localhost/ui-audit-fixture/ready", {
+          headers: { "x-ui-audit-fixture": "incorrect" },
+        }),
+      ).status,
+    ).toBe(404);
+  });
+
+  it("is unavailable in production even with a correct header", () => {
     vi.stubEnv("UI_AUDIT_FIXTURE_MODE", "1");
     vi.stubEnv("NODE_ENV", "production");
-    expect(GET().status).toBe(404);
+    expect(
+      GET(
+        new Request("http://localhost/ui-audit-fixture/ready", {
+          headers: { "x-ui-audit-fixture": "active" },
+        }),
+      ).status,
+    ).toBe(404);
   });
 });

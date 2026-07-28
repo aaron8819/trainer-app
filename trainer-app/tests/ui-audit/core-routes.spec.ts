@@ -96,6 +96,52 @@ test.describe("core route UI audit", () => {
 });
 
 test.describe("lightweight fixture interaction checks", () => {
+  test("fixture route, readiness, and API boundaries require the exact header", async ({
+    page,
+    request,
+  }) => {
+    const direct = await page.goto(
+      "/ui-audit-fixture?path=/plans&scenario=active",
+      { waitUntil: "domcontentloaded" },
+    );
+    expect(direct?.status()).toBe(404);
+    await expect(
+      page.getByRole("heading", { name: "Training plans" }),
+    ).toHaveCount(0);
+    browserErrors.set(page, []);
+
+    const missingReadiness = await request.get("/ui-audit-fixture/ready");
+    expect(missingReadiness.status()).toBe(404);
+    const incorrectReadiness = await request.get(
+      "/ui-audit-fixture/ready",
+      { headers: { [FIXTURE_HEADER]: "incorrect" } },
+    );
+    expect(incorrectReadiness.status()).toBe(404);
+    const authorizedReadiness = await request.get(
+      "/ui-audit-fixture/ready",
+      { headers: { [FIXTURE_HEADER]: "active" } },
+    );
+    expect(authorizedReadiness.status()).toBe(200);
+    await expect(authorizedReadiness.json()).resolves.toEqual({
+      status: "ready",
+      database: "unused",
+    });
+
+    const authorizedUnhandledApi = await request.get(
+      "/api/ui-audit-unhandled",
+      { headers: { [FIXTURE_HEADER]: "active" } },
+    );
+    expect(authorizedUnhandledApi.status()).toBe(501);
+    expect(await authorizedUnhandledApi.json()).toMatchObject({
+      error: expect.stringContaining("explicit browser fixture handler"),
+    });
+    const unauthorizedUnhandledApi = await request.get(
+      "/api/ui-audit-unhandled",
+      { headers: { [FIXTURE_HEADER]: "incorrect" } },
+    );
+    expect(unauthorizedUnhandledApi.status()).toBe(404);
+  });
+
   test("plan management stays usable at representative viewport sizes", async ({
     page,
   }) => {
@@ -158,6 +204,23 @@ test.describe("lightweight fixture interaction checks", () => {
     await expect(
       page.getByRole("heading", { name: "Weekly strength structure" }),
     ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Plan outline" }),
+    ).toBeVisible();
+    await expect(page.getByText("Main emphasis")).toBeVisible();
+    await expect(page.getByText("Balanced", { exact: true })).toBeVisible();
+    await expect(page.getByText("Equipment")).toBeVisible();
+    await expect(page.getByText("Full Gym", { exact: true })).toBeVisible();
+    await expect(page.getByText("Mesocycle 1")).toBeVisible();
+    await expect(page.getByText("3 training blocks")).toBeVisible();
+    await expect(page.getByText("Primary:", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Assistance:", { exact: true }).first()).toBeVisible();
+    await expect(
+      page.getByText(/Primary lifts stay stable so performance can progress/),
+    ).toBeVisible();
+    await expect(
+      page.getByText(/no 1RM is assumed/),
+    ).toBeVisible();
     await expect(page.getByText("Back Squat")).toBeVisible();
     await expect(page.getByText("Conventional Deadlift")).toBeVisible();
     await expect(page.getByText("4 sets · Back Squat")).toBeVisible();
@@ -174,6 +237,7 @@ test.describe("lightweight fixture interaction checks", () => {
       page.getByRole("button", { name: "Finalize as READY" }),
     ).toBeVisible();
     await expectMainWithinViewport(page);
+    await expectNoHorizontalOverflow(page);
     await expectNoAppError(page);
 
     await page.goto(
@@ -195,7 +259,42 @@ test.describe("lightweight fixture interaction checks", () => {
     ).toBe(true);
     await expect(page.getByText("3 sets · Back Squat")).toBeVisible();
     await expectMainWithinViewport(page);
+    await expectNoHorizontalOverflow(page);
     await expectNoAppError(page);
+
+    await page.goto(
+      "/plans/10000000-0000-4000-8000-000000000006/review",
+      { waitUntil: "domcontentloaded" },
+    );
+    await waitForStableRoute(page);
+    await expect(page.getByText("Ready", { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Return to Plan Management" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Finalize as READY" }),
+    ).toHaveCount(0);
+
+    for (const [planId, planName] of [
+      ["10000000-0000-4000-8000-000000000007", "Strength Empty Structure"],
+      ["10000000-0000-4000-8000-000000000008", "Strength Malformed Structure"],
+    ] as const) {
+      await page.goto(`/plans/${planId}/review`, {
+        waitUntil: "domcontentloaded",
+      });
+      await waitForStableRoute(page);
+      await expect(
+        page.getByRole("heading", { name: planName }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("heading", { name: "Plan outline" }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("heading", { name: "Weekly strength structure" }),
+      ).toHaveCount(0);
+      await expectNoHorizontalOverflow(page);
+      await expectNoAppError(page);
+    }
   });
 
   test("strength creation, finalization, and activation controls complete their UI flow", async ({
@@ -309,6 +408,38 @@ test.describe("lightweight fixture interaction checks", () => {
     await expect(
       page.getByRole("heading", { name: "Strength Base" }),
     ).toBeVisible();
+    await expectNoAppError(page);
+  });
+
+  test("strength creation surfaces creation-specific infeasibility guidance", async ({
+    page,
+  }) => {
+    await page.setExtraHTTPHeaders({ [FIXTURE_HEADER]: "active" });
+    const message =
+      "The requested Strength plan could not be created because the available equipment and/or active limitations leave no compatible exercise for required programming. Adjust your available equipment, active limitations, training schedule or configuration, or lift preferences, then try again.";
+    await page.route("**/api/plans", async (route) => {
+      await route.fulfill({
+        json: {
+          code: "PLAN_CREATION_INFEASIBLE",
+          error: message,
+        },
+      });
+    });
+
+    await page.goto("/plans", { waitUntil: "domcontentloaded" });
+    await waitForStableRoute(page);
+    await page.getByRole("button", { name: "Create another plan" }).click();
+    await page.getByRole("radio", { name: /Strength/i }).check({
+      force: true,
+    });
+    await page.getByLabel("Plan name").fill("Infeasible Strength");
+    await page.getByRole("button", { name: "Generate and review" }).click();
+
+    await expect(page.getByText(message)).toBeVisible();
+    await expect(page.locator("body")).not.toContainText(
+      "cannot be finalized",
+    );
+    await expectAuditPath(page, "/plans");
     await expectNoAppError(page);
   });
 
@@ -735,6 +866,14 @@ async function waitForStableRoute(page: Page) {
 
 async function expectMainWithinViewport(page: Page) {
   await expectElementWithinViewport(page, page.locator("main").first());
+}
+
+async function expectNoHorizontalOverflow(page: Page) {
+  const overflow = await page.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+  }));
+  expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 2);
 }
 
 async function expectElementWithinViewport(page: Page, locator: Locator) {

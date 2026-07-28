@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { PlanManagementData, PlanSummary } from "@/lib/api/plan-management";
+import type { PlanManagementData, PlanSummary } from "@/lib/ui/plan-management";
 import { Button, buttonClassName } from "@/components/ui/Button";
 import { StatusBadge, type StatusBadgeTone } from "@/components/ui/StatusBadge";
 import {

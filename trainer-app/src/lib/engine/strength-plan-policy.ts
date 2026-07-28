@@ -40,6 +40,18 @@ export class StrengthLimitationValidationError extends Error {
   }
 }
 
+export class StrengthPlanInfeasibilityError extends Error {
+  constructor(
+    readonly reason:
+      | "REQUIRED_LANE_UNAVAILABLE"
+      | "PRIMARY_LIFT_UNAVAILABLE",
+    context: string,
+  ) {
+    super(`STRENGTH_PLAN_${reason}:${context}`);
+    this.name = "StrengthPlanInfeasibilityError";
+  }
+}
+
 export const STRENGTH_SQUAT_PREFERENCE_VALUES = [
   "AUTO",
   "BACK_SQUAT",
@@ -897,8 +909,9 @@ export function buildStrengthPlanPolicy(input: {
       });
       if (!selected) {
         if (lane.required) {
-          throw new Error(
-            `STRENGTH_PLAN_REQUIRED_LANE_UNAVAILABLE:${template.slotId}:${lane.kind}`,
+          throw new StrengthPlanInfeasibilityError(
+            "REQUIRED_LANE_UNAVAILABLE",
+            `${template.slotId}:${lane.kind}`,
           );
         }
         continue;
@@ -935,7 +948,10 @@ export function buildStrengthPlanPolicy(input: {
       exercises.filter((exercise) => exercise.role === "CORE_COMPOUND")
         .length === 0
     ) {
-      throw new Error(`STRENGTH_PLAN_PRIMARY_LIFT_UNAVAILABLE:${template.slotId}`);
+      throw new StrengthPlanInfeasibilityError(
+        "PRIMARY_LIFT_UNAVAILABLE",
+        template.slotId,
+      );
     }
     return {
       slotId: template.slotId,

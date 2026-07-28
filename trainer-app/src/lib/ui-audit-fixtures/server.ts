@@ -5,8 +5,8 @@ import {
 } from "./fixtures";
 import {
   UI_AUDIT_FIXTURE_HEADER,
+  authorizeUiAuditFixtureRequest,
   isUiAuditFixtureModeEnabled as isFixtureModeEnabled,
-  resolveUiAuditFixtureScenario,
 } from "./access";
 
 export { UI_AUDIT_FIXTURE_HEADER };
@@ -18,13 +18,11 @@ export function isUiAuditFixtureModeEnabled(): boolean {
   });
 }
 
-function resolveScenarioFromHeaders(requestHeaders: Headers | null) {
-  return resolveUiAuditFixtureScenario({
+function resolveScenarioFromHeaders(requestHeaders: Headers) {
+  return authorizeUiAuditFixtureRequest({
     mode: process.env.UI_AUDIT_FIXTURE_MODE,
     nodeEnv: process.env.NODE_ENV,
-    requestedScenario:
-      requestHeaders?.get(UI_AUDIT_FIXTURE_HEADER) ??
-      process.env.UI_AUDIT_FIXTURE_SCENARIO,
+    requestHeader: requestHeaders.get(UI_AUDIT_FIXTURE_HEADER),
   });
 }
 

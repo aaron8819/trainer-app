@@ -33,7 +33,7 @@ describe("UI audit request boundary", () => {
     const location = new URL(response.headers.get("location")!);
     expect(location.pathname).toBe("/ui-audit-fixture");
     expect(location.searchParams.get("path")).toBe("/plans");
-    expect(location.searchParams.get("scenario")).toBe("active");
+    expect(location.searchParams.has("scenario")).toBe(false);
   });
 
   it("blocks every unhandled fixture API request before database code", async () => {
@@ -50,5 +50,22 @@ describe("UI audit request boundary", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: expect.stringContaining("explicit browser fixture handler"),
     });
+  });
+
+  it("does not expose fixtures for a missing or incorrect header", () => {
+    vi.stubEnv("UI_AUDIT_FIXTURE_MODE", "1");
+    vi.stubEnv("NODE_ENV", "development");
+    for (const headers of [
+      undefined,
+      { "x-ui-audit-fixture": "incorrect" },
+    ]) {
+      const response = proxy(
+        new NextRequest("http://localhost/plans?scenario=active", {
+          headers,
+        }),
+      );
+      expect(response.headers.get("x-middleware-next")).toBe("1");
+      expect(response.headers.get("location")).toBeNull();
+    }
   });
 });

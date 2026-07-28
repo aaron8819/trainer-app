@@ -10,8 +10,7 @@ import { getAccumulationWeeks } from "./mesocycle-lifecycle-math";
 import { enterMesocycleHandoffInTransaction } from "./mesocycle-handoff";
 import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
 import {
-  isSupportedPlanType,
-  planTypeLifecyclePolicy,
+  requireSupportedPlanType,
 } from "@/lib/plan-types";
 import type { SessionCapacityReductionManifest } from "@/lib/engine/planning/v2";
 import {
@@ -108,21 +107,22 @@ async function completeOrEnterHandoffInTransaction(
     macroCycle?: { primaryGoal?: string | null } | null;
   },
 ): Promise<Mesocycle> {
-  const planType = mesocycle.macroCycle?.primaryGoal;
-  if (
-    isSupportedPlanType(planType) &&
-    planTypeLifecyclePolicy(planType).completionMode === "TERMINAL"
-  ) {
-    return tx.mesocycle.update({
-      where: { id: mesocycle.id },
-      data: {
-        state: "COMPLETED",
-        isActive: false,
-        closedAt: new Date(),
-      },
-    });
+  const planType = requireSupportedPlanType(
+    mesocycle.macroCycle?.primaryGoal,
+  );
+  switch (planType) {
+    case "HYPERTROPHY":
+      return enterMesocycleHandoffInTransaction(tx, mesocycle.id);
+    case "STRENGTH":
+      return tx.mesocycle.update({
+        where: { id: mesocycle.id },
+        data: {
+          state: "COMPLETED",
+          isActive: false,
+          closedAt: new Date(),
+        },
+      });
   }
-  return enterMesocycleHandoffInTransaction(tx, mesocycle.id);
 }
 
 const EARLY_FINISH_INCOMPLETE_WORKOUT_STATUSES = [
@@ -263,6 +263,7 @@ export async function finishMesocycleEarlyInTransaction(
   if (!mesocycle) {
     throw new Error("MESOCYCLE_FINISH_EARLY_NOT_FOUND");
   }
+  requireSupportedPlanType(mesocycle.macroCycle?.primaryGoal);
   await claimSelectedPlanForTransitionInTransaction(tx, {
     userId: input.userId,
     macroCycleId: mesocycle.macroCycleId,
@@ -359,6 +360,7 @@ export async function transitionMesocycleStateInTransaction(
   if (!mesocycle) {
     throw new Error(`Mesocycle not found: ${mesocycleId}`);
   }
+  requireSupportedPlanType(mesocycle.macroCycle?.primaryGoal);
 
   if (mesocycle.state === "COMPLETED" || mesocycle.state === "AWAITING_HANDOFF") {
     console.warn(
@@ -424,6 +426,7 @@ export async function finishDeloadEarlyInTransaction(
   if (!mesocycle) {
     throw new Error("MESOCYCLE_FINISH_DELOAD_NOT_FOUND");
   }
+  requireSupportedPlanType(mesocycle.macroCycle?.primaryGoal);
   await claimSelectedPlanForTransitionInTransaction(tx, {
     userId: input.userId,
     macroCycleId: mesocycle.macroCycleId,

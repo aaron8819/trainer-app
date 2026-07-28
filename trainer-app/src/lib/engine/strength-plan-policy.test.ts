@@ -3,7 +3,9 @@ import { normalizeAcceptedSeedPayload } from "@/lib/api/mesocycle-seed-revision"
 import exerciseCatalog from "../../../prisma/exercises_comprehensive.json";
 import {
   buildStrengthPlanPolicy,
+  canonicalizeStrengthLimitations,
   getStrengthRirTarget,
+  StrengthLimitationValidationError,
   toStrengthSlotPlanSeed,
   toStrengthSlotSequence,
   type StrengthExerciseCandidate,
@@ -182,6 +184,13 @@ describe("strength plan policy", () => {
       first.slots.every((slot) => slot.exercises.length <= 5),
     ).toBe(true);
     expect(
+      first.slots.every(
+        (slot) =>
+          slot.estimatedMinutes <=
+          baseConfiguration.sessionDurationMinutes,
+      ),
+    ).toBe(true);
+    expect(
       first.slots
         .flatMap((slot) => slot.exercises)
         .every((entry) =>
@@ -199,7 +208,7 @@ describe("strength plan policy", () => {
         equipmentProfile: "MACHINES",
       },
       trainingAge: "intermediate",
-      limitations: ["knee", "low_back"],
+      limitations: ["left knee", "lower back"],
       exercises: catalog,
     });
 
@@ -240,7 +249,7 @@ describe("strength plan policy", () => {
     expect(
       policy.slots.every(
         (slot) =>
-          slot.exercises.length <= 4 &&
+          slot.exercises.length <= 5 &&
           slot.exercises.some((entry) => entry.role === "CORE_COMPOUND"),
       ),
     ).toBe(true);
@@ -250,6 +259,133 @@ describe("strength plan policy", () => {
         .filter((entry) => entry.role === "CORE_COMPOUND")
         .every((entry) => entry.setCount === 3),
     ).toBe(true);
+    expect(
+      policy.slots.every((slot) => slot.estimatedMinutes <= 45),
+    ).toBe(true);
+  });
+
+  it("budgets compound assistance with runtime's longer rest model", () => {
+    const policy = buildStrengthPlanPolicy({
+      configuration: {
+        ...baseConfiguration,
+        daysPerWeek: 2,
+        sessionDurationMinutes: 45,
+      },
+      trainingAge: "beginner",
+      limitations: [],
+      exercises: catalog,
+    });
+
+    expect(
+      policy.slots[0]?.exercises.find(
+        (entry) => entry.exerciseId === "barbell-row",
+      ),
+    ).toMatchObject({
+      role: "ACCESSORY",
+      setCount: 1,
+    });
+    expect(policy.slots[0]?.estimatedMinutes).toBe(45);
+  });
+
+  it.each([
+    [["low back"], ["low_back"]],
+    [["lower back"], ["low_back"]],
+    [["knee"], ["knee"]],
+    [["left knee"], ["knee"]],
+    [["knees"], ["knee"]],
+    [["shoulder"], ["shoulder"]],
+    [["right shoulder"], ["shoulder"]],
+    [["shoulder impingement"], ["shoulder"]],
+    [["  RIGHT-Shoulder: impingement  "], ["shoulder"]],
+    [["LOW / BACK"], ["low_back"]],
+    [["both knees; left shoulder"], ["knee", "shoulder"]],
+  ])(
+    "canonicalizes recognized limitation phrasing %j",
+    (limitations, expected) => {
+      expect(canonicalizeStrengthLimitations(limitations)).toEqual(expected);
+    },
+  );
+
+  it("fails closed for an unclassifiable active limitation", () => {
+    expect(() =>
+      canonicalizeStrengthLimitations(["left ankle"]),
+    ).toThrow(StrengthLimitationValidationError);
+    expect(() =>
+      buildStrengthPlanPolicy({
+        configuration: baseConfiguration,
+        trainingAge: "intermediate",
+        limitations: ["left ankle"],
+        exercises: catalog,
+      }),
+    ).toThrow("STRENGTH_PLAN_UNCLASSIFIED_LIMITATION:left ankle");
+  });
+
+  it("never lets a preferred lift bypass a recognized limitation", () => {
+    const policy = buildStrengthPlanPolicy({
+      configuration: baseConfiguration,
+      trainingAge: "intermediate",
+      limitations: ["Left-knee pain", "LOWER BACK"],
+      exercises: catalog,
+    });
+
+    const selectedIds = policy.slots.flatMap((slot) =>
+      slot.exercises.map((entry) => entry.exerciseId),
+    );
+    expect(selectedIds).not.toContain("back-squat");
+    expect(selectedIds).not.toContain("deadlift");
+    expect(policy.substitutions).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^Barbell Back Squat → /),
+        expect.stringMatching(/^Conventional Deadlift → /),
+      ]),
+    );
+  });
+
+  it("excludes every incompatible primary and assistance candidate", () => {
+    const contraindicatedIds = new Set([
+      "bench",
+      "ohp",
+      "face-pull",
+    ]);
+    const policy = buildStrengthPlanPolicy({
+      configuration: {
+        ...baseConfiguration,
+        preferredLifts: {
+          ...baseConfiguration.preferredLifts,
+          press: "BARBELL_BENCH",
+        },
+      },
+      trainingAge: "intermediate",
+      limitations: ["right shoulder impingement"],
+      exercises: catalog.map((candidate) =>
+        contraindicatedIds.has(candidate.id)
+          ? { ...candidate, contraindications: ["shoulder"] }
+          : candidate,
+      ),
+    });
+
+    expect(
+      policy.slots
+        .flatMap((slot) => slot.exercises)
+        .some((exercise) => contraindicatedIds.has(exercise.exerciseId)),
+    ).toBe(false);
+  });
+
+  it("fails explicitly when limitation filtering makes a required lane infeasible", () => {
+    expect(() =>
+      buildStrengthPlanPolicy({
+        configuration: baseConfiguration,
+        trainingAge: "intermediate",
+        limitations: ["shoulders"],
+        exercises: catalog.map((candidate) =>
+          candidate.movementPatterns.includes("vertical_push")
+            ? { ...candidate, contraindications: ["shoulder"] }
+            : candidate,
+        ),
+      }),
+    ).toThrow(
+      "STRENGTH_PLAN_REQUIRED_LANE_UNAVAILABLE:strength_upper_b:vertical_push",
+    );
   });
 
   it("fails explicitly when a required movement lane cannot be resolved", () => {
@@ -366,5 +502,88 @@ describe("strength plan policy", () => {
         ).toBe(true);
       }
     }
+  });
+
+  it("keeps every successful supported configuration within its requested duration", () => {
+    const shippedCatalog = exerciseCatalog.exercises.map((entry, index) => ({
+      id: `matrix-${index}`,
+      name: entry.name,
+      movementPatterns:
+        entry.movementPatterns as StrengthExerciseCandidate["movementPatterns"],
+      equipment: entry.equipment,
+      contraindications: Object.entries(entry.contraindications ?? {}).flatMap(
+        ([key, enabled]) => (enabled ? [key] : []),
+      ),
+      isMainLiftEligible: entry.isMainLiftEligible,
+      isCompound: entry.isCompound,
+      fatigueCost: entry.fatigueCost,
+    }));
+    let successfulSessions = 0;
+    let explicitFailures = 0;
+
+    for (const sessionDurationMinutes of [45, 60, 75, 90] as const) {
+      for (const trainingAge of [
+        "beginner",
+        "intermediate",
+        "advanced",
+      ] as const) {
+        for (const daysPerWeek of [2, 3, 4, 5] as const) {
+          for (const emphasis of [
+            "BALANCED",
+            "SQUAT",
+            "BENCH",
+            "DEADLIFT",
+          ] as const) {
+            for (const equipmentProfile of [
+              "FULL_GYM",
+              "BARBELL_HOME",
+              "DUMBBELLS",
+              "MACHINES",
+              "BODYWEIGHT",
+            ] as const) {
+              for (const limitations of [
+                [] as string[],
+                ["left knee", "right shoulder", "lower back"],
+              ]) {
+                try {
+                  const policy = buildStrengthPlanPolicy({
+                    configuration: {
+                      ...baseConfiguration,
+                      sessionDurationMinutes,
+                      daysPerWeek,
+                      emphasis,
+                      equipmentProfile,
+                      preferredLifts: {
+                        squat: "AUTO",
+                        press: "AUTO",
+                        hinge: "AUTO",
+                      },
+                    },
+                    trainingAge,
+                    limitations,
+                    exercises: shippedCatalog,
+                  });
+                  for (const slot of policy.slots) {
+                    expect(slot.estimatedMinutes).toBeLessThanOrEqual(
+                      sessionDurationMinutes,
+                    );
+                    successfulSessions += 1;
+                  }
+                } catch (error) {
+                  expect(error).toBeInstanceOf(Error);
+                  expect((error as Error).message).toMatch(
+                    /^STRENGTH_PLAN_(REQUIRED_LANE_UNAVAILABLE|PRIMARY_LIFT_UNAVAILABLE|DURATION_UNACHIEVABLE):/,
+                  );
+                  explicitFailures += 1;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    expect(successfulSessions).toBeGreaterThan(0);
+    expect(explicitFailures).toBeGreaterThan(0);
   });
 });

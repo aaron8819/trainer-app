@@ -212,6 +212,12 @@ describe("PlanManagementClient", () => {
     expect(
       screen.getByText(/saved experience level and active exercise limitations/i),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText(/low or lower back, knee, shoulder, hip, elbow, and wrist/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/unrecognized active limitations must be updated/i),
+    ).toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText("Main emphasis"), "BENCH");
     await user.selectOptions(screen.getByLabelText("Training days"), "3");
     await user.selectOptions(

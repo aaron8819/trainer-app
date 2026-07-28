@@ -18,6 +18,24 @@ export const STRENGTH_EQUIPMENT_PROFILE_VALUES = [
 export type StrengthEquipmentProfile =
   (typeof STRENGTH_EQUIPMENT_PROFILE_VALUES)[number];
 
+export const STRENGTH_LIMITATION_KEYS = [
+  "low_back",
+  "knee",
+  "shoulder",
+  "hip",
+  "elbow",
+  "wrist",
+] as const;
+export type StrengthLimitationKey =
+  (typeof STRENGTH_LIMITATION_KEYS)[number];
+
+export class StrengthLimitationValidationError extends Error {
+  constructor(readonly limitation: string) {
+    super(`STRENGTH_PLAN_UNCLASSIFIED_LIMITATION:${limitation}`);
+    this.name = "StrengthLimitationValidationError";
+  }
+}
+
 export const STRENGTH_SQUAT_PREFERENCE_VALUES = [
   "AUTO",
   "BACK_SQUAT",
@@ -424,6 +442,95 @@ function normalizedToken(value: string): string {
   return value.trim().toLowerCase().replace(/[\s-]+/g, "_");
 }
 
+const LIMITATION_WORD_TO_KEY: Readonly<
+  Record<string, Exclude<StrengthLimitationKey, "low_back">>
+> = {
+  knee: "knee",
+  knees: "knee",
+  shoulder: "shoulder",
+  shoulders: "shoulder",
+  hip: "hip",
+  hips: "hip",
+  elbow: "elbow",
+  elbows: "elbow",
+  wrist: "wrist",
+  wrists: "wrist",
+};
+
+const LIMITATION_CONTEXT_WORDS = new Set([
+  "left",
+  "right",
+  "both",
+  "bilateral",
+  "and",
+  "or",
+  "pain",
+  "injury",
+  "injuries",
+  "issue",
+  "issues",
+  "limitation",
+  "limitations",
+  "discomfort",
+  "impingement",
+]);
+
+function limitationWords(value: string): string[] {
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[_\W]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+export function canonicalizeStrengthLimitations(
+  limitations: readonly string[],
+): StrengthLimitationKey[] {
+  const canonical = new Set<StrengthLimitationKey>();
+
+  for (const rawLimitation of limitations) {
+    const words = limitationWords(rawLimitation);
+    let recognized = false;
+
+    for (let index = 0; index < words.length; index += 1) {
+      const word = words[index]!;
+      const next = words[index + 1];
+      if (
+        (word === "low" || word === "lower") &&
+        next === "back"
+      ) {
+        canonical.add("low_back");
+        recognized = true;
+        index += 1;
+        continue;
+      }
+      if (word === "lowback" || word === "lowerback") {
+        canonical.add("low_back");
+        recognized = true;
+        continue;
+      }
+      const key = LIMITATION_WORD_TO_KEY[word];
+      if (key) {
+        canonical.add(key);
+        recognized = true;
+        continue;
+      }
+      if (LIMITATION_CONTEXT_WORDS.has(word)) {
+        continue;
+      }
+      throw new StrengthLimitationValidationError(rawLimitation);
+    }
+
+    if (!recognized) {
+      throw new StrengthLimitationValidationError(rawLimitation);
+    }
+  }
+
+  return [...canonical];
+}
+
 function isEquipmentCompatible(
   exercise: StrengthExerciseCandidate,
   profile: StrengthEquipmentProfile,
@@ -435,10 +542,11 @@ function isEquipmentCompatible(
 
 function isLimitationCompatible(
   exercise: StrengthExerciseCandidate,
-  limitations: readonly string[],
+  limitations: ReadonlySet<StrengthLimitationKey>,
 ): boolean {
-  const blocked = new Set(exercise.contraindications.map(normalizedToken));
-  return !limitations.some((limitation) => blocked.has(normalizedToken(limitation)));
+  return !exercise.contraindications.some((contraindication) =>
+    limitations.has(contraindication as StrengthLimitationKey),
+  );
 }
 
 function matchesLane(
@@ -542,7 +650,7 @@ function selectCandidate(input: {
   candidates: StrengthExerciseCandidate[];
   lane: Lane;
   configuration: StrengthPlanConfiguration;
-  limitations: string[];
+  limitations: ReadonlySet<StrengthLimitationKey>;
   selectedIds: Set<string>;
 }): StrengthExerciseCandidate | null {
   return (
@@ -568,27 +676,14 @@ function selectCandidate(input: {
   );
 }
 
-function maxExercisesForDuration(
-  duration: StrengthPlanConfiguration["sessionDurationMinutes"],
-): number {
-  switch (duration) {
-    case 45:
-      return 4;
-    case 60:
-      return 5;
-    case 75:
-      return 6;
-    case 90:
-      return 7;
-  }
-}
-
 function setCountForLane(input: {
   lane: Lane;
   trainingAge: TrainingAge;
   emphasis: StrengthEmphasis;
+  sessionDurationMinutes: StrengthPlanConfiguration["sessionDurationMinutes"];
 }): number {
   if (input.lane.role === "ACCESSORY") return 2;
+  if (input.sessionDurationMinutes === 45) return 3;
   const base = input.trainingAge === "beginner" ? 3 : 4;
   const emphasized =
     (input.emphasis === "SQUAT" && input.lane.kind === "squat") ||
@@ -597,14 +692,88 @@ function setCountForLane(input: {
   return emphasized ? Math.max(4, base) : base;
 }
 
+type PlannedStrengthExercise = StrengthSeedExercise & {
+  required: boolean;
+  isCompound: boolean;
+};
+
 function estimateMinutes(
-  exercises: StrengthSeedExercise[],
+  exercises: PlannedStrengthExercise[],
+  trainingAge: TrainingAge,
 ): number {
+  const warmupSecondsPerPrimary =
+    trainingAge === "beginner"
+      ? 26 + 60 + 20 + 90
+      : 26 + 60 + 20 + 60 + 20 + 90;
   const seconds = exercises.reduce((total, exercise) => {
-    const rest = exercise.role === "CORE_COMPOUND" ? 270 : 120;
-    return total + exercise.setCount * (rest + 45);
-  }, 8 * 60);
+    const restAfterSet =
+      exercise.role === "CORE_COMPOUND"
+        ? 300
+        : exercise.isCompound
+          ? 150
+          : 90;
+    const workPerSet =
+      exercise.role === "CORE_COMPOUND" ? 22 : 40;
+    return (
+      total +
+      (exercise.role === "CORE_COMPOUND"
+        ? warmupSecondsPerPrimary
+        : 0) +
+      exercise.setCount * (workPerSet + restAfterSet)
+    );
+  }, 0);
   return Math.ceil(seconds / 60 / 5) * 5;
+}
+
+function fitSessionToDuration(input: {
+  slotId: string;
+  requestedMinutes: StrengthPlanConfiguration["sessionDurationMinutes"];
+  trainingAge: TrainingAge;
+  exercises: PlannedStrengthExercise[];
+}): {
+  exercises: StrengthSeedExercise[];
+  estimatedMinutes: number;
+} {
+  const exercises = input.exercises.map((exercise) => ({ ...exercise }));
+  const withinBudget = () =>
+    estimateMinutes(exercises, input.trainingAge) <=
+    input.requestedMinutes;
+
+  while (!withinBudget()) {
+    const removableIndex = exercises.findLastIndex(
+      (exercise) =>
+        !exercise.required && exercise.role === "ACCESSORY",
+    );
+    if (removableIndex < 0) break;
+    exercises.splice(removableIndex, 1);
+  }
+
+  while (!withinBudget()) {
+    const reducible = [...exercises]
+      .reverse()
+      .find(
+        (exercise) =>
+          exercise.role === "ACCESSORY" && exercise.setCount > 1,
+      );
+    if (!reducible) break;
+    reducible.setCount -= 1;
+  }
+
+  if (!withinBudget()) {
+    throw new Error(
+      `STRENGTH_PLAN_DURATION_UNACHIEVABLE:${input.slotId}:${input.requestedMinutes}`,
+    );
+  }
+
+  return {
+    exercises: exercises.map((exercise) => ({
+      exerciseId: exercise.exerciseId,
+      name: exercise.name,
+      role: exercise.role,
+      setCount: exercise.setCount,
+    })),
+    estimatedMinutes: estimateMinutes(exercises, input.trainingAge),
+  };
 }
 
 function mesocycleWeeksForAge(trainingAge: TrainingAge): number {
@@ -641,19 +810,25 @@ export function buildStrengthPlanPolicy(input: {
   exercises: StrengthExerciseCandidate[];
 }): StrengthPlanPolicy {
   const templates = SLOT_TEMPLATES[input.configuration.daysPerWeek];
-  const exerciseCap = maxExercisesForDuration(
-    input.configuration.sessionDurationMinutes,
+  const limitationKeys = new Set(
+    canonicalizeStrengthLimitations(input.limitations),
   );
+  const candidates = input.exercises.map((exercise) => ({
+    ...exercise,
+    contraindications: canonicalizeStrengthLimitations(
+      exercise.contraindications,
+    ),
+  }));
   const substitutions = new Set<string>();
   const slots = templates.map((template) => {
     const selectedIds = new Set<string>();
-    const exercises: StrengthSeedExercise[] = [];
-    for (const lane of template.lanes.slice(0, exerciseCap)) {
+    const plannedExercises: PlannedStrengthExercise[] = [];
+    for (const lane of template.lanes) {
       const selected = selectCandidate({
-        candidates: input.exercises,
+        candidates,
         lane,
         configuration: input.configuration,
-        limitations: input.limitations,
+        limitations: limitationKeys,
         selectedIds,
       });
       if (!selected) {
@@ -669,17 +844,28 @@ export function buildStrengthPlanPolicy(input: {
       if (preferredName && selected.name !== preferredName) {
         substitutions.add(`${preferredName} → ${selected.name}`);
       }
-      exercises.push({
+      plannedExercises.push({
         exerciseId: selected.id,
         name: selected.name,
         role: lane.role,
+        required: lane.required === true,
+        isCompound: selected.isCompound,
         setCount: setCountForLane({
           lane,
           trainingAge: input.trainingAge,
           emphasis: input.configuration.emphasis,
+          sessionDurationMinutes:
+            input.configuration.sessionDurationMinutes,
         }),
       });
     }
+    const fitted = fitSessionToDuration({
+      slotId: template.slotId,
+      requestedMinutes: input.configuration.sessionDurationMinutes,
+      trainingAge: input.trainingAge,
+      exercises: plannedExercises,
+    });
+    const exercises = fitted.exercises;
     if (
       exercises.filter((exercise) => exercise.role === "CORE_COMPOUND")
         .length === 0
@@ -691,7 +877,7 @@ export function buildStrengthPlanPolicy(input: {
       label: template.label,
       intent: template.intent,
       exercises,
-      estimatedMinutes: estimateMinutes(exercises),
+      estimatedMinutes: fitted.estimatedMinutes,
     };
   });
 
@@ -704,7 +890,7 @@ export function buildStrengthPlanPolicy(input: {
       slots
         .flatMap((slot) => slot.exercises)
         .find((exercise) => {
-          const candidate = input.exercises.find(
+          const candidate = candidates.find(
             (entry) => entry.id === exercise.exerciseId,
           );
           return candidate

@@ -138,19 +138,38 @@ export default async function PlanReviewPage({
                     </h3>
                     {slot.estimatedMinutes ? (
                       <span className="shrink-0 text-xs text-slate-500">
+                        <span className="sr-only">Estimated duration: </span>
                         ~{slot.estimatedMinutes} min
                       </span>
                     ) : null}
                   </div>
                   <p className="mt-2 text-sm text-slate-700">
-                    <span className="font-medium">Primary:</span>{" "}
-                    {slot.primaryLifts.join(", ")}
+                    <span className="font-medium">Primary:</span>
                   </p>
+                  <ul className="mt-1 space-y-1 text-sm text-slate-700">
+                    {slot.primaryLifts.map((exercise) => (
+                      <li key={exercise.exerciseId}>
+                        {exercise.setCount}{" "}
+                        {exercise.setCount === 1 ? "set" : "sets"} ·{" "}
+                        {exercise.name}
+                      </li>
+                    ))}
+                  </ul>
                   {slot.assistance.length > 0 ? (
-                    <p className="mt-1 text-sm text-slate-600">
-                      <span className="font-medium">Assistance:</span>{" "}
-                      {slot.assistance.join(", ")}
-                    </p>
+                    <>
+                      <p className="mt-2 text-sm font-medium text-slate-600">
+                        Assistance:
+                      </p>
+                      <ul className="mt-1 space-y-1 text-sm text-slate-600">
+                        {slot.assistance.map((exercise) => (
+                          <li key={exercise.exerciseId}>
+                            {exercise.setCount}{" "}
+                            {exercise.setCount === 1 ? "set" : "sets"} ·{" "}
+                            {exercise.name}
+                          </li>
+                        ))}
+                      </ul>
+                    </>
                   ) : null}
                 </article>
               ))}

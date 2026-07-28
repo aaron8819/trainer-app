@@ -477,8 +477,12 @@ export function PlanManagementClient({
               </div>
               <p className="mt-4 text-xs text-slate-500">
                 Your saved experience level and active exercise limitations are
-                applied automatically. If a preferred lift is incompatible,
-                the plan uses the closest safe equipment-compatible option.
+                applied automatically. Strength recognizes left/right and common
+                phrasing for low or lower back, knee, shoulder, hip, elbow, and
+                wrist limitations. Unrecognized active limitations must be
+                updated before a plan can be created. If a preferred lift is
+                incompatible, the plan uses the closest safe
+                equipment-compatible option.
               </p>
             </div>
           ) : null}

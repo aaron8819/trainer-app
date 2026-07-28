@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
   const txRoleCreateMany = vi.fn();
   const txWorkoutFindMany = vi.fn();
   const txReadinessFindFirst = vi.fn();
+  const resolveActivePlanContext = vi.fn();
   const transaction = vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
     callback({
       mesocycle: {
@@ -56,6 +57,7 @@ const mocks = vi.hoisted(() => {
     txRoleCreateMany,
     txWorkoutFindMany,
     txReadinessFindFirst,
+    resolveActivePlanContext,
     transaction,
     prisma: {
       mesocycle: {
@@ -75,6 +77,7 @@ vi.mock("./active-plan-context", async (importOriginal) => {
   return {
     ...original,
     claimSelectedPlanForTransitionInTransaction: vi.fn(async () => undefined),
+    resolveActivePlanContext: mocks.resolveActivePlanContext,
   };
 });
 
@@ -83,6 +86,7 @@ import {
   deriveNextAdvancingIntentByWeeklySubtraction,
   deriveNextAdvancingSession,
   finishDeloadEarly,
+  finishDeloadEarlyInTransaction,
   FinishDeloadEarlyBlockedWorkoutError,
   finishMesocycleEarly,
   FinishMesocycleEarlyBlockedWorkoutError,
@@ -91,7 +95,9 @@ import {
   getRirTarget,
   getWeeklyVolumeTarget,
   initializeNextMesocycle,
+  loadActiveMesocycle,
   transitionMesocycleState,
+  transitionMesocycleStateInTransaction,
 } from "./mesocycle-lifecycle";
 import {
   CANONICAL_DELOAD_RIR_TARGET,
@@ -114,6 +120,7 @@ describe("mesocycle-lifecycle", () => {
       deloadSessionsCompleted: 0,
       durationWeeks: 5,
       sessionsPerWeek: 3,
+      macroCycle: { primaryGoal: "HYPERTROPHY" },
     });
 
     const updated = await transitionMesocycleState("m1");
@@ -131,6 +138,7 @@ describe("mesocycle-lifecycle", () => {
       deloadSessionsCompleted: 0,
       durationWeeks: 5,
       sessionsPerWeek: 3,
+      macroCycle: { primaryGoal: "HYPERTROPHY" },
     });
     mocks.txMesoUpdate.mockResolvedValue({
       id: "m1",
@@ -182,6 +190,161 @@ describe("mesocycle-lifecycle", () => {
     expect(mocks.txMesoCreate).not.toHaveBeenCalled();
   });
 
+  it("loads the current accepted Strength revision as runtime seed authority", async () => {
+    const acceptedSeed = {
+      version: 1,
+      source: "strength_plan_policy_v1",
+      slots: [
+        {
+          slotId: "strength_upper_b",
+          exercises: [
+            {
+              exerciseId: "accepted-press",
+              role: "CORE_COMPOUND",
+              setCount: 4,
+            },
+          ],
+        },
+      ],
+    };
+    const compatibilitySeed = {
+      version: 1,
+      source: "strength_plan_policy_v1",
+      slots: [
+        {
+          slotId: "strength_upper_b",
+          exercises: [
+            {
+              exerciseId: "stale-press",
+              role: "CORE_COMPOUND",
+              setCount: 2,
+            },
+          ],
+        },
+      ],
+    };
+    mocks.resolveActivePlanContext.mockResolvedValue({
+      status: "READY",
+      activeMesocycle: {
+        id: "strength-meso",
+        slotPlanSeedJson: compatibilitySeed,
+        currentSeedRevision: {
+          id: "strength-revision-1",
+          revision: 1,
+          seedPayload: acceptedSeed,
+          payloadHash: "accepted-hash",
+          hashAlgorithm: "sha256",
+          provenanceStatus: "exact",
+        },
+      },
+    });
+
+    const mesocycle = await loadActiveMesocycle("user-1");
+
+    expect(mesocycle?.slotPlanSeedJson).toEqual(acceptedSeed);
+    expect(mesocycle?.slotPlanSeedJson).not.toEqual(compatibilitySeed);
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["null", null],
+    ["malformed", 42],
+    ["future unsupported", "POWER"],
+  ])(
+    "rejects %s plan type before terminal lifecycle mutation",
+    async (_label, primaryGoal) => {
+      mocks.txMesoFindUnique.mockResolvedValue({
+        id: "unsupported-meso",
+        state: "ACTIVE_DELOAD",
+        accumulationSessionsCompleted: 16,
+        deloadSessionsCompleted: 4,
+        durationWeeks: 5,
+        sessionsPerWeek: 4,
+        macroCycle:
+          primaryGoal === undefined ? {} : { primaryGoal },
+      });
+
+      await expect(
+        transitionMesocycleStateInTransaction(
+          {
+            mesocycle: {
+              findUnique: mocks.txMesoFindUnique,
+              update: mocks.txMesoUpdate,
+            },
+          } as never,
+          "unsupported-meso",
+        ),
+      ).rejects.toThrow("UNSUPPORTED_PLAN_TYPE");
+      expect(mocks.txMesoUpdate).not.toHaveBeenCalled();
+      expect(mocks.txMesoCreate).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ["below threshold", "ACTIVE_ACCUMULATION", 0, 0],
+    ["already completed", "COMPLETED", 12, 3],
+    ["already awaiting handoff", "AWAITING_HANDOFF", 12, 3],
+  ])(
+    "rejects an unsupported plan type when the lifecycle is %s",
+    async (_label, state, accumulationSessionsCompleted, deloadSessionsCompleted) => {
+      mocks.txMesoFindUnique.mockResolvedValue({
+        id: "unsupported-meso",
+        state,
+        accumulationSessionsCompleted,
+        deloadSessionsCompleted,
+        durationWeeks: 5,
+        sessionsPerWeek: 3,
+        macroCycle: { primaryGoal: "FUTURE_PLAN" },
+      });
+
+      await expect(
+        transitionMesocycleStateInTransaction(
+          {
+            mesocycle: {
+              findUnique: mocks.txMesoFindUnique,
+              update: mocks.txMesoUpdate,
+            },
+          } as never,
+          "unsupported-meso",
+        ),
+      ).rejects.toThrow("UNSUPPORTED_PLAN_TYPE");
+      expect(mocks.txMesoUpdate).not.toHaveBeenCalled();
+      expect(mocks.txMesoCreate).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects unsupported owner-scoped early completion before touching workouts", async () => {
+    mocks.txMesoFindFirst.mockResolvedValue({
+      id: "unsupported-meso",
+      macroCycleId: "unsupported-plan",
+      state: "ACTIVE_DELOAD",
+      isActive: true,
+      handoffSummaryJson: null,
+      nextSeedDraftJson: null,
+      closedAt: null,
+      macroCycle: { primaryGoal: "FUTURE_PLAN" },
+    });
+
+    await expect(
+      finishDeloadEarlyInTransaction(
+        {
+          mesocycle: {
+            findFirst: mocks.txMesoFindFirst,
+            update: mocks.txMesoUpdate,
+          },
+          workout: {
+            findMany: mocks.txWorkoutFindMany,
+            update: mocks.txWorkoutUpdate,
+          },
+        } as never,
+        { userId: "user-1", mesocycleId: "unsupported-meso" },
+      ),
+    ).rejects.toThrow("UNSUPPORTED_PLAN_TYPE");
+    expect(mocks.txWorkoutFindMany).not.toHaveBeenCalled();
+    expect(mocks.txWorkoutUpdate).not.toHaveBeenCalled();
+    expect(mocks.txMesoUpdate).not.toHaveBeenCalled();
+  });
+
   it("transitions ACTIVE_DELOAD to AWAITING_HANDOFF at session 3 and persists handoff artifacts", async () => {
     // Save transaction has already incremented deloadSessionsCompleted to 3; transitionMesocycleState reads 3 >= threshold.
     mocks.txMesoFindUnique.mockResolvedValue({
@@ -200,7 +363,10 @@ describe("mesocycle-lifecycle", () => {
       sessionsPerWeek: 3,
       daysPerWeek: 3,
       splitType: "PPL",
-      macroCycle: { userId: "user-1" },
+      macroCycle: {
+        userId: "user-1",
+        primaryGoal: "HYPERTROPHY",
+      },
       blocks: [],
     });
     mocks.txMesoUpdate.mockResolvedValue({
@@ -265,6 +431,7 @@ describe("mesocycle-lifecycle", () => {
       handoffSummaryJson: null,
       nextSeedDraftJson: null,
       closedAt: null,
+      macroCycle: { primaryGoal: "HYPERTROPHY" },
     });
     mocks.txWorkoutFindMany
       .mockResolvedValueOnce([plannedWorkout])
@@ -287,7 +454,10 @@ describe("mesocycle-lifecycle", () => {
       daysPerWeek: 4,
       splitType: "UPPER_LOWER",
       slotSequenceJson: {},
-      macroCycle: { userId: "user-1" },
+      macroCycle: {
+        userId: "user-1",
+        primaryGoal: "HYPERTROPHY",
+      },
       blocks: [],
     });
     mocks.txMesoUpdate.mockResolvedValue({
@@ -346,6 +516,7 @@ describe("mesocycle-lifecycle", () => {
       handoffSummaryJson: null,
       nextSeedDraftJson: null,
       closedAt: null,
+      macroCycle: { primaryGoal: "HYPERTROPHY" },
     });
     mocks.txWorkoutFindMany.mockResolvedValue([
       {
@@ -390,6 +561,7 @@ describe("mesocycle-lifecycle", () => {
       handoffSummaryJson: null,
       nextSeedDraftJson: null,
       closedAt: null,
+      macroCycle: { primaryGoal: "HYPERTROPHY" },
     });
 
     await expect(
@@ -408,6 +580,7 @@ describe("mesocycle-lifecycle", () => {
       handoffSummaryJson: null,
       nextSeedDraftJson: null,
       closedAt: null,
+      macroCycle: { primaryGoal: "HYPERTROPHY" },
     });
     mocks.txWorkoutFindMany.mockResolvedValue([
       {
@@ -446,7 +619,10 @@ describe("mesocycle-lifecycle", () => {
       sessionsPerWeek: 4,
       daysPerWeek: 4,
       splitType: "UPPER_LOWER",
-      macroCycle: { userId: "user-1" },
+      macroCycle: {
+        userId: "user-1",
+        primaryGoal: "HYPERTROPHY",
+      },
       blocks: [],
     });
     mocks.txMesoUpdate.mockResolvedValue({
@@ -535,6 +711,7 @@ describe("mesocycle-lifecycle", () => {
       handoffSummaryJson: null,
       nextSeedDraftJson: null,
       closedAt: null,
+      macroCycle: { primaryGoal: "HYPERTROPHY" },
     });
 
     await expect(
@@ -552,6 +729,7 @@ describe("mesocycle-lifecycle", () => {
       handoffSummaryJson: null,
       nextSeedDraftJson: null,
       closedAt: null,
+      macroCycle: { primaryGoal: "HYPERTROPHY" },
     });
     mocks.txWorkoutFindMany.mockResolvedValue([
       {
@@ -596,6 +774,7 @@ describe("mesocycle-lifecycle", () => {
       handoffSummaryJson: null,
       nextSeedDraftJson: null,
       closedAt: null,
+      macroCycle: { primaryGoal: "HYPERTROPHY" },
     });
     mocks.txWorkoutFindMany.mockResolvedValue([
       {
@@ -625,6 +804,7 @@ describe("mesocycle-lifecycle", () => {
       handoffSummaryJson: { version: 1 },
       nextSeedDraftJson: null,
       closedAt: null,
+      macroCycle: { primaryGoal: "HYPERTROPHY" },
     });
 
     await expect(
@@ -643,6 +823,7 @@ describe("mesocycle-lifecycle", () => {
       deloadSessionsCompleted: 3,
       durationWeeks: 5,
       sessionsPerWeek: 3,
+      macroCycle: { primaryGoal: "HYPERTROPHY" },
     });
 
     const updated = await transitionMesocycleState("m1");
@@ -661,6 +842,7 @@ describe("mesocycle-lifecycle", () => {
       deloadSessionsCompleted: 3,
       durationWeeks: 5,
       sessionsPerWeek: 3,
+      macroCycle: { primaryGoal: "HYPERTROPHY" },
     });
 
     const updated = await transitionMesocycleState("m1");

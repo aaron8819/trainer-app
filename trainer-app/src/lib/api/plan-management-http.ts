@@ -99,6 +99,16 @@ export function planManagementErrorResponse(
         },
         { status: 409 },
       );
+    case "PLAN_LIMITATION_UNRECOGNIZED":
+      return NextResponse.json(
+        {
+          error:
+            "An active exercise limitation is not recognized. Update it to a supported area (low/lower back, knee, shoulder, hip, elbow, or wrist) before creating a Strength plan.",
+          code: error.code,
+          ...error.details,
+        },
+        { status: 409 },
+      );
     case "PLAN_OWNER_NOT_READY":
       return NextResponse.json(
         {

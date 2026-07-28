@@ -2029,7 +2029,7 @@ describe("generateSessionFromIntent", () => {
     }
   });
 
-  it("generates the selected strength plan from its accepted next-slot seed", async () => {
+  it("generates an explicit Strength slot from its exact accepted seed revision", async () => {
     loadWorkoutContextMock.mockResolvedValue({
       profile: { id: "profile" },
       goals: { primaryGoal: "HYPERTROPHY", secondaryGoal: "NONE" },
@@ -2233,6 +2233,19 @@ describe("generateSessionFromIntent", () => {
           },
         ],
       },
+      currentSeedRevision: {
+        id: "strength-seed-revision-1",
+        revision: 1,
+        seedPayload: {
+          version: 1,
+          source: "strength_plan_policy_v1",
+          slots: [],
+        },
+        payloadHash:
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        hashAlgorithm: "sha256",
+        provenanceStatus: "exact",
+      },
     });
     mesocycleRoleFindManyMock.mockResolvedValue([
       { exerciseId: "bench", role: "CORE_COMPOUND", sessionIntent: "UPPER" },
@@ -2241,7 +2254,17 @@ describe("generateSessionFromIntent", () => {
 
     const selectSpy = vi.spyOn(selectionV2, "selectExercisesOptimized");
     try {
-      const result = await generateSessionFromIntent("user-1", { intent: "upper" });
+      const result = await generateSessionFromIntent("user-1", {
+        intent: "upper",
+        slotId: "upper_b",
+        advancingSlot: {
+          slotId: "upper_b",
+          intent: "upper",
+          sequenceIndex: 2,
+          sequenceLength: 4,
+          source: "mesocycle_slot_sequence",
+        },
+      });
 
       expect("error" in result).toBe(false);
       if ("error" in result) return;
@@ -2274,6 +2297,19 @@ describe("generateSessionFromIntent", () => {
       expect(result.selection.sessionDecisionReceipt?.sessionProvenance).toEqual({
         mesocycleId: "meso-1",
         compositionSource: "persisted_slot_plan_seed",
+        seedProvenance: {
+          revisionId: "strength-seed-revision-1",
+          revision: 1,
+          hash:
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        },
+      });
+      expect(result.selection.sessionDecisionReceipt?.sessionSlot).toEqual({
+        slotId: "upper_b",
+        intent: "upper",
+        sequenceIndex: 2,
+        sequenceLength: 4,
+        source: "mesocycle_slot_sequence",
       });
       expect(JSON.stringify(result.selection.sessionDecisionReceipt)).not.toContain(
         "acceptedPlannerIntent"

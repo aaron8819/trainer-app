@@ -12,6 +12,7 @@ import { prisma } from "@/lib/db/prisma";
 import { generateMacroCycle } from "@/lib/engine";
 import {
   buildStrengthPlanPolicy,
+  StrengthLimitationValidationError,
   toStrengthSlotPlanSeed,
   toStrengthSlotSequence,
   type StrengthPlanConfiguration,
@@ -24,6 +25,7 @@ import {
 import { resolveOwner } from "./workout-context";
 import { getUiAuditFixtureForServer } from "@/lib/ui-audit-fixtures/server";
 import { createInitialAcceptedSeedRevisionInTransaction } from "./mesocycle-seed-revision";
+import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
 import { strengthPlanConfigurationSchema } from "@/lib/validation";
 
 export type PlanLifecycleStatus =
@@ -136,6 +138,7 @@ export type PlanManagementErrorCode =
   | "PLAN_NOT_FOUND"
   | "PLAN_NOT_PREPARING"
   | "PLAN_INVALID"
+  | "PLAN_LIMITATION_UNRECOGNIZED"
   | "PLAN_MUTATION_CONFLICT"
   | "ACTIVE_PLAN_ARCHIVE_FORBIDDEN"
   | "PLAN_OWNER_NOT_READY";
@@ -254,8 +257,8 @@ export type PlanReview = PlanSummary & {
     label: string;
     intent: string;
     estimatedMinutes: number | null;
-    primaryLifts: string[];
-    assistance: string[];
+    primaryLifts: PlanReviewExercise[];
+    assistance: PlanReviewExercise[];
   }>;
   mesocycles: Array<{
     id: string;
@@ -269,6 +272,13 @@ export type PlanReview = PlanSummary & {
   }>;
 };
 
+export type PlanReviewExercise = {
+  exerciseId: string;
+  name: string;
+  role: "CORE_COMPOUND" | "ACCESSORY";
+  setCount: number;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -276,16 +286,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function readStrengthReview(input: {
   slotSequenceJson: unknown;
   slotPlanSeedJson: unknown;
+  acceptedSeedPayload?: unknown;
 }): Pick<PlanReview, "strengthConfiguration" | "weeklyStructure"> {
   const sequence = isRecord(input.slotSequenceJson)
     ? input.slotSequenceJson
     : null;
-  const seed = isRecord(input.slotPlanSeedJson) ? input.slotPlanSeedJson : null;
+  const compatibilitySeed = parseSlotPlanSeedJson(input.slotPlanSeedJson);
+  const acceptedSeed =
+    input.acceptedSeedPayload == null
+      ? null
+      : parseSlotPlanSeedJson(input.acceptedSeedPayload);
+  if (input.acceptedSeedPayload != null && !acceptedSeed) {
+    return { strengthConfiguration: null, weeklyStructure: [] };
+  }
+  const executableSeed = acceptedSeed ?? compatibilitySeed;
   if (
     sequence?.source !== "strength_plan_policy_v1" ||
-    seed?.source !== "strength_plan_policy_v1" ||
+    compatibilitySeed?.source !== "strength_plan_policy_v1" ||
+    executableSeed?.source !== "strength_plan_policy_v1" ||
     !Array.isArray(sequence.slots) ||
-    !Array.isArray(seed.slots)
+    compatibilitySeed.slots.length === 0 ||
+    executableSeed.slots.length === 0
   ) {
     return { strengthConfiguration: null, weeklyStructure: [] };
   }
@@ -306,14 +327,46 @@ function readStrengthReview(input: {
       : null;
   const configuration =
     parsedConfiguration?.success === true ? parsedConfiguration.data : null;
-  const seedBySlot = new Map(
-    seed.slots.flatMap((value) => {
-      const slot = isRecord(value) ? value : null;
-      return typeof slot?.slotId === "string" && Array.isArray(slot.exercises)
-        ? [[slot.slotId, slot.exercises] as const]
-        : [];
-    }),
-  );
+  const compatibilityNames = new Map<string, string>();
+  for (const slot of compatibilitySeed.slots) {
+    for (const exercise of slot.exercises) {
+      if (!exercise.hasExplicitName || !exercise.name) {
+        return { strengthConfiguration: configuration, weeklyStructure: [] };
+      }
+      compatibilityNames.set(
+        `${slot.slotId}\u0000${exercise.exerciseId}`,
+        exercise.name,
+      );
+    }
+  }
+
+  const seedBySlot = new Map<string, PlanReviewExercise[]>();
+  for (const slot of executableSeed.slots) {
+    if (seedBySlot.has(slot.slotId) || slot.exercises.length === 0) {
+      return { strengthConfiguration: configuration, weeklyStructure: [] };
+    }
+    const exercises: PlanReviewExercise[] = [];
+    for (const exercise of slot.exercises) {
+      if (!exercise.hasExplicitSetCount || exercise.setCount == null) {
+        return { strengthConfiguration: configuration, weeklyStructure: [] };
+      }
+      const name =
+        exercise.name ??
+        compatibilityNames.get(
+          `${slot.slotId}\u0000${exercise.exerciseId}`,
+        );
+      if (!name) {
+        return { strengthConfiguration: configuration, weeklyStructure: [] };
+      }
+      exercises.push({
+        exerciseId: exercise.exerciseId,
+        name,
+        role: exercise.role,
+        setCount: exercise.setCount,
+      });
+    }
+    seedBySlot.set(slot.slotId, exercises);
+  }
 
   const weeklyStructure = sequence.slots.flatMap((value) => {
     const slot = isRecord(value) ? value : null;
@@ -323,13 +376,8 @@ function readStrengthReview(input: {
     ) {
       return [];
     }
-    const exercises = (seedBySlot.get(slot.slotId) ?? []).flatMap((entry) => {
-      const exercise = isRecord(entry) ? entry : null;
-      return typeof exercise?.name === "string" &&
-        (exercise.role === "CORE_COMPOUND" || exercise.role === "ACCESSORY")
-        ? [{ name: exercise.name, role: exercise.role }]
-        : [];
-    });
+    const exercises = seedBySlot.get(slot.slotId);
+    if (!exercises) return [];
     return [
       {
         slotId: slot.slotId,
@@ -342,13 +390,20 @@ function readStrengthReview(input: {
             : null,
         primaryLifts: exercises
           .filter((exercise) => exercise.role === "CORE_COMPOUND")
-          .map((exercise) => exercise.name),
+          .map((exercise) => exercise),
         assistance: exercises
           .filter((exercise) => exercise.role === "ACCESSORY")
-          .map((exercise) => exercise.name),
+          .map((exercise) => exercise),
       },
     ];
   });
+
+  if (
+    weeklyStructure.length !== sequence.slots.length ||
+    weeklyStructure.length !== executableSeed.slots.length
+  ) {
+    return { strengthConfiguration: configuration, weeklyStructure: [] };
+  }
 
   return { strengthConfiguration: configuration, weeklyStructure };
 }
@@ -390,6 +445,9 @@ export async function loadPlanReview(
             intensityBias: true,
             slotSequenceJson: true,
             slotPlanSeedJson: true,
+            currentSeedRevision: {
+              select: { seedPayload: true },
+            },
             state: true,
             isActive: true,
             _count: { select: { blocks: true } },
@@ -406,6 +464,8 @@ export async function loadPlanReview(
       ? readStrengthReview({
           slotSequenceJson: plan.mesocycles[0].slotSequenceJson,
           slotPlanSeedJson: plan.mesocycles[0].slotPlanSeedJson,
+          acceptedSeedPayload:
+            plan.mesocycles[0].currentSeedRevision?.seedPayload,
         })
       : { strengthConfiguration: null, weeklyStructure: [] };
   return {
@@ -636,6 +696,11 @@ export async function createStrengthPlan(input: {
       })),
     });
   } catch (error) {
+    if (error instanceof StrengthLimitationValidationError) {
+      throw new PlanManagementError("PLAN_LIMITATION_UNRECOGNIZED", {
+        limitation: error.limitation,
+      });
+    }
     if (
       error instanceof Error &&
       error.message.startsWith("STRENGTH_PLAN_")
@@ -847,12 +912,23 @@ export async function finalizePlan(input: {
           ) {
             throw new PlanManagementError("PLAN_INVALID");
           }
-          await createInitialAcceptedSeedRevisionInTransaction(tx, {
-            mesocycleId: targetMesocycle.id,
-            seedPayload: targetMesocycle.slotPlanSeedJson,
-            creationReason: "strength_plan_finalization",
-            actorSource: "plan_management",
-          });
+          try {
+            await createInitialAcceptedSeedRevisionInTransaction(tx, {
+              mesocycleId: targetMesocycle.id,
+              seedPayload: targetMesocycle.slotPlanSeedJson,
+              creationReason: "strength_plan_finalization",
+              actorSource: "plan_management",
+            });
+          } catch (error) {
+            if (
+              error instanceof Error &&
+              (error.message.startsWith("ACCEPTED_SEED_") ||
+                error.message.startsWith("CANONICAL_JSON_"))
+            ) {
+              throw new PlanManagementError("PLAN_INVALID");
+            }
+            throw error;
+          }
         }
 
         const ready = await tx.macroCycle.findUniqueOrThrow({

@@ -274,6 +274,18 @@ describe("plan management persistence policy", () => {
         }),
       }),
     );
+    const strengthCreateInput = mocks.macroCycleCreate.mock.calls[0]?.[0];
+    const serializedExercises =
+      strengthCreateInput.data.mesocycles.create.slotPlanSeedJson.slots.flatMap(
+        (slot: { exercises: Array<{ setCount: number }> }) => slot.exercises,
+      );
+    expect(serializedExercises.length).toBeGreaterThan(0);
+    expect(
+      serializedExercises.every(
+        (exercise: { setCount: number }) =>
+          Number.isInteger(exercise.setCount) && exercise.setCount > 0,
+      ),
+    ).toBe(true);
     expect(mocks.prisma.user).not.toHaveProperty("updateMany");
   });
 
@@ -357,6 +369,56 @@ describe("plan management persistence policy", () => {
       },
     );
     expect(mocks.tx.user.findUniqueOrThrow).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects malformed Strength seed counts during finalization", async () => {
+    const timestamp = new Date("2026-07-27T01:00:00.000Z");
+    mocks.tx.macroCycle.findFirst.mockResolvedValue({
+      id: "strength-plan",
+      primaryGoal: "STRENGTH",
+      updatedAt: timestamp,
+      mesocycles: [
+        {
+          ...mesocycle(
+            "strength-meso",
+            MesocycleState.ACTIVE_ACCUMULATION,
+          ),
+          slotPlanSeedJson: {
+            version: 1,
+            source: "strength_plan_policy_v1",
+            slots: [
+              {
+                slotId: "strength_lower_a",
+                exercises: [
+                  {
+                    exerciseId: "squat",
+                    role: "CORE_COMPOUND",
+                  },
+                ],
+              },
+            ],
+          },
+          currentSeedRevisionId: null,
+        },
+      ],
+    });
+    mocks.tx.macroCycle.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.mesocycle.updateMany.mockResolvedValue({ count: 1 });
+    mocks.createInitialAcceptedSeedRevision.mockRejectedValue(
+      new Error(
+        "ACCEPTED_SEED_SET_COUNT_MISSING:strength_lower_a:squat",
+      ),
+    );
+
+    await expect(
+      finalizePlan({
+        userId: "user-1",
+        planId: "strength-plan",
+        expectedUpdatedAt: timestamp.toISOString(),
+      }),
+    ).rejects.toMatchObject({ code: "PLAN_INVALID" });
+    expect(mocks.tx.macroCycle.findUniqueOrThrow).not.toHaveBeenCalled();
+    expect(mocks.tx.user.findUniqueOrThrow).not.toHaveBeenCalled();
   });
 
   it("creates a generated plan as inactive PREPARING without changing the active pointer", async () => {
@@ -559,11 +621,230 @@ describe("plan management persistence policy", () => {
           label: "Lower A · Squat",
           intent: "LOWER",
           estimatedMinutes: 55,
-          primaryLifts: ["Barbell Back Squat"],
-          assistance: ["Romanian Deadlift"],
+          primaryLifts: [
+            {
+              exerciseId: "squat",
+              name: "Barbell Back Squat",
+              role: "CORE_COMPOUND",
+              setCount: 4,
+            },
+          ],
+          assistance: [
+            {
+              exerciseId: "rdl",
+              name: "Romanian Deadlift",
+              role: "ACCESSORY",
+              setCount: 2,
+            },
+          ],
         },
       ],
     });
+  });
+
+  it("prefers accepted revision roles and set counts in Strength review", async () => {
+    const timestamp = new Date("2026-08-03T00:00:00.000Z");
+    mocks.userFindUnique.mockResolvedValue({
+      activeMacroCycleId: "strength-plan",
+    });
+    mocks.macroCycleFindFirst.mockResolvedValue({
+      id: "strength-plan",
+      name: "Fall Strength",
+      primaryGoal: "STRENGTH",
+      startDate: timestamp,
+      endDate: new Date("2026-09-07T00:00:00.000Z"),
+      durationWeeks: 5,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      mesocycles: [
+        {
+          id: "strength-meso",
+          mesoNumber: 1,
+          startWeek: 0,
+          durationWeeks: 5,
+          focus: "Balanced Strength",
+          volumeTarget: "MODERATE",
+          intensityBias: "STRENGTH",
+          state: MesocycleState.ACTIVE_ACCUMULATION,
+          isActive: true,
+          _count: { blocks: 3 },
+          slotSequenceJson: {
+            version: 1,
+            source: "strength_plan_policy_v1",
+            strengthConfiguration: {
+              version: 1,
+              emphasis: "BALANCED",
+              daysPerWeek: 2,
+              sessionDurationMinutes: 45,
+              equipmentProfile: "FULL_GYM",
+              preferredLifts: {
+                squat: "AUTO",
+                press: "AUTO",
+                hinge: "AUTO",
+              },
+            },
+            slots: [
+              {
+                slotId: "strength_full_body_a",
+                label: "Full Body A",
+                intent: "FULL_BODY",
+                estimatedMinutes: 45,
+              },
+            ],
+          },
+          slotPlanSeedJson: {
+            version: 1,
+            source: "strength_plan_policy_v1",
+            slots: [
+              {
+                slotId: "strength_full_body_a",
+                exercises: [
+                  {
+                    exerciseId: "squat",
+                    name: "Barbell Back Squat",
+                    role: "CORE_COMPOUND",
+                    setCount: 4,
+                  },
+                ],
+              },
+            ],
+          },
+          currentSeedRevision: {
+            seedPayload: {
+              version: 1,
+              source: "strength_plan_policy_v1",
+              slots: [
+                {
+                  slotId: "strength_full_body_a",
+                  exercises: [
+                    {
+                      exerciseId: "squat",
+                      role: "CORE_COMPOUND",
+                      setCount: 3,
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      ],
+    });
+
+    const review = await loadPlanReview("user-1", "strength-plan");
+
+    expect(review?.weeklyStructure[0]?.primaryLifts).toEqual([
+      {
+        exerciseId: "squat",
+        name: "Barbell Back Squat",
+        role: "CORE_COMPOUND",
+        setCount: 3,
+      },
+    ]);
+  });
+
+  it.each([
+    {
+      label: "missing",
+      exercise: {
+        exerciseId: "squat",
+        name: "Barbell Back Squat",
+        role: "CORE_COMPOUND",
+      },
+    },
+    {
+      label: "malformed",
+      exercise: {
+        exerciseId: "squat",
+        name: "Barbell Back Squat",
+        role: "CORE_COMPOUND",
+        setCount: 0,
+      },
+    },
+  ])("fails Strength review closed for $label set counts", async ({ exercise }) => {
+    const timestamp = new Date("2026-08-03T00:00:00.000Z");
+    mocks.userFindUnique.mockResolvedValue({ activeMacroCycleId: null });
+    mocks.macroCycleFindFirst.mockResolvedValue({
+      id: "strength-plan",
+      name: "Invalid Strength",
+      primaryGoal: "STRENGTH",
+      startDate: timestamp,
+      endDate: timestamp,
+      durationWeeks: 5,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      mesocycles: [
+        {
+          id: "strength-meso",
+          mesoNumber: 1,
+          startWeek: 0,
+          durationWeeks: 5,
+          focus: "Strength",
+          volumeTarget: "MODERATE",
+          intensityBias: "STRENGTH",
+          state: MesocycleState.ACTIVE_ACCUMULATION,
+          isActive: false,
+          _count: { blocks: 1 },
+          currentSeedRevision: null,
+          slotSequenceJson: {
+            version: 1,
+            source: "strength_plan_policy_v1",
+            slots: [
+              {
+                slotId: "strength_full_body_a",
+                intent: "FULL_BODY",
+              },
+            ],
+          },
+          slotPlanSeedJson: {
+            version: 1,
+            source: "strength_plan_policy_v1",
+            slots: [
+              {
+                slotId: "strength_full_body_a",
+                exercises: [exercise],
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    await expect(
+      loadPlanReview("user-1", "strength-plan"),
+    ).resolves.toMatchObject({ weeklyStructure: [] });
+  });
+
+  it("returns clear validation details for an unrecognized active Strength limitation", async () => {
+    mocks.userFindUnique.mockResolvedValue({
+      activeMacroCycleId: null,
+      profile: { trainingAge: "INTERMEDIATE" },
+      injuries: [{ bodyPart: "left ankle" }],
+    });
+    mocks.exerciseFindMany.mockResolvedValue([]);
+
+    await expect(
+      createStrengthPlan({
+        userId: "user-1",
+        name: "Strength",
+        startDate: new Date("2026-08-03T00:00:00.000Z"),
+        configuration: {
+          emphasis: "BALANCED",
+          daysPerWeek: 2,
+          sessionDurationMinutes: 45,
+          equipmentProfile: "FULL_GYM",
+          preferredLifts: {
+            squat: "AUTO",
+            press: "AUTO",
+            hinge: "AUTO",
+          },
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "PLAN_LIMITATION_UNRECOGNIZED",
+      details: { limitation: "left ankle" },
+    });
+    expect(mocks.macroCycleCreate).not.toHaveBeenCalled();
   });
 
   it("distinguishes an owned archived activation target without exposing foreign plans", async () => {

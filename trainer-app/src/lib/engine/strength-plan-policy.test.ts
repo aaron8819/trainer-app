@@ -4,6 +4,7 @@ import exerciseCatalog from "../../../prisma/exercises_comprehensive.json";
 import {
   buildStrengthPlanPolicy,
   canonicalizeStrengthLimitations,
+  estimateStrengthSeedSessionMinutes,
   getStrengthRirTarget,
   StrengthLimitationValidationError,
   toStrengthSlotPlanSeed,
@@ -11,6 +12,9 @@ import {
   type StrengthExerciseCandidate,
   type StrengthPlanConfiguration,
 } from "./strength-plan-policy";
+import { getRestSeconds } from "./prescription";
+import { getStrengthExerciseRestSeconds } from "./strength-session-timing";
+import type { Exercise } from "./types";
 
 function exercise(
   id: string,
@@ -282,7 +286,7 @@ describe("strength plan policy", () => {
       ),
     ).toMatchObject({
       role: "ACCESSORY",
-      setCount: 1,
+      setCount: 2,
     });
     expect(policy.slots[0]?.estimatedMinutes).toBe(45);
   });
@@ -299,6 +303,24 @@ describe("strength plan policy", () => {
     [["  RIGHT-Shoulder: impingement  "], ["shoulder"]],
     [["LOW / BACK"], ["low_back"]],
     [["both knees; left shoulder"], ["knee", "shoulder"]],
+    [["pain in my left knee"], ["knee"]],
+    [["history of right shoulder impingement"], ["shoulder"]],
+    [
+      ["right rotator cuff/shoulder impingement syndrome"],
+      ["shoulder"],
+    ],
+    [["hip problem"], ["hip"]],
+    [["low-back pain"], ["low_back"]],
+    [["lower-back problems"], ["low_back"]],
+    [["my knee hurts"], ["knee"]],
+    [["previous knee injury"], ["knee"]],
+    [["  PAIN   IN MY LEFT KNEE  "], ["knee"]],
+    [["(left knee), right shoulder/elbows"], ["knee", "shoulder", "elbow"]],
+    [["my knee's pain"], ["knee"]],
+    [
+      ["Pain in my left knee, and history of right shoulder impingement."],
+      ["knee", "shoulder"],
+    ],
   ])(
     "canonicalizes recognized limitation phrasing %j",
     (limitations, expected) => {
@@ -318,6 +340,22 @@ describe("strength plan policy", () => {
         exercises: catalog,
       }),
     ).toThrow("STRENGTH_PLAN_UNCLASSIFIED_LIMITATION:left ankle");
+  });
+
+  it.each([
+    "hip hop",
+    "wristwatch",
+    "friendship",
+    "shoulderbag",
+    "knee-high fashion",
+    "pain in my knee and ankle",
+    "history of knee pain while playing soccer",
+    "rotator problem",
+    "cuff pain",
+  ])("rejects unrelated or materially unclassifiable text %j", (limitation) => {
+    expect(() => canonicalizeStrengthLimitations([limitation])).toThrow(
+      StrengthLimitationValidationError,
+    );
   });
 
   it("never lets a preferred lift bypass a recognized limitation", () => {
@@ -480,7 +518,7 @@ describe("strength plan policy", () => {
           configuration: {
             ...baseConfiguration,
             daysPerWeek,
-            sessionDurationMinutes: 45,
+            sessionDurationMinutes: 60,
             equipmentProfile,
             preferredLifts: {
               squat: "AUTO",
@@ -567,6 +605,35 @@ describe("strength plan policy", () => {
                     expect(slot.estimatedMinutes).toBeLessThanOrEqual(
                       sessionDurationMinutes,
                     );
+                    expect(
+                      estimateStrengthSeedSessionMinutes({
+                        trainingAge,
+                        exercises: slot.exercises,
+                        catalog: shippedCatalog,
+                      }),
+                    ).toBe(slot.estimatedMinutes);
+                    for (const exercise of slot.exercises) {
+                      const classification = shippedCatalog.find(
+                        (candidate) =>
+                          candidate.id === exercise.exerciseId,
+                      )!;
+                      const isMainLift =
+                        exercise.role === "CORE_COMPOUND";
+                      const expectedRest =
+                        getStrengthExerciseRestSeconds({
+                          role: exercise.role,
+                          fatigueCost: classification.fatigueCost,
+                          isCompound: classification.isCompound,
+                        });
+                      expect(
+                        getRestSeconds(
+                          classification as unknown as Exercise,
+                          isMainLift,
+                          isMainLift ? 5 : 10,
+                          "strength",
+                        ),
+                      ).toBe(expectedRest);
+                    }
                     successfulSessions += 1;
                   }
                 } catch (error) {

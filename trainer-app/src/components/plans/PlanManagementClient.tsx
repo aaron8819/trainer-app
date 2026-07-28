@@ -121,7 +121,7 @@ export function PlanManagementClient({
         ),
       });
       const body = await responseBody(response);
-      if (!response.ok) {
+      if (!response.ok || body.error) {
         setError(body.error ?? "Could not create the plan.");
         return;
       }

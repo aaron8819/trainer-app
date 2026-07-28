@@ -18,6 +18,7 @@ export const UI_AUDIT_FIXTURE_SCENARIOS = [
   "handoff",
   "timer-visible",
   "strength-alternative",
+  "strength-after-lower-b",
 ] as const;
 
 export type UiAuditFixtureScenario = (typeof UI_AUDIT_FIXTURE_SCENARIOS)[number];
@@ -1597,6 +1598,34 @@ const strengthAlternativeFixture: UiAuditFixture = {
   },
 };
 
+const strengthAfterLowerBFixture: UiAuditFixture = {
+  ...strengthAlternativeFixture,
+  scenario: "strength-after-lower-b",
+  home: {
+    ...strengthAlternativeFixture.home!,
+    homeProgram: {
+      ...strengthAlternativeHomeProgram,
+      eligibleAlternativeSessions: [],
+    },
+    primaryAction: {
+      state: "planned",
+      mode: "generate",
+      label: "Start workout",
+      action: "generate-required-workout",
+      initialIntent: "upper",
+      initialSlotId: "strength_upper_a",
+      reasonLabel: "Up next",
+      reason:
+        "Strength Upper A remains the earliest unresolved canonical slot.",
+    },
+    decision: {
+      ...strengthAlternativeFixture.home!.decision!,
+      nextSessionLabel: "Upper A · Bench",
+      nextSessionDescription: "Strength upper session this week",
+    },
+  },
+};
+
 const emptyFixture: UiAuditFixture = {
   scenario: "empty",
   plans: {
@@ -1686,6 +1715,7 @@ const fixtures: Record<UiAuditFixtureScenario, UiAuditFixture> = {
   handoff: handoffFixture,
   "timer-visible": timerVisibleFixture,
   "strength-alternative": strengthAlternativeFixture,
+  "strength-after-lower-b": strengthAfterLowerBFixture,
 };
 
 export function getUiAuditFixtureByScenario(scenario: UiAuditFixtureScenario): UiAuditFixture {

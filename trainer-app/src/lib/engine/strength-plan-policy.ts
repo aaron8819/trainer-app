@@ -1,4 +1,8 @@
 import type { MovementPatternV2, TrainingAge } from "./types";
+import {
+  estimateStrengthSessionTiming,
+  type StrengthTimingExercise,
+} from "./strength-session-timing";
 
 export const STRENGTH_EMPHASIS_VALUES = [
   "BALANCED",
@@ -464,21 +468,62 @@ const LIMITATION_CONTEXT_WORDS = new Set([
   "bilateral",
   "and",
   "or",
+  "but",
+  "in",
+  "of",
+  "with",
+  "around",
+  "near",
+  "at",
+  "on",
+  "my",
+  "the",
+  "a",
+  "an",
+  "history",
+  "previous",
+  "previously",
+  "prior",
+  "past",
+  "old",
+  "current",
+  "chronic",
+  "acute",
   "pain",
+  "painful",
+  "ache",
+  "aches",
+  "aching",
+  "hurt",
+  "hurts",
+  "hurting",
   "injury",
   "injuries",
+  "injured",
   "issue",
   "issues",
   "limitation",
   "limitations",
   "discomfort",
   "impingement",
+  "syndrome",
+  "problem",
+  "problems",
+  "soreness",
+  "sore",
+  "strain",
+  "strains",
+  "sprain",
+  "sprains",
+  "surgery",
+  "post",
 ]);
 
 function limitationWords(value: string): string[] {
   return value
     .normalize("NFKC")
     .toLowerCase()
+    .replace(/['’]s\b/g, "")
     .replace(/[_\W]+/g, " ")
     .trim()
     .split(/\s+/)
@@ -509,6 +554,12 @@ export function canonicalizeStrengthLimitations(
       if (word === "lowback" || word === "lowerback") {
         canonical.add("low_back");
         recognized = true;
+        continue;
+      }
+      if (word === "rotator" && next === "cuff") {
+        canonical.add("shoulder");
+        recognized = true;
+        index += 1;
         continue;
       }
       const key = LIMITATION_WORD_TO_KEY[word];
@@ -695,34 +746,47 @@ function setCountForLane(input: {
 type PlannedStrengthExercise = StrengthSeedExercise & {
   required: boolean;
   isCompound: boolean;
+  fatigueCost: number;
 };
 
 function estimateMinutes(
   exercises: PlannedStrengthExercise[],
   trainingAge: TrainingAge,
 ): number {
-  const warmupSecondsPerPrimary =
-    trainingAge === "beginner"
-      ? 26 + 60 + 20 + 90
-      : 26 + 60 + 20 + 60 + 20 + 90;
-  const seconds = exercises.reduce((total, exercise) => {
-    const restAfterSet =
-      exercise.role === "CORE_COMPOUND"
-        ? 300
-        : exercise.isCompound
-          ? 150
-          : 90;
-    const workPerSet =
-      exercise.role === "CORE_COMPOUND" ? 22 : 40;
-    return (
-      total +
-      (exercise.role === "CORE_COMPOUND"
-        ? warmupSecondsPerPrimary
-        : 0) +
-      exercise.setCount * (workPerSet + restAfterSet)
-    );
-  }, 0);
-  return Math.ceil(seconds / 60 / 5) * 5;
+  return estimateStrengthSessionTiming({
+    trainingAge,
+    exercises,
+  }).estimatedMinutes;
+}
+
+export function estimateStrengthSeedSessionMinutes(input: {
+  trainingAge: TrainingAge;
+  exercises: readonly StrengthSeedExercise[];
+  catalog: readonly StrengthExerciseCandidate[];
+}): number {
+  const classificationById = new Map(
+    input.catalog.map((exercise) => [exercise.id, exercise]),
+  );
+  const timingExercises: StrengthTimingExercise[] = input.exercises.map(
+    (exercise) => {
+      const classification = classificationById.get(exercise.exerciseId);
+      if (!classification) {
+        throw new Error(
+          `STRENGTH_PLAN_TIMING_CLASSIFICATION_MISSING:${exercise.exerciseId}`,
+        );
+      }
+      return {
+        role: exercise.role,
+        setCount: exercise.setCount,
+        isCompound: classification.isCompound,
+        fatigueCost: classification.fatigueCost,
+      };
+    },
+  );
+  return estimateStrengthSessionTiming({
+    trainingAge: input.trainingAge,
+    exercises: timingExercises,
+  }).estimatedMinutes;
 }
 
 function fitSessionToDuration(input: {
@@ -850,6 +914,7 @@ export function buildStrengthPlanPolicy(input: {
         role: lane.role,
         required: lane.required === true,
         isCompound: selected.isCompound,
+        fatigueCost: selected.fatigueCost,
         setCount: setCountForLane({
           lane,
           trainingAge: input.trainingAge,

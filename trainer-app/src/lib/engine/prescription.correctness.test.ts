@@ -91,6 +91,27 @@ describe("prescription correctness", () => {
     expect(hypertrophy.workout.mainLifts[0].sets[0].restSeconds).toBeGreaterThanOrEqual(
       hypertrophy.workout.accessories[0].sets[0].restSeconds ?? 0
     );
+    expect(strength.workout.mainLifts[0].sets[0].restSeconds).toBe(300);
+    expect(strength.workout.accessories[0].sets[0].restSeconds).toBe(90);
+    expect(strength.workout.estimatedMinutes).toBe(35);
+  });
+
+  it("uses the same low-fatigue 240-second primary rule in runtime timing", () => {
+    const lowerFatigueMain = { ...mainLift, id: "bench-low-fatigue", fatigueCost: 3 };
+    const result = generateWorkoutFromTemplate(
+      [
+        { exercise: lowerFatigueMain, orderIndex: 0 },
+        { exercise: accessory, orderIndex: 1 },
+      ],
+      {
+        ...commonOptions,
+        exerciseLibrary: [lowerFatigueMain, accessory],
+        goals: { primary: "strength" as const, secondary: "none" as const },
+      },
+    );
+
+    expect(result.workout.mainLifts[0].sets[0].restSeconds).toBe(240);
+    expect(result.workout.estimatedMinutes).toBe(30);
   });
 
   it("centers lifecycle RIR bands equally for compounds and accessories in W2", () => {

@@ -1,6 +1,6 @@
 import { defineConfig } from "@playwright/test";
 
-const auditPort = process.env.UI_AUDIT_PORT ?? "3100";
+const auditPort = process.env.UI_AUDIT_PORT ?? "3217";
 const auditDistDir = process.env.UI_AUDIT_NEXT_DIST_DIR ?? ".next-ui-audit/managed";
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${auditPort}`;
 const shouldStartManagedServer = !process.env.PLAYWRIGHT_BASE_URL;
@@ -28,8 +28,8 @@ export default defineConfig({
   ...(shouldStartManagedServer
     ? {
         webServer: {
-          command: `npx next dev --hostname 127.0.0.1 --port ${auditPort}`,
-          url: `${baseURL}/plans`,
+          command: `node node_modules/next/dist/bin/next dev --hostname 127.0.0.1 --port ${auditPort}`,
+          url: `${baseURL}/ui-audit-fixture/ready`,
           reuseExistingServer: false,
           timeout: 120_000,
           env: {

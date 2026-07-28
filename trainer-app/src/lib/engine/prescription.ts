@@ -12,6 +12,7 @@ import type {
   UserProfile,
   WorkoutSet,
 } from "./types";
+import { getStrengthExerciseRestSeconds } from "./strength-session-timing";
 
 export const REST_SECONDS = {
   main: 150,
@@ -286,8 +287,12 @@ export function getRestSeconds(
   const isCompound = exercise.isCompound ?? false;
   const reps = targetReps ?? (isMainLift ? 5 : 10);
 
-  if (primaryGoal === "strength" && isMainLift) {
-    return fatigueCost >= 4 ? 300 : 240;
+  if (primaryGoal === "strength") {
+    return getStrengthExerciseRestSeconds({
+      role: isMainLift ? "CORE_COMPOUND" : "ACCESSORY",
+      fatigueCost,
+      isCompound,
+    });
   }
 
   // Heavy compounds (1-5 reps)

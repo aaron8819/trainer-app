@@ -24,6 +24,7 @@ import { suggestSubstitutes } from "./substitution";
 import { buildProjectedWarmupSets, canResolveLoadForWarmupRamp } from "./warmup-ramp";
 import type { BlockContext } from "./periodization/types";
 import { prescribeWithBlock } from "./periodization/prescribe-with-block";
+import { estimateStrengthSessionTiming } from "./strength-session-timing";
 
 export type TemplateExerciseInput = {
   exercise: Exercise;
@@ -179,7 +180,20 @@ export function generateWorkoutFromTemplate(
 
   // Calculate estimated time (metadata only - no trimming)
   const allExercises = [...projectedMainLifts, ...accessories];
-  const estimatedMinutes = estimateWorkoutMinutes(allExercises);
+  const estimatedMinutes =
+    goals.primary === "strength"
+      ? estimateStrengthSessionTiming({
+          trainingAge: profile.trainingAge,
+          exercises: allExercises.map((exercise) => ({
+            role: exercise.isMainLift
+              ? "CORE_COMPOUND"
+              : "ACCESSORY",
+            setCount: exercise.sets.length,
+            fatigueCost: exercise.exercise.fatigueCost ?? 3,
+            isCompound: exercise.exercise.isCompound ?? false,
+          })),
+        }).estimatedMinutes
+      : estimateWorkoutMinutes(allExercises);
   const volumePlanByMuscle = buildVolumePlanByMuscle(mainLifts, accessories, volumeContext, {
     mesocycleWeek: weekInBlock,
     mesocycleLength: normalizedMesocycleLength,

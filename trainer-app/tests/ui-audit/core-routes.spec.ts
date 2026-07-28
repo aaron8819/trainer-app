@@ -233,7 +233,7 @@ test.describe("lightweight fixture interaction checks", () => {
     await page.getByLabel("Time per session").selectOption("45");
     await page.getByRole("button", { name: "Generate and review" }).click();
 
-    await expect(page).toHaveURL(new RegExp(`/plans/${createdPlanId}/review/?$`));
+    await expectAuditPath(page, `/plans/${createdPlanId}/review`);
     await expect(
       page.getByRole("heading", { name: "Strength Base" }),
     ).toBeVisible();
@@ -245,7 +245,7 @@ test.describe("lightweight fixture interaction checks", () => {
 
     page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Finalize as READY" }).click();
-    await expect(page).toHaveURL(/\/plans\/?$/);
+    await expectAuditPath(page, "/plans");
     expect(finalizedPlanId).toBe(createdPlanId);
 
     const readyPlan = page.locator("article").filter({ hasText: "Strength Ready" });
@@ -257,6 +257,58 @@ test.describe("lightweight fixture interaction checks", () => {
     await expect(readyPlan.getByText("Active", { exact: true })).toBeVisible();
     expect(activatedPlanId).toBe(readyPlanId);
     await expectMainWithinViewport(page);
+    await expectNoAppError(page);
+  });
+
+  test("strength creation surfaces fail-closed limitation guidance before success", async ({
+    page,
+  }) => {
+    await page.setExtraHTTPHeaders({ [FIXTURE_HEADER]: "active" });
+    const createdPlanId = "10000000-0000-4000-8000-000000000004";
+    let limitationIsRecognized = false;
+    let createAttempts = 0;
+
+    await page.route("**/api/plans", async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.continue();
+        return;
+      }
+      createAttempts += 1;
+      if (!limitationIsRecognized) {
+        await route.fulfill({
+          json: {
+            code: "PLAN_LIMITATION_UNRECOGNIZED",
+            error:
+              "Update the active limitation “left ankle” to a recognized area before generating this plan.",
+          },
+        });
+        return;
+      }
+      await route.fulfill({ json: { plan: { id: createdPlanId } } });
+    });
+
+    await page.goto("/plans", { waitUntil: "domcontentloaded" });
+    await waitForStableRoute(page);
+    await page.getByRole("button", { name: "Create another plan" }).click();
+    await page.getByRole("radio", { name: /Strength/i }).check({
+      force: true,
+    });
+    await page.getByLabel("Plan name").fill("Limitation Check");
+    await page.getByRole("button", { name: "Generate and review" }).click();
+
+    await expect(
+      page.getByText(/Update the active limitation “left ankle”/),
+    ).toBeVisible();
+    await expectAuditPath(page, "/plans");
+    expect(createAttempts).toBe(1);
+
+    limitationIsRecognized = true;
+    await page.getByRole("button", { name: "Generate and review" }).click();
+    await expectAuditPath(page, `/plans/${createdPlanId}/review`);
+    expect(createAttempts).toBe(2);
+    await expect(
+      page.getByRole("heading", { name: "Strength Base" }),
+    ).toBeVisible();
     await expectNoAppError(page);
   });
 
@@ -444,9 +496,7 @@ test.describe("lightweight fixture interaction checks", () => {
     ).toBeVisible();
     await page.getByRole("button", { name: "Start workout" }).click();
 
-    await expect(page).toHaveURL(
-      /\/log\/ui-audit-strength-lower-b\/?$/,
-    );
+    await expectAuditPath(page, "/log/ui-audit-strength-lower-b");
     expect(generatePayload).toEqual({
       intent: "lower",
       slotId: "strength_lower_b",
@@ -513,6 +563,20 @@ test.describe("lightweight fixture interaction checks", () => {
       action: "mark_completed",
       status: "COMPLETED",
     });
+    await page.setExtraHTTPHeaders({
+      [FIXTURE_HEADER]: "strength-after-lower-b",
+    });
+    await page
+      .getByRole("link", { name: "Generate next workout" })
+      .click();
+    await expectAuditPath(page, "/");
+    await expect(
+      page.getByText("Upper A · Bench", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Choose a different session" }),
+    ).toHaveCount(0);
+    await expect(page.getByText("Lower B · Hinge")).toHaveCount(0);
     await expectMainWithinViewport(page);
     await expectNoAppError(page);
   });
@@ -526,7 +590,7 @@ test.describe("lightweight fixture interaction checks", () => {
     await page.goto(ACTIVE_LOG_WORKOUT_PATH, { waitUntil: "domcontentloaded" });
     await waitForStableRoute(page);
 
-    await expect(page).toHaveURL(new RegExp(`${escapeRegex(ACTIVE_LOG_WORKOUT_PATH)}/?$`));
+    await expectAuditPath(page, ACTIVE_LOG_WORKOUT_PATH);
     await expect(page.getByRole("heading", { name: "Workout Log" })).toBeVisible();
     await expect(page.getByText("Active set")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Chest-Supported Row" })).toBeVisible();
@@ -601,7 +665,7 @@ test.describe("lightweight fixture interaction checks", () => {
     await page.goto(TIMER_VISIBLE_LOG_WORKOUT_PATH, { waitUntil: "domcontentloaded" });
     await waitForStableRoute(page);
 
-    await expect(page).toHaveURL(new RegExp(`${escapeRegex(TIMER_VISIBLE_LOG_WORKOUT_PATH)}/?$`));
+    await expectAuditPath(page, TIMER_VISIBLE_LOG_WORKOUT_PATH);
     await expect(page.getByRole("heading", { name: "Workout Log" })).toBeVisible();
     await expect(page.getByText("1/4 logged")).toBeVisible();
 
@@ -646,21 +710,19 @@ test.describe("lightweight fixture interaction checks", () => {
 });
 
 async function openRoute(page: Page, route: CoreRoute) {
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.goto(route.path, { waitUntil: "domcontentloaded" });
+  await expectAuditPath(page, route.path);
+}
 
-  if (route.path === "/") {
-    await expect(page).toHaveURL(/\/$/);
-    return;
-  }
-
-  const nav = page.getByRole("navigation");
-  await expect(nav).toBeVisible();
-  const expectedUrl = new RegExp(`${escapeRegex(route.path)}/?$`);
-  await nav.getByRole("link", { name: route.label }).click();
-  await page.waitForURL(expectedUrl, { timeout: 3_000 }).catch(async () => {
-    await page.goto(route.path, { waitUntil: "domcontentloaded" });
-  });
-  await expect(page).toHaveURL(expectedUrl);
+async function expectAuditPath(page: Page, expectedPath: string) {
+  await expect
+    .poll(() => {
+      const url = new URL(page.url());
+      return url.pathname === "/ui-audit-fixture"
+        ? url.searchParams.get("path")
+        : url.pathname;
+    })
+    .toBe(expectedPath);
 }
 
 async function waitForStableRoute(page: Page) {
@@ -786,10 +848,6 @@ async function expectLogClientUsesClosedKeyboardPadding(page: Page) {
     });
 
   expect(inlinePaddingBottom).toBe("env(safe-area-inset-bottom, 16px)");
-}
-
-function escapeRegex(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function buildAuditScreenshotName(input: {

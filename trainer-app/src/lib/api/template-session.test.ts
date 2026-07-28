@@ -2290,6 +2290,12 @@ describe("generateSessionFromIntent", () => {
             set.restSeconds === 300,
         ),
       ).toBe(true);
+      expect(
+        result.workout.accessories[0]?.sets.every(
+          (set) => set.restSeconds === 90,
+        ),
+      ).toBe(true);
+      expect(result.workout.estimatedMinutes).toBe(45);
       expect(result.selection.perExerciseSetTargets).toMatchObject({
         "incline-db-press": 5,
         "lat-pulldown": 4,

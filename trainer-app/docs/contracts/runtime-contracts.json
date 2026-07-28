@@ -7,5 +7,14 @@
   "WorkoutStatus": ["PLANNED", "IN_PROGRESS", "PARTIAL", "COMPLETED", "SKIPPED"],
   "WorkoutSelectionMode": ["AUTO", "MANUAL", "BONUS", "INTENT"],
   "WorkoutSessionIntent": ["PUSH", "PULL", "LEGS", "UPPER", "LOWER", "FULL_BODY", "BODY_PART"],
-  "WorkoutExerciseSection": ["WARMUP", "MAIN", "ACCESSORY"]
+  "WorkoutExerciseSection": ["WARMUP", "MAIN", "ACCESSORY"],
+  "workoutPhasePlacement": ["POST_WORKOUT"],
+  "workoutPhaseKind": ["FINISHER"],
+  "workoutPhaseProtocol": ["TIMED_INTERVALS"],
+  "finisherCategory": ["CORE", "CONDITIONING"],
+  "finisherDifficulty": ["EASY", "MODERATE", "CHALLENGING"],
+  "finisherDemand": ["LOW", "MODERATE", "HIGH"],
+  "finisherExecutionState": ["SELECTED", "IN_PROGRESS", "COMPLETED", "PARTIAL", "DISMISSED"],
+  "finisherTimerSegment": ["PREPARATION", "WORK", "RECOVERY", "FINISHED"],
+  "finisherStepStatus": ["PENDING", "COMPLETED", "SKIPPED"]
 }

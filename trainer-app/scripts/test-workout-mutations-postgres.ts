@@ -94,6 +94,7 @@ try {
   run(process.execPath, [
     join(process.cwd(), "node_modules/vitest/vitest.mjs"), "run",
     "src/lib/api/save-workout/persistence.db.test.ts",
+    "src/lib/api/finisher-service.db.test.ts",
     "src/lib/api/workout-mutation.db.test.ts",
   ], env);
   run(process.execPath, [

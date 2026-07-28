@@ -1,5 +1,23 @@
 # 04 API Contracts
 
+## `GET|POST /api/workouts/[id]/finisher`
+
+Both methods resolve the canonical owner and require an owner-scoped completed
+workout. GET returns active immutable routine details, derived durations,
+per-routine limitation warnings, one deterministic recommendation (or a safe
+unavailable reason), and the selected/active/historical execution. Reads also
+project elapsed interval timestamps so refresh and background recovery land on
+the current segment.
+
+POST validates a strict discriminated action contract from
+`src/lib/validation.ts`: `select`, `start`, `dismiss`, `pause`, `resume`, `skip`,
+`substitute`, `end`, and `feedback`. Started-execution uniqueness is protected
+by the database and serializable selection/start transactions. Duplicate starts
+for the same immutable version are idempotent; incompatible or stale transitions
+return deterministic `409` codes. Mutable execution actions require the current
+execution revision. Client input never supplies ownership, workout completion,
+elapsed duration, routine metadata, step order, or arbitrary substitutions.
+
 Owner: Aaron  
 Last reviewed: 2026-03-19
 Purpose: Canonical API contract map for App Router endpoints and payload validation boundaries.

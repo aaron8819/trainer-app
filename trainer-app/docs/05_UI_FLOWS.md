@@ -1,5 +1,30 @@
 # 05 UI Flows
 
+## Post-workout Finisher
+
+After the existing completion request returns canonical `COMPLETED`,
+`FinisherExperience` appears without delaying or reopening workout completion.
+It offers one explained recommendation, category-filtered browsing with preview,
+or finishing without an add-on. A selected definition is not performed until
+the first work interval starts.
+
+The mobile-first timer shows preparation, work, recovery, paused, substitution,
+partial confirmation, and completed states. It derives countdown from server
+timestamps, refreshes on visibility recovery, requests screen wake lock while
+running, and exposes independent opt-in sound/vibration controls with textual
+fallbacks. Controls are semantic buttons/labels and remain keyboard operable;
+status does not rely only on color or device signals.
+
+Completed and partial executions render in a separate Finisher section with
+routine/category, outcome, completed/skipped/substituted steps, actual duration,
+and optional difficulty. The normal post-session review remains the main workout
+summary whether a Finisher is declined or ended partial.
+
+Phase 1 excludes plan-prescribed or multiple Finishers, user/AI-authored
+routines, lift-style logging, EMOM/AMRAP/rep/distance protocols, Finisher-driven
+progression, main-workout block conversion, pre-workout warm-ups, and mobility
+blocks.
+
 ## Workout-session revision flow
 
 The logging session owns one current workout revision. Every successful runtime command replaces that state with the server-returned revision, and the next command or final save sends it as `expectedRevision`. The client never predicts a revision. A `409` leaves optimistic state unapplied and requires the existing refresh/reload recovery path.

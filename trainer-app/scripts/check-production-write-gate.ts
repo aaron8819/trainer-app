@@ -32,6 +32,7 @@ const gatedMethods = new Map<string, string>([
   ["workouts/generate-from-template/route.ts#POST", "workout_materialization"],
   ["workouts/save/route.ts#POST", "workout_save"],
   ["workouts/delete/route.ts#POST", "workout_structural_edit"],
+  ["workouts/[id]/finisher/route.ts#POST", "finisher_execution"],
   ["workouts/[id]/add-exercise/route.ts#POST", "workout_structural_edit"],
   ["workouts/[id]/swap-exercise/route.ts#POST", "workout_structural_edit"],
   ["workouts/[id]/exercises/[exerciseId]/route.ts#DELETE", "workout_structural_edit"],

@@ -227,6 +227,61 @@ enum MesocycleExerciseRoleType {
   ACCESSORY
 }
 
+enum WorkoutPhasePlacement {
+  POST_WORKOUT
+}
+
+enum WorkoutPhaseKind {
+  FINISHER
+}
+
+enum WorkoutPhaseProtocol {
+  TIMED_INTERVALS
+}
+
+enum FinisherCategory {
+  CORE
+  CONDITIONING
+}
+
+enum FinisherDifficulty {
+  EASY
+  MODERATE
+  CHALLENGING
+}
+
+enum FinisherDemand {
+  LOW
+  MODERATE
+  HIGH
+}
+
+enum FinisherPublicationState {
+  ACTIVE
+  RETIRED
+}
+
+enum FinisherExecutionState {
+  SELECTED
+  IN_PROGRESS
+  COMPLETED
+  PARTIAL
+  DISMISSED
+}
+
+enum FinisherTimerSegment {
+  PREPARATION
+  WORK
+  RECOVERY
+  FINISHED
+}
+
+enum FinisherStepStatus {
+  PENDING
+  COMPLETED
+  SKIPPED
+}
+
 model User {
   id                 String      @id @default(uuid())
   email              String      @unique
@@ -443,11 +498,118 @@ model Workout {
   filteredExercises            FilteredExercise[]
   preSessionReadinessSnapshots PreSessionReadinessSnapshot[]
   postSessionReviewSnapshot    PostSessionReviewSnapshot?
+  finisherExecution            FinisherExecution?
 
   @@index([userId, scheduledDate])
   @@index([trainingBlockId])
   @@index([mesocycleId])
   @@index([seedRevisionId])
+}
+
+model FinisherRoutine {
+  id               String                   @id @default(uuid())
+  code             String                   @unique
+  publicationState FinisherPublicationState @default(ACTIVE)
+  retiredAt        DateTime?
+  createdAt        DateTime                 @default(now())
+  versions         FinisherRoutineVersion[]
+}
+
+model FinisherRoutineVersion {
+  id                    String                @id @default(uuid())
+  routineId             String
+  routine               FinisherRoutine       @relation(fields: [routineId], references: [id], onDelete: Restrict)
+  version               Int
+  name                  String
+  description           String
+  category              FinisherCategory
+  placement             WorkoutPhasePlacement @default(POST_WORKOUT)
+  kind                  WorkoutPhaseKind      @default(FINISHER)
+  protocol              WorkoutPhaseProtocol  @default(TIMED_INTERVALS)
+  difficulty            FinisherDifficulty
+  fatigueCost           FinisherDemand
+  impactLevel           FinisherDemand
+  preparationSeconds    Int                   @default(10)
+  includesFinalRecovery Boolean               @default(false)
+  equipmentRequirements String[]              @default([])
+  bodyRegions           String[]              @default([])
+  limitationTags        String[]              @default([])
+  createdAt             DateTime              @default(now())
+  steps                 FinisherRoutineStep[]
+  executions            FinisherExecution[]
+
+  @@unique([routineId, version])
+  @@index([category, createdAt])
+}
+
+model FinisherRoutineStep {
+  id               String                           @id @default(uuid())
+  routineVersionId String
+  routineVersion   FinisherRoutineVersion           @relation(fields: [routineVersionId], references: [id], onDelete: Restrict)
+  orderIndex       Int
+  movementName     String
+  workSeconds      Int
+  recoverySeconds  Int
+  techniqueCues    String[]                         @default([])
+  alternatives     FinisherRoutineStepAlternative[]
+  executionSteps   FinisherExecutionStep[]
+
+  @@unique([routineVersionId, orderIndex])
+}
+
+model FinisherRoutineStepAlternative {
+  id             String                  @id @default(uuid())
+  routineStepId  String
+  routineStep    FinisherRoutineStep     @relation(fields: [routineStepId], references: [id], onDelete: Restrict)
+  orderIndex     Int
+  movementName   String
+  executionSteps FinisherExecutionStep[]
+
+  @@unique([routineStepId, orderIndex])
+}
+
+model FinisherExecution {
+  id                 String                  @id @default(uuid())
+  workoutId          String                  @unique
+  workout            Workout                 @relation(fields: [workoutId], references: [id], onDelete: Restrict)
+  routineVersionId   String
+  routineVersion     FinisherRoutineVersion  @relation(fields: [routineVersionId], references: [id], onDelete: Restrict)
+  state              FinisherExecutionState  @default(SELECTED)
+  selectedAt         DateTime                @default(now())
+  startedAt          DateTime?
+  completedAt        DateTime?
+  endedAt            DateTime?
+  timerSegment       FinisherTimerSegment?
+  currentStepIndex   Int                     @default(0)
+  segmentStartedAt   DateTime?
+  segmentEndsAt      DateTime?
+  pausedAt           DateTime?
+  pausedRemainingMs  Int?
+  totalPausedMs      Int                     @default(0)
+  revision           Int                     @default(1)
+  difficultyFeedback Int?
+  stepExecutions     FinisherExecutionStep[]
+
+  @@index([routineVersionId, startedAt])
+  @@index([state, segmentEndsAt])
+}
+
+model FinisherExecutionStep {
+  id                     String                          @id @default(uuid())
+  executionId            String
+  execution              FinisherExecution               @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  routineStepId          String
+  routineStep            FinisherRoutineStep             @relation(fields: [routineStepId], references: [id], onDelete: Restrict)
+  performedAlternativeId String?
+  performedAlternative   FinisherRoutineStepAlternative? @relation(fields: [performedAlternativeId], references: [id], onDelete: Restrict)
+  status                 FinisherStepStatus              @default(PENDING)
+  startedAt              DateTime?
+  resolvedAt             DateTime?
+  actualWorkMs           Int?
+  note                   String?
+
+  @@unique([executionId, routineStepId])
+  @@index([performedAlternativeId])
 }
 
 model PostSessionReviewSnapshot {
@@ -620,11 +782,11 @@ model WorkoutTemplateExercise {
 }
 
 model MacroCycle {
-  id            String @id @default(uuid())
+  id            String    @id @default(uuid())
   userId        String
-  user          User   @relation("OwnedMacroCycles", fields: [userId], references: [id], onDelete: Cascade)
-  activeForUser User?  @relation("ActiveMacroCycle")
-  name          String @default("Hypertrophy Plan") @db.VarChar(60)
+  user          User      @relation("OwnedMacroCycles", fields: [userId], references: [id], onDelete: Cascade)
+  activeForUser User?     @relation("ActiveMacroCycle")
+  name          String    @default("Hypertrophy Plan") @db.VarChar(60)
   archivedAt    DateTime?
 
   startDate     DateTime

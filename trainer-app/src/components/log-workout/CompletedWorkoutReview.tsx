@@ -13,6 +13,7 @@ import {
   SWAPPED_EXERCISE_BADGE_LABEL,
 } from "@/lib/ui/selection-metadata";
 import type { CompletedWorkoutExerciseSummary } from "@/components/log-workout/types";
+import { FinisherExperience } from "@/components/finishers/FinisherExperience";
 
 function formatRepTarget(
   targetReps: number,
@@ -73,6 +74,8 @@ export function CompletedWorkoutReview({
 
   return (
     <div className="space-y-5 sm:space-y-6">
+      <FinisherExperience workoutId={workoutId} />
+
       {isLoadingPostSessionReview ? (
         <section
           aria-label="Post-session review loading"

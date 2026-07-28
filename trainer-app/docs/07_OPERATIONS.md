@@ -1,5 +1,14 @@
 # 07 Operations
 
+## Phase 1 Finisher rollout
+
+`20260728120000_add_finishers_phase_1` is additive and does not rewrite workout
+history. Apply it only through the reviewed migration workflow while production
+writes are paused. Run the normal Prisma generation, contract, migration
+integrity/drift, and deployment readiness checks before release. Curated routine
+version 1 rows are created by the repository seed workflow; later definition
+changes must create a new version and must never update an existing version.
+
 ## Codex remote identity and GitHub status
 
 Use the repository-level [`scripts/codex/README.md`](../../scripts/codex/README.md) for the offline remote-identity contract and the explicit authenticated `-GitHub` and `-Deployment` read-only status scopes. The Vercel scope validates the committed team, project, and production alias before reading process-scoped `VERCEL_TOKEN`, then uses built-in PowerShell with the official GET-only Vercel REST endpoint allowlist; it requires no Vercel CLI or project link. It reports the active alias deployment and Git SHA, and treats any previous successful production deployment only as a rollback candidate with unknown schema compatibility. GitHub deployment records do not establish active Vercel production truth, a Vercel rollback is distinct from a Git revert, and neither status scope authorizes remediation or writes.

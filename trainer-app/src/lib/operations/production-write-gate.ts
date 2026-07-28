@@ -9,6 +9,7 @@ export type ProductionWriteOperation =
   | "workout_materialization"
   | "workout_structural_edit"
   | "workout_save"
+  | "finisher_execution"
   | "set_logging"
   | "readiness_preparation"
   | "readiness_submission"

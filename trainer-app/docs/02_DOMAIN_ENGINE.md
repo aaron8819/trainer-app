@@ -1,5 +1,30 @@
 # 02 Domain Engine
 
+## Phase 1 Finisher policy
+
+`src/lib/engine/finisher-domain.ts` owns two pure policies:
+
+- Interval duration is derived from ordered step work/recovery durations and the
+  versioned `includesFinalRecovery` flag. Preparation is outside advertised
+  duration.
+- Timer position is projected from persisted segment timestamps and pause
+  remainder. One projection may cross multiple elapsed work/recovery boundaries;
+  expired segments are not replayed after refresh or backgrounding. Skipping
+  resolves the current step and starts the next work segment immediately, with
+  no recovery for the skipped step.
+
+Recommendation is deterministic. Active `Injury.bodyPart` values are normalized
+through the canonical injury seam; an unrecognized active limitation suppresses
+recommendation, known conflicts are excluded, reliable equipment context would
+filter unavailable routines, lower-body fatigue/impact conflicts and recent
+performance are down-ranked, and stable name/id ordering breaks ties. Manual
+browsing remains available, but a known contraindication requires explicit
+acknowledgement and substitutions must be predefined.
+
+Finishers do not contribute inputs to plan progression, workout-slot lifecycle,
+hypertrophy/strength volume, effective sets, exercise exposure, PRs, or future
+load recommendations.
+
 Owner: Aaron
 Last reviewed: 2026-03-19
 Purpose: Canonical reference for workout-generation domain logic, including selection, progression, periodization, readiness, and explainability.

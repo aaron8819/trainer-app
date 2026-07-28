@@ -381,6 +381,62 @@ export const activatePlanSchema = z.object({
   expectedActiveMacroCycleId: z.string().uuid().nullable(),
 });
 
+export const finisherActionSchema = z.discriminatedUnion("action", [
+  z
+    .object({
+      action: z.literal("select"),
+      routineVersionId: z.string().uuid(),
+      acknowledgeContraindication: z.boolean().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("start"),
+      routineVersionId: z.string().uuid(),
+      acknowledgeContraindication: z.boolean().optional(),
+    })
+    .strict(),
+  z.object({ action: z.literal("dismiss") }).strict(),
+  z
+    .object({
+      action: z.literal("pause"),
+      expectedRevision: z.number().int().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("resume"),
+      expectedRevision: z.number().int().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("skip"),
+      expectedRevision: z.number().int().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("substitute"),
+      expectedRevision: z.number().int().min(1),
+      alternativeId: z.string().uuid(),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("end"),
+      expectedRevision: z.number().int().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("feedback"),
+      expectedRevision: z.number().int().min(1),
+      difficultyFeedback: z.number().int().min(1).max(10),
+    })
+    .strict(),
+]);
+
 // Phase 3: Readiness & Autoregulation schemas
 export const readinessSignalSchema = z.object({
   subjective: z.object({

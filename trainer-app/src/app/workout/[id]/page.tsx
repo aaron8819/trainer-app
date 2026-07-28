@@ -3,6 +3,7 @@ import { loadCompletedWorkoutReviewReadModel } from "@/lib/api/completed-workout
 import { generateWorkoutExplanation } from "@/lib/api/explainability";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { PostSessionReviewCard } from "@/components/post-workout/PostSessionReviewCard";
+import { FinisherExperience } from "@/components/finishers/FinisherExperience";
 import { SessionContextCard } from "@/components/explainability";
 import { prisma } from "@/lib/db/prisma";
 import { parseExplainabilitySelectionMetadata } from "@/lib/ui/explainability";
@@ -233,6 +234,10 @@ export default async function WorkoutDetailPage({
         </div>
 
         <section className="mt-6 space-y-6 sm:mt-8 sm:space-y-8">
+          {workout.status === "COMPLETED" ? (
+            <FinisherExperience workoutId={workout.id} />
+          ) : null}
+
           {!hasPerformedStatus && summary ? (
             <SessionContextCard summary={summary} startLoggingHref={startLoggingHref} />
           ) : null}

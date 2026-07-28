@@ -1,5 +1,22 @@
 # 01 Architecture
 
+## Optional post-workout Finisher boundary
+
+`src/lib/api/finisher-service.ts` is the sole DB-backed orchestration owner for
+Phase 1 Finishers. A `FinisherExecution` references one completed, owner-scoped
+`Workout`, but no Finisher path calls workout save, progression, volume,
+effective-set, exercise-exposure, PR, or load-recommendation code. The completed
+workout is therefore terminal before a Finisher is offered and remains
+independent if the Finisher is dismissed, partial, corrected, or deleted.
+
+Pure interval recovery and deterministic recommendation policy live in
+`src/lib/engine/finisher-domain.ts`. Routes and client components consume that
+owner rather than re-authoring timer or safety meaning. The generic seam is
+intentionally limited to `placement=POST_WORKOUT`, `kind=FINISHER`, and
+`protocol=TIMED_INTERVALS`. Those enum dimensions permit a reviewed future
+placement or kind without claiming warm-ups, mobility blocks, or generic workout
+blocks exist today.
+
 ## Existing-workout mutation ownership
 
 `src/lib/api/workout-mutation.ts` owns optimistic concurrency for supported runtime mutations of a materialized workout. Its owner-scoped `Workout.updateMany` compare-and-swap is the first transaction mutation; command-specific services perform child writes and reconciliation only after that claim. Initial workout creation remains outside this contract because no prior revision exists.

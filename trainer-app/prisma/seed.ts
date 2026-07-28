@@ -15,6 +15,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { exerciseAliases } from "./exercise-aliases";
 import exercisesJson from "./exercises_comprehensive.json";
+import { FINISHER_ROUTINE_SEEDS } from "./finisher-routine-seed-data";
 import { MUSCLE_SEED_ROWS } from "./muscle-seed-data";
 
 const connectionString = process.env.DATABASE_URL;
@@ -900,6 +901,70 @@ async function seedWorkoutTemplates(userId: string) {
   console.log(`  ${created} templates created, ${updated} updated.`);
 }
 
+async function seedFinisherRoutines() {
+  console.log("Seeding immutable finisher routine versions...");
+
+  for (const definition of FINISHER_ROUTINE_SEEDS) {
+    const routine = await prisma.finisherRoutine.upsert({
+      where: { code: definition.code },
+      update: {},
+      create: { code: definition.code },
+      select: { id: true },
+    });
+    const existing = await prisma.finisherRoutineVersion.findUnique({
+      where: {
+        routineId_version: {
+          routineId: routine.id,
+          version: definition.version,
+        },
+      },
+      select: { id: true },
+    });
+
+    if (existing) {
+      continue;
+    }
+
+    await prisma.finisherRoutineVersion.create({
+      data: {
+        routineId: routine.id,
+        version: definition.version,
+        name: definition.name,
+        description: definition.description,
+        category: definition.category,
+        placement: "POST_WORKOUT",
+        kind: "FINISHER",
+        protocol: "TIMED_INTERVALS",
+        difficulty: definition.difficulty,
+        fatigueCost: definition.fatigueCost,
+        impactLevel: definition.impactLevel,
+        preparationSeconds: definition.preparationSeconds,
+        includesFinalRecovery: definition.includesFinalRecovery,
+        equipmentRequirements: definition.equipmentRequirements,
+        bodyRegions: definition.bodyRegions,
+        limitationTags: definition.limitationTags,
+        steps: {
+          create: definition.steps.map((step, orderIndex) => ({
+            orderIndex,
+            movementName: step.movementName,
+            workSeconds: step.workSeconds,
+            recoverySeconds: step.recoverySeconds,
+            techniqueCues: step.techniqueCues,
+            alternatives: {
+              create: (step.alternatives ?? []).map(
+                (movementName, alternativeIndex) => ({
+                  orderIndex: alternativeIndex,
+                  movementName,
+                })
+              ),
+            },
+          })),
+        },
+      },
+    });
+  }
+}
+
 async function pruneStaleExercises() {
   const canonicalNames = new Set(exercisesJson.exercises.map((e) => e.name));
   const allExercises = await prisma.exercise.findMany({
@@ -967,6 +1032,7 @@ async function main() {
   await seedExerciseEquipmentFromJson();
   const user = await seedOwner();
   await seedWorkoutTemplates(user.id);
+  await seedFinisherRoutines();
   console.log("Pruning stale exercises...");
   await pruneStaleExercises();
   console.log("✅ Seed complete.");

@@ -63,10 +63,22 @@ describe("CompletedWorkoutReview", () => {
   beforeEach(() => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ postSessionReview: review() }),
-      })
+      vi.fn().mockImplementation(async (input: RequestInfo | URL) =>
+        String(input).includes("/finisher")
+          ? {
+              ok: true,
+              json: async () => ({
+                routines: [],
+                recommendation: null,
+                recommendationUnavailableReason: "No routine available",
+                execution: null,
+              }),
+            }
+          : {
+              ok: true,
+              json: async () => ({ postSessionReview: review() }),
+            }
+      )
     );
   });
 
@@ -86,7 +98,7 @@ describe("CompletedWorkoutReview", () => {
     expect(screen.getByText("Preparing your post-session review...")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("Good session")).toBeInTheDocument());
 
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
     expect(fetch).toHaveBeenCalledWith(
       "/api/workouts/workout-1/post-session-review",
       { cache: "no-store" }

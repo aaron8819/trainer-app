@@ -17,7 +17,17 @@ POST validates a strict discriminated action contract from
 `pause`, `resume`, `skip`, `substitute`, `end`, `feedback`, and explicit `sync`.
 Selection requires the durable offer identity, expected offer revision, and a
 client-stable execution UUID. Decline similarly carries offer identity/revision
-and a stable decision UUID. Every action against an existing execution requires
+and a stable decision UUID. Selection and decline share one permanent decision
+ID namespace. The stored canonical fingerprint binds ID, action, owner, workout,
+offer, exact offered item/routine when applicable, expected offer revision, and
+contraindication acknowledgment. An exact retry returns the original durable
+decision even after the offer advances. Reusing the ID with any changed field,
+including across selection and decline, returns
+`FINISHER_DECISION_ID_CONFLICT`; a new ID with a stale expected offer revision
+returns `FINISHER_STALE_OFFER`. Concurrent identical requests converge, while
+unique/serialization races are normalized to documented Finisher conflicts and
+never expose Prisma `P2002`.
+Every action against an existing execution requires
 its exact execution UUID and expected monotonic revision. Every POST action is registered as
 `finisher_execution` and is blocked by `TRAINER_WRITE_PAUSE=enabled`.
 `start`, `sync`, `pause`, `resume`, `skip`, `substitute`, `end`, `feedback`,

@@ -260,4 +260,51 @@ describe("/api/workouts/[id]/finisher", () => {
       code: "FINISHER_STALE_TRANSITION",
     });
   });
+
+  it.each([
+    {
+      action: "select",
+      service: mocks.selectFinisher,
+      body: {
+        action: "select",
+        offerId: "33333333-3333-4333-8333-333333333333",
+        expectedOfferRevision: 7,
+        executionId: "44444444-4444-4444-8444-444444444444",
+        routineVersionId: "55555555-5555-4555-8555-555555555555",
+      },
+    },
+    {
+      action: "decline",
+      service: mocks.declineFinisherOffer,
+      body: {
+        action: "decline",
+        offerId: "33333333-3333-4333-8333-333333333333",
+        expectedOfferRevision: 7,
+        decisionId: "44444444-4444-4444-8444-444444444444",
+      },
+    },
+  ])(
+    "preserves FINISHER_DECISION_ID_CONFLICT for $action requests",
+    async ({ service, body }) => {
+      service.mockRejectedValue(
+        new FinisherServiceError(
+          "FINISHER_DECISION_ID_CONFLICT",
+          409,
+        ),
+      );
+      const response = await POST(
+        new Request("http://local.test", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+        context,
+      );
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({
+        error: "FINISHER_DECISION_ID_CONFLICT",
+        code: "FINISHER_DECISION_ID_CONFLICT",
+      });
+    },
+  );
 });

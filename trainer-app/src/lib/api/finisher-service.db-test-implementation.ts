@@ -679,7 +679,162 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
         include: { items: { orderBy: { position: "asc" } } },
       });
       expect(offerBefore.finalizedAt).toEqual(now);
+      expect(offerBefore.itemCount).toBe(offerBefore.items.length);
+      expect(offerBefore.items.map((item) => item.position)).toEqual(
+        Array.from(
+          { length: offerBefore.itemCount },
+          (_, position) => position,
+        ),
+      );
+      expect(
+        offerBefore.recommendedRoutineVersionId == null ||
+          offerBefore.items.some(
+            (item) =>
+              item.routineVersionId ===
+              offerBefore.recommendedRoutineVersionId,
+          ),
+      ).toBe(true);
       const firstItem = offerBefore.items[0]!;
+
+      for (const invalidConstruction of [
+        async () => {
+          const workout = await createWorkout("COMPLETED");
+          await client.$transaction(async (tx) => {
+            await tx.finisherOffer.create({
+              data: {
+                workoutId: workout.id,
+                ownerId,
+                offeredAt: now,
+                recommendationUnavailableReason: "No recommendation",
+                recommendationContext: {},
+                itemCount: 1,
+                finalizedAt: now,
+              },
+            });
+          });
+        },
+        async () => {
+          const workout = await createWorkout("COMPLETED");
+          await client.$transaction(async (tx) => {
+            const offer = await tx.finisherOffer.create({
+              data: {
+                workoutId: workout.id,
+                ownerId,
+                offeredAt: now,
+                recommendationUnavailableReason: "No recommendation",
+                recommendationContext: {},
+                itemCount: 2,
+              },
+            });
+            await tx.finisherOfferItem.createMany({
+              data: [
+                {
+                  offerId: offer.id,
+                  routineVersionId,
+                  position: 0,
+                },
+                {
+                  offerId: offer.id,
+                  routineVersionId: preparationRoutineVersionId,
+                  position: 2,
+                },
+              ],
+            });
+            await tx.finisherOffer.update({
+              where: { id: offer.id },
+              data: { finalizedAt: now },
+            });
+          });
+        },
+        async () => {
+          const workout = await createWorkout("COMPLETED");
+          await client.$transaction(async (tx) => {
+            const offer = await tx.finisherOffer.create({
+              data: {
+                workoutId: workout.id,
+                ownerId,
+                offeredAt: now,
+                recommendedRoutineVersionId: routineVersionId,
+                recommendationReason: "Invalid cross-offer recommendation",
+                recommendationContext: {},
+                itemCount: 1,
+              },
+            });
+            await tx.finisherOfferItem.create({
+              data: {
+                offerId: offer.id,
+                routineVersionId: preparationRoutineVersionId,
+                position: 0,
+              },
+            });
+            await tx.finisherOffer.update({
+              where: { id: offer.id },
+              data: { finalizedAt: now },
+            });
+          });
+        },
+      ]) {
+        await expect(invalidConstruction()).rejects.toThrow();
+      }
+
+      const concurrentWorkout = await createWorkout("COMPLETED");
+      const concurrentOfferId = crypto.randomUUID();
+      const concurrentItemId = crypto.randomUUID();
+      const finalizer = await runtimePool.connect();
+      try {
+        await finalizer.query("BEGIN");
+        await finalizer.query(
+          `INSERT INTO "FinisherOffer" (
+             "id", "workoutId", "ownerId", "offeredAt",
+             "recommendationUnavailableReason", "recommendationContext",
+             "itemCount"
+           ) VALUES ($1, $2, $3, $4, 'No recommendation', '{}'::jsonb, 1)`,
+          [concurrentOfferId, concurrentWorkout.id, ownerId, now],
+        );
+        await finalizer.query(
+          `INSERT INTO "FinisherOfferItem" (
+             "id", "offerId", "routineVersionId", "position"
+           ) VALUES ($1, $2, $3, 0)`,
+          [
+            concurrentItemId,
+            concurrentOfferId,
+            routineVersionId,
+          ],
+        );
+        await finalizer.query(
+          `UPDATE "FinisherOffer"
+           SET "finalizedAt" = $2
+           WHERE "id" = $1`,
+          [concurrentOfferId, now],
+        );
+        await expect(
+          runtimePool.query(
+            `INSERT INTO "FinisherOfferItem" (
+               "id", "offerId", "routineVersionId", "position"
+             ) VALUES ($1, $2, $3, 1)`,
+            [
+              crypto.randomUUID(),
+              concurrentOfferId,
+              preparationRoutineVersionId,
+            ],
+          ),
+        ).rejects.toThrow();
+        await finalizer.query("COMMIT");
+      } catch (error) {
+        await finalizer.query("ROLLBACK");
+        throw error;
+      } finally {
+        finalizer.release();
+      }
+      await expect(
+        client.finisherOffer.findUniqueOrThrow({
+          where: { id: concurrentOfferId },
+          include: { items: true },
+        }),
+      ).resolves.toMatchObject({
+        itemCount: 1,
+        items: [{ id: concurrentItemId, position: 0 }],
+      });
 
       await expect(
         client.finisherOfferItem.create({
@@ -732,6 +887,21 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       const invalidExecutionId = crypto.randomUUID();
       await expect(
         client.$transaction(async (tx) => {
+          await tx.finisherDecision.create({
+            data: {
+              id: invalidExecutionId,
+              ownerId,
+              workoutId: rollbackWorkout.id,
+              offerId: rollbackOffer.offer!.id,
+              action: "SELECT",
+              offerItemId: rollbackOfferItem.id,
+              routineVersionId,
+              expectedOfferRevision: rollbackOffer.offer!.revision,
+              acknowledgeContraindication: false,
+              requestFingerprint: "0".repeat(64),
+              createdAt: now,
+            },
+          });
           await tx.finisherExecution.create({
             data: {
               id: invalidExecutionId,
@@ -862,15 +1032,32 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
         offerItemId: string,
         selectedRoutineVersionId: string,
       ) =>
-        client.$executeRaw`
-          INSERT INTO "FinisherExecution" (
-            "id", "workoutId", "ownerId", "offerId", "offerItemId",
-            "offerRevisionAtSelection", "routineVersionId", "selectedAt"
-          ) VALUES (
-            ${id}, ${workoutId}, ${historicalOwnerId}, ${offerId},
-            ${offerItemId}, 1, ${selectedRoutineVersionId}, ${now}
-          )
-        `;
+        client.$transaction(async (tx) => {
+          await tx.finisherDecision.create({
+            data: {
+              id,
+              workoutId,
+              ownerId: historicalOwnerId,
+              offerId,
+              action: "SELECT",
+              offerItemId,
+              routineVersionId: selectedRoutineVersionId,
+              expectedOfferRevision: 1,
+              acknowledgeContraindication: false,
+              requestFingerprint: "0".repeat(64),
+              createdAt: now,
+            },
+          });
+          await tx.$executeRaw`
+            INSERT INTO "FinisherExecution" (
+              "id", "workoutId", "ownerId", "offerId", "offerItemId",
+              "offerRevisionAtSelection", "routineVersionId", "selectedAt"
+            ) VALUES (
+              ${id}, ${workoutId}, ${historicalOwnerId}, ${offerId},
+              ${offerItemId}, 1, ${selectedRoutineVersionId}, ${now}
+            )
+          `;
+        });
 
       await expect(
         insertExecution(
@@ -1881,7 +2068,7 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
           AND class.relname LIKE 'Finisher%'
         ORDER BY class.relname
       `);
-      expect(ownership.rows).toHaveLength(9);
+      expect(ownership.rows).toHaveLength(10);
       expect(
         ownership.rows.every(
           ({ ownerName }) => ownerName === "trainer_finisher_owner",
@@ -2122,6 +2309,261 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       expect(retry.routineVersionId).toBe(routineVersionId);
     });
 
+    it("binds selection IDs to the complete immutable request under retry and collision races", async () => {
+      const workout = await createWorkout("COMPLETED");
+      const offered = await ensureOffer(ownerId, workout.id, now);
+      const executionId = crypto.randomUUID();
+      const request = {
+        userId: ownerId,
+        workoutId: workout.id,
+        offerId: offered.offer!.id,
+        expectedOfferRevision: offered.offer!.revision,
+        executionId,
+        routineVersionId,
+        now,
+      };
+
+      const concurrent = await Promise.all([
+        selectOfferedFinisher(request),
+        selectOfferedFinisher(request),
+      ]);
+      expect(concurrent[0]).toEqual(concurrent[1]);
+      expect(concurrent[0].id).toBe(executionId);
+      await expect(selectOfferedFinisher(request)).resolves.toEqual(
+        concurrent[0],
+      );
+
+      for (const altered of [
+        {
+          ...request,
+          expectedOfferRevision: request.expectedOfferRevision + 1,
+        },
+        {
+          ...request,
+          routineVersionId: preparationRoutineVersionId,
+        },
+        {
+          ...request,
+          userId: foreignOwnerId,
+        },
+      ]) {
+        await expect(
+          selectOfferedFinisher(altered),
+        ).rejects.toMatchObject({
+          code: "FINISHER_DECISION_ID_CONFLICT",
+          status: 409,
+        });
+      }
+
+      const otherWorkout = await createWorkout("COMPLETED");
+      const otherOffer = await ensureOffer(ownerId, otherWorkout.id, now);
+      await expect(
+        selectOfferedFinisher({
+          ...request,
+          workoutId: otherWorkout.id,
+          offerId: otherOffer.offer!.id,
+          expectedOfferRevision: otherOffer.offer!.revision,
+        }),
+      ).rejects.toMatchObject({
+        code: "FINISHER_DECISION_ID_CONFLICT",
+        status: 409,
+      });
+      await expect(
+        declineFinisherOffer({
+          userId: ownerId,
+          workoutId: otherWorkout.id,
+          offerId: otherOffer.offer!.id,
+          expectedOfferRevision: otherOffer.offer!.revision,
+          decisionId: executionId,
+          now,
+        }),
+      ).rejects.toMatchObject({
+        code: "FINISHER_DECISION_ID_CONFLICT",
+        status: 409,
+      });
+    });
+
+    it("binds decline IDs to the complete immutable request and normalizes concurrent collisions", async () => {
+      const workout = await createWorkout("COMPLETED");
+      const offered = await ensureOffer(ownerId, workout.id, now);
+      const decisionId = crypto.randomUUID();
+      const request = {
+        userId: ownerId,
+        workoutId: workout.id,
+        offerId: offered.offer!.id,
+        expectedOfferRevision: offered.offer!.revision,
+        decisionId,
+        now,
+      };
+
+      const identical = await Promise.all([
+        declineFinisherOffer(request),
+        declineFinisherOffer(request),
+      ]);
+      expect(identical).toEqual([
+        { declined: true },
+        { declined: true },
+      ]);
+      await expect(declineFinisherOffer(request)).resolves.toEqual({
+        declined: true,
+      });
+      await expect(
+        declineFinisherOffer({
+          ...request,
+          expectedOfferRevision: request.expectedOfferRevision + 1,
+        }),
+      ).rejects.toMatchObject({
+        code: "FINISHER_DECISION_ID_CONFLICT",
+        status: 409,
+      });
+
+      const otherWorkout = await createWorkout("COMPLETED");
+      const otherOffer = await ensureOffer(ownerId, otherWorkout.id, now);
+      await expect(
+        declineFinisherOffer({
+          ...request,
+          workoutId: otherWorkout.id,
+          offerId: otherOffer.offer!.id,
+          expectedOfferRevision: otherOffer.offer!.revision,
+        }),
+      ).rejects.toMatchObject({
+        code: "FINISHER_DECISION_ID_CONFLICT",
+        status: 409,
+      });
+      await expect(
+        selectOfferedFinisher({
+          userId: ownerId,
+          workoutId: otherWorkout.id,
+          offerId: otherOffer.offer!.id,
+          expectedOfferRevision: otherOffer.offer!.revision,
+          executionId: decisionId,
+          routineVersionId,
+          now,
+        }),
+      ).rejects.toMatchObject({
+        code: "FINISHER_DECISION_ID_CONFLICT",
+        status: 409,
+      });
+
+      const collisionWorkoutA = await createWorkout("COMPLETED");
+      const collisionWorkoutB = await createWorkout("COMPLETED");
+      const collisionOfferA = await ensureOffer(
+        ownerId,
+        collisionWorkoutA.id,
+        now,
+      );
+      const collisionOfferB = await ensureOffer(
+        ownerId,
+        collisionWorkoutB.id,
+        now,
+      );
+      const collisionDecisionId = crypto.randomUUID();
+      const collisionRequests = [
+        {
+          userId: ownerId,
+          workoutId: collisionWorkoutA.id,
+          offerId: collisionOfferA.offer!.id,
+          expectedOfferRevision: collisionOfferA.offer!.revision,
+          decisionId: collisionDecisionId,
+          now,
+        },
+        {
+          userId: ownerId,
+          workoutId: collisionWorkoutB.id,
+          offerId: collisionOfferB.offer!.id,
+          expectedOfferRevision: collisionOfferB.offer!.revision,
+          decisionId: collisionDecisionId,
+          now,
+        },
+      ] as const;
+      const collisionResults = await Promise.allSettled(
+        collisionRequests.map((request) =>
+          declineFinisherOffer(request),
+        ),
+      );
+      expect(
+        collisionResults.filter(
+          (result) => result.status === "fulfilled",
+        ),
+      ).toHaveLength(1);
+      expect(
+        collisionResults.filter(
+          (result) => result.status === "rejected",
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          reason: expect.objectContaining({
+            code: "FINISHER_DECISION_ID_CONFLICT",
+            status: 409,
+          }),
+        }),
+      ]);
+      const durableCollisionDecision =
+        await client.finisherDecision.findUniqueOrThrow({
+          where: { id: collisionDecisionId },
+        });
+      const winningCollisionRequest = collisionRequests.find(
+        (request) =>
+          request.offerId === durableCollisionDecision.offerId,
+      );
+      expect(winningCollisionRequest).toBeDefined();
+      await expect(
+        declineFinisherOffer(winningCollisionRequest!),
+      ).resolves.toEqual({ declined: true });
+      expect(
+        await client.finisherOffer.findMany({
+          where: {
+            id: {
+              in: [
+                collisionOfferA.offer!.id,
+                collisionOfferB.offer!.id,
+              ],
+            },
+          },
+          orderBy: { id: "asc" },
+          select: { declineDecisionId: true },
+        }),
+      ).toEqual(
+        expect.arrayContaining([
+          { declineDecisionId: collisionDecisionId },
+          { declineDecisionId: null },
+        ]),
+      );
+
+      const staleWorkout = await createWorkout("COMPLETED");
+      const staleOffer = await ensureOffer(ownerId, staleWorkout.id, now);
+      const selected = await selectOfferedFinisher({
+        userId: ownerId,
+        workoutId: staleWorkout.id,
+        offerId: staleOffer.offer!.id,
+        expectedOfferRevision: staleOffer.offer!.revision,
+        executionId: crypto.randomUUID(),
+        routineVersionId,
+        now,
+      });
+      await dismissExactFinisher({
+        userId: ownerId,
+        workoutId: staleWorkout.id,
+        executionId: selected.id,
+        expectedRevision: selected.revision,
+        commandId: crypto.randomUUID(),
+        now,
+      });
+      await expect(
+        declineFinisherOffer({
+          userId: ownerId,
+          workoutId: staleWorkout.id,
+          offerId: staleOffer.offer!.id,
+          expectedOfferRevision: staleOffer.offer!.revision,
+          decisionId: crypto.randomUUID(),
+          now,
+        }),
+      ).rejects.toMatchObject({
+        code: "FINISHER_STALE_OFFER",
+        status: 409,
+      });
+    });
+
     it("keeps selected-only routines out of performed history", async () => {
       const workout = await createWorkout("COMPLETED");
       await selectFinisher({
@@ -2140,6 +2582,234 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
           where: { workoutId: workout.id, startedAt: { not: null } },
         })
       ).toBe(0);
+    });
+
+    it("makes performed lifecycle history irreversible for runtime SQL and preserves both dismissal meanings", async () => {
+      const { preparationSeconds } =
+        await client.finisherRoutineVersion.findUniqueOrThrow({
+          where: { id: routineVersionId },
+          select: { preparationSeconds: true },
+        });
+      const workout = await createWorkout("COMPLETED");
+      const selected = await selectFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        routineVersionId,
+        now,
+      });
+      const started = await startSelectedFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        executionId: selected.id,
+        expectedRevision: selected.revision,
+        commandId: crypto.randomUUID(),
+        now,
+      });
+      const performed = await syncSelectedFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        executionId: selected.id,
+        expectedRevision: started.revision,
+        commandId: crypto.randomUUID(),
+        now: new Date(
+          now.getTime() + (preparationSeconds + 1) * 1_000,
+        ),
+      });
+      const beforeAttacks =
+        await client.finisherExecution.findUniqueOrThrow({
+          where: { id: selected.id },
+        });
+      expect(beforeAttacks.startedAt).toEqual(expect.any(Date));
+
+      for (const attack of [
+        `UPDATE "FinisherExecution"
+         SET "startedAt" = NULL, "revision" = "revision" + 1
+         WHERE "id" = $1`,
+        `UPDATE "FinisherExecution"
+         SET "startedAt" = "startedAt" + INTERVAL '1 millisecond',
+             "revision" = "revision" + 1
+         WHERE "id" = $1`,
+        `UPDATE "FinisherExecution"
+         SET "state" = 'DISMISSED',
+             "startedAt" = NULL,
+             "endedAt" = clock_timestamp(),
+             "dismissedAt" = clock_timestamp(),
+             "timerSegment" = 'FINISHED',
+             "segmentStartedAt" = clock_timestamp(),
+             "segmentEndsAt" = clock_timestamp(),
+             "revision" = "revision" + 1
+         WHERE "id" = $1`,
+        `UPDATE "FinisherExecution"
+         SET "startedAt" = NULL,
+             "ownerId" = 'runtime-history-rewrite',
+             "revision" = "revision" + 1
+         WHERE "id" = $1`,
+      ]) {
+        await expect(
+          runtimePool.query(attack, [selected.id]),
+        ).rejects.toThrow();
+      }
+      expect(
+        await client.finisherExecution.findUniqueOrThrow({
+          where: { id: selected.id },
+        }),
+      ).toEqual(beforeAttacks);
+
+      const raceOffer = await getFinisherOffer({
+        userId: ownerId,
+        workoutId: workout.id,
+        now,
+      });
+      const [terminalResult, competingSelectionResult] =
+        await Promise.allSettled([
+          endSelectedFinisher({
+            userId: ownerId,
+            workoutId: workout.id,
+            executionId: selected.id,
+            expectedRevision: performed.revision,
+            commandId: crypto.randomUUID(),
+            now: new Date(
+              now.getTime() + (preparationSeconds + 2) * 1_000,
+            ),
+          }),
+          selectOfferedFinisher({
+            userId: ownerId,
+            workoutId: workout.id,
+            offerId: raceOffer.offer!.id,
+            expectedOfferRevision: raceOffer.offer!.revision,
+            executionId: crypto.randomUUID(),
+            routineVersionId: preparationRoutineVersionId,
+            now,
+          }),
+        ]);
+      expect(terminalResult.status).toBe("fulfilled");
+      expect(competingSelectionResult).toMatchObject({
+        status: "rejected",
+        reason: {
+          code: "FINISHER_SELECTION_CONFLICT",
+          status: 409,
+        },
+      });
+      if (terminalResult.status !== "fulfilled") {
+        throw terminalResult.reason;
+      }
+      const terminal = terminalResult.value;
+      expect(terminal.state).toBe("PARTIAL");
+      const terminalBeforeAttack =
+        await client.finisherExecution.findUniqueOrThrow({
+          where: { id: selected.id },
+        });
+      await expect(
+        runtimePool.query(
+          `UPDATE "FinisherExecution"
+           SET "state" = 'SELECTED',
+               "startedAt" = NULL,
+               "endedAt" = NULL,
+               "timerSegment" = NULL,
+               "segmentStartedAt" = NULL,
+               "segmentEndsAt" = NULL,
+               "revision" = "revision" + 1
+           WHERE "id" = $1`,
+          [selected.id],
+        ),
+      ).rejects.toThrow();
+      expect(
+        await client.finisherExecution.findUniqueOrThrow({
+          where: { id: selected.id },
+        }),
+      ).toEqual(terminalBeforeAttack);
+
+      const currentOffer = await getFinisherOffer({
+        userId: ownerId,
+        workoutId: workout.id,
+        now,
+      });
+      await expect(
+        selectOfferedFinisher({
+          userId: ownerId,
+          workoutId: workout.id,
+          offerId: currentOffer.offer!.id,
+          expectedOfferRevision: currentOffer.offer!.revision,
+          executionId: crypto.randomUUID(),
+          routineVersionId: preparationRoutineVersionId,
+          now,
+        }),
+      ).rejects.toMatchObject({
+        code: "FINISHER_SELECTION_CONFLICT",
+        status: 409,
+      });
+
+      const neverStartedWorkout = await createWorkout("COMPLETED");
+      const neverStarted = await selectFinisher({
+        userId: ownerId,
+        workoutId: neverStartedWorkout.id,
+        routineVersionId,
+        now,
+      });
+      await dismissExactFinisher({
+        userId: ownerId,
+        workoutId: neverStartedWorkout.id,
+        executionId: neverStarted.id,
+        expectedRevision: neverStarted.revision,
+        commandId: crypto.randomUUID(),
+        now,
+      });
+      await expect(
+        client.finisherExecution.findUniqueOrThrow({
+          where: { id: neverStarted.id },
+          select: { state: true, startedAt: true, dismissedAt: true },
+        }),
+      ).resolves.toMatchObject({
+        state: "DISMISSED",
+        startedAt: null,
+        dismissedAt: expect.any(Date),
+      });
+
+      const performedDismissWorkout = await createWorkout("COMPLETED");
+      const performedDismiss = await selectFinisher({
+        userId: ownerId,
+        workoutId: performedDismissWorkout.id,
+        routineVersionId,
+        now,
+      });
+      const preparation = await startSelectedFinisher({
+        userId: ownerId,
+        workoutId: performedDismissWorkout.id,
+        executionId: performedDismiss.id,
+        expectedRevision: performedDismiss.revision,
+        commandId: crypto.randomUUID(),
+        now,
+      });
+      const workBoundary = new Date(
+        now.getTime() + preparationSeconds * 1_000,
+      );
+      const enteredWork = await syncSelectedFinisher({
+        userId: ownerId,
+        workoutId: performedDismissWorkout.id,
+        executionId: performedDismiss.id,
+        expectedRevision: preparation.revision,
+        commandId: crypto.randomUUID(),
+        now: workBoundary,
+      });
+      const dismissedAfterStart = await endSelectedFinisher({
+        userId: ownerId,
+        workoutId: performedDismissWorkout.id,
+        executionId: performedDismiss.id,
+        expectedRevision: enteredWork.revision,
+        commandId: crypto.randomUUID(),
+        now: workBoundary,
+      });
+      expect(dismissedAfterStart.state).toBe("DISMISSED");
+      await expect(
+        client.finisherExecution.findUniqueOrThrow({
+          where: { id: performedDismiss.id },
+          select: { state: true, startedAt: true, dismissedAt: true },
+        }),
+      ).resolves.toMatchObject({
+        state: "DISMISSED",
+        startedAt: expect.any(Date),
+        dismissedAt: expect.any(Date),
+      });
     });
 
     it("uses one canonical limitation interpretation for recommendation and manual selection", async () => {
@@ -3191,6 +3861,60 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       const beforeReplay = await client.finisherExecution.findUniqueOrThrow({
         where: { id: executionBId },
         include: { stepExecutions: { orderBy: { routineStepId: "asc" } } },
+      });
+      await expect(
+        selectOfferedFinisher({
+          userId: ownerId,
+          workoutId: workout.id,
+          offerId: offered.offer!.id,
+          expectedOfferRevision: offered.offer!.revision,
+          executionId: executionAId,
+          routineVersionId,
+          now,
+        }),
+      ).resolves.toMatchObject({
+        id: executionAId,
+        state: "DISMISSED",
+      });
+      for (const alteredSelection of [
+        {
+          userId: ownerId,
+          workoutId: workout.id,
+          offerId: offered.offer!.id,
+          expectedOfferRevision: offered.offer!.revision + 1,
+          executionId: executionAId,
+          routineVersionId,
+          now,
+        },
+        {
+          userId: foreignOwnerId,
+          workoutId: workout.id,
+          offerId: offered.offer!.id,
+          expectedOfferRevision: offered.offer!.revision,
+          executionId: executionAId,
+          routineVersionId,
+          now,
+        },
+      ]) {
+        await expect(
+          selectOfferedFinisher(alteredSelection),
+        ).rejects.toMatchObject({
+          code: "FINISHER_DECISION_ID_CONFLICT",
+          status: 409,
+        });
+      }
+      await expect(
+        declineFinisherOffer({
+          userId: ownerId,
+          workoutId: workout.id,
+          offerId: offered.offer!.id,
+          expectedOfferRevision: offered.offer!.revision,
+          decisionId: executionAId,
+          now,
+        }),
+      ).rejects.toMatchObject({
+        code: "FINISHER_DECISION_ID_CONFLICT",
+        status: 409,
       });
       const staleBase = {
         userId: ownerId,

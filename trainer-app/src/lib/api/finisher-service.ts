@@ -48,8 +48,67 @@ type FinisherExecutionCommandAction =
   | "END"
   | "FEEDBACK"
   | "DISMISS";
+type FinisherDecisionIdentity = {
+  id: string;
+  ownerId: string;
+  workoutId: string;
+  offerId: string;
+  action: "SELECT" | "DECLINE";
+  offerItemId: string | null;
+  routineVersionId: string | null;
+  expectedOfferRevision: number;
+  acknowledgeContraindication: boolean | null;
+};
 
 export const FINISHER_COMMAND_CLEANUP_BATCH_SIZE = 100;
+
+function finisherDecisionFingerprint(
+  identity: FinisherDecisionIdentity,
+): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        decisionId: identity.id,
+        ownerId: identity.ownerId,
+        workoutId: identity.workoutId,
+        offerId: identity.offerId,
+        action: identity.action,
+        offerItemId: identity.offerItemId,
+        routineVersionId: identity.routineVersionId,
+        expectedOfferRevision: identity.expectedOfferRevision,
+        acknowledgeContraindication:
+          identity.acknowledgeContraindication,
+      }),
+    )
+    .digest("hex");
+}
+
+function matchesFinisherDecision(
+  decision: Prisma.FinisherDecisionGetPayload<object>,
+  identity: FinisherDecisionIdentity,
+  fingerprint: string,
+): boolean {
+  return (
+    decision.id === identity.id &&
+    decision.ownerId === identity.ownerId &&
+    decision.workoutId === identity.workoutId &&
+    decision.offerId === identity.offerId &&
+    decision.action === identity.action &&
+    decision.offerItemId === identity.offerItemId &&
+    decision.routineVersionId === identity.routineVersionId &&
+    decision.expectedOfferRevision === identity.expectedOfferRevision &&
+    decision.acknowledgeContraindication ===
+      identity.acknowledgeContraindication &&
+    decision.requestFingerprint === fingerprint
+  );
+}
+
+function isDecisionRace(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    (error.code === "P2002" || error.code === "P2034")
+  );
+}
 
 export type FinisherRoutineDto = {
   id: string;
@@ -773,6 +832,7 @@ export async function createFinisherOffer(input: {
               lowerBodyDemandingWorkout,
               recentlyPerformedRoutineVersionIds,
             },
+            itemCount: versions.length,
           },
           select: { id: true },
         });
@@ -853,93 +913,179 @@ export async function selectFinisher(input: {
   now?: Date;
 }) {
   const now = input.now ?? new Date();
-  try {
-    return await prisma.$transaction(
-      async (tx) => {
-        await loadOwnedCompletedWorkout(tx, input.userId, input.workoutId);
-        const duplicate = await tx.finisherExecution.findUnique({
-          where: { id: input.executionId },
-          include: executionInclude,
-        });
-        if (duplicate) {
-          if (
-            duplicate.workoutId === input.workoutId &&
-            duplicate.offerId === input.offerId &&
-            duplicate.routineVersionId === input.routineVersionId
-          ) {
-            return duplicate;
+  const acknowledged = input.acknowledgeContraindication === true;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          const existingDecision = await tx.finisherDecision.findUnique({
+            where: { id: input.executionId },
+          });
+          if (existingDecision) {
+            const identity: FinisherDecisionIdentity = {
+              id: input.executionId,
+              ownerId: input.userId,
+              workoutId: input.workoutId,
+              offerId: input.offerId,
+              action: "SELECT",
+              offerItemId: existingDecision.offerItemId,
+              routineVersionId: input.routineVersionId,
+              expectedOfferRevision: input.expectedOfferRevision,
+              acknowledgeContraindication: acknowledged,
+            };
+            const fingerprint = finisherDecisionFingerprint(identity);
+            if (
+              !matchesFinisherDecision(
+                existingDecision,
+                identity,
+                fingerprint,
+              )
+            ) {
+              fail("FINISHER_DECISION_ID_CONFLICT", 409);
+            }
+            const committedExecution =
+              await tx.finisherExecution.findUnique({
+                where: { id: input.executionId },
+                include: executionInclude,
+              });
+            if (!committedExecution) {
+              fail("FINISHER_DECISION_INTEGRITY_ERROR", 500);
+            }
+            return committedExecution;
           }
-          fail("FINISHER_DECISION_ID_CONFLICT", 409);
-        }
-        const offer = await tx.finisherOffer.findFirst({
-          where: { id: input.offerId, workoutId: input.workoutId },
-          include: {
-            items: {
-              where: { routineVersionId: input.routineVersionId },
-              include: {
-                routineVersion: { include: routineVersionInclude },
+
+          await loadOwnedCompletedWorkout(
+            tx,
+            input.userId,
+            input.workoutId,
+          );
+          const offer = await tx.finisherOffer.findFirst({
+            where: { id: input.offerId, workoutId: input.workoutId },
+            include: {
+              items: {
+                where: { routineVersionId: input.routineVersionId },
+                include: {
+                  routineVersion: { include: routineVersionInclude },
+                },
               },
             },
-          },
-        });
-        if (!offer) fail("FINISHER_OFFER_NOT_FOUND", 404);
-        if (offer.declinedAt) fail("FINISHER_OFFER_DECLINED", 409);
-        if (offer.revision !== input.expectedOfferRevision) {
-          fail("FINISHER_STALE_OFFER", 409);
+          });
+          if (!offer) fail("FINISHER_OFFER_NOT_FOUND", 404);
+          if (offer.declinedAt) fail("FINISHER_OFFER_DECLINED", 409);
+          if (offer.revision !== input.expectedOfferRevision) {
+            fail("FINISHER_STALE_OFFER", 409);
+          }
+          const offeredItem = offer.items[0];
+          const version = offeredItem?.routineVersion;
+          if (!offeredItem || !version) {
+            fail("FINISHER_ROUTINE_NOT_OFFERED", 409);
+          }
+          await assertManualSelectionAllowed(
+            tx,
+            input.userId,
+            version,
+            acknowledged,
+          );
+          const existing = await tx.finisherExecution.findFirst({
+            where: {
+              workoutId: input.workoutId,
+              OR: [
+                { state: { in: ["SELECTED", "IN_PROGRESS"] } },
+                { startedAt: { not: null } },
+              ],
+            },
+            select: { id: true },
+          });
+          if (existing) fail("FINISHER_SELECTION_CONFLICT", 409);
+          const claimed = await tx.finisherOffer.updateMany({
+            where: {
+              id: offer.id,
+              workoutId: input.workoutId,
+              revision: input.expectedOfferRevision,
+              declinedAt: null,
+            },
+            data: { revision: { increment: 1 } },
+          });
+          if (claimed.count !== 1) fail("FINISHER_STALE_OFFER", 409);
+
+          const identity: FinisherDecisionIdentity = {
+            id: input.executionId,
+            ownerId: input.userId,
+            workoutId: input.workoutId,
+            offerId: input.offerId,
+            action: "SELECT",
+            offerItemId: offeredItem.id,
+            routineVersionId: input.routineVersionId,
+            expectedOfferRevision: input.expectedOfferRevision,
+            acknowledgeContraindication: acknowledged,
+          };
+          await tx.finisherDecision.create({
+            data: {
+              ...identity,
+              requestFingerprint:
+                finisherDecisionFingerprint(identity),
+              createdAt: now,
+            },
+          });
+          return createSelectedExecution(
+            tx,
+            input.executionId,
+            input.workoutId,
+            input.userId,
+            offer.id,
+            offeredItem.id,
+            input.expectedOfferRevision,
+            version,
+            now,
+          );
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error) {
+      if (attempt < 2 && isDecisionRace(error)) continue;
+      if (isDecisionRace(error)) {
+        const existingDecision =
+          await prisma.finisherDecision.findUnique({
+            where: { id: input.executionId },
+          });
+        if (existingDecision) {
+          const identity: FinisherDecisionIdentity = {
+            id: input.executionId,
+            ownerId: input.userId,
+            workoutId: input.workoutId,
+            offerId: input.offerId,
+            action: "SELECT",
+            offerItemId: existingDecision.offerItemId,
+            routineVersionId: input.routineVersionId,
+            expectedOfferRevision: input.expectedOfferRevision,
+            acknowledgeContraindication: acknowledged,
+          };
+          if (
+            !matchesFinisherDecision(
+              existingDecision,
+              identity,
+              finisherDecisionFingerprint(identity),
+            )
+          ) {
+            fail("FINISHER_DECISION_ID_CONFLICT", 409);
+          }
+          const committedExecution =
+            await prisma.finisherExecution.findUnique({
+              where: { id: input.executionId },
+              include: executionInclude,
+            });
+          if (!committedExecution) {
+            fail("FINISHER_DECISION_INTEGRITY_ERROR", 500);
+          }
+          return committedExecution;
         }
-        const offeredItem = offer.items[0];
-        const version = offeredItem?.routineVersion;
-        if (!offeredItem || !version) fail("FINISHER_ROUTINE_NOT_OFFERED", 409);
-        await assertManualSelectionAllowed(
-          tx,
-          input.userId,
-          version,
-          input.acknowledgeContraindication === true
-        );
-        const existing = await tx.finisherExecution.findFirst({
-          where: {
-            workoutId: input.workoutId,
-            OR: [
-              { state: { in: ["SELECTED", "IN_PROGRESS"] } },
-              { startedAt: { not: null } },
-            ],
-          },
-          select: { id: true },
-        });
-        if (existing) fail("FINISHER_SELECTION_CONFLICT", 409);
-        const claimed = await tx.finisherOffer.updateMany({
-          where: {
-            id: offer.id,
-            workoutId: input.workoutId,
-            revision: input.expectedOfferRevision,
-            declinedAt: null,
-          },
-          data: { revision: { increment: 1 } },
-        });
-        if (claimed.count !== 1) fail("FINISHER_STALE_OFFER", 409);
-        return createSelectedExecution(
-          tx,
-          input.executionId,
-          input.workoutId,
-          input.userId,
-          offer.id,
-          offeredItem.id,
-          input.expectedOfferRevision,
-          version,
-          now
-        );
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
-    );
-  } catch (error) {
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      (error.code === "P2002" || error.code === "P2034")
-    ) {
-      fail("FINISHER_SELECTION_CONFLICT", 409);
+        fail("FINISHER_SELECTION_CONFLICT", 409);
+      }
+      throw error;
     }
-    throw error;
   }
+  fail("FINISHER_SELECTION_CONFLICT", 409);
 }
 
 export async function startFinisher(input: {
@@ -1610,51 +1756,128 @@ export async function declineFinisherOffer(input: {
   now?: Date;
 }) {
   const now = input.now ?? new Date();
-  return prisma.$transaction(async (tx) => {
-    await loadOwnedCompletedWorkout(tx, input.userId, input.workoutId);
-    const offer = await tx.finisherOffer.findFirst({
-      where: { id: input.offerId, workoutId: input.workoutId },
-      include: {
-        executions: {
-          select: { state: true, startedAt: true },
+  const identity: FinisherDecisionIdentity = {
+    id: input.decisionId,
+    ownerId: input.userId,
+    workoutId: input.workoutId,
+    offerId: input.offerId,
+    action: "DECLINE",
+    offerItemId: null,
+    routineVersionId: null,
+    expectedOfferRevision: input.expectedOfferRevision,
+    acknowledgeContraindication: null,
+  };
+  const fingerprint = finisherDecisionFingerprint(identity);
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          const existingDecision =
+            await tx.finisherDecision.findUnique({
+              where: { id: input.decisionId },
+            });
+          if (existingDecision) {
+            if (
+              !matchesFinisherDecision(
+                existingDecision,
+                identity,
+                fingerprint,
+              )
+            ) {
+              fail("FINISHER_DECISION_ID_CONFLICT", 409);
+            }
+            return { declined: true };
+          }
+
+          await loadOwnedCompletedWorkout(
+            tx,
+            input.userId,
+            input.workoutId,
+          );
+          const offer = await tx.finisherOffer.findFirst({
+            where: {
+              id: input.offerId,
+              workoutId: input.workoutId,
+            },
+            include: {
+              executions: {
+                select: { state: true, startedAt: true },
+              },
+            },
+          });
+          if (!offer) fail("FINISHER_OFFER_NOT_FOUND", 404);
+          if (offer.declineDecisionId) {
+            fail("FINISHER_OFFER_DECLINED", 409);
+          }
+          if (offer.revision !== input.expectedOfferRevision) {
+            fail("FINISHER_STALE_OFFER", 409);
+          }
+          if (
+            offer.executions.some(
+              (execution) =>
+                execution.state === "SELECTED" ||
+                execution.state === "IN_PROGRESS" ||
+                execution.startedAt != null,
+            )
+          ) {
+            fail("FINISHER_SELECTION_CONFLICT", 409);
+          }
+
+          await tx.finisherDecision.create({
+            data: {
+              ...identity,
+              requestFingerprint: fingerprint,
+              createdAt: now,
+            },
+          });
+          const updated = await tx.finisherOffer.updateMany({
+            where: {
+              id: offer.id,
+              workoutId: input.workoutId,
+              revision: input.expectedOfferRevision,
+              declinedAt: null,
+              declineDecisionId: null,
+            },
+            data: {
+              declinedAt: now,
+              declineDecisionId: input.decisionId,
+              revision: { increment: 1 },
+            },
+          });
+          if (updated.count !== 1) {
+            fail("FINISHER_STALE_OFFER", 409);
+          }
+          return { declined: true };
         },
-      },
-    });
-    if (!offer) fail("FINISHER_OFFER_NOT_FOUND", 404);
-    if (offer.declineDecisionId === input.decisionId) {
-      return { declined: true };
+        {
+          isolationLevel:
+            Prisma.TransactionIsolationLevel.Serializable,
+        },
+      );
+    } catch (error) {
+      if (attempt < 2 && isDecisionRace(error)) continue;
+      if (isDecisionRace(error)) {
+        const existingDecision =
+          await prisma.finisherDecision.findUnique({
+            where: { id: input.decisionId },
+          });
+        if (existingDecision) {
+          if (
+            !matchesFinisherDecision(
+              existingDecision,
+              identity,
+              fingerprint,
+            )
+          ) {
+            fail("FINISHER_DECISION_ID_CONFLICT", 409);
+          }
+          return { declined: true };
+        }
+        fail("FINISHER_DECISION_ID_CONFLICT", 409);
+      }
+      throw error;
     }
-    if (offer.declineDecisionId) {
-      fail("FINISHER_DECISION_ID_CONFLICT", 409);
-    }
-    if (offer.revision !== input.expectedOfferRevision) {
-      fail("FINISHER_STALE_OFFER", 409);
-    }
-    if (
-      offer.executions.some(
-        (execution) =>
-          execution.state === "SELECTED" ||
-          execution.state === "IN_PROGRESS" ||
-          execution.startedAt != null
-      )
-    ) {
-      fail("FINISHER_SELECTION_CONFLICT", 409);
-    }
-    const updated = await tx.finisherOffer.updateMany({
-      where: {
-        id: offer.id,
-        workoutId: input.workoutId,
-        revision: input.expectedOfferRevision,
-        declinedAt: null,
-        declineDecisionId: null,
-      },
-      data: {
-        declinedAt: now,
-        declineDecisionId: input.decisionId,
-        revision: { increment: 1 },
-      },
-    });
-    if (updated.count !== 1) fail("FINISHER_STALE_OFFER", 409);
-    return { declined: true };
-  });
+  }
+  fail("FINISHER_DECISION_ID_CONFLICT", 409);
 }

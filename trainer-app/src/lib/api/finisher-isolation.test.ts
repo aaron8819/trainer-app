@@ -42,6 +42,8 @@ describe("Phase 1 Finisher isolation", () => {
     expect(source).not.toContain("effective-set");
     expect(source).not.toContain("exercise-exposure");
     expect(source).not.toContain("load-recommendation");
+    expect(source).not.toContain("selectionMetadata");
+    expect(source).not.toContain("sessionDecisionReceipt");
     expect(source).toContain('status !== "COMPLETED"');
     expect(source).toContain("workout: { userId: input.userId }");
   });

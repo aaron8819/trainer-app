@@ -108,6 +108,10 @@ function addCompatibleManifestObject(
       name: object.name,
       definition: object.definitionIncludes?.join(" ") ?? "",
       ...object.function,
+      body:
+        object.function?.body ??
+        object.function?.bodyIncludes?.join("\n") ??
+        "",
       privileges:
         object.name === "cleanup_expired_finisher_execution_commands"
           ? [
@@ -197,6 +201,7 @@ function cleanCatalog(
       FinisherRoutineStepAlternative: ["SELECT"],
       FinisherOffer: ["INSERT", "SELECT", "UPDATE"],
       FinisherOfferItem: ["INSERT", "SELECT"],
+      FinisherDecision: ["INSERT", "SELECT"],
       FinisherExecution: ["INSERT", "SELECT", "UPDATE"],
       FinisherExecutionStep: ["INSERT", "SELECT", "UPDATE"],
       FinisherExecutionCommand: ["INSERT", "SELECT"],
@@ -857,6 +862,104 @@ describe("migration integrity", () => {
       },
     ],
     [
+      "missing permanent performed-history uniqueness",
+      (catalog: CatalogSnapshot) => {
+        catalog.indexes = catalog.indexes.filter(
+          (index) =>
+            index.name !== "FinisherExecution_one_started_per_workout",
+        );
+      },
+    ],
+    [
+      "permitting startedAt clearing",
+      (catalog: CatalogSnapshot) => {
+        const fn = catalog.functions.find(
+          (item) => item.name === "guard_finisher_execution_lifecycle",
+        )!;
+        fn.body = fn.body!.replace(
+          'NEW."startedAt" IS DISTINCT FROM OLD."startedAt"',
+          "false",
+        );
+      },
+    ],
+    [
+      "allowing an empty finalized offer",
+      (catalog: CatalogSnapshot) => {
+        const fn = catalog.functions.find(
+          (item) => item.name === "require_finisher_offer_finalized",
+        )!;
+        fn.body = fn.body!.replace("actual_item_count = 0", "false");
+      },
+    ],
+    [
+      "allowing a recommendation outside the offer",
+      (catalog: CatalogSnapshot) => {
+        const fn = catalog.functions.find(
+          (item) => item.name === "require_finisher_offer_finalized",
+        )!;
+        fn.body = fn.body!.replace(
+          'item."routineVersionId" = recommended_version_id',
+          "true",
+        );
+      },
+    ],
+    [
+      "weakening contiguous offer order",
+      (catalog: CatalogSnapshot) => {
+        const fn = catalog.functions.find(
+          (item) => item.name === "require_finisher_offer_finalized",
+        )!;
+        fn.body = fn.body!.replace(
+          "maximum_position <> expected_item_count - 1",
+          "false",
+        );
+      },
+    ],
+    [
+      "removing finalized offer-item immutability",
+      (catalog: CatalogSnapshot) => {
+        catalog.triggers = catalog.triggers.filter(
+          (trigger) => trigger.name !== "FinisherOfferItem_immutable",
+        );
+      },
+    ],
+    [
+      "omitting expected offer revision from selection identity",
+      (catalog: CatalogSnapshot) => {
+        const fn = catalog.functions.find(
+          (item) => item.name === "require_finisher_execution_finalized",
+        )!;
+        fn.body = fn.body!.replace(
+          'decision."expectedOfferRevision" = execution."offerRevisionAtSelection"',
+          "true",
+        );
+      },
+    ],
+    [
+      "omitting expected offer revision from decline identity",
+      (catalog: CatalogSnapshot) => {
+        const fn = catalog.functions.find(
+          (item) => item.name === "guard_finisher_offer_identity",
+        )!;
+        fn.body = fn.body!.replace(
+          'decision."expectedOfferRevision" = OLD."revision"',
+          "true",
+        );
+      },
+    ],
+    [
+      "removing durable decision fingerprint",
+      (catalog: CatalogSnapshot) => {
+        catalog.columns = catalog.columns.filter(
+          (column) =>
+            !(
+              column.table === "FinisherDecision" &&
+              column.name === "requestFingerprint"
+            ),
+        );
+      },
+    ],
+    [
       "missing check constraint",
       (catalog: CatalogSnapshot) => {
         catalog.constraints = catalog.constraints.filter(
@@ -884,11 +987,11 @@ describe("migration integrity", () => {
       },
     ],
     [
-      "missing terminal execution trigger",
+      "missing execution lifecycle trigger",
       (catalog: CatalogSnapshot) => {
         catalog.triggers = catalog.triggers.filter(
           (trigger) =>
-            trigger.name !== "FinisherExecution_terminal_evidence_immutable",
+            trigger.name !== "FinisherExecution_lifecycle_guard",
         );
       },
     ],
@@ -940,11 +1043,11 @@ describe("migration integrity", () => {
       },
     ],
     [
-      "weakened terminal-state condition",
+      "weakened lifecycle terminal-state condition",
       (catalog: CatalogSnapshot) => {
         const fn = catalog.functions.find(
           (item) =>
-            item.name === "guard_terminal_finisher_execution_evidence",
+            item.name === "guard_finisher_execution_lifecycle",
         )!;
         fn.body = fn.body!.replace(", 'PARTIAL'", "");
       },

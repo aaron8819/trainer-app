@@ -302,7 +302,9 @@ type ObjectExpectation = {
     leakproof: boolean;
     strict: boolean;
     parallel: string;
-    body: string;
+    body?: string;
+    bodyIncludes?: string[];
+    bodyExcludes?: string[];
     configuration?: string[] | null;
     publicExecute?: boolean;
     owner?: string;
@@ -390,6 +392,31 @@ function finisherFunction(name: string): ObjectExpectation {
   };
 }
 
+function semanticFinisherFunction(
+  name: string,
+  bodyIncludes: string[],
+  bodyExcludes: string[] = [],
+): ObjectExpectation {
+  return {
+    kind: "function",
+    name,
+    function: {
+      language: "plpgsql",
+      arguments: "",
+      resultType: "trigger",
+      volatility: "v",
+      securityDefiner: false,
+      leakproof: false,
+      strict: false,
+      parallel: "u",
+      bodyIncludes,
+      bodyExcludes,
+      owner: "trainer_finisher_owner",
+      publicExecute: false,
+    },
+  };
+}
+
 function finisherCleanupFunction(): ObjectExpectation {
   const name = "cleanup_expired_finisher_execution_commands";
   const match = FINISHER_MIGRATION_SQL.match(
@@ -443,6 +470,25 @@ function finisherTrigger(table: string, name: string): ObjectExpectation {
   };
 }
 
+function semanticFinisherTrigger(
+  table: string,
+  name: string,
+  definition: string,
+  functionName: string,
+): ObjectExpectation {
+  return {
+    kind: "trigger",
+    table,
+    name,
+    trigger: {
+      definition,
+      enabled: "O",
+      functionName,
+      functionOwner: "trainer_finisher_owner",
+    },
+  };
+}
+
 const finisherExactConstraint = (
   table: string,
   name: string,
@@ -464,6 +510,23 @@ const finisherExactConstraint = (
     deferrable: options.deferrable ?? false,
     initiallyDeferred: options.initiallyDeferred ?? false,
   },
+});
+
+const finisherSemanticConstraint = (
+  table: string,
+  name: string,
+  definitionIncludes: string[],
+): ObjectExpectation => ({
+  kind: "constraint",
+  table,
+  name,
+  constraint: {
+    type: "c",
+    validated: true,
+    deferrable: false,
+    initiallyDeferred: false,
+  },
+  definitionIncludes,
 });
 
 const FINISHER_TABLE_COLUMNS: Record<
@@ -560,6 +623,7 @@ const FINISHER_TABLE_COLUMNS: Record<
     ["recommendationReason", "text", true],
     ["recommendationUnavailableReason", "text", true],
     ["recommendationContext", "jsonb", false],
+    ["itemCount", "integer", false],
     ["finalizedAt", "timestamp(3) without time zone", true],
   ],
   FinisherOfferItem: [
@@ -568,6 +632,24 @@ const FINISHER_TABLE_COLUMNS: Record<
     ["routineVersionId", "text", false],
     ["position", "integer", false],
     ["warnings", "text[]", false, "ARRAY[]::text[]"],
+  ],
+  FinisherDecision: [
+    ["id", "text", false],
+    ["ownerId", "text", false],
+    ["workoutId", "text", false],
+    ["offerId", "text", false],
+    ["action", '"FinisherDecisionAction"', false],
+    ["offerItemId", "text", true],
+    ["routineVersionId", "text", true],
+    ["expectedOfferRevision", "integer", false],
+    ["acknowledgeContraindication", "boolean", true],
+    ["requestFingerprint", "text", false],
+    [
+      "createdAt",
+      "timestamp(3) without time zone",
+      false,
+      "CURRENT_TIMESTAMP",
+    ],
   ],
   FinisherExecution: [
     ["id", "text", false],
@@ -780,6 +862,7 @@ const FINISHER_SCHEMA_EXPECTATIONS: ObjectExpectation[] = [
         "DISMISS",
       ],
     ],
+    ["FinisherDecisionAction", ["SELECT", "DECLINE"]],
   ].map(([name, values]) => ({
     kind: "enum" as const,
     name: name as string,
@@ -853,6 +936,13 @@ const FINISHER_SCHEMA_EXPECTATIONS: ObjectExpectation[] = [
     ],
     [
       "FinisherOffer",
+      "FinisherOffer_id_recommendedRoutineVersionId_key",
+      true,
+      ["id", "recommendedRoutineVersionId"],
+      null,
+    ],
+    [
+      "FinisherOffer",
       "FinisherOffer_declineDecisionId_key",
       true,
       ["declineDecisionId"],
@@ -891,6 +981,13 @@ const FINISHER_SCHEMA_EXPECTATIONS: ObjectExpectation[] = [
       "FinisherOfferItem_routineVersionId_idx",
       false,
       ["routineVersionId"],
+      null,
+    ],
+    [
+      "FinisherDecision",
+      "FinisherDecision_offerId_createdAt_idx",
+      false,
+      ["offerId", "createdAt"],
       null,
     ],
     [
@@ -1004,7 +1101,10 @@ const FINISHER_SCHEMA_EXPECTATIONS: ObjectExpectation[] = [
     ["FinisherRoutineStep", "FinisherRoutineStep_recovery_nonnegative", "CHECK (recoverySeconds >= 0)"],
     ["FinisherRoutineStepAlternative", "FinisherRoutineStepAlternative_order_nonnegative", "CHECK (orderIndex >= 0)"],
     ["FinisherOffer", "FinisherOffer_revision_positive", "CHECK (revision > 0)"],
+    ["FinisherOffer", "FinisherOffer_item_count_positive", "CHECK (itemCount > 0)"],
     ["FinisherOfferItem", "FinisherOfferItem_position_nonnegative", "CHECK (position >= 0)"],
+    ["FinisherDecision", "FinisherDecision_expected_offer_revision_positive", "CHECK (expectedOfferRevision > 0)"],
+    ["FinisherDecision", "FinisherDecision_fingerprint_shape", "CHECK (requestFingerprint ~ '^[0-9a-f]{64}$'::text)"],
     ["FinisherExecution", "FinisherExecution_offer_revision_positive", "CHECK (offerRevisionAtSelection > 0)"],
     ["FinisherExecution", "FinisherExecution_step_nonnegative", "CHECK (currentStepIndex >= 0)"],
     ["FinisherExecution", "FinisherExecution_pause_nonnegative", "CHECK (pausedRemainingMs IS NULL OR pausedRemainingMs >= 0)"],
@@ -1023,6 +1123,65 @@ const FINISHER_SCHEMA_EXPECTATIONS: ObjectExpectation[] = [
   ].map(([table, name, definition]) =>
     finisherExactConstraint(table, name, "c", definition),
   ),
+  finisherSemanticConstraint(
+    "FinisherOffer",
+    "FinisherOffer_decline_consistent",
+    ["declinedAt IS NULL", "declineDecisionId IS NULL", "declinedAt IS NOT NULL", "declineDecisionId IS NOT NULL"],
+  ),
+  finisherSemanticConstraint(
+    "FinisherOffer",
+    "FinisherOffer_recommendation_consistent",
+    [
+      "recommendedRoutineVersionId IS NOT NULL",
+      "recommendationReason IS NOT NULL",
+      "recommendationUnavailableReason IS NULL",
+      "recommendedRoutineVersionId IS NULL",
+      "recommendationReason IS NULL",
+      "recommendationUnavailableReason IS NOT NULL",
+    ],
+  ),
+  finisherSemanticConstraint(
+    "FinisherDecision",
+    "FinisherDecision_action_shape",
+    [
+      "action = 'SELECT'::FinisherDecisionAction",
+      "offerItemId IS NOT NULL",
+      "routineVersionId IS NOT NULL",
+      "acknowledgeContraindication IS NOT NULL",
+      "action = 'DECLINE'::FinisherDecisionAction",
+      "offerItemId IS NULL",
+      "routineVersionId IS NULL",
+      "acknowledgeContraindication IS NULL",
+    ],
+  ),
+  finisherSemanticConstraint(
+    "FinisherExecution",
+    "FinisherExecution_lifecycle_consistent",
+    [
+      "state = 'SELECTED'::FinisherExecutionState",
+      "state = 'IN_PROGRESS'::FinisherExecutionState",
+      "state = 'COMPLETED'::FinisherExecutionState",
+      "state = ANY (ARRAY['PARTIAL'::FinisherExecutionState, 'SKIPPED'::FinisherExecutionState])",
+      "state = 'DISMISSED'::FinisherExecutionState",
+      "startedAt IS NULL",
+      "startedAt IS NOT NULL",
+      "completedAt IS NOT NULL",
+      "dismissedAt = endedAt",
+    ],
+  ),
+  finisherSemanticConstraint(
+    "FinisherExecution",
+    "FinisherExecution_timer_consistent",
+    [
+      "timerSegment IS NULL",
+      "timerSegment = ANY (ARRAY['PREPARATION'::FinisherTimerSegment, 'WORK'::FinisherTimerSegment, 'RECOVERY'::FinisherTimerSegment])",
+      "pausedAt IS NULL",
+      "pausedAt IS NOT NULL",
+      "pausedRemainingMs IS NOT NULL",
+      "timerSegment = 'FINISHED'::FinisherTimerSegment",
+      "segmentEndsAt = segmentStartedAt",
+    ],
+  ),
   ...[
     ["FinisherRoutineVersion", "FinisherRoutineVersion_routineId_fkey", "FOREIGN KEY (routineId) REFERENCES FinisherRoutine(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
     ["FinisherRoutineStep", "FinisherRoutineStep_routineVersionId_fkey", "FOREIGN KEY (routineVersionId) REFERENCES FinisherRoutineVersion(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
@@ -1031,10 +1190,14 @@ const FINISHER_SCHEMA_EXPECTATIONS: ObjectExpectation[] = [
     ["FinisherOffer", "FinisherOffer_recommendedRoutineVersionId_fkey", "FOREIGN KEY (recommendedRoutineVersionId) REFERENCES FinisherRoutineVersion(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
     ["FinisherOfferItem", "FinisherOfferItem_offerId_fkey", "FOREIGN KEY (offerId) REFERENCES FinisherOffer(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
     ["FinisherOfferItem", "FinisherOfferItem_routineVersionId_fkey", "FOREIGN KEY (routineVersionId) REFERENCES FinisherRoutineVersion(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
+    ["FinisherDecision", "FinisherDecision_offerId_fkey", "FOREIGN KEY (offerId, workoutId, ownerId) REFERENCES FinisherOffer(id, workoutId, ownerId) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherDecision", "FinisherDecision_offerItem_binding_fkey", "FOREIGN KEY (offerItemId, offerId, routineVersionId) REFERENCES FinisherOfferItem(id, offerId, routineVersionId) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherOffer", "FinisherOffer_declineDecisionId_fkey", "FOREIGN KEY (declineDecisionId) REFERENCES FinisherDecision(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
     ["FinisherExecution", "FinisherExecution_workoutId_fkey", "FOREIGN KEY (workoutId, ownerId) REFERENCES Workout(id, userId) ON UPDATE RESTRICT ON DELETE RESTRICT"],
     ["FinisherExecution", "FinisherExecution_offerId_fkey", "FOREIGN KEY (offerId, workoutId, ownerId) REFERENCES FinisherOffer(id, workoutId, ownerId) ON UPDATE RESTRICT ON DELETE RESTRICT"],
     ["FinisherExecution", "FinisherExecution_offerItem_binding_fkey", "FOREIGN KEY (offerItemId, offerId, routineVersionId) REFERENCES FinisherOfferItem(id, offerId, routineVersionId) ON UPDATE RESTRICT ON DELETE RESTRICT"],
     ["FinisherExecution", "FinisherExecution_routineVersionId_fkey", "FOREIGN KEY (routineVersionId) REFERENCES FinisherRoutineVersion(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherExecution", "FinisherExecution_decisionId_fkey", "FOREIGN KEY (id) REFERENCES FinisherDecision(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
     ["FinisherExecutionStep", "FinisherExecutionStep_executionId_fkey", "FOREIGN KEY (executionId) REFERENCES FinisherExecution(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
     ["FinisherExecutionStep", "FinisherExecutionStep_routineStepId_fkey", "FOREIGN KEY (routineStepId) REFERENCES FinisherRoutineStep(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
     ["FinisherExecutionStep", "FinisherExecutionStep_executionId_routineVersionId_fkey", "FOREIGN KEY (executionId, routineVersionId) REFERENCES FinisherExecution(id, routineVersionId) ON UPDATE CASCADE ON DELETE RESTRICT"],
@@ -1045,24 +1208,108 @@ const FINISHER_SCHEMA_EXPECTATIONS: ObjectExpectation[] = [
   ].map(([table, name, definition]) =>
     finisherExactConstraint(table, name, "f", definition),
   ),
+  finisherExactConstraint(
+    "FinisherOffer",
+    "FinisherOffer_recommended_item_fkey",
+    "f",
+    "FOREIGN KEY (id, recommendedRoutineVersionId) REFERENCES FinisherOfferItem(offerId, routineVersionId) ON UPDATE RESTRICT ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED",
+    { deferrable: true, initiallyDeferred: true },
+  ),
   ...[
     "guard_finisher_routine_identity",
     "require_finisher_routine_version_sealed",
     "guard_finisher_routine_version_mutation",
     "guard_finisher_routine_child_mutation",
-    "require_finisher_offer_finalized",
-    "require_finisher_execution_finalized",
-    "guard_finisher_offer_item_insert",
-    "guard_finisher_execution_step_insert",
-    "guard_finisher_offer_identity",
-    "reject_finisher_offer_item_update",
     "guard_finisher_execution_identity",
     "guard_finisher_execution_step_identity",
-    "guard_terminal_finisher_execution_evidence",
     "guard_finisher_execution_step_evidence",
-    "reject_finisher_history_deletion",
     "guard_finisher_execution_command_tombstone",
   ].map(finisherFunction),
+  semanticFinisherFunction("require_finisher_offer_finalized", [
+    'offer."finalizedAt"',
+    'offer."itemCount"',
+    'COUNT(*)::INTEGER',
+    'MIN(item."position")',
+    'MAX(item."position")',
+    "actual_item_count = 0",
+    "actual_item_count <> expected_item_count",
+    "minimum_position <> 0",
+    "maximum_position <> expected_item_count - 1",
+    'item."offerId" = NEW."id"',
+    'item."routineVersionId" = recommended_version_id',
+  ]),
+  semanticFinisherFunction("require_finisher_execution_finalized", [
+    'decision."action" = \'SELECT\'',
+    'decision."ownerId" = execution."ownerId"',
+    'decision."workoutId" = execution."workoutId"',
+    'decision."offerId" = execution."offerId"',
+    'decision."offerItemId" = execution."offerItemId"',
+    'decision."routineVersionId" = execution."routineVersionId"',
+    'decision."expectedOfferRevision" = execution."offerRevisionAtSelection"',
+  ]),
+  semanticFinisherFunction("guard_finisher_offer_item_insert", [
+    'FROM "FinisherOffer"',
+    'WHERE "id" = NEW."offerId"',
+    "FOR UPDATE",
+    "IF NOT FOUND",
+    "finalized_at IS NOT NULL",
+  ]),
+  semanticFinisherFunction("guard_finisher_execution_step_insert", [
+    'FROM "FinisherExecution"',
+    'WHERE "id" = NEW."executionId"',
+    "FOR UPDATE",
+    "IF NOT FOUND",
+    "finalized_at IS NOT NULL",
+  ]),
+  semanticFinisherFunction("guard_finisher_offer_identity", [
+    'NEW."itemCount" IS DISTINCT FROM OLD."itemCount"',
+    'NEW."revision" <> OLD."revision" + 1',
+    'OLD."declineDecisionId" IS NOT NULL',
+    'NEW."declineDecisionId" IS DISTINCT FROM OLD."declineDecisionId"',
+    'decision."action" = \'DECLINE\'',
+    'decision."ownerId" = NEW."ownerId"',
+    'decision."workoutId" = NEW."workoutId"',
+    'decision."offerId" = NEW."id"',
+    'decision."expectedOfferRevision" = OLD."revision"',
+  ]),
+  semanticFinisherFunction("reject_finisher_offer_item_update", [
+    "finisher offer items are immutable",
+  ]),
+  semanticFinisherFunction("guard_finisher_execution_lifecycle", [
+    'OLD."finalizedAt" IS NULL',
+    "to_jsonb(NEW) - 'finalizedAt'",
+    'OLD."state" IN (\'COMPLETED\', \'PARTIAL\', \'SKIPPED\', \'DISMISSED\')',
+    'NEW."revision" <> OLD."revision" + 1',
+    'NEW."currentStepIndex" < OLD."currentStepIndex"',
+    'NEW."preparationActiveMs" < OLD."preparationActiveMs"',
+    'NEW."recoveryActiveMs" < OLD."recoveryActiveMs"',
+    'NEW."preparationPausedMs" < OLD."preparationPausedMs"',
+    'NEW."workPausedMs" < OLD."workPausedMs"',
+    'NEW."recoveryPausedMs" < OLD."recoveryPausedMs"',
+    'OLD."startedAt" IS NOT NULL',
+    'NEW."startedAt" IS DISTINCT FROM OLD."startedAt"',
+    'OLD."state" = \'SELECTED\' AND NEW."state" IN (\'SELECTED\', \'IN_PROGRESS\', \'COMPLETED\', \'DISMISSED\')',
+    'OLD."state" = \'IN_PROGRESS\' AND NEW."state" IN (\'IN_PROGRESS\', \'COMPLETED\', \'PARTIAL\', \'SKIPPED\', \'DISMISSED\')',
+  ]),
+  semanticFinisherFunction("guard_finisher_decision_history", [
+    "TG_OP = 'DELETE'",
+    "to_jsonb(NEW) IS DISTINCT FROM to_jsonb(OLD)",
+  ]),
+  semanticFinisherFunction("require_finisher_decision_applied", [
+    'NEW."action" = \'SELECT\'',
+    'execution."id" = NEW."id"',
+    'execution."ownerId" = NEW."ownerId"',
+    'execution."workoutId" = NEW."workoutId"',
+    'execution."offerId" = NEW."offerId"',
+    'execution."offerItemId" = NEW."offerItemId"',
+    'execution."routineVersionId" = NEW."routineVersionId"',
+    'execution."offerRevisionAtSelection" = NEW."expectedOfferRevision"',
+    'NEW."action" = \'DECLINE\'',
+    'offer."declineDecisionId" = NEW."id"',
+  ]),
+  semanticFinisherFunction("reject_finisher_history_deletion", [
+    "finisher lifecycle history cannot be deleted",
+  ]),
   finisherCleanupFunction(),
   ...[
     ["FinisherRoutine", "FinisherRoutine_identity_immutable", "guard_finisher_routine_identity"],
@@ -1070,10 +1317,7 @@ const FINISHER_SCHEMA_EXPECTATIONS: ObjectExpectation[] = [
     ["FinisherRoutineVersion", "FinisherRoutineVersion_immutable", "guard_finisher_routine_version_mutation"],
     ["FinisherRoutineStep", "FinisherRoutineStep_immutable", "guard_finisher_routine_child_mutation"],
     ["FinisherRoutineStepAlternative", "FinisherRoutineStepAlternative_immutable", "guard_finisher_routine_child_mutation"],
-    ["FinisherOffer", "FinisherOffer_identity_immutable", "guard_finisher_offer_identity"],
-    ["FinisherOfferItem", "FinisherOfferItem_immutable", "reject_finisher_offer_item_update"],
     ["FinisherExecution", "FinisherExecution_identity_immutable", "guard_finisher_execution_identity"],
-    ["FinisherExecution", "FinisherExecution_terminal_evidence_immutable", "guard_terminal_finisher_execution_evidence"],
     ["FinisherExecutionStep", "FinisherExecutionStep_identity_immutable", "guard_finisher_execution_step_identity"],
     ["FinisherExecutionStep", "FinisherExecutionStep_evidence_immutable", "guard_finisher_execution_step_evidence"],
     ["FinisherExecutionCommand", "FinisherExecutionCommand_tombstone", "guard_finisher_execution_command_tombstone"],
@@ -1081,11 +1325,56 @@ const FINISHER_SCHEMA_EXPECTATIONS: ObjectExpectation[] = [
     ["FinisherOfferItem", "FinisherOfferItem_no_delete", "reject_finisher_history_deletion"],
     ["FinisherExecution", "FinisherExecution_no_delete", "reject_finisher_history_deletion"],
     ["FinisherExecutionStep", "FinisherExecutionStep_no_delete", "reject_finisher_history_deletion"],
-    ["FinisherOffer", "FinisherOffer_require_finalized"],
-    ["FinisherExecution", "FinisherExecution_require_finalized"],
-    ["FinisherOfferItem", "FinisherOfferItem_insert_before_finalization"],
     ["FinisherExecutionStep", "FinisherExecutionStep_insert_before_finalization"],
   ].map(([table, name]) => finisherTrigger(table, name)),
+  semanticFinisherTrigger(
+    "FinisherOffer",
+    "FinisherOffer_identity_immutable",
+    'CREATE TRIGGER "FinisherOffer_identity_immutable" BEFORE UPDATE ON "FinisherOffer" FOR EACH ROW EXECUTE FUNCTION guard_finisher_offer_identity()',
+    "guard_finisher_offer_identity",
+  ),
+  semanticFinisherTrigger(
+    "FinisherOfferItem",
+    "FinisherOfferItem_immutable",
+    'CREATE TRIGGER "FinisherOfferItem_immutable" BEFORE UPDATE ON "FinisherOfferItem" FOR EACH ROW EXECUTE FUNCTION reject_finisher_offer_item_update()',
+    "reject_finisher_offer_item_update",
+  ),
+  semanticFinisherTrigger(
+    "FinisherOfferItem",
+    "FinisherOfferItem_insert_before_finalization",
+    'CREATE TRIGGER "FinisherOfferItem_insert_before_finalization" BEFORE INSERT ON "FinisherOfferItem" FOR EACH ROW EXECUTE FUNCTION guard_finisher_offer_item_insert()',
+    "guard_finisher_offer_item_insert",
+  ),
+  semanticFinisherTrigger(
+    "FinisherOffer",
+    "FinisherOffer_require_finalized",
+    'CREATE CONSTRAINT TRIGGER "FinisherOffer_require_finalized" AFTER INSERT ON "FinisherOffer" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION require_finisher_offer_finalized()',
+    "require_finisher_offer_finalized",
+  ),
+  semanticFinisherTrigger(
+    "FinisherExecution",
+    "FinisherExecution_lifecycle_guard",
+    'CREATE TRIGGER "FinisherExecution_lifecycle_guard" BEFORE UPDATE ON "FinisherExecution" FOR EACH ROW EXECUTE FUNCTION guard_finisher_execution_lifecycle()',
+    "guard_finisher_execution_lifecycle",
+  ),
+  semanticFinisherTrigger(
+    "FinisherExecution",
+    "FinisherExecution_require_finalized",
+    'CREATE CONSTRAINT TRIGGER "FinisherExecution_require_finalized" AFTER INSERT ON "FinisherExecution" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION require_finisher_execution_finalized()',
+    "require_finisher_execution_finalized",
+  ),
+  semanticFinisherTrigger(
+    "FinisherDecision",
+    "FinisherDecision_immutable",
+    'CREATE TRIGGER "FinisherDecision_immutable" BEFORE UPDATE OR DELETE ON "FinisherDecision" FOR EACH ROW EXECUTE FUNCTION guard_finisher_decision_history()',
+    "guard_finisher_decision_history",
+  ),
+  semanticFinisherTrigger(
+    "FinisherDecision",
+    "FinisherDecision_require_applied",
+    'CREATE CONSTRAINT TRIGGER "FinisherDecision_require_applied" AFTER INSERT ON "FinisherDecision" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION require_finisher_decision_applied()',
+    "require_finisher_decision_applied",
+  ),
   ...FINISHER_CATALOG_EXPECTATIONS,
 ];
 
@@ -1579,7 +1868,13 @@ function pendingObjectCompatible(snapshot: CatalogSnapshot, object: ObjectExpect
     ) {
       return false;
     }
-    return (object.definitionIncludes ?? []).every((token) => actual.definition.includes(token));
+    const normalizedDefinition =
+      normalizeCatalogDefinition(actual.definition) ?? "";
+    return (object.definitionIncludes ?? []).every((token) =>
+      normalizedDefinition.includes(
+        normalizeCatalogDefinition(token) ?? "",
+      ),
+    );
   }
   if (object.kind === "catalogRow") {
     const actual = snapshot.catalogRows.find(
@@ -1618,6 +1913,8 @@ function pendingObjectCompatible(snapshot: CatalogSnapshot, object: ObjectExpect
   );
   if (!actual) return false;
   if (object.function) {
+    const actualBody = normalize(actual.body ?? null) ?? "";
+    const expectedBody = object.function.body;
     return (
       actual.language === object.function.language &&
       actual.arguments === object.function.arguments &&
@@ -1634,7 +1931,14 @@ function pendingObjectCompatible(snapshot: CatalogSnapshot, object: ObjectExpect
         actual.publicExecute === object.function.publicExecute) &&
       (object.function.owner === undefined ||
         actual.owner === object.function.owner) &&
-      normalize(actual.body ?? null) === normalize(object.function.body)
+      (expectedBody === undefined ||
+        actualBody === (normalize(expectedBody) ?? "")) &&
+      (object.function.bodyIncludes ?? []).every((token) =>
+        actualBody.includes(normalize(token) ?? ""),
+      ) &&
+      (object.function.bodyExcludes ?? []).every(
+        (token) => !actualBody.includes(normalize(token) ?? ""),
+      )
     );
   }
   return (object.definitionIncludes ?? []).every((token) =>
@@ -1679,6 +1983,10 @@ function finisherSecurityIssues(
       `${FINISHER_RUNTIME_ROLE}:UPDATE:plain`,
     ],
     FinisherOfferItem: [
+      `${FINISHER_RUNTIME_ROLE}:INSERT:plain`,
+      `${FINISHER_RUNTIME_ROLE}:SELECT:plain`,
+    ],
+    FinisherDecision: [
       `${FINISHER_RUNTIME_ROLE}:INSERT:plain`,
       `${FINISHER_RUNTIME_ROLE}:SELECT:plain`,
     ],

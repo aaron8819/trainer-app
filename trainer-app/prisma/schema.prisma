@@ -296,6 +296,11 @@ enum FinisherExecutionAction {
   DISMISS
 }
 
+enum FinisherDecisionAction {
+  SELECT
+  DECLINE
+}
+
 model User {
   id                 String      @id @default(uuid())
   email              String      @unique
@@ -603,12 +608,17 @@ model FinisherOffer {
   recommendationReason            String?
   recommendationUnavailableReason String?
   recommendationContext           Json
+  itemCount                       Int
   finalizedAt                     DateTime?
   items                           FinisherOfferItem[]
   executions                      FinisherExecution[]
+  decisions                       FinisherDecision[]        @relation("FinisherDecisionOffer")
+  declineDecision                 FinisherDecision?         @relation("FinisherOfferDeclineDecision", fields: [declineDecisionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  recommendedOfferItem            FinisherOfferItem?        @relation("FinisherOfferRecommendation", fields: [id, recommendedRoutineVersionId], references: [offerId, routineVersionId], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([workoutId, ownerId])
   @@unique([id, workoutId, ownerId])
+  @@unique([id, recommendedRoutineVersionId])
   @@index([recommendedRoutineVersionId])
 }
 
@@ -621,6 +631,8 @@ model FinisherOfferItem {
   position         Int
   warnings         String[]               @default([])
   executions       FinisherExecution[]
+  decisions        FinisherDecision[]
+  recommendedBy    FinisherOffer?         @relation("FinisherOfferRecommendation")
 
   @@unique([offerId, routineVersionId])
   @@unique([offerId, position])
@@ -662,6 +674,7 @@ model FinisherExecution {
   difficultyFeedback       Int?
   stepExecutions           FinisherExecutionStep[]
   commands                 FinisherExecutionCommand[]
+  decision                 FinisherDecision             @relation(fields: [id], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([id, workoutId])
   @@unique([id, workoutId, ownerId])
@@ -670,6 +683,26 @@ model FinisherExecution {
   @@index([offerId, selectedAt])
   @@index([routineVersionId, startedAt])
   @@index([state, segmentEndsAt])
+}
+
+model FinisherDecision {
+  id                         String                 @id
+  ownerId                    String
+  workoutId                  String
+  offerId                    String
+  offer                      FinisherOffer          @relation("FinisherDecisionOffer", fields: [offerId, workoutId, ownerId], references: [id, workoutId, ownerId], onDelete: Restrict, onUpdate: Restrict)
+  action                     FinisherDecisionAction
+  offerItemId                String?
+  routineVersionId           String?
+  offerItem                  FinisherOfferItem?     @relation(fields: [offerItemId, offerId, routineVersionId], references: [id, offerId, routineVersionId], onDelete: Restrict, onUpdate: Restrict)
+  expectedOfferRevision      Int
+  acknowledgeContraindication Boolean?
+  requestFingerprint         String
+  createdAt                  DateTime               @default(now())
+  execution                  FinisherExecution?
+  declinedOffer              FinisherOffer?         @relation("FinisherOfferDeclineDecision")
+
+  @@index([offerId, createdAt])
 }
 
 model FinisherExecutionStep {

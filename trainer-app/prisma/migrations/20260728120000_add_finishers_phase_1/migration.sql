@@ -79,6 +79,7 @@ CREATE TYPE "FinisherExecutionState" AS ENUM ('SELECTED', 'IN_PROGRESS', 'COMPLE
 CREATE TYPE "FinisherTimerSegment" AS ENUM ('PREPARATION', 'WORK', 'RECOVERY', 'FINISHED');
 CREATE TYPE "FinisherStepStatus" AS ENUM ('PENDING', 'PARTIAL', 'COMPLETED', 'SKIPPED');
 CREATE TYPE "FinisherExecutionAction" AS ENUM ('START', 'SYNC', 'PAUSE', 'RESUME', 'SKIP', 'SUBSTITUTE', 'END', 'FEEDBACK', 'DISMISS');
+CREATE TYPE "FinisherDecisionAction" AS ENUM ('SELECT', 'DECLINE');
 
 CREATE TABLE "FinisherRoutine" (
     "id" TEXT NOT NULL,
@@ -149,9 +150,29 @@ CREATE TABLE "FinisherOffer" (
     "recommendationReason" TEXT,
     "recommendationUnavailableReason" TEXT,
     "recommendationContext" JSONB NOT NULL,
+    "itemCount" INTEGER NOT NULL,
     "finalizedAt" TIMESTAMP(3),
     CONSTRAINT "FinisherOffer_pkey" PRIMARY KEY ("id"),
-    CONSTRAINT "FinisherOffer_revision_positive" CHECK ("revision" > 0)
+    CONSTRAINT "FinisherOffer_revision_positive" CHECK ("revision" > 0),
+    CONSTRAINT "FinisherOffer_item_count_positive" CHECK ("itemCount" > 0),
+    CONSTRAINT "FinisherOffer_decline_consistent" CHECK (
+      ("declinedAt" IS NULL AND "declineDecisionId" IS NULL)
+      OR
+      ("declinedAt" IS NOT NULL AND "declineDecisionId" IS NOT NULL)
+    ),
+    CONSTRAINT "FinisherOffer_recommendation_consistent" CHECK (
+      (
+        "recommendedRoutineVersionId" IS NOT NULL
+        AND "recommendationReason" IS NOT NULL
+        AND "recommendationUnavailableReason" IS NULL
+      )
+      OR
+      (
+        "recommendedRoutineVersionId" IS NULL
+        AND "recommendationReason" IS NULL
+        AND "recommendationUnavailableReason" IS NOT NULL
+      )
+    )
 );
 
 CREATE TABLE "FinisherOfferItem" (
@@ -162,6 +183,40 @@ CREATE TABLE "FinisherOfferItem" (
     "warnings" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
     CONSTRAINT "FinisherOfferItem_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "FinisherOfferItem_position_nonnegative" CHECK ("position" >= 0)
+);
+
+CREATE TABLE "FinisherDecision" (
+    "id" TEXT NOT NULL,
+    "ownerId" TEXT NOT NULL,
+    "workoutId" TEXT NOT NULL,
+    "offerId" TEXT NOT NULL,
+    "action" "FinisherDecisionAction" NOT NULL,
+    "offerItemId" TEXT,
+    "routineVersionId" TEXT,
+    "expectedOfferRevision" INTEGER NOT NULL,
+    "acknowledgeContraindication" BOOLEAN,
+    "requestFingerprint" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "FinisherDecision_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "FinisherDecision_expected_offer_revision_positive" CHECK ("expectedOfferRevision" > 0),
+    CONSTRAINT "FinisherDecision_fingerprint_shape" CHECK (
+      "requestFingerprint" ~ '^[0-9a-f]{64}$'
+    ),
+    CONSTRAINT "FinisherDecision_action_shape" CHECK (
+      (
+        "action" = 'SELECT'
+        AND "offerItemId" IS NOT NULL
+        AND "routineVersionId" IS NOT NULL
+        AND "acknowledgeContraindication" IS NOT NULL
+      )
+      OR
+      (
+        "action" = 'DECLINE'
+        AND "offerItemId" IS NULL
+        AND "routineVersionId" IS NULL
+        AND "acknowledgeContraindication" IS NULL
+      )
+    )
 );
 
 CREATE TABLE "FinisherExecution" (
@@ -202,7 +257,93 @@ CREATE TABLE "FinisherExecution" (
     CONSTRAINT "FinisherExecution_work_pause_nonnegative" CHECK ("workPausedMs" >= 0),
     CONSTRAINT "FinisherExecution_recovery_pause_nonnegative" CHECK ("recoveryPausedMs" >= 0),
     CONSTRAINT "FinisherExecution_revision_positive" CHECK ("revision" > 0),
-    CONSTRAINT "FinisherExecution_feedback_range" CHECK ("difficultyFeedback" IS NULL OR "difficultyFeedback" BETWEEN 1 AND 10)
+    CONSTRAINT "FinisherExecution_feedback_range" CHECK ("difficultyFeedback" IS NULL OR "difficultyFeedback" BETWEEN 1 AND 10),
+    CONSTRAINT "FinisherExecution_lifecycle_consistent" CHECK (
+      (
+        "state" = 'SELECTED'
+        AND "startedAt" IS NULL
+        AND "completedAt" IS NULL
+        AND "endedAt" IS NULL
+        AND "dismissedAt" IS NULL
+        AND ("timerSegment" IS NULL OR "timerSegment" = 'PREPARATION')
+      )
+      OR
+      (
+        "state" = 'IN_PROGRESS'
+        AND "startedAt" IS NOT NULL
+        AND "completedAt" IS NULL
+        AND "endedAt" IS NULL
+        AND "dismissedAt" IS NULL
+        AND "timerSegment" IN ('WORK', 'RECOVERY')
+      )
+      OR
+      (
+        "state" = 'COMPLETED'
+        AND "startedAt" IS NOT NULL
+        AND "completedAt" IS NOT NULL
+        AND "endedAt" = "completedAt"
+        AND "dismissedAt" IS NULL
+        AND "timerSegment" = 'FINISHED'
+      )
+      OR
+      (
+        "state" IN ('PARTIAL', 'SKIPPED')
+        AND "startedAt" IS NOT NULL
+        AND "completedAt" IS NULL
+        AND "endedAt" IS NOT NULL
+        AND "dismissedAt" IS NULL
+        AND "timerSegment" = 'FINISHED'
+      )
+      OR
+      (
+        "state" = 'DISMISSED'
+        AND "completedAt" IS NULL
+        AND "endedAt" IS NOT NULL
+        AND "dismissedAt" = "endedAt"
+        AND (
+          ("startedAt" IS NULL AND ("timerSegment" IS NULL OR "timerSegment" = 'FINISHED'))
+          OR
+          ("startedAt" IS NOT NULL AND "timerSegment" = 'FINISHED')
+        )
+      )
+    ),
+    CONSTRAINT "FinisherExecution_timer_consistent" CHECK (
+      (
+        "timerSegment" IS NULL
+        AND "segmentStartedAt" IS NULL
+        AND "segmentEndsAt" IS NULL
+        AND "pausedAt" IS NULL
+        AND "pausedRemainingMs" IS NULL
+      )
+      OR
+      (
+        "timerSegment" IN ('PREPARATION', 'WORK', 'RECOVERY')
+        AND (
+          (
+            "pausedAt" IS NULL
+            AND "pausedRemainingMs" IS NULL
+            AND "segmentStartedAt" IS NOT NULL
+            AND "segmentEndsAt" IS NOT NULL
+            AND "segmentEndsAt" >= "segmentStartedAt"
+          )
+          OR
+          (
+            "pausedAt" IS NOT NULL
+            AND "pausedRemainingMs" IS NOT NULL
+            AND "segmentStartedAt" IS NULL
+            AND "segmentEndsAt" IS NULL
+          )
+        )
+      )
+      OR
+      (
+        "timerSegment" = 'FINISHED'
+        AND "pausedAt" IS NULL
+        AND "pausedRemainingMs" IS NULL
+        AND "segmentStartedAt" IS NOT NULL
+        AND "segmentEndsAt" = "segmentStartedAt"
+      )
+    )
 );
 
 CREATE TABLE "FinisherExecutionStep" (
@@ -259,11 +400,13 @@ CREATE UNIQUE INDEX "FinisherOffer_workoutId_key" ON "FinisherOffer"("workoutId"
 CREATE UNIQUE INDEX "FinisherOffer_workoutId_ownerId_key" ON "FinisherOffer"("workoutId", "ownerId");
 CREATE UNIQUE INDEX "FinisherOffer_declineDecisionId_key" ON "FinisherOffer"("declineDecisionId");
 CREATE UNIQUE INDEX "FinisherOffer_id_workoutId_ownerId_key" ON "FinisherOffer"("id", "workoutId", "ownerId");
+CREATE UNIQUE INDEX "FinisherOffer_id_recommendedRoutineVersionId_key" ON "FinisherOffer"("id", "recommendedRoutineVersionId");
 CREATE INDEX "FinisherOffer_recommendedRoutineVersionId_idx" ON "FinisherOffer"("recommendedRoutineVersionId");
 CREATE UNIQUE INDEX "FinisherOfferItem_offerId_routineVersionId_key" ON "FinisherOfferItem"("offerId", "routineVersionId");
 CREATE UNIQUE INDEX "FinisherOfferItem_offerId_position_key" ON "FinisherOfferItem"("offerId", "position");
 CREATE UNIQUE INDEX "FinisherOfferItem_id_offerId_routineVersionId_key" ON "FinisherOfferItem"("id", "offerId", "routineVersionId");
 CREATE INDEX "FinisherOfferItem_routineVersionId_idx" ON "FinisherOfferItem"("routineVersionId");
+CREATE INDEX "FinisherDecision_offerId_createdAt_idx" ON "FinisherDecision"("offerId", "createdAt");
 CREATE UNIQUE INDEX "FinisherExecution_one_active_per_workout"
   ON "FinisherExecution"("workoutId")
   WHERE "state" IN ('SELECTED', 'IN_PROGRESS');
@@ -303,6 +446,19 @@ ALTER TABLE "FinisherOfferItem"
 ALTER TABLE "FinisherOfferItem"
   ADD CONSTRAINT "FinisherOfferItem_routineVersionId_fkey"
   FOREIGN KEY ("routineVersionId") REFERENCES "FinisherRoutineVersion"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "FinisherOffer"
+  ADD CONSTRAINT "FinisherOffer_recommended_item_fkey"
+  FOREIGN KEY ("id", "recommendedRoutineVersionId") REFERENCES "FinisherOfferItem"("offerId", "routineVersionId") ON DELETE RESTRICT ON UPDATE RESTRICT
+  DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "FinisherDecision"
+  ADD CONSTRAINT "FinisherDecision_offerId_fkey"
+  FOREIGN KEY ("offerId", "workoutId", "ownerId") REFERENCES "FinisherOffer"("id", "workoutId", "ownerId") ON DELETE RESTRICT ON UPDATE RESTRICT;
+ALTER TABLE "FinisherDecision"
+  ADD CONSTRAINT "FinisherDecision_offerItem_binding_fkey"
+  FOREIGN KEY ("offerItemId", "offerId", "routineVersionId") REFERENCES "FinisherOfferItem"("id", "offerId", "routineVersionId") ON DELETE RESTRICT ON UPDATE RESTRICT;
+ALTER TABLE "FinisherOffer"
+  ADD CONSTRAINT "FinisherOffer_declineDecisionId_fkey"
+  FOREIGN KEY ("declineDecisionId") REFERENCES "FinisherDecision"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE "FinisherExecution"
   ADD CONSTRAINT "FinisherExecution_workoutId_fkey"
   FOREIGN KEY ("workoutId", "ownerId") REFERENCES "Workout"("id", "userId") ON DELETE RESTRICT ON UPDATE RESTRICT;
@@ -315,6 +471,9 @@ ALTER TABLE "FinisherExecution"
 ALTER TABLE "FinisherExecution"
   ADD CONSTRAINT "FinisherExecution_routineVersionId_fkey"
   FOREIGN KEY ("routineVersionId") REFERENCES "FinisherRoutineVersion"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+ALTER TABLE "FinisherExecution"
+  ADD CONSTRAINT "FinisherExecution_decisionId_fkey"
+  FOREIGN KEY ("id") REFERENCES "FinisherDecision"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE "FinisherExecutionStep"
   ADD CONSTRAINT "FinisherExecutionStep_executionId_fkey"
   FOREIGN KEY ("executionId") REFERENCES "FinisherExecution"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
@@ -458,14 +617,50 @@ FOR EACH ROW EXECUTE FUNCTION guard_finisher_routine_child_mutation();
 -- their complete child sets before they can commit.
 CREATE FUNCTION require_finisher_offer_finalized() RETURNS trigger
 LANGUAGE plpgsql AS $$
+DECLARE
+  finalized_at TIMESTAMP(3);
+  expected_item_count INTEGER;
+  actual_item_count INTEGER;
+  minimum_position INTEGER;
+  maximum_position INTEGER;
+  recommended_version_id TEXT;
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1
-    FROM "FinisherOffer"
-    WHERE "id" = NEW."id" AND "finalizedAt" IS NOT NULL
-  ) THEN
+  SELECT
+    offer."finalizedAt",
+    offer."itemCount",
+    offer."recommendedRoutineVersionId"
+  INTO finalized_at, expected_item_count, recommended_version_id
+  FROM "FinisherOffer" offer
+  WHERE offer."id" = NEW."id";
+
+  IF finalized_at IS NULL THEN
     RAISE EXCEPTION 'finisher offer must be finalized before commit';
   END IF;
+
+  SELECT COUNT(*)::INTEGER, MIN(item."position"), MAX(item."position")
+  INTO actual_item_count, minimum_position, maximum_position
+  FROM "FinisherOfferItem" item
+  WHERE item."offerId" = NEW."id";
+
+  IF actual_item_count = 0
+    OR actual_item_count <> expected_item_count
+    OR minimum_position <> 0
+    OR maximum_position <> expected_item_count - 1
+  THEN
+    RAISE EXCEPTION 'finalized finisher offer item set must be nonempty, complete, and contiguous';
+  END IF;
+
+  IF recommended_version_id IS NOT NULL
+    AND NOT EXISTS (
+      SELECT 1
+      FROM "FinisherOfferItem" item
+      WHERE item."offerId" = NEW."id"
+        AND item."routineVersionId" = recommended_version_id
+    )
+  THEN
+    RAISE EXCEPTION 'finalized finisher offer recommendation must identify an exact offered item';
+  END IF;
+
   RETURN NULL;
 END;
 $$;
@@ -507,6 +702,23 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'finisher execution prescribed step set is incomplete or inconsistent';
   END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM "FinisherDecision" decision
+    JOIN "FinisherExecution" execution ON execution."id" = NEW."id"
+    WHERE decision."id" = execution."id"
+      AND decision."action" = 'SELECT'
+      AND decision."ownerId" = execution."ownerId"
+      AND decision."workoutId" = execution."workoutId"
+      AND decision."offerId" = execution."offerId"
+      AND decision."offerItemId" = execution."offerItemId"
+      AND decision."routineVersionId" = execution."routineVersionId"
+      AND decision."expectedOfferRevision" = execution."offerRevisionAtSelection"
+  ) THEN
+    RAISE EXCEPTION 'finisher execution must match its complete immutable selection decision';
+  END IF;
+
   RETURN NULL;
 END;
 $$;
@@ -518,11 +730,20 @@ FOR EACH ROW EXECUTE FUNCTION require_finisher_execution_finalized();
 
 CREATE FUNCTION guard_finisher_offer_item_insert() RETURNS trigger
 LANGUAGE plpgsql AS $$
+DECLARE
+  finalized_at TIMESTAMP(3);
 BEGIN
-  IF EXISTS (
-    SELECT 1 FROM "FinisherOffer"
-    WHERE "id" = NEW."offerId" AND "finalizedAt" IS NOT NULL
-  ) THEN
+  SELECT "finalizedAt"
+  INTO finalized_at
+  FROM "FinisherOffer"
+  WHERE "id" = NEW."offerId"
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'finisher offer item parent must be visible in the constructing transaction';
+  END IF;
+
+  IF finalized_at IS NOT NULL THEN
     RAISE EXCEPTION 'finalized finisher offer items are immutable';
   END IF;
   RETURN NEW;
@@ -531,11 +752,20 @@ $$;
 
 CREATE FUNCTION guard_finisher_execution_step_insert() RETURNS trigger
 LANGUAGE plpgsql AS $$
+DECLARE
+  finalized_at TIMESTAMP(3);
 BEGIN
-  IF EXISTS (
-    SELECT 1 FROM "FinisherExecution"
-    WHERE "id" = NEW."executionId" AND "finalizedAt" IS NOT NULL
-  ) THEN
+  SELECT "finalizedAt"
+  INTO finalized_at
+  FROM "FinisherExecution"
+  WHERE "id" = NEW."executionId"
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'finisher execution step parent must be visible in the constructing transaction';
+  END IF;
+
+  IF finalized_at IS NOT NULL THEN
     RAISE EXCEPTION 'finalized finisher execution step set is immutable';
   END IF;
   RETURN NEW;
@@ -554,6 +784,7 @@ BEGIN
     OR NEW."recommendationReason" IS DISTINCT FROM OLD."recommendationReason"
     OR NEW."recommendationUnavailableReason" IS DISTINCT FROM OLD."recommendationUnavailableReason"
     OR NEW."recommendationContext" IS DISTINCT FROM OLD."recommendationContext"
+    OR NEW."itemCount" IS DISTINCT FROM OLD."itemCount"
     OR NEW."finalizedAt" IS NULL
     OR (
       OLD."finalizedAt" IS NOT NULL
@@ -562,6 +793,51 @@ BEGIN
   THEN
     RAISE EXCEPTION 'finisher offer identity and definition binding are immutable';
   END IF;
+
+  IF OLD."finalizedAt" IS NULL THEN
+    IF NEW."finalizedAt" IS NULL
+      OR NEW."revision" <> OLD."revision"
+      OR NEW."declinedAt" IS DISTINCT FROM OLD."declinedAt"
+      OR NEW."declineDecisionId" IS DISTINCT FROM OLD."declineDecisionId"
+    THEN
+      RAISE EXCEPTION 'finisher offer finalization must preserve construction evidence';
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  IF to_jsonb(NEW) = to_jsonb(OLD) THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW."revision" <> OLD."revision" + 1 THEN
+    RAISE EXCEPTION 'finisher offer revision must advance exactly once';
+  END IF;
+
+  IF OLD."declineDecisionId" IS NOT NULL THEN
+    IF NEW."declineDecisionId" IS DISTINCT FROM OLD."declineDecisionId"
+      OR NEW."declinedAt" IS DISTINCT FROM OLD."declinedAt"
+    THEN
+      RAISE EXCEPTION 'finisher decline evidence is immutable';
+    END IF;
+  ELSIF NEW."declineDecisionId" IS NOT NULL THEN
+    IF NEW."declinedAt" IS NULL
+      OR NOT EXISTS (
+        SELECT 1
+        FROM "FinisherDecision" decision
+        WHERE decision."id" = NEW."declineDecisionId"
+          AND decision."action" = 'DECLINE'
+          AND decision."ownerId" = NEW."ownerId"
+          AND decision."workoutId" = NEW."workoutId"
+          AND decision."offerId" = NEW."id"
+          AND decision."expectedOfferRevision" = OLD."revision"
+      )
+    THEN
+      RAISE EXCEPTION 'finisher decline must match its complete immutable decision';
+    END IF;
+  ELSIF NEW."declinedAt" IS NOT NULL THEN
+    RAISE EXCEPTION 'finisher decline timestamp requires a durable decision';
+  END IF;
+
   RETURN NEW;
 END;
 $$;
@@ -613,14 +889,27 @@ $$;
 
 -- A terminal execution freezes every performed fact. The existing optional
 -- feedback lifecycle may change only difficultyFeedback and the OCC revision.
-CREATE FUNCTION guard_terminal_finisher_execution_evidence() RETURNS trigger
+CREATE FUNCTION guard_finisher_execution_lifecycle() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
-  IF OLD."state" IN ('COMPLETED', 'PARTIAL', 'SKIPPED', 'DISMISSED') THEN
-    IF to_jsonb(NEW) = to_jsonb(OLD) THEN
-      RETURN NEW;
+  IF OLD."finalizedAt" IS NULL THEN
+    IF NEW."finalizedAt" IS NULL
+      OR (
+        to_jsonb(NEW) - 'finalizedAt'
+      ) IS DISTINCT FROM (
+        to_jsonb(OLD) - 'finalizedAt'
+      )
+    THEN
+      RAISE EXCEPTION 'finisher execution finalization must preserve construction evidence';
     END IF;
+    RETURN NEW;
+  END IF;
 
+  IF to_jsonb(NEW) = to_jsonb(OLD) THEN
+    RETURN NEW;
+  END IF;
+
+  IF OLD."state" IN ('COMPLETED', 'PARTIAL', 'SKIPPED', 'DISMISSED') THEN
     IF OLD."state" IN ('COMPLETED', 'PARTIAL')
       AND NEW."state" = OLD."state"
       AND NEW."difficultyFeedback" IS DISTINCT FROM OLD."difficultyFeedback"
@@ -637,7 +926,88 @@ BEGIN
     RAISE EXCEPTION 'terminal finisher execution evidence is immutable';
   END IF;
 
+  IF NEW."revision" <> OLD."revision" + 1
+    OR NEW."currentStepIndex" < OLD."currentStepIndex"
+    OR NEW."preparationActiveMs" < OLD."preparationActiveMs"
+    OR NEW."recoveryActiveMs" < OLD."recoveryActiveMs"
+    OR NEW."preparationPausedMs" < OLD."preparationPausedMs"
+    OR NEW."workPausedMs" < OLD."workPausedMs"
+    OR NEW."recoveryPausedMs" < OLD."recoveryPausedMs"
+    OR (
+      OLD."startedAt" IS NOT NULL
+      AND NEW."startedAt" IS DISTINCT FROM OLD."startedAt"
+    )
+    OR (
+      OLD."completedAt" IS NOT NULL
+      AND NEW."completedAt" IS DISTINCT FROM OLD."completedAt"
+    )
+    OR (
+      OLD."endedAt" IS NOT NULL
+      AND NEW."endedAt" IS DISTINCT FROM OLD."endedAt"
+    )
+    OR (
+      OLD."dismissedAt" IS NOT NULL
+      AND NEW."dismissedAt" IS DISTINCT FROM OLD."dismissedAt"
+    )
+  THEN
+    RAISE EXCEPTION 'finisher execution lifecycle or timestamp evidence cannot regress';
+  END IF;
+
+  IF NOT (
+    (OLD."state" = 'SELECTED' AND NEW."state" IN ('SELECTED', 'IN_PROGRESS', 'COMPLETED', 'DISMISSED'))
+    OR
+    (OLD."state" = 'IN_PROGRESS' AND NEW."state" IN ('IN_PROGRESS', 'COMPLETED', 'PARTIAL', 'SKIPPED', 'DISMISSED'))
+  ) THEN
+    RAISE EXCEPTION 'invalid finisher execution lifecycle transition';
+  END IF;
+
   RETURN NEW;
+END;
+$$;
+
+CREATE FUNCTION guard_finisher_decision_history() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'finisher decisions cannot be deleted';
+  END IF;
+  IF to_jsonb(NEW) IS DISTINCT FROM to_jsonb(OLD) THEN
+    RAISE EXCEPTION 'finisher decisions are immutable';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE FUNCTION require_finisher_decision_applied() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW."action" = 'SELECT' AND NOT EXISTS (
+    SELECT 1
+    FROM "FinisherExecution" execution
+    WHERE execution."id" = NEW."id"
+      AND execution."ownerId" = NEW."ownerId"
+      AND execution."workoutId" = NEW."workoutId"
+      AND execution."offerId" = NEW."offerId"
+      AND execution."offerItemId" = NEW."offerItemId"
+      AND execution."routineVersionId" = NEW."routineVersionId"
+      AND execution."offerRevisionAtSelection" = NEW."expectedOfferRevision"
+  ) THEN
+    RAISE EXCEPTION 'selection decision must resolve to its exact durable execution';
+  END IF;
+
+  IF NEW."action" = 'DECLINE' AND NOT EXISTS (
+    SELECT 1
+    FROM "FinisherOffer" offer
+    WHERE offer."id" = NEW."offerId"
+      AND offer."workoutId" = NEW."workoutId"
+      AND offer."ownerId" = NEW."ownerId"
+      AND offer."declineDecisionId" = NEW."id"
+      AND offer."declinedAt" IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'decline decision must resolve to its exact durable offer outcome';
+  END IF;
+
+  RETURN NULL;
 END;
 $$;
 
@@ -698,9 +1068,16 @@ FOR EACH ROW EXECUTE FUNCTION guard_finisher_offer_item_insert();
 CREATE TRIGGER "FinisherExecution_identity_immutable"
 BEFORE UPDATE ON "FinisherExecution"
 FOR EACH ROW EXECUTE FUNCTION guard_finisher_execution_identity();
-CREATE TRIGGER "FinisherExecution_terminal_evidence_immutable"
+CREATE TRIGGER "FinisherExecution_lifecycle_guard"
 BEFORE UPDATE ON "FinisherExecution"
-FOR EACH ROW EXECUTE FUNCTION guard_terminal_finisher_execution_evidence();
+FOR EACH ROW EXECUTE FUNCTION guard_finisher_execution_lifecycle();
+CREATE TRIGGER "FinisherDecision_immutable"
+BEFORE UPDATE OR DELETE ON "FinisherDecision"
+FOR EACH ROW EXECUTE FUNCTION guard_finisher_decision_history();
+CREATE CONSTRAINT TRIGGER "FinisherDecision_require_applied"
+AFTER INSERT ON "FinisherDecision"
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION require_finisher_decision_applied();
 CREATE TRIGGER "FinisherExecutionStep_identity_immutable"
 BEFORE UPDATE ON "FinisherExecutionStep"
 FOR EACH ROW EXECUTE FUNCTION guard_finisher_execution_step_identity();
@@ -818,6 +1195,7 @@ ALTER TABLE "FinisherRoutineStep" OWNER TO trainer_finisher_owner;
 ALTER TABLE "FinisherRoutineStepAlternative" OWNER TO trainer_finisher_owner;
 ALTER TABLE "FinisherOffer" OWNER TO trainer_finisher_owner;
 ALTER TABLE "FinisherOfferItem" OWNER TO trainer_finisher_owner;
+ALTER TABLE "FinisherDecision" OWNER TO trainer_finisher_owner;
 ALTER TABLE "FinisherExecution" OWNER TO trainer_finisher_owner;
 ALTER TABLE "FinisherExecutionStep" OWNER TO trainer_finisher_owner;
 ALTER TABLE "FinisherExecutionCommand" OWNER TO trainer_finisher_owner;
@@ -834,7 +1212,9 @@ ALTER FUNCTION guard_finisher_offer_identity() OWNER TO trainer_finisher_owner;
 ALTER FUNCTION reject_finisher_offer_item_update() OWNER TO trainer_finisher_owner;
 ALTER FUNCTION guard_finisher_execution_identity() OWNER TO trainer_finisher_owner;
 ALTER FUNCTION guard_finisher_execution_step_identity() OWNER TO trainer_finisher_owner;
-ALTER FUNCTION guard_terminal_finisher_execution_evidence() OWNER TO trainer_finisher_owner;
+ALTER FUNCTION guard_finisher_execution_lifecycle() OWNER TO trainer_finisher_owner;
+ALTER FUNCTION guard_finisher_decision_history() OWNER TO trainer_finisher_owner;
+ALTER FUNCTION require_finisher_decision_applied() OWNER TO trainer_finisher_owner;
 ALTER FUNCTION guard_finisher_execution_step_evidence() OWNER TO trainer_finisher_owner;
 ALTER FUNCTION reject_finisher_history_deletion() OWNER TO trainer_finisher_owner;
 ALTER FUNCTION guard_finisher_execution_command_tombstone() OWNER TO trainer_finisher_owner;
@@ -1250,6 +1630,7 @@ REVOKE ALL ON TABLE
   "FinisherRoutineStepAlternative",
   "FinisherOffer",
   "FinisherOfferItem",
+  "FinisherDecision",
   "FinisherExecution",
   "FinisherExecutionStep",
   "FinisherExecutionCommand"
@@ -1264,6 +1645,7 @@ GRANT SELECT ON TABLE
 TO trainer_app_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE "FinisherOffer" TO trainer_app_runtime;
 GRANT SELECT, INSERT ON TABLE "FinisherOfferItem" TO trainer_app_runtime;
+GRANT SELECT, INSERT ON TABLE "FinisherDecision" TO trainer_app_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE "FinisherExecution" TO trainer_app_runtime;
 GRANT SELECT, INSERT, UPDATE ON TABLE "FinisherExecutionStep" TO trainer_app_runtime;
 GRANT SELECT, INSERT ON TABLE "FinisherExecutionCommand" TO trainer_app_runtime;
@@ -1286,7 +1668,9 @@ REVOKE ALL ON FUNCTION
   reject_finisher_offer_item_update(),
   guard_finisher_execution_identity(),
   guard_finisher_execution_step_identity(),
-  guard_terminal_finisher_execution_evidence(),
+  guard_finisher_execution_lifecycle(),
+  guard_finisher_decision_history(),
+  require_finisher_decision_applied(),
   guard_finisher_execution_step_evidence(),
   reject_finisher_history_deletion(),
   guard_finisher_execution_command_tombstone()

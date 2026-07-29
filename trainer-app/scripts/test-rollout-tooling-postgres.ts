@@ -1299,9 +1299,29 @@ try {
 
   for (const [functionName, label, weakenedBody] of [
     [
-      "guard_terminal_finisher_execution_evidence",
-      "Weakened terminal execution condition",
+      "guard_finisher_execution_lifecycle",
+      "Weakened execution lifecycle condition",
       `BEGIN RETURN NEW; END;`,
+    ],
+    [
+      "require_finisher_offer_finalized",
+      "Weakened finalized-offer completeness",
+      `BEGIN RETURN NULL; END;`,
+    ],
+    [
+      "require_finisher_execution_finalized",
+      "Omitted selection decision binding",
+      `BEGIN RETURN NULL; END;`,
+    ],
+    [
+      "guard_finisher_offer_identity",
+      "Omitted decline decision revision binding",
+      `BEGIN RETURN NEW; END;`,
+    ],
+    [
+      "require_finisher_decision_applied",
+      "Weakened durable decision application",
+      `BEGIN RETURN NULL; END;`,
     ],
     [
       "guard_finisher_execution_step_evidence",
@@ -1609,6 +1629,32 @@ try {
     `);
   }
 
+  const createCanonicalPerformedExecutionIndex = `
+    CREATE UNIQUE INDEX "FinisherExecution_one_started_per_workout"
+      ON "FinisherExecution"("workoutId")
+      WHERE "startedAt" IS NOT NULL;
+  `;
+  psql(`DROP INDEX "FinisherExecution_one_started_per_workout";`);
+  requireFinisherAppliedSchemaFailure(
+    "Missing permanent performed-history uniqueness",
+    "FinisherExecution_one_started_per_workout",
+  );
+  psql(createCanonicalPerformedExecutionIndex);
+  psql(`
+    DROP INDEX "FinisherExecution_one_started_per_workout";
+    CREATE UNIQUE INDEX "FinisherExecution_one_started_per_workout"
+      ON "FinisherExecution"("workoutId")
+      WHERE "state" = 'IN_PROGRESS';
+  `);
+  requireFinisherAppliedSchemaFailure(
+    "Weakened permanent performed-history uniqueness",
+    "FinisherExecution_one_started_per_workout",
+  );
+  psql(`
+    DROP INDEX "FinisherExecution_one_started_per_workout";
+    ${createCanonicalPerformedExecutionIndex}
+  `);
+
   const canonicalOfferItemInsertFunction = psql(
     `
       SELECT pg_get_functiondef(p.oid)
@@ -1685,6 +1731,32 @@ try {
   psql(`
     ALTER TABLE "FinisherExecution"
       VALIDATE CONSTRAINT "FinisherExecution_feedback_range";
+  `);
+
+  psql(`
+    ALTER TABLE "FinisherDecision"
+      ALTER COLUMN "expectedOfferRevision" DROP NOT NULL;
+  `);
+  requireFinisherGateAFailure(
+    "Nullable decision expected revision",
+    "FinisherDecision.expectedOfferRevision",
+  );
+  psql(`
+    ALTER TABLE "FinisherDecision"
+      ALTER COLUMN "expectedOfferRevision" SET NOT NULL;
+  `);
+  psql(`
+    ALTER TABLE "FinisherDecision"
+      DROP CONSTRAINT "FinisherDecision_fingerprint_shape";
+  `);
+  requireFinisherAppliedSchemaFailure(
+    "Missing durable decision fingerprint constraint",
+    "FinisherDecision_fingerprint_shape",
+  );
+  psql(`
+    ALTER TABLE "FinisherDecision"
+      ADD CONSTRAINT "FinisherDecision_fingerprint_shape"
+      CHECK ("requestFingerprint" ~ '^[0-9a-f]{64}$');
   `);
 
   psql(`

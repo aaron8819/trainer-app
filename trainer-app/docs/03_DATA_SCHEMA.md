@@ -19,9 +19,13 @@ Migration `20260728120000_add_finishers_phase_1` adds:
   used to explain it. Decline identity and time are persisted on the offer.
   The offer stores the historical owner and uses `(workoutId, ownerId)` to
   reference the same `(Workout.id, Workout.userId)` pair.
-  The offer is finalized only after all items exist; deferred validation and
-  insert/identity/delete guards prevent incomplete construction, later append,
-  reorder, reassignment, or removal.
+  The offer persists the exact positive item count. Deferred validation requires
+  a nonempty item set whose unique positions are exactly `0..itemCount - 1`.
+  A composite restrictive foreign key binds a recommendation to a routine
+  version among that exact offer's items. Parent-row locking and visibility
+  checks serialize construction/finalization against concurrent insertion;
+  insert/update/delete guards prevent later append, reorder, reassignment, or
+  removal.
 - `FinisherExecution`: one retained selection decision with a stable UUID,
   offer revision binding, explicit lifecycle, and the exact selected offer-item
   identity. Composite restrictive foreign keys require
@@ -39,6 +43,16 @@ Migration `20260728120000_add_finishers_phase_1` adds:
   its outcome, duration, timing, segment, and lifecycle evidence. The existing
   optional feedback action may change only `difficultyFeedback` together with
   the monotonic OCC revision.
+- `FinisherDecision`: the global permanent idempotency namespace shared by
+  selection and decline. Each immutable row stores action, owner, workout,
+  offer, exact offered item/routine for selection, expected offer revision,
+  contraindication acknowledgment, and the canonical request fingerprint.
+  Deferred bidirectional validation requires every selection decision to
+  resolve to its exact execution and every decline decision to resolve to its
+  exact declined offer. Exact retries therefore use durable original request
+  evidence after the offer revision advances; cross-action, cross-owner,
+  cross-workout, cross-offer, cross-routine, and wrong-revision ID reuse cannot
+  collide ambiguously.
 - `FinisherExecutionStep`: prescribed step identity, optional predefined
   performed alternative, resolved status/timestamps, and accumulated active
   work duration. Each row stores and relationally binds its routine version and
@@ -76,11 +90,21 @@ Migration `20260728120000_add_finishers_phase_1` adds:
   permanent and independent of receipt cleanup.
 
 The lifecycle is `SELECTED -> IN_PROGRESS ->
-COMPLETED|PARTIAL|SKIPPED|DISMISSED`. Dismissal updates the selected execution;
+COMPLETED|PARTIAL|SKIPPED|DISMISSED`, with the bounded direct fast-forward
+`SELECTED -> COMPLETED` when one synchronization crosses the full timed
+routine. `startedAt` may be set only when the execution becomes performed and
+is then immutable: it cannot be cleared or changed by terminalization, direct
+SQL, Prisma, bulk updates, or races. Lifecycle checks require terminal outcome
+timestamps and timer shape to agree with status, while the transition trigger
+keeps step index, active/paused totals, timestamps, and revision monotonic.
+`DISMISSED` with null `startedAt` is a never-started dismissal;
+`DISMISSED` with non-null immutable `startedAt` is a performed terminal outcome.
+Dismissal updates the selected execution;
 it never deletes or replaces it. Multiple retained executions preserve
 select-A/dismiss-A/select-B history. Partial unique indexes enforce at most one
-`SELECTED|IN_PROGRESS` execution and at most one execution with `startedAt` per
-workout. Stable execution identity plus a monotonic per-execution revision
+`SELECTED|IN_PROGRESS` execution and permanently at most one execution that has
+ever acquired `startedAt` per workout. Stable execution identity plus a
+monotonic per-execution revision
 prevents replacement ABA; offer revision protects selection and decline.
 `SELECTED` has no `startedAt` and is excluded from performed history. Every
 historical parent relationship uses restrictive update/delete behavior.

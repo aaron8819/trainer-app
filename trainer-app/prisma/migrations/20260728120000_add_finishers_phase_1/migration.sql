@@ -11,6 +11,7 @@ CREATE TYPE "FinisherPublicationState" AS ENUM ('ACTIVE', 'RETIRED');
 CREATE TYPE "FinisherExecutionState" AS ENUM ('SELECTED', 'IN_PROGRESS', 'COMPLETED', 'PARTIAL', 'SKIPPED', 'DISMISSED');
 CREATE TYPE "FinisherTimerSegment" AS ENUM ('PREPARATION', 'WORK', 'RECOVERY', 'FINISHED');
 CREATE TYPE "FinisherStepStatus" AS ENUM ('PENDING', 'PARTIAL', 'COMPLETED', 'SKIPPED');
+CREATE TYPE "FinisherExecutionAction" AS ENUM ('START', 'SYNC', 'PAUSE', 'RESUME', 'SKIP', 'SUBSTITUTE', 'END', 'FEEDBACK', 'DISMISS');
 
 CREATE TABLE "FinisherRoutine" (
     "id" TEXT NOT NULL,
@@ -36,10 +37,11 @@ CREATE TABLE "FinisherRoutineVersion" (
     "impactLevel" "FinisherDemand" NOT NULL,
     "preparationSeconds" INTEGER NOT NULL DEFAULT 10,
     "includesFinalRecovery" BOOLEAN NOT NULL DEFAULT false,
-    "equipmentRequirements" TEXT[] DEFAULT ARRAY[]::TEXT[],
-    "bodyRegions" TEXT[] DEFAULT ARRAY[]::TEXT[],
-    "limitationTags" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "equipmentRequirements" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+    "bodyRegions" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+    "limitationTags" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "sealedAt" TIMESTAMP(3),
     CONSTRAINT "FinisherRoutineVersion_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "FinisherRoutineVersion_positive_version" CHECK ("version" > 0),
     CONSTRAINT "FinisherRoutineVersion_preparation_range" CHECK ("preparationSeconds" BETWEEN 0 AND 60)
@@ -52,7 +54,7 @@ CREATE TABLE "FinisherRoutineStep" (
     "movementName" TEXT NOT NULL,
     "workSeconds" INTEGER NOT NULL,
     "recoverySeconds" INTEGER NOT NULL,
-    "techniqueCues" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "techniqueCues" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
     CONSTRAINT "FinisherRoutineStep_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "FinisherRoutineStep_order_nonnegative" CHECK ("orderIndex" >= 0),
     CONSTRAINT "FinisherRoutineStep_work_positive" CHECK ("workSeconds" > 0),
@@ -145,6 +147,22 @@ CREATE TABLE "FinisherExecutionStep" (
     CONSTRAINT "FinisherExecutionStep_actual_work_nonnegative" CHECK ("actualWorkMs" >= 0)
 );
 
+CREATE TABLE "FinisherExecutionCommand" (
+    "id" TEXT NOT NULL,
+    "workoutId" TEXT NOT NULL,
+    "executionId" TEXT NOT NULL,
+    "action" "FinisherExecutionAction" NOT NULL,
+    "requestHash" TEXT NOT NULL,
+    "expectedRevision" INTEGER NOT NULL,
+    "resultRevision" INTEGER NOT NULL,
+    "response" JSONB NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "FinisherExecutionCommand_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "FinisherExecutionCommand_expected_revision_positive" CHECK ("expectedRevision" > 0),
+    CONSTRAINT "FinisherExecutionCommand_result_revision_positive" CHECK ("resultRevision" > 0)
+);
+
 CREATE UNIQUE INDEX "FinisherRoutine_code_key" ON "FinisherRoutine"("code");
 CREATE UNIQUE INDEX "FinisherRoutineVersion_routineId_version_key" ON "FinisherRoutineVersion"("routineId", "version");
 CREATE INDEX "FinisherRoutineVersion_category_createdAt_idx" ON "FinisherRoutineVersion"("category", "createdAt");
@@ -166,8 +184,11 @@ CREATE INDEX "FinisherExecution_workoutId_selectedAt_idx" ON "FinisherExecution"
 CREATE INDEX "FinisherExecution_offerId_selectedAt_idx" ON "FinisherExecution"("offerId", "selectedAt");
 CREATE INDEX "FinisherExecution_routineVersionId_startedAt_idx" ON "FinisherExecution"("routineVersionId", "startedAt");
 CREATE INDEX "FinisherExecution_state_segmentEndsAt_idx" ON "FinisherExecution"("state", "segmentEndsAt");
+CREATE UNIQUE INDEX "FinisherExecution_id_workoutId_key" ON "FinisherExecution"("id", "workoutId");
 CREATE UNIQUE INDEX "FinisherExecutionStep_executionId_routineStepId_key" ON "FinisherExecutionStep"("executionId", "routineStepId");
 CREATE INDEX "FinisherExecutionStep_performedAlternativeId_idx" ON "FinisherExecutionStep"("performedAlternativeId");
+CREATE INDEX "FinisherExecutionCommand_executionId_createdAt_idx" ON "FinisherExecutionCommand"("executionId", "createdAt");
+CREATE INDEX "FinisherExecutionCommand_expiresAt_idx" ON "FinisherExecutionCommand"("expiresAt");
 
 ALTER TABLE "FinisherRoutineVersion"
   ADD CONSTRAINT "FinisherRoutineVersion_routineId_fkey"
@@ -208,24 +229,193 @@ ALTER TABLE "FinisherExecutionStep"
 ALTER TABLE "FinisherExecutionStep"
   ADD CONSTRAINT "FinisherExecutionStep_performedAlternativeId_fkey"
   FOREIGN KEY ("performedAlternativeId") REFERENCES "FinisherRoutineStepAlternative"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "FinisherExecutionCommand"
+  ADD CONSTRAINT "FinisherExecutionCommand_executionId_workoutId_fkey"
+  FOREIGN KEY ("executionId", "workoutId") REFERENCES "FinisherExecution"("id", "workoutId") ON DELETE RESTRICT ON UPDATE CASCADE;
 
--- Definition versions are immutable. Publication is changed only on the stable routine row.
-CREATE FUNCTION reject_finisher_definition_mutation() RETURNS trigger
+-- Routine identity is immutable. Only publication state may change.
+CREATE FUNCTION guard_finisher_routine_identity() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'finisher routines with version history cannot be deleted';
+  END IF;
+  IF NEW."id" IS DISTINCT FROM OLD."id"
+    OR NEW."code" IS DISTINCT FROM OLD."code"
+    OR NEW."createdAt" IS DISTINCT FROM OLD."createdAt" THEN
+    RAISE EXCEPTION 'finisher routine identity is immutable';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER "FinisherRoutine_identity_immutable"
+BEFORE UPDATE OR DELETE ON "FinisherRoutine"
+FOR EACH ROW EXECUTE FUNCTION guard_finisher_routine_identity();
+
+-- Version construction is atomic: children may be written only before sealing,
+-- and every inserted version must be sealed before its transaction commits.
+CREATE FUNCTION require_finisher_routine_version_sealed() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM "FinisherRoutineVersion"
+    WHERE "id" = NEW."id" AND "sealedAt" IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'finisher routine version must be sealed before commit';
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
+CREATE CONSTRAINT TRIGGER "FinisherRoutineVersion_require_sealed"
+AFTER INSERT ON "FinisherRoutineVersion"
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION require_finisher_routine_version_sealed();
+
+CREATE FUNCTION guard_finisher_routine_version_mutation() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'finisher routine versions are immutable';
+  END IF;
+  IF OLD."sealedAt" IS NULL
+    AND NEW."sealedAt" IS NOT NULL
+    AND NEW."id" IS NOT DISTINCT FROM OLD."id"
+    AND NEW."routineId" IS NOT DISTINCT FROM OLD."routineId"
+    AND NEW."version" IS NOT DISTINCT FROM OLD."version"
+    AND NEW."name" IS NOT DISTINCT FROM OLD."name"
+    AND NEW."description" IS NOT DISTINCT FROM OLD."description"
+    AND NEW."category" IS NOT DISTINCT FROM OLD."category"
+    AND NEW."placement" IS NOT DISTINCT FROM OLD."placement"
+    AND NEW."kind" IS NOT DISTINCT FROM OLD."kind"
+    AND NEW."protocol" IS NOT DISTINCT FROM OLD."protocol"
+    AND NEW."difficulty" IS NOT DISTINCT FROM OLD."difficulty"
+    AND NEW."fatigueCost" IS NOT DISTINCT FROM OLD."fatigueCost"
+    AND NEW."impactLevel" IS NOT DISTINCT FROM OLD."impactLevel"
+    AND NEW."preparationSeconds" IS NOT DISTINCT FROM OLD."preparationSeconds"
+    AND NEW."includesFinalRecovery" IS NOT DISTINCT FROM OLD."includesFinalRecovery"
+    AND NEW."equipmentRequirements" IS NOT DISTINCT FROM OLD."equipmentRequirements"
+    AND NEW."bodyRegions" IS NOT DISTINCT FROM OLD."bodyRegions"
+    AND NEW."limitationTags" IS NOT DISTINCT FROM OLD."limitationTags"
+    AND NEW."createdAt" IS NOT DISTINCT FROM OLD."createdAt" THEN
+    RETURN NEW;
+  END IF;
   RAISE EXCEPTION 'finisher routine versions are immutable';
 END;
 $$;
 
 CREATE TRIGGER "FinisherRoutineVersion_immutable"
 BEFORE UPDATE OR DELETE ON "FinisherRoutineVersion"
-FOR EACH ROW EXECUTE FUNCTION reject_finisher_definition_mutation();
+FOR EACH ROW EXECUTE FUNCTION guard_finisher_routine_version_mutation();
+
+CREATE FUNCTION guard_finisher_routine_child_mutation() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+  old_version_id TEXT;
+  new_version_id TEXT;
+BEGIN
+  IF TG_TABLE_NAME = 'FinisherRoutineStep' THEN
+    old_version_id := CASE WHEN TG_OP = 'INSERT' THEN NULL ELSE OLD."routineVersionId" END;
+    new_version_id := CASE WHEN TG_OP = 'DELETE' THEN NULL ELSE NEW."routineVersionId" END;
+  ELSE
+    IF TG_OP <> 'INSERT' THEN
+      SELECT "routineVersionId" INTO old_version_id
+      FROM "FinisherRoutineStep" WHERE "id" = OLD."routineStepId";
+    END IF;
+    IF TG_OP <> 'DELETE' THEN
+      SELECT "routineVersionId" INTO new_version_id
+      FROM "FinisherRoutineStep" WHERE "id" = NEW."routineStepId";
+    END IF;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM "FinisherRoutineVersion"
+    WHERE "id" IN (old_version_id, new_version_id) AND "sealedAt" IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'sealed finisher routine version children are immutable';
+  END IF;
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
 CREATE TRIGGER "FinisherRoutineStep_immutable"
-BEFORE UPDATE OR DELETE ON "FinisherRoutineStep"
-FOR EACH ROW EXECUTE FUNCTION reject_finisher_definition_mutation();
+BEFORE INSERT OR UPDATE OR DELETE ON "FinisherRoutineStep"
+FOR EACH ROW EXECUTE FUNCTION guard_finisher_routine_child_mutation();
 CREATE TRIGGER "FinisherRoutineStepAlternative_immutable"
-BEFORE UPDATE OR DELETE ON "FinisherRoutineStepAlternative"
-FOR EACH ROW EXECUTE FUNCTION reject_finisher_definition_mutation();
+BEFORE INSERT OR UPDATE OR DELETE ON "FinisherRoutineStepAlternative"
+FOR EACH ROW EXECUTE FUNCTION guard_finisher_routine_child_mutation();
+
+-- Lifecycle rows may advance, but their ownership and definition bindings do not.
+CREATE FUNCTION guard_finisher_offer_identity() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW."id" IS DISTINCT FROM OLD."id"
+    OR NEW."workoutId" IS DISTINCT FROM OLD."workoutId"
+    OR NEW."offeredAt" IS DISTINCT FROM OLD."offeredAt"
+    OR NEW."recommendedRoutineVersionId" IS DISTINCT FROM OLD."recommendedRoutineVersionId"
+    OR NEW."recommendationReason" IS DISTINCT FROM OLD."recommendationReason"
+    OR NEW."recommendationUnavailableReason" IS DISTINCT FROM OLD."recommendationUnavailableReason"
+    OR NEW."recommendationContext" IS DISTINCT FROM OLD."recommendationContext"
+  THEN
+    RAISE EXCEPTION 'finisher offer identity and definition binding are immutable';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE FUNCTION reject_finisher_offer_item_update() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'finisher offer items are immutable';
+END;
+$$;
+
+CREATE FUNCTION guard_finisher_execution_identity() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW."id" IS DISTINCT FROM OLD."id"
+    OR NEW."workoutId" IS DISTINCT FROM OLD."workoutId"
+    OR NEW."offerId" IS DISTINCT FROM OLD."offerId"
+    OR NEW."offerRevisionAtSelection" IS DISTINCT FROM OLD."offerRevisionAtSelection"
+    OR NEW."routineVersionId" IS DISTINCT FROM OLD."routineVersionId"
+    OR NEW."selectedAt" IS DISTINCT FROM OLD."selectedAt"
+  THEN
+    RAISE EXCEPTION 'finisher execution identity and definition binding are immutable';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE FUNCTION guard_finisher_execution_step_identity() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW."id" IS DISTINCT FROM OLD."id"
+    OR NEW."executionId" IS DISTINCT FROM OLD."executionId"
+    OR NEW."routineStepId" IS DISTINCT FROM OLD."routineStepId"
+  THEN
+    RAISE EXCEPTION 'finisher execution step identity is immutable';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER "FinisherOffer_identity_immutable"
+BEFORE UPDATE ON "FinisherOffer"
+FOR EACH ROW EXECUTE FUNCTION guard_finisher_offer_identity();
+CREATE TRIGGER "FinisherOfferItem_immutable"
+BEFORE UPDATE ON "FinisherOfferItem"
+FOR EACH ROW EXECUTE FUNCTION reject_finisher_offer_item_update();
+CREATE TRIGGER "FinisherExecution_identity_immutable"
+BEFORE UPDATE ON "FinisherExecution"
+FOR EACH ROW EXECUTE FUNCTION guard_finisher_execution_identity();
+CREATE TRIGGER "FinisherExecutionStep_identity_immutable"
+BEFORE UPDATE ON "FinisherExecutionStep"
+FOR EACH ROW EXECUTE FUNCTION guard_finisher_execution_step_identity();
 
 -- Lifecycle evidence may transition, but it is never deleted or replaced.
 CREATE FUNCTION reject_finisher_history_deletion() RETURNS trigger
@@ -362,6 +552,8 @@ INSERT INTO "FinisherRoutineStep" (
   40, 20, ARRAY['Move quickly but under control.', 'Keep the hips level.']::TEXT[]
 );
 
+UPDATE "FinisherRoutineVersion" SET "sealedAt" = CURRENT_TIMESTAMP WHERE "id" = '3ccf6228-354a-5ef9-83a0-9152d36568f5';
+
 INSERT INTO "FinisherRoutine" ("id", "code") VALUES ('1798edca-6f64-5378-8753-7014be6b9015', 'core-control-8');
 
 INSERT INTO "FinisherRoutineVersion" (
@@ -465,6 +657,8 @@ INSERT INTO "FinisherRoutineStepAlternative" (
   '280cb31b-ba1d-5c45-801b-21e20ece690a', 0, 'Tall-Kneeling Brace Hold'
 );
 
+UPDATE "FinisherRoutineVersion" SET "sealedAt" = CURRENT_TIMESTAMP WHERE "id" = 'fc2adf8c-3fd8-5796-81ff-1b949272f917';
+
 INSERT INTO "FinisherRoutine" ("id", "code") VALUES ('f57d635d-40ab-55ae-828d-0b8ab761e7bb', 'low-impact-conditioning-8');
 
 INSERT INTO "FinisherRoutineVersion" (
@@ -546,6 +740,8 @@ INSERT INTO "FinisherRoutineStep" (
   'b89c0158-9984-5b40-8d3f-39275ffa6f81', '63a46f35-f67d-5f85-8667-6c35bad911da', 7, 'Fast March with Arm Drive',
   40, 20, ARRAY[]::TEXT[]
 );
+
+UPDATE "FinisherRoutineVersion" SET "sealedAt" = CURRENT_TIMESTAMP WHERE "id" = '63a46f35-f67d-5f85-8667-6c35bad911da';
 
 INSERT INTO "FinisherRoutine" ("id", "code") VALUES ('1817c460-1019-5048-8f57-f91fd6e8acb7', 'bodyweight-conditioning-6');
 
@@ -640,6 +836,8 @@ INSERT INTO "FinisherRoutineStep" (
   '0f375e84-968a-5154-8a58-aa9f64c8b824', '822af54d-ab7b-55fe-8946-794636b1eb22', 5, 'Quick Feet',
   40, 20, ARRAY[]::TEXT[]
 );
+
+UPDATE "FinisherRoutineVersion" SET "sealedAt" = CURRENT_TIMESTAMP WHERE "id" = '822af54d-ab7b-55fe-8946-794636b1eb22';
 
 -- END GENERATED FINISHER CATALOG
 

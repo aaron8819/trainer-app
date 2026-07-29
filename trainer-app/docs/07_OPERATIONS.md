@@ -12,6 +12,9 @@ seed. Re-running `prisma migrate deploy` is safe because the migration ledger
 does not reapply a successful migration. Development seed uses the same
 canonical catalog and stable identities; it creates missing rows, verifies an
 existing immutable version exactly, and fails on drift instead of rewriting it.
+New versions and their complete child graph are created atomically and sealed
+before commit. Ordinary seed/application work cannot append to or rewrite a
+sealed definition.
 `npm run generate:finisher-catalog` verifies that the migration's generated SQL
 matches the canonical catalog. Later definition changes must create a new
 version and must never update an existing version.
@@ -249,7 +252,17 @@ Baseline uniqueness has two separate results. Semantic equivalence requires the 
 
 `ExerciseAlias_alias_key` and `WorkoutTemplateExercise_templateId_orderIndex_key` are the two reviewed baseline representation differences. The baseline SQL creates standalone unique indexes; production may store identically named unique constraints backed by identically named unique indexes. Native PostgreSQL constraint-to-index linkage proves the same enforcement, and the pending multi-plan migration does not depend on those objects being standalone indexes. Therefore each is reported as semantic-equivalent, catalog-representation-different, and a non-blocking diagnostic warning. This narrow policy does not make other constraint/index differences harmless, and no production schema or ledger repair is required for these two objects or for the two valid resolved rows.
 
-Any partial pending-migration object or migration-blocking schema difference blocks Gate A. The current Finisher rollout policy expects 18 checked in, 17 clean successful applied, and exactly `20260728120000_add_finishers_phase_1` pending. With clean schema/data evidence and passing disposable verification, that shape yields `technicalMigrationReady: true`. It remains `migrationAuthorizationReady: false` until fresh recovery, deployment, compatibility, write-boundary, and exact post-migration application-commit evidence is supplied, and remains `executionAuthorized: false` in every preparation run.
+Any partial pending-migration object, drift in the complete Finisher table,
+column, enum, key, index, constraint, trigger/function, relationship, or exact
+curated-row manifest, or other migration-blocking schema difference blocks
+Gate A. The current Finisher rollout policy expects 18 checked in, 17 clean
+successful applied, and exactly `20260728120000_add_finishers_phase_1` pending.
+With clean schema/data evidence and passing disposable verification, that shape
+yields `technicalMigrationReady: true`. It remains
+`migrationAuthorizationReady: false` until fresh recovery, deployment,
+compatibility, write-boundary, and exact post-migration application-commit
+evidence is supplied, and remains `executionAuthorized: false` in every
+preparation run.
 
 The command never deploys migrations, creates temporary objects, modifies the Prisma ledger, executes DDL, repairs schema state, or authorizes execution. A fully migrated 18-applied/0-pending target is reported as clean with `gateAApplicable: false`, `migrationAuthorizationReady: false`, and `executionAuthorized: false` because nothing remains for Gate A to authorize.
 
@@ -345,6 +358,10 @@ The repository-authoritative write boundary is `TRAINER_WRITE_PAUSE=enabled`. It
 `24e9e62f70a5cf66cef21997157f7b79a411a00f → 20260728120000_add_finishers_phase_1 → requiredApplicationCommit` is the reviewed migration-first sequence and is safe only while the full write boundary is verified. The migration atomically adds isolated Finisher definition, offer, and execution tables; constraints and triggers; and the exact curated catalog. The deployed base application does not reference those objects, so it remains compatible while writes are paused.
 
 Keep commit `24e9e62f70a5cf66cef21997157f7b79a411a00f` deployed and writes paused through migration; promote the exact reviewed `requiredApplicationCommit` before resuming writes. The evidence file must name that post-migration application commit explicitly because it is not known until integration; Gate A must not inherit a prior rollout's application target.
+Gate A intentionally accepts only that exact documented pre-migration
+application commit. Ancestors, descendants, and arbitrary revisions fail
+closed; changing the production base requires a reviewed policy, runbook, and
+regression-test update together.
 
 ### Bounded Finisher production migration runbook
 
@@ -369,7 +386,7 @@ This runbook is preparation only until the operator separately authorizes the ex
    ```
 
    Require Prisma to apply exactly `20260728120000_add_finishers_phase_1` once and exit zero. That transaction also installs the exact four active curated version-1 definitions; do not run `npm run db:seed` in production. Stop on any other migration, error, connection ambiguity, or retry condition; do not edit `_prisma_migrations` or repeat blindly.
-7. While writes remain paused, verify the ledger shows 18 successful applied and zero pending, then verify all eight Finisher tables, their restrictive foreign keys, partial uniqueness, deletion/definition triggers, and exact deterministic active catalog. Run `npm run generate:finisher-catalog` from the reviewed source and require success. Require no unexpected workout or descendant-data drift.
+7. While writes remain paused, verify the ledger shows 18 successful applied and zero pending, then verify all nine Finisher tables, every material column/enum/key/index/check/foreign-key action, definition sealing and history-protection triggers/functions, and the exact deterministic active catalog with stable routine/version/step/alternative relationships. Run `npm run generate:finisher-catalog` from the reviewed source and require success. Require no unexpected workout or descendant-data drift.
 8. Run targeted read-only integrity checks, including the multi-plan inventory and relevant readiness/seed/snapshot audits for the now-migrated chain. Stop for any ownership mismatch, ambiguous plan, contradictory active state, invalid constraint, checksum drift, or unexplained count change.
 9. Promote or redeploy the exact `requiredApplicationCommit` recorded in the reviewed evidence file. Do not resume writes if the provider cannot prove that exact production alias assignment.
 10. Verify `/api/version` returns the exact new commit twice and the public origin remains HTTP 200. Verify selected read-only flows. Run dynamic smoke flows only under their separate explicit authorization and keep the boundary in place.

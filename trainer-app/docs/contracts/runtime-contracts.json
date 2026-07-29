@@ -15,6 +15,7 @@
   "finisherDifficulty": ["EASY", "MODERATE", "CHALLENGING"],
   "finisherDemand": ["LOW", "MODERATE", "HIGH"],
   "finisherExecutionState": ["SELECTED", "IN_PROGRESS", "COMPLETED", "PARTIAL", "SKIPPED", "DISMISSED"],
+  "finisherExecutionCommandAction": ["start", "sync", "pause", "resume", "skip", "substitute", "end", "feedback", "dismiss"],
   "finisherTimerSegment": ["PREPARATION", "WORK", "RECOVERY", "FINISHED"],
   "finisherStepStatus": ["PENDING", "PARTIAL", "COMPLETED", "SKIPPED"]
 }

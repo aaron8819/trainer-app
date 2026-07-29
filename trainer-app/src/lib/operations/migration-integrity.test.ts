@@ -63,6 +63,12 @@ function addCompatibleManifestObject(
       ...object.column!,
     });
   }
+  if (object.kind === "enum") {
+    catalog.enums.push({
+      name: object.name,
+      values: [...(object.enum?.values ?? [])],
+    });
+  }
   if (object.kind === "index") {
     catalog.indexes.push({
       table: object.table!,
@@ -97,13 +103,20 @@ function addCompatibleManifestObject(
       definition: object.definitionIncludes?.join(" ") ?? "",
     });
   }
+  if (object.kind === "catalogRow") {
+    catalog.catalogRows.push({
+      table: object.table!,
+      key: object.name,
+      values: structuredClone(object.row ?? {}),
+    });
+  }
 }
 
 function cleanCatalog(
   appliedCount = EXPECTED_MIGRATION_CHAIN.length - 1,
 ): CatalogSnapshot {
   const catalog: CatalogSnapshot = {
-    tables: [], columns: [], enums: [], indexes: [], constraints: [], triggers: [], functions: [],
+    tables: [], columns: [], enums: [], indexes: [], constraints: [], triggers: [], functions: [], catalogRows: [],
   };
   for (const expectation of APPLIED_SCHEMA_EXPECTATIONS) {
     if (expectation.kind === "table") catalog.tables.push(expectation.name);
@@ -205,10 +218,12 @@ function addPendingObject(catalog: CatalogSnapshot, migrationIndex: number, obje
   if (!object) return;
   if (object.kind === "table") catalog.tables.push(object.name);
   if (object.kind === "column") catalog.columns.push({ table: object.table!, name: object.name, type: "text", nullable: true, default: null });
+  if (object.kind === "enum") catalog.enums.push({ name: object.name, values: [] });
   if (object.kind === "index") catalog.indexes.push({ table: object.table!, name: object.name, unique: false, columns: [], predicate: null });
   if (object.kind === "constraint") catalog.constraints.push({ table: object.table!, name: object.name, type: "f", definition: "fixture" });
   if (object.kind === "trigger") catalog.triggers.push({ table: object.table!, name: object.name, definition: "fixture" });
   if (object.kind === "function") catalog.functions.push({ name: object.name, definition: "fixture" });
+  if (object.kind === "catalogRow") catalog.catalogRows.push({ table: object.table!, key: object.name, values: {} });
 }
 
 function pendingObjectIndex(migrationIndex: number, kind: string): number {
@@ -568,6 +583,29 @@ describe("migration integrity", () => {
     expect(result.migrationAuthorizationReady).toBe(false);
   });
 
+  it("accepts the exact documented pre-migration production commit and rejects its incompatible predecessor", () => {
+    const documented = report({
+      authorizationEvidence: fullEvidence({
+        productionDeploymentCommit:
+          "24e9e62f70a5cf66cef21997157f7b79a411a00f",
+      }),
+    });
+    expect(documented.evidence.productionDeploymentVerified).toBe(true);
+    expect(documented.migrationAuthorizationReady).toBe(true);
+
+    const predecessor = report({
+      authorizationEvidence: fullEvidence({
+        productionDeploymentCommit:
+          "14f7bb3a0106780fc70263d7282b2547bae5bbba",
+      }),
+    });
+    expect(predecessor.evidence.productionDeploymentVerified).toBe(false);
+    expect(predecessor.migrationAuthorizationReady).toBe(false);
+    expect(predecessor.blockingReasons).toContain(
+      "production_deployment_evidence_invalid_or_stale",
+    );
+  });
+
   it("models the captured production shape without granting execution", () => {
     const result = report({
       authorizationEvidence: fullEvidence({
@@ -663,6 +701,115 @@ describe("migration integrity", () => {
       expect.objectContaining({ category: "baseline_uniqueness" }),
     ]));
     expect(result.migrationAuthorizationReady).toBe(false);
+  });
+
+  it.each([
+    [
+      "missing material column",
+      (catalog: CatalogSnapshot) => {
+        catalog.columns = catalog.columns.filter(
+          (column) =>
+            !(
+              column.table === "FinisherExecution" &&
+              column.name === "revision"
+            ),
+        );
+      },
+    ],
+    [
+      "altered material column",
+      (catalog: CatalogSnapshot) => {
+        catalog.columns.find(
+          (column) =>
+            column.table === "FinisherRoutineVersion" &&
+            column.name === "sealedAt",
+        )!.nullable = false;
+      },
+    ],
+    [
+      "missing enum value",
+      (catalog: CatalogSnapshot) => {
+        catalog.enums.find(
+          (enumeration) => enumeration.name === "FinisherExecutionAction",
+        )!.values.pop();
+      },
+    ],
+    [
+      "altered partial unique index",
+      (catalog: CatalogSnapshot) => {
+        catalog.indexes.find(
+          (index) => index.name === "FinisherExecution_one_active_per_workout",
+        )!.predicate = '"state" = \'SELECTED\'';
+      },
+    ],
+    [
+      "missing check constraint",
+      (catalog: CatalogSnapshot) => {
+        catalog.constraints = catalog.constraints.filter(
+          (constraint) =>
+            constraint.name !== "FinisherExecution_feedback_range",
+        );
+      },
+    ],
+    [
+      "altered foreign-key action",
+      (catalog: CatalogSnapshot) => {
+        catalog.constraints.find(
+          (constraint) =>
+            constraint.name === "FinisherOffer_workoutId_fkey",
+        )!.definition =
+          'FOREIGN KEY ("workoutId") REFERENCES "Workout"(id) ON UPDATE CASCADE ON DELETE CASCADE';
+      },
+    ],
+    [
+      "missing immutability trigger",
+      (catalog: CatalogSnapshot) => {
+        catalog.triggers = catalog.triggers.filter(
+          (trigger) => trigger.name !== "FinisherRoutineStep_immutable",
+        );
+      },
+    ],
+    [
+      "altered immutability function",
+      (catalog: CatalogSnapshot) => {
+        catalog.functions.find(
+          (fn) => fn.name === "guard_finisher_routine_child_mutation",
+        )!.definition = "CREATE FUNCTION guard_finisher_routine_child_mutation()";
+      },
+    ],
+    [
+      "missing curated catalog row",
+      (catalog: CatalogSnapshot) => {
+        catalog.catalogRows = catalog.catalogRows.filter(
+          (row) =>
+            !(
+              row.table === "FinisherRoutine" &&
+              row.values.code === "core-stability-10"
+            ),
+        );
+      },
+    ],
+    [
+      "altered curated relationship",
+      (catalog: CatalogSnapshot) => {
+        const step = catalog.catalogRows.find(
+          (row) => row.table === "FinisherRoutineStep",
+        )!;
+        step.values.routineVersionId = "drifted-version";
+      },
+    ],
+  ] as const)("fails closed for applied Finisher drift: %s", (_label, mutate) => {
+    const catalog = cleanCatalog(EXPECTED_MIGRATION_CHAIN.length);
+    mutate(catalog);
+    const result = report({
+      ledgerRows: appliedPrefix(EXPECTED_MIGRATION_CHAIN.length),
+      catalog,
+    });
+    expect(result.schemaPreflightValid).toBe(false);
+    expect([
+      ...result.definitions.appliedManifestMissing,
+      ...result.definitions.appliedManifestIncompatible,
+    ]).not.toHaveLength(0);
   });
 
   it("reports a fully migrated state as clean but not Gate A applicable", () => {

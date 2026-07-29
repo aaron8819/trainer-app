@@ -119,7 +119,8 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
             ],
           }))
       );
-      const routine = await client.finisherRoutine.create({
+      const routine = await client.$transaction(async (tx) => {
+        const created = await tx.finisherRoutine.create({
         data: {
           code: `finisher-db-${suffix}`,
           versions: {
@@ -171,10 +172,17 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
             },
           },
         },
+        });
+        await tx.finisherRoutineVersion.update({
+          where: { id: created.versions[0]!.id },
+          data: { sealedAt: now },
+        });
+        return created;
       });
       routineVersionId = routine.versions[0]!.id;
       alternativeId = routine.versions[0]!.steps[0]!.alternatives[0]!.id;
-      const preparationRoutine = await client.finisherRoutine.create({
+      const preparationRoutine = await client.$transaction(async (tx) => {
+        const created = await tx.finisherRoutine.create({
         data: {
           code: `finisher-preparation-db-${suffix}`,
           versions: {
@@ -203,9 +211,16 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
           },
         },
         include: { versions: true },
+        });
+        await tx.finisherRoutineVersion.update({
+          where: { id: created.versions[0]!.id },
+          data: { sealedAt: now },
+        });
+        return created;
       });
       preparationRoutineVersionId = preparationRoutine.versions[0]!.id;
-      const shoulderRoutine = await client.finisherRoutine.create({
+      const shoulderRoutine = await client.$transaction(async (tx) => {
+        const created = await tx.finisherRoutine.create({
         data: {
           code: `finisher-shoulder-db-${suffix}`,
           versions: {
@@ -234,6 +249,12 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
           },
         },
         include: { versions: true },
+        });
+        await tx.finisherRoutineVersion.update({
+          where: { id: created.versions[0]!.id },
+          data: { sealedAt: now },
+        });
+        return created;
       });
       shoulderRoutineVersionId = shoulderRoutine.versions[0]!.id;
     });
@@ -264,6 +285,7 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       workoutId: string;
       expectedRevision: number;
       executionId?: string;
+      commandId?: string;
       now?: Date;
     };
 
@@ -359,6 +381,7 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
         workoutId: input.workoutId,
         executionId: execution.id,
         expectedRevision: execution.revision,
+        commandId: crypto.randomUUID(),
         now: input.now,
       });
     }
@@ -373,6 +396,7 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       return pauseSelectedFinisher({
         ...input,
         executionId: await bindExecution(input),
+        commandId: input.commandId ?? crypto.randomUUID(),
       });
     }
 
@@ -380,6 +404,7 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       return resumeSelectedFinisher({
         ...input,
         executionId: await bindExecution(input),
+        commandId: input.commandId ?? crypto.randomUUID(),
       });
     }
 
@@ -387,6 +412,7 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       return skipSelectedFinisherStep({
         ...input,
         executionId: await bindExecution(input),
+        commandId: input.commandId ?? crypto.randomUUID(),
       });
     }
 
@@ -394,6 +420,7 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       return syncSelectedFinisher({
         ...input,
         executionId: await bindExecution(input),
+        commandId: input.commandId ?? crypto.randomUUID(),
       });
     }
 
@@ -401,6 +428,7 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       return endSelectedFinisher({
         ...input,
         executionId: await bindExecution(input),
+        commandId: input.commandId ?? crypto.randomUUID(),
       });
     }
 
@@ -410,6 +438,7 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       return substituteSelectedFinisherStep({
         ...input,
         executionId: await bindExecution(input),
+        commandId: input.commandId ?? crypto.randomUUID(),
       });
     }
 
@@ -417,8 +446,612 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       return dismissExactFinisher({
         ...input,
         executionId: await bindExecution(input),
+        commandId: input.commandId ?? crypto.randomUUID(),
       });
     }
+
+    it("seals complete routine versions atomically and rejects every post-creation child mutation", async () => {
+      const before = await client.finisherRoutineVersion.findUniqueOrThrow({
+        where: { id: routineVersionId },
+        include: {
+          steps: {
+            orderBy: { orderIndex: "asc" },
+            include: {
+              alternatives: { orderBy: { orderIndex: "asc" } },
+            },
+          },
+        },
+      });
+      expect(before.sealedAt).toEqual(expect.any(Date));
+      const firstStep = before.steps[0]!;
+      const secondStep = before.steps[1]!;
+      const firstAlternative = firstStep.alternatives[0]!;
+      const blockedMutations = [
+        () =>
+          client.finisherRoutineStep.create({
+            data: {
+              routineVersionId,
+              orderIndex: 99,
+              movementName: "Forbidden append",
+              workSeconds: 10,
+              recoverySeconds: 0,
+            },
+          }),
+        () =>
+          client.finisherRoutineStep.createMany({
+            data: [
+              {
+                routineVersionId,
+                orderIndex: 99,
+                movementName: "Forbidden bulk append A",
+                workSeconds: 10,
+                recoverySeconds: 0,
+              },
+              {
+                routineVersionId,
+                orderIndex: 100,
+                movementName: "Forbidden bulk append B",
+                workSeconds: 10,
+                recoverySeconds: 0,
+              },
+            ],
+          }),
+        () =>
+          client.finisherRoutineStep.update({
+            where: { id: firstStep.id },
+            data: { movementName: "Forbidden rewrite" },
+          }),
+        () =>
+          client.finisherRoutineStep.updateMany({
+            where: { routineVersionId },
+            data: { recoverySeconds: 0 },
+          }),
+        () =>
+          client.finisherRoutineStep.update({
+            where: { id: firstStep.id },
+            data: { routineVersionId: preparationRoutineVersionId },
+          }),
+        () =>
+          client.finisherRoutineStep.delete({ where: { id: firstStep.id } }),
+        () =>
+          client.finisherRoutineStep.deleteMany({
+            where: { routineVersionId },
+          }),
+        () =>
+          client.finisherRoutineStepAlternative.create({
+            data: {
+              routineStepId: firstStep.id,
+              orderIndex: 99,
+              movementName: "Forbidden alternative",
+            },
+          }),
+        () =>
+          client.finisherRoutineStepAlternative.createMany({
+            data: [
+              {
+                routineStepId: firstStep.id,
+                orderIndex: 99,
+                movementName: "Forbidden bulk alternative A",
+              },
+              {
+                routineStepId: firstStep.id,
+                orderIndex: 100,
+                movementName: "Forbidden bulk alternative B",
+              },
+            ],
+          }),
+        () =>
+          client.finisherRoutineStepAlternative.update({
+            where: { id: firstAlternative.id },
+            data: { movementName: "Forbidden alternative rewrite" },
+          }),
+        () =>
+          client.finisherRoutineStepAlternative.update({
+            where: { id: firstAlternative.id },
+            data: { routineStepId: secondStep.id },
+          }),
+        () =>
+          client.finisherRoutineStepAlternative.updateMany({
+            where: { routineStepId: firstStep.id },
+            data: { orderIndex: 7 },
+          }),
+        () =>
+          client.finisherRoutineStepAlternative.delete({
+            where: { id: firstAlternative.id },
+          }),
+        () =>
+          client.finisherRoutineStepAlternative.deleteMany({
+            where: { routineStepId: firstStep.id },
+          }),
+      ];
+      for (const mutate of blockedMutations) {
+        await expect(mutate()).rejects.toThrow();
+      }
+      expect(
+        await client.finisherRoutineVersion.findUniqueOrThrow({
+          where: { id: routineVersionId },
+          include: {
+            steps: {
+              orderBy: { orderIndex: "asc" },
+              include: {
+                alternatives: { orderBy: { orderIndex: "asc" } },
+              },
+            },
+          },
+        }),
+      ).toEqual(before);
+
+      const suffix = crypto.randomUUID();
+      const routine = await client.finisherRoutine.create({
+        data: {
+          code: `atomic-finisher-${suffix}`,
+          publicationState: "RETIRED",
+          retiredAt: now,
+        },
+      });
+      await expect(
+        client.finisherRoutineVersion.create({
+          data: {
+            routineId: routine.id,
+            version: 1,
+            name: "Unsealed definition",
+            description: "Must roll back",
+            category: "CORE",
+            difficulty: "EASY",
+            fatigueCost: "LOW",
+            impactLevel: "LOW",
+          },
+        }),
+      ).rejects.toThrow();
+      expect(
+        await client.finisherRoutineVersion.count({
+          where: { routineId: routine.id },
+        }),
+      ).toBe(0);
+
+      const createdVersionId = await client.$transaction(async (tx) => {
+        const version = await tx.finisherRoutineVersion.create({
+          data: {
+            routineId: routine.id,
+            version: 1,
+            name: "Atomic definition",
+            description: "Created and sealed with children",
+            category: "CORE",
+            difficulty: "EASY",
+            fatigueCost: "LOW",
+            impactLevel: "LOW",
+          },
+        });
+        const step = await tx.finisherRoutineStep.create({
+          data: {
+            routineVersionId: version.id,
+            orderIndex: 0,
+            movementName: "Atomic hold",
+            workSeconds: 20,
+            recoverySeconds: 0,
+          },
+        });
+        await tx.finisherRoutineStepAlternative.create({
+          data: {
+            routineStepId: step.id,
+            orderIndex: 0,
+            movementName: "Atomic alternative",
+          },
+        });
+        await tx.finisherRoutineVersion.update({
+          where: { id: version.id },
+          data: { sealedAt: now },
+        });
+        return version.id;
+      });
+      await expect(
+        client.finisherRoutineStep.create({
+          data: {
+            routineVersionId: createdVersionId,
+            orderIndex: 1,
+            movementName: "Late append",
+            workSeconds: 20,
+            recoverySeconds: 0,
+          },
+        }),
+      ).rejects.toThrow();
+    });
+
+    it("makes every existing-execution command receipt-safe under concurrent and lost-response retries", async () => {
+      type PreparedCommand = {
+        executionId: string;
+        expectedRevision: number;
+        action:
+          | "START"
+          | "SYNC"
+          | "PAUSE"
+          | "RESUME"
+          | "SKIP"
+          | "SUBSTITUTE"
+          | "END"
+          | "FEEDBACK"
+          | "DISMISS";
+        invoke: (commandId: string) => Promise<{ revision: number }>;
+      };
+      const selectExecution = async () => {
+        const workout = await createWorkout("COMPLETED");
+        const selected = await selectFinisher({
+          userId: ownerId,
+          workoutId: workout.id,
+          routineVersionId,
+          now,
+        });
+        return { workout, selected };
+      };
+      const preparations: Array<{
+        name: string;
+        prepare: () => Promise<PreparedCommand>;
+      }> = [
+        {
+          name: "start",
+          prepare: async () => {
+            const { workout, selected } = await selectExecution();
+            return {
+              executionId: selected.id,
+              expectedRevision: selected.revision,
+              action: "START",
+              invoke: (commandId) =>
+                startSelectedFinisher({
+                  userId: ownerId,
+                  workoutId: workout.id,
+                  executionId: selected.id,
+                  expectedRevision: selected.revision,
+                  commandId,
+                  now,
+                }),
+            };
+          },
+        },
+        {
+          name: "sync",
+          prepare: async () => {
+            const { workout, selected } = await selectExecution();
+            const started = await startSelectedFinisher({
+              userId: ownerId,
+              workoutId: workout.id,
+              executionId: selected.id,
+              expectedRevision: selected.revision,
+              commandId: crypto.randomUUID(),
+              now,
+            });
+            return {
+              executionId: selected.id,
+              expectedRevision: started.revision,
+              action: "SYNC",
+              invoke: (commandId) =>
+                syncSelectedFinisher({
+                  userId: ownerId,
+                  workoutId: workout.id,
+                  executionId: selected.id,
+                  expectedRevision: started.revision,
+                  commandId,
+                  now: new Date(now.getTime() + 45_000),
+                }),
+            };
+          },
+        },
+        {
+          name: "pause",
+          prepare: async () => {
+            const { workout, selected } = await selectExecution();
+            const started = await startSelectedFinisher({
+              userId: ownerId,
+              workoutId: workout.id,
+              executionId: selected.id,
+              expectedRevision: selected.revision,
+              commandId: crypto.randomUUID(),
+              now,
+            });
+            return {
+              executionId: selected.id,
+              expectedRevision: started.revision,
+              action: "PAUSE",
+              invoke: (commandId) =>
+                pauseSelectedFinisher({
+                  userId: ownerId,
+                  workoutId: workout.id,
+                  executionId: selected.id,
+                  expectedRevision: started.revision,
+                  commandId,
+                  now: new Date(now.getTime() + 5_000),
+                }),
+            };
+          },
+        },
+        {
+          name: "resume",
+          prepare: async () => {
+            const { workout, selected } = await selectExecution();
+            const started = await startSelectedFinisher({
+              userId: ownerId,
+              workoutId: workout.id,
+              executionId: selected.id,
+              expectedRevision: selected.revision,
+              commandId: crypto.randomUUID(),
+              now,
+            });
+            const paused = await pauseSelectedFinisher({
+              userId: ownerId,
+              workoutId: workout.id,
+              executionId: selected.id,
+              expectedRevision: started.revision,
+              commandId: crypto.randomUUID(),
+              now: new Date(now.getTime() + 5_000),
+            });
+            return {
+              executionId: selected.id,
+              expectedRevision: paused.revision,
+              action: "RESUME",
+              invoke: (commandId) =>
+                resumeSelectedFinisher({
+                  userId: ownerId,
+                  workoutId: workout.id,
+                  executionId: selected.id,
+                  expectedRevision: paused.revision,
+                  commandId,
+                  now: new Date(now.getTime() + 10_000),
+                }),
+            };
+          },
+        },
+        {
+          name: "skip",
+          prepare: async () => {
+            const { workout, selected } = await selectExecution();
+            const started = await startSelectedFinisher({
+              userId: ownerId,
+              workoutId: workout.id,
+              executionId: selected.id,
+              expectedRevision: selected.revision,
+              commandId: crypto.randomUUID(),
+              now,
+            });
+            return {
+              executionId: selected.id,
+              expectedRevision: started.revision,
+              action: "SKIP",
+              invoke: (commandId) =>
+                skipSelectedFinisherStep({
+                  userId: ownerId,
+                  workoutId: workout.id,
+                  executionId: selected.id,
+                  expectedRevision: started.revision,
+                  commandId,
+                  now: new Date(now.getTime() + 5_000),
+                }),
+            };
+          },
+        },
+        {
+          name: "substitute",
+          prepare: async () => {
+            const { workout, selected } = await selectExecution();
+            return {
+              executionId: selected.id,
+              expectedRevision: selected.revision,
+              action: "SUBSTITUTE",
+              invoke: (commandId) =>
+                substituteSelectedFinisherStep({
+                  userId: ownerId,
+                  workoutId: workout.id,
+                  executionId: selected.id,
+                  expectedRevision: selected.revision,
+                  alternativeId,
+                  commandId,
+                  now,
+                }),
+            };
+          },
+        },
+        {
+          name: "end",
+          prepare: async () => {
+            const { workout, selected } = await selectExecution();
+            const started = await startSelectedFinisher({
+              userId: ownerId,
+              workoutId: workout.id,
+              executionId: selected.id,
+              expectedRevision: selected.revision,
+              commandId: crypto.randomUUID(),
+              now,
+            });
+            return {
+              executionId: selected.id,
+              expectedRevision: started.revision,
+              action: "END",
+              invoke: (commandId) =>
+                endSelectedFinisher({
+                  userId: ownerId,
+                  workoutId: workout.id,
+                  executionId: selected.id,
+                  expectedRevision: started.revision,
+                  commandId,
+                  now: new Date(now.getTime() + 5_000),
+                }),
+            };
+          },
+        },
+        {
+          name: "feedback",
+          prepare: async () => {
+            const { workout, selected } = await selectExecution();
+            const started = await startSelectedFinisher({
+              userId: ownerId,
+              workoutId: workout.id,
+              executionId: selected.id,
+              expectedRevision: selected.revision,
+              commandId: crypto.randomUUID(),
+              now,
+            });
+            const partial = await endSelectedFinisher({
+              userId: ownerId,
+              workoutId: workout.id,
+              executionId: selected.id,
+              expectedRevision: started.revision,
+              commandId: crypto.randomUUID(),
+              now: new Date(now.getTime() + 5_000),
+            });
+            return {
+              executionId: selected.id,
+              expectedRevision: partial.revision,
+              action: "FEEDBACK",
+              invoke: (commandId) =>
+                recordExactFinisherFeedback({
+                  userId: ownerId,
+                  workoutId: workout.id,
+                  executionId: selected.id,
+                  expectedRevision: partial.revision,
+                  difficultyFeedback: 6,
+                  commandId,
+                  now: new Date(now.getTime() + 6_000),
+                }),
+            };
+          },
+        },
+        {
+          name: "dismiss",
+          prepare: async () => {
+            const { workout, selected } = await selectExecution();
+            return {
+              executionId: selected.id,
+              expectedRevision: selected.revision,
+              action: "DISMISS",
+              invoke: (commandId) =>
+                dismissExactFinisher({
+                  userId: ownerId,
+                  workoutId: workout.id,
+                  executionId: selected.id,
+                  expectedRevision: selected.revision,
+                  commandId,
+                  now,
+                }),
+            };
+          },
+        },
+      ];
+
+      for (const scenario of preparations) {
+        const prepared = await scenario.prepare();
+        const commandId = crypto.randomUUID();
+        const concurrent = await Promise.all([
+          prepared.invoke(commandId),
+          prepared.invoke(commandId),
+        ]);
+        expect(concurrent[0].revision, scenario.name).toBe(
+          concurrent[1].revision,
+        );
+        const lostResponseRetry = await prepared.invoke(commandId);
+        expect(lostResponseRetry.revision, scenario.name).toBe(
+          concurrent[0].revision,
+        );
+        expect(
+          await client.finisherExecutionCommand.findUniqueOrThrow({
+            where: { id: commandId },
+            select: {
+              executionId: true,
+              action: true,
+              expectedRevision: true,
+              resultRevision: true,
+              expiresAt: true,
+            },
+          }),
+          scenario.name,
+        ).toMatchObject({
+          executionId: prepared.executionId,
+          action: prepared.action,
+          expectedRevision: prepared.expectedRevision,
+          resultRevision: concurrent[0].revision,
+          expiresAt: expect.any(Date),
+        });
+        await expect(
+          prepared.invoke(crypto.randomUUID()),
+          scenario.name,
+        ).rejects.toMatchObject({
+          code: "FINISHER_STALE_TRANSITION",
+          status: 409,
+        });
+      }
+    });
+
+    it("rejects command-ID reuse with a different payload or execution", async () => {
+      const workoutA = await createWorkout("COMPLETED");
+      const selectedA = await selectFinisher({
+        userId: ownerId,
+        workoutId: workoutA.id,
+        routineVersionId,
+        now,
+      });
+      const startedA = await startSelectedFinisher({
+        userId: ownerId,
+        workoutId: workoutA.id,
+        executionId: selectedA.id,
+        expectedRevision: selectedA.revision,
+        commandId: crypto.randomUUID(),
+        now,
+      });
+      const commandId = crypto.randomUUID();
+      await recordExactFinisherFeedback({
+        userId: ownerId,
+        workoutId: workoutA.id,
+        executionId: selectedA.id,
+        expectedRevision: (
+          await endSelectedFinisher({
+            userId: ownerId,
+            workoutId: workoutA.id,
+            executionId: selectedA.id,
+            expectedRevision: startedA.revision,
+            commandId: crypto.randomUUID(),
+            now: new Date(now.getTime() + 5_000),
+          })
+        ).revision,
+        difficultyFeedback: 5,
+        commandId,
+        now: new Date(now.getTime() + 6_000),
+      });
+      const command = await client.finisherExecutionCommand.findUniqueOrThrow({
+        where: { id: commandId },
+      });
+      await expect(
+        recordExactFinisherFeedback({
+          userId: ownerId,
+          workoutId: workoutA.id,
+          executionId: selectedA.id,
+          expectedRevision: command.expectedRevision,
+          difficultyFeedback: 7,
+          commandId,
+          now: new Date(now.getTime() + 7_000),
+        }),
+      ).rejects.toMatchObject({
+        code: "FINISHER_COMMAND_ID_CONFLICT",
+        status: 409,
+      });
+
+      const workoutB = await createWorkout("COMPLETED");
+      const selectedB = await selectFinisher({
+        userId: ownerId,
+        workoutId: workoutB.id,
+        routineVersionId,
+        now,
+      });
+      await expect(
+        startSelectedFinisher({
+          userId: ownerId,
+          workoutId: workoutB.id,
+          executionId: selectedB.id,
+          expectedRevision: selectedB.revision,
+          commandId,
+          now,
+        }),
+      ).rejects.toMatchObject({
+        code: "FINISHER_COMMAND_ID_CONFLICT",
+        status: 409,
+      });
+    });
 
     it("rejects pre-completion and cross-user starts with owner-scoped errors", async () => {
       const planned = await createWorkout("PLANNED");
@@ -779,6 +1412,110 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       });
     });
 
+    it("projects the same mixed terminal outcome that synchronization persists", async () => {
+      const workout = await createWorkout("COMPLETED");
+      const started = await startFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        routineVersionId,
+        now,
+      });
+      const skipped = await skipFinisherStep({
+        userId: ownerId,
+        workoutId: workout.id,
+        expectedRevision: started.revision,
+        now,
+      });
+      const boundary = new Date(now.getTime() + 61_000);
+      const projected = (
+        await getFinisherOffer({
+          userId: ownerId,
+          workoutId: workout.id,
+          now: boundary,
+        })
+      ).execution!;
+      expect(projected).toMatchObject({
+        state: "PARTIAL",
+        completedStepCount: 1,
+        skippedStepCount: 1,
+        timer: { segment: "FINISHED", syncRequired: true },
+      });
+
+      const persisted = await syncFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        expectedRevision: skipped.revision,
+        now: boundary,
+      });
+      expect({
+        state: persisted.state,
+        steps: persisted.steps.map((step) => step.status),
+        completedStepCount: persisted.completedStepCount,
+        skippedStepCount: persisted.skippedStepCount,
+        actualDurationSeconds: persisted.actualDurationSeconds,
+      }).toEqual({
+        state: projected.state,
+        steps: projected.steps.map((step) => step.status),
+        completedStepCount: projected.completedStepCount,
+        skippedStepCount: projected.skippedStepCount,
+        actualDurationSeconds: projected.actualDurationSeconds,
+      });
+    });
+
+    it("projects and persists a substituted natural completion identically", async () => {
+      const workout = await createWorkout("COMPLETED");
+      const started = await startFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        routineVersionId,
+        now,
+      });
+      const substituted = await substituteFinisherStep({
+        userId: ownerId,
+        workoutId: workout.id,
+        expectedRevision: started.revision,
+        alternativeId,
+        now,
+      });
+      const boundary = new Date(now.getTime() + 121_000);
+      const projected = (
+        await getFinisherOffer({
+          userId: ownerId,
+          workoutId: workout.id,
+          now: boundary,
+        })
+      ).execution!;
+      expect(projected).toMatchObject({
+        state: "COMPLETED",
+        completedStepCount: 2,
+        substitutionCount: 1,
+        timer: { segment: "FINISHED", syncRequired: true },
+      });
+      const persisted = await syncFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        expectedRevision: substituted.revision,
+        now: boundary,
+      });
+      expect({
+        state: persisted.state,
+        steps: persisted.steps.map((step) => ({
+          status: step.status,
+          performedMovement: step.performedMovement,
+        })),
+        substitutionCount: persisted.substitutionCount,
+        actualDurationSeconds: persisted.actualDurationSeconds,
+      }).toEqual({
+        state: projected.state,
+        steps: projected.steps.map((step) => ({
+          status: step.status,
+          performedMovement: step.performedMovement,
+        })),
+        substitutionCount: projected.substitutionCount,
+        actualDurationSeconds: projected.actualDurationSeconds,
+      });
+    });
+
     it("does not subtract a preparation pause from 600 seconds of performed time", async () => {
       const workout = await createWorkout("COMPLETED");
       const started = await startFinisher({
@@ -992,10 +1729,12 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
         routineVersionId: preparationRoutineVersionId,
         now,
       });
+      const endCommandId = crypto.randomUUID();
       const dismissed = await endFinisher({
         userId: ownerId,
         workoutId: workout.id,
         expectedRevision: started.revision,
+        commandId: endCommandId,
         now: new Date(now.getTime() + 5_000),
       });
       expect(dismissed).toMatchObject({
@@ -1012,7 +1751,8 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       const repeated = await endFinisher({
         userId: ownerId,
         workoutId: workout.id,
-        expectedRevision: dismissed.timer.revision,
+        expectedRevision: started.revision,
+        commandId: endCommandId,
         now: new Date(now.getTime() + 50_000),
       });
       expect(repeated.actualDurationSeconds).toBe(0);
@@ -1035,16 +1775,19 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
         routineVersionId,
         now,
       });
+      const dismissCommandId = crypto.randomUUID();
       const results = await Promise.allSettled([
         dismissSelectedFinisher({
           userId: ownerId,
           workoutId: workout.id,
           expectedRevision: selected.revision,
+          commandId: dismissCommandId,
         }),
         dismissSelectedFinisher({
           userId: ownerId,
           workoutId: workout.id,
           expectedRevision: selected.revision,
+          commandId: dismissCommandId,
         }),
       ]);
       expect(results).toEqual([
@@ -1138,11 +1881,13 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
         now,
       });
       const staleRevision = executionA.revision;
+      const dismissalCommandId = crypto.randomUUID();
       await dismissExactFinisher({
         userId: ownerId,
         workoutId: workout.id,
         executionId: executionAId,
         expectedRevision: staleRevision,
+        commandId: dismissalCommandId,
         now,
       });
       const afterDismiss = await getFinisherOffer({
@@ -1182,21 +1927,23 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
         now,
       };
       const staleResults = await Promise.allSettled([
-        startSelectedFinisher(staleBase),
-        syncSelectedFinisher(staleBase),
-        pauseSelectedFinisher(staleBase),
-        resumeSelectedFinisher(staleBase),
-        skipSelectedFinisherStep(staleBase),
+        startSelectedFinisher({ ...staleBase, commandId: crypto.randomUUID() }),
+        syncSelectedFinisher({ ...staleBase, commandId: crypto.randomUUID() }),
+        pauseSelectedFinisher({ ...staleBase, commandId: crypto.randomUUID() }),
+        resumeSelectedFinisher({ ...staleBase, commandId: crypto.randomUUID() }),
+        skipSelectedFinisherStep({ ...staleBase, commandId: crypto.randomUUID() }),
         substituteSelectedFinisherStep({
           ...staleBase,
           alternativeId,
+          commandId: crypto.randomUUID(),
         }),
-        endSelectedFinisher(staleBase),
+        endSelectedFinisher({ ...staleBase, commandId: crypto.randomUUID() }),
         recordExactFinisherFeedback({
           ...staleBase,
           difficultyFeedback: 5,
+          commandId: crypto.randomUUID(),
         }),
-        dismissExactFinisher(staleBase),
+        dismissExactFinisher({ ...staleBase, commandId: dismissalCommandId }),
       ]);
       expect(
         staleResults.filter((result) => result.status === "rejected")

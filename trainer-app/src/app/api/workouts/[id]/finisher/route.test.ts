@@ -135,6 +135,7 @@ describe("/api/workouts/[id]/finisher", () => {
           action: "pause",
           executionId: "44444444-4444-4444-8444-444444444444",
           expectedRevision: 7,
+          commandId: "55555555-5555-4555-8555-555555555555",
         }),
       }),
       context
@@ -146,6 +147,7 @@ describe("/api/workouts/[id]/finisher", () => {
       action: "pause",
       executionId: "44444444-4444-4444-8444-444444444444",
       expectedRevision: 7,
+      commandId: "55555555-5555-4555-8555-555555555555",
     });
   });
 
@@ -189,6 +191,7 @@ describe("/api/workouts/[id]/finisher", () => {
           action: "pause",
           executionId: "44444444-4444-4444-8444-444444444444",
           expectedRevision: 7,
+          commandId: "55555555-5555-4555-8555-555555555555",
         }),
       }),
       context

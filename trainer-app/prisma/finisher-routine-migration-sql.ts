@@ -72,6 +72,9 @@ export function renderFinisherCatalogMigrationSql(): string {
         );
       });
     });
+    statements.push(
+      `UPDATE "FinisherRoutineVersion" SET "sealedAt" = CURRENT_TIMESTAMP WHERE "id" = ${text(versionId)};`
+    );
   }
 
   statements.push(FINISHER_CATALOG_SQL_END);

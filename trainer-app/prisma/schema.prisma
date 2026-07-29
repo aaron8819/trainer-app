@@ -284,6 +284,18 @@ enum FinisherStepStatus {
   SKIPPED
 }
 
+enum FinisherExecutionAction {
+  START
+  SYNC
+  PAUSE
+  RESUME
+  SKIP
+  SUBSTITUTE
+  END
+  FEEDBACK
+  DISMISS
+}
+
 model User {
   id                 String      @id @default(uuid())
   email              String      @unique
@@ -538,8 +550,9 @@ model FinisherRoutineVersion {
   bodyRegions           String[]              @default([])
   limitationTags        String[]              @default([])
   createdAt             DateTime              @default(now())
+  sealedAt              DateTime?
   steps                 FinisherRoutineStep[]
-  recommendedOffers     FinisherOffer[]        @relation("FinisherRecommendedRoutine")
+  recommendedOffers     FinisherOffer[]       @relation("FinisherRecommendedRoutine")
   offerItems            FinisherOfferItem[]
   executions            FinisherExecution[]
 
@@ -574,32 +587,32 @@ model FinisherRoutineStepAlternative {
 }
 
 model FinisherOffer {
-  id                             String                   @id @default(uuid())
-  workoutId                      String                   @unique
-  workout                        Workout                  @relation(fields: [workoutId], references: [id], onDelete: Restrict)
-  revision                       Int                      @default(1)
-  offeredAt                      DateTime                 @default(now())
-  declinedAt                     DateTime?
-  declineDecisionId              String?                  @unique
-  recommendedRoutineVersionId    String?
-  recommendedRoutineVersion      FinisherRoutineVersion? @relation("FinisherRecommendedRoutine", fields: [recommendedRoutineVersionId], references: [id], onDelete: Restrict)
-  recommendationReason           String?
+  id                              String                  @id @default(uuid())
+  workoutId                       String                  @unique
+  workout                         Workout                 @relation(fields: [workoutId], references: [id], onDelete: Restrict)
+  revision                        Int                     @default(1)
+  offeredAt                       DateTime                @default(now())
+  declinedAt                      DateTime?
+  declineDecisionId               String?                 @unique
+  recommendedRoutineVersionId     String?
+  recommendedRoutineVersion       FinisherRoutineVersion? @relation("FinisherRecommendedRoutine", fields: [recommendedRoutineVersionId], references: [id], onDelete: Restrict)
+  recommendationReason            String?
   recommendationUnavailableReason String?
-  recommendationContext          Json
-  items                          FinisherOfferItem[]
-  executions                     FinisherExecution[]
+  recommendationContext           Json
+  items                           FinisherOfferItem[]
+  executions                      FinisherExecution[]
 
   @@index([recommendedRoutineVersionId])
 }
 
 model FinisherOfferItem {
-  id               String                  @id @default(uuid())
+  id               String                 @id @default(uuid())
   offerId          String
-  offer            FinisherOffer           @relation(fields: [offerId], references: [id], onDelete: Restrict)
+  offer            FinisherOffer          @relation(fields: [offerId], references: [id], onDelete: Restrict)
   routineVersionId String
-  routineVersion   FinisherRoutineVersion  @relation(fields: [routineVersionId], references: [id], onDelete: Restrict)
+  routineVersion   FinisherRoutineVersion @relation(fields: [routineVersionId], references: [id], onDelete: Restrict)
   position         Int
-  warnings         String[]                @default([])
+  warnings         String[]               @default([])
 
   @@unique([offerId, routineVersionId])
   @@unique([offerId, position])
@@ -607,35 +620,37 @@ model FinisherOfferItem {
 }
 
 model FinisherExecution {
-  id                  String                  @id @default(uuid())
-  workoutId           String
-  workout             Workout                 @relation(fields: [workoutId], references: [id], onDelete: Restrict)
-  offerId             String
-  offer               FinisherOffer           @relation(fields: [offerId], references: [id], onDelete: Restrict)
+  id                       String                     @id @default(uuid())
+  workoutId                String
+  workout                  Workout                    @relation(fields: [workoutId], references: [id], onDelete: Restrict)
+  offerId                  String
+  offer                    FinisherOffer              @relation(fields: [offerId], references: [id], onDelete: Restrict)
   offerRevisionAtSelection Int
-  routineVersionId    String
-  routineVersion      FinisherRoutineVersion  @relation(fields: [routineVersionId], references: [id], onDelete: Restrict)
-  state               FinisherExecutionState  @default(SELECTED)
-  selectedAt          DateTime                @default(now())
-  startedAt           DateTime?
-  completedAt         DateTime?
-  endedAt             DateTime?
-  dismissedAt         DateTime?
-  timerSegment        FinisherTimerSegment?
-  currentStepIndex    Int                     @default(0)
-  segmentStartedAt    DateTime?
-  segmentEndsAt       DateTime?
-  pausedAt            DateTime?
-  pausedRemainingMs   Int?
-  preparationActiveMs Int                     @default(0)
-  recoveryActiveMs    Int                     @default(0)
-  preparationPausedMs Int                     @default(0)
-  workPausedMs        Int                     @default(0)
-  recoveryPausedMs    Int                     @default(0)
-  revision            Int                     @default(1)
-  difficultyFeedback  Int?
-  stepExecutions      FinisherExecutionStep[]
+  routineVersionId         String
+  routineVersion           FinisherRoutineVersion     @relation(fields: [routineVersionId], references: [id], onDelete: Restrict)
+  state                    FinisherExecutionState     @default(SELECTED)
+  selectedAt               DateTime                   @default(now())
+  startedAt                DateTime?
+  completedAt              DateTime?
+  endedAt                  DateTime?
+  dismissedAt              DateTime?
+  timerSegment             FinisherTimerSegment?
+  currentStepIndex         Int                        @default(0)
+  segmentStartedAt         DateTime?
+  segmentEndsAt            DateTime?
+  pausedAt                 DateTime?
+  pausedRemainingMs        Int?
+  preparationActiveMs      Int                        @default(0)
+  recoveryActiveMs         Int                        @default(0)
+  preparationPausedMs      Int                        @default(0)
+  workPausedMs             Int                        @default(0)
+  recoveryPausedMs         Int                        @default(0)
+  revision                 Int                        @default(1)
+  difficultyFeedback       Int?
+  stepExecutions           FinisherExecutionStep[]
+  commands                 FinisherExecutionCommand[]
 
+  @@unique([id, workoutId])
   @@index([workoutId, selectedAt])
   @@index([offerId, selectedAt])
   @@index([routineVersionId, startedAt])
@@ -658,6 +673,23 @@ model FinisherExecutionStep {
 
   @@unique([executionId, routineStepId])
   @@index([performedAlternativeId])
+}
+
+model FinisherExecutionCommand {
+  id               String                  @id
+  workoutId        String
+  executionId      String
+  execution        FinisherExecution       @relation(fields: [executionId, workoutId], references: [id, workoutId], onDelete: Restrict)
+  action           FinisherExecutionAction
+  requestHash      String
+  expectedRevision Int
+  resultRevision   Int
+  response         Json
+  createdAt        DateTime                @default(now())
+  expiresAt        DateTime
+
+  @@index([executionId, createdAt])
+  @@index([expiresAt])
 }
 
 model PostSessionReviewSnapshot {

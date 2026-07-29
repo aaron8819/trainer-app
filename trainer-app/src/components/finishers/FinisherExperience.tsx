@@ -30,6 +30,26 @@ type WakeLockSentinel = {
   released: boolean;
 };
 
+const EXECUTION_COMMAND_ACTIONS = new Set([
+  "start",
+  "sync",
+  "pause",
+  "resume",
+  "skip",
+  "substitute",
+  "end",
+  "feedback",
+  "dismiss",
+]);
+
+function commandKey(body: Record<string, unknown>): string {
+  return JSON.stringify(
+    Object.fromEntries(
+      Object.entries(body).sort(([left], [right]) => left.localeCompare(right)),
+    ),
+  );
+}
+
 function formatDuration(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   const remainder = seconds % 60;
@@ -99,6 +119,7 @@ export function FinisherExperience({
   const wakeLock = useRef<WakeLockSentinel | null>(null);
   const submittingRef = useRef(false);
   const syncAttempts = useRef(new Set<string>());
+  const pendingCommandIds = useRef(new Map<string, string>());
   const requestSequence = useRef(0);
   const latestAppliedRequest = useRef(0);
   const mounted = useRef(true);
@@ -290,19 +311,50 @@ export function FinisherExperience({
       setError(null);
       const sequence = ++requestSequence.current;
       const requestStartedAt = performance.now();
+      const action = typeof body.action === "string" ? body.action : "";
+      const executionCommand =
+        typeof body.executionId === "string" &&
+        EXECUTION_COMMAND_ACTIONS.has(action);
+      const pendingKey = executionCommand ? commandKey(body) : null;
+      const stableCommandId = pendingKey
+        ? (pendingCommandIds.current.get(pendingKey) ?? crypto.randomUUID())
+        : null;
+      if (pendingKey && stableCommandId) {
+        pendingCommandIds.current.set(pendingKey, stableCommandId);
+      }
+      const requestBody = stableCommandId
+        ? { ...body, commandId: stableCommandId }
+        : body;
       try {
-        const response = await fetch(`/api/workouts/${workoutId}/finisher`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        const result = (await response.json()) as FinisherOffer & {
-          error?: string;
+        const send = async () => {
+          const response = await fetch(`/api/workouts/${workoutId}/finisher`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(requestBody),
+          });
+          const result = (await response.json()) as FinisherOffer & {
+            error?: string;
+          };
+          return { response, result };
         };
+        let attempt: Awaited<ReturnType<typeof send>>;
+        try {
+          attempt = await send();
+        } catch {
+          attempt = await send();
+        }
+        if (!attempt.response.ok && attempt.response.status >= 500) {
+          attempt = await send();
+        }
+        const { response, result } = attempt;
         const responseReceivedAt = performance.now();
         if (!response.ok) {
+          if (pendingKey && response.status < 500) {
+            pendingCommandIds.current.delete(pendingKey);
+          }
           throw new Error(result.error ?? "Finisher action failed");
         }
+        if (pendingKey) pendingCommandIds.current.delete(pendingKey);
         if (!mounted.current || sequence < latestAppliedRequest.current) {
           return false;
         }

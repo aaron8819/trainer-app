@@ -587,7 +587,7 @@ try {
     JSON.stringify({
       repositoryHead,
       productionDeploymentCommit:
-        "14f7bb3a0106780fc70263d7282b2547bae5bbba",
+        "24e9e62f70a5cf66cef21997157f7b79a411a00f",
       requiredApplicationCommit: repositoryHead,
       dataPreflight: {
         valid: true,

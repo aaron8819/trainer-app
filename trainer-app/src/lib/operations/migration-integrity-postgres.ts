@@ -1,6 +1,7 @@
 import type { QueryResult, QueryResultRow } from "pg";
 import type {
   CatalogSnapshot,
+  CatalogRowFact,
   ColumnFact,
   ConstraintFact,
   FunctionFact,
@@ -191,6 +192,37 @@ export async function inspectMigrationDatabase(client: ReadOnlyClient): Promise<
       WHERE n.nspname = 'public' AND p.prokind = 'f'
       ORDER BY p.proname, p.oid
     `);
+    const finisherDefinitionTables = [
+      "FinisherRoutine",
+      "FinisherRoutineVersion",
+      "FinisherRoutineStep",
+      "FinisherRoutineStepAlternative",
+    ];
+    const catalogRows = finisherDefinitionTables.every((name) =>
+      tableRows.some((row) => row.name === name),
+    )
+      ? await safeSelect<{
+          table_name: string;
+          row_key: string;
+          values: Record<string, unknown>;
+        }>("finisherCatalogRows", `
+          SELECT 'FinisherRoutine' AS table_name, r."id" AS row_key,
+            to_jsonb(r) - 'createdAt' AS values
+          FROM "FinisherRoutine" r
+          UNION ALL
+          SELECT 'FinisherRoutineVersion', v."id",
+            (to_jsonb(v) - 'createdAt' - 'sealedAt')
+              || jsonb_build_object('sealed', v."sealedAt" IS NOT NULL)
+          FROM "FinisherRoutineVersion" v
+          UNION ALL
+          SELECT 'FinisherRoutineStep', s."id", to_jsonb(s)
+          FROM "FinisherRoutineStep" s
+          UNION ALL
+          SELECT 'FinisherRoutineStepAlternative', a."id", to_jsonb(a)
+          FROM "FinisherRoutineStepAlternative" a
+          ORDER BY table_name, row_key
+        `)
+      : [];
 
     const enumValues = new Map<string, string[]>();
     for (const row of enumRows) enumValues.set(row.enum_name, [...(enumValues.get(row.enum_name) ?? []), row.enum_value]);
@@ -226,6 +258,13 @@ export async function inspectMigrationDatabase(client: ReadOnlyClient): Promise<
         constraints: constraintRows.map((row): ConstraintFact => ({ table: row.table_name, name: row.constraint_name, type: row.constraint_type, definition: row.definition })),
         triggers: triggerRows.map((row): TriggerFact => ({ table: row.table_name, name: row.trigger_name, definition: row.definition })),
         functions: functionRows.map((row): FunctionFact => ({ name: row.function_name, definition: row.definition })),
+        catalogRows: catalogRows.map(
+          (row): CatalogRowFact => ({
+            table: row.table_name,
+            key: row.row_key,
+            values: row.values,
+          }),
+        ),
         unableToVerify,
       },
       writes: 0,

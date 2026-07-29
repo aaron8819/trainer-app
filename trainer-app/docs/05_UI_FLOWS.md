@@ -17,6 +17,9 @@ to a monotonic client clock for display only; client wall-clock skew never
 drives state transitions. A revision/boundary token permits at most one
 non-overlapping `sync` mutation until the server returns a new revision.
 Visibility recovery refreshes the pure projection before synchronization.
+Each execution mutation gets one stable command UUID. The client reuses the
+same UUID and exact request body for automatic network and server-error retries,
+and generates a new UUID only for a new logical command.
 The timer requests screen wake lock while running and exposes independent
 opt-in sound/vibration controls with textual fallbacks.
 
@@ -27,7 +30,10 @@ confirmation. A restrained polite live region announces segment/movement
 changes only; timer ticks are not announced. Controls remain keyboard operable
 and status does not rely only on color, sound, vibration, or motion.
 
-Completed, partial, entirely skipped, and dismissed-before-performance attempts
+Read projection and synchronization share the canonical terminal-outcome
+resolver, so an elapsed timer reports the same completed, partial, or skipped
+outcome that a later sync persists without writing during GET. Completed,
+partial, entirely skipped, and dismissed-before-performance attempts
 render truthfully in a separate Finisher section with
 routine/category, outcome, completed/skipped/partially-performed/substituted
 steps, exact active performed duration,

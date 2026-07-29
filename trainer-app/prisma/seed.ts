@@ -904,11 +904,11 @@ async function seedWorkoutTemplates(userId: string) {
   console.log(`  ${created} templates created, ${updated} updated.`);
 }
 
-async function seedFinisherRoutines() {
-  console.log("Seeding immutable finisher routine versions...");
-
-  for (const definition of FINISHER_ROUTINE_SEEDS) {
-    const routine = await prisma.finisherRoutine.upsert({
+async function seedFinisherRoutine(
+  definition: (typeof FINISHER_ROUTINE_SEEDS)[number]
+) {
+  await prisma.$transaction(async (tx) => {
+    const routine = await tx.finisherRoutine.upsert({
       where: { code: definition.code },
       update: {},
       create: {
@@ -925,7 +925,7 @@ async function seedFinisherRoutines() {
         `Stable finisher routine identity drift detected for ${definition.code}`
       );
     }
-    const existing = await prisma.finisherRoutineVersion.findUnique({
+    const existing = await tx.finisherRoutineVersion.findUnique({
       where: {
         routineId_version: {
           routineId: routine.id,
@@ -943,6 +943,11 @@ async function seedFinisherRoutines() {
     });
 
     if (existing) {
+      if (!existing.sealedAt) {
+        throw new Error(
+          `Unsealed finisher routine version detected for ${definition.code} v${definition.version}`
+        );
+      }
       const actual = {
         id: existing.id,
         name: existing.name,
@@ -1012,10 +1017,10 @@ async function seedFinisherRoutines() {
           `Immutable finisher routine drift detected for ${definition.code} v${definition.version}`
         );
       }
-      continue;
+      return;
     }
 
-    await prisma.finisherRoutineVersion.create({
+    const created = await tx.finisherRoutineVersion.create({
       data: {
         id: stableFinisherCatalogId(
           `version:${definition.code}:${definition.version}`
@@ -1061,6 +1066,17 @@ async function seedFinisherRoutines() {
         },
       },
     });
+    await tx.finisherRoutineVersion.update({
+      where: { id: created.id },
+      data: { sealedAt: new Date() },
+    });
+  });
+}
+
+async function seedFinisherRoutines() {
+  console.log("Seeding immutable finisher routine versions...");
+  for (const definition of FINISHER_ROUTINE_SEEDS) {
+    await seedFinisherRoutine(definition);
   }
 }
 

@@ -7,8 +7,12 @@ Migration `20260728120000_add_finishers_phase_1` adds:
 - `FinisherRoutine`: stable curated identity and active/retired publication state.
 - `FinisherRoutineVersion`, `FinisherRoutineStep`, and
   `FinisherRoutineStepAlternative`: immutable versioned definition truth.
-  Database triggers reject definition updates/deletes; executions use restrictive
-  foreign keys so later catalog versions cannot rewrite history.
+  A new version and all children are created in one transaction, then the
+  version is sealed before commit. A deferred constraint rejects unsealed
+  versions, and database triggers reject every later
+  version/step/alternative insert, update, reassignment, or delete. Executions
+  use restrictive foreign keys so later catalog versions cannot rewrite
+  history.
 - `FinisherOffer` and `FinisherOfferItem`: one durable offer per workout,
   including the exact immutable versions shown, recommendation identity/reason,
   unavailable reason, and the limitation/workout/recent-performance context
@@ -23,6 +27,13 @@ Migration `20260728120000_add_finishers_phase_1` adds:
   performed alternative, resolved status/timestamps, and accumulated active
   work duration. `PARTIAL` distinguishes current work preserved by an early end
   from `COMPLETED`, `SKIPPED`, and untouched `PENDING` work.
+- `FinisherExecutionCommand`: durable idempotency receipt for every command
+  against an existing execution. `commandId` is globally unique; the request
+  hash binds workout, execution, action, expected revision, and payload,
+  while the stored response/result revision makes committed retries
+  deterministic. Receipts expire after 90 days and are removed
+  opportunistically; retained execution history is permanent and independent
+  of receipt cleanup.
 
 The lifecycle is `SELECTED -> IN_PROGRESS ->
 COMPLETED|PARTIAL|SKIPPED|DISMISSED`. Dismissal updates the selected execution;
@@ -36,7 +47,8 @@ contains no cascade or reverse lifecycle field, so Finisher mutations cannot
 change workout completion. All schema changes are additive and existing workout
 history is untouched.
 
-History tables reject deletion by trigger. The restrictive workout foreign key
+Definition/history identity bindings reject reassignment, and history tables
+reject deletion by trigger. The restrictive workout foreign key
 is also the history contract: workout deletion checks for an attached Finisher
 offer before child deletion and
 returns a deterministic conflict rather than cascading or leaking a database

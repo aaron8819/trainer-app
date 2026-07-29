@@ -424,10 +424,11 @@ describe("FinisherExperience", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     await new Promise((resolve) => window.setTimeout(resolve, 350));
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(JSON.parse(fetchMock.mock.calls[1]![1]!.body as string)).toEqual({
+    expect(JSON.parse(fetchMock.mock.calls[1]![1]!.body as string)).toMatchObject({
       action: "sync",
       executionId: "44444444-4444-4444-8444-444444444444",
       expectedRevision: 7,
+      commandId: expect.any(String),
     });
 
     resolveSync?.({
@@ -491,19 +492,27 @@ describe("FinisherExperience", () => {
     render(<FinisherExperience workoutId="workout-1" />);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    expect(JSON.parse(fetchMock.mock.calls[1]![1]!.body as string)).toEqual({
+    expect(JSON.parse(fetchMock.mock.calls[1]![1]!.body as string)).toMatchObject({
       action: "sync",
       executionId: "44444444-4444-4444-8444-444444444444",
       expectedRevision: 7,
+      commandId: expect.any(String),
     });
     await new Promise((resolve) => window.setTimeout(resolve, 150));
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it.each([
-    ["a rejected mutation", { ok: false, json: async () => ({ error: "rejected" }) }],
+    [
+      "a server error",
+      {
+        ok: false,
+        status: 500,
+        json: async () => ({ error: "server unavailable" }),
+      },
+    ],
     ["a thrown network failure", new Error("network unavailable")],
-  ])("releases the boundary token after %s and retries successfully", async (_name, failure) => {
+  ])("retries %s with the same command identity", async (_name, failure) => {
     const projected = execution({
       state: "IN_PROGRESS",
       timer: {
@@ -543,25 +552,26 @@ describe("FinisherExperience", () => {
     fetchMock
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => offer(projected),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
         json: async () => offer(persisted),
       });
     vi.stubGlobal("fetch", fetchMock);
 
     render(<FinisherExperience workoutId="workout-1" />);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4), {
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3), {
       timeout: 4_000,
     });
-    expect(
-      JSON.parse(fetchMock.mock.calls[3]![1]!.body as string)
-    ).toMatchObject({
+    const firstCommand = JSON.parse(
+      fetchMock.mock.calls[1]![1]!.body as string,
+    );
+    const retryCommand = JSON.parse(
+      fetchMock.mock.calls[2]![1]!.body as string,
+    );
+    expect(retryCommand).toMatchObject({
       action: "sync",
       executionId: projected.id,
       expectedRevision: 7,
+      commandId: firstCommand.commandId,
     });
     expect(
       await screen.findByRole("region", { name: "Finisher summary" })

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import {
@@ -37,6 +38,18 @@ type RoutineVersionRow = Prisma.FinisherRoutineVersionGetPayload<{
 type ExecutionRow = Prisma.FinisherExecutionGetPayload<{
   include: typeof executionInclude;
 }>;
+type FinisherExecutionCommandAction =
+  | "START"
+  | "SYNC"
+  | "PAUSE"
+  | "RESUME"
+  | "SKIP"
+  | "SUBSTITUTE"
+  | "END"
+  | "FEEDBACK"
+  | "DISMISS";
+
+const FINISHER_COMMAND_RETENTION_MS = 90 * 24 * 60 * 60 * 1_000;
 
 export type FinisherRoutineDto = {
   id: string;
@@ -207,6 +220,7 @@ function toExecutionDto(
   now: Date,
   projection = projectExecution(row, now),
 ): FinisherExecutionDto {
+  const projectedState = resolveProjectedExecutionOutcome(row, projection);
   const stepRows = new Map(
     row.stepExecutions.map((step) => [step.routineStepId, step])
   );
@@ -286,7 +300,7 @@ function toExecutionDto(
     row.state === "PARTIAL" ||
     row.state === "SKIPPED" ||
     (row.state === "DISMISSED" && row.timerSegment === "FINISHED") ||
-    projection.state === "COMPLETED";
+    projectedState === "COMPLETED";
   const currentPausedMs = row.pausedAt
     ? Math.max(0, now.getTime() - row.pausedAt.getTime())
     : 0;
@@ -296,16 +310,20 @@ function toExecutionDto(
     routineVersionId: row.routineVersionId,
     revision: row.revision,
     routine: toRoutineDto(row.routineVersion, activeLimitations),
-    state: projection.state,
+    state: projectedState,
     selectedAt: row.selectedAt.toISOString(),
     startedAt: projection.startedAt?.toISOString() ?? null,
     completedAt:
       row.completedAt?.toISOString() ??
-      projection.completedAt?.toISOString() ??
+      (projectedState === "COMPLETED"
+        ? projection.completedAt?.toISOString()
+        : null) ??
       null,
     endedAt:
       row.endedAt?.toISOString() ??
-      projection.completedAt?.toISOString() ??
+      (projection.state === "COMPLETED"
+        ? projection.completedAt?.toISOString()
+        : null) ??
       null,
     dismissedAt: row.dismissedAt?.toISOString() ?? null,
     timer: {
@@ -364,6 +382,38 @@ function projectExecution(row: ExecutionRow, now: Date): FinisherTimerProjection
     steps: row.routineVersion.steps,
     includesFinalRecovery: row.routineVersion.includesFinalRecovery,
     now,
+  });
+}
+
+function resolveProjectedExecutionOutcome(
+  row: ExecutionRow,
+  projection: FinisherTimerProjection,
+): FinisherExecutionDto["state"] {
+  if (projection.state !== "COMPLETED") return projection.state;
+  const completedIndexes = new Set(
+    projection.completedSteps.map((step) => step.stepIndex),
+  );
+  const stepStatuses = row.routineVersion.steps.map((definition) => {
+    const persisted =
+      row.stepExecutions.find(
+        (step) => step.routineStepId === definition.id,
+      )?.status ?? "PENDING";
+    return persisted === "PENDING" && completedIndexes.has(definition.orderIndex)
+      ? ("COMPLETED" as const)
+      : persisted;
+  });
+  const activeWorkMs =
+    row.stepExecutions.reduce(
+      (total, step) => total + step.actualWorkMs,
+      0,
+    ) +
+    projection.activeSlices
+      .filter((slice) => slice.segment === "WORK")
+      .reduce((total, slice) => total + slice.activeMs, 0);
+  return resolveFinisherOutcome({
+    stepStatuses,
+    activeWorkMs,
+    endedEarly: false,
   });
 }
 
@@ -473,37 +523,7 @@ async function persistElapsedProjectionInTransaction(
   const recoveryActiveMs = projected.activeSlices
     .filter((slice) => slice.segment === "RECOVERY")
     .reduce((sum, slice) => sum + slice.activeMs, 0);
-  const projectedStatuses = row.routineVersion.steps.map((definition) => {
-    const existing =
-      row.stepExecutions.find(
-        (step) => step.routineStepId === definition.id
-      )?.status ?? "PENDING";
-    if (
-      existing === "PENDING" &&
-      projected.completedSteps.some(
-        (step) => step.stepIndex === definition.orderIndex
-      )
-    ) {
-      return "COMPLETED" as const;
-    }
-    return existing;
-  });
-  const projectedActiveWorkMs =
-    row.stepExecutions.reduce(
-      (total, step) => total + step.actualWorkMs,
-      0
-    ) +
-    projected.activeSlices
-      .filter((slice) => slice.segment === "WORK")
-      .reduce((total, slice) => total + slice.activeMs, 0);
-  const terminalOutcome =
-    projected.state === "COMPLETED"
-      ? resolveFinisherOutcome({
-          stepStatuses: projectedStatuses,
-          activeWorkMs: projectedActiveWorkMs,
-          endedEarly: false,
-        })
-      : projected.state;
+  const terminalOutcome = resolveProjectedExecutionOutcome(row, projected);
   const updated = await tx.finisherExecution.updateMany({
     where: { id: row.id, revision: row.revision },
     data: {
@@ -886,10 +906,12 @@ export async function startFinisher(input: {
   workoutId: string;
   executionId: string;
   expectedRevision: number;
+  commandId: string;
   now?: Date;
 }) {
   return mutateExecution({
     ...input,
+    commandAction: "START",
     mutate: async (tx, existing, now) => {
         if (
           existing.state !== "SELECTED" ||
@@ -941,6 +963,9 @@ async function mutateExecution(input: {
   workoutId: string;
   executionId: string;
   expectedRevision: number;
+  commandId: string;
+  commandAction: FinisherExecutionCommandAction;
+  commandPayload?: Record<string, string | number | boolean | null>;
   now?: Date;
   mutate: (
     tx: FinisherTransaction,
@@ -949,24 +974,100 @@ async function mutateExecution(input: {
   ) => Promise<void>;
 }) {
   const now = input.now ?? new Date();
-  return prisma.$transaction(async (tx) => {
-    await loadOwnedCompletedWorkout(tx, input.userId, input.workoutId);
-    const raw = await loadExecution(tx, input.workoutId, input.executionId);
-    if (!raw) fail("FINISHER_EXECUTION_NOT_FOUND", 404);
-    if (raw.revision !== input.expectedRevision) {
-      fail("FINISHER_STALE_TRANSITION", 409);
+  const requestHash = createHash("sha256")
+    .update(
+      JSON.stringify({
+        workoutId: input.workoutId,
+        executionId: input.executionId,
+        action: input.commandAction,
+        expectedRevision: input.expectedRevision,
+        payload: input.commandPayload ?? {},
+      }),
+    )
+    .digest("hex");
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          await loadOwnedCompletedWorkout(tx, input.userId, input.workoutId);
+          const committed = await tx.finisherExecutionCommand.findUnique({
+            where: { id: input.commandId },
+          });
+          if (committed) {
+            if (
+              committed.workoutId !== input.workoutId ||
+              committed.executionId !== input.executionId ||
+              committed.action !== input.commandAction ||
+              committed.requestHash !== requestHash ||
+              committed.expectedRevision !== input.expectedRevision
+            ) {
+              fail("FINISHER_COMMAND_ID_CONFLICT", 409);
+            }
+            return committed.response as unknown as FinisherExecutionDto;
+          }
+
+          await tx.finisherExecutionCommand.deleteMany({
+            where: {
+              executionId: input.executionId,
+              expiresAt: { lt: now },
+            },
+          });
+          const raw = await loadExecution(
+            tx,
+            input.workoutId,
+            input.executionId,
+          );
+          if (!raw) fail("FINISHER_EXECUTION_NOT_FOUND", 404);
+          if (raw.revision !== input.expectedRevision) {
+            fail("FINISHER_STALE_TRANSITION", 409);
+          }
+          const loaded = await persistElapsedProjectionInTransaction(tx, raw, now);
+          if (!loaded) fail("FINISHER_EXECUTION_NOT_FOUND", 404);
+          await input.mutate(tx, loaded, now);
+          const next = await tx.finisherExecution.findUnique({
+            where: { id: loaded.id },
+            include: executionInclude,
+          });
+          if (!next) fail("FINISHER_EXECUTION_NOT_FOUND", 404);
+          const limitations = await loadActiveLimitations(tx, input.userId);
+          const response = toExecutionDto(next, limitations, now);
+          await tx.finisherExecutionCommand.create({
+            data: {
+              id: input.commandId,
+              workoutId: input.workoutId,
+              executionId: input.executionId,
+              action: input.commandAction,
+              requestHash,
+              expectedRevision: input.expectedRevision,
+              resultRevision: response.revision,
+              response: JSON.parse(
+                JSON.stringify(response),
+              ) as Prisma.InputJsonValue,
+              createdAt: now,
+              expiresAt: new Date(
+                now.getTime() + FINISHER_COMMAND_RETENTION_MS,
+              ),
+            },
+          });
+          return response;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error) {
+      const retryablePrismaConflict =
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === "P2002" || error.code === "P2034");
+      const retryableOccConflict =
+        error instanceof FinisherServiceError &&
+        error.code === "FINISHER_STALE_TRANSITION";
+      if (attempt < 2 && (retryablePrismaConflict || retryableOccConflict)) {
+        continue;
+      }
+      throw error;
     }
-    const loaded = await persistElapsedProjectionInTransaction(tx, raw, now);
-    if (!loaded) fail("FINISHER_EXECUTION_NOT_FOUND", 404);
-    await input.mutate(tx, loaded, now);
-    const next = await tx.finisherExecution.findUnique({
-      where: { id: loaded.id },
-      include: executionInclude,
-    });
-    if (!next) fail("FINISHER_EXECUTION_NOT_FOUND", 404);
-    const limitations = await loadActiveLimitations(tx, input.userId);
-    return toExecutionDto(next, limitations, now);
-  });
+  }
+  fail("FINISHER_STALE_TRANSITION", 409);
 }
 
 export function syncFinisher(input: {
@@ -974,10 +1075,12 @@ export function syncFinisher(input: {
   workoutId: string;
   executionId: string;
   expectedRevision: number;
+  commandId: string;
   now?: Date;
 }) {
   return mutateExecution({
     ...input,
+    commandAction: "SYNC",
     mutate: async () => undefined,
   });
 }
@@ -1023,10 +1126,12 @@ export function pauseFinisher(input: {
   workoutId: string;
   executionId: string;
   expectedRevision: number;
+  commandId: string;
   now?: Date;
 }) {
   return mutateExecution({
     ...input,
+    commandAction: "PAUSE",
     mutate: async (tx, row, now) => {
       if (
         (row.state !== "IN_PROGRESS" &&
@@ -1067,10 +1172,12 @@ export function resumeFinisher(input: {
   workoutId: string;
   executionId: string;
   expectedRevision: number;
+  commandId: string;
   now?: Date;
 }) {
   return mutateExecution({
     ...input,
+    commandAction: "RESUME",
     mutate: async (tx, row, now) => {
       if (
         (row.state !== "IN_PROGRESS" &&
@@ -1111,10 +1218,12 @@ export function skipFinisherStep(input: {
   workoutId: string;
   executionId: string;
   expectedRevision: number;
+  commandId: string;
   now?: Date;
 }) {
   return mutateExecution({
     ...input,
+    commandAction: "SKIP",
     mutate: async (tx, row, now) => {
       if (
         row.state !== "IN_PROGRESS" ||
@@ -1210,10 +1319,13 @@ export function substituteFinisherStep(input: {
   executionId: string;
   expectedRevision: number;
   alternativeId: string;
+  commandId: string;
   now?: Date;
 }) {
   return mutateExecution({
     ...input,
+    commandAction: "SUBSTITUTE",
+    commandPayload: { alternativeId: input.alternativeId },
     mutate: async (tx, row) => {
       if (
         row.state !== "SELECTED" &&
@@ -1251,18 +1363,13 @@ export function endFinisher(input: {
   workoutId: string;
   executionId: string;
   expectedRevision: number;
+  commandId: string;
   now?: Date;
 }) {
   return mutateExecution({
     ...input,
+    commandAction: "END",
     mutate: async (tx, row, now) => {
-      if (
-        row.state === "PARTIAL" ||
-        row.state === "SKIPPED" ||
-        row.state === "DISMISSED"
-      ) {
-        return;
-      }
       if (
         row.state !== "IN_PROGRESS" &&
         !(row.state === "SELECTED" && row.timerSegment === "PREPARATION")
@@ -1359,10 +1466,13 @@ export function recordFinisherFeedback(input: {
   executionId: string;
   expectedRevision: number;
   difficultyFeedback: number;
+  commandId: string;
   now?: Date;
 }) {
   return mutateExecution({
     ...input,
+    commandAction: "FEEDBACK",
+    commandPayload: { difficultyFeedback: input.difficultyFeedback },
     mutate: async (tx, row) => {
       if (row.state !== "COMPLETED" && row.state !== "PARTIAL") {
         fail("FINISHER_INVALID_TRANSITION", 409);
@@ -1384,60 +1494,47 @@ export async function dismissSelectedFinisher(input: {
   workoutId: string;
   executionId: string;
   expectedRevision: number;
+  commandId: string;
   now?: Date;
 }) {
-  const now = input.now ?? new Date();
-  return prisma.$transaction(async (tx) => {
-    await loadOwnedCompletedWorkout(tx, input.userId, input.workoutId);
-    const existing = await loadExecution(
-      tx,
-      input.workoutId,
-      input.executionId
-    );
-    if (!existing) fail("FINISHER_EXECUTION_NOT_FOUND", 404);
-    if (existing.state === "DISMISSED") return { dismissed: true };
-    if (
-      existing.revision !== input.expectedRevision ||
-      existing.state !== "SELECTED" ||
-      existing.startedAt ||
-      existing.timerSegment
-    ) {
+  return mutateExecution({
+    ...input,
+    commandAction: "DISMISS",
+    mutate: async (tx, existing, now) => {
+      if (
+        existing.state !== "SELECTED" ||
+        existing.startedAt ||
+        existing.timerSegment
+      ) {
       fail(
         existing.startedAt || existing.timerSegment
           ? "FINISHER_ALREADY_STARTED"
-          : "FINISHER_STALE_TRANSITION",
+          : "FINISHER_INVALID_TRANSITION",
         409
-      );
-    }
-    const updated = await tx.finisherExecution.updateMany({
-      where: {
-        id: existing.id,
-        workoutId: input.workoutId,
-        revision: input.expectedRevision,
-        state: "SELECTED",
-        startedAt: null,
-        timerSegment: null,
-      },
-      data: {
-        state: "DISMISSED",
-        dismissedAt: now,
-        endedAt: now,
-        revision: { increment: 1 },
-      },
-    });
-    if (updated.count !== 1) {
-      const raced = await tx.finisherExecution.findUnique({
-        where: { id: existing.id },
-        select: { state: true },
+        );
+      }
+      const updated = await tx.finisherExecution.updateMany({
+        where: {
+          id: existing.id,
+          workoutId: input.workoutId,
+          revision: existing.revision,
+          state: "SELECTED",
+          startedAt: null,
+          timerSegment: null,
+        },
+        data: {
+          state: "DISMISSED",
+          dismissedAt: now,
+          endedAt: now,
+          revision: { increment: 1 },
+        },
       });
-      if (raced?.state === "DISMISSED") return { dismissed: true };
-      fail("FINISHER_STALE_TRANSITION", 409);
-    }
-    await tx.finisherOffer.update({
-      where: { id: existing.offerId },
-      data: { revision: { increment: 1 } },
-    });
-    return { dismissed: true };
+      if (updated.count !== 1) fail("FINISHER_STALE_TRANSITION", 409);
+      await tx.finisherOffer.update({
+        where: { id: existing.offerId },
+        data: { revision: { increment: 1 } },
+      });
+    },
   });
 }
 

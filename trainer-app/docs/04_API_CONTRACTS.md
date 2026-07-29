@@ -20,11 +20,21 @@ client-stable execution UUID. Decline similarly carries offer identity/revision
 and a stable decision UUID. Every action against an existing execution requires
 its exact execution UUID and expected monotonic revision. Every POST action is registered as
 `finisher_execution` and is blocked by `TRAINER_WRITE_PAUSE=enabled`.
+`start`, `sync`, `pause`, `resume`, `skip`, `substitute`, `end`, `feedback`,
+and `dismiss` also require a client-generated UUID `commandId`. The server
+checks the durable command receipt before OCC: an exact committed retry returns
+the original response even if its expected revision is now stale. The request
+hash binds workout, execution, action, expected revision, and payload; reusing
+the ID with any different binding returns
+`FINISHER_COMMAND_ID_CONFLICT`. A distinct stale or out-of-order command keeps
+the existing `FINISHER_STALE_TRANSITION` behavior. Concurrent identical
+commands serialize to one transition and one receipt.
 Active and started-execution uniqueness is protected by partial unique indexes
 and serializable selection transactions. Duplicate selection and decline
 decision identities are idempotent only when their immutable binding matches;
 conflicting, stale, replayed, or out-of-order requests return deterministic
-`409` codes. A stale request for dismissed A can address only A and cannot act
+`409` codes. An exact duplicate command for dismissed A can replay only A's
+stored response; a distinct stale request for A can address only A and cannot act
 on replacement B. Client input never supplies ownership, workout completion,
 elapsed duration, routine metadata, step order, or arbitrary substitutions.
 

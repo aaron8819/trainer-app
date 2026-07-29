@@ -145,6 +145,8 @@ export type FunctionFact = {
   strict?: boolean;
   parallel?: string;
   body?: string;
+  configuration?: string[] | null;
+  publicExecute?: boolean;
 };
 export type CatalogRowFact = {
   table: string;
@@ -246,6 +248,8 @@ type ObjectExpectation = {
     strict: boolean;
     parallel: string;
     body: string;
+    configuration?: string[] | null;
+    publicExecute?: boolean;
   };
   row?: Record<string, unknown>;
   definitionIncludes?: string[];
@@ -324,6 +328,33 @@ function finisherFunction(name: string): ObjectExpectation {
       strict: false,
       parallel: "u",
       body: match[1],
+    },
+  };
+}
+
+function finisherCleanupFunction(): ObjectExpectation {
+  const name = "cleanup_expired_finisher_execution_commands";
+  const match = FINISHER_MIGRATION_SQL.match(
+    /CREATE FUNCTION cleanup_expired_finisher_execution_commands\(\s*p_batch_size INTEGER DEFAULT 100\s*\) RETURNS INTEGER\s+LANGUAGE plpgsql\s+SECURITY DEFINER\s+SET search_path = pg_catalog, public\s+AS \$\$([\s\S]*?)\$\$;/,
+  );
+  if (!match?.[1]) {
+    throw new Error(`Missing canonical Finisher function definition: ${name}`);
+  }
+  return {
+    kind: "function",
+    name,
+    function: {
+      language: "plpgsql",
+      arguments: "p_batch_size integer",
+      resultType: "integer",
+      volatility: "v",
+      securityDefiner: true,
+      leakproof: false,
+      strict: false,
+      parallel: "u",
+      body: match[1],
+      configuration: ["search_path=pg_catalog, public"],
+      publicExecute: false,
     },
   };
 }
@@ -881,6 +912,8 @@ const FINISHER_SCHEMA_EXPECTATIONS: ObjectExpectation[] = [
     ["FinisherExecutionStep", "FinisherExecutionStep_actual_work_nonnegative", "CHECK (actualWorkMs >= 0)"],
     ["FinisherExecutionCommand", "FinisherExecutionCommand_expected_revision_positive", "CHECK (expectedRevision > 0)"],
     ["FinisherExecutionCommand", "FinisherExecutionCommand_result_revision_positive", "CHECK (resultRevision > 0)"],
+    ["FinisherExecutionCommand", "FinisherExecutionCommand_expiration_after_creation", "CHECK (expiresAt > createdAt)"],
+    ["FinisherExecutionCommand", "FinisherExecutionCommand_cleanup_consistent", "CHECK (response IS NOT NULL AND cleanedAt IS NULL OR response IS NULL AND cleanedAt IS NOT NULL AND cleanedAt >= expiresAt)"],
   ].map(([table, name, definition]) =>
     finisherExactConstraint(table, name, "c", definition),
   ),
@@ -918,8 +951,12 @@ const FINISHER_SCHEMA_EXPECTATIONS: ObjectExpectation[] = [
     "reject_finisher_offer_item_update",
     "guard_finisher_execution_identity",
     "guard_finisher_execution_step_identity",
+    "guard_terminal_finisher_execution_evidence",
+    "guard_finisher_execution_step_evidence",
     "reject_finisher_history_deletion",
+    "guard_finisher_execution_command_tombstone",
   ].map(finisherFunction),
+  finisherCleanupFunction(),
   ...[
     ["FinisherRoutine", "FinisherRoutine_identity_immutable", "guard_finisher_routine_identity"],
     ["FinisherRoutineVersion", "FinisherRoutineVersion_require_sealed", "require_finisher_routine_version_sealed"],
@@ -929,7 +966,10 @@ const FINISHER_SCHEMA_EXPECTATIONS: ObjectExpectation[] = [
     ["FinisherOffer", "FinisherOffer_identity_immutable", "guard_finisher_offer_identity"],
     ["FinisherOfferItem", "FinisherOfferItem_immutable", "reject_finisher_offer_item_update"],
     ["FinisherExecution", "FinisherExecution_identity_immutable", "guard_finisher_execution_identity"],
+    ["FinisherExecution", "FinisherExecution_terminal_evidence_immutable", "guard_terminal_finisher_execution_evidence"],
     ["FinisherExecutionStep", "FinisherExecutionStep_identity_immutable", "guard_finisher_execution_step_identity"],
+    ["FinisherExecutionStep", "FinisherExecutionStep_evidence_immutable", "guard_finisher_execution_step_evidence"],
+    ["FinisherExecutionCommand", "FinisherExecutionCommand_tombstone", "guard_finisher_execution_command_tombstone"],
     ["FinisherOffer", "FinisherOffer_no_delete", "reject_finisher_history_deletion"],
     ["FinisherOfferItem", "FinisherOfferItem_no_delete", "reject_finisher_history_deletion"],
     ["FinisherExecution", "FinisherExecution_no_delete", "reject_finisher_history_deletion"],
@@ -1336,6 +1376,9 @@ function normalizeIndexPart(value: string | null): string | null {
 }
 
 function objectKey(object: ObjectExpectation): string {
+  if (object.kind === "function" && object.function?.arguments) {
+    return `${object.kind}:${object.name}(${object.function.arguments})`;
+  }
   return `${object.kind}:${object.table ? `${object.table}.` : ""}${object.name}`;
 }
 
@@ -1473,6 +1516,11 @@ function pendingObjectCompatible(snapshot: CatalogSnapshot, object: ObjectExpect
       actual.leakproof === object.function.leakproof &&
       actual.strict === object.function.strict &&
       actual.parallel === object.function.parallel &&
+      (object.function.configuration === undefined ||
+        canonicalJson(actual.configuration ?? null) ===
+          canonicalJson(object.function.configuration)) &&
+      (object.function.publicExecute === undefined ||
+        actual.publicExecute === object.function.publicExecute) &&
       normalize(actual.body ?? null) === normalize(object.function.body)
     );
   }

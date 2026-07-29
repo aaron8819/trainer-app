@@ -165,7 +165,13 @@ CREATE TABLE "FinisherExecutionCommand" (
     "cleanedAt" TIMESTAMP(3),
     CONSTRAINT "FinisherExecutionCommand_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "FinisherExecutionCommand_expected_revision_positive" CHECK ("expectedRevision" > 0),
-    CONSTRAINT "FinisherExecutionCommand_result_revision_positive" CHECK ("resultRevision" > 0)
+    CONSTRAINT "FinisherExecutionCommand_result_revision_positive" CHECK ("resultRevision" > 0),
+    CONSTRAINT "FinisherExecutionCommand_expiration_after_creation" CHECK ("expiresAt" > "createdAt"),
+    CONSTRAINT "FinisherExecutionCommand_cleanup_consistent" CHECK (
+      ("response" IS NOT NULL AND "cleanedAt" IS NULL)
+      OR
+      ("response" IS NULL AND "cleanedAt" IS NOT NULL AND "cleanedAt" >= "expiresAt")
+    )
 );
 
 CREATE UNIQUE INDEX "FinisherRoutine_code_key" ON "FinisherRoutine"("code");
@@ -521,6 +527,81 @@ BEGIN
 END;
 $$;
 
+-- A terminal execution freezes every performed fact. The existing optional
+-- feedback lifecycle may change only difficultyFeedback and the OCC revision.
+CREATE FUNCTION guard_terminal_finisher_execution_evidence() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF OLD."state" IN ('COMPLETED', 'PARTIAL', 'SKIPPED', 'DISMISSED') THEN
+    IF to_jsonb(NEW) = to_jsonb(OLD) THEN
+      RETURN NEW;
+    END IF;
+
+    IF OLD."state" IN ('COMPLETED', 'PARTIAL')
+      AND NEW."state" = OLD."state"
+      AND NEW."difficultyFeedback" IS DISTINCT FROM OLD."difficultyFeedback"
+      AND NEW."revision" = OLD."revision" + 1
+      AND (
+        to_jsonb(NEW) - ARRAY['difficultyFeedback', 'revision']::text[]
+      ) = (
+        to_jsonb(OLD) - ARRAY['difficultyFeedback', 'revision']::text[]
+      )
+    THEN
+      RETURN NEW;
+    END IF;
+
+    RAISE EXCEPTION 'terminal finisher execution evidence is immutable';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+-- Resolved steps never regress. Parent locking makes the final child updates
+-- and parent terminal transition atomic with respect to concurrent rewrites.
+CREATE FUNCTION guard_finisher_execution_step_evidence() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+  parent_state "FinisherExecutionState";
+BEGIN
+  SELECT "state"
+  INTO parent_state
+  FROM "FinisherExecution"
+  WHERE "id" = OLD."executionId"
+  FOR UPDATE;
+
+  IF parent_state IS NULL THEN
+    RAISE EXCEPTION 'finisher execution step parent is missing';
+  END IF;
+
+  IF parent_state IN ('COMPLETED', 'PARTIAL', 'SKIPPED', 'DISMISSED')
+    OR OLD."status" <> 'PENDING'
+  THEN
+    IF to_jsonb(NEW) IS DISTINCT FROM to_jsonb(OLD) THEN
+      RAISE EXCEPTION 'resolved finisher execution step evidence is immutable';
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  IF NEW."actualWorkMs" < OLD."actualWorkMs"
+    OR (
+      OLD."startedAt" IS NOT NULL
+      AND NEW."startedAt" IS DISTINCT FROM OLD."startedAt"
+    )
+    OR (
+      OLD."resolvedAt" IS NOT NULL
+      AND NEW."resolvedAt" IS DISTINCT FROM OLD."resolvedAt"
+    )
+    OR (NEW."status" = 'PENDING' AND NEW."resolvedAt" IS NOT NULL)
+    OR (NEW."status" <> 'PENDING' AND NEW."resolvedAt" IS NULL)
+  THEN
+    RAISE EXCEPTION 'finisher execution step lifecycle evidence cannot regress';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
 CREATE TRIGGER "FinisherOffer_identity_immutable"
 BEFORE UPDATE ON "FinisherOffer"
 FOR EACH ROW EXECUTE FUNCTION guard_finisher_offer_identity();
@@ -533,9 +614,15 @@ FOR EACH ROW EXECUTE FUNCTION guard_finisher_offer_item_insert();
 CREATE TRIGGER "FinisherExecution_identity_immutable"
 BEFORE UPDATE ON "FinisherExecution"
 FOR EACH ROW EXECUTE FUNCTION guard_finisher_execution_identity();
+CREATE TRIGGER "FinisherExecution_terminal_evidence_immutable"
+BEFORE UPDATE ON "FinisherExecution"
+FOR EACH ROW EXECUTE FUNCTION guard_terminal_finisher_execution_evidence();
 CREATE TRIGGER "FinisherExecutionStep_identity_immutable"
 BEFORE UPDATE ON "FinisherExecutionStep"
 FOR EACH ROW EXECUTE FUNCTION guard_finisher_execution_step_identity();
+CREATE TRIGGER "FinisherExecutionStep_evidence_immutable"
+BEFORE UPDATE ON "FinisherExecutionStep"
+FOR EACH ROW EXECUTE FUNCTION guard_finisher_execution_step_evidence();
 CREATE TRIGGER "FinisherExecutionStep_insert_before_finalization"
 BEFORE INSERT ON "FinisherExecutionStep"
 FOR EACH ROW EXECUTE FUNCTION guard_finisher_execution_step_insert();
@@ -560,6 +647,88 @@ FOR EACH ROW EXECUTE FUNCTION reject_finisher_history_deletion();
 CREATE TRIGGER "FinisherExecutionStep_no_delete"
 BEFORE DELETE ON "FinisherExecutionStep"
 FOR EACH ROW EXECUTE FUNCTION reject_finisher_history_deletion();
+
+-- Command rows are permanent tombstones. Cleanup is the sole update path and
+-- may clear only an expired response payload while preserving every binding.
+CREATE FUNCTION guard_finisher_execution_command_tombstone() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'finisher execution command tombstones cannot be deleted';
+  END IF;
+
+  IF current_setting('trainer.finisher_command_cleanup', true) = 'enabled'
+    AND OLD."response" IS NOT NULL
+    AND NEW."response" IS NULL
+    AND OLD."cleanedAt" IS NULL
+    AND NEW."cleanedAt" IS NOT NULL
+    AND NEW."cleanedAt" >= OLD."expiresAt"
+    AND NEW."cleanedAt" <= statement_timestamp() + INTERVAL '1 millisecond'
+    AND NEW."id" = OLD."id"
+    AND NEW."workoutId" = OLD."workoutId"
+    AND NEW."executionId" = OLD."executionId"
+    AND NEW."action" = OLD."action"
+    AND NEW."requestHash" = OLD."requestHash"
+    AND NEW."expectedRevision" = OLD."expectedRevision"
+    AND NEW."resultRevision" = OLD."resultRevision"
+    AND NEW."createdAt" = OLD."createdAt"
+    AND NEW."expiresAt" = OLD."expiresAt"
+  THEN
+    RETURN NEW;
+  END IF;
+
+  RAISE EXCEPTION 'finisher execution command tombstones are immutable';
+END;
+$$;
+
+CREATE TRIGGER "FinisherExecutionCommand_tombstone"
+BEFORE UPDATE OR DELETE ON "FinisherExecutionCommand"
+FOR EACH ROW EXECUTE FUNCTION guard_finisher_execution_command_tombstone();
+
+CREATE FUNCTION cleanup_expired_finisher_execution_commands(
+  p_batch_size INTEGER DEFAULT 100
+) RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+  cleaned_count INTEGER;
+BEGIN
+  IF p_batch_size IS NULL OR p_batch_size < 1 OR p_batch_size > 100 THEN
+    RAISE EXCEPTION 'finisher command cleanup batch size must be between 1 and 100';
+  END IF;
+
+  PERFORM set_config('trainer.finisher_command_cleanup', 'enabled', true);
+
+  WITH expired AS MATERIALIZED (
+    SELECT command."id"
+    FROM public."FinisherExecutionCommand" command
+    WHERE command."response" IS NOT NULL
+      AND command."cleanedAt" IS NULL
+      AND command."expiresAt" <= statement_timestamp()
+    ORDER BY command."expiresAt" ASC, command."id" ASC
+    FOR UPDATE SKIP LOCKED
+    LIMIT p_batch_size
+  ),
+  cleaned AS (
+    UPDATE public."FinisherExecutionCommand" command
+    SET
+      "response" = NULL,
+      "cleanedAt" = statement_timestamp()
+    FROM expired
+    WHERE command."id" = expired."id"
+    RETURNING command."id"
+  )
+  SELECT COUNT(*)::INTEGER INTO cleaned_count FROM cleaned;
+
+  PERFORM set_config('trainer.finisher_command_cleanup', '', true);
+  RETURN cleaned_count;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION cleanup_expired_finisher_execution_commands(INTEGER)
+FROM PUBLIC;
 
 -- BEGIN GENERATED FINISHER CATALOG
 

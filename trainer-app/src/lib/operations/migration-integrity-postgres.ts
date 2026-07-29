@@ -213,6 +213,8 @@ export async function inspectMigrationDatabase(client: ReadOnlyClient): Promise<
       is_strict: boolean;
       parallel_safety: string;
       body: string;
+      configuration: string[] | null;
+      public_execute: boolean;
     }>("functions", `
       SELECT p.proname AS function_name,
         pg_catalog.pg_get_functiondef(p.oid) AS definition,
@@ -224,7 +226,19 @@ export async function inspectMigrationDatabase(client: ReadOnlyClient): Promise<
         p.proleakproof AS leakproof,
         p.proisstrict AS is_strict,
         p.proparallel::text AS parallel_safety,
-        p.prosrc AS body
+        p.prosrc AS body,
+        p.proconfig AS configuration,
+        EXISTS (
+          SELECT 1
+          FROM pg_catalog.aclexplode(
+            COALESCE(
+              p.proacl,
+              pg_catalog.acldefault('f', p.proowner)
+            )
+          ) privilege
+          WHERE privilege.grantee = 0
+            AND privilege.privilege_type = 'EXECUTE'
+        ) AS public_execute
       FROM pg_catalog.pg_proc p
       JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
       JOIN pg_catalog.pg_language l ON l.oid = p.prolang
@@ -323,6 +337,8 @@ export async function inspectMigrationDatabase(client: ReadOnlyClient): Promise<
           strict: row.is_strict,
           parallel: row.parallel_safety,
           body: row.body,
+          configuration: row.configuration,
+          publicExecute: row.public_execute,
         })),
         catalogRows: catalogRows.map(
           (row): CatalogRowFact => ({

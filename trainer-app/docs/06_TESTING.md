@@ -76,7 +76,9 @@ Sources of truth:
   offer/decline/dismissal history,
   receipt-safe retries for every existing-execution command, exact
   command-response HTTP replay after later state, exact-boundary receipt
-  expiration, bounded concurrent payload cleanup with retained tombstones,
+  expiration, permanent command update/delete tombstones, constrained
+  before/at/after-expiry cleanup, terminal parent/step mutation rejection across
+  Prisma/direct SQL/bulk/insert/delete paths, bounded concurrent payload cleanup,
   execution-identity ABA isolation, and projected-versus-persisted completed,
   mixed, all-skipped, preparation-only, retained-work, and substitution
   outcomes, plus workout-deletion protection. After the DB suites, it runs the

@@ -94,13 +94,18 @@ function addCompatibleManifestObject(
     catalog.triggers.push({
       table: object.table!,
       name: object.name,
-      definition: object.definitionIncludes?.join(" ") ?? "",
+      definition:
+        object.trigger?.definition ??
+        object.definitionIncludes?.join(" ") ??
+        "",
+      enabled: object.trigger?.enabled,
     });
   }
   if (object.kind === "function") {
     catalog.functions.push({
       name: object.name,
       definition: object.definitionIncludes?.join(" ") ?? "",
+      ...object.function,
     });
   }
   if (object.kind === "catalogRow") {
@@ -780,11 +785,116 @@ describe("migration integrity", () => {
       },
     ],
     [
+      "missing terminal execution trigger",
+      (catalog: CatalogSnapshot) => {
+        catalog.triggers = catalog.triggers.filter(
+          (trigger) =>
+            trigger.name !== "FinisherExecution_terminal_evidence_immutable",
+        );
+      },
+    ],
+    [
+      "disabled terminal step trigger",
+      (catalog: CatalogSnapshot) => {
+        catalog.triggers.find(
+          (trigger) =>
+            trigger.name === "FinisherExecutionStep_evidence_immutable",
+        )!.enabled = "D";
+      },
+    ],
+    [
+      "replica-only command tombstone trigger",
+      (catalog: CatalogSnapshot) => {
+        catalog.triggers.find(
+          (trigger) =>
+            trigger.name === "FinisherExecutionCommand_tombstone",
+        )!.enabled = "R";
+      },
+    ],
+    [
+      "command trigger attached to wrong table",
+      (catalog: CatalogSnapshot) => {
+        catalog.triggers.find(
+          (trigger) =>
+            trigger.name === "FinisherExecutionCommand_tombstone",
+        )!.table = "FinisherExecution";
+      },
+    ],
+    [
+      "command trigger omits delete",
+      (catalog: CatalogSnapshot) => {
+        const trigger = catalog.triggers.find(
+          (item) => item.name === "FinisherExecutionCommand_tombstone",
+        )!;
+        trigger.definition = trigger.definition.replace(
+          "BEFORE UPDATE OR DELETE",
+          "BEFORE UPDATE",
+        );
+      },
+    ],
+    [
       "altered immutability function",
       (catalog: CatalogSnapshot) => {
         catalog.functions.find(
           (fn) => fn.name === "guard_finisher_routine_child_mutation",
-        )!.definition = "CREATE FUNCTION guard_finisher_routine_child_mutation()";
+        )!.body = "BEGIN RETURN NEW; END;";
+      },
+    ],
+    [
+      "weakened terminal-state condition",
+      (catalog: CatalogSnapshot) => {
+        const fn = catalog.functions.find(
+          (item) =>
+            item.name === "guard_terminal_finisher_execution_evidence",
+        )!;
+        fn.body = fn.body!.replace(", 'PARTIAL'", "");
+      },
+    ],
+    [
+      "omitted protected step field",
+      (catalog: CatalogSnapshot) => {
+        const fn = catalog.functions.find(
+          (item) => item.name === "guard_finisher_execution_step_evidence",
+        )!;
+        fn.body = fn.body!.replace(
+          'OLD."startedAt" IS NOT NULL',
+          "false",
+        );
+      },
+    ],
+    [
+      "cleanup allowed before expiration",
+      (catalog: CatalogSnapshot) => {
+        const fn = catalog.functions.find(
+          (item) =>
+            item.name === "cleanup_expired_finisher_execution_commands",
+        )!;
+        fn.body = fn.body!.replace(
+          'AND command."expiresAt" <= statement_timestamp()',
+          "",
+        );
+      },
+    ],
+    [
+      "cleanup modifies permanent receipt identity",
+      (catalog: CatalogSnapshot) => {
+        const fn = catalog.functions.find(
+          (item) =>
+            item.name === "cleanup_expired_finisher_execution_commands",
+        )!;
+        fn.body = fn.body!.replace(
+          '"cleanedAt" = statement_timestamp()',
+          '"cleanedAt" = statement_timestamp(), "resultRevision" = "resultRevision" + 1',
+        );
+      },
+    ],
+    [
+      "cleanup is executable by public",
+      (catalog: CatalogSnapshot) => {
+        catalog.functions.find(
+          (item) =>
+            item.name === "cleanup_expired_finisher_execution_commands",
+        )!.publicExecute = true;
       },
     ],
     [

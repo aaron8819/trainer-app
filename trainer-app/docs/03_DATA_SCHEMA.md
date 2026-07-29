@@ -25,7 +25,11 @@ Migration `20260728120000_add_finishers_phase_1` adds:
   interval timestamps, exact pause remainder, separate active preparation and
   recovery totals, per-segment paused totals, transition revision, and optional
   difficulty feedback. Performed duration is active work plus active recovery;
-  preparation and all paused time are excluded.
+  preparation and all paused time are excluded. Once the execution enters
+  `COMPLETED`, `PARTIAL`, `SKIPPED`, or `DISMISSED`, database enforcement freezes
+  its outcome, duration, timing, segment, and lifecycle evidence. The existing
+  optional feedback action may change only `difficultyFeedback` together with
+  the monotonic OCC revision.
 - `FinisherExecutionStep`: prescribed step identity, optional predefined
   performed alternative, resolved status/timestamps, and accumulated active
   work duration. Each row stores and relationally binds its routine version and
@@ -33,7 +37,11 @@ Migration `20260728120000_add_finishers_phase_1` adds:
   complete version step set in both directions; composite foreign keys prevent
   a step or alternative from another version/step. Finalized prescriptions
   reject append, reorder, reassignment, and delete. `PARTIAL` distinguishes current work preserved by an early end
-  from `COMPLETED`, `SKIPPED`, and untouched `PENDING` work.
+  from `COMPLETED`, `SKIPPED`, and untouched `PENDING` work. A resolved step is
+  immediately immutable, including substitution, status, active work, timing,
+  note, identity, and order. Parent-row locking serializes child updates with
+  terminalization; after the parent is terminal, even untouched `PENDING` steps
+  cannot be inserted, updated, cleared, reset, reassigned, reordered, or deleted.
 - `FinisherExecutionCommand`: durable idempotency receipt for every command
   against an existing execution. `commandId` is globally unique; the request
   hash binds workout, execution, action, expected revision, and payload,
@@ -41,8 +49,13 @@ Migration `20260728120000_add_finishers_phase_1` adds:
   deterministic. A receipt is logically expired at its exact 90-day
   `expiresAt` boundary. Cleanup clears only the response payload and stamps
   `cleanedAt`; the compact command tombstone and globally unique ID remain so
-  an expired command can never be reused. Retained execution and step history
-  is permanent and independent of receipt cleanup.
+  an expired command can never be reused. A database trigger rejects every
+  command update or delete except the exact one-way expired payload cleanup.
+  Cleanup runs only through the bounded security-definer function, whose public
+  execute privilege is revoked; it preserves command/workout/execution/action,
+  request hash, expected/result revisions, and creation/expiration timestamps.
+  A cleared response cannot be restored. Retained execution and step history is
+  permanent and independent of receipt cleanup.
 
 The lifecycle is `SELECTED -> IN_PROGRESS ->
 COMPLETED|PARTIAL|SKIPPED|DISMISSED`. Dismissal updates the selected execution;

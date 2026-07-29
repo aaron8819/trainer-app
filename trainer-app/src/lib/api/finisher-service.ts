@@ -1070,9 +1070,7 @@ async function mutateExecution(input: {
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
       ).then(async (response) => {
-        await cleanupExpiredFinisherCommandReceipts({ now }).catch(
-          () => undefined,
-        );
+        await cleanupExpiredFinisherCommandReceipts().catch(() => undefined);
         return response;
       });
     } catch (error) {
@@ -1092,10 +1090,8 @@ async function mutateExecution(input: {
 }
 
 export async function cleanupExpiredFinisherCommandReceipts(input: {
-  now?: Date;
   batchSize?: number;
 } = {}): Promise<number> {
-  const now = input.now ?? new Date();
   const batchSize = Math.max(
     1,
     Math.min(
@@ -1103,30 +1099,12 @@ export async function cleanupExpiredFinisherCommandReceipts(input: {
       FINISHER_COMMAND_CLEANUP_BATCH_SIZE,
     ),
   );
-  return prisma.$transaction(async (tx) => {
-    const expired = await tx.finisherExecutionCommand.findMany({
-      where: {
-        cleanedAt: null,
-        expiresAt: { lte: now },
-      },
-      orderBy: [{ expiresAt: "asc" }, { id: "asc" }],
-      take: batchSize,
-      select: { id: true },
-    });
-    if (expired.length === 0) return 0;
-    const cleaned = await tx.finisherExecutionCommand.updateMany({
-      where: {
-        id: { in: expired.map((row) => row.id) },
-        cleanedAt: null,
-        expiresAt: { lte: now },
-      },
-      data: {
-        response: Prisma.DbNull,
-        cleanedAt: now,
-      },
-    });
-    return cleaned.count;
-  });
+  const [result] = await prisma.$queryRaw<Array<{ cleanedCount: number }>>`
+    SELECT cleanup_expired_finisher_execution_commands(
+      ${batchSize}::INTEGER
+    ) AS "cleanedCount"
+  `;
+  return Number(result?.cleanedCount ?? 0);
 }
 
 export function syncFinisher(input: {

@@ -1232,6 +1232,146 @@ try {
     `);
   }
 
+  psql(
+    `ALTER TABLE "FinisherExecutionStep" DISABLE TRIGGER "FinisherExecutionStep_evidence_immutable";`,
+  );
+  requireFinisherGateAFailure(
+    "Disabled terminal step evidence trigger",
+    "FinisherExecutionStep_evidence_immutable",
+  );
+  psql(
+    `ALTER TABLE "FinisherExecutionStep" ENABLE TRIGGER "FinisherExecutionStep_evidence_immutable";`,
+  );
+  psql(
+    `ALTER TABLE "FinisherExecutionCommand" ENABLE REPLICA TRIGGER "FinisherExecutionCommand_tombstone";`,
+  );
+  requireFinisherGateAFailure(
+    "Replica-only command tombstone trigger",
+    "FinisherExecutionCommand_tombstone",
+  );
+  psql(
+    `ALTER TABLE "FinisherExecutionCommand" ENABLE TRIGGER "FinisherExecutionCommand_tombstone";`,
+  );
+
+  const createCanonicalCommandTombstoneTrigger = `
+    CREATE TRIGGER "FinisherExecutionCommand_tombstone"
+    BEFORE UPDATE OR DELETE ON "FinisherExecutionCommand"
+    FOR EACH ROW EXECUTE FUNCTION guard_finisher_execution_command_tombstone();
+  `;
+  psql(
+    `DROP TRIGGER "FinisherExecutionCommand_tombstone" ON "FinisherExecutionCommand";`,
+  );
+  requireFinisherAppliedSchemaFailure(
+    "Missing command tombstone trigger",
+    "FinisherExecutionCommand_tombstone",
+  );
+  psql(createCanonicalCommandTombstoneTrigger);
+  psql(`
+    DROP TRIGGER "FinisherExecutionCommand_tombstone" ON "FinisherExecutionCommand";
+    CREATE TRIGGER "FinisherExecutionCommand_tombstone"
+    BEFORE UPDATE ON "FinisherExecutionCommand"
+    FOR EACH ROW EXECUTE FUNCTION guard_finisher_execution_command_tombstone();
+  `);
+  requireFinisherGateAFailure(
+    "Command tombstone trigger permits deletion",
+    "FinisherExecutionCommand_tombstone",
+  );
+  psql(`
+    DROP TRIGGER "FinisherExecutionCommand_tombstone" ON "FinisherExecutionCommand";
+    ${createCanonicalCommandTombstoneTrigger}
+  `);
+
+  for (const [functionName, label, weakenedBody] of [
+    [
+      "guard_terminal_finisher_execution_evidence",
+      "Weakened terminal execution condition",
+      `BEGIN RETURN NEW; END;`,
+    ],
+    [
+      "guard_finisher_execution_step_evidence",
+      "Omitted protected terminal step field",
+      `BEGIN RETURN NEW; END;`,
+    ],
+    [
+      "guard_finisher_execution_command_tombstone",
+      "Permitted command receipt identity rewriting",
+      `BEGIN RETURN COALESCE(NEW, OLD); END;`,
+    ],
+  ] as const) {
+    const canonicalFunction = psql(
+      `
+        SELECT pg_get_functiondef(p.oid)
+        FROM pg_catalog.pg_proc p
+        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'public'
+          AND p.proname = '${functionName}'
+          AND pg_get_function_identity_arguments(p.oid) = '';
+      `,
+      true,
+    );
+    psql(`
+      CREATE OR REPLACE FUNCTION ${functionName}() RETURNS trigger
+      LANGUAGE plpgsql AS $$
+      ${weakenedBody}
+      $$;
+    `);
+    requireFinisherGateAFailure(label, functionName);
+    psql(`${canonicalFunction};`);
+  }
+
+  const canonicalCleanupFunction = psql(
+    `
+      SELECT pg_get_functiondef(p.oid)
+      FROM pg_catalog.pg_proc p
+      JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public'
+        AND p.proname = 'cleanup_expired_finisher_execution_commands'
+        AND pg_get_function_identity_arguments(p.oid) = 'p_batch_size integer';
+    `,
+    true,
+  );
+  psql(`
+    CREATE OR REPLACE FUNCTION cleanup_expired_finisher_execution_commands(
+      p_batch_size INTEGER DEFAULT 100
+    ) RETURNS INTEGER
+    LANGUAGE plpgsql
+    SECURITY DEFINER
+    SET search_path = pg_catalog, public
+    AS $$
+    BEGIN
+      RETURN 0;
+    END;
+    $$;
+  `);
+  requireFinisherGateAFailure(
+    "Cleanup permitted before expiration or skipped immutable enforcement",
+    "cleanup_expired_finisher_execution_commands",
+  );
+  psql(`${canonicalCleanupFunction};`);
+  psql(
+    `GRANT EXECUTE ON FUNCTION cleanup_expired_finisher_execution_commands(INTEGER) TO PUBLIC;`,
+  );
+  requireFinisherGateAFailure(
+    "Cleanup function exposed to public execution",
+    "cleanup_expired_finisher_execution_commands",
+  );
+  psql(
+    `REVOKE ALL ON FUNCTION cleanup_expired_finisher_execution_commands(INTEGER) FROM PUBLIC;`,
+  );
+  psql(`
+    CREATE FUNCTION finisher_command_cleanup_bypass() RETURNS void
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      RETURN;
+    END;
+    $$;
+  `);
+  requireFinisherGateAFailure(
+    "Unexpected Finisher cleanup bypass function",
+    "finisher_command_cleanup_bypass",
+  );
+  psql(`DROP FUNCTION finisher_command_cleanup_bypass();`);
+
   for (const [column, label] of [
     ["indisvalid", "invalid"],
     ["indisready", "unready"],
@@ -1558,7 +1698,7 @@ try {
       stateE: "fully_migrated_gate_a_not_applicable",
       baselineUniquenessVariants: "standalone_constraint_missing_wrong_order_non_unique_partial_predicate",
       finisherExactIntegrityNegatives:
-        "disabled_replica_only_missing_altered_event_altered_timing_altered_table_trigger_invalid_unready_nonlive_missing_altered_predicate_altered_column_nonunique_partial_index_weakened_and_security_changed_function_weakened_unvalidated_and_fk_action_changed_constraint_unexpected_active_catalog_row",
+        "disabled_replica_only_missing_altered_event_altered_timing_altered_table_trigger_command_delete_event_removed_invalid_unready_nonlive_missing_altered_predicate_altered_column_nonunique_partial_index_weakened_terminal_step_command_and_security_changed_function_cleanup_body_and_public_execute_drift_unexpected_bypass_function_weakened_unvalidated_and_fk_action_changed_constraint_unexpected_active_catalog_row",
       readOnlyFingerprintsStable: true,
     },
     readinessIntegrity: {

@@ -1392,17 +1392,16 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
             stepExecutions: { orderBy: { orderIndex: "asc" } },
           },
         });
-      await client.finisherExecutionCommand.updateMany({
-        where: {
-          id: { in: [startCommandId, pauseCommandId, endCommandId] },
-        },
-        data: { expiresAt },
-      });
-      const extraCommandIds = Array.from({ length: 4 }, () =>
+      const [{ databaseNow }] = await client.$queryRaw<
+        Array<{ databaseNow: Date }>
+      >`SELECT statement_timestamp() AS "databaseNow"`;
+      const cleanupExpiresAt = new Date(databaseNow.getTime() - 60_000);
+      const cleanupCreatedAt = new Date(cleanupExpiresAt.getTime() - 60_000);
+      const expiredCommandIds = Array.from({ length: 7 }, () =>
         crypto.randomUUID(),
       );
       await client.finisherExecutionCommand.createMany({
-        data: extraCommandIds.map((id, index) => ({
+        data: expiredCommandIds.map((id, index) => ({
           id,
           workoutId: workout.id,
           executionId: selected.id,
@@ -1411,27 +1410,23 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
           expectedRevision: selected.revision,
           resultRevision: ended.revision,
           response: { marker: index },
-          createdAt: now,
-          expiresAt,
+          createdAt: cleanupCreatedAt,
+          expiresAt: cleanupExpiresAt,
         })),
       });
-      const allExpiredIds = [
-        startCommandId,
-        pauseCommandId,
-        endCommandId,
-        ...extraCommandIds,
-      ];
+      await expect(
+        client.$executeRaw`
+          UPDATE "FinisherExecutionCommand"
+          SET
+            "response" = NULL,
+            "cleanedAt" = statement_timestamp()
+          WHERE "id" = ${expiredCommandIds[0]!}
+        `,
+      ).rejects.toThrow(/tombstone|immutable/i);
 
-      await client.finisherExecutionCommand.updateMany({
-        where: {
-          id: {
-            notIn: allExpiredIds,
-          },
-        },
-        data: {
-          expiresAt: new Date(expiresAt.getTime() + 24 * 60 * 60 * 1_000),
-        },
-      });
+      expect(
+        await cleanupExpiredFinisherCommandReceipts({ batchSize: 1 }),
+      ).toBe(1);
 
       const concurrent = await Promise.allSettled([
         startSelectedFinisher({
@@ -1439,11 +1434,10 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
           workoutId: workout.id,
           executionId: selected.id,
           expectedRevision: selected.revision,
-          commandId: startCommandId,
-          now: expiresAt,
+          commandId: expiredCommandIds[1]!,
+          now: databaseNow,
         }),
         cleanupExpiredFinisherCommandReceipts({
-          now: expiresAt,
           batchSize: 2,
         }),
       ]);
@@ -1456,39 +1450,51 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
         value: 2,
       });
 
-      const batchCounts = [2];
+      const batchCounts = [1, 2];
       while (
         (await client.finisherExecutionCommand.count({
           where: {
-            id: { in: allExpiredIds },
+            id: { in: expiredCommandIds },
             cleanedAt: null,
           },
         })) > 0
       ) {
         batchCounts.push(
           await cleanupExpiredFinisherCommandReceipts({
-            now: expiresAt,
             batchSize: 2,
           }),
         );
       }
       expect(batchCounts.every((count) => count > 0 && count <= 2)).toBe(true);
       expect(batchCounts.reduce((sum, count) => sum + count, 0)).toBe(
-        allExpiredIds.length,
+        expiredCommandIds.length,
       );
       expect(
         await client.finisherExecutionCommand.findMany({
-          where: { id: { in: allExpiredIds } },
+          where: { id: { in: expiredCommandIds } },
           select: { response: true, cleanedAt: true },
         }),
       ).toEqual(
         expect.arrayContaining(
-          allExpiredIds.map(() => ({
+          expiredCommandIds.map(() => ({
             response: null,
-            cleanedAt: expiresAt,
+            cleanedAt: expect.any(Date),
           })),
         ),
       );
+      await expect(
+        startSelectedFinisher({
+          userId: ownerId,
+          workoutId: workout.id,
+          executionId: selected.id,
+          expectedRevision: selected.revision,
+          commandId: expiredCommandIds[0]!,
+          now: databaseNow,
+        }),
+      ).rejects.toMatchObject({
+        code: "FINISHER_COMMAND_EXPIRED",
+        status: 409,
+      });
       expect(
         await client.finisherExecution.findUniqueOrThrow({
           where: { id: selected.id },
@@ -1497,6 +1503,95 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
           },
         }),
       ).toEqual(permanentHistoryBefore);
+    });
+
+    it("enforces permanent command tombstones for Prisma, SQL, bulk, cleanup, and delete paths", async () => {
+      const workout = await createWorkout("COMPLETED");
+      const selected = await selectFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        routineVersionId,
+        now,
+      });
+      const commandId = crypto.randomUUID();
+      await startSelectedFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        executionId: selected.id,
+        expectedRevision: selected.revision,
+        commandId,
+        now,
+      });
+      const original =
+        await client.finisherExecutionCommand.findUniqueOrThrow({
+          where: { id: commandId },
+        });
+
+      const sqlMutations = [
+        `UPDATE "FinisherExecutionCommand" SET "id" = 'tampered-command-id' WHERE "id" = $1`,
+        `UPDATE "FinisherExecutionCommand" SET "workoutId" = 'tampered-workout-id' WHERE "id" = $1`,
+        `UPDATE "FinisherExecutionCommand" SET "executionId" = 'tampered-execution-id' WHERE "id" = $1`,
+        `UPDATE "FinisherExecutionCommand" SET "action" = 'PAUSE' WHERE "id" = $1`,
+        `UPDATE "FinisherExecutionCommand" SET "requestHash" = "requestHash" || '-tampered' WHERE "id" = $1`,
+        `UPDATE "FinisherExecutionCommand" SET "expectedRevision" = "expectedRevision" + 1 WHERE "id" = $1`,
+        `UPDATE "FinisherExecutionCommand" SET "resultRevision" = "resultRevision" + 1 WHERE "id" = $1`,
+        `UPDATE "FinisherExecutionCommand" SET "response" = '{"tampered":true}'::jsonb WHERE "id" = $1`,
+        `UPDATE "FinisherExecutionCommand" SET "createdAt" = "createdAt" - INTERVAL '1 second' WHERE "id" = $1`,
+        `UPDATE "FinisherExecutionCommand" SET "expiresAt" = "expiresAt" + INTERVAL '1 second' WHERE "id" = $1`,
+        `UPDATE "FinisherExecutionCommand" SET "response" = NULL, "cleanedAt" = "expiresAt" WHERE "id" = $1`,
+        `UPDATE "FinisherExecutionCommand" SET "response" = NULL, "cleanedAt" = "expiresAt", "resultRevision" = "resultRevision" + 1 WHERE "id" = $1`,
+      ];
+      for (const mutation of sqlMutations) {
+        await expect(
+          client.$executeRawUnsafe(mutation, commandId),
+        ).rejects.toThrow(/tombstone|immutable/i);
+        await expect(
+          client.finisherExecutionCommand.findUniqueOrThrow({
+            where: { id: commandId },
+          }),
+        ).resolves.toEqual(original);
+      }
+
+      await expect(
+        client.finisherExecutionCommand.updateMany({
+          where: { executionId: selected.id },
+          data: { resultRevision: { increment: 1 } },
+        }),
+      ).rejects.toThrow(/tombstone|immutable/i);
+      await expect(
+        client.finisherExecutionCommand.delete({ where: { id: commandId } }),
+      ).rejects.toThrow(/tombstone|delete/i);
+      await expect(
+        client.finisherExecutionCommand.deleteMany({
+          where: { executionId: selected.id },
+        }),
+      ).rejects.toThrow(/tombstone|delete/i);
+      await expect(
+        client.finisherExecutionCommand.findUniqueOrThrow({
+          where: { id: commandId },
+        }),
+      ).resolves.toEqual(original);
+
+      await cleanupExpiredFinisherCommandReceipts({ batchSize: 100 });
+      await expect(
+        client.finisherExecutionCommand.findUniqueOrThrow({
+          where: { id: commandId },
+        }),
+      ).resolves.toEqual(original);
+
+      const cleaned =
+        await client.finisherExecutionCommand.findFirstOrThrow({
+          where: { cleanedAt: { not: null } },
+        });
+      await expect(
+        client.finisherExecutionCommand.update({
+          where: { id: cleaned.id },
+          data: { response: { restored: true }, cleanedAt: null },
+        }),
+      ).rejects.toThrow(/tombstone|immutable/i);
+      await expect(
+        client.finisherExecutionCommand.delete({ where: { id: cleaned.id } }),
+      ).rejects.toThrow(/tombstone|delete/i);
     });
 
     it("rejects pre-completion and cross-user starts with owner-scoped errors", async () => {
@@ -2081,6 +2176,271 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
         status: "PENDING",
         actualWorkMs: 0,
       });
+    });
+
+    it("freezes substituted terminal step and parent evidence across Prisma, SQL, bulk, insert, and delete paths", async () => {
+      const workout = await createWorkout("COMPLETED");
+      const selected = await selectFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        routineVersionId,
+        now,
+      });
+      const started = await startSelectedFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        executionId: selected.id,
+        expectedRevision: selected.revision,
+        commandId: crypto.randomUUID(),
+        now,
+      });
+      const substituted = await substituteSelectedFinisherStep({
+        userId: ownerId,
+        workoutId: workout.id,
+        executionId: selected.id,
+        expectedRevision: started.revision,
+        alternativeId,
+        commandId: crypto.randomUUID(),
+        now: new Date(now.getTime() + 5_000),
+      });
+      const partial = await endSelectedFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        executionId: selected.id,
+        expectedRevision: substituted.revision,
+        commandId: crypto.randomUUID(),
+        now: new Date(now.getTime() + 15_000),
+      });
+      expect(partial).toMatchObject({
+        state: "PARTIAL",
+        substitutionCount: 1,
+        actualDurationSeconds: 15,
+      });
+
+      const original =
+        await client.finisherExecution.findUniqueOrThrow({
+          where: { id: selected.id },
+          include: {
+            stepExecutions: { orderBy: { orderIndex: "asc" } },
+          },
+        });
+      const performedStep = original.stepExecutions[0]!;
+      expect(performedStep).toMatchObject({
+        performedAlternativeId: alternativeId,
+        status: "PARTIAL",
+        actualWorkMs: 15_000,
+        startedAt: now,
+        resolvedAt: new Date(now.getTime() + 15_000),
+      });
+
+      const assertHistoryUnchanged = async () => {
+        await expect(
+          client.finisherExecution.findUniqueOrThrow({
+            where: { id: selected.id },
+            include: {
+              stepExecutions: { orderBy: { orderIndex: "asc" } },
+            },
+          }),
+        ).resolves.toEqual(original);
+      };
+      const stepMutations = [
+        { performedAlternativeId: null },
+        { performedAlternativeId: "tampered-alternative" },
+        { actualWorkMs: 0 },
+        { status: "PENDING" as const },
+        { startedAt: null },
+        { startedAt: new Date(now.getTime() + 1_000) },
+        { resolvedAt: null },
+        { resolvedAt: new Date(now.getTime() + 16_000) },
+        {
+          performedAlternativeId: null,
+          actualWorkMs: 0,
+          status: "PENDING" as const,
+          startedAt: null,
+          resolvedAt: null,
+        },
+      ];
+      for (const data of stepMutations) {
+        await expect(
+          client.finisherExecutionStep.update({
+            where: { id: performedStep.id },
+            data,
+          }),
+        ).rejects.toThrow(/immutable|regress/i);
+        await assertHistoryUnchanged();
+      }
+
+      await expect(
+        client.$executeRaw`
+          UPDATE "FinisherExecutionStep"
+          SET "actualWorkMs" = 0, "status" = 'PENDING'
+          WHERE "id" = ${performedStep.id}
+        `,
+      ).rejects.toThrow(/immutable|regress/i);
+      await expect(
+        client.finisherExecutionStep.updateMany({
+          where: { executionId: selected.id },
+          data: { actualWorkMs: 0, status: "PENDING" },
+        }),
+      ).rejects.toThrow(/immutable|regress/i);
+      await expect(
+        client.finisherExecutionStep.create({
+          data: {
+            id: crypto.randomUUID(),
+            executionId: selected.id,
+            routineStepId: performedStep.routineStepId,
+            routineVersionId: performedStep.routineVersionId,
+            orderIndex: performedStep.orderIndex,
+          },
+        }),
+      ).rejects.toThrow(/immutable/i);
+      await expect(
+        client.finisherExecutionStep.delete({
+          where: { id: performedStep.id },
+        }),
+      ).rejects.toThrow(/history|delete/i);
+      await expect(
+        client.finisherExecutionStep.deleteMany({
+          where: { executionId: selected.id },
+        }),
+      ).rejects.toThrow(/history|delete/i);
+      await assertHistoryUnchanged();
+
+      for (const data of [
+        { state: "IN_PROGRESS" as const },
+        { startedAt: null },
+        { endedAt: null },
+        { preparationActiveMs: { increment: 1 } },
+        { recoveryActiveMs: { increment: 1 } },
+        { currentStepIndex: 0, revision: { increment: 1 } },
+      ]) {
+        await expect(
+          client.finisherExecution.update({
+            where: { id: selected.id },
+            data,
+          }),
+        ).rejects.toThrow(/terminal|immutable/i);
+        await assertHistoryUnchanged();
+      }
+      await expect(
+        client.$executeRaw`
+          UPDATE "FinisherExecution"
+          SET "state" = 'IN_PROGRESS', "endedAt" = NULL
+          WHERE "id" = ${selected.id}
+        `,
+      ).rejects.toThrow(/terminal|immutable/i);
+      await assertHistoryUnchanged();
+    });
+
+    it("freezes substituted and unsubstituted parent and child rows for every terminal outcome", async () => {
+      async function startWithOptionalSubstitution(
+        workoutId: string,
+        substituted: boolean,
+      ) {
+        let execution = await startFinisher({
+          userId: ownerId,
+          workoutId,
+          routineVersionId,
+          now,
+        });
+        if (substituted) {
+          execution = await substituteFinisherStep({
+            userId: ownerId,
+            workoutId,
+            expectedRevision: execution.revision,
+            alternativeId,
+            now,
+          });
+        }
+        return execution;
+      }
+
+      const setupTerminal = {
+        COMPLETED: async (workoutId: string, substituted: boolean) => {
+          const started = await startWithOptionalSubstitution(
+            workoutId,
+            substituted,
+          );
+          return syncFinisher({
+            userId: ownerId,
+            workoutId,
+            expectedRevision: started.revision,
+            now: new Date(now.getTime() + 120_000),
+          });
+        },
+        PARTIAL: async (workoutId: string, substituted: boolean) => {
+          const started = await startWithOptionalSubstitution(
+            workoutId,
+            substituted,
+          );
+          return endFinisher({
+            userId: ownerId,
+            workoutId,
+            expectedRevision: started.revision,
+            now: new Date(now.getTime() + 15_000),
+          });
+        },
+        SKIPPED: async (workoutId: string, substituted: boolean) => {
+          const started = await startWithOptionalSubstitution(
+            workoutId,
+            substituted,
+          );
+          const first = await skipFinisherStep({
+            userId: ownerId,
+            workoutId,
+            expectedRevision: started.revision,
+            now,
+          });
+          return skipFinisherStep({
+            userId: ownerId,
+            workoutId,
+            expectedRevision: first.timer.revision,
+            now,
+          });
+        },
+      } as const;
+
+      for (const [expectedState, setup] of Object.entries(setupTerminal)) {
+        for (const substituted of [false, true]) {
+          const workout = await createWorkout("COMPLETED");
+          const terminal = await setup(workout.id, substituted);
+          expect(terminal).toMatchObject({
+            state: expectedState,
+            substitutionCount: substituted ? 1 : 0,
+          });
+          const original =
+            await client.finisherExecution.findUniqueOrThrow({
+              where: { id: terminal.id },
+              include: {
+                stepExecutions: { orderBy: { orderIndex: "asc" } },
+              },
+            });
+          expect(original.stepExecutions[0]!.performedAlternativeId).toBe(
+            substituted ? alternativeId : null,
+          );
+
+          await expect(
+            client.finisherExecution.update({
+              where: { id: terminal.id },
+              data: { state: "IN_PROGRESS" },
+            }),
+          ).rejects.toThrow(/terminal|immutable/i);
+          await expect(
+            client.finisherExecutionStep.update({
+              where: { id: original.stepExecutions.at(-1)!.id },
+              data: { note: "tampered" },
+            }),
+          ).rejects.toThrow(/immutable/i);
+          await expect(
+            client.finisherExecution.findUniqueOrThrow({
+              where: { id: terminal.id },
+              include: {
+                stepExecutions: { orderBy: { orderIndex: "asc" } },
+              },
+            }),
+          ).resolves.toEqual(original);
+        }
+      }
     });
 
     it("retains resumed work exactly and skips only active work accumulated across pauses", async () => {

@@ -440,8 +440,20 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     });
   });
 
-  it("persists the off-order advancing seeded session slot in receipt metadata", async () => {
-    mocks.loadActiveMesocycle.mockResolvedValue({ id: "meso-1", state: "ACTIVE_ACCUMULATION" });
+  it("persists an off-order Strength slot and exact seed revision in receipt metadata", async () => {
+    mocks.loadActiveMesocycle.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      macroCycle: { primaryGoal: "STRENGTH" },
+      currentSeedRevision: {
+        id: "strength-revision-1",
+        revision: 1,
+        payloadHash:
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        hashAlgorithm: "sha256",
+        provenanceStatus: "exact",
+      },
+    });
     mocks.loadNextWorkoutContext.mockResolvedValue({
       intent: "upper",
       slotId: "upper_a",
@@ -525,6 +537,16 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
             },
           },
           exceptions: [],
+          sessionProvenance: {
+            mesocycleId: "meso-1",
+            compositionSource: "persisted_slot_plan_seed",
+            seedProvenance: {
+              revisionId: "strength-revision-1",
+              revision: 1,
+              hash:
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            },
+          },
         },
       },
       filteredExercises: [],
@@ -568,6 +590,18 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
       sequenceIndex: 1,
       sequenceLength: 4,
       source: "mesocycle_slot_sequence",
+    });
+    expect(
+      body.selectionMetadata.sessionDecisionReceipt.sessionProvenance,
+    ).toEqual({
+      mesocycleId: "meso-1",
+      compositionSource: "persisted_slot_plan_seed",
+      seedProvenance: {
+        revisionId: "strength-revision-1",
+        revision: 1,
+        hash:
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      },
     });
   });
 

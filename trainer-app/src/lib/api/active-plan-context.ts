@@ -6,6 +6,7 @@ import {
   type User,
 } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
+import { isSupportedPlanType } from "@/lib/plan-types";
 import { resolveOwner } from "./workout-context";
 
 const activeMesocycleInclude = {
@@ -87,6 +88,7 @@ export type ActivePlanContextResult =
       reason:
         | "SELECTED_PLAN_NOT_OWNED"
         | "SELECTED_PLAN_ARCHIVED"
+        | "SELECTED_PLAN_TYPE_UNSUPPORTED"
         | "MULTIPLE_ACTIVE_MESOCYCLES"
         | "ACTIVE_MESOCYCLE_INVALID_STATE"
         | "ACTIVE_AND_HANDOFF_PRESENT"
@@ -137,6 +139,7 @@ export async function resolveActivePlanContextInTransaction(
       startDate: true,
       endDate: true,
       durationWeeks: true,
+      primaryGoal: true,
     },
   });
   if (!activeMacroCycle || activeMacroCycle.userId !== owner.id) {
@@ -156,6 +159,16 @@ export async function resolveActivePlanContextInTransaction(
       activeMacroCycle: null,
       activeMesocycle: null,
       reason: "SELECTED_PLAN_ARCHIVED",
+      affectedMesocycleIds: [],
+    };
+  }
+  if (!isSupportedPlanType(activeMacroCycle.primaryGoal)) {
+    return {
+      status: "CORRUPT_STATE",
+      owner,
+      activeMacroCycle: null,
+      activeMesocycle: null,
+      reason: "SELECTED_PLAN_TYPE_UNSUPPORTED",
       affectedMesocycleIds: [],
     };
   }
@@ -450,7 +463,7 @@ export async function selectActivePlanInTransaction(
   if (
     !targetMacroCycle ||
     targetMacroCycle.userId !== input.userId ||
-    targetMacroCycle.primaryGoal !== "HYPERTROPHY"
+    !isSupportedPlanType(targetMacroCycle.primaryGoal)
   ) {
     throw new ActivePlanTargetNotFoundError();
   }

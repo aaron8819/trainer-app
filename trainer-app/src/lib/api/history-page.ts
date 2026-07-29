@@ -5,6 +5,7 @@ import {
   workoutListItemSelect,
 } from "@/lib/ui/workout-list-items";
 import { getUiAuditFixtureForServer } from "@/lib/ui-audit-fixtures/server";
+import { isSupportedPlanType } from "@/lib/plan-types";
 
 const TAKE = 20;
 
@@ -35,7 +36,11 @@ export async function loadHistoryPageData(userId: string): Promise<HistoryPageDa
     prisma.workout.count({ where: { userId } }),
     prisma.mesocycle.findMany({
       where: { macroCycle: { userId } },
-      include: { macroCycle: { select: { name: true, startDate: true } } },
+      include: {
+        macroCycle: {
+          select: { name: true, startDate: true, primaryGoal: true },
+        },
+      },
       orderBy: [{ isActive: "desc" }, { macroCycle: { startDate: "desc" } }],
     }),
   ]);
@@ -55,6 +60,9 @@ export async function loadHistoryPageData(userId: string): Promise<HistoryPageDa
     return {
       id: meso.id,
       planName: meso.macroCycle.name,
+      ...(isSupportedPlanType(meso.macroCycle.primaryGoal)
+        ? { planType: meso.macroCycle.primaryGoal }
+        : {}),
       startDate: startDate.toISOString(),
       isActive:
         meso.isActive &&

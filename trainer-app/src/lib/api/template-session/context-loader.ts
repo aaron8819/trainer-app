@@ -13,7 +13,9 @@ import {
   type ActiveMesocycleWithBlocks,
 } from "@/lib/api/mesocycle-lifecycle";
 import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
+import { getStrengthRirTarget } from "@/lib/engine/strength-plan-policy";
 import { validateStimulusProfileCoverage } from "@/lib/engine/stimulus";
+import { isSupportedPlanType } from "@/lib/plan-types";
 import { prisma } from "@/lib/db/prisma";
 import type { SessionIntent } from "@/lib/engine/session-types";
 import type { RotationContext } from "@/lib/engine/selection-v2/types";
@@ -223,8 +225,16 @@ export function buildMappedGenerationContextFromSnapshot(
     throw new Error("Profile, goals, or constraints missing");
   }
 
+  const activeMesocycle = snapshot.activeMesocycle;
+  const selectedPlanType = activeMesocycle?.macroCycle?.primaryGoal;
+  if (selectedPlanType != null && !isSupportedPlanType(selectedPlanType)) {
+    throw new Error("ACTIVE_PLAN_TYPE_UNSUPPORTED");
+  }
   const mappedProfile = mapProfile(userId, profile, injuries);
-  const mappedGoals = mapGoals(goals.primaryGoal, goals.secondaryGoal);
+  const mappedGoals = mapGoals(
+    selectedPlanType ?? goals.primaryGoal,
+    goals.secondaryGoal,
+  );
   const mappedConstraints = mapConstraints(constraints);
   const exerciseLibrary = mapExercises(exercises);
   validateStimulusProfileCoverage(exerciseLibrary, {
@@ -235,7 +245,6 @@ export function buildMappedGenerationContextFromSnapshot(
   const mappedPreferences = mapPreferences(preferences);
   const mappedCheckIn = mapCheckIn(checkIns);
 
-  const activeMesocycle = snapshot.activeMesocycle;
   const mesocycleRoleMapByIntent = createEmptyRoleMapByIntent();
   for (const row of snapshot.mesocycleRoleRows) {
     const intent = dbIntentToSessionIntent(row.sessionIntent);
@@ -261,7 +270,16 @@ export function buildMappedGenerationContextFromSnapshot(
       ? { ...activeMesocycle, state: "ACTIVE_ACCUMULATION" as const }
       : activeMesocycle;
   const lifecycleRirTarget = activeMesocycle
-    ? getRirTarget(lifecycleState ?? activeMesocycle, lifecycleWeek, phaseBlockContext.profile)
+    ? selectedPlanType === "STRENGTH"
+      ? getStrengthRirTarget({
+          blockType: phaseBlockContext.profile.blockType,
+          weekInBlock: phaseBlockContext.profile.weekInBlock,
+        })
+      : getRirTarget(
+          lifecycleState ?? activeMesocycle,
+          lifecycleWeek,
+          phaseBlockContext.profile,
+        )
     : { min: 3, max: 4 };
   const baseLifecycleVolumeTargets = Object.fromEntries(
     Object.keys(VOLUME_LANDMARKS).map((muscle) => [

@@ -17,6 +17,9 @@ Migration `20260728120000_add_finishers_phase_1` adds:
   including the exact immutable versions shown, recommendation identity/reason,
   unavailable reason, and the limitation/workout/recent-performance context
   used to explain it. Decline identity and time are persisted on the offer.
+  The offer is finalized only after all items exist; deferred validation and
+  insert/identity/delete guards prevent incomplete construction, later append,
+  reorder, reassignment, or removal.
 - `FinisherExecution`: one retained selection decision with a stable UUID,
   offer revision binding, explicit lifecycle,
   interval timestamps, exact pause remainder, separate active preparation and
@@ -25,15 +28,21 @@ Migration `20260728120000_add_finishers_phase_1` adds:
   preparation and all paused time are excluded.
 - `FinisherExecutionStep`: prescribed step identity, optional predefined
   performed alternative, resolved status/timestamps, and accumulated active
-  work duration. `PARTIAL` distinguishes current work preserved by an early end
+  work duration. Each row stores and relationally binds its routine version and
+  exact order. Execution finalization requires the prescribed rows to equal the
+  complete version step set in both directions; composite foreign keys prevent
+  a step or alternative from another version/step. Finalized prescriptions
+  reject append, reorder, reassignment, and delete. `PARTIAL` distinguishes current work preserved by an early end
   from `COMPLETED`, `SKIPPED`, and untouched `PENDING` work.
 - `FinisherExecutionCommand`: durable idempotency receipt for every command
   against an existing execution. `commandId` is globally unique; the request
   hash binds workout, execution, action, expected revision, and payload,
   while the stored response/result revision makes committed retries
-  deterministic. Receipts expire after 90 days and are removed
-  opportunistically; retained execution history is permanent and independent
-  of receipt cleanup.
+  deterministic. A receipt is logically expired at its exact 90-day
+  `expiresAt` boundary. Cleanup clears only the response payload and stamps
+  `cleanedAt`; the compact command tombstone and globally unique ID remain so
+  an expired command can never be reused. Retained execution and step history
+  is permanent and independent of receipt cleanup.
 
 The lifecycle is `SELECTED -> IN_PROGRESS ->
 COMPLETED|PARTIAL|SKIPPED|DISMISSED`. Dismissal updates the selected execution;

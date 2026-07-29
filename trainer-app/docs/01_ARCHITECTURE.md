@@ -5,7 +5,10 @@
 `src/lib/api/finisher-service.ts` is the sole DB-backed orchestration owner for
 Phase 1 Finishers. A durable `FinisherOffer` freezes the immutable routine
 versions and recommendation context actually shown for one completed,
-owner-scoped `Workout`. Multiple `FinisherExecution` rows may record selected
+owner-scoped `Workout`. Offer construction and execution prescription
+construction are finalized inside their creating transactions; database
+constraints reject incomplete, cross-version, or later-mutated child sets.
+Multiple `FinisherExecution` rows may record selected
 and dismissed choices, while partial unique indexes permit only one active and
 one started execution for the workout. No Finisher path calls workout save, progression, volume,
 effective-set, exercise-exposure, PR, or load-recommendation code. The completed

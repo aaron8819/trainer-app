@@ -123,6 +123,8 @@ export async function inspectMigrationDatabase(client: ReadOnlyClient): Promise<
       is_live: boolean;
       constraint_name: string | null;
       constraint_type: string | null;
+      access_method: string;
+      include_columns: string[];
     }>("indexes", `
       SELECT tab.relname AS table_name,
         idx.relname AS index_name,
@@ -131,6 +133,7 @@ export async function inspectMigrationDatabase(client: ReadOnlyClient): Promise<
         i.indisvalid AS is_valid,
         i.indisready AS is_ready,
         i.indislive AS is_live,
+        am.amname AS access_method,
         con.conname AS constraint_name,
         con.contype::text AS constraint_type,
         ARRAY(
@@ -144,11 +147,17 @@ export async function inspectMigrationDatabase(client: ReadOnlyClient): Promise<
           FROM generate_series(1, i.indnkeyatts) AS position
           ORDER BY position
         ) AS columns,
+        ARRAY(
+          SELECT pg_catalog.pg_get_indexdef(i.indexrelid, position, true)
+          FROM generate_series(i.indnkeyatts + 1, i.indnatts) AS position
+          ORDER BY position
+        ) AS include_columns,
         pg_catalog.pg_get_expr(i.indpred, i.indrelid) AS predicate
       FROM pg_catalog.pg_index i
       JOIN pg_catalog.pg_class idx ON idx.oid = i.indexrelid
       JOIN pg_catalog.pg_class tab ON tab.oid = i.indrelid
       JOIN pg_catalog.pg_namespace n ON n.oid = tab.relnamespace
+      JOIN pg_catalog.pg_am am ON am.oid = idx.relam
       LEFT JOIN pg_catalog.pg_constraint con
         ON con.conindid = i.indexrelid AND con.conrelid = i.indrelid
       WHERE n.nspname = 'public'
@@ -159,11 +168,17 @@ export async function inspectMigrationDatabase(client: ReadOnlyClient): Promise<
       constraint_name: string;
       constraint_type: string;
       definition: string;
+      is_validated: boolean;
+      is_deferrable: boolean;
+      is_initially_deferred: boolean;
     }>("constraints", `
       SELECT c.relname AS table_name,
         con.conname AS constraint_name,
         con.contype::text AS constraint_type,
-        pg_catalog.pg_get_constraintdef(con.oid, true) AS definition
+        pg_catalog.pg_get_constraintdef(con.oid, true) AS definition,
+        con.convalidated AS is_validated,
+        con.condeferrable AS is_deferrable,
+        con.condeferred AS is_initially_deferred
       FROM pg_catalog.pg_constraint con
       JOIN pg_catalog.pg_class c ON c.oid = con.conrelid
       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
@@ -174,21 +189,45 @@ export async function inspectMigrationDatabase(client: ReadOnlyClient): Promise<
       table_name: string;
       trigger_name: string;
       definition: string;
+      enabled: string;
     }>("triggers", `
       SELECT c.relname AS table_name,
         t.tgname AS trigger_name,
-        pg_catalog.pg_get_triggerdef(t.oid, true) AS definition
+        pg_catalog.pg_get_triggerdef(t.oid, true) AS definition,
+        t.tgenabled::text AS enabled
       FROM pg_catalog.pg_trigger t
       JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'public' AND NOT t.tgisinternal
       ORDER BY c.relname, t.tgname
     `);
-    const functionRows = await safeSelect<{ function_name: string; definition: string }>("functions", `
+    const functionRows = await safeSelect<{
+      function_name: string;
+      definition: string;
+      language_name: string;
+      identity_arguments: string;
+      result_type: string;
+      volatility: string;
+      security_definer: boolean;
+      leakproof: boolean;
+      is_strict: boolean;
+      parallel_safety: string;
+      body: string;
+    }>("functions", `
       SELECT p.proname AS function_name,
-        pg_catalog.pg_get_functiondef(p.oid) AS definition
+        pg_catalog.pg_get_functiondef(p.oid) AS definition,
+        l.lanname AS language_name,
+        pg_catalog.pg_get_function_identity_arguments(p.oid) AS identity_arguments,
+        pg_catalog.format_type(p.prorettype, NULL) AS result_type,
+        p.provolatile::text AS volatility,
+        p.prosecdef AS security_definer,
+        p.proleakproof AS leakproof,
+        p.proisstrict AS is_strict,
+        p.proparallel::text AS parallel_safety,
+        p.prosrc AS body
       FROM pg_catalog.pg_proc p
       JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+      JOIN pg_catalog.pg_language l ON l.oid = p.prolang
       WHERE n.nspname = 'public' AND p.prokind = 'f'
       ORDER BY p.proname, p.oid
     `);
@@ -254,10 +293,37 @@ export async function inspectMigrationDatabase(client: ReadOnlyClient): Promise<
           live: row.is_live,
           constraintName: row.constraint_name,
           constraintType: row.constraint_type,
+          accessMethod: row.access_method,
+          includeColumns: row.include_columns,
         })),
-        constraints: constraintRows.map((row): ConstraintFact => ({ table: row.table_name, name: row.constraint_name, type: row.constraint_type, definition: row.definition })),
-        triggers: triggerRows.map((row): TriggerFact => ({ table: row.table_name, name: row.trigger_name, definition: row.definition })),
-        functions: functionRows.map((row): FunctionFact => ({ name: row.function_name, definition: row.definition })),
+        constraints: constraintRows.map((row): ConstraintFact => ({
+          table: row.table_name,
+          name: row.constraint_name,
+          type: row.constraint_type,
+          definition: row.definition,
+          validated: row.is_validated,
+          deferrable: row.is_deferrable,
+          initiallyDeferred: row.is_initially_deferred,
+        })),
+        triggers: triggerRows.map((row): TriggerFact => ({
+          table: row.table_name,
+          name: row.trigger_name,
+          definition: row.definition,
+          enabled: row.enabled,
+        })),
+        functions: functionRows.map((row): FunctionFact => ({
+          name: row.function_name,
+          definition: row.definition,
+          language: row.language_name,
+          arguments: row.identity_arguments,
+          resultType: row.result_type,
+          volatility: row.volatility,
+          securityDefiner: row.security_definer,
+          leakproof: row.leakproof,
+          strict: row.is_strict,
+          parallel: row.parallel_safety,
+          body: row.body,
+        })),
         catalogRows: catalogRows.map(
           (row): CatalogRowFact => ({
             table: row.table_name,

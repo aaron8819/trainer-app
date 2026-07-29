@@ -81,6 +81,7 @@ CREATE TABLE "FinisherOffer" (
     "recommendationReason" TEXT,
     "recommendationUnavailableReason" TEXT,
     "recommendationContext" JSONB NOT NULL,
+    "finalizedAt" TIMESTAMP(3),
     CONSTRAINT "FinisherOffer_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "FinisherOffer_revision_positive" CHECK ("revision" > 0)
 );
@@ -103,6 +104,7 @@ CREATE TABLE "FinisherExecution" (
     "routineVersionId" TEXT NOT NULL,
     "state" "FinisherExecutionState" NOT NULL DEFAULT 'SELECTED',
     "selectedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "finalizedAt" TIMESTAMP(3),
     "startedAt" TIMESTAMP(3),
     "completedAt" TIMESTAMP(3),
     "endedAt" TIMESTAMP(3),
@@ -137,6 +139,8 @@ CREATE TABLE "FinisherExecutionStep" (
     "id" TEXT NOT NULL,
     "executionId" TEXT NOT NULL,
     "routineStepId" TEXT NOT NULL,
+    "routineVersionId" TEXT NOT NULL,
+    "orderIndex" INTEGER NOT NULL,
     "performedAlternativeId" TEXT,
     "status" "FinisherStepStatus" NOT NULL DEFAULT 'PENDING',
     "startedAt" TIMESTAMP(3),
@@ -155,9 +159,10 @@ CREATE TABLE "FinisherExecutionCommand" (
     "requestHash" TEXT NOT NULL,
     "expectedRevision" INTEGER NOT NULL,
     "resultRevision" INTEGER NOT NULL,
-    "response" JSONB NOT NULL,
+    "response" JSONB,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "expiresAt" TIMESTAMP(3) NOT NULL,
+    "cleanedAt" TIMESTAMP(3),
     CONSTRAINT "FinisherExecutionCommand_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "FinisherExecutionCommand_expected_revision_positive" CHECK ("expectedRevision" > 0),
     CONSTRAINT "FinisherExecutionCommand_result_revision_positive" CHECK ("resultRevision" > 0)
@@ -167,7 +172,9 @@ CREATE UNIQUE INDEX "FinisherRoutine_code_key" ON "FinisherRoutine"("code");
 CREATE UNIQUE INDEX "FinisherRoutineVersion_routineId_version_key" ON "FinisherRoutineVersion"("routineId", "version");
 CREATE INDEX "FinisherRoutineVersion_category_createdAt_idx" ON "FinisherRoutineVersion"("category", "createdAt");
 CREATE UNIQUE INDEX "FinisherRoutineStep_routineVersionId_orderIndex_key" ON "FinisherRoutineStep"("routineVersionId", "orderIndex");
+CREATE UNIQUE INDEX "FinisherRoutineStep_id_routineVersionId_orderIndex_key" ON "FinisherRoutineStep"("id", "routineVersionId", "orderIndex");
 CREATE UNIQUE INDEX "FinisherRoutineStepAlternative_routineStepId_orderIndex_key" ON "FinisherRoutineStepAlternative"("routineStepId", "orderIndex");
+CREATE UNIQUE INDEX "FinisherRoutineStepAlternative_id_routineStepId_key" ON "FinisherRoutineStepAlternative"("id", "routineStepId");
 CREATE UNIQUE INDEX "FinisherOffer_workoutId_key" ON "FinisherOffer"("workoutId");
 CREATE UNIQUE INDEX "FinisherOffer_declineDecisionId_key" ON "FinisherOffer"("declineDecisionId");
 CREATE INDEX "FinisherOffer_recommendedRoutineVersionId_idx" ON "FinisherOffer"("recommendedRoutineVersionId");
@@ -185,10 +192,11 @@ CREATE INDEX "FinisherExecution_offerId_selectedAt_idx" ON "FinisherExecution"("
 CREATE INDEX "FinisherExecution_routineVersionId_startedAt_idx" ON "FinisherExecution"("routineVersionId", "startedAt");
 CREATE INDEX "FinisherExecution_state_segmentEndsAt_idx" ON "FinisherExecution"("state", "segmentEndsAt");
 CREATE UNIQUE INDEX "FinisherExecution_id_workoutId_key" ON "FinisherExecution"("id", "workoutId");
+CREATE UNIQUE INDEX "FinisherExecution_id_routineVersionId_key" ON "FinisherExecution"("id", "routineVersionId");
 CREATE UNIQUE INDEX "FinisherExecutionStep_executionId_routineStepId_key" ON "FinisherExecutionStep"("executionId", "routineStepId");
 CREATE INDEX "FinisherExecutionStep_performedAlternativeId_idx" ON "FinisherExecutionStep"("performedAlternativeId");
 CREATE INDEX "FinisherExecutionCommand_executionId_createdAt_idx" ON "FinisherExecutionCommand"("executionId", "createdAt");
-CREATE INDEX "FinisherExecutionCommand_expiresAt_idx" ON "FinisherExecutionCommand"("expiresAt");
+CREATE INDEX "FinisherExecutionCommand_cleanedAt_expiresAt_id_idx" ON "FinisherExecutionCommand"("cleanedAt", "expiresAt", "id");
 
 ALTER TABLE "FinisherRoutineVersion"
   ADD CONSTRAINT "FinisherRoutineVersion_routineId_fkey"
@@ -227,8 +235,17 @@ ALTER TABLE "FinisherExecutionStep"
   ADD CONSTRAINT "FinisherExecutionStep_routineStepId_fkey"
   FOREIGN KEY ("routineStepId") REFERENCES "FinisherRoutineStep"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "FinisherExecutionStep"
+  ADD CONSTRAINT "FinisherExecutionStep_executionId_routineVersionId_fkey"
+  FOREIGN KEY ("executionId", "routineVersionId") REFERENCES "FinisherExecution"("id", "routineVersionId") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "FinisherExecutionStep"
+  ADD CONSTRAINT "FinisherExecutionStep_routineStep_binding_fkey"
+  FOREIGN KEY ("routineStepId", "routineVersionId", "orderIndex") REFERENCES "FinisherRoutineStep"("id", "routineVersionId", "orderIndex") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "FinisherExecutionStep"
   ADD CONSTRAINT "FinisherExecutionStep_performedAlternativeId_fkey"
   FOREIGN KEY ("performedAlternativeId") REFERENCES "FinisherRoutineStepAlternative"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "FinisherExecutionStep"
+  ADD CONSTRAINT "FinisherExecutionStep_performedAlternative_binding_fkey"
+  FOREIGN KEY ("performedAlternativeId", "routineStepId") REFERENCES "FinisherRoutineStepAlternative"("id", "routineStepId") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "FinisherExecutionCommand"
   ADD CONSTRAINT "FinisherExecutionCommand_executionId_workoutId_fkey"
   FOREIGN KEY ("executionId", "workoutId") REFERENCES "FinisherExecution"("id", "workoutId") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -350,6 +367,94 @@ CREATE TRIGGER "FinisherRoutineStepAlternative_immutable"
 BEFORE INSERT OR UPDATE OR DELETE ON "FinisherRoutineStepAlternative"
 FOR EACH ROW EXECUTE FUNCTION guard_finisher_routine_child_mutation();
 
+-- Offers and executions are constructed transactionally and must be sealed with
+-- their complete child sets before they can commit.
+CREATE FUNCTION require_finisher_offer_finalized() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM "FinisherOffer"
+    WHERE "id" = NEW."id" AND "finalizedAt" IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'finisher offer must be finalized before commit';
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
+CREATE CONSTRAINT TRIGGER "FinisherOffer_require_finalized"
+AFTER INSERT ON "FinisherOffer"
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION require_finisher_offer_finalized();
+
+CREATE FUNCTION require_finisher_execution_finalized() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM "FinisherExecution"
+    WHERE "id" = NEW."id" AND "finalizedAt" IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'finisher execution must be finalized before commit';
+  END IF;
+
+  IF EXISTS (
+    SELECT s."id", s."orderIndex"
+    FROM "FinisherRoutineStep" s
+    JOIN "FinisherExecution" e ON e."id" = NEW."id"
+    WHERE s."routineVersionId" = e."routineVersionId"
+    EXCEPT
+    SELECT es."routineStepId", es."orderIndex"
+    FROM "FinisherExecutionStep" es
+    WHERE es."executionId" = NEW."id"
+  ) OR EXISTS (
+    SELECT es."routineStepId", es."orderIndex"
+    FROM "FinisherExecutionStep" es
+    WHERE es."executionId" = NEW."id"
+    EXCEPT
+    SELECT s."id", s."orderIndex"
+    FROM "FinisherRoutineStep" s
+    JOIN "FinisherExecution" e ON e."id" = NEW."id"
+    WHERE s."routineVersionId" = e."routineVersionId"
+  ) THEN
+    RAISE EXCEPTION 'finisher execution prescribed step set is incomplete or inconsistent';
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
+CREATE CONSTRAINT TRIGGER "FinisherExecution_require_finalized"
+AFTER INSERT ON "FinisherExecution"
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION require_finisher_execution_finalized();
+
+CREATE FUNCTION guard_finisher_offer_item_insert() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM "FinisherOffer"
+    WHERE "id" = NEW."offerId" AND "finalizedAt" IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'finalized finisher offer items are immutable';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE FUNCTION guard_finisher_execution_step_insert() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM "FinisherExecution"
+    WHERE "id" = NEW."executionId" AND "finalizedAt" IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'finalized finisher execution step set is immutable';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
 -- Lifecycle rows may advance, but their ownership and definition bindings do not.
 CREATE FUNCTION guard_finisher_offer_identity() RETURNS trigger
 LANGUAGE plpgsql AS $$
@@ -361,6 +466,11 @@ BEGIN
     OR NEW."recommendationReason" IS DISTINCT FROM OLD."recommendationReason"
     OR NEW."recommendationUnavailableReason" IS DISTINCT FROM OLD."recommendationUnavailableReason"
     OR NEW."recommendationContext" IS DISTINCT FROM OLD."recommendationContext"
+    OR NEW."finalizedAt" IS NULL
+    OR (
+      OLD."finalizedAt" IS NOT NULL
+      AND NEW."finalizedAt" IS DISTINCT FROM OLD."finalizedAt"
+    )
   THEN
     RAISE EXCEPTION 'finisher offer identity and definition binding are immutable';
   END IF;
@@ -384,6 +494,11 @@ BEGIN
     OR NEW."offerRevisionAtSelection" IS DISTINCT FROM OLD."offerRevisionAtSelection"
     OR NEW."routineVersionId" IS DISTINCT FROM OLD."routineVersionId"
     OR NEW."selectedAt" IS DISTINCT FROM OLD."selectedAt"
+    OR NEW."finalizedAt" IS NULL
+    OR (
+      OLD."finalizedAt" IS NOT NULL
+      AND NEW."finalizedAt" IS DISTINCT FROM OLD."finalizedAt"
+    )
   THEN
     RAISE EXCEPTION 'finisher execution identity and definition binding are immutable';
   END IF;
@@ -397,6 +512,8 @@ BEGIN
   IF NEW."id" IS DISTINCT FROM OLD."id"
     OR NEW."executionId" IS DISTINCT FROM OLD."executionId"
     OR NEW."routineStepId" IS DISTINCT FROM OLD."routineStepId"
+    OR NEW."routineVersionId" IS DISTINCT FROM OLD."routineVersionId"
+    OR NEW."orderIndex" IS DISTINCT FROM OLD."orderIndex"
   THEN
     RAISE EXCEPTION 'finisher execution step identity is immutable';
   END IF;
@@ -410,12 +527,18 @@ FOR EACH ROW EXECUTE FUNCTION guard_finisher_offer_identity();
 CREATE TRIGGER "FinisherOfferItem_immutable"
 BEFORE UPDATE ON "FinisherOfferItem"
 FOR EACH ROW EXECUTE FUNCTION reject_finisher_offer_item_update();
+CREATE TRIGGER "FinisherOfferItem_insert_before_finalization"
+BEFORE INSERT ON "FinisherOfferItem"
+FOR EACH ROW EXECUTE FUNCTION guard_finisher_offer_item_insert();
 CREATE TRIGGER "FinisherExecution_identity_immutable"
 BEFORE UPDATE ON "FinisherExecution"
 FOR EACH ROW EXECUTE FUNCTION guard_finisher_execution_identity();
 CREATE TRIGGER "FinisherExecutionStep_identity_immutable"
 BEFORE UPDATE ON "FinisherExecutionStep"
 FOR EACH ROW EXECUTE FUNCTION guard_finisher_execution_step_identity();
+CREATE TRIGGER "FinisherExecutionStep_insert_before_finalization"
+BEFORE INSERT ON "FinisherExecutionStep"
+FOR EACH ROW EXECUTE FUNCTION guard_finisher_execution_step_insert();
 
 -- Lifecycle evidence may transition, but it is never deleted or replaced.
 CREATE FUNCTION reject_finisher_history_deletion() RETURNS trigger

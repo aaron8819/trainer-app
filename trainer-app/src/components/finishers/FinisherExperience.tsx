@@ -6,7 +6,7 @@ import type {
   FinisherRoutineDto,
 } from "@/lib/api/finisher-service";
 
-type FinisherOffer = {
+export type FinisherOffer = {
   serverTime: string;
   offer: {
     id: string;
@@ -41,6 +41,40 @@ const EXECUTION_COMMAND_ACTIONS = new Set([
   "feedback",
   "dismiss",
 ]);
+
+export function mergeFinisherCommandResult(
+  current: FinisherOffer,
+  commandResult: FinisherExecutionDto,
+): FinisherOffer {
+  const historyEntry = current.history.find(
+    (entry) => entry.id === commandResult.id,
+  );
+  const durableHistoryResult =
+    historyEntry && historyEntry.revision > commandResult.revision
+      ? historyEntry
+      : commandResult;
+  const history = historyEntry
+    ? current.history.map((entry) =>
+        entry.id === commandResult.id ? durableHistoryResult : entry,
+      )
+    : [...current.history, commandResult];
+  const execution =
+    current.execution == null ||
+    (current.execution.id === commandResult.id &&
+      current.execution.revision <= commandResult.revision)
+      ? commandResult
+      : current.execution;
+  const serverTime =
+    Date.parse(commandResult.serverTime) >= Date.parse(current.serverTime)
+      ? commandResult.serverTime
+      : current.serverTime;
+  return {
+    ...current,
+    serverTime,
+    execution,
+    history,
+  };
+}
 
 function commandKey(body: Record<string, unknown>): string {
   return JSON.stringify(
@@ -332,7 +366,10 @@ export function FinisherExperience({
             headers: { "content-type": "application/json" },
             body: JSON.stringify(requestBody),
           });
-          const result = (await response.json()) as FinisherOffer & {
+          const result = (await response.json()) as (
+            | FinisherOffer
+            | FinisherExecutionDto
+          ) & {
             error?: string;
           };
           return { response, result };
@@ -367,7 +404,15 @@ export function FinisherExperience({
           }),
         );
         setMonotonicNow(responseReceivedAt);
-        setOffer(result);
+        if (executionCommand) {
+          const commandResult = result as FinisherExecutionDto;
+          setOffer((current) => {
+            if (!current) return current;
+            return mergeFinisherCommandResult(current, commandResult);
+          });
+        } else {
+          setOffer(result as FinisherOffer);
+        }
         setPreview(null);
         setShowSubstitutions(false);
         setConfirmEnd(false);

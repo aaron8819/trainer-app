@@ -4,6 +4,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import {
   createFinisherOffer,
+  cleanupExpiredFinisherCommandReceipts,
   declineFinisherOffer,
   endFinisher as endSelectedFinisher,
   getFinisherOffer,
@@ -31,6 +32,7 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
     let pool: Pool;
     let client: PrismaClient;
     let ownerId: string;
+    let ownerEmail: string;
     let foreignOwnerId: string;
     let routineVersionId: string;
     let alternativeId: string;
@@ -43,9 +45,10 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       pool = new Pool({ connectionString: databaseUrl });
       client = new PrismaClient({ adapter: new PrismaPg(pool) });
       const suffix = crypto.randomUUID();
+      ownerEmail = `finisher-owner-${suffix}@test.local`;
       const [owner, foreignOwner] = await Promise.all([
         client.user.create({
-          data: { email: `finisher-owner-${suffix}@test.local` },
+          data: { email: ownerEmail },
         }),
         client.user.create({
           data: { email: `finisher-foreign-${suffix}@test.local` },
@@ -657,6 +660,168 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       ).rejects.toThrow();
     });
 
+    it("freezes finalized offer choices and exact execution prescriptions relationally", async () => {
+      const offerWorkout = await createWorkout("COMPLETED");
+      const secondOfferWorkout = await createWorkout("COMPLETED");
+      const offered = await ensureOffer(ownerId, offerWorkout.id, now);
+      const secondOffered = await ensureOffer(
+        ownerId,
+        secondOfferWorkout.id,
+        now,
+      );
+      const offerBefore = await client.finisherOffer.findUniqueOrThrow({
+        where: { id: offered.offer!.id },
+        include: { items: { orderBy: { position: "asc" } } },
+      });
+      expect(offerBefore.finalizedAt).toEqual(now);
+      const firstItem = offerBefore.items[0]!;
+
+      await expect(
+        client.finisherOfferItem.create({
+          data: {
+            offerId: offerBefore.id,
+            routineVersionId: firstItem.routineVersionId,
+            position: 999,
+          },
+        }),
+      ).rejects.toThrow();
+      await expect(
+        client.finisherOfferItem.update({
+          where: { id: firstItem.id },
+          data: { position: 999 },
+        }),
+      ).rejects.toThrow();
+      await expect(
+        client.finisherOfferItem.update({
+          where: { id: firstItem.id },
+          data: { offerId: secondOffered.offer!.id },
+        }),
+      ).rejects.toThrow();
+      await expect(
+        client.finisherOfferItem.delete({ where: { id: firstItem.id } }),
+      ).rejects.toThrow();
+      expect(
+        await client.finisherOffer.findUniqueOrThrow({
+          where: { id: offerBefore.id },
+          include: { items: { orderBy: { position: "asc" } } },
+        }),
+      ).toEqual(offerBefore);
+
+      const rollbackWorkout = await createWorkout("COMPLETED");
+      const rollbackOffer = await ensureOffer(ownerId, rollbackWorkout.id, now);
+      const prescribedSteps = await client.finisherRoutineStep.findMany({
+        where: { routineVersionId },
+        orderBy: { orderIndex: "asc" },
+      });
+      const foreignStep = await client.finisherRoutineStep.findFirstOrThrow({
+        where: { routineVersionId: preparationRoutineVersionId },
+        orderBy: { orderIndex: "asc" },
+      });
+      const invalidExecutionId = crypto.randomUUID();
+      await expect(
+        client.$transaction(async (tx) => {
+          await tx.finisherExecution.create({
+            data: {
+              id: invalidExecutionId,
+              workoutId: rollbackWorkout.id,
+              offerId: rollbackOffer.offer!.id,
+              offerRevisionAtSelection: rollbackOffer.offer!.revision,
+              routineVersionId,
+              selectedAt: now,
+            },
+          });
+          await tx.finisherExecutionStep.create({
+            data: {
+              executionId: invalidExecutionId,
+              routineStepId: foreignStep.id,
+              routineVersionId,
+              orderIndex: foreignStep.orderIndex,
+            },
+          });
+          await tx.finisherExecution.update({
+            where: { id: invalidExecutionId },
+            data: { finalizedAt: now },
+          });
+        }),
+      ).rejects.toThrow();
+      expect(
+        await client.finisherExecution.count({
+          where: { id: invalidExecutionId },
+        }),
+      ).toBe(0);
+
+      const selected = await selectFinisher({
+        userId: ownerId,
+        workoutId: rollbackWorkout.id,
+        routineVersionId,
+        now,
+      });
+      const executionBefore =
+        await client.finisherExecution.findUniqueOrThrow({
+          where: { id: selected.id },
+          include: {
+            stepExecutions: { orderBy: { orderIndex: "asc" } },
+          },
+        });
+      expect(executionBefore.finalizedAt).toEqual(now);
+      expect(
+        executionBefore.stepExecutions.map((step) => ({
+          routineStepId: step.routineStepId,
+          routineVersionId: step.routineVersionId,
+          orderIndex: step.orderIndex,
+        })),
+      ).toEqual(
+        prescribedSteps.map((step) => ({
+          routineStepId: step.id,
+          routineVersionId,
+          orderIndex: step.orderIndex,
+        })),
+      );
+      const firstExecutionStep = executionBefore.stepExecutions[0]!;
+      const secondExecutionStep = executionBefore.stepExecutions[1]!;
+      await expect(
+        client.finisherExecutionStep.create({
+          data: {
+            executionId: selected.id,
+            routineStepId: prescribedSteps[0]!.id,
+            routineVersionId,
+            orderIndex: prescribedSteps[0]!.orderIndex,
+          },
+        }),
+      ).rejects.toThrow();
+      await expect(
+        client.finisherExecutionStep.update({
+          where: { id: firstExecutionStep.id },
+          data: { orderIndex: 999 },
+        }),
+      ).rejects.toThrow();
+      await expect(
+        client.finisherExecutionStep.update({
+          where: { id: firstExecutionStep.id },
+          data: { routineStepId: foreignStep.id },
+        }),
+      ).rejects.toThrow();
+      await expect(
+        client.finisherExecutionStep.delete({
+          where: { id: firstExecutionStep.id },
+        }),
+      ).rejects.toThrow();
+      await expect(
+        client.finisherExecutionStep.update({
+          where: { id: secondExecutionStep.id },
+          data: { performedAlternativeId: alternativeId },
+        }),
+      ).rejects.toThrow();
+      expect(
+        await client.finisherExecution.findUniqueOrThrow({
+          where: { id: selected.id },
+          include: {
+            stepExecutions: { orderBy: { orderIndex: "asc" } },
+          },
+        }),
+      ).toEqual(executionBefore);
+    });
+
     it("makes every existing-execution command receipt-safe under concurrent and lost-response retries", async () => {
       type PreparedCommand = {
         executionId: string;
@@ -978,6 +1143,80 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       }
     });
 
+    it("returns the original durable result through HTTP after a later command advances current state", async () => {
+      const priorOwnerEmail = process.env.OWNER_EMAIL;
+      process.env.OWNER_EMAIL = ownerEmail;
+      try {
+        const { GET, POST } = await import(
+          "../../app/api/workouts/[id]/finisher/route"
+        );
+        const workout = await createWorkout("COMPLETED");
+        const selected = await selectFinisher({
+          userId: ownerId,
+          workoutId: workout.id,
+          routineVersionId,
+          now,
+        });
+        const commandId = crypto.randomUUID();
+        const context = {
+          params: Promise.resolve({ id: workout.id }),
+        };
+        const commandBody = {
+          action: "start",
+          executionId: selected.id,
+          expectedRevision: selected.revision,
+          commandId,
+        };
+        const originalResponse = await POST(
+          new Request("http://local.test", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(commandBody),
+          }),
+          context,
+        );
+        expect(originalResponse.status).toBe(200);
+        const original = await originalResponse.json();
+        const pauseResponse = await POST(
+          new Request("http://local.test", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              action: "pause",
+              executionId: selected.id,
+              expectedRevision: original.revision,
+              commandId: crypto.randomUUID(),
+            }),
+          }),
+          context,
+        );
+        expect(pauseResponse.status).toBe(200);
+        const advanced = await pauseResponse.json();
+        expect(advanced.revision).toBeGreaterThan(original.revision);
+
+        const retryResponse = await POST(
+          new Request("http://local.test", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(commandBody),
+          }),
+          context,
+        );
+        expect(retryResponse.status).toBe(200);
+        expect(await retryResponse.json()).toEqual(original);
+        const currentResponse = await GET(
+          new Request("http://local.test"),
+          context,
+        );
+        const current = await currentResponse.json();
+        expect(current.execution.revision).toBe(advanced.revision);
+        expect(current.execution.revision).toBeGreaterThan(original.revision);
+      } finally {
+        if (priorOwnerEmail == null) delete process.env.OWNER_EMAIL;
+        else process.env.OWNER_EMAIL = priorOwnerEmail;
+      }
+    });
+
     it("rejects command-ID reuse with a different payload or execution", async () => {
       const workoutA = await createWorkout("COMPLETED");
       const selectedA = await selectFinisher({
@@ -1051,6 +1290,213 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
         code: "FINISHER_COMMAND_ID_CONFLICT",
         status: 409,
       });
+    });
+
+    it("expires receipts at 90 days and cleans payloads in bounded global batches without changing history", async () => {
+      const retentionMs = 90 * 24 * 60 * 60 * 1_000;
+      const workout = await createWorkout("COMPLETED");
+      const selected = await selectFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        routineVersionId,
+        now,
+      });
+      const startCommandId = crypto.randomUUID();
+      const started = await startSelectedFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        executionId: selected.id,
+        expectedRevision: selected.revision,
+        commandId: startCommandId,
+        now,
+      });
+      const pauseCommandId = crypto.randomUUID();
+      const paused = await pauseSelectedFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        executionId: selected.id,
+        expectedRevision: started.revision,
+        commandId: pauseCommandId,
+        now: new Date(now.getTime() + 1_000),
+      });
+      const endCommandId = crypto.randomUUID();
+      const ended = await endSelectedFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        executionId: selected.id,
+        expectedRevision: paused.revision,
+        commandId: endCommandId,
+        now: new Date(now.getTime() + 2_000),
+      });
+      const expiresAt = new Date(now.getTime() + retentionMs);
+      const beforeExpiry = await startSelectedFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        executionId: selected.id,
+        expectedRevision: selected.revision,
+        commandId: startCommandId,
+        now: new Date(expiresAt.getTime() - 1),
+      });
+      expect(beforeExpiry).toEqual(started);
+      expect(
+        await client.finisherExecution.findUniqueOrThrow({
+          where: { id: selected.id },
+          select: { revision: true, state: true },
+        }),
+      ).toEqual({ revision: ended.revision, state: ended.state });
+
+      for (const expiredNow of [
+        expiresAt,
+        new Date(expiresAt.getTime() + 1),
+      ]) {
+        await expect(
+          startSelectedFinisher({
+            userId: ownerId,
+            workoutId: workout.id,
+            executionId: selected.id,
+            expectedRevision: selected.revision,
+            commandId: startCommandId,
+            now: expiredNow,
+          }),
+        ).rejects.toMatchObject({
+          code: "FINISHER_COMMAND_EXPIRED",
+          status: 409,
+        });
+      }
+
+      const collisionWorkout = await createWorkout("COMPLETED");
+      const collisionSelection = await selectFinisher({
+        userId: ownerId,
+        workoutId: collisionWorkout.id,
+        routineVersionId,
+        now,
+      });
+      await expect(
+        startSelectedFinisher({
+          userId: ownerId,
+          workoutId: collisionWorkout.id,
+          executionId: collisionSelection.id,
+          expectedRevision: collisionSelection.revision,
+          commandId: startCommandId,
+          now: new Date(expiresAt.getTime() + 1),
+        }),
+      ).rejects.toMatchObject({
+        code: "FINISHER_COMMAND_EXPIRED",
+        status: 409,
+      });
+
+      const permanentHistoryBefore =
+        await client.finisherExecution.findUniqueOrThrow({
+          where: { id: selected.id },
+          include: {
+            stepExecutions: { orderBy: { orderIndex: "asc" } },
+          },
+        });
+      await client.finisherExecutionCommand.updateMany({
+        where: {
+          id: { in: [startCommandId, pauseCommandId, endCommandId] },
+        },
+        data: { expiresAt },
+      });
+      const extraCommandIds = Array.from({ length: 4 }, () =>
+        crypto.randomUUID(),
+      );
+      await client.finisherExecutionCommand.createMany({
+        data: extraCommandIds.map((id, index) => ({
+          id,
+          workoutId: workout.id,
+          executionId: selected.id,
+          action: "SYNC",
+          requestHash: `expired-cleanup-${index}`,
+          expectedRevision: selected.revision,
+          resultRevision: ended.revision,
+          response: { marker: index },
+          createdAt: now,
+          expiresAt,
+        })),
+      });
+      const allExpiredIds = [
+        startCommandId,
+        pauseCommandId,
+        endCommandId,
+        ...extraCommandIds,
+      ];
+
+      await client.finisherExecutionCommand.updateMany({
+        where: {
+          id: {
+            notIn: allExpiredIds,
+          },
+        },
+        data: {
+          expiresAt: new Date(expiresAt.getTime() + 24 * 60 * 60 * 1_000),
+        },
+      });
+
+      const concurrent = await Promise.allSettled([
+        startSelectedFinisher({
+          userId: ownerId,
+          workoutId: workout.id,
+          executionId: selected.id,
+          expectedRevision: selected.revision,
+          commandId: startCommandId,
+          now: expiresAt,
+        }),
+        cleanupExpiredFinisherCommandReceipts({
+          now: expiresAt,
+          batchSize: 2,
+        }),
+      ]);
+      expect(concurrent[0]).toMatchObject({
+        status: "rejected",
+        reason: { code: "FINISHER_COMMAND_EXPIRED" },
+      });
+      expect(concurrent[1]).toMatchObject({
+        status: "fulfilled",
+        value: 2,
+      });
+
+      const batchCounts = [2];
+      while (
+        (await client.finisherExecutionCommand.count({
+          where: {
+            id: { in: allExpiredIds },
+            cleanedAt: null,
+          },
+        })) > 0
+      ) {
+        batchCounts.push(
+          await cleanupExpiredFinisherCommandReceipts({
+            now: expiresAt,
+            batchSize: 2,
+          }),
+        );
+      }
+      expect(batchCounts.every((count) => count > 0 && count <= 2)).toBe(true);
+      expect(batchCounts.reduce((sum, count) => sum + count, 0)).toBe(
+        allExpiredIds.length,
+      );
+      expect(
+        await client.finisherExecutionCommand.findMany({
+          where: { id: { in: allExpiredIds } },
+          select: { response: true, cleanedAt: true },
+        }),
+      ).toEqual(
+        expect.arrayContaining(
+          allExpiredIds.map(() => ({
+            response: null,
+            cleanedAt: expiresAt,
+          })),
+        ),
+      );
+      expect(
+        await client.finisherExecution.findUniqueOrThrow({
+          where: { id: selected.id },
+          include: {
+            stepExecutions: { orderBy: { orderIndex: "asc" } },
+          },
+        }),
+      ).toEqual(permanentHistoryBefore);
     });
 
     it("rejects pre-completion and cross-user starts with owner-scoped errors", async () => {

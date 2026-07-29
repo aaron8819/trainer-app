@@ -966,12 +966,14 @@ async function seedFinisherRoutine(
         limitationTags: existing.limitationTags,
         steps: existing.steps.map((step) => ({
           id: step.id,
+          orderIndex: step.orderIndex,
           movementName: step.movementName,
           workSeconds: step.workSeconds,
           recoverySeconds: step.recoverySeconds,
           techniqueCues: step.techniqueCues,
           alternatives: step.alternatives.map((alternative) => ({
             id: alternative.id,
+            orderIndex: alternative.orderIndex,
             movementName: alternative.movementName,
           })),
         })),
@@ -998,6 +1000,7 @@ async function seedFinisherRoutine(
           id: stableFinisherCatalogId(
             `step:${definition.code}:${definition.version}:${orderIndex}`
           ),
+          orderIndex,
           movementName: step.movementName,
           workSeconds: step.workSeconds,
           recoverySeconds: step.recoverySeconds,
@@ -1007,6 +1010,7 @@ async function seedFinisherRoutine(
               id: stableFinisherCatalogId(
                 `alternative:${definition.code}:${definition.version}:${orderIndex}:${alternativeIndex}`
               ),
+              orderIndex: alternativeIndex,
               movementName,
             })
           ),

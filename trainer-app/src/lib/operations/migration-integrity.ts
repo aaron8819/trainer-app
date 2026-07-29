@@ -75,7 +75,6 @@ export type MigrationAuthorizationEvidence = {
   repositoryHead: string;
   productionDeploymentCommit: string;
   requiredApplicationCommit?: string;
-  expectedPendingMigrations?: string[];
   dataPreflight?: VerificationEvidence;
   disposablePostgres?: VerificationEvidence;
   recoveryPoint?: RecoveryPointEvidence;
@@ -116,10 +115,37 @@ export type IndexFact = {
   live?: boolean;
   constraintName?: string | null;
   constraintType?: string | null;
+  accessMethod?: string;
+  includeColumns?: string[];
 };
-export type ConstraintFact = { table: string; name: string; type: string; definition: string };
-export type TriggerFact = { table: string; name: string; definition: string };
-export type FunctionFact = { name: string; definition: string };
+export type ConstraintFact = {
+  table: string;
+  name: string;
+  type: string;
+  definition: string;
+  validated?: boolean;
+  deferrable?: boolean;
+  initiallyDeferred?: boolean;
+};
+export type TriggerFact = {
+  table: string;
+  name: string;
+  definition: string;
+  enabled?: string;
+};
+export type FunctionFact = {
+  name: string;
+  definition: string;
+  language?: string;
+  arguments?: string;
+  resultType?: string;
+  volatility?: string;
+  securityDefiner?: boolean;
+  leakproof?: boolean;
+  strict?: boolean;
+  parallel?: string;
+  body?: string;
+};
 export type CatalogRowFact = {
   table: string;
   key: string;
@@ -197,8 +223,30 @@ type ObjectExpectation = {
   table?: string;
   column?: Pick<ColumnFact, "type" | "nullable" | "default">;
   enum?: Pick<EnumFact, "values">;
-  index?: Pick<IndexFact, "unique" | "columns" | "predicate">;
-  constraint?: { type: string; definition?: string };
+  index?: Pick<IndexFact, "unique" | "columns" | "predicate"> & {
+    accessMethod?: string;
+    includeColumns?: string[];
+    requireLiveEnforcement?: boolean;
+  };
+  constraint?: {
+    type: string;
+    definition?: string;
+    validated?: boolean;
+    deferrable?: boolean;
+    initiallyDeferred?: boolean;
+  };
+  trigger?: { definition: string; enabled: string };
+  function?: {
+    language: string;
+    arguments: string;
+    resultType: string;
+    volatility: string;
+    securityDefiner: boolean;
+    leakproof: boolean;
+    strict: boolean;
+    parallel: string;
+    body: string;
+  };
   row?: Record<string, unknown>;
   definitionIncludes?: string[];
 };
@@ -233,20 +281,91 @@ const finisherIndex = (
   kind: "index",
   table,
   name,
-  index: { unique, columns, predicate },
+  index: {
+    unique,
+    columns,
+    predicate,
+    accessMethod: "btree",
+    includeColumns: [],
+    requireLiveEnforcement: true,
+  },
 });
 
-const finisherConstraint = (
+const FINISHER_MIGRATION_SQL = readFileSync(
+  join(
+    process.cwd(),
+    "prisma",
+    "migrations",
+    MIGRATION_AUTHORIZATION_POLICY.targetMigration,
+    "migration.sql",
+  ),
+  "utf8",
+);
+
+function finisherFunction(name: string): ObjectExpectation {
+  const match = FINISHER_MIGRATION_SQL.match(
+    new RegExp(
+      `CREATE FUNCTION ${name}\\(\\) RETURNS trigger\\s+LANGUAGE plpgsql AS \\$\\$([\\s\\S]*?)\\$\\$;`,
+    ),
+  );
+  if (!match?.[1]) {
+    throw new Error(`Missing canonical Finisher function definition: ${name}`);
+  }
+  return {
+    kind: "function",
+    name,
+    function: {
+      language: "plpgsql",
+      arguments: "",
+      resultType: "trigger",
+      volatility: "v",
+      securityDefiner: false,
+      leakproof: false,
+      strict: false,
+      parallel: "u",
+      body: match[1],
+    },
+  };
+}
+
+function finisherTrigger(table: string, name: string): ObjectExpectation {
+  const match = FINISHER_MIGRATION_SQL.match(
+    new RegExp(
+      `CREATE (?:CONSTRAINT )?TRIGGER "${name}"[\\s\\S]*?;`,
+    ),
+  );
+  if (!match?.[0]) {
+    throw new Error(`Missing canonical Finisher trigger definition: ${name}`);
+  }
+  return {
+    kind: "trigger",
+    table,
+    name,
+    trigger: { definition: match[0], enabled: "O" },
+  };
+}
+
+const finisherExactConstraint = (
   table: string,
   name: string,
   type: string,
-  definitionIncludes: string[],
+  definition: string,
+  options: {
+    validated?: boolean;
+    deferrable?: boolean;
+    initiallyDeferred?: boolean;
+  } = {},
 ): ObjectExpectation => ({
   kind: "constraint",
   table,
   name,
-  constraint: { type },
-  definitionIncludes,
+  constraint: {
+    type,
+    definition,
+    validated: options.validated ?? true,
+    deferrable: options.deferrable ?? false,
+    initiallyDeferred: options.initiallyDeferred ?? false,
+  },
 });
 
 const FINISHER_TABLE_COLUMNS: Record<
@@ -342,6 +461,7 @@ const FINISHER_TABLE_COLUMNS: Record<
     ["recommendationReason", "text", true],
     ["recommendationUnavailableReason", "text", true],
     ["recommendationContext", "jsonb", false],
+    ["finalizedAt", "timestamp(3) without time zone", true],
   ],
   FinisherOfferItem: [
     ["id", "text", false],
@@ -368,6 +488,7 @@ const FINISHER_TABLE_COLUMNS: Record<
       false,
       "CURRENT_TIMESTAMP",
     ],
+    ["finalizedAt", "timestamp(3) without time zone", true],
     ["startedAt", "timestamp(3) without time zone", true],
     ["completedAt", "timestamp(3) without time zone", true],
     ["endedAt", "timestamp(3) without time zone", true],
@@ -390,6 +511,8 @@ const FINISHER_TABLE_COLUMNS: Record<
     ["id", "text", false],
     ["executionId", "text", false],
     ["routineStepId", "text", false],
+    ["routineVersionId", "text", false],
+    ["orderIndex", "integer", false],
     ["performedAlternativeId", "text", true],
     [
       "status",
@@ -410,7 +533,7 @@ const FINISHER_TABLE_COLUMNS: Record<
     ["requestHash", "text", false],
     ["expectedRevision", "integer", false],
     ["resultRevision", "integer", false],
-    ["response", "jsonb", false],
+    ["response", "jsonb", true],
     [
       "createdAt",
       "timestamp(3) without time zone",
@@ -418,6 +541,7 @@ const FINISHER_TABLE_COLUMNS: Record<
       "CURRENT_TIMESTAMP",
     ],
     ["expiresAt", "timestamp(3) without time zone", false],
+    ["cleanedAt", "timestamp(3) without time zone", true],
   ],
 };
 
@@ -583,10 +707,24 @@ const FINISHER_SCHEMA_EXPECTATIONS: ObjectExpectation[] = [
       null,
     ],
     [
+      "FinisherRoutineStep",
+      "FinisherRoutineStep_id_routineVersionId_orderIndex_key",
+      true,
+      ["id", "routineVersionId", "orderIndex"],
+      null,
+    ],
+    [
       "FinisherRoutineStepAlternative",
       "FinisherRoutineStepAlternative_routineStepId_orderIndex_key",
       true,
       ["routineStepId", "orderIndex"],
+      null,
+    ],
+    [
+      "FinisherRoutineStepAlternative",
+      "FinisherRoutineStepAlternative_id_routineStepId_key",
+      true,
+      ["id", "routineStepId"],
       null,
     ],
     ["FinisherOffer", "FinisherOffer_workoutId_key", true, ["workoutId"], null],
@@ -675,6 +813,13 @@ const FINISHER_SCHEMA_EXPECTATIONS: ObjectExpectation[] = [
       null,
     ],
     [
+      "FinisherExecution",
+      "FinisherExecution_id_routineVersionId_key",
+      true,
+      ["id", "routineVersionId"],
+      null,
+    ],
+    [
       "FinisherExecutionStep",
       "FinisherExecutionStep_executionId_routineStepId_key",
       true,
@@ -697,9 +842,9 @@ const FINISHER_SCHEMA_EXPECTATIONS: ObjectExpectation[] = [
     ],
     [
       "FinisherExecutionCommand",
-      "FinisherExecutionCommand_expiresAt_idx",
+      "FinisherExecutionCommand_cleanedAt_expiresAt_id_idx",
       false,
-      ["expiresAt"],
+      ["cleanedAt", "expiresAt", "id"],
       null,
     ],
   ].map(([table, name, unique, columns, predicate]) =>
@@ -712,66 +857,69 @@ const FINISHER_SCHEMA_EXPECTATIONS: ObjectExpectation[] = [
     ),
   ),
   ...Object.keys(FINISHER_TABLE_COLUMNS).map((table) =>
-    finisherConstraint(table, `${table}_pkey`, "p", ["PRIMARY KEY", "(id)"]),
+    finisherExactConstraint(table, `${table}_pkey`, "p", "PRIMARY KEY (id)"),
   ),
   ...[
-    ["FinisherRoutineVersion", "FinisherRoutineVersion_positive_version", ["version", "> 0"]],
-    ["FinisherRoutineVersion", "FinisherRoutineVersion_preparation_range", ["preparationSeconds", ">= 0", "<= 60"]],
-    ["FinisherRoutineStep", "FinisherRoutineStep_order_nonnegative", ["orderIndex", ">= 0"]],
-    ["FinisherRoutineStep", "FinisherRoutineStep_work_positive", ["workSeconds", "> 0"]],
-    ["FinisherRoutineStep", "FinisherRoutineStep_recovery_nonnegative", ["recoverySeconds", ">= 0"]],
-    ["FinisherRoutineStepAlternative", "FinisherRoutineStepAlternative_order_nonnegative", ["orderIndex", ">= 0"]],
-    ["FinisherOffer", "FinisherOffer_revision_positive", ["revision", "> 0"]],
-    ["FinisherOfferItem", "FinisherOfferItem_position_nonnegative", ["position", ">= 0"]],
-    ["FinisherExecution", "FinisherExecution_offer_revision_positive", ["offerRevisionAtSelection", "> 0"]],
-    ["FinisherExecution", "FinisherExecution_step_nonnegative", ["currentStepIndex", ">= 0"]],
-    ["FinisherExecution", "FinisherExecution_pause_nonnegative", ["pausedRemainingMs", "IS NULL", ">= 0"]],
-    ["FinisherExecution", "FinisherExecution_preparation_active_nonnegative", ["preparationActiveMs", ">= 0"]],
-    ["FinisherExecution", "FinisherExecution_recovery_active_nonnegative", ["recoveryActiveMs", ">= 0"]],
-    ["FinisherExecution", "FinisherExecution_preparation_pause_nonnegative", ["preparationPausedMs", ">= 0"]],
-    ["FinisherExecution", "FinisherExecution_work_pause_nonnegative", ["workPausedMs", ">= 0"]],
-    ["FinisherExecution", "FinisherExecution_recovery_pause_nonnegative", ["recoveryPausedMs", ">= 0"]],
-    ["FinisherExecution", "FinisherExecution_revision_positive", ["revision", "> 0"]],
-    ["FinisherExecution", "FinisherExecution_feedback_range", ["difficultyFeedback", ">= 1", "<= 10"]],
-    ["FinisherExecutionStep", "FinisherExecutionStep_actual_work_nonnegative", ["actualWorkMs", ">= 0"]],
-    ["FinisherExecutionCommand", "FinisherExecutionCommand_expected_revision_positive", ["expectedRevision", "> 0"]],
-    ["FinisherExecutionCommand", "FinisherExecutionCommand_result_revision_positive", ["resultRevision", "> 0"]],
-  ].map(([table, name, includes]) =>
-    finisherConstraint(table as string, name as string, "c", includes as string[]),
+    ["FinisherRoutineVersion", "FinisherRoutineVersion_positive_version", "CHECK (version > 0)"],
+    ["FinisherRoutineVersion", "FinisherRoutineVersion_preparation_range", "CHECK (preparationSeconds >= 0 AND preparationSeconds <= 60)"],
+    ["FinisherRoutineStep", "FinisherRoutineStep_order_nonnegative", "CHECK (orderIndex >= 0)"],
+    ["FinisherRoutineStep", "FinisherRoutineStep_work_positive", "CHECK (workSeconds > 0)"],
+    ["FinisherRoutineStep", "FinisherRoutineStep_recovery_nonnegative", "CHECK (recoverySeconds >= 0)"],
+    ["FinisherRoutineStepAlternative", "FinisherRoutineStepAlternative_order_nonnegative", "CHECK (orderIndex >= 0)"],
+    ["FinisherOffer", "FinisherOffer_revision_positive", "CHECK (revision > 0)"],
+    ["FinisherOfferItem", "FinisherOfferItem_position_nonnegative", "CHECK (position >= 0)"],
+    ["FinisherExecution", "FinisherExecution_offer_revision_positive", "CHECK (offerRevisionAtSelection > 0)"],
+    ["FinisherExecution", "FinisherExecution_step_nonnegative", "CHECK (currentStepIndex >= 0)"],
+    ["FinisherExecution", "FinisherExecution_pause_nonnegative", "CHECK (pausedRemainingMs IS NULL OR pausedRemainingMs >= 0)"],
+    ["FinisherExecution", "FinisherExecution_preparation_active_nonnegative", "CHECK (preparationActiveMs >= 0)"],
+    ["FinisherExecution", "FinisherExecution_recovery_active_nonnegative", "CHECK (recoveryActiveMs >= 0)"],
+    ["FinisherExecution", "FinisherExecution_preparation_pause_nonnegative", "CHECK (preparationPausedMs >= 0)"],
+    ["FinisherExecution", "FinisherExecution_work_pause_nonnegative", "CHECK (workPausedMs >= 0)"],
+    ["FinisherExecution", "FinisherExecution_recovery_pause_nonnegative", "CHECK (recoveryPausedMs >= 0)"],
+    ["FinisherExecution", "FinisherExecution_revision_positive", "CHECK (revision > 0)"],
+    ["FinisherExecution", "FinisherExecution_feedback_range", "CHECK (difficultyFeedback IS NULL OR difficultyFeedback >= 1 AND difficultyFeedback <= 10)"],
+    ["FinisherExecutionStep", "FinisherExecutionStep_actual_work_nonnegative", "CHECK (actualWorkMs >= 0)"],
+    ["FinisherExecutionCommand", "FinisherExecutionCommand_expected_revision_positive", "CHECK (expectedRevision > 0)"],
+    ["FinisherExecutionCommand", "FinisherExecutionCommand_result_revision_positive", "CHECK (resultRevision > 0)"],
+  ].map(([table, name, definition]) =>
+    finisherExactConstraint(table, name, "c", definition),
   ),
   ...[
-    ["FinisherRoutineVersion", "FinisherRoutineVersion_routineId_fkey", ["routineId", "FinisherRoutine", "ON UPDATE CASCADE", "ON DELETE RESTRICT"]],
-    ["FinisherRoutineStep", "FinisherRoutineStep_routineVersionId_fkey", ["routineVersionId", "FinisherRoutineVersion", "ON UPDATE CASCADE", "ON DELETE RESTRICT"]],
-    ["FinisherRoutineStepAlternative", "FinisherRoutineStepAlternative_routineStepId_fkey", ["routineStepId", "FinisherRoutineStep", "ON UPDATE CASCADE", "ON DELETE RESTRICT"]],
-    ["FinisherOffer", "FinisherOffer_workoutId_fkey", ["workoutId", "Workout", "ON UPDATE CASCADE", "ON DELETE RESTRICT"]],
-    ["FinisherOffer", "FinisherOffer_recommendedRoutineVersionId_fkey", ["recommendedRoutineVersionId", "FinisherRoutineVersion", "ON UPDATE CASCADE", "ON DELETE RESTRICT"]],
-    ["FinisherOfferItem", "FinisherOfferItem_offerId_fkey", ["offerId", "FinisherOffer", "ON UPDATE CASCADE", "ON DELETE RESTRICT"]],
-    ["FinisherOfferItem", "FinisherOfferItem_routineVersionId_fkey", ["routineVersionId", "FinisherRoutineVersion", "ON UPDATE CASCADE", "ON DELETE RESTRICT"]],
-    ["FinisherExecution", "FinisherExecution_workoutId_fkey", ["workoutId", "Workout", "ON UPDATE CASCADE", "ON DELETE RESTRICT"]],
-    ["FinisherExecution", "FinisherExecution_offerId_fkey", ["offerId", "FinisherOffer", "ON UPDATE CASCADE", "ON DELETE RESTRICT"]],
-    ["FinisherExecution", "FinisherExecution_routineVersionId_fkey", ["routineVersionId", "FinisherRoutineVersion", "ON UPDATE CASCADE", "ON DELETE RESTRICT"]],
-    ["FinisherExecutionStep", "FinisherExecutionStep_executionId_fkey", ["executionId", "FinisherExecution", "ON UPDATE CASCADE", "ON DELETE CASCADE"]],
-    ["FinisherExecutionStep", "FinisherExecutionStep_routineStepId_fkey", ["routineStepId", "FinisherRoutineStep", "ON UPDATE CASCADE", "ON DELETE RESTRICT"]],
-    ["FinisherExecutionStep", "FinisherExecutionStep_performedAlternativeId_fkey", ["performedAlternativeId", "FinisherRoutineStepAlternative", "ON UPDATE CASCADE", "ON DELETE RESTRICT"]],
-    ["FinisherExecutionCommand", "FinisherExecutionCommand_executionId_workoutId_fkey", ["executionId", "workoutId", "FinisherExecution", "ON UPDATE CASCADE", "ON DELETE RESTRICT"]],
-  ].map(([table, name, includes]) =>
-    finisherConstraint(table as string, name as string, "f", includes as string[]),
+    ["FinisherRoutineVersion", "FinisherRoutineVersion_routineId_fkey", "FOREIGN KEY (routineId) REFERENCES FinisherRoutine(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
+    ["FinisherRoutineStep", "FinisherRoutineStep_routineVersionId_fkey", "FOREIGN KEY (routineVersionId) REFERENCES FinisherRoutineVersion(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
+    ["FinisherRoutineStepAlternative", "FinisherRoutineStepAlternative_routineStepId_fkey", "FOREIGN KEY (routineStepId) REFERENCES FinisherRoutineStep(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
+    ["FinisherOffer", "FinisherOffer_workoutId_fkey", "FOREIGN KEY (workoutId) REFERENCES Workout(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
+    ["FinisherOffer", "FinisherOffer_recommendedRoutineVersionId_fkey", "FOREIGN KEY (recommendedRoutineVersionId) REFERENCES FinisherRoutineVersion(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
+    ["FinisherOfferItem", "FinisherOfferItem_offerId_fkey", "FOREIGN KEY (offerId) REFERENCES FinisherOffer(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
+    ["FinisherOfferItem", "FinisherOfferItem_routineVersionId_fkey", "FOREIGN KEY (routineVersionId) REFERENCES FinisherRoutineVersion(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
+    ["FinisherExecution", "FinisherExecution_workoutId_fkey", "FOREIGN KEY (workoutId) REFERENCES Workout(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
+    ["FinisherExecution", "FinisherExecution_offerId_fkey", "FOREIGN KEY (offerId) REFERENCES FinisherOffer(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
+    ["FinisherExecution", "FinisherExecution_routineVersionId_fkey", "FOREIGN KEY (routineVersionId) REFERENCES FinisherRoutineVersion(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
+    ["FinisherExecutionStep", "FinisherExecutionStep_executionId_fkey", "FOREIGN KEY (executionId) REFERENCES FinisherExecution(id) ON UPDATE CASCADE ON DELETE CASCADE"],
+    ["FinisherExecutionStep", "FinisherExecutionStep_routineStepId_fkey", "FOREIGN KEY (routineStepId) REFERENCES FinisherRoutineStep(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
+    ["FinisherExecutionStep", "FinisherExecutionStep_executionId_routineVersionId_fkey", "FOREIGN KEY (executionId, routineVersionId) REFERENCES FinisherExecution(id, routineVersionId) ON UPDATE CASCADE ON DELETE RESTRICT"],
+    ["FinisherExecutionStep", "FinisherExecutionStep_routineStep_binding_fkey", "FOREIGN KEY (routineStepId, routineVersionId, orderIndex) REFERENCES FinisherRoutineStep(id, routineVersionId, orderIndex) ON UPDATE CASCADE ON DELETE RESTRICT"],
+    ["FinisherExecutionStep", "FinisherExecutionStep_performedAlternativeId_fkey", "FOREIGN KEY (performedAlternativeId) REFERENCES FinisherRoutineStepAlternative(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
+    ["FinisherExecutionStep", "FinisherExecutionStep_performedAlternative_binding_fkey", "FOREIGN KEY (performedAlternativeId, routineStepId) REFERENCES FinisherRoutineStepAlternative(id, routineStepId) ON UPDATE CASCADE ON DELETE RESTRICT"],
+    ["FinisherExecutionCommand", "FinisherExecutionCommand_executionId_workoutId_fkey", "FOREIGN KEY (executionId, workoutId) REFERENCES FinisherExecution(id, workoutId) ON UPDATE CASCADE ON DELETE RESTRICT"],
+  ].map(([table, name, definition]) =>
+    finisherExactConstraint(table, name, "f", definition),
   ),
   ...[
-    ["guard_finisher_routine_identity", ["finisher routine identity is immutable"]],
-    ["require_finisher_routine_version_sealed", ["must be sealed before commit"]],
-    ["guard_finisher_routine_version_mutation", ["finisher routine versions are immutable"]],
-    ["guard_finisher_routine_child_mutation", ["sealed finisher routine version children are immutable"]],
-    ["guard_finisher_offer_identity", ["finisher offer identity and definition binding are immutable"]],
-    ["reject_finisher_offer_item_update", ["finisher offer items are immutable"]],
-    ["guard_finisher_execution_identity", ["finisher execution identity and definition binding are immutable"]],
-    ["guard_finisher_execution_step_identity", ["finisher execution step identity is immutable"]],
-    ["reject_finisher_history_deletion", ["finisher lifecycle history cannot be deleted"]],
-  ].map(([name, definitionIncludes]) => ({
-    kind: "function" as const,
-    name: name as string,
-    definitionIncludes: definitionIncludes as string[],
-  })),
+    "guard_finisher_routine_identity",
+    "require_finisher_routine_version_sealed",
+    "guard_finisher_routine_version_mutation",
+    "guard_finisher_routine_child_mutation",
+    "require_finisher_offer_finalized",
+    "require_finisher_execution_finalized",
+    "guard_finisher_offer_item_insert",
+    "guard_finisher_execution_step_insert",
+    "guard_finisher_offer_identity",
+    "reject_finisher_offer_item_update",
+    "guard_finisher_execution_identity",
+    "guard_finisher_execution_step_identity",
+    "reject_finisher_history_deletion",
+  ].map(finisherFunction),
   ...[
     ["FinisherRoutine", "FinisherRoutine_identity_immutable", "guard_finisher_routine_identity"],
     ["FinisherRoutineVersion", "FinisherRoutineVersion_require_sealed", "require_finisher_routine_version_sealed"],
@@ -786,12 +934,11 @@ const FINISHER_SCHEMA_EXPECTATIONS: ObjectExpectation[] = [
     ["FinisherOfferItem", "FinisherOfferItem_no_delete", "reject_finisher_history_deletion"],
     ["FinisherExecution", "FinisherExecution_no_delete", "reject_finisher_history_deletion"],
     ["FinisherExecutionStep", "FinisherExecutionStep_no_delete", "reject_finisher_history_deletion"],
-  ].map(([table, name, owner]) => ({
-    kind: "trigger" as const,
-    table,
-    name,
-    definitionIncludes: [owner],
-  })),
+    ["FinisherOffer", "FinisherOffer_require_finalized"],
+    ["FinisherExecution", "FinisherExecution_require_finalized"],
+    ["FinisherOfferItem", "FinisherOfferItem_insert_before_finalization"],
+    ["FinisherExecutionStep", "FinisherExecutionStep_insert_before_finalization"],
+  ].map(([table, name]) => finisherTrigger(table, name)),
   ...FINISHER_CATALOG_EXPECTATIONS,
 ];
 
@@ -1145,6 +1292,22 @@ function normalize(value: string | null): string | null {
   return value?.replace(/\s+/g, " ").trim() ?? null;
 }
 
+function normalizeCatalogDefinition(value: string | null): string | null {
+  return normalize(value)
+    ?.replace(/\bpublic\./gi, "")
+    .replace(/"([^"]+)"/g, "$1")
+    .replace(
+      /\b(BEFORE|AFTER|INSTEAD OF) ((?:INSERT|UPDATE|DELETE|TRUNCATE)(?: OR (?:INSERT|UPDATE|DELETE|TRUNCATE))+) ON\b/gi,
+      (_match, timing: string, events: string) =>
+        `${timing.toUpperCase()} ${events
+          .toUpperCase()
+          .split(" OR ")
+          .sort()
+          .join(" OR ")} ON`,
+    )
+    .replace(/;$/, "") ?? null;
+}
+
 function stripRedundantOuterParentheses(value: string): string {
   let result = value;
   while (result.startsWith("(") && result.endsWith(")")) {
@@ -1223,7 +1386,16 @@ function pendingObjectCompatible(snapshot: CatalogSnapshot, object: ObjectExpect
     return Boolean(
       actual && object.index && actual.unique === object.index.unique &&
       JSON.stringify(actual.columns.map((part) => normalizeIndexPart(part))) === JSON.stringify(object.index.columns.map((part) => normalizeIndexPart(part))) &&
-      normalizeIndexPart(actual.predicate) === normalizeIndexPart(object.index.predicate),
+      normalizeIndexPart(actual.predicate) === normalizeIndexPart(object.index.predicate) &&
+      (!object.index.requireLiveEnforcement ||
+        (actual.valid === true &&
+          actual.ready === true &&
+          actual.live === true)) &&
+      (object.index.accessMethod == null ||
+        actual.accessMethod === object.index.accessMethod) &&
+      (object.index.includeColumns == null ||
+        JSON.stringify(actual.includeColumns ?? []) ===
+          JSON.stringify(object.index.includeColumns)),
     );
   }
   if (object.kind === "constraint") {
@@ -1234,7 +1406,26 @@ function pendingObjectCompatible(snapshot: CatalogSnapshot, object: ObjectExpect
     }
     if (
       object.constraint?.definition &&
-      normalize(actual.definition) !== normalize(object.constraint.definition)
+      normalizeCatalogDefinition(actual.definition) !==
+        normalizeCatalogDefinition(object.constraint.definition)
+    ) {
+      return false;
+    }
+    if (
+      object.constraint?.validated != null &&
+      actual.validated !== object.constraint.validated
+    ) {
+      return false;
+    }
+    if (
+      object.constraint?.deferrable != null &&
+      actual.deferrable !== object.constraint.deferrable
+    ) {
+      return false;
+    }
+    if (
+      object.constraint?.initiallyDeferred != null &&
+      actual.initiallyDeferred !== object.constraint.initiallyDeferred
     ) {
       return false;
     }
@@ -1250,10 +1441,144 @@ function pendingObjectCompatible(snapshot: CatalogSnapshot, object: ObjectExpect
         canonicalJson(actual.values) === canonicalJson(object.row),
     );
   }
-  const definition = object.kind === "trigger"
-    ? snapshot.triggers.find((item) => item.table === object.table && item.name === object.name)?.definition
-    : snapshot.functions.find((item) => item.name === object.name)?.definition;
-  return Boolean(definition && (object.definitionIncludes ?? []).every((token) => definition.includes(token)));
+  if (object.kind === "trigger") {
+    const actual = snapshot.triggers.find(
+      (item) => item.table === object.table && item.name === object.name,
+    );
+    if (!actual) return false;
+    if (object.trigger) {
+      return (
+        actual.enabled === object.trigger.enabled &&
+        normalizeCatalogDefinition(actual.definition) ===
+          normalizeCatalogDefinition(object.trigger.definition)
+      );
+    }
+    return (object.definitionIncludes ?? []).every((token) =>
+      actual.definition.includes(token),
+    );
+  }
+  const actual = snapshot.functions.find(
+    (item) =>
+      item.name === object.name &&
+      (!object.function || item.arguments === object.function.arguments),
+  );
+  if (!actual) return false;
+  if (object.function) {
+    return (
+      actual.language === object.function.language &&
+      actual.arguments === object.function.arguments &&
+      actual.resultType === object.function.resultType &&
+      actual.volatility === object.function.volatility &&
+      actual.securityDefiner === object.function.securityDefiner &&
+      actual.leakproof === object.function.leakproof &&
+      actual.strict === object.function.strict &&
+      actual.parallel === object.function.parallel &&
+      normalize(actual.body ?? null) === normalize(object.function.body)
+    );
+  }
+  return (object.definitionIncludes ?? []).every((token) =>
+    actual.definition.includes(token),
+  );
+}
+
+function unexpectedFinisherOwnedObjects(snapshot: CatalogSnapshot): string[] {
+  const expectedTables = new Set(Object.keys(FINISHER_TABLE_COLUMNS));
+  const expectedColumns = new Set(
+    FINISHER_SCHEMA_EXPECTATIONS.filter((item) => item.kind === "column").map(
+      objectKey,
+    ),
+  );
+  const expectedEnums = new Set(
+    FINISHER_SCHEMA_EXPECTATIONS.filter((item) => item.kind === "enum").map(
+      objectKey,
+    ),
+  );
+  const expectedIndexes = new Set(
+    FINISHER_SCHEMA_EXPECTATIONS.filter((item) => item.kind === "index").map(
+      objectKey,
+    ),
+  );
+  for (const table of expectedTables) {
+    expectedIndexes.add(`index:${table}.${table}_pkey`);
+  }
+  const expectedConstraints = new Set(
+    FINISHER_SCHEMA_EXPECTATIONS.filter(
+      (item) => item.kind === "constraint",
+    ).map(objectKey),
+  );
+  const expectedTriggers = new Set(
+    FINISHER_SCHEMA_EXPECTATIONS.filter((item) => item.kind === "trigger").map(
+      objectKey,
+    ),
+  );
+  const expectedFunctions = new Set(
+    FINISHER_SCHEMA_EXPECTATIONS.filter((item) => item.kind === "function").map(
+      objectKey,
+    ),
+  );
+  const expectedRows = new Set(
+    FINISHER_SCHEMA_EXPECTATIONS.filter(
+      (item) => item.kind === "catalogRow",
+    ).map(objectKey),
+  );
+  const unexpected: string[] = [];
+
+  for (const table of snapshot.tables.filter((name) =>
+    name.startsWith("Finisher"),
+  )) {
+    if (!expectedTables.has(table)) unexpected.push(`table:${table}`);
+  }
+  for (const column of snapshot.columns.filter((item) =>
+    expectedTables.has(item.table),
+  )) {
+    const key = `column:${column.table}.${column.name}`;
+    if (!expectedColumns.has(key)) unexpected.push(key);
+  }
+  for (const entry of snapshot.enums.filter(
+    (item) =>
+      item.name.startsWith("Finisher") ||
+      item.name.startsWith("WorkoutPhase"),
+  )) {
+    const key = `enum:${entry.name}`;
+    if (!expectedEnums.has(key)) unexpected.push(key);
+  }
+  for (const index of snapshot.indexes.filter((item) =>
+    expectedTables.has(item.table),
+  )) {
+    const key = `index:${index.table}.${index.name}`;
+    if (!expectedIndexes.has(key)) unexpected.push(key);
+  }
+  for (const constraint of snapshot.constraints.filter((item) =>
+    expectedTables.has(item.table),
+  )) {
+    const key = `constraint:${constraint.table}.${constraint.name}`;
+    const matchingConstraintTrigger =
+      constraint.type === "t" &&
+      expectedTriggers.has(`trigger:${constraint.table}.${constraint.name}`);
+    if (!expectedConstraints.has(key) && !matchingConstraintTrigger) {
+      unexpected.push(key);
+    }
+  }
+  for (const trigger of snapshot.triggers.filter((item) =>
+    expectedTables.has(item.table),
+  )) {
+    const key = `trigger:${trigger.table}.${trigger.name}`;
+    if (!expectedTriggers.has(key)) unexpected.push(key);
+  }
+  for (const fn of snapshot.functions.filter((item) =>
+    item.name.includes("finisher"),
+  )) {
+    const key =
+      fn.arguments && fn.arguments.length > 0
+        ? `function:${fn.name}(${fn.arguments})`
+        : `function:${fn.name}`;
+    if (!expectedFunctions.has(key)) unexpected.push(key);
+  }
+  for (const row of snapshot.catalogRows) {
+    const key = `catalogRow:${row.table}.${row.key}`;
+    if (!expectedRows.has(key)) unexpected.push(key);
+  }
+  return unexpected.sort();
 }
 
 function definitionIssue(snapshot: CatalogSnapshot, expected: DefinitionExpectation): string | null {
@@ -1558,6 +1883,7 @@ export function buildMigrationIntegrityReport(input: {
   const definitionIssues = APPLIED_SCHEMA_EXPECTATIONS.map((expected) => definitionIssue(input.catalog, expected)).filter((issue): issue is string => Boolean(issue));
   incompatible.push(...definitionIssues.filter((issue) => issue.includes(":incompatible")));
   const missingDefinitions = definitionIssues.filter((issue) => issue.endsWith(":missing"));
+  const unexpectedOwnedObjects = unexpectedFinisherOwnedObjects(input.catalog);
   const uniquenessAssessments = BASELINE_UNIQUENESS_EXPECTATIONS.map((expected) => assessBaselineUniqueness(input.catalog, expected));
   const uniquenessBlockingDifferences = uniquenessAssessments
     .filter((assessment) => assessment.migrationBlocking)
@@ -1593,6 +1919,10 @@ export function buildMigrationIntegrityReport(input: {
       category: "applied_migration_object_incompatible" as const,
       difference,
     })),
+    ...unexpectedOwnedObjects.map((difference) => ({
+      category: "unexpected_finisher_owned_object" as const,
+      difference,
+    })),
     ...uniquenessBlockingDifferences.map((difference) => ({ category: "baseline_uniqueness" as const, ...difference })),
   ];
 
@@ -1600,7 +1930,8 @@ export function buildMigrationIntegrityReport(input: {
     definitionIssues.length === 0 &&
     uniquenessBlockingDifferences.length === 0 &&
     appliedManifestMissing.length === 0 &&
-    appliedManifestIncompatible.length === 0;
+    appliedManifestIncompatible.length === 0 &&
+    unexpectedOwnedObjects.length === 0;
   const executed: string[] = [];
   const resolvedApplied: string[] = [];
   const unknownSuccessful: string[] = [];
@@ -1653,9 +1984,9 @@ export function buildMigrationIntegrityReport(input: {
   const exactChain = JSON.stringify(checkedInNames) === JSON.stringify(EXPECTED_MIGRATION_CHAIN);
   const evidence = input.authorizationEvidence;
   const evaluatedAt = evidence?.evaluatedAt ?? new Date().toISOString();
-  const expectedPendingMigrations = evidence?.expectedPendingMigrations
-    ? [...evidence.expectedPendingMigrations]
-    : [...MIGRATION_AUTHORIZATION_POLICY.expectedPendingMigrations];
+  const expectedPendingMigrations: string[] = [
+    ...MIGRATION_AUTHORIZATION_POLICY.expectedPendingMigrations,
+  ];
   const pendingSequenceConfigured = expectedPendingSequenceValid(
     checkedInNames,
     expectedPendingMigrations,
@@ -1863,7 +2194,14 @@ export function buildMigrationIntegrityReport(input: {
       unknown,
       orderViolations,
     },
-    partialObjects: { unexpectedPresent, partiallyPresent, incompatible, unableToVerify, commentsOnly },
+    partialObjects: {
+      unexpectedPresent,
+      partiallyPresent,
+      incompatible,
+      unexpectedOwnedObjects,
+      unableToVerify,
+      commentsOnly,
+    },
     definitions: {
       checked: APPLIED_SCHEMA_EXPECTATIONS.length,
       missing: missingDefinitions,

@@ -300,6 +300,68 @@ function requireUniquenessAssessment(
   }
 }
 
+function requireFinisherGateAFailure(
+  label: string,
+  expectedDifference: string,
+): void {
+  psql(
+    `DELETE FROM public._prisma_migrations WHERE migration_name = '${targetMigration}';`,
+  );
+  try {
+    const report = cliWithExpectedStatus(
+      "scripts/check-migration-status.ts",
+      [],
+      1,
+    );
+    const chain = objectField(report, "chain");
+    const differences = JSON.stringify(
+      objectField(report, "schemaIntegrity").blockingDifferences,
+    );
+    if (
+      chain.gateAApplicable !== true ||
+      numberField(chain, "pending") !== 1 ||
+      report.schemaPreflightValid !== false ||
+      report.technicalMigrationReady !== false ||
+      report.migrationAuthorizationReady !== false ||
+      !differences.includes(expectedDifference)
+    ) {
+      throw new Error(
+        `${label} did not fail Gate A with the expected exact-integrity difference: ${JSON.stringify(report)}`,
+      );
+    }
+  } finally {
+    recordMigration(targetMigration, currentProductionAppliedCount);
+  }
+}
+
+function requireFinisherAppliedSchemaFailure(
+  label: string,
+  expectedDifference: string,
+): void {
+  const report = cliWithExpectedStatus(
+    "scripts/check-migration-status.ts",
+    [],
+    1,
+  );
+  const chain = objectField(report, "chain");
+  const differences = JSON.stringify({
+    blocking: objectField(report, "schemaIntegrity").blockingDifferences,
+    definitions: objectField(report, "definitions"),
+  });
+  if (
+    chain.gateAApplicable !== false ||
+    numberField(chain, "pending") !== 0 ||
+    report.schemaPreflightValid !== false ||
+    report.technicalMigrationReady !== false ||
+    report.migrationAuthorizationReady !== false ||
+    !differences.includes(expectedDifference)
+  ) {
+    throw new Error(
+      `${label} did not fail applied-schema integrity with the expected difference: ${JSON.stringify(report)}`,
+    );
+  }
+}
+
 function insertHistoricalFixture(): void {
   psql(`
     INSERT INTO "User" ("id", "email") VALUES ('rollout-user', 'rollout-fixture@test.invalid');
@@ -1042,6 +1104,44 @@ try {
     );
   }
 
+  const trustedEvidence = JSON.parse(
+    readFileSync(authorizationEvidenceFile, "utf8"),
+  ) as Record<string, unknown>;
+  writeFileSync(
+    authorizationEvidenceFile,
+    JSON.stringify({
+      ...trustedEvidence,
+      expectedPendingMigrations: [
+        targetMigration,
+        "20990101000000_forged_operator_policy",
+      ],
+    }),
+  );
+  const forgedPolicyResult = run(
+    process.execPath,
+    [
+      join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs"),
+      "scripts/check-migration-status.ts",
+      "--env-file",
+      envFile,
+      "--confirm-disposable",
+      "--evidence-file",
+      authorizationEvidenceFile,
+    ],
+    { quiet: true },
+  );
+  if (
+    forgedPolicyResult.status !== 1 ||
+    !`${forgedPolicyResult.stdout}\n${forgedPolicyResult.stderr}`.includes(
+      "Migration authorization evidence cannot define repository migration policy.",
+    )
+  ) {
+    throw new Error(
+      `Forged operator pending-migration policy was not rejected: ${forgedPolicyResult.stdout}\n${forgedPolicyResult.stderr}`,
+    );
+  }
+  writeFileSync(authorizationEvidenceFile, JSON.stringify(trustedEvidence));
+
   applyMigrations(migrations.slice(currentProductionAppliedCount));
   recordMigrations(
     migrations.slice(currentProductionAppliedCount),
@@ -1056,10 +1156,268 @@ try {
     numberField(objectField(migrationStateE, "chain"), "applied") !== 18 ||
     numberField(objectField(migrationStateE, "chain"), "pending") !== 0 ||
     objectField(migrationStateE, "chain").gateAApplicable !== false ||
+    migrationStateE.schemaPreflightValid !== true ||
+    numberField(objectField(migrationStateE, "schemaIntegrity"), "semanticDriftBlocking") !== 0 ||
     migrationStateE.migrationAuthorizationReady !== false
   ) {
     throw new Error(`State E did not report a clean fully migrated non-Gate-A state: ${JSON.stringify(migrationStateE)}`);
   }
+
+  psql(
+    `ALTER TABLE "FinisherOfferItem" DISABLE TRIGGER "FinisherOfferItem_immutable";`,
+  );
+  requireFinisherGateAFailure(
+    "Disabled Finisher protection trigger",
+    "FinisherOfferItem_immutable",
+  );
+  psql(
+    `ALTER TABLE "FinisherOfferItem" ENABLE TRIGGER "FinisherOfferItem_immutable";`,
+  );
+  psql(
+    `ALTER TABLE "FinisherOfferItem" ENABLE REPLICA TRIGGER "FinisherOfferItem_immutable";`,
+  );
+  requireFinisherGateAFailure(
+    "Replica-only Finisher protection trigger",
+    "FinisherOfferItem_immutable",
+  );
+  psql(
+    `ALTER TABLE "FinisherOfferItem" ENABLE TRIGGER "FinisherOfferItem_immutable";`,
+  );
+
+  const createCanonicalOfferItemTrigger = `
+    CREATE TRIGGER "FinisherOfferItem_immutable"
+    BEFORE UPDATE ON "FinisherOfferItem"
+    FOR EACH ROW EXECUTE FUNCTION reject_finisher_offer_item_update();
+  `;
+  psql(`DROP TRIGGER "FinisherOfferItem_immutable" ON "FinisherOfferItem";`);
+  requireFinisherAppliedSchemaFailure(
+    "Missing Finisher protection trigger",
+    "FinisherOfferItem_immutable",
+  );
+  psql(createCanonicalOfferItemTrigger);
+  for (const [label, replacement, cleanup] of [
+    [
+      "altered-event",
+      `CREATE TRIGGER "FinisherOfferItem_immutable"
+       BEFORE UPDATE OR DELETE ON "FinisherOfferItem"
+       FOR EACH ROW EXECUTE FUNCTION reject_finisher_offer_item_update();`,
+      `DROP TRIGGER "FinisherOfferItem_immutable" ON "FinisherOfferItem";`,
+    ],
+    [
+      "altered-timing",
+      `CREATE TRIGGER "FinisherOfferItem_immutable"
+       AFTER UPDATE ON "FinisherOfferItem"
+       FOR EACH ROW EXECUTE FUNCTION reject_finisher_offer_item_update();`,
+      `DROP TRIGGER "FinisherOfferItem_immutable" ON "FinisherOfferItem";`,
+    ],
+    [
+      "altered-table",
+      `CREATE TRIGGER "FinisherOfferItem_immutable"
+       BEFORE UPDATE ON "FinisherOffer"
+       FOR EACH ROW EXECUTE FUNCTION reject_finisher_offer_item_update();`,
+      `DROP TRIGGER "FinisherOfferItem_immutable" ON "FinisherOffer";`,
+    ],
+  ] as const) {
+    psql(`
+      DROP TRIGGER "FinisherOfferItem_immutable" ON "FinisherOfferItem";
+      ${replacement}
+    `);
+    requireFinisherGateAFailure(
+      `${label} Finisher protection trigger`,
+      "FinisherOfferItem_immutable",
+    );
+    psql(`
+      ${cleanup}
+      ${createCanonicalOfferItemTrigger}
+    `);
+  }
+
+  for (const [column, label] of [
+    ["indisvalid", "invalid"],
+    ["indisready", "unready"],
+    ["indislive", "non-live"],
+  ] as const) {
+    psql(`
+      SET allow_system_table_mods = on;
+      UPDATE pg_catalog.pg_index
+      SET ${column} = false
+      WHERE indexrelid = '"FinisherExecution_one_active_per_workout"'::regclass;
+    `);
+    requireFinisherGateAFailure(
+      `${label} Finisher partial unique index`,
+      "FinisherExecution_one_active_per_workout",
+    );
+    psql(`
+      SET allow_system_table_mods = on;
+      UPDATE pg_catalog.pg_index
+      SET ${column} = true
+      WHERE indexrelid = '"FinisherExecution_one_active_per_workout"'::regclass;
+    `);
+  }
+
+  const createCanonicalActiveExecutionIndex = `
+    CREATE UNIQUE INDEX "FinisherExecution_one_active_per_workout"
+      ON "FinisherExecution"("workoutId")
+      WHERE "state" IN ('SELECTED', 'IN_PROGRESS');
+  `;
+  psql(`DROP INDEX "FinisherExecution_one_active_per_workout";`);
+  requireFinisherAppliedSchemaFailure(
+    "Missing Finisher partial unique index",
+    "FinisherExecution_one_active_per_workout",
+  );
+  psql(createCanonicalActiveExecutionIndex);
+
+  for (const [label, replacement] of [
+    [
+      "altered-predicate",
+      `CREATE UNIQUE INDEX "FinisherExecution_one_active_per_workout"
+         ON "FinisherExecution"("workoutId")
+         WHERE "state" = 'SELECTED';`,
+    ],
+    [
+      "altered-column",
+      `CREATE UNIQUE INDEX "FinisherExecution_one_active_per_workout"
+         ON "FinisherExecution"("offerId")
+         WHERE "state" IN ('SELECTED', 'IN_PROGRESS');`,
+    ],
+    [
+      "non-unique",
+      `CREATE INDEX "FinisherExecution_one_active_per_workout"
+         ON "FinisherExecution"("workoutId")
+         WHERE "state" IN ('SELECTED', 'IN_PROGRESS');`,
+    ],
+  ] as const) {
+    psql(`
+      DROP INDEX "FinisherExecution_one_active_per_workout";
+      ${replacement}
+    `);
+    requireFinisherGateAFailure(
+      `${label} Finisher partial unique index`,
+      "FinisherExecution_one_active_per_workout",
+    );
+    psql(`
+      DROP INDEX "FinisherExecution_one_active_per_workout";
+      ${createCanonicalActiveExecutionIndex}
+    `);
+  }
+
+  const canonicalOfferItemInsertFunction = psql(
+    `
+      SELECT pg_get_functiondef(p.oid)
+      FROM pg_catalog.pg_proc p
+      JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public'
+        AND p.proname = 'guard_finisher_offer_item_insert'
+        AND pg_get_function_identity_arguments(p.oid) = '';
+    `,
+    true,
+  );
+  psql(`
+    CREATE OR REPLACE FUNCTION guard_finisher_offer_item_insert() RETURNS trigger
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      RETURN NEW;
+    END;
+    $$;
+  `);
+  requireFinisherGateAFailure(
+    "Weakened Finisher protection function",
+    "guard_finisher_offer_item_insert",
+  );
+  psql(`${canonicalOfferItemInsertFunction};`);
+  psql(
+    `ALTER FUNCTION guard_finisher_offer_item_insert() SECURITY DEFINER;`,
+  );
+  requireFinisherGateAFailure(
+    "Altered Finisher function security",
+    "guard_finisher_offer_item_insert",
+  );
+  psql(
+    `ALTER FUNCTION guard_finisher_offer_item_insert() SECURITY INVOKER;`,
+  );
+
+  const canonicalFeedbackConstraint = `
+    ALTER TABLE "FinisherExecution"
+    ADD CONSTRAINT "FinisherExecution_feedback_range"
+    CHECK (
+      "difficultyFeedback" IS NULL
+      OR "difficultyFeedback" BETWEEN 1 AND 10
+    );
+  `;
+  psql(`
+    ALTER TABLE "FinisherExecution"
+      DROP CONSTRAINT "FinisherExecution_feedback_range";
+    ALTER TABLE "FinisherExecution"
+      ADD CONSTRAINT "FinisherExecution_feedback_range"
+      CHECK ("difficultyFeedback" IS NULL OR "difficultyFeedback" >= 1);
+  `);
+  requireFinisherGateAFailure(
+    "Weakened Finisher Boolean constraint",
+    "FinisherExecution_feedback_range",
+  );
+  psql(`
+    ALTER TABLE "FinisherExecution"
+      DROP CONSTRAINT "FinisherExecution_feedback_range";
+    ${canonicalFeedbackConstraint}
+  `);
+  psql(`
+    ALTER TABLE "FinisherExecution"
+      DROP CONSTRAINT "FinisherExecution_feedback_range";
+    ALTER TABLE "FinisherExecution"
+      ADD CONSTRAINT "FinisherExecution_feedback_range"
+      CHECK (
+        "difficultyFeedback" IS NULL
+        OR "difficultyFeedback" BETWEEN 1 AND 10
+      ) NOT VALID;
+  `);
+  requireFinisherGateAFailure(
+    "Unvalidated Finisher constraint",
+    "FinisherExecution_feedback_range",
+  );
+  psql(`
+    ALTER TABLE "FinisherExecution"
+      VALIDATE CONSTRAINT "FinisherExecution_feedback_range";
+  `);
+
+  psql(`
+    ALTER TABLE "FinisherOfferItem"
+      DROP CONSTRAINT "FinisherOfferItem_offerId_fkey";
+    ALTER TABLE "FinisherOfferItem"
+      ADD CONSTRAINT "FinisherOfferItem_offerId_fkey"
+      FOREIGN KEY ("offerId") REFERENCES "FinisherOffer"("id")
+      ON DELETE CASCADE ON UPDATE CASCADE;
+  `);
+  requireFinisherGateAFailure(
+    "Altered Finisher foreign-key action",
+    "FinisherOfferItem_offerId_fkey",
+  );
+  psql(`
+    ALTER TABLE "FinisherOfferItem"
+      DROP CONSTRAINT "FinisherOfferItem_offerId_fkey";
+    ALTER TABLE "FinisherOfferItem"
+      ADD CONSTRAINT "FinisherOfferItem_offerId_fkey"
+      FOREIGN KEY ("offerId") REFERENCES "FinisherOffer"("id")
+      ON DELETE RESTRICT ON UPDATE CASCADE;
+  `);
+
+  psql(`
+    INSERT INTO "FinisherRoutine" ("id", "code", "publicationState")
+    VALUES (
+      '00000000-0000-4000-8000-000000000099',
+      'unexpected-active-rollout-fixture',
+      'ACTIVE'
+    );
+  `);
+  requireFinisherGateAFailure(
+    "Unexpected active Finisher catalog row",
+    "00000000-0000-4000-8000-000000000099",
+  );
+  psql(`
+    ALTER TABLE "FinisherRoutine" DISABLE TRIGGER "FinisherRoutine_identity_immutable";
+    DELETE FROM "FinisherRoutine"
+    WHERE "id" = '00000000-0000-4000-8000-000000000099';
+    ALTER TABLE "FinisherRoutine" ENABLE TRIGGER "FinisherRoutine_identity_immutable";
+  `);
 
   const fullSeedA = cli("scripts/backfill-immutable-seed-revisions.ts", []);
   const fullSeedB = cli("scripts/backfill-immutable-seed-revisions.ts", []);
@@ -1196,8 +1554,11 @@ try {
       stateC: "checksum_mismatch_blocked",
       stateD: "failed_rolled_back_and_unfinished_ledger_blocked",
       currentProductionState: "17_applied_1_pending_authorization_ready_execution_not_authorized",
+      forgedOperatorPendingPolicy: "rejected_before_integrity_evaluation",
       stateE: "fully_migrated_gate_a_not_applicable",
       baselineUniquenessVariants: "standalone_constraint_missing_wrong_order_non_unique_partial_predicate",
+      finisherExactIntegrityNegatives:
+        "disabled_replica_only_missing_altered_event_altered_timing_altered_table_trigger_invalid_unready_nonlive_missing_altered_predicate_altered_column_nonunique_partial_index_weakened_and_security_changed_function_weakened_unvalidated_and_fk_action_changed_constraint_unexpected_active_catalog_row",
       readOnlyFingerprintsStable: true,
     },
     readinessIntegrity: {

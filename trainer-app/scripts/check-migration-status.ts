@@ -33,6 +33,11 @@ function loadAuthorizationEvidence(
   if (supplied == null || typeof supplied !== "object" || Array.isArray(supplied)) {
     throw new Error("Migration authorization evidence must be a JSON object.");
   }
+  if ("expectedPendingMigrations" in supplied) {
+    throw new Error(
+      "Migration authorization evidence cannot define repository migration policy.",
+    );
+  }
   const repositoryHead = execFileSync("git", ["rev-parse", "HEAD"], {
     encoding: "utf8",
   }).trim();
@@ -85,7 +90,15 @@ async function main(): Promise<void> {
           `executionAuthorized=${report.executionAuthorized}.`,
         );
         console.log(JSON.stringify(report, null, 2));
-        if (!report.migrationAuthorizationReady && report.chain.gateAApplicable) process.exitCode = 1;
+        if (
+          (!report.migrationAuthorizationReady && report.chain.gateAApplicable) ||
+          !report.migrationChecksumsValid ||
+          !report.migrationOrderValid ||
+          !report.schemaPreflightValid ||
+          !report.dataPreflightValid
+        ) {
+          process.exitCode = 1;
+        }
       } finally {
         await client.end().catch(() => undefined);
       }

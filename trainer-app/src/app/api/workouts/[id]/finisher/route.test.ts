@@ -127,6 +127,19 @@ describe("/api/workouts/[id]/finisher", () => {
   });
 
   it("requires and forwards the optimistic execution revision", async () => {
+    const committedResult = {
+      serverTime: "2026-07-28T12:00:01.000Z",
+      id: "44444444-4444-4444-8444-444444444444",
+      revision: 8,
+      state: "IN_PROGRESS",
+      timer: { segment: "WORK" },
+    };
+    mocks.pauseFinisher.mockResolvedValue(committedResult);
+    mocks.getFinisherOffer.mockResolvedValue({
+      ...offer,
+      serverTime: "2026-07-28T12:05:00.000Z",
+      execution: { ...committedResult, revision: 12, state: "COMPLETED" },
+    });
     const response = await POST(
       new Request("http://local.test", {
         method: "POST",
@@ -149,6 +162,51 @@ describe("/api/workouts/[id]/finisher", () => {
       expectedRevision: 7,
       commandId: "55555555-5555-4555-8555-555555555555",
     });
+    expect(await response.json()).toEqual(committedResult);
+    expect(mocks.getFinisherOffer).not.toHaveBeenCalled();
+  });
+
+  it("returns the original committed command result on a lost-response retry", async () => {
+    const committedResult = {
+      serverTime: "2026-07-28T12:00:01.000Z",
+      id: "44444444-4444-4444-8444-444444444444",
+      revision: 8,
+      state: "IN_PROGRESS",
+      timer: { segment: "WORK", currentStepIndex: 0 },
+    };
+    mocks.syncFinisher.mockResolvedValue(committedResult);
+    mocks.getFinisherOffer.mockResolvedValue({
+      ...offer,
+      serverTime: "2026-07-28T12:10:00.000Z",
+      execution: { ...committedResult, revision: 14, state: "COMPLETED" },
+    });
+    const requestBody = {
+      action: "sync",
+      executionId: committedResult.id,
+      expectedRevision: 7,
+      commandId: "55555555-5555-4555-8555-555555555555",
+    };
+
+    const original = await POST(
+      new Request("http://local.test", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(requestBody),
+      }),
+      context,
+    );
+    const retry = await POST(
+      new Request("http://local.test", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(requestBody),
+      }),
+      context,
+    );
+
+    expect(await original.json()).toEqual(committedResult);
+    expect(await retry.json()).toEqual(committedResult);
+    expect(mocks.getFinisherOffer).not.toHaveBeenCalled();
   });
 
   it("blocks synchronization before resolving an owner during a production write pause", async () => {

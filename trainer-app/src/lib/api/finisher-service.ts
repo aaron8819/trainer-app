@@ -50,6 +50,7 @@ type FinisherExecutionCommandAction =
   | "DISMISS";
 
 const FINISHER_COMMAND_RETENTION_MS = 90 * 24 * 60 * 60 * 1_000;
+export const FINISHER_COMMAND_CLEANUP_BATCH_SIZE = 100;
 
 export type FinisherRoutineDto = {
   id: string;
@@ -87,6 +88,7 @@ export type FinisherRoutineDto = {
 };
 
 export type FinisherExecutionDto = {
+  serverTime: string;
   id: string;
   workoutId: string;
   routineVersionId: string;
@@ -305,6 +307,7 @@ function toExecutionDto(
     ? Math.max(0, now.getTime() - row.pausedAt.getTime())
     : 0;
   return {
+    serverTime: now.toISOString(),
     id: row.id,
     workoutId: row.workoutId,
     routineVersionId: row.routineVersionId,
@@ -738,7 +741,7 @@ export async function createFinisherOffer(input: {
           recentlyPerformedRoutineVersionIds,
           availableEquipment: null,
         });
-        await tx.finisherOffer.create({
+        const offer = await tx.finisherOffer.create({
           data: {
             workoutId: input.workoutId,
             offeredAt: now,
@@ -752,14 +755,20 @@ export async function createFinisherOffer(input: {
               lowerBodyDemandingWorkout,
               recentlyPerformedRoutineVersionIds,
             },
-            items: {
-              create: versions.map((version, position) => ({
-                routineVersionId: version.id,
-                position,
-                warnings: toRoutineDto(version, limitations).warnings,
-              })),
-            },
           },
+          select: { id: true },
+        });
+        await tx.finisherOfferItem.createMany({
+          data: versions.map((version, position) => ({
+            offerId: offer.id,
+            routineVersionId: version.id,
+            position,
+            warnings: toRoutineDto(version, limitations).warnings,
+          })),
+        });
+        await tx.finisherOffer.update({
+          where: { id: offer.id },
+          data: { finalizedAt: now },
         });
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
@@ -784,7 +793,7 @@ async function createSelectedExecution(
   version: RoutineVersionRow,
   now: Date
 ) {
-  return tx.finisherExecution.create({
+  await tx.finisherExecution.create({
     data: {
       id: executionId,
       workoutId,
@@ -794,12 +803,19 @@ async function createSelectedExecution(
       selectedAt: now,
       state: "SELECTED",
       currentStepIndex: 0,
-      stepExecutions: {
-        create: version.steps.map((step) => ({
-          routineStepId: step.id,
-        })),
-      },
     },
+  });
+  await tx.finisherExecutionStep.createMany({
+    data: version.steps.map((step) => ({
+      executionId,
+      routineStepId: step.id,
+      routineVersionId: version.id,
+      orderIndex: step.orderIndex,
+    })),
+  });
+  return tx.finisherExecution.update({
+    where: { id: executionId },
+    data: { finalizedAt: now },
     include: executionInclude,
   });
 }
@@ -996,6 +1012,12 @@ async function mutateExecution(input: {
           });
           if (committed) {
             if (
+              committed.expiresAt.getTime() <= now.getTime() ||
+              committed.response == null
+            ) {
+              fail("FINISHER_COMMAND_EXPIRED", 409);
+            }
+            if (
               committed.workoutId !== input.workoutId ||
               committed.executionId !== input.executionId ||
               committed.action !== input.commandAction ||
@@ -1007,12 +1029,6 @@ async function mutateExecution(input: {
             return committed.response as unknown as FinisherExecutionDto;
           }
 
-          await tx.finisherExecutionCommand.deleteMany({
-            where: {
-              executionId: input.executionId,
-              expiresAt: { lt: now },
-            },
-          });
           const raw = await loadExecution(
             tx,
             input.workoutId,
@@ -1053,7 +1069,12 @@ async function mutateExecution(input: {
           return response;
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-      );
+      ).then(async (response) => {
+        await cleanupExpiredFinisherCommandReceipts({ now }).catch(
+          () => undefined,
+        );
+        return response;
+      });
     } catch (error) {
       const retryablePrismaConflict =
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -1068,6 +1089,44 @@ async function mutateExecution(input: {
     }
   }
   fail("FINISHER_STALE_TRANSITION", 409);
+}
+
+export async function cleanupExpiredFinisherCommandReceipts(input: {
+  now?: Date;
+  batchSize?: number;
+} = {}): Promise<number> {
+  const now = input.now ?? new Date();
+  const batchSize = Math.max(
+    1,
+    Math.min(
+      input.batchSize ?? FINISHER_COMMAND_CLEANUP_BATCH_SIZE,
+      FINISHER_COMMAND_CLEANUP_BATCH_SIZE,
+    ),
+  );
+  return prisma.$transaction(async (tx) => {
+    const expired = await tx.finisherExecutionCommand.findMany({
+      where: {
+        cleanedAt: null,
+        expiresAt: { lte: now },
+      },
+      orderBy: [{ expiresAt: "asc" }, { id: "asc" }],
+      take: batchSize,
+      select: { id: true },
+    });
+    if (expired.length === 0) return 0;
+    const cleaned = await tx.finisherExecutionCommand.updateMany({
+      where: {
+        id: { in: expired.map((row) => row.id) },
+        cleanedAt: null,
+        expiresAt: { lte: now },
+      },
+      data: {
+        response: Prisma.DbNull,
+        cleanedAt: now,
+      },
+    });
+    return cleaned.count;
+  });
 }
 
 export function syncFinisher(input: {

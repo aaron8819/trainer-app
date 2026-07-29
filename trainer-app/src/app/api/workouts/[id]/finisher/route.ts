@@ -92,32 +92,35 @@ export async function POST(
         await declineFinisherOffer({ ...context, ...action });
         break;
       case "start":
-        await startFinisher({ ...context, ...action });
-        break;
+        return NextResponse.json(
+          await startFinisher({ ...context, ...action }),
+        );
       case "dismiss":
-        await dismissSelectedFinisher({ ...context, ...action });
-        break;
+        return NextResponse.json(
+          await dismissSelectedFinisher({ ...context, ...action }),
+        );
       case "sync":
-        await syncFinisher({ ...context, ...action });
-        break;
+        return NextResponse.json(await syncFinisher({ ...context, ...action }));
       case "pause":
-        await pauseFinisher({ ...context, ...action });
-        break;
+        return NextResponse.json(await pauseFinisher({ ...context, ...action }));
       case "resume":
-        await resumeFinisher({ ...context, ...action });
-        break;
+        return NextResponse.json(
+          await resumeFinisher({ ...context, ...action }),
+        );
       case "skip":
-        await skipFinisherStep({ ...context, ...action });
-        break;
+        return NextResponse.json(
+          await skipFinisherStep({ ...context, ...action }),
+        );
       case "substitute":
-        await substituteFinisherStep({ ...context, ...action });
-        break;
+        return NextResponse.json(
+          await substituteFinisherStep({ ...context, ...action }),
+        );
       case "end":
-        await endFinisher({ ...context, ...action });
-        break;
+        return NextResponse.json(await endFinisher({ ...context, ...action }));
       case "feedback":
-        await recordFinisherFeedback({ ...context, ...action });
-        break;
+        return NextResponse.json(
+          await recordFinisherFeedback({ ...context, ...action }),
+        );
     }
     return NextResponse.json(await getFinisherOffer(context));
   } catch (error) {

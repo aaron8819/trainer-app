@@ -23,12 +23,18 @@ its exact execution UUID and expected monotonic revision. Every POST action is r
 `start`, `sync`, `pause`, `resume`, `skip`, `substitute`, `end`, `feedback`,
 and `dismiss` also require a client-generated UUID `commandId`. The server
 checks the durable command receipt before OCC: an exact committed retry returns
-the original response even if its expected revision is now stale. The request
+the original command response even if its expected revision is now stale or a
+later command has advanced current state. Existing-execution command POSTs
+return that committed `FinisherExecution` DTO directly, including its persisted
+`serverTime`; they do not perform a later GET and substitute projected current
+state. GET remains the separate current-state projection contract. The request
 hash binds workout, execution, action, expected revision, and payload; reusing
 the ID with any different binding returns
 `FINISHER_COMMAND_ID_CONFLICT`. A distinct stale or out-of-order command keeps
 the existing `FINISHER_STALE_TRANSITION` behavior. Concurrent identical
-commands serialize to one transition and one receipt.
+commands serialize to one transition and one receipt. At or after the receipt's
+exact 90-day `expiresAt`, retry and command-ID reuse return
+`FINISHER_COMMAND_EXPIRED` (`409`), whether or not payload cleanup has run.
 Active and started-execution uniqueness is protected by partial unique indexes
 and serializable selection transactions. Duplicate selection and decline
 decision identities are idempotent only when their immutable binding matches;

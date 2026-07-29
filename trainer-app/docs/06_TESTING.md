@@ -70,11 +70,18 @@ Sources of truth:
   rollback; then it verifies fresh-database curated provisioning without the
   broad seed, a safe second `migrate deploy`, transactionally sealed catalog
   definitions, rejection of post-seal child insert/update/delete/reassignment
-  (including bulk operations), durable offer/decline/dismissal history,
+  (including bulk operations), relationally finalized offers and exact
+  cross-version-safe execution prescriptions, direct-database rejection of
+  post-finalization append/reorder/reassignment/delete, durable
+  offer/decline/dismissal history,
   receipt-safe retries for every existing-execution command, exact
+  command-response HTTP replay after later state, exact-boundary receipt
+  expiration, bounded concurrent payload cleanup with retained tombstones,
   execution-identity ABA isolation, and projected-versus-persisted completed,
   mixed, all-skipped, preparation-only, retained-work, and substitution
-  outcomes, plus workout-deletion protection.
+  outcomes, plus workout-deletion protection. After the DB suites, it runs the
+  ordinary development seed and proves pure numeric step and alternative order
+  drift fails without rewriting immutable catalog rows.
 - `npm run test:db:historical-snapshots -- --confirm-disposable`: explicit schema-dependent
   historical-evidence alias for the same consolidated disposable harness.
 - `npm run test:db:readiness-snapshots -- --confirm-disposable`: starts an isolated Docker PostgreSQL 16 container, applies all checked-in migrations without reading `.env.local`, verifies legacy-unknown migration behavior, partial unique enforcement, identical concurrent activation, conflicting payload rejection, forced replacement rollback, stale-evidence rejection, and owner isolation, then removes the container. Package scripts never supply disposable confirmation: the operator must type it for every mutating invocation, and aliases or wrappers must not embed it. Strict argument and inherited-target validation complete before `pg` or any other database-dependent module loads and before Docker work begins.

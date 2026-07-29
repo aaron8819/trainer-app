@@ -23,6 +23,14 @@ been applied to a shared or production database, review corrections update this
 single migration in place. An additive follow-up migration would falsely imply
 that the reviewed, never-deployed defect was an accepted production schema.
 
+Finisher command receipt cleanup is application-owned and opportunistic. After
+each successful or exactly replayed existing-execution command, the service
+attempts one global oldest-first batch of at most 100 logically expired
+receipts. Cleanup nulls response payloads and stamps `cleanedAt`; it never
+deletes command IDs, executions, or execution steps. Logical `expiresAt`
+enforcement is synchronous and does not depend on cleanup success or cadence,
+and cleanup failure does not replace an already-committed command response.
+
 ## Codex remote identity and GitHub status
 
 Use the repository-level [`scripts/codex/README.md`](../../scripts/codex/README.md) for the offline remote-identity contract and the explicit authenticated `-GitHub` and `-Deployment` read-only status scopes. The Vercel scope validates the committed team, project, and production alias before reading process-scoped `VERCEL_TOKEN`, then uses built-in PowerShell with the official GET-only Vercel REST endpoint allowlist; it requires no Vercel CLI or project link. It reports the active alias deployment and Git SHA, and treats any previous successful production deployment only as a rollback candidate with unknown schema compatibility. GitHub deployment records do not establish active Vercel production truth, a Vercel rollback is distinct from a Git revert, and neither status scope authorizes remediation or writes.
@@ -257,6 +265,8 @@ column, enum, key, index, constraint, trigger/function, relationship, or exact
 curated-row manifest, or other migration-blocking schema difference blocks
 Gate A. The current Finisher rollout policy expects 18 checked in, 17 clean
 successful applied, and exactly `20260728120000_add_finishers_phase_1` pending.
+That sequence is fixed repository policy, not operator evidence: an evidence
+file containing `expectedPendingMigrations` is rejected rather than trusted.
 With clean schema/data evidence and passing disposable verification, that shape
 yields `technicalMigrationReady: true`. It remains
 `migrationAuthorizationReady: false` until fresh recovery, deployment,
@@ -264,7 +274,7 @@ compatibility, write-boundary, and exact post-migration application-commit
 evidence is supplied, and remains `executionAuthorized: false` in every
 preparation run.
 
-The command never deploys migrations, creates temporary objects, modifies the Prisma ledger, executes DDL, repairs schema state, or authorizes execution. A fully migrated 18-applied/0-pending target is reported as clean with `gateAApplicable: false`, `migrationAuthorizationReady: false`, and `executionAuthorized: false` because nothing remains for Gate A to authorize.
+The command never deploys migrations, creates temporary objects, modifies the Prisma ledger, executes DDL, repairs schema state, or authorizes execution. A fully migrated 18-applied/0-pending target is reported as clean with `gateAApplicable: false`, `migrationAuthorizationReady: false`, and `executionAuthorized: false` because nothing remains for Gate A to authorize. It still exits nonzero if that fully applied schema has checksum, order, schema, or data drift.
 
 ### Gate A readiness integrity
 
@@ -298,7 +308,7 @@ npm run test:readiness-integrity
 npm run test:db:rollout-tooling
 ```
 
-The PostgreSQL 16 rollout test uses the installed Prisma CLI to create zero-step resolved baseline and set-intent rows, requires repeat resolution to return `P3008` without changing schema or ledger fingerprints, rejects the stale 10/8 rollout shape, and proves the current 17/1 shape can become authorization-ready with simulated evidence while execution remains unauthorized. It also exercises standalone indexes, constraint-backed indexes, missing uniqueness, wrong column order, a non-unique index, a changed partial predicate, partial pending objects, checksum mismatch, failed/incomplete/rolled-back ledger rows, and the fully migrated 18/0 state. Its readiness states cover the legacy pre-architecture schema and the fully migrated chain. It does not load a configured rollout environment or connect to production.
+The PostgreSQL 16 rollout test uses the installed Prisma CLI to create zero-step resolved baseline and set-intent rows, requires repeat resolution to return `P3008` without changing schema or ledger fingerprints, rejects the stale 10/8 rollout shape, and proves the current 17/1 shape can become authorization-ready with simulated evidence while execution remains unauthorized. It also exercises standalone indexes, constraint-backed indexes, missing uniqueness, wrong column order, non-unique/invalid/unready/non-live indexes, changed predicates, columns and foreign-key actions, missing/disabled/replica-only/retargeted triggers, weakened or security-changed functions, unvalidated/weakened checks, unexpected Finisher-owned objects and catalog rows, partial pending objects, checksum mismatch, failed/incomplete/rolled-back ledger rows, and the fully migrated 18/0 state. Its readiness states cover the legacy pre-architecture schema and the fully migrated chain. It does not load a configured rollout environment or connect to production.
 
 The exact repository-owned deploy command, once migration authorization is granted, is:
 
@@ -316,9 +326,6 @@ The evidence file is operator-controlled, uncommitted JSON. It must contain sani
 {
   "productionDeploymentCommit": "24e9e62f70a5cf66cef21997157f7b79a411a00f",
   "requiredApplicationCommit": "<exact-reviewed-post-migration-application-commit>",
-  "expectedPendingMigrations": [
-    "20260728120000_add_finishers_phase_1"
-  ],
   "dataPreflight": {
     "valid": true,
     "verifiedAt": "<ISO-8601>",

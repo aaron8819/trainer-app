@@ -136,6 +136,166 @@ function verifyAtomicFinisherMigrationFailure(): void {
   );
 }
 
+function verifyFinisherSeedOrderDrift(
+  env: NodeJS.ProcessEnv,
+): void {
+  const seedCommand = [
+    join(process.cwd(), "node_modules/tsx/dist/cli.mjs"),
+    "prisma/seed.ts",
+  ];
+  run(process.execPath, seedCommand, env);
+
+  const scenarios = [
+    {
+      label: "step",
+      table: "FinisherRoutineStep",
+      trigger: "FinisherRoutineStep_immutable",
+      mutate: `
+        UPDATE "FinisherRoutineStep" s
+        SET "orderIndex" = s."orderIndex" + 100
+        FROM "FinisherRoutineVersion" v
+        JOIN "FinisherRoutine" r ON r."id" = v."routineId"
+        WHERE s."routineVersionId" = v."id"
+          AND r."code" = 'core-stability-10';
+      `,
+      observed: `
+        SELECT min(s."orderIndex")::text || '|' || max(s."orderIndex")::text
+        FROM "FinisherRoutineStep" s
+        JOIN "FinisherRoutineVersion" v ON v."id" = s."routineVersionId"
+        JOIN "FinisherRoutine" r ON r."id" = v."routineId"
+        WHERE r."code" = 'core-stability-10';
+      `,
+      expectedObserved: "100|109",
+      restore: `
+        UPDATE "FinisherRoutineStep" s
+        SET "orderIndex" = s."orderIndex" - 100
+        FROM "FinisherRoutineVersion" v
+        JOIN "FinisherRoutine" r ON r."id" = v."routineId"
+        WHERE s."routineVersionId" = v."id"
+          AND r."code" = 'core-stability-10';
+      `,
+    },
+    {
+      label: "alternative",
+      table: "FinisherRoutineStepAlternative",
+      trigger: "FinisherRoutineStepAlternative_immutable",
+      mutate: `
+        UPDATE "FinisherRoutineStepAlternative"
+        SET "orderIndex" = "orderIndex" + 100
+        WHERE "id" = (
+          SELECT a."id"
+          FROM "FinisherRoutineStepAlternative" a
+          ORDER BY a."id"
+          LIMIT 1
+        );
+      `,
+      observed: `
+        SELECT max("orderIndex")::text
+        FROM "FinisherRoutineStepAlternative";
+      `,
+      expectedObserved: "100",
+      restore: `
+        UPDATE "FinisherRoutineStepAlternative"
+        SET "orderIndex" = "orderIndex" - 100
+        WHERE "orderIndex" >= 100;
+      `,
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const mutateSql = `
+      ALTER TABLE "${scenario.table}" DISABLE TRIGGER "${scenario.trigger}";
+      ${scenario.mutate}
+      ALTER TABLE "${scenario.table}" ENABLE TRIGGER "${scenario.trigger}";
+    `;
+    const mutation = spawnSync(
+      "docker",
+      [
+        "exec",
+        "-i",
+        containerName,
+        "psql",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-U",
+        "trainer",
+        "-d",
+        "trainer",
+      ],
+      { input: mutateSql, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] },
+    );
+    if (mutation.status !== 0) {
+      throw new Error(`FINISHER_${scenario.label.toUpperCase()}_ORDER_DRIFT_SETUP_FAILED`);
+    }
+    const failed = spawnSync(process.execPath, seedCommand, {
+      cwd: process.cwd(),
+      env,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const output = `${failed.stdout ?? ""}\n${failed.stderr ?? ""}`;
+    if (
+      failed.status === 0 ||
+      !output.includes("Immutable finisher routine drift detected")
+    ) {
+      throw new Error(
+        `FINISHER_${scenario.label.toUpperCase()}_ORDER_DRIFT_NOT_REJECTED`,
+      );
+    }
+    const observed = run(
+      "docker",
+      [
+        "exec",
+        "-i",
+        containerName,
+        "psql",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-U",
+        "trainer",
+        "-d",
+        "trainer",
+        "-tAc",
+        scenario.observed,
+      ],
+      process.env,
+      true,
+    );
+    if (observed !== scenario.expectedObserved) {
+      throw new Error(
+        `FINISHER_${scenario.label.toUpperCase()}_ORDER_DRIFT_WAS_REWRITTEN:${observed}`,
+      );
+    }
+    const restoreSql = `
+      ALTER TABLE "${scenario.table}" DISABLE TRIGGER "${scenario.trigger}";
+      ${scenario.restore}
+      ALTER TABLE "${scenario.table}" ENABLE TRIGGER "${scenario.trigger}";
+    `;
+    const restore = spawnSync(
+      "docker",
+      [
+        "exec",
+        "-i",
+        containerName,
+        "psql",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-U",
+        "trainer",
+        "-d",
+        "trainer",
+      ],
+      { input: restoreSql, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] },
+    );
+    if (restore.status !== 0) {
+      throw new Error(`FINISHER_${scenario.label.toUpperCase()}_ORDER_DRIFT_RESTORE_FAILED`);
+    }
+  }
+  console.log(
+    "Ordinary seed execution rejected step and alternative numeric order drift without rewriting immutable rows.",
+  );
+}
+
 const invocation = parseExactDisposableConfirmationArgs(process.argv.slice(2));
 if (!invocation.valid) {
   console.error(invocation.message);
@@ -189,6 +349,7 @@ try {
     "src/lib/api/workout-mutation.db.test.ts",
     "-t", "runs the integrated workout lifecycle release gate",
   ], env);
+  verifyFinisherSeedOrderDrift(env);
 } finally {
   spawnSync("docker", ["rm", "-f", containerName], { stdio: "ignore" });
 }

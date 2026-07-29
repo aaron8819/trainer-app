@@ -523,17 +523,27 @@ describe("migration integrity", () => {
     ]);
   });
 
-  it("derives readiness from an explicit pending sequence instead of a fixed count", () => {
-    const expectedPendingMigrations = EXPECTED_MIGRATION_CHAIN.slice(-2);
+  it("does not let forged operator evidence redefine the trusted pending sequence", () => {
+    const observedPendingMigrations = EXPECTED_MIGRATION_CHAIN.slice(-2);
     const result = report({
       ledgerRows: appliedPrefix(EXPECTED_MIGRATION_CHAIN.length - 2),
       catalog: cleanCatalog(EXPECTED_MIGRATION_CHAIN.length - 2),
-      authorizationEvidence: fullEvidence({
-        expectedPendingMigrations: [...expectedPendingMigrations],
-      }),
+      authorizationEvidence: {
+        ...fullEvidence(),
+        expectedPendingMigrations: [...observedPendingMigrations],
+      } as MigrationAuthorizationEvidence & {
+        expectedPendingMigrations: string[];
+      },
     });
-    expect(result.pendingMigrations).toEqual(expectedPendingMigrations);
-    expect(result.technicalMigrationReady).toBe(true);
+    expect(result.pendingMigrations).toEqual(observedPendingMigrations);
+    expect(result.chain.expectedPendingMigrations).toEqual([
+      "20260728120000_add_finishers_phase_1",
+    ]);
+    expect(result.technicalMigrationReady).toBe(false);
+    expect(result.migrationAuthorizationReady).toBe(false);
+    expect(result.blockingReasons).toContain(
+      "pending_migration_sequence_mismatch",
+    );
   });
 
   it("rejects an unexpected second pending migration", () => {

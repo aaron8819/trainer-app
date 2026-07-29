@@ -573,6 +573,7 @@ model FinisherRoutineStep {
   executionSteps   FinisherExecutionStep[]
 
   @@unique([routineVersionId, orderIndex])
+  @@unique([id, routineVersionId, orderIndex])
 }
 
 model FinisherRoutineStepAlternative {
@@ -584,6 +585,7 @@ model FinisherRoutineStepAlternative {
   executionSteps FinisherExecutionStep[]
 
   @@unique([routineStepId, orderIndex])
+  @@unique([id, routineStepId])
 }
 
 model FinisherOffer {
@@ -599,6 +601,7 @@ model FinisherOffer {
   recommendationReason            String?
   recommendationUnavailableReason String?
   recommendationContext           Json
+  finalizedAt                     DateTime?
   items                           FinisherOfferItem[]
   executions                      FinisherExecution[]
 
@@ -630,6 +633,7 @@ model FinisherExecution {
   routineVersion           FinisherRoutineVersion     @relation(fields: [routineVersionId], references: [id], onDelete: Restrict)
   state                    FinisherExecutionState     @default(SELECTED)
   selectedAt               DateTime                   @default(now())
+  finalizedAt              DateTime?
   startedAt                DateTime?
   completedAt              DateTime?
   endedAt                  DateTime?
@@ -651,6 +655,7 @@ model FinisherExecution {
   commands                 FinisherExecutionCommand[]
 
   @@unique([id, workoutId])
+  @@unique([id, routineVersionId])
   @@index([workoutId, selectedAt])
   @@index([offerId, selectedAt])
   @@index([routineVersionId, startedAt])
@@ -663,6 +668,8 @@ model FinisherExecutionStep {
   execution              FinisherExecution               @relation(fields: [executionId], references: [id], onDelete: Cascade)
   routineStepId          String
   routineStep            FinisherRoutineStep             @relation(fields: [routineStepId], references: [id], onDelete: Restrict)
+  routineVersionId       String
+  orderIndex             Int
   performedAlternativeId String?
   performedAlternative   FinisherRoutineStepAlternative? @relation(fields: [performedAlternativeId], references: [id], onDelete: Restrict)
   status                 FinisherStepStatus              @default(PENDING)
@@ -684,12 +691,13 @@ model FinisherExecutionCommand {
   requestHash      String
   expectedRevision Int
   resultRevision   Int
-  response         Json
+  response         Json?
   createdAt        DateTime                @default(now())
   expiresAt        DateTime
+  cleanedAt        DateTime?
 
   @@index([executionId, createdAt])
-  @@index([expiresAt])
+  @@index([cleanedAt, expiresAt, id])
 }
 
 model PostSessionReviewSnapshot {

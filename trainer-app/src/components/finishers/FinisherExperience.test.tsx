@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   estimateServerEpochAtMonotonicOrigin,
   FinisherExperience,
+  mergeFinisherCommandResult,
 } from "./FinisherExperience";
 import type {
   FinisherExecutionDto,
@@ -68,6 +69,7 @@ function execution(
   overrides: Partial<FinisherExecutionDto> = {}
 ): FinisherExecutionDto {
   return {
+    serverTime: "2026-07-28T12:00:25.000Z",
     id: "44444444-4444-4444-8444-444444444444",
     workoutId: "workout-1",
     routineVersionId: routine.id,
@@ -128,6 +130,34 @@ afterEach(() => {
 });
 
 describe("FinisherExperience", () => {
+  it("merges a durable replay without regressing newer current or history state", () => {
+    const currentExecution = execution({
+      revision: 5,
+      serverTime: "2026-07-28T12:00:30.000Z",
+      timer: {
+        ...execution().timer,
+        revision: 5,
+      },
+    });
+    const replayedCommand = execution({
+      revision: 4,
+      serverTime: "2026-07-28T12:00:20.000Z",
+      timer: {
+        ...execution().timer,
+        revision: 4,
+      },
+    });
+
+    const merged = mergeFinisherCommandResult(
+      offer(currentExecution),
+      replayedCommand,
+    );
+
+    expect(merged.serverTime).toBe("2026-07-28T12:00:25.000Z");
+    expect(merged.execution).toEqual(currentExecution);
+    expect(merged.history).toEqual([currentExecution]);
+  });
+
   it("offers a recommendation, browse, preview, and decline after completion", async () => {
     const declinedOffer = {
       ...offer(),
@@ -434,17 +464,15 @@ describe("FinisherExperience", () => {
     resolveSync?.({
       ok: true,
       json: async () =>
-        offer(
-          execution({
-            ...projected,
-            timer: {
-              ...projected.timer,
-              revision: 8,
-              syncRequired: false,
-              syncToken: null,
-            },
-          }),
-        ),
+        execution({
+          ...projected,
+          timer: {
+            ...projected.timer,
+            revision: 8,
+            syncRequired: false,
+            syncToken: null,
+          },
+        }),
     });
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument(),
@@ -485,7 +513,7 @@ describe("FinisherExperience", () => {
       })
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => offer(persisted),
+        json: async () => persisted,
       });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -552,7 +580,7 @@ describe("FinisherExperience", () => {
     fetchMock
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => offer(persisted),
+        json: async () => persisted,
       });
     vi.stubGlobal("fetch", fetchMock);
 

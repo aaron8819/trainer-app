@@ -35,6 +35,10 @@ the existing `FINISHER_STALE_TRANSITION` behavior. Concurrent identical
 commands serialize to one transition and one receipt. At or after the receipt's
 exact 90-day `expiresAt`, retry and command-ID reuse return
 `FINISHER_COMMAND_EXPIRED` (`409`), whether or not payload cleanup has run.
+The command transaction reads PostgreSQL `clock_timestamp()` and uses that
+database value for receipt creation and replay expiration. The action's
+client-supplied display time does not establish or extend the receipt lifetime,
+so process-clock skew cannot change retry, collision, or cleanup semantics.
 Command rows are permanent database-enforced tombstones: application, Prisma,
 bulk, and direct SQL update/delete paths cannot rewrite their binding or remove
 the ID. Opportunistic cleanup invokes the constrained database function, which
@@ -48,6 +52,9 @@ conflicting, stale, replayed, or out-of-order requests return deterministic
 stored response; a distinct stale request for A can address only A and cannot act
 on replacement B. Client input never supplies ownership, workout completion,
 elapsed duration, routine metadata, step order, or arbitrary substitutions.
+Selection persists the exact finalized offer item, and database composite
+relationships independently verify the workout, offer, routine version, and
+historical owner even if a caller bypasses the API.
 
 Manual selection and recommendation both consume canonical limitation
 resolution. Unknown active text blocks recommendation and requires explicit

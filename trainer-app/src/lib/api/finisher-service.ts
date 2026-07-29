@@ -49,7 +49,6 @@ type FinisherExecutionCommandAction =
   | "FEEDBACK"
   | "DISMISS";
 
-const FINISHER_COMMAND_RETENTION_MS = 90 * 24 * 60 * 60 * 1_000;
 export const FINISHER_COMMAND_CLEANUP_BATCH_SIZE = 100;
 
 export type FinisherRoutineDto = {
@@ -441,6 +440,24 @@ async function loadOwnedCompletedWorkout(
   return workout;
 }
 
+async function readDatabaseReceiptClock(
+  tx: FinisherTransaction,
+): Promise<{ databaseNow: Date; expiresAt: Date }> {
+  const [clock] = await tx.$queryRaw<
+    Array<{ databaseNow: Date; expiresAt: Date }>
+  >`
+    WITH database_clock AS MATERIALIZED (
+      SELECT clock_timestamp()::timestamp(3) AS "databaseNow"
+    )
+    SELECT
+      "databaseNow",
+      "databaseNow" + INTERVAL '90 days' AS "expiresAt"
+    FROM database_clock
+  `;
+  if (!clock) fail("FINISHER_DATABASE_CLOCK_UNAVAILABLE", 500);
+  return clock;
+}
+
 async function loadActiveLimitations(
   tx: FinisherTransaction,
   userId: string
@@ -744,6 +761,7 @@ export async function createFinisherOffer(input: {
         const offer = await tx.finisherOffer.create({
           data: {
             workoutId: input.workoutId,
+            ownerId: input.userId,
             offeredAt: now,
             recommendedRoutineVersionId:
               recommendation.recommendation?.routineVersionId ?? null,
@@ -788,7 +806,9 @@ async function createSelectedExecution(
   tx: FinisherTransaction,
   executionId: string,
   workoutId: string,
+  ownerId: string,
   offerId: string,
+  offerItemId: string,
   offerRevision: number,
   version: RoutineVersionRow,
   now: Date
@@ -797,7 +817,9 @@ async function createSelectedExecution(
     data: {
       id: executionId,
       workoutId,
+      ownerId,
       offerId,
+      offerItemId,
       offerRevisionAtSelection: offerRevision,
       routineVersionId: version.id,
       selectedAt: now,
@@ -865,8 +887,9 @@ export async function selectFinisher(input: {
         if (offer.revision !== input.expectedOfferRevision) {
           fail("FINISHER_STALE_OFFER", 409);
         }
-        const version = offer.items[0]?.routineVersion;
-        if (!version) fail("FINISHER_ROUTINE_NOT_OFFERED", 409);
+        const offeredItem = offer.items[0];
+        const version = offeredItem?.routineVersion;
+        if (!offeredItem || !version) fail("FINISHER_ROUTINE_NOT_OFFERED", 409);
         await assertManualSelectionAllowed(
           tx,
           input.userId,
@@ -898,7 +921,9 @@ export async function selectFinisher(input: {
           tx,
           input.executionId,
           input.workoutId,
+          input.userId,
           offer.id,
+          offeredItem.id,
           input.expectedOfferRevision,
           version,
           now
@@ -1011,8 +1036,9 @@ async function mutateExecution(input: {
             where: { id: input.commandId },
           });
           if (committed) {
+            const { databaseNow } = await readDatabaseReceiptClock(tx);
             if (
-              committed.expiresAt.getTime() <= now.getTime() ||
+              committed.expiresAt.getTime() <= databaseNow.getTime() ||
               committed.response == null
             ) {
               fail("FINISHER_COMMAND_EXPIRED", 409);
@@ -1048,10 +1074,12 @@ async function mutateExecution(input: {
           if (!next) fail("FINISHER_EXECUTION_NOT_FOUND", 404);
           const limitations = await loadActiveLimitations(tx, input.userId);
           const response = toExecutionDto(next, limitations, now);
+          const receiptClock = await readDatabaseReceiptClock(tx);
           await tx.finisherExecutionCommand.create({
             data: {
               id: input.commandId,
               workoutId: input.workoutId,
+              ownerId: input.userId,
               executionId: input.executionId,
               action: input.commandAction,
               requestHash,
@@ -1060,10 +1088,8 @@ async function mutateExecution(input: {
               response: JSON.parse(
                 JSON.stringify(response),
               ) as Prisma.InputJsonValue,
-              createdAt: now,
-              expiresAt: new Date(
-                now.getTime() + FINISHER_COMMAND_RETENTION_MS,
-              ),
+              createdAt: receiptClock.databaseNow,
+              expiresAt: receiptClock.expiresAt,
             },
           });
           return response;

@@ -99,6 +99,8 @@ function addCompatibleManifestObject(
         object.definitionIncludes?.join(" ") ??
         "",
       enabled: object.trigger?.enabled,
+      functionName: object.trigger?.functionName,
+      functionOwner: object.trigger?.functionOwner,
     });
   }
   if (object.kind === "function") {
@@ -106,6 +108,30 @@ function addCompatibleManifestObject(
       name: object.name,
       definition: object.definitionIncludes?.join(" ") ?? "",
       ...object.function,
+      privileges:
+        object.name === "cleanup_expired_finisher_execution_commands"
+          ? [
+              {
+                grantee: "trainer_finisher_cleanup",
+                grantor: "trainer_finisher_cleanup",
+                privilege: "EXECUTE",
+                grantable: false,
+              },
+              {
+                grantee: "trainer_app_runtime",
+                grantor: "trainer_finisher_cleanup",
+                privilege: "EXECUTE",
+                grantable: false,
+              },
+            ]
+          : [
+              {
+                grantee: "trainer_finisher_owner",
+                grantor: "trainer_finisher_owner",
+                privilege: "EXECUTE",
+                grantable: false,
+              },
+            ],
     });
   }
   if (object.kind === "catalogRow") {
@@ -162,6 +188,79 @@ function cleanCatalog(
     ) {
       addCompatibleManifestObject(catalog, migrationIndex, objectIndex);
     }
+  }
+  if (catalog.tables.includes("FinisherExecutionCommand")) {
+    const runtimeGrants: Record<string, string[]> = {
+      FinisherRoutine: ["SELECT"],
+      FinisherRoutineVersion: ["SELECT"],
+      FinisherRoutineStep: ["SELECT"],
+      FinisherRoutineStepAlternative: ["SELECT"],
+      FinisherOffer: ["INSERT", "SELECT", "UPDATE"],
+      FinisherOfferItem: ["INSERT", "SELECT"],
+      FinisherExecution: ["INSERT", "SELECT", "UPDATE"],
+      FinisherExecutionStep: ["INSERT", "SELECT", "UPDATE"],
+      FinisherExecutionCommand: ["INSERT", "SELECT"],
+    };
+    catalog.tableSecurity = Object.entries(runtimeGrants).map(
+      ([table, privileges]) => ({
+        table,
+        owner: "trainer_finisher_owner",
+        privileges: [
+          ...privileges.map((privilege) => ({
+            grantee: "trainer_app_runtime",
+            grantor: "trainer_finisher_owner",
+            privilege,
+            grantable: false,
+          })),
+          ...(table === "FinisherExecutionCommand"
+            ? [
+                {
+                  grantee: "trainer_finisher_cleanup",
+                  grantor: "trainer_finisher_owner",
+                  privilege: "SELECT",
+                  grantable: false,
+                },
+              ]
+            : []),
+        ],
+      }),
+    );
+    catalog.columnPrivileges = ["cleanedAt", "response"].map((column) => ({
+      table: "FinisherExecutionCommand",
+      column,
+      grantee: "trainer_finisher_cleanup",
+      grantor: "trainer_finisher_owner",
+      privilege: "UPDATE",
+      grantable: false,
+    }));
+    catalog.roles = [
+      {
+        name: "trainer_app_runtime",
+        canLogin: true,
+        inherit: true,
+        superuser: false,
+        createRole: false,
+        createDb: false,
+        replication: false,
+        bypassRls: false,
+        publicSchemaCreate: false,
+      },
+      ...["trainer_finisher_owner", "trainer_finisher_cleanup"].map(
+        (name) => ({
+          name,
+          canLogin: false,
+          inherit: false,
+          superuser: false,
+          createRole: false,
+          createDb: false,
+          replication: false,
+          bypassRls: false,
+          publicSchemaCreate: false,
+        }),
+      ),
+    ];
+    catalog.roleMemberships = [];
+    catalog.defaultPrivileges = [];
   }
   return catalog;
 }
@@ -870,7 +969,7 @@ describe("migration integrity", () => {
             item.name === "cleanup_expired_finisher_execution_commands",
         )!;
         fn.body = fn.body!.replace(
-          'AND command."expiresAt" <= statement_timestamp()',
+          'AND command."expiresAt" <= cleanup_time',
           "",
         );
       },
@@ -883,8 +982,8 @@ describe("migration integrity", () => {
             item.name === "cleanup_expired_finisher_execution_commands",
         )!;
         fn.body = fn.body!.replace(
-          '"cleanedAt" = statement_timestamp()',
-          '"cleanedAt" = statement_timestamp(), "resultRevision" = "resultRevision" + 1',
+          '"cleanedAt" = cleanup_time',
+          '"cleanedAt" = cleanup_time, "resultRevision" = "resultRevision" + 1',
         );
       },
     ],
@@ -930,6 +1029,143 @@ describe("migration integrity", () => {
       ...result.definitions.appliedManifestMissing,
       ...result.definitions.appliedManifestIncompatible,
     ]).not.toHaveLength(0);
+  });
+
+  it.each([
+    [
+      "cleanup function owner changes",
+      (catalog: CatalogSnapshot) => {
+        catalog.functions.find(
+          (fn) => fn.name === "cleanup_expired_finisher_execution_commands",
+        )!.owner = "trainer_app_runtime";
+      },
+    ],
+    [
+      "an unexpected role receives execute",
+      (catalog: CatalogSnapshot) => {
+        catalog.functions.find(
+          (fn) => fn.name === "cleanup_expired_finisher_execution_commands",
+        )!.privileges!.push({
+          grantee: "unexpected_cleanup",
+          grantor: "trainer_finisher_cleanup",
+          privilege: "EXECUTE",
+          grantable: false,
+        });
+      },
+    ],
+    [
+      "runtime receives direct command update",
+      (catalog: CatalogSnapshot) => {
+        catalog.tableSecurity!.find(
+          (table) => table.table === "FinisherExecutionCommand",
+        )!.privileges.push({
+          grantee: "trainer_app_runtime",
+          grantor: "trainer_finisher_owner",
+          privilege: "UPDATE",
+          grantable: false,
+        });
+      },
+    ],
+    [
+      "role membership reaches cleanup authority",
+      (catalog: CatalogSnapshot) => {
+        catalog.roleMemberships!.push({
+          role: "trainer_finisher_cleanup",
+          member: "trainer_app_runtime",
+          grantor: "trainer",
+          adminOption: false,
+        });
+      },
+    ],
+    [
+      "cleanup security mode weakens",
+      (catalog: CatalogSnapshot) => {
+        catalog.functions.find(
+          (fn) => fn.name === "cleanup_expired_finisher_execution_commands",
+        )!.securityDefiner = false;
+      },
+    ],
+    [
+      "cleanup search path weakens",
+      (catalog: CatalogSnapshot) => {
+        catalog.functions.find(
+          (fn) => fn.name === "cleanup_expired_finisher_execution_commands",
+        )!.configuration = ["search_path=pg_catalog, public"];
+      },
+    ],
+    [
+      "a neutrally named static SQL helper touches tombstones",
+      (catalog: CatalogSnapshot) => {
+        catalog.functions.push({
+          name: "command_cleanup_bypass",
+          definition:
+            'CREATE FUNCTION command_cleanup_bypass() RETURNS void LANGUAGE sql AS $$ UPDATE "FinisherExecutionCommand" SET "response" = NULL $$',
+          language: "sql",
+          arguments: "",
+          resultType: "void",
+          volatility: "v",
+          securityDefiner: true,
+          leakproof: false,
+          strict: false,
+          parallel: "u",
+          body: 'UPDATE "FinisherExecutionCommand" SET "response" = NULL',
+          owner: "trainer_finisher_owner",
+          privileges: [],
+          referencedRelations: ["public.FinisherExecutionCommand"],
+          referencedFunctions: [],
+          triggerTables: [],
+          mutationCapability: true,
+          publicExecute: false,
+        });
+      },
+    ],
+    [
+      "an unexpected trigger creates another mutation path",
+      (catalog: CatalogSnapshot) => {
+        catalog.triggers.push({
+          table: "FinisherExecutionCommand",
+          name: "command_audit_side_effect",
+          definition:
+            'CREATE TRIGGER command_audit_side_effect BEFORE UPDATE ON "FinisherExecutionCommand" FOR EACH ROW EXECUTE FUNCTION command_cleanup_bypass()',
+          enabled: "O",
+          functionName: "command_cleanup_bypass",
+          functionOwner: "trainer_finisher_owner",
+        });
+      },
+    ],
+    [
+      "the protected runtime cleanup grant is removed",
+      (catalog: CatalogSnapshot) => {
+        const fn = catalog.functions.find(
+          (item) =>
+            item.name === "cleanup_expired_finisher_execution_commands",
+        )!;
+        fn.privileges = fn.privileges!.filter(
+          (privilege) => privilege.grantee !== "trainer_app_runtime",
+        );
+      },
+    ],
+    [
+      "a caller-controlled setting bypass returns",
+      (catalog: CatalogSnapshot) => {
+        const fn = catalog.functions.find(
+          (item) => item.name === "guard_finisher_execution_command_tombstone",
+        )!;
+        fn.body = `${fn.body}\nPERFORM current_setting('trainer.finisher_command_cleanup', true);`;
+      },
+    ],
+  ] as const)("fails Gate A privilege/dependency drift: %s", (_label, mutate) => {
+    const catalog = cleanCatalog(EXPECTED_MIGRATION_CHAIN.length);
+    mutate(catalog);
+    const result = report({
+      ledgerRows: appliedPrefix(EXPECTED_MIGRATION_CHAIN.length),
+      catalog,
+    });
+    expect(result.schemaPreflightValid).toBe(false);
+    expect(
+      result.partialObjects.unexpectedOwnedObjects.length +
+        result.definitions.appliedManifestIncompatible.length,
+    ).toBeGreaterThan(0);
   });
 
   it("reports a fully migrated state as clean but not Gate A applicable", () => {

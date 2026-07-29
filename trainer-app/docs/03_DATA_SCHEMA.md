@@ -17,11 +17,20 @@ Migration `20260728120000_add_finishers_phase_1` adds:
   including the exact immutable versions shown, recommendation identity/reason,
   unavailable reason, and the limitation/workout/recent-performance context
   used to explain it. Decline identity and time are persisted on the offer.
+  The offer stores the historical owner and uses `(workoutId, ownerId)` to
+  reference the same `(Workout.id, Workout.userId)` pair.
   The offer is finalized only after all items exist; deferred validation and
   insert/identity/delete guards prevent incomplete construction, later append,
   reorder, reassignment, or removal.
 - `FinisherExecution`: one retained selection decision with a stable UUID,
-  offer revision binding, explicit lifecycle,
+  offer revision binding, explicit lifecycle, and the exact selected offer-item
+  identity. Composite restrictive foreign keys require
+  `(offerId, workoutId, ownerId)` to identify one offer and
+  `(offerItemId, offerId, routineVersionId)` to identify one item in that offer.
+  A separate restrictive routine-version relationship preserves the immutable
+  catalog lineage. Thus workout, historical owner, finalized offer, offered
+  routine version, selected item, and execution cannot be mixed or reassigned
+  by application code, Prisma, or direct SQL. The execution also retains
   interval timestamps, exact pause remainder, separate active preparation and
   recovery totals, per-segment paused totals, transition revision, and optional
   difficulty feedback. Performed duration is active work plus active recovery;
@@ -46,13 +55,22 @@ Migration `20260728120000_add_finishers_phase_1` adds:
   against an existing execution. `commandId` is globally unique; the request
   hash binds workout, execution, action, expected revision, and payload,
   while the stored response/result revision makes committed retries
-  deterministic. A receipt is logically expired at its exact 90-day
-  `expiresAt` boundary. Cleanup clears only the response payload and stamps
+  deterministic. `(executionId, workoutId, ownerId)` must identify the exact
+  historical execution. PostgreSQL `clock_timestamp()` establishes
+  `createdAt`, `expiresAt = createdAt + interval '90 days'`, and replay
+  expiration inside the command transaction; caller time cannot alter the
+  receipt boundary. A receipt is logically expired when database time is equal
+  to or later than `expiresAt`. Cleanup clears only the response payload and stamps
   `cleanedAt`; the compact command tombstone and globally unique ID remain so
   an expired command can never be reused. A database trigger rejects every
   command update or delete except the exact one-way expired payload cleanup.
-  Cleanup runs only through the bounded security-definer function, whose public
-  execute privilege is revoked; it preserves command/workout/execution/action,
+  Cleanup runs only through the bounded security-definer function owned by the
+  fixed non-login `trainer_finisher_cleanup` role. `PUBLIC` cannot execute it;
+  only `trainer_app_runtime` receives the safe function interface and has no
+  command-table update/delete privilege or membership in either privileged
+  role. The fixed non-login `trainer_finisher_owner` role owns every Finisher
+  table and protection function. The cleanup role receives only command-table
+  read plus column-level update on `response` and `cleanedAt`; it preserves command/workout/execution/action,
   request hash, expected/result revisions, and creation/expiration timestamps.
   A cleared response cannot be restored. Retained execution and step history is
   permanent and independent of receipt cleanup.
@@ -64,13 +82,16 @@ select-A/dismiss-A/select-B history. Partial unique indexes enforce at most one
 `SELECTED|IN_PROGRESS` execution and at most one execution with `startedAt` per
 workout. Stable execution identity plus a monotonic per-execution revision
 prevents replacement ABA; offer revision protects selection and decline.
-`SELECTED` has no `startedAt` and is excluded from performed history. The workout foreign key is restrictive and
-contains no cascade or reverse lifecycle field, so Finisher mutations cannot
-change workout completion. All schema changes are additive and existing workout
-history is untouched.
+`SELECTED` has no `startedAt` and is excluded from performed history. Every
+historical parent relationship uses restrictive update/delete behavior.
+Consequently a workout with Finisher history cannot transfer `userId`, an
+offer cannot transfer workout or owner, and workouts/offers/history cannot be
+cascade-deleted. Workouts without Finisher history retain their existing update
+and deletion behavior. Finisher mutations cannot change workout completion.
+All schema changes are additive and existing workout history is untouched.
 
 Definition/history identity bindings reject reassignment, and history tables
-reject deletion by trigger. The restrictive workout foreign key
+reject deletion by trigger. The restrictive composite workout foreign key
 is also the history contract: workout deletion checks for an attached Finisher
 offer before child deletion and
 returns a deterministic conflict rather than cascading or leaking a database

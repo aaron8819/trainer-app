@@ -46,28 +46,43 @@ export function mergeFinisherCommandResult(
   current: FinisherOffer,
   commandResult: FinisherExecutionDto,
 ): FinisherOffer {
+  const chooseAuthoritativeExecution = (
+    existing: FinisherExecutionDto,
+    incoming: FinisherExecutionDto,
+  ) => {
+    if (incoming.revision !== existing.revision) {
+      return incoming.revision > existing.revision ? incoming : existing;
+    }
+    const incomingServerTime = Date.parse(incoming.serverTime);
+    const existingServerTime = Date.parse(existing.serverTime);
+    return Number.isFinite(incomingServerTime) &&
+      (!Number.isFinite(existingServerTime) ||
+        incomingServerTime > existingServerTime)
+      ? incoming
+      : existing;
+  };
   const historyEntry = current.history.find(
     (entry) => entry.id === commandResult.id,
   );
   const durableHistoryResult =
-    historyEntry && historyEntry.revision > commandResult.revision
-      ? historyEntry
+    historyEntry
+      ? chooseAuthoritativeExecution(historyEntry, commandResult)
       : commandResult;
   const history = historyEntry
     ? current.history.map((entry) =>
         entry.id === commandResult.id ? durableHistoryResult : entry,
       )
     : [...current.history, commandResult];
-  const execution =
-    current.execution == null ||
-    (current.execution.id === commandResult.id &&
-      current.execution.revision <= commandResult.revision)
-      ? commandResult
-      : current.execution;
+  const execution = current.execution
+    ? current.execution.id === commandResult.id
+      ? chooseAuthoritativeExecution(
+          current.execution,
+          durableHistoryResult,
+        )
+      : current.execution
+    : durableHistoryResult;
   const serverTime =
-    Date.parse(commandResult.serverTime) >= Date.parse(current.serverTime)
-      ? commandResult.serverTime
-      : current.serverTime;
+    execution === commandResult ? commandResult.serverTime : current.serverTime;
   return {
     ...current,
     serverTime,
@@ -151,6 +166,7 @@ export function FinisherExperience({
   const priorSegment = useRef<string | null>(null);
   const priorAnnouncementKey = useRef<string | null>(null);
   const wakeLock = useRef<WakeLockSentinel | null>(null);
+  const offerRef = useRef<FinisherOffer | null>(null);
   const submittingRef = useRef(false);
   const syncAttempts = useRef(new Set<string>());
   const pendingCommandIds = useRef(new Map<string, string>());
@@ -200,6 +216,7 @@ export function FinisherExperience({
         }),
       );
       setMonotonicNow(responseReceivedAt);
+      offerRef.current = body;
       setOffer(body);
       setError(null);
     } catch (loadError) {
@@ -396,22 +413,36 @@ export function FinisherExperience({
           return false;
         }
         latestAppliedRequest.current = sequence;
-        setServerEpochAtMonotonicOrigin(
-          estimateServerEpochAtMonotonicOrigin({
-            serverTime: result.serverTime,
-            requestStartedAt,
-            responseReceivedAt,
-          }),
-        );
-        setMonotonicNow(responseReceivedAt);
         if (executionCommand) {
           const commandResult = result as FinisherExecutionDto;
-          setOffer((current) => {
-            if (!current) return current;
-            return mergeFinisherCommandResult(current, commandResult);
-          });
+          const current = offerRef.current;
+          if (!current) return false;
+          const merged = mergeFinisherCommandResult(current, commandResult);
+          const authoritative = merged.execution === commandResult;
+          offerRef.current = merged;
+          setOffer(merged);
+          if (authoritative) {
+            setServerEpochAtMonotonicOrigin(
+              estimateServerEpochAtMonotonicOrigin({
+                serverTime: commandResult.serverTime,
+                requestStartedAt,
+                responseReceivedAt,
+              }),
+            );
+            setMonotonicNow(responseReceivedAt);
+          }
         } else {
-          setOffer(result as FinisherOffer);
+          const nextOffer = result as FinisherOffer;
+          offerRef.current = nextOffer;
+          setOffer(nextOffer);
+          setServerEpochAtMonotonicOrigin(
+            estimateServerEpochAtMonotonicOrigin({
+              serverTime: nextOffer.serverTime,
+              requestStartedAt,
+              responseReceivedAt,
+            }),
+          );
+          setMonotonicNow(responseReceivedAt);
         }
         setPreview(null);
         setShowSubstitutions(false);

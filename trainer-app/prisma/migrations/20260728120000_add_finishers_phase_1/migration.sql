@@ -1,6 +1,73 @@
 -- Phase 1 Finishers are an additive, owner-scoped post-workout execution seam.
 BEGIN;
 
+DO $$
+DECLARE
+  runtime_role pg_catalog.pg_roles%ROWTYPE;
+  owner_role pg_catalog.pg_roles%ROWTYPE;
+  cleanup_role pg_catalog.pg_roles%ROWTYPE;
+BEGIN
+  SELECT * INTO runtime_role
+  FROM pg_catalog.pg_roles
+  WHERE rolname = 'trainer_app_runtime';
+  SELECT * INTO owner_role
+  FROM pg_catalog.pg_roles
+  WHERE rolname = 'trainer_finisher_owner';
+  SELECT * INTO cleanup_role
+  FROM pg_catalog.pg_roles
+  WHERE rolname = 'trainer_finisher_cleanup';
+
+  IF runtime_role.rolname IS NULL
+    OR owner_role.rolname IS NULL
+    OR cleanup_role.rolname IS NULL
+  THEN
+    RAISE EXCEPTION 'required finisher database roles are not provisioned';
+  END IF;
+
+  IF NOT runtime_role.rolcanlogin
+    OR runtime_role.rolsuper
+    OR runtime_role.rolcreaterole
+    OR runtime_role.rolcreatedb
+    OR runtime_role.rolreplication
+    OR runtime_role.rolbypassrls
+  THEN
+    RAISE EXCEPTION 'trainer_app_runtime has unsafe role attributes';
+  END IF;
+
+  IF owner_role.rolcanlogin
+    OR owner_role.rolsuper
+    OR owner_role.rolcreaterole
+    OR owner_role.rolcreatedb
+    OR owner_role.rolreplication
+    OR owner_role.rolbypassrls
+    OR owner_role.rolinherit
+    OR cleanup_role.rolcanlogin
+    OR cleanup_role.rolsuper
+    OR cleanup_role.rolcreaterole
+    OR cleanup_role.rolcreatedb
+    OR cleanup_role.rolreplication
+    OR cleanup_role.rolbypassrls
+    OR cleanup_role.rolinherit
+  THEN
+    RAISE EXCEPTION 'finisher owner or cleanup role has unsafe attributes';
+  END IF;
+
+  IF pg_catalog.pg_has_role(
+      'trainer_app_runtime',
+      'trainer_finisher_owner',
+      'MEMBER'
+    )
+    OR pg_catalog.pg_has_role(
+      'trainer_app_runtime',
+      'trainer_finisher_cleanup',
+      'MEMBER'
+    )
+  THEN
+    RAISE EXCEPTION 'trainer_app_runtime must not be a member of privileged finisher roles';
+  END IF;
+END;
+$$;
+
 CREATE TYPE "WorkoutPhasePlacement" AS ENUM ('POST_WORKOUT');
 CREATE TYPE "WorkoutPhaseKind" AS ENUM ('FINISHER');
 CREATE TYPE "WorkoutPhaseProtocol" AS ENUM ('TIMED_INTERVALS');
@@ -73,6 +140,7 @@ CREATE TABLE "FinisherRoutineStepAlternative" (
 CREATE TABLE "FinisherOffer" (
     "id" TEXT NOT NULL,
     "workoutId" TEXT NOT NULL,
+    "ownerId" TEXT NOT NULL,
     "revision" INTEGER NOT NULL DEFAULT 1,
     "offeredAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "declinedAt" TIMESTAMP(3),
@@ -99,7 +167,9 @@ CREATE TABLE "FinisherOfferItem" (
 CREATE TABLE "FinisherExecution" (
     "id" TEXT NOT NULL,
     "workoutId" TEXT NOT NULL,
+    "ownerId" TEXT NOT NULL,
     "offerId" TEXT NOT NULL,
+    "offerItemId" TEXT NOT NULL,
     "offerRevisionAtSelection" INTEGER NOT NULL,
     "routineVersionId" TEXT NOT NULL,
     "state" "FinisherExecutionState" NOT NULL DEFAULT 'SELECTED',
@@ -154,6 +224,7 @@ CREATE TABLE "FinisherExecutionStep" (
 CREATE TABLE "FinisherExecutionCommand" (
     "id" TEXT NOT NULL,
     "workoutId" TEXT NOT NULL,
+    "ownerId" TEXT NOT NULL,
     "executionId" TEXT NOT NULL,
     "action" "FinisherExecutionAction" NOT NULL,
     "requestHash" TEXT NOT NULL,
@@ -166,7 +237,9 @@ CREATE TABLE "FinisherExecutionCommand" (
     CONSTRAINT "FinisherExecutionCommand_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "FinisherExecutionCommand_expected_revision_positive" CHECK ("expectedRevision" > 0),
     CONSTRAINT "FinisherExecutionCommand_result_revision_positive" CHECK ("resultRevision" > 0),
-    CONSTRAINT "FinisherExecutionCommand_expiration_after_creation" CHECK ("expiresAt" > "createdAt"),
+    CONSTRAINT "FinisherExecutionCommand_expiration_after_creation" CHECK (
+      "expiresAt" = "createdAt" + INTERVAL '90 days'
+    ),
     CONSTRAINT "FinisherExecutionCommand_cleanup_consistent" CHECK (
       ("response" IS NOT NULL AND "cleanedAt" IS NULL)
       OR
@@ -181,11 +254,15 @@ CREATE UNIQUE INDEX "FinisherRoutineStep_routineVersionId_orderIndex_key" ON "Fi
 CREATE UNIQUE INDEX "FinisherRoutineStep_id_routineVersionId_orderIndex_key" ON "FinisherRoutineStep"("id", "routineVersionId", "orderIndex");
 CREATE UNIQUE INDEX "FinisherRoutineStepAlternative_routineStepId_orderIndex_key" ON "FinisherRoutineStepAlternative"("routineStepId", "orderIndex");
 CREATE UNIQUE INDEX "FinisherRoutineStepAlternative_id_routineStepId_key" ON "FinisherRoutineStepAlternative"("id", "routineStepId");
+CREATE UNIQUE INDEX "Workout_id_userId_key" ON "Workout"("id", "userId");
 CREATE UNIQUE INDEX "FinisherOffer_workoutId_key" ON "FinisherOffer"("workoutId");
+CREATE UNIQUE INDEX "FinisherOffer_workoutId_ownerId_key" ON "FinisherOffer"("workoutId", "ownerId");
 CREATE UNIQUE INDEX "FinisherOffer_declineDecisionId_key" ON "FinisherOffer"("declineDecisionId");
+CREATE UNIQUE INDEX "FinisherOffer_id_workoutId_ownerId_key" ON "FinisherOffer"("id", "workoutId", "ownerId");
 CREATE INDEX "FinisherOffer_recommendedRoutineVersionId_idx" ON "FinisherOffer"("recommendedRoutineVersionId");
 CREATE UNIQUE INDEX "FinisherOfferItem_offerId_routineVersionId_key" ON "FinisherOfferItem"("offerId", "routineVersionId");
 CREATE UNIQUE INDEX "FinisherOfferItem_offerId_position_key" ON "FinisherOfferItem"("offerId", "position");
+CREATE UNIQUE INDEX "FinisherOfferItem_id_offerId_routineVersionId_key" ON "FinisherOfferItem"("id", "offerId", "routineVersionId");
 CREATE INDEX "FinisherOfferItem_routineVersionId_idx" ON "FinisherOfferItem"("routineVersionId");
 CREATE UNIQUE INDEX "FinisherExecution_one_active_per_workout"
   ON "FinisherExecution"("workoutId")
@@ -198,6 +275,7 @@ CREATE INDEX "FinisherExecution_offerId_selectedAt_idx" ON "FinisherExecution"("
 CREATE INDEX "FinisherExecution_routineVersionId_startedAt_idx" ON "FinisherExecution"("routineVersionId", "startedAt");
 CREATE INDEX "FinisherExecution_state_segmentEndsAt_idx" ON "FinisherExecution"("state", "segmentEndsAt");
 CREATE UNIQUE INDEX "FinisherExecution_id_workoutId_key" ON "FinisherExecution"("id", "workoutId");
+CREATE UNIQUE INDEX "FinisherExecution_id_workoutId_ownerId_key" ON "FinisherExecution"("id", "workoutId", "ownerId");
 CREATE UNIQUE INDEX "FinisherExecution_id_routineVersionId_key" ON "FinisherExecution"("id", "routineVersionId");
 CREATE UNIQUE INDEX "FinisherExecutionStep_executionId_routineStepId_key" ON "FinisherExecutionStep"("executionId", "routineStepId");
 CREATE INDEX "FinisherExecutionStep_performedAlternativeId_idx" ON "FinisherExecutionStep"("performedAlternativeId");
@@ -215,7 +293,7 @@ ALTER TABLE "FinisherRoutineStepAlternative"
   FOREIGN KEY ("routineStepId") REFERENCES "FinisherRoutineStep"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "FinisherOffer"
   ADD CONSTRAINT "FinisherOffer_workoutId_fkey"
-  FOREIGN KEY ("workoutId") REFERENCES "Workout"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  FOREIGN KEY ("workoutId", "ownerId") REFERENCES "Workout"("id", "userId") ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE "FinisherOffer"
   ADD CONSTRAINT "FinisherOffer_recommendedRoutineVersionId_fkey"
   FOREIGN KEY ("recommendedRoutineVersionId") REFERENCES "FinisherRoutineVersion"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -227,16 +305,19 @@ ALTER TABLE "FinisherOfferItem"
   FOREIGN KEY ("routineVersionId") REFERENCES "FinisherRoutineVersion"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "FinisherExecution"
   ADD CONSTRAINT "FinisherExecution_workoutId_fkey"
-  FOREIGN KEY ("workoutId") REFERENCES "Workout"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  FOREIGN KEY ("workoutId", "ownerId") REFERENCES "Workout"("id", "userId") ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE "FinisherExecution"
   ADD CONSTRAINT "FinisherExecution_offerId_fkey"
-  FOREIGN KEY ("offerId") REFERENCES "FinisherOffer"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  FOREIGN KEY ("offerId", "workoutId", "ownerId") REFERENCES "FinisherOffer"("id", "workoutId", "ownerId") ON DELETE RESTRICT ON UPDATE RESTRICT;
+ALTER TABLE "FinisherExecution"
+  ADD CONSTRAINT "FinisherExecution_offerItem_binding_fkey"
+  FOREIGN KEY ("offerItemId", "offerId", "routineVersionId") REFERENCES "FinisherOfferItem"("id", "offerId", "routineVersionId") ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE "FinisherExecution"
   ADD CONSTRAINT "FinisherExecution_routineVersionId_fkey"
-  FOREIGN KEY ("routineVersionId") REFERENCES "FinisherRoutineVersion"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  FOREIGN KEY ("routineVersionId") REFERENCES "FinisherRoutineVersion"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE "FinisherExecutionStep"
   ADD CONSTRAINT "FinisherExecutionStep_executionId_fkey"
-  FOREIGN KEY ("executionId") REFERENCES "FinisherExecution"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  FOREIGN KEY ("executionId") REFERENCES "FinisherExecution"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE "FinisherExecutionStep"
   ADD CONSTRAINT "FinisherExecutionStep_routineStepId_fkey"
   FOREIGN KEY ("routineStepId") REFERENCES "FinisherRoutineStep"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -254,7 +335,7 @@ ALTER TABLE "FinisherExecutionStep"
   FOREIGN KEY ("performedAlternativeId", "routineStepId") REFERENCES "FinisherRoutineStepAlternative"("id", "routineStepId") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "FinisherExecutionCommand"
   ADD CONSTRAINT "FinisherExecutionCommand_executionId_workoutId_fkey"
-  FOREIGN KEY ("executionId", "workoutId") REFERENCES "FinisherExecution"("id", "workoutId") ON DELETE RESTRICT ON UPDATE CASCADE;
+  FOREIGN KEY ("executionId", "workoutId", "ownerId") REFERENCES "FinisherExecution"("id", "workoutId", "ownerId") ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- Routine identity is immutable. Only publication state may change.
 CREATE FUNCTION guard_finisher_routine_identity() RETURNS trigger
@@ -467,6 +548,7 @@ LANGUAGE plpgsql AS $$
 BEGIN
   IF NEW."id" IS DISTINCT FROM OLD."id"
     OR NEW."workoutId" IS DISTINCT FROM OLD."workoutId"
+    OR NEW."ownerId" IS DISTINCT FROM OLD."ownerId"
     OR NEW."offeredAt" IS DISTINCT FROM OLD."offeredAt"
     OR NEW."recommendedRoutineVersionId" IS DISTINCT FROM OLD."recommendedRoutineVersionId"
     OR NEW."recommendationReason" IS DISTINCT FROM OLD."recommendationReason"
@@ -496,7 +578,9 @@ LANGUAGE plpgsql AS $$
 BEGIN
   IF NEW."id" IS DISTINCT FROM OLD."id"
     OR NEW."workoutId" IS DISTINCT FROM OLD."workoutId"
+    OR NEW."ownerId" IS DISTINCT FROM OLD."ownerId"
     OR NEW."offerId" IS DISTINCT FROM OLD."offerId"
+    OR NEW."offerItemId" IS DISTINCT FROM OLD."offerItemId"
     OR NEW."offerRevisionAtSelection" IS DISTINCT FROM OLD."offerRevisionAtSelection"
     OR NEW."routineVersionId" IS DISTINCT FROM OLD."routineVersionId"
     OR NEW."selectedAt" IS DISTINCT FROM OLD."selectedAt"
@@ -657,15 +741,15 @@ BEGIN
     RAISE EXCEPTION 'finisher execution command tombstones cannot be deleted';
   END IF;
 
-  IF current_setting('trainer.finisher_command_cleanup', true) = 'enabled'
+  IF current_user = 'trainer_finisher_cleanup'
     AND OLD."response" IS NOT NULL
     AND NEW."response" IS NULL
     AND OLD."cleanedAt" IS NULL
     AND NEW."cleanedAt" IS NOT NULL
     AND NEW."cleanedAt" >= OLD."expiresAt"
-    AND NEW."cleanedAt" <= statement_timestamp() + INTERVAL '1 millisecond'
     AND NEW."id" = OLD."id"
     AND NEW."workoutId" = OLD."workoutId"
+    AND NEW."ownerId" = OLD."ownerId"
     AND NEW."executionId" = OLD."executionId"
     AND NEW."action" = OLD."action"
     AND NEW."requestHash" = OLD."requestHash"
@@ -690,23 +774,22 @@ CREATE FUNCTION cleanup_expired_finisher_execution_commands(
 ) RETURNS INTEGER
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = pg_catalog, public
+SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE
   cleaned_count INTEGER;
+  cleanup_time TIMESTAMP(3) := clock_timestamp();
 BEGIN
   IF p_batch_size IS NULL OR p_batch_size < 1 OR p_batch_size > 100 THEN
     RAISE EXCEPTION 'finisher command cleanup batch size must be between 1 and 100';
   END IF;
-
-  PERFORM set_config('trainer.finisher_command_cleanup', 'enabled', true);
 
   WITH expired AS MATERIALIZED (
     SELECT command."id"
     FROM public."FinisherExecutionCommand" command
     WHERE command."response" IS NOT NULL
       AND command."cleanedAt" IS NULL
-      AND command."expiresAt" <= statement_timestamp()
+      AND command."expiresAt" <= cleanup_time
     ORDER BY command."expiresAt" ASC, command."id" ASC
     FOR UPDATE SKIP LOCKED
     LIMIT p_batch_size
@@ -715,20 +798,47 @@ BEGIN
     UPDATE public."FinisherExecutionCommand" command
     SET
       "response" = NULL,
-      "cleanedAt" = statement_timestamp()
+      "cleanedAt" = cleanup_time
     FROM expired
     WHERE command."id" = expired."id"
     RETURNING command."id"
   )
   SELECT COUNT(*)::INTEGER INTO cleaned_count FROM cleaned;
 
-  PERFORM set_config('trainer.finisher_command_cleanup', '', true);
   RETURN cleaned_count;
 END;
 $$;
 
 REVOKE ALL ON FUNCTION cleanup_expired_finisher_execution_commands(INTEGER)
 FROM PUBLIC;
+
+ALTER TABLE "FinisherRoutine" OWNER TO trainer_finisher_owner;
+ALTER TABLE "FinisherRoutineVersion" OWNER TO trainer_finisher_owner;
+ALTER TABLE "FinisherRoutineStep" OWNER TO trainer_finisher_owner;
+ALTER TABLE "FinisherRoutineStepAlternative" OWNER TO trainer_finisher_owner;
+ALTER TABLE "FinisherOffer" OWNER TO trainer_finisher_owner;
+ALTER TABLE "FinisherOfferItem" OWNER TO trainer_finisher_owner;
+ALTER TABLE "FinisherExecution" OWNER TO trainer_finisher_owner;
+ALTER TABLE "FinisherExecutionStep" OWNER TO trainer_finisher_owner;
+ALTER TABLE "FinisherExecutionCommand" OWNER TO trainer_finisher_owner;
+
+ALTER FUNCTION guard_finisher_routine_identity() OWNER TO trainer_finisher_owner;
+ALTER FUNCTION require_finisher_routine_version_sealed() OWNER TO trainer_finisher_owner;
+ALTER FUNCTION guard_finisher_routine_version_mutation() OWNER TO trainer_finisher_owner;
+ALTER FUNCTION guard_finisher_routine_child_mutation() OWNER TO trainer_finisher_owner;
+ALTER FUNCTION require_finisher_offer_finalized() OWNER TO trainer_finisher_owner;
+ALTER FUNCTION require_finisher_execution_finalized() OWNER TO trainer_finisher_owner;
+ALTER FUNCTION guard_finisher_offer_item_insert() OWNER TO trainer_finisher_owner;
+ALTER FUNCTION guard_finisher_execution_step_insert() OWNER TO trainer_finisher_owner;
+ALTER FUNCTION guard_finisher_offer_identity() OWNER TO trainer_finisher_owner;
+ALTER FUNCTION reject_finisher_offer_item_update() OWNER TO trainer_finisher_owner;
+ALTER FUNCTION guard_finisher_execution_identity() OWNER TO trainer_finisher_owner;
+ALTER FUNCTION guard_finisher_execution_step_identity() OWNER TO trainer_finisher_owner;
+ALTER FUNCTION guard_terminal_finisher_execution_evidence() OWNER TO trainer_finisher_owner;
+ALTER FUNCTION guard_finisher_execution_step_evidence() OWNER TO trainer_finisher_owner;
+ALTER FUNCTION reject_finisher_history_deletion() OWNER TO trainer_finisher_owner;
+ALTER FUNCTION guard_finisher_execution_command_tombstone() OWNER TO trainer_finisher_owner;
+ALTER FUNCTION cleanup_expired_finisher_execution_commands(INTEGER) OWNER TO trainer_finisher_cleanup;
 
 -- BEGIN GENERATED FINISHER CATALOG
 
@@ -1132,5 +1242,58 @@ INSERT INTO "FinisherRoutineStep" (
 UPDATE "FinisherRoutineVersion" SET "sealedAt" = CURRENT_TIMESTAMP WHERE "id" = '822af54d-ab7b-55fe-8946-794636b1eb22';
 
 -- END GENERATED FINISHER CATALOG
+
+REVOKE ALL ON TABLE
+  "FinisherRoutine",
+  "FinisherRoutineVersion",
+  "FinisherRoutineStep",
+  "FinisherRoutineStepAlternative",
+  "FinisherOffer",
+  "FinisherOfferItem",
+  "FinisherExecution",
+  "FinisherExecutionStep",
+  "FinisherExecutionCommand"
+FROM PUBLIC, trainer_app_runtime, trainer_finisher_cleanup;
+
+GRANT USAGE ON SCHEMA public TO trainer_app_runtime, trainer_finisher_cleanup;
+GRANT SELECT ON TABLE
+  "FinisherRoutine",
+  "FinisherRoutineVersion",
+  "FinisherRoutineStep",
+  "FinisherRoutineStepAlternative"
+TO trainer_app_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE "FinisherOffer" TO trainer_app_runtime;
+GRANT SELECT, INSERT ON TABLE "FinisherOfferItem" TO trainer_app_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE "FinisherExecution" TO trainer_app_runtime;
+GRANT SELECT, INSERT, UPDATE ON TABLE "FinisherExecutionStep" TO trainer_app_runtime;
+GRANT SELECT, INSERT ON TABLE "FinisherExecutionCommand" TO trainer_app_runtime;
+
+GRANT SELECT ON TABLE "FinisherExecutionCommand" TO trainer_finisher_cleanup;
+GRANT UPDATE ("response", "cleanedAt")
+ON TABLE "FinisherExecutionCommand"
+TO trainer_finisher_cleanup;
+
+REVOKE ALL ON FUNCTION
+  guard_finisher_routine_identity(),
+  require_finisher_routine_version_sealed(),
+  guard_finisher_routine_version_mutation(),
+  guard_finisher_routine_child_mutation(),
+  require_finisher_offer_finalized(),
+  require_finisher_execution_finalized(),
+  guard_finisher_offer_item_insert(),
+  guard_finisher_execution_step_insert(),
+  guard_finisher_offer_identity(),
+  reject_finisher_offer_item_update(),
+  guard_finisher_execution_identity(),
+  guard_finisher_execution_step_identity(),
+  guard_terminal_finisher_execution_evidence(),
+  guard_finisher_execution_step_evidence(),
+  reject_finisher_history_deletion(),
+  guard_finisher_execution_command_tombstone()
+FROM PUBLIC, trainer_app_runtime, trainer_finisher_cleanup;
+REVOKE ALL ON FUNCTION cleanup_expired_finisher_execution_commands(INTEGER)
+FROM PUBLIC, trainer_finisher_owner;
+GRANT EXECUTE ON FUNCTION cleanup_expired_finisher_execution_commands(INTEGER)
+TO trainer_app_runtime;
 
 COMMIT;

@@ -30,6 +30,7 @@ import {
 export function registerFinisherServiceDatabaseTests(databaseUrl: string): void {
   describe("Finisher service (PostgreSQL)", () => {
     let pool: Pool;
+    let runtimePool: Pool;
     let client: PrismaClient;
     let ownerId: string;
     let ownerEmail: string;
@@ -43,6 +44,9 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
 
     beforeAll(async () => {
       pool = new Pool({ connectionString: databaseUrl });
+      runtimePool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+      });
       client = new PrismaClient({ adapter: new PrismaPg(pool) });
       const suffix = crypto.randomUUID();
       ownerEmail = `finisher-owner-${suffix}@test.local`;
@@ -264,6 +268,7 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
 
     afterAll(async () => {
       await client?.$disconnect();
+      await runtimePool?.end();
       await pool?.end();
     });
 
@@ -709,6 +714,13 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
 
       const rollbackWorkout = await createWorkout("COMPLETED");
       const rollbackOffer = await ensureOffer(ownerId, rollbackWorkout.id, now);
+      const rollbackOfferItem =
+        await client.finisherOfferItem.findFirstOrThrow({
+          where: {
+            offerId: rollbackOffer.offer!.id,
+            routineVersionId,
+          },
+        });
       const prescribedSteps = await client.finisherRoutineStep.findMany({
         where: { routineVersionId },
         orderBy: { orderIndex: "asc" },
@@ -724,7 +736,9 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
             data: {
               id: invalidExecutionId,
               workoutId: rollbackWorkout.id,
+              ownerId,
               offerId: rollbackOffer.offer!.id,
+              offerItemId: rollbackOfferItem.id,
               offerRevisionAtSelection: rollbackOffer.offer!.revision,
               routineVersionId,
               selectedAt: now,
@@ -820,6 +834,160 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
           },
         }),
       ).toEqual(executionBefore);
+    });
+
+    it("binds executions to the exact offered workout, item, version, and historical owner", async () => {
+      const workoutA = await createWorkout("COMPLETED");
+      const workoutB = await createWorkout("COMPLETED");
+      const offerA = await ensureOffer(ownerId, workoutA.id, now);
+      const offerB = await ensureOffer(ownerId, workoutB.id, now);
+      const itemA = await client.finisherOfferItem.findFirstOrThrow({
+        where: {
+          offerId: offerA.offer!.id,
+          routineVersionId,
+        },
+      });
+      const itemB = await client.finisherOfferItem.findFirstOrThrow({
+        where: {
+          offerId: offerB.offer!.id,
+          routineVersionId,
+        },
+      });
+      const invalidIds = Array.from({ length: 5 }, () => crypto.randomUUID());
+      const insertExecution = (
+        id: string,
+        workoutId: string,
+        historicalOwnerId: string,
+        offerId: string,
+        offerItemId: string,
+        selectedRoutineVersionId: string,
+      ) =>
+        client.$executeRaw`
+          INSERT INTO "FinisherExecution" (
+            "id", "workoutId", "ownerId", "offerId", "offerItemId",
+            "offerRevisionAtSelection", "routineVersionId", "selectedAt"
+          ) VALUES (
+            ${id}, ${workoutId}, ${historicalOwnerId}, ${offerId},
+            ${offerItemId}, 1, ${selectedRoutineVersionId}, ${now}
+          )
+        `;
+
+      await expect(
+        insertExecution(
+          invalidIds[0]!,
+          workoutA.id,
+          ownerId,
+          offerB.offer!.id,
+          itemB.id,
+          routineVersionId,
+        ),
+      ).rejects.toThrow();
+      await expect(
+        insertExecution(
+          invalidIds[1]!,
+          workoutA.id,
+          ownerId,
+          offerA.offer!.id,
+          itemA.id,
+          preparationRoutineVersionId,
+        ),
+      ).rejects.toThrow();
+      await expect(
+        insertExecution(
+          invalidIds[2]!,
+          workoutA.id,
+          ownerId,
+          offerA.offer!.id,
+          itemB.id,
+          routineVersionId,
+        ),
+      ).rejects.toThrow();
+      await expect(
+        insertExecution(
+          invalidIds[3]!,
+          workoutA.id,
+          foreignOwnerId,
+          offerA.offer!.id,
+          itemA.id,
+          routineVersionId,
+        ),
+      ).rejects.toThrow();
+
+      const concurrent = await Promise.allSettled([
+        insertExecution(
+          invalidIds[4]!,
+          workoutB.id,
+          ownerId,
+          offerA.offer!.id,
+          itemA.id,
+          routineVersionId,
+        ),
+        insertExecution(
+          crypto.randomUUID(),
+          workoutA.id,
+          ownerId,
+          offerA.offer!.id,
+          itemB.id,
+          routineVersionId,
+        ),
+      ]);
+      expect(concurrent.every((result) => result.status === "rejected")).toBe(
+        true,
+      );
+      expect(
+        await client.finisherExecution.count({
+          where: { id: { in: invalidIds } },
+        }),
+      ).toBe(0);
+
+      const selected = await selectFinisher({
+        userId: ownerId,
+        workoutId: workoutA.id,
+        routineVersionId,
+        now,
+      });
+      const persisted = await client.finisherExecution.findUniqueOrThrow({
+        where: { id: selected.id },
+      });
+      expect(persisted).toMatchObject({
+        workoutId: workoutA.id,
+        ownerId,
+        offerId: offerA.offer!.id,
+        offerItemId: itemA.id,
+        routineVersionId,
+      });
+
+      await expect(
+        client.workout.update({
+          where: { id: workoutA.id },
+          data: { userId: foreignOwnerId },
+        }),
+      ).rejects.toThrow();
+      await expect(
+        client.finisherOffer.update({
+          where: { id: offerA.offer!.id },
+          data: { ownerId: foreignOwnerId },
+        }),
+      ).rejects.toThrow();
+      await expect(
+        client.finisherOffer.update({
+          where: { id: offerA.offer!.id },
+          data: { workoutId: workoutB.id },
+        }),
+      ).rejects.toThrow();
+      await expect(
+        client.finisherOffer.delete({
+          where: { id: offerA.offer!.id },
+        }),
+      ).rejects.toThrow();
+      await expect(
+        client.workout.delete({ where: { id: workoutA.id } }),
+      ).rejects.toThrow();
+      await expect(
+        client.finisherExecution.findUniqueOrThrow({
+          where: { id: selected.id },
+        }),
+      ).resolves.toEqual(persisted);
     });
 
     it("makes every existing-execution command receipt-safe under concurrent and lost-response retries", async () => {
@@ -1292,6 +1460,58 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       });
     });
 
+    it("uses the database clock for receipt creation and retry expiration", async () => {
+      const workout = await createWorkout("COMPLETED");
+      const selected = await selectFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        routineVersionId,
+        now,
+      });
+      const commandId = crypto.randomUUID();
+      const [{ databaseBefore }] = await client.$queryRaw<
+        Array<{ databaseBefore: Date }>
+      >`SELECT clock_timestamp()::timestamp(3) AS "databaseBefore"`;
+
+      const started = await startSelectedFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        executionId: selected.id,
+        expectedRevision: selected.revision,
+        commandId,
+        now: new Date("1900-01-01T00:00:00.000Z"),
+      });
+
+      const [{ databaseAfter }] = await client.$queryRaw<
+        Array<{ databaseAfter: Date }>
+      >`SELECT clock_timestamp()::timestamp(3) AS "databaseAfter"`;
+      const receipt =
+        await client.finisherExecutionCommand.findUniqueOrThrow({
+          where: { id: commandId },
+        });
+      expect(receipt.ownerId).toBe(ownerId);
+      expect(receipt.createdAt.getTime()).toBeGreaterThanOrEqual(
+        databaseBefore.getTime(),
+      );
+      expect(receipt.createdAt.getTime()).toBeLessThanOrEqual(
+        databaseAfter.getTime(),
+      );
+      expect(receipt.expiresAt.getTime() - receipt.createdAt.getTime()).toBe(
+        90 * 24 * 60 * 60 * 1_000,
+      );
+
+      await expect(
+        startSelectedFinisher({
+          userId: ownerId,
+          workoutId: workout.id,
+          executionId: selected.id,
+          expectedRevision: selected.revision,
+          commandId,
+          now: new Date("2100-01-01T00:00:00.000Z"),
+        }),
+      ).resolves.toEqual(started);
+    });
+
     it("expires receipts at 90 days and cleans payloads in bounded global batches without changing history", async () => {
       const retentionMs = 90 * 24 * 60 * 60 * 1_000;
       const workout = await createWorkout("COMPLETED");
@@ -1328,14 +1548,13 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
         commandId: endCommandId,
         now: new Date(now.getTime() + 2_000),
       });
-      const expiresAt = new Date(now.getTime() + retentionMs);
       const beforeExpiry = await startSelectedFinisher({
         userId: ownerId,
         workoutId: workout.id,
         executionId: selected.id,
         expectedRevision: selected.revision,
         commandId: startCommandId,
-        now: new Date(expiresAt.getTime() - 1),
+        now: new Date("2100-01-01T00:00:00.000Z"),
       });
       expect(beforeExpiry).toEqual(started);
       expect(
@@ -1345,9 +1564,49 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
         }),
       ).toEqual({ revision: ended.revision, state: ended.state });
 
-      for (const expiredNow of [
-        expiresAt,
-        new Date(expiresAt.getTime() + 1),
+      const [boundary] = await client.$queryRaw<
+        Array<{ before: boolean; exact: boolean; after: boolean }>
+      >`
+        WITH database_clock AS MATERIALIZED (
+          SELECT clock_timestamp()::timestamp(3) AS "now"
+        )
+        SELECT
+          ("now" + INTERVAL '1 millisecond' <= "now") AS "before",
+          ("now" <= "now") AS "exact",
+          ("now" - INTERVAL '1 millisecond' <= "now") AS "after"
+        FROM database_clock
+      `;
+      expect(boundary).toEqual({
+        before: false,
+        exact: true,
+        after: true,
+      });
+
+      await client.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe(
+          'ALTER TABLE "FinisherExecutionCommand" DISABLE TRIGGER "FinisherExecutionCommand_tombstone"',
+        );
+        await tx.$executeRaw`
+          WITH expiration AS MATERIALIZED (
+            SELECT
+              clock_timestamp()::timestamp(3) - INTERVAL '1 millisecond'
+                AS "expiresAt"
+          )
+          UPDATE "FinisherExecutionCommand"
+          SET
+            "createdAt" = expiration."expiresAt" - INTERVAL '90 days',
+            "expiresAt" = expiration."expiresAt"
+          FROM expiration
+          WHERE "id" = ${startCommandId}
+        `;
+        await tx.$executeRawUnsafe(
+          'ALTER TABLE "FinisherExecutionCommand" ENABLE TRIGGER "FinisherExecutionCommand_tombstone"',
+        );
+      });
+
+      for (const skewedNow of [
+        new Date("1900-01-01T00:00:00.000Z"),
+        new Date("2100-01-01T00:00:00.000Z"),
       ]) {
         await expect(
           startSelectedFinisher({
@@ -1356,7 +1615,7 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
             executionId: selected.id,
             expectedRevision: selected.revision,
             commandId: startCommandId,
-            now: expiredNow,
+            now: skewedNow,
           }),
         ).rejects.toMatchObject({
           code: "FINISHER_COMMAND_EXPIRED",
@@ -1378,7 +1637,7 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
           executionId: collisionSelection.id,
           expectedRevision: collisionSelection.revision,
           commandId: startCommandId,
-          now: new Date(expiresAt.getTime() + 1),
+          now: new Date("1900-01-01T00:00:00.000Z"),
         }),
       ).rejects.toMatchObject({
         code: "FINISHER_COMMAND_EXPIRED",
@@ -1396,7 +1655,9 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
         Array<{ databaseNow: Date }>
       >`SELECT statement_timestamp() AS "databaseNow"`;
       const cleanupExpiresAt = new Date(databaseNow.getTime() - 60_000);
-      const cleanupCreatedAt = new Date(cleanupExpiresAt.getTime() - 60_000);
+      const cleanupCreatedAt = new Date(
+        cleanupExpiresAt.getTime() - retentionMs,
+      );
       const expiredCommandIds = Array.from({ length: 7 }, () =>
         crypto.randomUUID(),
       );
@@ -1404,6 +1665,7 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
         data: expiredCommandIds.map((id, index) => ({
           id,
           workoutId: workout.id,
+          ownerId,
           executionId: selected.id,
           action: "SYNC",
           requestHash: `expired-cleanup-${index}`,
@@ -1505,6 +1767,210 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       ).toEqual(permanentHistoryBefore);
     });
 
+    it("confines cleanup authority to the fixed non-login role and canonical function", async () => {
+      const workout = await createWorkout("COMPLETED");
+      const selected = await selectFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        routineVersionId,
+        now,
+      });
+      const commandId = crypto.randomUUID();
+      await startSelectedFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        executionId: selected.id,
+        expectedRevision: selected.revision,
+        commandId,
+        now,
+      });
+
+      const roleFacts = await pool.query<{
+        rolname: string;
+        rolcanlogin: boolean;
+        rolinherit: boolean;
+        rolsuper: boolean;
+        rolcreaterole: boolean;
+        rolcreatedb: boolean;
+        rolreplication: boolean;
+        rolbypassrls: boolean;
+      }>(`
+        SELECT
+          rolname,
+          rolcanlogin,
+          rolinherit,
+          rolsuper,
+          rolcreaterole,
+          rolcreatedb,
+          rolreplication,
+          rolbypassrls
+        FROM pg_catalog.pg_roles
+        WHERE rolname IN (
+          'trainer_app_runtime',
+          'trainer_finisher_owner',
+          'trainer_finisher_cleanup'
+        )
+        ORDER BY rolname
+      `);
+      expect(roleFacts.rows).toEqual([
+        {
+          rolname: "trainer_app_runtime",
+          rolcanlogin: true,
+          rolinherit: true,
+          rolsuper: false,
+          rolcreaterole: false,
+          rolcreatedb: false,
+          rolreplication: false,
+          rolbypassrls: false,
+        },
+        {
+          rolname: "trainer_finisher_cleanup",
+          rolcanlogin: false,
+          rolinherit: false,
+          rolsuper: false,
+          rolcreaterole: false,
+          rolcreatedb: false,
+          rolreplication: false,
+          rolbypassrls: false,
+        },
+        {
+          rolname: "trainer_finisher_owner",
+          rolcanlogin: false,
+          rolinherit: false,
+          rolsuper: false,
+          rolcreaterole: false,
+          rolcreatedb: false,
+          rolreplication: false,
+          rolbypassrls: false,
+        },
+      ]);
+
+      const membership = await pool.query<{ membershipCount: number }>(`
+        SELECT COUNT(*)::integer AS "membershipCount"
+        FROM pg_catalog.pg_auth_members memberships
+        JOIN pg_catalog.pg_roles granted
+          ON granted.oid = memberships.roleid
+        JOIN pg_catalog.pg_roles member
+          ON member.oid = memberships.member
+        WHERE granted.rolname IN (
+          'trainer_app_runtime',
+          'trainer_finisher_owner',
+          'trainer_finisher_cleanup'
+        )
+          OR member.rolname IN (
+            'trainer_app_runtime',
+            'trainer_finisher_owner',
+            'trainer_finisher_cleanup'
+          )
+      `);
+      expect(membership.rows[0]?.membershipCount).toBe(0);
+
+      const ownership = await pool.query<{
+        relationName: string;
+        ownerName: string;
+      }>(`
+        SELECT
+          class.relname AS "relationName",
+          owner.rolname AS "ownerName"
+        FROM pg_catalog.pg_class class
+        JOIN pg_catalog.pg_namespace namespace
+          ON namespace.oid = class.relnamespace
+        JOIN pg_catalog.pg_roles owner ON owner.oid = class.relowner
+        WHERE namespace.nspname = 'public'
+          AND class.relkind IN ('r', 'p')
+          AND class.relname LIKE 'Finisher%'
+        ORDER BY class.relname
+      `);
+      expect(ownership.rows).toHaveLength(9);
+      expect(
+        ownership.rows.every(
+          ({ ownerName }) => ownerName === "trainer_finisher_owner",
+        ),
+      ).toBe(true);
+
+      const cleanupFunction = await pool.query<{
+        ownerName: string;
+        runtimeCanExecute: boolean;
+        publicCanExecute: boolean;
+      }>(`
+        SELECT
+          owner.rolname AS "ownerName",
+          pg_catalog.has_function_privilege(
+            'trainer_app_runtime',
+            procedure.oid,
+            'EXECUTE'
+          ) AS "runtimeCanExecute",
+          EXISTS (
+            SELECT 1
+            FROM pg_catalog.aclexplode(
+              COALESCE(
+                procedure.proacl,
+                pg_catalog.acldefault('f', procedure.proowner)
+              )
+            ) acl
+            WHERE acl.grantee = 0
+              AND acl.privilege_type = 'EXECUTE'
+          ) AS "publicCanExecute"
+        FROM pg_catalog.pg_proc procedure
+        JOIN pg_catalog.pg_namespace namespace
+          ON namespace.oid = procedure.pronamespace
+        JOIN pg_catalog.pg_roles owner ON owner.oid = procedure.proowner
+        WHERE namespace.nspname = 'public'
+          AND procedure.proname =
+            'cleanup_expired_finisher_execution_commands'
+          AND pg_catalog.pg_get_function_identity_arguments(procedure.oid) =
+            'p_batch_size integer'
+      `);
+      expect(cleanupFunction.rows).toEqual([
+        {
+          ownerName: "trainer_finisher_cleanup",
+          runtimeCanExecute: true,
+          publicCanExecute: false,
+        },
+      ]);
+
+      await runtimePool.query(
+        `SELECT set_config(
+          'trainer.finisher_command_cleanup',
+          'enabled',
+          false
+        )`,
+      );
+      for (const attack of [
+        `UPDATE "FinisherExecutionCommand"
+         SET "response" = NULL, "cleanedAt" = clock_timestamp()
+         WHERE "id" = '${commandId}'`,
+        `DELETE FROM "FinisherExecutionCommand" WHERE "id" = '${commandId}'`,
+        `ALTER TABLE "FinisherExecutionCommand"
+         DISABLE TRIGGER "FinisherExecutionCommand_tombstone"`,
+        `SET ROLE trainer_finisher_cleanup`,
+        `CREATE OR REPLACE FUNCTION public.finisher_runtime_attack()
+         RETURNS integer LANGUAGE sql AS 'SELECT 1'`,
+      ]) {
+        await expect(runtimePool.query(attack)).rejects.toThrow(
+          /permission denied|must be owner|not permitted|must have/i,
+        );
+      }
+
+      await expect(
+        runtimePool.query<{ cleanedCount: number }>(
+          `SELECT cleanup_expired_finisher_execution_commands(100)
+            AS "cleanedCount"`,
+        ),
+      ).resolves.toMatchObject({
+        rows: [{ cleanedCount: expect.any(Number) }],
+      });
+      await expect(
+        client.finisherExecutionCommand.findUniqueOrThrow({
+          where: { id: commandId },
+          select: { response: true, cleanedAt: true },
+        }),
+      ).resolves.toEqual({
+        response: expect.any(Object),
+        cleanedAt: null,
+      });
+    });
+
     it("enforces permanent command tombstones for Prisma, SQL, bulk, cleanup, and delete paths", async () => {
       const workout = await createWorkout("COMPLETED");
       const selected = await selectFinisher({
@@ -1530,6 +1996,7 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       const sqlMutations = [
         `UPDATE "FinisherExecutionCommand" SET "id" = 'tampered-command-id' WHERE "id" = $1`,
         `UPDATE "FinisherExecutionCommand" SET "workoutId" = 'tampered-workout-id' WHERE "id" = $1`,
+        `UPDATE "FinisherExecutionCommand" SET "ownerId" = 'tampered-owner-id' WHERE "id" = $1`,
         `UPDATE "FinisherExecutionCommand" SET "executionId" = 'tampered-execution-id' WHERE "id" = $1`,
         `UPDATE "FinisherExecutionCommand" SET "action" = 'PAUSE' WHERE "id" = $1`,
         `UPDATE "FinisherExecutionCommand" SET "requestHash" = "requestHash" || '-tampered' WHERE "id" = $1`,

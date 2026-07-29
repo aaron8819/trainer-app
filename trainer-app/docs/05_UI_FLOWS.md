@@ -20,6 +20,13 @@ Visibility recovery refreshes the pure projection before synchronization.
 Each execution mutation gets one stable command UUID. The client reuses the
 same UUID and exact request body for automatic network and server-error retries,
 and generates a new UUID only for a new logical command.
+Durable POST responses are merged before their clocks are applied. For the same
+execution, a higher revision wins; equal revisions use later `serverTime` as a
+deterministic tie-breaker; an older revision or another execution cannot
+replace current state. Timer calibration changes only when that incoming result
+is the selected authority. A delayed replay therefore cannot regress the
+active segment, remaining/elapsed time, or terminal presentation, while a newer
+POST or current GET projection still recalibrates normally.
 The timer requests screen wake lock while running and exposes independent
 opt-in sound/vibration controls with textual fallbacks.
 

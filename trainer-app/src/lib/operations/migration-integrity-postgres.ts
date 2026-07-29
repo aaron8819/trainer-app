@@ -2,11 +2,17 @@ import type { QueryResult, QueryResultRow } from "pg";
 import type {
   CatalogSnapshot,
   CatalogRowFact,
+  ColumnPrivilegeFact,
   ColumnFact,
   ConstraintFact,
+  DefaultPrivilegeFact,
   FunctionFact,
   IndexFact,
   LedgerRow,
+  PrivilegeFact,
+  RoleFact,
+  RoleMembershipFact,
+  TableSecurityFact,
   TriggerFact,
 } from "./migration-integrity";
 
@@ -82,6 +88,65 @@ export async function inspectMigrationDatabase(client: ReadOnlyClient): Promise<
       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
       ORDER BY c.relname
+    `);
+    const tableSecurityRows = await safeSelect<{
+      table_name: string;
+      owner_name: string;
+      privileges: PrivilegeFact[];
+    }>("tableSecurity", `
+      SELECT c.relname AS table_name,
+        owner.rolname AS owner_name,
+        COALESCE((
+          SELECT jsonb_agg(
+            jsonb_build_object(
+              'grantee', COALESCE(grantee.rolname, 'PUBLIC'),
+              'grantor', grantor.rolname,
+              'privilege', privilege.privilege_type,
+              'grantable', privilege.is_grantable
+            )
+            ORDER BY COALESCE(grantee.rolname, 'PUBLIC'),
+              privilege.privilege_type, grantor.rolname
+          )
+          FROM pg_catalog.aclexplode(
+            COALESCE(c.relacl, pg_catalog.acldefault('r', c.relowner))
+          ) privilege
+          LEFT JOIN pg_catalog.pg_roles grantee
+            ON grantee.oid = privilege.grantee
+          JOIN pg_catalog.pg_roles grantor
+            ON grantor.oid = privilege.grantor
+        ), '[]'::jsonb) AS privileges
+      FROM pg_catalog.pg_class c
+      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+      JOIN pg_catalog.pg_roles owner ON owner.oid = c.relowner
+      WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
+      ORDER BY c.relname
+    `);
+    const columnPrivilegeRows = await safeSelect<{
+      table_name: string;
+      column_name: string;
+      grantee_name: string;
+      grantor_name: string;
+      privilege_type: string;
+      is_grantable: boolean;
+    }>("columnPrivileges", `
+      SELECT c.relname AS table_name,
+        a.attname AS column_name,
+        COALESCE(grantee.rolname, 'PUBLIC') AS grantee_name,
+        grantor.rolname AS grantor_name,
+        privilege.privilege_type,
+        privilege.is_grantable
+      FROM pg_catalog.pg_attribute a
+      JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+      CROSS JOIN LATERAL pg_catalog.aclexplode(a.attacl) privilege
+      LEFT JOIN pg_catalog.pg_roles grantee ON grantee.oid = privilege.grantee
+      JOIN pg_catalog.pg_roles grantor ON grantor.oid = privilege.grantor
+      WHERE n.nspname = 'public'
+        AND c.relkind IN ('r', 'p')
+        AND a.attnum > 0
+        AND NOT a.attisdropped
+        AND a.attacl IS NOT NULL
+      ORDER BY c.relname, a.attname, grantee_name, privilege.privilege_type
     `);
     const columnRows = await safeSelect<{
       table_name: string;
@@ -190,14 +255,20 @@ export async function inspectMigrationDatabase(client: ReadOnlyClient): Promise<
       trigger_name: string;
       definition: string;
       enabled: string;
+      function_name: string;
+      function_owner: string;
     }>("triggers", `
       SELECT c.relname AS table_name,
         t.tgname AS trigger_name,
         pg_catalog.pg_get_triggerdef(t.oid, true) AS definition,
-        t.tgenabled::text AS enabled
+        t.tgenabled::text AS enabled,
+        p.proname AS function_name,
+        owner.rolname AS function_owner
       FROM pg_catalog.pg_trigger t
       JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+      JOIN pg_catalog.pg_proc p ON p.oid = t.tgfoid
+      JOIN pg_catalog.pg_roles owner ON owner.oid = p.proowner
       WHERE n.nspname = 'public' AND NOT t.tgisinternal
       ORDER BY c.relname, t.tgname
     `);
@@ -215,6 +286,11 @@ export async function inspectMigrationDatabase(client: ReadOnlyClient): Promise<
       body: string;
       configuration: string[] | null;
       public_execute: boolean;
+      owner_name: string;
+      privileges: PrivilegeFact[];
+      referenced_relations: string[];
+      referenced_functions: string[];
+      trigger_tables: string[];
     }>("functions", `
       SELECT p.proname AS function_name,
         pg_catalog.pg_get_functiondef(p.oid) AS definition,
@@ -228,6 +304,7 @@ export async function inspectMigrationDatabase(client: ReadOnlyClient): Promise<
         p.proparallel::text AS parallel_safety,
         p.prosrc AS body,
         p.proconfig AS configuration,
+        owner.rolname AS owner_name,
         EXISTS (
           SELECT 1
           FROM pg_catalog.aclexplode(
@@ -238,12 +315,138 @@ export async function inspectMigrationDatabase(client: ReadOnlyClient): Promise<
           ) privilege
           WHERE privilege.grantee = 0
             AND privilege.privilege_type = 'EXECUTE'
-        ) AS public_execute
+        ) AS public_execute,
+        COALESCE((
+          SELECT jsonb_agg(
+            jsonb_build_object(
+              'grantee', COALESCE(grantee.rolname, 'PUBLIC'),
+              'grantor', grantor.rolname,
+              'privilege', privilege.privilege_type,
+              'grantable', privilege.is_grantable
+            )
+            ORDER BY COALESCE(grantee.rolname, 'PUBLIC'),
+              privilege.privilege_type, grantor.rolname
+          )
+          FROM pg_catalog.aclexplode(
+            COALESCE(p.proacl, pg_catalog.acldefault('f', p.proowner))
+          ) privilege
+          LEFT JOIN pg_catalog.pg_roles grantee
+            ON grantee.oid = privilege.grantee
+          JOIN pg_catalog.pg_roles grantor
+            ON grantor.oid = privilege.grantor
+        ), '[]'::jsonb) AS privileges,
+        ARRAY(
+          SELECT DISTINCT relation_namespace.nspname || '.' || relation.relname
+          FROM pg_catalog.pg_depend dependency
+          JOIN pg_catalog.pg_class relation
+            ON relation.oid = dependency.refobjid
+          JOIN pg_catalog.pg_namespace relation_namespace
+            ON relation_namespace.oid = relation.relnamespace
+          WHERE dependency.classid = 'pg_catalog.pg_proc'::regclass
+            AND dependency.objid = p.oid
+            AND dependency.refclassid = 'pg_catalog.pg_class'::regclass
+          ORDER BY relation_namespace.nspname || '.' || relation.relname
+        ) AS referenced_relations,
+        ARRAY(
+          SELECT DISTINCT referenced.proname ||
+            '(' || pg_catalog.pg_get_function_identity_arguments(referenced.oid) || ')'
+          FROM pg_catalog.pg_depend dependency
+          JOIN pg_catalog.pg_proc referenced
+            ON referenced.oid = dependency.refobjid
+          WHERE dependency.classid = 'pg_catalog.pg_proc'::regclass
+            AND dependency.objid = p.oid
+            AND dependency.refclassid = 'pg_catalog.pg_proc'::regclass
+            AND referenced.oid <> p.oid
+          ORDER BY referenced.proname ||
+            '(' || pg_catalog.pg_get_function_identity_arguments(referenced.oid) || ')'
+        ) AS referenced_functions,
+        ARRAY(
+          SELECT DISTINCT trigger_table.relname::text
+          FROM pg_catalog.pg_trigger trigger
+          JOIN pg_catalog.pg_class trigger_table
+            ON trigger_table.oid = trigger.tgrelid
+          JOIN pg_catalog.pg_namespace trigger_namespace
+            ON trigger_namespace.oid = trigger_table.relnamespace
+          WHERE trigger.tgfoid = p.oid
+            AND NOT trigger.tgisinternal
+            AND trigger_namespace.nspname = 'public'
+          ORDER BY trigger_table.relname::text
+        ) AS trigger_tables
       FROM pg_catalog.pg_proc p
       JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
       JOIN pg_catalog.pg_language l ON l.oid = p.prolang
+      JOIN pg_catalog.pg_roles owner ON owner.oid = p.proowner
       WHERE n.nspname = 'public' AND p.prokind = 'f'
       ORDER BY p.proname, p.oid
+    `);
+    const roleRows = await safeSelect<{
+      role_name: string;
+      can_login: boolean;
+      inherits_privileges: boolean;
+      is_superuser: boolean;
+      can_create_role: boolean;
+      can_create_db: boolean;
+      can_replicate: boolean;
+      bypasses_rls: boolean;
+      public_schema_create: boolean;
+    }>("roles", `
+      SELECT role.rolname AS role_name,
+        role.rolcanlogin AS can_login,
+        role.rolinherit AS inherits_privileges,
+        role.rolsuper AS is_superuser,
+        role.rolcreaterole AS can_create_role,
+        role.rolcreatedb AS can_create_db,
+        role.rolreplication AS can_replicate,
+        role.rolbypassrls AS bypasses_rls,
+        pg_catalog.has_schema_privilege(
+          role.rolname,
+          'public',
+          'CREATE'
+        ) AS public_schema_create
+      FROM pg_catalog.pg_roles role
+      ORDER BY role.rolname
+    `);
+    const roleMembershipRows = await safeSelect<{
+      role_name: string;
+      member_name: string;
+      grantor_name: string;
+      admin_option: boolean;
+    }>("roleMemberships", `
+      SELECT granted.rolname AS role_name,
+        member.rolname AS member_name,
+        grantor.rolname AS grantor_name,
+        membership.admin_option
+      FROM pg_catalog.pg_auth_members membership
+      JOIN pg_catalog.pg_roles granted ON granted.oid = membership.roleid
+      JOIN pg_catalog.pg_roles member ON member.oid = membership.member
+      JOIN pg_catalog.pg_roles grantor ON grantor.oid = membership.grantor
+      ORDER BY granted.rolname, member.rolname, grantor.rolname
+    `);
+    const defaultPrivilegeRows = await safeSelect<{
+      owner_name: string;
+      schema_name: string | null;
+      object_type: string;
+      grantee_name: string;
+      grantor_name: string;
+      privilege_type: string;
+      is_grantable: boolean;
+    }>("defaultPrivileges", `
+      SELECT owner.rolname AS owner_name,
+        namespace.nspname AS schema_name,
+        defaults.defaclobjtype::text AS object_type,
+        COALESCE(grantee.rolname, 'PUBLIC') AS grantee_name,
+        grantor.rolname AS grantor_name,
+        privilege.privilege_type,
+        privilege.is_grantable
+      FROM pg_catalog.pg_default_acl defaults
+      JOIN pg_catalog.pg_roles owner ON owner.oid = defaults.defaclrole
+      LEFT JOIN pg_catalog.pg_namespace namespace
+        ON namespace.oid = defaults.defaclnamespace
+      CROSS JOIN LATERAL pg_catalog.aclexplode(defaults.defaclacl) privilege
+      LEFT JOIN pg_catalog.pg_roles grantee ON grantee.oid = privilege.grantee
+      JOIN pg_catalog.pg_roles grantor ON grantor.oid = privilege.grantor
+      ORDER BY owner_name, schema_name, object_type, grantee_name,
+        privilege.privilege_type
     `);
     const finisherDefinitionTables = [
       "FinisherRoutine",
@@ -279,6 +482,16 @@ export async function inspectMigrationDatabase(client: ReadOnlyClient): Promise<
 
     const enumValues = new Map<string, string[]>();
     for (const row of enumRows) enumValues.set(row.enum_name, [...(enumValues.get(row.enum_name) ?? []), row.enum_value]);
+    const publicRelationNames = tableRows.map((row) => row.name);
+    const publicFunctionNames = functionRows.map((row) => row.function_name);
+    const staticReferences = (body: string, names: string[]) =>
+      names.filter(
+        (name) =>
+          body.includes(`"${name}"`) ||
+          new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(
+            body,
+          ),
+      );
 
     await transactionStatement(client, "COMMIT");
     return {
@@ -324,22 +537,100 @@ export async function inspectMigrationDatabase(client: ReadOnlyClient): Promise<
           name: row.trigger_name,
           definition: row.definition,
           enabled: row.enabled,
+          functionName: row.function_name,
+          functionOwner: row.function_owner,
         })),
-        functions: functionRows.map((row): FunctionFact => ({
-          name: row.function_name,
-          definition: row.definition,
-          language: row.language_name,
-          arguments: row.identity_arguments,
-          resultType: row.result_type,
-          volatility: row.volatility,
-          securityDefiner: row.security_definer,
-          leakproof: row.leakproof,
-          strict: row.is_strict,
-          parallel: row.parallel_safety,
-          body: row.body,
-          configuration: row.configuration,
-          publicExecute: row.public_execute,
-        })),
+        functions: functionRows.map((row): FunctionFact => {
+          const referencedRelations = [
+            ...new Set([
+              ...row.referenced_relations,
+              ...staticReferences(row.body, publicRelationNames).map(
+                (name) => `public.${name}`,
+              ),
+            ]),
+          ].sort();
+          const referencedFunctions = [
+            ...new Set([
+              ...row.referenced_functions,
+              ...staticReferences(row.body, publicFunctionNames)
+                .filter((name) => name !== row.function_name)
+                .map((name) => `${name}()`),
+            ]),
+          ].sort();
+          return {
+            name: row.function_name,
+            definition: row.definition,
+            language: row.language_name,
+            arguments: row.identity_arguments,
+            resultType: row.result_type,
+            volatility: row.volatility,
+            securityDefiner: row.security_definer,
+            leakproof: row.leakproof,
+            strict: row.is_strict,
+            parallel: row.parallel_safety,
+            body: row.body,
+            configuration: row.configuration,
+            publicExecute: row.public_execute,
+            owner: row.owner_name,
+            privileges: row.privileges,
+            referencedRelations,
+            referencedFunctions,
+            triggerTables: row.trigger_tables,
+            mutationCapability:
+              /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM|TRUNCATE|MERGE\s+INTO)\b/i.test(
+                row.body,
+              ),
+          };
+        }),
+        tableSecurity: tableSecurityRows.map(
+          (row): TableSecurityFact => ({
+            table: row.table_name,
+            owner: row.owner_name,
+            privileges: row.privileges,
+          }),
+        ),
+        columnPrivileges: columnPrivilegeRows.map(
+          (row): ColumnPrivilegeFact => ({
+            table: row.table_name,
+            column: row.column_name,
+            grantee: row.grantee_name,
+            grantor: row.grantor_name,
+            privilege: row.privilege_type,
+            grantable: row.is_grantable,
+          }),
+        ),
+        roles: roleRows.map(
+          (row): RoleFact => ({
+            name: row.role_name,
+            canLogin: row.can_login,
+            inherit: row.inherits_privileges,
+            superuser: row.is_superuser,
+            createRole: row.can_create_role,
+            createDb: row.can_create_db,
+            replication: row.can_replicate,
+            bypassRls: row.bypasses_rls,
+            publicSchemaCreate: row.public_schema_create,
+          }),
+        ),
+        roleMemberships: roleMembershipRows.map(
+          (row): RoleMembershipFact => ({
+            role: row.role_name,
+            member: row.member_name,
+            grantor: row.grantor_name,
+            adminOption: row.admin_option,
+          }),
+        ),
+        defaultPrivileges: defaultPrivilegeRows.map(
+          (row): DefaultPrivilegeFact => ({
+            owner: row.owner_name,
+            schema: row.schema_name,
+            objectType: row.object_type,
+            grantee: row.grantee_name,
+            grantor: row.grantor_name,
+            privilege: row.privilege_type,
+            grantable: row.is_grantable,
+          }),
+        ),
         catalogRows: catalogRows.map(
           (row): CatalogRowFact => ({
             table: row.table_name,

@@ -52,6 +52,70 @@ function waitForPostgres(): void {
   throw new Error("DISPOSABLE_POSTGRES_DID_NOT_BECOME_READY");
 }
 
+function psql(sql: string, database = "trainer"): void {
+  const result = spawnSync(
+    "docker",
+    [
+      "exec",
+      "-i",
+      containerName,
+      "psql",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-U",
+      "trainer",
+      "-d",
+      database,
+    ],
+    { input: sql, encoding: "utf8", stdio: ["pipe", "inherit", "inherit"] },
+  );
+  if (result.status !== 0) {
+    throw new Error(`DISPOSABLE_FINISHER_ROLE_SQL_FAILED:${result.status}`);
+  }
+}
+
+function provisionFinisherRoles(): void {
+  psql(`
+    CREATE ROLE trainer_app_runtime
+      LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+      NOREPLICATION NOBYPASSRLS
+      PASSWORD 'trainer-app-runtime';
+    CREATE ROLE trainer_finisher_owner
+      NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+      NOREPLICATION NOBYPASSRLS;
+    CREATE ROLE trainer_finisher_cleanup
+      NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+      NOREPLICATION NOBYPASSRLS;
+  `);
+}
+
+function grantDisposableRuntimeApplicationAccess(): void {
+  psql(`
+    GRANT USAGE ON SCHEMA public TO trainer_app_runtime;
+    DO $$
+    DECLARE
+      relation_name TEXT;
+    BEGIN
+      FOR relation_name IN
+        SELECT c.relname
+        FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public'
+          AND c.relkind IN ('r', 'p')
+          AND c.relname NOT LIKE 'Finisher%'
+      LOOP
+        EXECUTE format(
+          'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.%I TO trainer_app_runtime',
+          relation_name
+        );
+      END LOOP;
+    END;
+    $$;
+    GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public
+    TO trainer_app_runtime;
+  `);
+}
+
 function verifyAtomicFinisherMigrationFailure(): void {
   run("docker", [
     "exec",
@@ -312,13 +376,15 @@ try {
     "postgres:16-alpine",
   ]);
   waitForPostgres();
+  provisionFinisherRoles();
   verifyAtomicFinisherMigrationFailure();
   const port = run("docker", ["port", containerName, "5432/tcp"], process.env, true)
     .split(":")
     .at(-1);
   if (!port) throw new Error("DISPOSABLE_POSTGRES_PORT_NOT_FOUND");
   const databaseUrl = `postgresql://trainer:trainer-workout-occ@127.0.0.1:${port}/trainer`;
-  const env = {
+  const runtimeDatabaseUrl = `postgresql://trainer_app_runtime:trainer-app-runtime@127.0.0.1:${port}/trainer`;
+  const migrationEnv = {
     ...sanitizeDatabaseTargetEnvironment(process.env),
     DATABASE_URL: databaseUrl,
     TEST_DATABASE_URL: databaseUrl,
@@ -326,30 +392,36 @@ try {
     TRAINER_DISPOSABLE_DB_CONFIRMED: "1",
   };
   const targetValidation = validateDisposableDatabaseTargets({
-    environment: env,
+    environment: migrationEnv,
     confirmed: true,
   });
   if (!targetValidation.valid) {
     throw new Error(`DISPOSABLE_DATABASE_TARGET_INVALID:${targetValidation.reasons.join("|")}`);
   }
-  run(process.execPath, [join(process.cwd(), "node_modules/prisma/build/index.js"), "migrate", "deploy"], env);
-  run(process.execPath, [join(process.cwd(), "node_modules/prisma/build/index.js"), "migrate", "deploy"], env);
+  run(process.execPath, [join(process.cwd(), "node_modules/prisma/build/index.js"), "migrate", "deploy"], migrationEnv);
+  run(process.execPath, [join(process.cwd(), "node_modules/prisma/build/index.js"), "migrate", "deploy"], migrationEnv);
+  grantDisposableRuntimeApplicationAccess();
   run(process.execPath, [
     join(process.cwd(), "node_modules/prisma/build/index.js"),
     "generate",
-  ], env);
+  ], migrationEnv);
+  const testEnv = {
+    ...migrationEnv,
+    DATABASE_URL: runtimeDatabaseUrl,
+    TEST_DATABASE_URL: databaseUrl,
+  };
   run(process.execPath, [
     join(process.cwd(), "node_modules/vitest/vitest.mjs"), "run",
     "src/lib/api/save-workout/persistence.db.test.ts",
     "src/lib/api/finisher-service.db.test.ts",
     "src/lib/api/workout-mutation.db.test.ts",
-  ], env);
+  ], testEnv);
   run(process.execPath, [
     join(process.cwd(), "node_modules/vitest/vitest.mjs"), "run",
     "src/lib/api/workout-mutation.db.test.ts",
     "-t", "runs the integrated workout lifecycle release gate",
-  ], env);
-  verifyFinisherSeedOrderDrift(env);
+  ], testEnv);
+  verifyFinisherSeedOrderDrift(migrationEnv);
 } finally {
   spawnSync("docker", ["rm", "-f", containerName], { stdio: "ignore" });
 }

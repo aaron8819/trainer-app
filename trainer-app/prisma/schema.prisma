@@ -515,6 +515,7 @@ model Workout {
   finisherOffer                FinisherOffer?
   finisherExecutions           FinisherExecution[]
 
+  @@unique([id, userId])
   @@index([userId, scheduledDate])
   @@index([trainingBlockId])
   @@index([mesocycleId])
@@ -591,7 +592,8 @@ model FinisherRoutineStepAlternative {
 model FinisherOffer {
   id                              String                  @id @default(uuid())
   workoutId                       String                  @unique
-  workout                         Workout                 @relation(fields: [workoutId], references: [id], onDelete: Restrict)
+  ownerId                         String
+  workout                         Workout                 @relation(fields: [workoutId, ownerId], references: [id, userId], onDelete: Restrict, onUpdate: Restrict)
   revision                        Int                     @default(1)
   offeredAt                       DateTime                @default(now())
   declinedAt                      DateTime?
@@ -605,6 +607,8 @@ model FinisherOffer {
   items                           FinisherOfferItem[]
   executions                      FinisherExecution[]
 
+  @@unique([workoutId, ownerId])
+  @@unique([id, workoutId, ownerId])
   @@index([recommendedRoutineVersionId])
 }
 
@@ -616,18 +620,23 @@ model FinisherOfferItem {
   routineVersion   FinisherRoutineVersion @relation(fields: [routineVersionId], references: [id], onDelete: Restrict)
   position         Int
   warnings         String[]               @default([])
+  executions       FinisherExecution[]
 
   @@unique([offerId, routineVersionId])
   @@unique([offerId, position])
+  @@unique([id, offerId, routineVersionId])
   @@index([routineVersionId])
 }
 
 model FinisherExecution {
   id                       String                     @id @default(uuid())
   workoutId                String
-  workout                  Workout                    @relation(fields: [workoutId], references: [id], onDelete: Restrict)
+  ownerId                  String
+  workout                  Workout                    @relation(fields: [workoutId, ownerId], references: [id, userId], onDelete: Restrict, onUpdate: Restrict)
   offerId                  String
-  offer                    FinisherOffer              @relation(fields: [offerId], references: [id], onDelete: Restrict)
+  offer                    FinisherOffer              @relation(fields: [offerId, workoutId, ownerId], references: [id, workoutId, ownerId], onDelete: Restrict, onUpdate: Restrict)
+  offerItemId              String
+  offerItem                FinisherOfferItem          @relation(fields: [offerItemId, offerId, routineVersionId], references: [id, offerId, routineVersionId], onDelete: Restrict, onUpdate: Restrict)
   offerRevisionAtSelection Int
   routineVersionId         String
   routineVersion           FinisherRoutineVersion     @relation(fields: [routineVersionId], references: [id], onDelete: Restrict)
@@ -655,6 +664,7 @@ model FinisherExecution {
   commands                 FinisherExecutionCommand[]
 
   @@unique([id, workoutId])
+  @@unique([id, workoutId, ownerId])
   @@unique([id, routineVersionId])
   @@index([workoutId, selectedAt])
   @@index([offerId, selectedAt])
@@ -685,8 +695,9 @@ model FinisherExecutionStep {
 model FinisherExecutionCommand {
   id               String                  @id
   workoutId        String
+  ownerId          String
   executionId      String
-  execution        FinisherExecution       @relation(fields: [executionId, workoutId], references: [id, workoutId], onDelete: Restrict)
+  execution        FinisherExecution       @relation(fields: [executionId, workoutId, ownerId], references: [id, workoutId, ownerId], onDelete: Restrict, onUpdate: Restrict)
   action           FinisherExecutionAction
   requestHash      String
   expectedRevision Int

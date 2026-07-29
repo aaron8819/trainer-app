@@ -81,6 +81,21 @@ function psql(sql: string, tuplesOnly = false): string {
   return result.stdout.trim();
 }
 
+function provisionFinisherRoles(): void {
+  psql(`
+    CREATE ROLE trainer_app_runtime
+      LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+      NOREPLICATION NOBYPASSRLS
+      PASSWORD 'trainer-app-runtime';
+    CREATE ROLE trainer_finisher_owner
+      NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+      NOREPLICATION NOBYPASSRLS;
+    CREATE ROLE trainer_finisher_cleanup
+      NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+      NOREPLICATION NOBYPASSRLS;
+  `);
+}
+
 function migrationDirectories(): string[] {
   const root = join(process.cwd(), "prisma", "migrations");
   return readdirSync(root, { withFileTypes: true })
@@ -634,6 +649,7 @@ try {
     "postgres:16-alpine",
   ], { quiet: true }), "docker run");
   waitForPostgres();
+  provisionFinisherRoles();
   const port = requireSuccess(run("docker", ["port", containerName, "5432/tcp"], { quiet: true }), "docker port")
     .stdout.trim().split(":").at(-1);
   if (!port) throw new Error("DISPOSABLE_ROLLOUT_POSTGRES_PORT_NOT_FOUND");
@@ -1358,19 +1374,171 @@ try {
   psql(
     `REVOKE ALL ON FUNCTION cleanup_expired_finisher_execution_commands(INTEGER) FROM PUBLIC;`,
   );
+
+  psql(
+    `ALTER FUNCTION cleanup_expired_finisher_execution_commands(INTEGER)
+     OWNER TO trainer_finisher_owner;`,
+  );
+  requireFinisherGateAFailure(
+    "Cleanup function owner changed",
+    "function-owner:cleanup_expired_finisher_execution_commands",
+  );
+  psql(
+    `ALTER FUNCTION cleanup_expired_finisher_execution_commands(INTEGER)
+     OWNER TO trainer_finisher_cleanup;`,
+  );
+
   psql(`
-    CREATE FUNCTION finisher_command_cleanup_bypass() RETURNS void
+    CREATE ROLE trainer_unexpected_grantee
+      NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+      NOREPLICATION NOBYPASSRLS;
+    GRANT EXECUTE ON FUNCTION
+      cleanup_expired_finisher_execution_commands(INTEGER)
+    TO trainer_unexpected_grantee;
+  `);
+  requireFinisherGateAFailure(
+    "Unexpected role can execute cleanup",
+    "function-privileges:cleanup_expired_finisher_execution_commands",
+  );
+  psql(`
+    REVOKE ALL ON FUNCTION
+      cleanup_expired_finisher_execution_commands(INTEGER)
+    FROM trainer_unexpected_grantee;
+    DROP ROLE trainer_unexpected_grantee;
+  `);
+
+  psql(
+    `GRANT UPDATE ON TABLE "FinisherExecutionCommand"
+     TO trainer_app_runtime;`,
+  );
+  requireFinisherGateAFailure(
+    "Runtime received direct command mutation privilege",
+    "table-privileges:FinisherExecutionCommand",
+  );
+  psql(
+    `REVOKE UPDATE ON TABLE "FinisherExecutionCommand"
+     FROM trainer_app_runtime;`,
+  );
+
+  psql(`GRANT trainer_finisher_cleanup TO trainer_app_runtime;`);
+  requireFinisherGateAFailure(
+    "Runtime can assume the cleanup role",
+    "role-membership:trainer_app_runtime->trainer_finisher_cleanup",
+  );
+  psql(`REVOKE trainer_finisher_cleanup FROM trainer_app_runtime;`);
+
+  psql(
+    `ALTER FUNCTION cleanup_expired_finisher_execution_commands(INTEGER)
+     SECURITY INVOKER;`,
+  );
+  requireFinisherGateAFailure(
+    "Cleanup function security mode weakened",
+    "cleanup_expired_finisher_execution_commands",
+  );
+  psql(
+    `ALTER FUNCTION cleanup_expired_finisher_execution_commands(INTEGER)
+     SECURITY DEFINER;`,
+  );
+  psql(
+    `ALTER FUNCTION cleanup_expired_finisher_execution_commands(INTEGER)
+     SET search_path TO pg_catalog, public;`,
+  );
+  requireFinisherGateAFailure(
+    "Cleanup function search path weakened",
+    "cleanup_expired_finisher_execution_commands",
+  );
+  psql(
+    `ALTER FUNCTION cleanup_expired_finisher_execution_commands(INTEGER)
+     SET search_path TO pg_catalog, pg_temp;`,
+  );
+
+  psql(`
+    CREATE FUNCTION command_cleanup_bypass() RETURNS void
     LANGUAGE plpgsql AS $$
     BEGIN
+      UPDATE public."FinisherExecutionCommand"
+      SET "response" = NULL
+      WHERE FALSE;
       RETURN;
+    END;
+    $$;
+    REVOKE ALL ON FUNCTION command_cleanup_bypass() FROM PUBLIC;
+  `);
+  requireFinisherGateAFailure(
+    "Neutrally named static SQL cleanup bypass",
+    "function-mutation-path:command_cleanup_bypass",
+  );
+  psql(`DROP FUNCTION command_cleanup_bypass();`);
+
+  psql(`
+    CREATE FUNCTION command_tombstone_passthrough() RETURNS trigger
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      RETURN NEW;
+    END;
+    $$;
+    REVOKE ALL ON FUNCTION command_tombstone_passthrough() FROM PUBLIC;
+    CREATE TRIGGER "Command_tombstone_passthrough"
+    BEFORE UPDATE ON "FinisherExecutionCommand"
+    FOR EACH ROW EXECUTE FUNCTION command_tombstone_passthrough();
+  `);
+  requireFinisherGateAFailure(
+    "Unexpected trigger provides a Finisher mutation path",
+    "function-mutation-path:command_tombstone_passthrough",
+  );
+  psql(`
+    DROP TRIGGER "Command_tombstone_passthrough"
+      ON "FinisherExecutionCommand";
+    DROP FUNCTION command_tombstone_passthrough();
+  `);
+
+  psql(
+    `REVOKE EXECUTE ON FUNCTION
+      cleanup_expired_finisher_execution_commands(INTEGER)
+     FROM trainer_app_runtime;`,
+  );
+  requireFinisherGateAFailure(
+    "Canonical runtime cleanup grant removed",
+    "function-privileges:cleanup_expired_finisher_execution_commands",
+  );
+  psql(
+    `GRANT EXECUTE ON FUNCTION
+      cleanup_expired_finisher_execution_commands(INTEGER)
+     TO trainer_app_runtime;`,
+  );
+
+  const canonicalCommandTombstoneFunction = psql(
+    `
+      SELECT pg_get_functiondef(p.oid)
+      FROM pg_catalog.pg_proc p
+      JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public'
+        AND p.proname = 'guard_finisher_execution_command_tombstone'
+        AND pg_get_function_identity_arguments(p.oid) = '';
+    `,
+    true,
+  );
+  psql(`
+    CREATE OR REPLACE FUNCTION
+      guard_finisher_execution_command_tombstone()
+    RETURNS trigger
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      IF current_setting(
+        'trainer.finisher_command_cleanup',
+        TRUE
+      ) = 'enabled' THEN
+        RETURN NEW;
+      END IF;
+      RETURN COALESCE(NEW, OLD);
     END;
     $$;
   `);
   requireFinisherGateAFailure(
-    "Unexpected Finisher cleanup bypass function",
-    "finisher_command_cleanup_bypass",
+    "Caller-controlled cleanup setting reintroduced",
+    "function-caller-setting-bypass:guard_finisher_execution_command_tombstone",
   );
-  psql(`DROP FUNCTION finisher_command_cleanup_bypass();`);
+  psql(`${canonicalCommandTombstoneFunction};`);
 
   for (const [column, label] of [
     ["indisvalid", "invalid"],
@@ -1698,7 +1866,7 @@ try {
       stateE: "fully_migrated_gate_a_not_applicable",
       baselineUniquenessVariants: "standalone_constraint_missing_wrong_order_non_unique_partial_predicate",
       finisherExactIntegrityNegatives:
-        "disabled_replica_only_missing_altered_event_altered_timing_altered_table_trigger_command_delete_event_removed_invalid_unready_nonlive_missing_altered_predicate_altered_column_nonunique_partial_index_weakened_terminal_step_command_and_security_changed_function_cleanup_body_and_public_execute_drift_unexpected_bypass_function_weakened_unvalidated_and_fk_action_changed_constraint_unexpected_active_catalog_row",
+        "disabled_replica_only_missing_altered_event_altered_timing_altered_table_trigger_command_delete_event_removed_invalid_unready_nonlive_missing_altered_predicate_altered_column_nonunique_partial_index_weakened_terminal_step_command_and_security_changed_function_cleanup_body_owner_grant_role_membership_search_path_public_execute_runtime_mutation_removed_grant_guc_neutral_helper_unexpected_trigger_drift_weakened_unvalidated_and_fk_action_changed_constraint_unexpected_active_catalog_row",
       readOnlyFingerprintsStable: true,
     },
     readinessIntegrity: {

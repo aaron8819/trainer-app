@@ -71,7 +71,12 @@ Sources of truth:
   broad seed, a safe second `migrate deploy`, transactionally sealed catalog
   definitions, rejection of post-seal child insert/update/delete/reassignment
   (including bulk operations), relationally finalized offers and exact
-  cross-version-safe execution prescriptions, direct-database rejection of
+  cross-version-safe execution prescriptions, exact composite
+  execution/offer/item/workout/owner binding, rejection of mismatched and
+  concurrent direct/Prisma construction, historical owner-transfer and
+  parent-deletion protection, distinct migration/runtime/owner/cleanup roles,
+  runtime impersonation and function-replacement rejection, database-clock
+  creation with deliberately skewed application clocks, direct-database rejection of
   post-finalization append/reorder/reassignment/delete, durable
   offer/decline/dismissal history,
   receipt-safe retries for every existing-execution command, exact
@@ -88,6 +93,11 @@ Sources of truth:
   historical-evidence alias for the same consolidated disposable harness.
 - `npm run test:db:readiness-snapshots -- --confirm-disposable`: starts an isolated Docker PostgreSQL 16 container, applies all checked-in migrations without reading `.env.local`, verifies legacy-unknown migration behavior, partial unique enforcement, identical concurrent activation, conflicting payload rejection, forced replacement rollback, stale-evidence rejection, and owner isolation, then removes the container. Package scripts never supply disposable confirmation: the operator must type it for every mutating invocation, and aliases or wrappers must not embed it. Strict argument and inherited-target validation complete before `pg` or any other database-dependent module loads and before Docker work begins.
 - `npm run test:db:rollout-tooling -- --confirm-disposable`: runs rollout-tooling integration coverage against a harness-created disposable PostgreSQL target. Its effective argument list must be exactly `["--confirm-disposable"]`; additional, duplicate, positional, misspelled, embedded, or malformed arguments are rejected before Docker or database-dependent loading.
+  Its Finisher Gate A cases verify exact table/function ownership, complete
+  grants, protected role attributes and memberships, security-definer mode,
+  fixed search path, static relation/function dependencies, neutral helper and
+  unexpected-trigger discovery, removed/broadened privileges, and
+  caller-controlled-setting bypass rejection.
 - Immutable seed changes require focused revision/receipt/save/runtime/audit tests, `npm run verify:contracts`, `npm run verify`, and a real `prisma migrate deploy` on disposable PostgreSQL.
 - `npm run lint`: ESLint with cache at `.eslintcache`; generated/local-only outputs such as `artifacts/`, `.tmp/`, `.vercel/`, `output/`, `playwright-report/`, and `test-results/` are ignored by ESLint
 - `npm run test:ui-audit`: Playwright core-route UI audit plus lightweight fixture-backed interaction checks against mobile and desktop projects

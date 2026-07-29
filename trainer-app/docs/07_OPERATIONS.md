@@ -28,13 +28,33 @@ the database owns the only permitted mutation. After
 each successful or exactly replayed existing-execution command, the service
 invokes the security-definer cleanup function for one global oldest-first,
 `SKIP LOCKED` batch of at most 100 database-expired receipts. Public execute is
-revoked. The command trigger permits only the exact `response -> NULL` and
+revoked. `trainer_finisher_owner` and `trainer_finisher_cleanup` are fixed
+`NOLOGIN NOINHERIT` roles with no elevated attributes. The former owns all nine
+Finisher tables and protection functions; the latter owns only the cleanup
+function and has command-table `SELECT` plus column-level `UPDATE` on
+`response` and `cleanedAt`. `trainer_app_runtime` is the ordinary
+`LOGIN INHERIT` role with no elevated attributes or protected-role membership.
+It receives explicit least-privilege Finisher table grants and `EXECUTE` on the
+canonical cleanup function, but no command-table update/delete privilege.
+Default privileges do not grant any protected capability. The command trigger permits only the exact `response -> NULL` and
 `cleanedAt` transition made by that function; it rejects premature cleanup,
 restoration, mixed-field updates, every permanent-field update, and every row
 delete. Cleanup never deletes command IDs, executions, or execution steps.
 Logical `expiresAt`
 enforcement is synchronous and does not depend on cleanup success or cadence,
 and cleanup failure does not replace an already-committed command response.
+The function fixes `search_path` to `pg_catalog, pg_temp`, accepts only the
+bounded batch size, uses database time, and does not trust a custom GUC.
+
+These roles are a migration prerequisite, not created by the application
+migration. A separately authorized database administrator must provision their
+exact attributes before rollout and verify there are no memberships involving
+the three roles. The migration connection must remain the reviewed privileged
+direct connection capable of transferring ownership and grants; application
+`DATABASE_URL` must use `trainer_app_runtime`. Never run Prisma migration or
+seed commands through the runtime connection, and never give the runtime role
+membership in either non-login role. No role provisioning is authorized by
+this document alone.
 
 ## Codex remote identity and GitHub status
 
@@ -261,7 +281,7 @@ Ledger classification follows Prisma row state, not step count:
 - A rolled-back row without a clean replacement remains rolled back and blocks. One clean successful replacement may coexist with rolled-back history. Multiple successful rows, or a successful row mixed with unresolved failed/incomplete rows, are ambiguous duplicates and block.
 - Repeating `prisma migrate resolve --applied <migration>` for an already successful row is not a repair; Prisma returns `P3008`. Do not repeat it and do not edit `_prisma_migrations`.
 
-Baseline uniqueness has two separate results. Semantic equivalence requires the same table, unique enforcement, ordered columns, predicate, PostgreSQL null semantics, and a valid/ready enforcing index. Catalog representation equivalence additionally requires the same object kind and constraint/index ownership linkage. Missing uniqueness, a non-unique replacement, changed column order or predicate, incompatible null semantics, invalid enforcement, a conflicting same-name object, unverifiable enforcement, or a representation required by a pending migration blocks Gate A. Finisher expectations additionally require the exact enabled parent-terminal, step-evidence, and command-tombstone trigger definitions; exact function bodies and material metadata; the cleanup function's fixed search path, security-definer state, and revoked public execute privilege; and both command cleanup consistency checks.
+Baseline uniqueness has two separate results. Semantic equivalence requires the same table, unique enforcement, ordered columns, predicate, PostgreSQL null semantics, and a valid/ready enforcing index. Catalog representation equivalence additionally requires the same object kind and constraint/index ownership linkage. Missing uniqueness, a non-unique replacement, changed column order or predicate, incompatible null semantics, invalid enforcement, a conflicting same-name object, unverifiable enforcement, or a representation required by a pending migration blocks Gate A. Finisher expectations additionally require the exact enabled parent-terminal, step-evidence, and command-tombstone trigger definitions; exact function bodies and material metadata; all table and function owners; complete non-owner table, column, and function privileges; protected-role attributes, memberships, schema-create access, and default privileges; trigger/function dependencies and static references to Finisher relations/functions; the cleanup function's fixed search path and security-definer state; no caller-controlled setting; and both command cleanup consistency checks. Neutral names do not exempt a helper: any function referencing or triggering on a Finisher object is inventoried as a possible access or mutation path.
 
 `ExerciseAlias_alias_key` and `WorkoutTemplateExercise_templateId_orderIndex_key` are the two reviewed baseline representation differences. The baseline SQL creates standalone unique indexes; production may store identically named unique constraints backed by identically named unique indexes. Native PostgreSQL constraint-to-index linkage proves the same enforcement, and the pending multi-plan migration does not depend on those objects being standalone indexes. Therefore each is reported as semantic-equivalent, catalog-representation-different, and a non-blocking diagnostic warning. This narrow policy does not make other constraint/index differences harmless, and no production schema or ledger repair is required for these two objects or for the two valid resolved rows.
 
@@ -313,7 +333,7 @@ npm run test:readiness-integrity
 npm run test:db:rollout-tooling
 ```
 
-The PostgreSQL 16 rollout test uses the installed Prisma CLI to create zero-step resolved baseline and set-intent rows, requires repeat resolution to return `P3008` without changing schema or ledger fingerprints, rejects the stale 10/8 rollout shape, and proves the current 17/1 shape can become authorization-ready with simulated evidence while execution remains unauthorized. It also exercises standalone indexes, constraint-backed indexes, missing uniqueness, wrong column order, non-unique/invalid/unready/non-live indexes, changed predicates, columns and foreign-key actions, missing/disabled/replica-only/retargeted triggers, command-delete event removal, weakened terminal/step/command functions, premature or identity-changing cleanup definitions, cleanup privilege drift, unexpected bypass functions, unvalidated/weakened checks, unexpected Finisher-owned objects and catalog rows, partial pending objects, checksum mismatch, failed/incomplete/rolled-back ledger rows, and the fully migrated 18/0 state. Its readiness states cover the legacy pre-architecture schema and the fully migrated chain. It does not load a configured rollout environment or connect to production.
+The PostgreSQL 16 rollout test uses the installed Prisma CLI to create zero-step resolved baseline and set-intent rows, requires repeat resolution to return `P3008` without changing schema or ledger fingerprints, rejects the stale 10/8 rollout shape, and proves the current 17/1 shape can become authorization-ready with simulated evidence while execution remains unauthorized. It also exercises standalone indexes, constraint-backed indexes, missing uniqueness, wrong column order, non-unique/invalid/unready/non-live indexes, changed predicates, columns and foreign-key actions, missing/disabled/replica-only/retargeted triggers, command-delete event removal, weakened terminal/step/command functions, premature or identity-changing cleanup definitions, changed function owners, unexpected execute or table grants, protected-role membership, weakened security mode/search path, removed canonical grants, GUC reintroduction, neutrally named static-SQL helpers, unexpected trigger mutation paths, unvalidated/weakened checks, unexpected Finisher-owned objects and catalog rows, partial pending objects, checksum mismatch, failed/incomplete/rolled-back ledger rows, and the fully migrated 18/0 state. Its readiness states cover the legacy pre-architecture schema and the fully migrated chain. It does not load a configured rollout environment or connect to production.
 
 The exact repository-owned deploy command, once migration authorization is granted, is:
 

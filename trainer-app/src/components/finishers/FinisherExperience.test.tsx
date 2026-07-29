@@ -158,6 +158,131 @@ describe("FinisherExperience", () => {
     expect(merged.history).toEqual([currentExecution]);
   });
 
+  it("keeps command X from recalibrating or replacing command Y after reordered durable responses", () => {
+    const commandY = execution({
+      revision: 9,
+      serverTime: "2026-07-28T12:09:00.000Z",
+      state: "IN_PROGRESS",
+      timer: {
+        ...execution().timer,
+        segment: "WORK",
+        revision: 9,
+        segmentStartedAt: "2026-07-28T12:08:50.000Z",
+        segmentEndsAt: "2026-07-28T12:09:30.000Z",
+      },
+    });
+    const delayedRetryForX = execution({
+      revision: 8,
+      serverTime: "2099-01-01T00:00:00.000Z",
+      state: "IN_PROGRESS",
+      timer: {
+        ...commandY.timer,
+        revision: 8,
+        segmentStartedAt: "2026-07-28T12:07:50.000Z",
+        segmentEndsAt: "2026-07-28T12:08:30.000Z",
+      },
+    });
+
+    const merged = mergeFinisherCommandResult(
+      {
+        ...offer(commandY),
+        serverTime: commandY.serverTime,
+      },
+      delayedRetryForX,
+    );
+
+    expect(merged.execution).toBe(commandY);
+    expect(merged.history).toEqual([commandY]);
+    expect(merged.serverTime).toBe(commandY.serverTime);
+    expect(merged.execution?.timer).toEqual(commandY.timer);
+  });
+
+  it("resolves equal revisions deterministically by server time and accepts a newer revision", () => {
+    const current = execution({
+      revision: 6,
+      serverTime: "2026-07-28T12:06:00.000Z",
+    });
+    const olderEqualRevision = execution({
+      revision: 6,
+      serverTime: "2026-07-28T12:05:59.999Z",
+    });
+    const newerEqualRevision = execution({
+      revision: 6,
+      serverTime: "2026-07-28T12:06:00.001Z",
+    });
+    const newerRevision = execution({
+      revision: 7,
+      serverTime: "2026-07-28T12:06:01.000Z",
+    });
+
+    const unchanged = mergeFinisherCommandResult(
+      { ...offer(current), serverTime: current.serverTime },
+      olderEqualRevision,
+    );
+    expect(unchanged.execution).toBe(current);
+    expect(unchanged.serverTime).toBe(current.serverTime);
+
+    const equalAdvanced = mergeFinisherCommandResult(
+      { ...offer(current), serverTime: current.serverTime },
+      newerEqualRevision,
+    );
+    expect(equalAdvanced.execution).toBe(newerEqualRevision);
+    expect(equalAdvanced.serverTime).toBe(newerEqualRevision.serverTime);
+
+    const advanced = mergeFinisherCommandResult(
+      { ...offer(current), serverTime: current.serverTime },
+      newerRevision,
+    );
+    expect(advanced.execution).toBe(newerRevision);
+    expect(advanced.serverTime).toBe(newerRevision.serverTime);
+  });
+
+  it("keeps terminal and GET-synchronized state ahead of stale active or other-execution responses", () => {
+    const terminal = execution({
+      revision: 12,
+      serverTime: "2026-07-28T12:12:00.000Z",
+      state: "COMPLETED",
+    });
+    const staleActive = execution({
+      revision: 11,
+      serverTime: "2099-12-31T23:59:59.999Z",
+      state: "IN_PROGRESS",
+      timer: {
+        ...execution().timer,
+        segment: "WORK",
+        revision: 11,
+      },
+    });
+    const staleOtherExecution = execution({
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      revision: 99,
+      serverTime: "2100-01-01T00:00:00.000Z",
+      state: "IN_PROGRESS",
+    });
+    const synchronized = {
+      ...offer(terminal),
+      serverTime: terminal.serverTime,
+    };
+
+    const afterStalePost = mergeFinisherCommandResult(
+      synchronized,
+      staleActive,
+    );
+    expect(afterStalePost.execution).toBe(terminal);
+    expect(afterStalePost.serverTime).toBe(terminal.serverTime);
+
+    const afterOtherExecution = mergeFinisherCommandResult(
+      afterStalePost,
+      staleOtherExecution,
+    );
+    expect(afterOtherExecution.execution).toBe(terminal);
+    expect(afterOtherExecution.serverTime).toBe(terminal.serverTime);
+    expect(afterOtherExecution.history).toEqual([
+      terminal,
+      staleOtherExecution,
+    ]);
+  });
+
   it("offers a recommendation, browse, preview, and decline after completion", async () => {
     const declinedOffer = {
       ...offer(),
@@ -422,6 +547,7 @@ describe("FinisherExperience", () => {
 
   it("sends at most one synchronization request for one revision boundary while the response is slow", async () => {
     const projected = execution({
+      revision: 7,
       state: "IN_PROGRESS",
       endedAt: null,
       timer: {
@@ -542,6 +668,7 @@ describe("FinisherExperience", () => {
     ["a thrown network failure", new Error("network unavailable")],
   ])("retries %s with the same command identity", async (_name, failure) => {
     const projected = execution({
+      revision: 7,
       state: "IN_PROGRESS",
       timer: {
         segment: "WORK",
@@ -556,6 +683,7 @@ describe("FinisherExperience", () => {
       },
     });
     const persisted = execution({
+      revision: 8,
       state: "COMPLETED",
       completedAt: "2026-07-28T12:00:20.000Z",
       timer: {

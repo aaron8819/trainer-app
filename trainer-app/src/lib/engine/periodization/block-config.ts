@@ -30,6 +30,83 @@ export function getMesoTemplateForAge(
   trainingAge: TrainingAge,
   goal: PrimaryGoal
 ): BlockTemplate[] {
+  const isStrengthFocused = goal === "strength";
+  if (isStrengthFocused) {
+    if (trainingAge === "beginner") {
+      return [
+        {
+          blockType: "accumulation",
+          durationWeeks: 3,
+          volumeTarget: "moderate",
+          intensityBias: "strength",
+          adaptationType: "myofibrillar_hypertrophy",
+        },
+        {
+          blockType: "deload",
+          durationWeeks: 1,
+          volumeTarget: "low",
+          intensityBias: "strength",
+          adaptationType: "recovery",
+        },
+      ];
+    }
+    if (trainingAge === "intermediate") {
+      return [
+        {
+          blockType: "accumulation",
+          durationWeeks: 2,
+          volumeTarget: "moderate",
+          intensityBias: "strength",
+          adaptationType: "myofibrillar_hypertrophy",
+        },
+        {
+          blockType: "intensification",
+          durationWeeks: 2,
+          volumeTarget: "low",
+          intensityBias: "strength",
+          adaptationType: "neural_adaptation",
+        },
+        {
+          blockType: "deload",
+          durationWeeks: 1,
+          volumeTarget: "low",
+          intensityBias: "strength",
+          adaptationType: "recovery",
+        },
+      ];
+    }
+    return [
+      {
+        blockType: "accumulation",
+        durationWeeks: 2,
+        volumeTarget: "moderate",
+        intensityBias: "strength",
+        adaptationType: "myofibrillar_hypertrophy",
+      },
+      {
+        blockType: "intensification",
+        durationWeeks: 2,
+        volumeTarget: "low",
+        intensityBias: "strength",
+        adaptationType: "neural_adaptation",
+      },
+      {
+        blockType: "realization",
+        durationWeeks: 1,
+        volumeTarget: "low",
+        intensityBias: "strength",
+        adaptationType: "neural_adaptation",
+      },
+      {
+        blockType: "deload",
+        durationWeeks: 1,
+        volumeTarget: "low",
+        intensityBias: "strength",
+        adaptationType: "recovery",
+      },
+    ];
+  }
+
   if (trainingAge === "beginner") {
     // Beginners: Simpler blocks, more deloads, build work capacity
     return [
@@ -52,22 +129,23 @@ export function getMesoTemplateForAge(
 
   if (trainingAge === "intermediate") {
     // Intermediate: Classic 3-block wave
-    const isStrengthFocused = goal === "strength" || goal === "strength_hypertrophy";
-
+    const isHybridStrengthFocused = goal === "strength_hypertrophy";
     return [
       {
         blockType: "accumulation",
         durationWeeks: 2,
         volumeTarget: "high",
-        intensityBias: isStrengthFocused ? "strength" : "hypertrophy",
+        intensityBias: isHybridStrengthFocused ? "strength" : "hypertrophy",
         adaptationType: "myofibrillar_hypertrophy",
       },
       {
         blockType: "intensification",
         durationWeeks: 2,
         volumeTarget: "moderate",
-        intensityBias: isStrengthFocused ? "strength" : "hypertrophy",
-        adaptationType: isStrengthFocused ? "neural_adaptation" : "myofibrillar_hypertrophy",
+        intensityBias: isHybridStrengthFocused ? "strength" : "hypertrophy",
+        adaptationType: isHybridStrengthFocused
+          ? "neural_adaptation"
+          : "myofibrillar_hypertrophy",
       },
       {
         blockType: "deload",
@@ -80,8 +158,7 @@ export function getMesoTemplateForAge(
   }
 
   // Advanced: Full 4-block conjugate-style periodization
-  const isStrengthFocused = goal === "strength" || goal === "strength_hypertrophy";
-
+  const isHybridStrengthFocused = goal === "strength_hypertrophy";
   return [
     {
       blockType: "accumulation",
@@ -94,7 +171,7 @@ export function getMesoTemplateForAge(
       blockType: "intensification",
       durationWeeks: 2,
       volumeTarget: "moderate",
-      intensityBias: isStrengthFocused ? "strength" : "hypertrophy",
+      intensityBias: isHybridStrengthFocused ? "strength" : "hypertrophy",
       adaptationType: "myofibrillar_hypertrophy",
     },
     {

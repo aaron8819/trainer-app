@@ -1,4 +1,5 @@
 import type { Exercise, UserProfile, WorkoutSet } from "./types";
+import { getStrengthPrimaryWarmupRamp } from "./strength-session-timing";
 
 const BODYWEIGHT_ONLY_EQUIPMENT = new Set(["bodyweight", "bench", "rack"]);
 
@@ -11,18 +12,9 @@ type WarmupRampStep = {
 export function getWarmupRampScheme(
   trainingAge: UserProfile["trainingAge"]
 ): WarmupRampStep[] {
-  if (trainingAge === "beginner") {
-    return [
-      { percent: 0.6, reps: 8, restSeconds: 60 },
-      { percent: 0.8, reps: 3, restSeconds: 90 },
-    ];
-  }
-
-  return [
-    { percent: 0.5, reps: 8, restSeconds: 60 },
-    { percent: 0.7, reps: 5, restSeconds: 60 },
-    { percent: 0.85, reps: 3, restSeconds: 90 },
-  ];
+  return getStrengthPrimaryWarmupRamp(trainingAge).map((step) => ({
+    ...step,
+  }));
 }
 
 export function buildProjectedWarmupSets(

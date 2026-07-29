@@ -17,6 +17,25 @@ type CoreRoute = (typeof CORE_ROUTES)[number];
 type AuditScenarioKey = "active" | "empty" | "handoff";
 type ElementBox = NonNullable<Awaited<ReturnType<Locator["boundingBox"]>>>;
 
+const browserErrors = new WeakMap<Page, string[]>();
+
+test.beforeEach(async ({ page }) => {
+  const errors: string[] = [];
+  browserErrors.set(page, errors);
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      errors.push(`console.error: ${message.text()}`);
+    }
+  });
+  page.on("pageerror", (error) => {
+    errors.push(`pageerror: ${error.message}`);
+  });
+});
+
+test.afterEach(async ({ page }) => {
+  expect(browserErrors.get(page) ?? []).toEqual([]);
+});
+
 const ROUTES_BY_KEY = Object.fromEntries(
   CORE_ROUTES.map((route) => [route.key, route])
 ) as Record<CoreRoute["key"], CoreRoute>;
@@ -77,6 +96,52 @@ test.describe("core route UI audit", () => {
 });
 
 test.describe("lightweight fixture interaction checks", () => {
+  test("fixture route, readiness, and API boundaries require the exact header", async ({
+    page,
+    request,
+  }) => {
+    const direct = await page.goto(
+      "/ui-audit-fixture?path=/plans&scenario=active",
+      { waitUntil: "domcontentloaded" },
+    );
+    expect(direct?.status()).toBe(404);
+    await expect(
+      page.getByRole("heading", { name: "Training plans" }),
+    ).toHaveCount(0);
+    browserErrors.set(page, []);
+
+    const missingReadiness = await request.get("/ui-audit-fixture/ready");
+    expect(missingReadiness.status()).toBe(404);
+    const incorrectReadiness = await request.get(
+      "/ui-audit-fixture/ready",
+      { headers: { [FIXTURE_HEADER]: "incorrect" } },
+    );
+    expect(incorrectReadiness.status()).toBe(404);
+    const authorizedReadiness = await request.get(
+      "/ui-audit-fixture/ready",
+      { headers: { [FIXTURE_HEADER]: "active" } },
+    );
+    expect(authorizedReadiness.status()).toBe(200);
+    await expect(authorizedReadiness.json()).resolves.toEqual({
+      status: "ready",
+      database: "unused",
+    });
+
+    const authorizedUnhandledApi = await request.get(
+      "/api/ui-audit-unhandled",
+      { headers: { [FIXTURE_HEADER]: "active" } },
+    );
+    expect(authorizedUnhandledApi.status()).toBe(501);
+    expect(await authorizedUnhandledApi.json()).toMatchObject({
+      error: expect.stringContaining("explicit browser fixture handler"),
+    });
+    const unauthorizedUnhandledApi = await request.get(
+      "/api/ui-audit-unhandled",
+      { headers: { [FIXTURE_HEADER]: "incorrect" } },
+    );
+    expect(unauthorizedUnhandledApi.status()).toBe(404);
+  });
+
   test("plan management stays usable at representative viewport sizes", async ({
     page,
   }) => {
@@ -90,9 +155,12 @@ test.describe("lightweight fixture interaction checks", () => {
     await expect(page.getByText("Current Hypertrophy")).toBeVisible();
     await expect(page.getByText("Fall Hypertrophy")).toBeVisible();
     await expect(page.getByText("Plan in Review")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Make active" })).toBeVisible();
+    await expect(page.getByText("Strength Base")).toBeVisible();
     await expect(
-      page.getByRole("link", { name: "Review and finalize" }),
+      page.getByRole("button", { name: "Make active" }).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Review and finalize" }).first(),
     ).toBeVisible();
     await expectMainWithinViewport(page);
 
@@ -103,6 +171,543 @@ test.describe("lightweight fixture interaction checks", () => {
     await expect(page.getByLabel("Plan name")).toBeVisible();
     await expect(page.getByLabel("Start date")).toBeVisible();
     await expect(page.getByLabel("Duration")).toBeVisible();
+
+    await page.getByRole("radio", { name: /Strength/i }).check({ force: true });
+    await expect(
+      page.getByRole("heading", { name: "New strength plan" }),
+    ).toBeVisible();
+    await expect(page.getByLabel("Main emphasis")).toBeVisible();
+    await expect(page.getByLabel("Training days")).toBeVisible();
+    await expect(page.getByLabel("Time per session")).toBeVisible();
+    await expect(page.getByLabel("Available equipment")).toBeVisible();
+    await expect(page.getByLabel("Squat pattern")).toBeVisible();
+    await expect(page.getByLabel("Main press")).toBeVisible();
+    await expect(page.getByLabel("Hinge pattern")).toBeVisible();
+    await expectMainWithinViewport(page);
+    await expectNoAppError(page);
+  });
+
+  test("strength review is readable without mutating fixture data", async ({
+    page,
+  }) => {
+    await page.setExtraHTTPHeaders({ [FIXTURE_HEADER]: "active" });
+    await installMutationGuards(page);
+    await page.goto(
+      "/plans/10000000-0000-4000-8000-000000000004/review",
+      { waitUntil: "domcontentloaded" },
+    );
+    await waitForStableRoute(page);
+
+    await expect(
+      page.getByRole("heading", { name: "Strength Base" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Weekly strength structure" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Plan outline" }),
+    ).toBeVisible();
+    await expect(page.getByText("Main emphasis")).toBeVisible();
+    await expect(page.getByText("Balanced", { exact: true })).toBeVisible();
+    await expect(page.getByText("Equipment")).toBeVisible();
+    await expect(page.getByText("Full Gym", { exact: true })).toBeVisible();
+    await expect(page.getByText("Mesocycle 1")).toBeVisible();
+    await expect(page.getByText("3 training blocks")).toBeVisible();
+    await expect(page.getByText("Primary:", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Assistance:", { exact: true }).first()).toBeVisible();
+    await expect(
+      page.getByText(/Primary lifts stay stable so performance can progress/),
+    ).toBeVisible();
+    await expect(
+      page.getByText(/no 1RM is assumed/),
+    ).toBeVisible();
+    await expect(page.getByText("Back Squat")).toBeVisible();
+    await expect(page.getByText("Conventional Deadlift")).toBeVisible();
+    await expect(page.getByText("4 sets · Back Squat")).toBeVisible();
+    await expect(page.getByText("4 sets · Conventional Deadlift")).toBeVisible();
+    const sixtyMinuteEstimates = await page
+      .getByText(/~\d+ min/)
+      .allTextContents();
+    expect(
+      sixtyMinuteEstimates.every(
+        (value) => Number(value.match(/\d+/)?.[0] ?? Infinity) <= 60,
+      ),
+    ).toBe(true);
+    await expect(
+      page.getByRole("button", { name: "Finalize as READY" }),
+    ).toBeVisible();
+    await expectMainWithinViewport(page);
+    await expectNoHorizontalOverflow(page);
+    await expectNoAppError(page);
+
+    await page.goto(
+      "/plans/10000000-0000-4000-8000-000000000005/review",
+      { waitUntil: "domcontentloaded" },
+    );
+    await waitForStableRoute(page);
+    await expect(
+      page.getByRole("heading", { name: "Strength Express" }),
+    ).toBeVisible();
+    await expect(page.getByText("2 days · about 45 min")).toBeVisible();
+    const fortyFiveMinuteEstimates = await page
+      .getByText(/~\d+ min/)
+      .allTextContents();
+    expect(
+      fortyFiveMinuteEstimates.every(
+        (value) => Number(value.match(/\d+/)?.[0] ?? Infinity) <= 45,
+      ),
+    ).toBe(true);
+    await expect(page.getByText("3 sets · Back Squat")).toBeVisible();
+    await expectMainWithinViewport(page);
+    await expectNoHorizontalOverflow(page);
+    await expectNoAppError(page);
+
+    await page.goto(
+      "/plans/10000000-0000-4000-8000-000000000006/review",
+      { waitUntil: "domcontentloaded" },
+    );
+    await waitForStableRoute(page);
+    await expect(page.getByText("Ready", { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Return to Plan Management" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Finalize as READY" }),
+    ).toHaveCount(0);
+
+    for (const [planId, planName] of [
+      ["10000000-0000-4000-8000-000000000007", "Strength Empty Structure"],
+      ["10000000-0000-4000-8000-000000000008", "Strength Malformed Structure"],
+    ] as const) {
+      await page.goto(`/plans/${planId}/review`, {
+        waitUntil: "domcontentloaded",
+      });
+      await waitForStableRoute(page);
+      await expect(
+        page.getByRole("heading", { name: planName }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("heading", { name: "Plan outline" }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("heading", { name: "Weekly strength structure" }),
+      ).toHaveCount(0);
+      await expectNoHorizontalOverflow(page);
+      await expectNoAppError(page);
+    }
+  });
+
+  test("strength creation, finalization, and activation controls complete their UI flow", async ({
+    page,
+  }) => {
+    await page.setExtraHTTPHeaders({ [FIXTURE_HEADER]: "active" });
+    const createdPlanId = "10000000-0000-4000-8000-000000000004";
+    const readyPlanId = "10000000-0000-4000-8000-000000000006";
+    let createPayload: Record<string, unknown> | null = null;
+    let finalizedPlanId: string | null = null;
+    let activatedPlanId: string | null = null;
+
+    await page.route("**/api/plans", async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.continue();
+        return;
+      }
+      createPayload = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({ json: { plan: { id: createdPlanId } } });
+    });
+    await page.route(`**/api/plans/${createdPlanId}/finalize`, async (route) => {
+      finalizedPlanId = createdPlanId;
+      await route.fulfill({ json: { plan: { id: createdPlanId, status: "READY" } } });
+    });
+    await page.route(`**/api/plans/${readyPlanId}/activate`, async (route) => {
+      activatedPlanId = readyPlanId;
+      await route.fulfill({ json: { plan: { id: readyPlanId, isActive: true } } });
+    });
+
+    await page.goto("/plans", { waitUntil: "domcontentloaded" });
+    await waitForStableRoute(page);
+    await page.getByRole("button", { name: "Create another plan" }).click();
+    await page.getByRole("radio", { name: /Strength/i }).check({ force: true });
+    await page.getByLabel("Plan name").fill("Browser Strength");
+    await page.getByLabel("Time per session").selectOption("45");
+    await page.getByRole("button", { name: "Generate and review" }).click();
+
+    await expectAuditPath(page, `/plans/${createdPlanId}/review`);
+    await expect(
+      page.getByRole("heading", { name: "Strength Base" }),
+    ).toBeVisible();
+    expect(createPayload).toMatchObject({
+      planType: "STRENGTH",
+      name: "Browser Strength",
+      configuration: { sessionDurationMinutes: 45 },
+    });
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.getByRole("button", { name: "Finalize as READY" }).click();
+    await expectAuditPath(page, "/plans");
+    expect(finalizedPlanId).toBe(createdPlanId);
+
+    const readyPlan = page.locator("article").filter({ hasText: "Strength Ready" });
+    page.once("dialog", (dialog) => dialog.accept());
+    await readyPlan.getByRole("button", { name: "Make active" }).click();
+    await expect(
+      page.getByText("Strength Ready is now your active plan."),
+    ).toBeVisible();
+    await expect(readyPlan.getByText("Active", { exact: true })).toBeVisible();
+    expect(activatedPlanId).toBe(readyPlanId);
+    await expectMainWithinViewport(page);
+    await expectNoAppError(page);
+  });
+
+  test("strength creation surfaces fail-closed limitation guidance before success", async ({
+    page,
+  }) => {
+    await page.setExtraHTTPHeaders({ [FIXTURE_HEADER]: "active" });
+    const createdPlanId = "10000000-0000-4000-8000-000000000004";
+    let limitationIsRecognized = false;
+    let createAttempts = 0;
+
+    await page.route("**/api/plans", async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.continue();
+        return;
+      }
+      createAttempts += 1;
+      if (!limitationIsRecognized) {
+        await route.fulfill({
+          json: {
+            code: "PLAN_LIMITATION_UNRECOGNIZED",
+            error:
+              "Update the active limitation “left ankle” to a recognized area before generating this plan.",
+          },
+        });
+        return;
+      }
+      await route.fulfill({ json: { plan: { id: createdPlanId } } });
+    });
+
+    await page.goto("/plans", { waitUntil: "domcontentloaded" });
+    await waitForStableRoute(page);
+    await page.getByRole("button", { name: "Create another plan" }).click();
+    await page.getByRole("radio", { name: /Strength/i }).check({
+      force: true,
+    });
+    await page.getByLabel("Plan name").fill("Limitation Check");
+    await page.getByRole("button", { name: "Generate and review" }).click();
+
+    await expect(
+      page.getByText(/Update the active limitation “left ankle”/),
+    ).toBeVisible();
+    await expectAuditPath(page, "/plans");
+    expect(createAttempts).toBe(1);
+
+    limitationIsRecognized = true;
+    await page.getByRole("button", { name: "Generate and review" }).click();
+    await expectAuditPath(page, `/plans/${createdPlanId}/review`);
+    expect(createAttempts).toBe(2);
+    await expect(
+      page.getByRole("heading", { name: "Strength Base" }),
+    ).toBeVisible();
+    await expectNoAppError(page);
+  });
+
+  test("strength creation surfaces creation-specific infeasibility guidance", async ({
+    page,
+  }) => {
+    await page.setExtraHTTPHeaders({ [FIXTURE_HEADER]: "active" });
+    const message =
+      "The requested Strength plan could not be created because the available equipment and/or active limitations leave no compatible exercise for required programming. Adjust your available equipment, active limitations, training schedule or configuration, or lift preferences, then try again.";
+    await page.route("**/api/plans", async (route) => {
+      await route.fulfill({
+        json: {
+          code: "PLAN_CREATION_INFEASIBLE",
+          error: message,
+        },
+      });
+    });
+
+    await page.goto("/plans", { waitUntil: "domcontentloaded" });
+    await waitForStableRoute(page);
+    await page.getByRole("button", { name: "Create another plan" }).click();
+    await page.getByRole("radio", { name: /Strength/i }).check({
+      force: true,
+    });
+    await page.getByLabel("Plan name").fill("Infeasible Strength");
+    await page.getByRole("button", { name: "Generate and review" }).click();
+
+    await expect(page.getByText(message)).toBeVisible();
+    await expect(page.locator("body")).not.toContainText(
+      "cannot be finalized",
+    );
+    await expectAuditPath(page, "/plans");
+    await expectNoAppError(page);
+  });
+
+  test("strength alternative selection reaches generation, logging, and completion", async ({
+    page,
+  }) => {
+    await page.setExtraHTTPHeaders({
+      [FIXTURE_HEADER]: "strength-alternative",
+    });
+    let generatePayload: Record<string, unknown> | null = null;
+    let plannedSavePayload: Record<string, unknown> | null = null;
+    let completionPayload: Record<string, unknown> | null = null;
+    let loggedSetPayload: Record<string, unknown> | null = null;
+
+    await page.route("**/api/workouts/generate-from-intent", async (route) => {
+      generatePayload = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        json: {
+          workout: {
+            id: "ui-audit-strength-lower-b",
+            scheduledDate: "2026-07-28T12:00:00.000Z",
+            warmup: [],
+            mainLifts: [
+              {
+                id: "ui-audit-strength-deadlift-we",
+                orderIndex: 0,
+                isMainLift: true,
+                exercise: {
+                  id: "fixture-deadlift",
+                  name: "Conventional Deadlift",
+                  equipment: ["barbell"],
+                },
+                sets: [
+                  {
+                    setIndex: 1,
+                    targetReps: 4,
+                    targetRepRange: { min: 3, max: 6 },
+                    targetLoad: 275,
+                    targetRpe: 7,
+                    restSeconds: 300,
+                  },
+                ],
+              },
+            ],
+            accessories: [],
+            estimatedMinutes: 45,
+          },
+          selectionMode: "INTENT",
+          sessionIntent: "lower",
+          selectionMetadata: {
+            selectedExerciseIds: ["fixture-deadlift"],
+            sessionDecisionReceipt: {
+              version: 1,
+              cycleContext: {
+                weekInMeso: 1,
+                weekInBlock: 1,
+                mesocycleLength: 5,
+                phase: "accumulation",
+                blockType: "accumulation",
+                isDeload: false,
+                source: "computed",
+              },
+              sessionProvenance: {
+                mesocycleId: "ui-audit-strength-meso",
+                compositionSource: "persisted_slot_plan_seed",
+                seedProvenance: {
+                  revisionId: "ui-audit-strength-revision-1",
+                  revision: 1,
+                  hash:
+                    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                },
+              },
+              sessionSlot: {
+                slotId: "strength_lower_b",
+                intent: "lower",
+                sequenceIndex: 3,
+                sequenceLength: 4,
+                source: "mesocycle_slot_sequence",
+              },
+              lifecycleVolume: { source: "unknown" },
+              sorenessSuppressedMuscles: [],
+              deloadDecision: {
+                mode: "none",
+                reason: [],
+                reductionPercent: 0,
+                appliedTo: "none",
+              },
+              readiness: {
+                wasAutoregulated: false,
+                signalAgeHours: null,
+                fatigueScoreOverall: null,
+                intensityScaling: {
+                  applied: false,
+                  exerciseIds: [],
+                  scaledUpCount: 0,
+                  scaledDownCount: 0,
+                },
+              },
+              exceptions: [],
+            },
+          },
+          filteredExercises: [],
+          selectionSummary: {
+            selectedCount: 1,
+            pinnedCount: 1,
+            setTargetCount: 1,
+          },
+          sessionCapacity: {
+            requestedMode: "as_planned",
+            status: "as_planned",
+          },
+          sraWarnings: [],
+          substitutions: [],
+          volumePlanByMuscle: {},
+        },
+      });
+    });
+    await page.route("**/api/workouts/save", async (route) => {
+      const payload = route.request().postDataJSON() as Record<string, unknown>;
+      if (payload.action === "mark_completed") {
+        completionPayload = payload;
+        await route.fulfill({
+          json: {
+            status: "saved",
+            workoutId: "ui-audit-strength-lower-b",
+            revision: 3,
+            workoutStatus: "COMPLETED",
+            action: "mark_completed",
+          },
+        });
+        return;
+      }
+      plannedSavePayload = payload;
+      await route.fulfill({
+        json: { workoutId: "ui-audit-strength-lower-b" },
+      });
+    });
+    await page.route("**/api/logs/set", async (route) => {
+      loggedSetPayload =
+        route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        json: { status: "ok", wasCreated: true, revision: 2 },
+      });
+    });
+    await page.route(
+      "**/api/workouts/ui-audit-strength-lower-b/logging-weekly-volume-check",
+      async (route) => {
+        await route.fulfill({
+          json: {
+            workoutId: "ui-audit-strength-lower-b",
+            currentWeek: {
+              mesocycleId: "ui-audit-strength-meso",
+              week: 1,
+              phase: "accumulation",
+              blockType: "accumulation",
+            },
+            shouldShow: false,
+            summary: {
+              status: "no_addons_recommended",
+              recommendationKind: "no_action",
+              reasonCopy: "The accepted Strength slot is complete.",
+            },
+            rows: [],
+          },
+        });
+      },
+    );
+    await page.route(
+      "**/api/workouts/ui-audit-strength-lower-b/post-session-review",
+      async (route) => {
+        await route.fulfill({ json: { postSessionReview: null } });
+      },
+    );
+
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await waitForStableRoute(page);
+    await page
+      .getByRole("button", { name: "Choose a different session" })
+      .click();
+    await page
+      .getByRole("radio", { name: "Lower B · Hinge" })
+      .check();
+    await expect(
+      page.getByText("Selected for today:"),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Start workout" }).click();
+
+    await expectAuditPath(page, "/log/ui-audit-strength-lower-b");
+    expect(generatePayload).toEqual({
+      intent: "lower",
+      slotId: "strength_lower_b",
+      sessionCapacity: "as_planned",
+    });
+    expect(plannedSavePayload).toMatchObject({
+      workoutId: "ui-audit-strength-lower-b",
+      sessionIntent: "LOWER",
+      selectionMetadata: {
+        sessionDecisionReceipt: {
+          sessionProvenance: {
+            seedProvenance: {
+              revisionId: "ui-audit-strength-revision-1",
+              revision: 1,
+            },
+          },
+          sessionSlot: {
+            slotId: "strength_lower_b",
+            sequenceIndex: 3,
+          },
+        },
+      },
+      exercises: [
+        {
+          exerciseId: "fixture-deadlift",
+          sets: [
+            {
+              setIndex: 1,
+              targetReps: 4,
+              targetRepRange: { min: 3, max: 6 },
+              targetLoad: 275,
+              targetRpe: 7,
+            },
+          ],
+        },
+      ],
+    });
+
+    await expect(
+      page.getByRole("heading", { name: "Workout Log" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Conventional Deadlift" }),
+    ).toBeVisible();
+    const repsInput = page.getByLabel("Reps");
+    await repsInput.fill("4");
+    await repsInput.blur();
+    await page.getByRole("button", { name: "Log set" }).click();
+    await expect(
+      page.getByRole("button", { name: "Finish workout" }),
+    ).toBeVisible();
+    expect(loggedSetPayload).toMatchObject({
+      workoutSetId: "ui-audit-strength-deadlift-set-1",
+      expectedRevision: 1,
+      actualReps: 4,
+    });
+
+    await page.getByRole("button", { name: "Finish workout" }).click();
+    await page.getByRole("button", { name: "Confirm" }).click();
+    await expect(page.getByText("What's next")).toBeVisible();
+    expect(completionPayload).toMatchObject({
+      workoutId: "ui-audit-strength-lower-b",
+      expectedRevision: 2,
+      action: "mark_completed",
+      status: "COMPLETED",
+    });
+    await page.setExtraHTTPHeaders({
+      [FIXTURE_HEADER]: "strength-after-lower-b",
+    });
+    await page
+      .getByRole("link", { name: "Generate next workout" })
+      .click();
+    await expectAuditPath(page, "/");
+    await expect(
+      page.getByText("Upper A · Bench", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Choose a different session" }),
+    ).toHaveCount(0);
+    await expect(page.getByText("Lower B · Hinge")).toHaveCount(0);
     await expectMainWithinViewport(page);
     await expectNoAppError(page);
   });
@@ -116,7 +721,7 @@ test.describe("lightweight fixture interaction checks", () => {
     await page.goto(ACTIVE_LOG_WORKOUT_PATH, { waitUntil: "domcontentloaded" });
     await waitForStableRoute(page);
 
-    await expect(page).toHaveURL(new RegExp(`${escapeRegex(ACTIVE_LOG_WORKOUT_PATH)}/?$`));
+    await expectAuditPath(page, ACTIVE_LOG_WORKOUT_PATH);
     await expect(page.getByRole("heading", { name: "Workout Log" })).toBeVisible();
     await expect(page.getByText("Active set")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Chest-Supported Row" })).toBeVisible();
@@ -191,7 +796,7 @@ test.describe("lightweight fixture interaction checks", () => {
     await page.goto(TIMER_VISIBLE_LOG_WORKOUT_PATH, { waitUntil: "domcontentloaded" });
     await waitForStableRoute(page);
 
-    await expect(page).toHaveURL(new RegExp(`${escapeRegex(TIMER_VISIBLE_LOG_WORKOUT_PATH)}/?$`));
+    await expectAuditPath(page, TIMER_VISIBLE_LOG_WORKOUT_PATH);
     await expect(page.getByRole("heading", { name: "Workout Log" })).toBeVisible();
     await expect(page.getByText("1/4 logged")).toBeVisible();
 
@@ -236,21 +841,19 @@ test.describe("lightweight fixture interaction checks", () => {
 });
 
 async function openRoute(page: Page, route: CoreRoute) {
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.goto(route.path, { waitUntil: "domcontentloaded" });
+  await expectAuditPath(page, route.path);
+}
 
-  if (route.path === "/") {
-    await expect(page).toHaveURL(/\/$/);
-    return;
-  }
-
-  const nav = page.getByRole("navigation");
-  await expect(nav).toBeVisible();
-  const expectedUrl = new RegExp(`${escapeRegex(route.path)}/?$`);
-  await nav.getByRole("link", { name: route.label }).click();
-  await page.waitForURL(expectedUrl, { timeout: 3_000 }).catch(async () => {
-    await page.goto(route.path, { waitUntil: "domcontentloaded" });
-  });
-  await expect(page).toHaveURL(expectedUrl);
+async function expectAuditPath(page: Page, expectedPath: string) {
+  await expect
+    .poll(() => {
+      const url = new URL(page.url());
+      return url.pathname === "/ui-audit-fixture"
+        ? url.searchParams.get("path")
+        : url.pathname;
+    })
+    .toBe(expectedPath);
 }
 
 async function waitForStableRoute(page: Page) {
@@ -263,6 +866,14 @@ async function waitForStableRoute(page: Page) {
 
 async function expectMainWithinViewport(page: Page) {
   await expectElementWithinViewport(page, page.locator("main").first());
+}
+
+async function expectNoHorizontalOverflow(page: Page) {
+  const overflow = await page.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+  }));
+  expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 2);
 }
 
 async function expectElementWithinViewport(page: Page, locator: Locator) {
@@ -376,10 +987,6 @@ async function expectLogClientUsesClosedKeyboardPadding(page: Page) {
     });
 
   expect(inlinePaddingBottom).toBe("env(safe-area-inset-bottom, 16px)");
-}
-
-function escapeRegex(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function buildAuditScreenshotName(input: {

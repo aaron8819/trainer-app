@@ -4,7 +4,6 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { exampleExerciseLibrary, exampleGoals, exampleUser } from "../engine/sample-data";
-import { buildV2AcceptedPlannerIntentDto } from "@/lib/engine/planning/v2";
 import * as selectionV2 from "@/lib/engine/selection-v2";
 import type { Exercise } from "@/lib/engine/types";
 import { getEffectiveStimulusByMuscle, toMuscleId } from "@/lib/engine/stimulus";
@@ -2030,7 +2029,7 @@ describe("generateSessionFromIntent", () => {
     }
   });
 
-  it("uses persisted slotPlanSeedJson only for seeded next-slot composition", async () => {
+  it("generates an explicit Strength slot from its exact accepted seed revision", async () => {
     loadWorkoutContextMock.mockResolvedValue({
       profile: { id: "profile" },
       goals: { primaryGoal: "HYPERTROPHY", secondaryGoal: "NONE" },
@@ -2107,6 +2106,10 @@ describe("generateSessionFromIntent", () => {
       daysPerWeek: 4,
       splitType: "upper_lower",
       weeklySchedule: ["upper", "lower", "upper", "lower"],
+    });
+    mapGoalsMock.mockReturnValue({
+      primary: "strength",
+      secondary: "none",
     });
     mapExercisesMock.mockReturnValue([
       {
@@ -2186,9 +2189,14 @@ describe("generateSessionFromIntent", () => {
       deloadSessionsCompleted: 0,
       durationWeeks: 5,
       sessionsPerWeek: 4,
+      macroCycle: {
+        id: "strength-plan",
+        userId: "user-1",
+        primaryGoal: "STRENGTH",
+      },
       slotSequenceJson: {
         version: 1,
-        source: "handoff_draft",
+        source: "strength_plan_policy_v1",
         sequenceMode: "ordered_flexible",
         slots: [
           { slotId: "upper_a", intent: "UPPER" },
@@ -2199,8 +2207,7 @@ describe("generateSessionFromIntent", () => {
       },
       slotPlanSeedJson: {
         version: 1,
-        source: "handoff_slot_plan_projection",
-        acceptedPlannerIntent: buildV2AcceptedPlannerIntentDto(),
+        source: "strength_plan_policy_v1",
         slots: [
           {
             slotId: "upper_a",
@@ -2226,6 +2233,19 @@ describe("generateSessionFromIntent", () => {
           },
         ],
       },
+      currentSeedRevision: {
+        id: "strength-seed-revision-1",
+        revision: 1,
+        seedPayload: {
+          version: 1,
+          source: "strength_plan_policy_v1",
+          slots: [],
+        },
+        payloadHash:
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        hashAlgorithm: "sha256",
+        provenanceStatus: "exact",
+      },
     });
     mesocycleRoleFindManyMock.mockResolvedValue([
       { exerciseId: "bench", role: "CORE_COMPOUND", sessionIntent: "UPPER" },
@@ -2234,7 +2254,17 @@ describe("generateSessionFromIntent", () => {
 
     const selectSpy = vi.spyOn(selectionV2, "selectExercisesOptimized");
     try {
-      const result = await generateSessionFromIntent("user-1", { intent: "upper" });
+      const result = await generateSessionFromIntent("user-1", {
+        intent: "upper",
+        slotId: "upper_b",
+        advancingSlot: {
+          slotId: "upper_b",
+          intent: "upper",
+          sequenceIndex: 2,
+          sequenceLength: 4,
+          source: "mesocycle_slot_sequence",
+        },
+      });
 
       expect("error" in result).toBe(false);
       if ("error" in result) return;
@@ -2252,6 +2282,20 @@ describe("generateSessionFromIntent", () => {
       ]);
       expect(result.workout.mainLifts[0]?.sets).toHaveLength(5);
       expect(result.workout.accessories[0]?.sets).toHaveLength(4);
+      expect(
+        result.workout.mainLifts[0]?.sets.every(
+          (set) =>
+            (set.targetReps ?? 0) >= 3 &&
+            (set.targetReps ?? 0) <= 6 &&
+            set.restSeconds === 300,
+        ),
+      ).toBe(true);
+      expect(
+        result.workout.accessories[0]?.sets.every(
+          (set) => set.restSeconds === 90,
+        ),
+      ).toBe(true);
+      expect(result.workout.estimatedMinutes).toBe(45);
       expect(result.selection.perExerciseSetTargets).toMatchObject({
         "incline-db-press": 5,
         "lat-pulldown": 4,
@@ -2259,6 +2303,19 @@ describe("generateSessionFromIntent", () => {
       expect(result.selection.sessionDecisionReceipt?.sessionProvenance).toEqual({
         mesocycleId: "meso-1",
         compositionSource: "persisted_slot_plan_seed",
+        seedProvenance: {
+          revisionId: "strength-seed-revision-1",
+          revision: 1,
+          hash:
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        },
+      });
+      expect(result.selection.sessionDecisionReceipt?.sessionSlot).toEqual({
+        slotId: "upper_b",
+        intent: "upper",
+        sequenceIndex: 2,
+        sequenceLength: 4,
+        source: "mesocycle_slot_sequence",
       });
       expect(JSON.stringify(result.selection.sessionDecisionReceipt)).not.toContain(
         "acceptedPlannerIntent"

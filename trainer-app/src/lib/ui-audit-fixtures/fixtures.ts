@@ -7,9 +7,19 @@ import type { SettingsPageData } from "@/lib/api/settings-page";
 import type { WorkoutListSurfaceSummary } from "@/lib/ui/workout-list-items";
 import type { ExerciseListItem } from "@/lib/exercise-library/types";
 import type { SectionedExercises } from "@/components/log-workout/types";
-import type { PlanManagementData } from "@/lib/api/plan-management";
+import type {
+  PlanManagementData,
+  PlanReview,
+} from "@/lib/ui/plan-management";
 
-export const UI_AUDIT_FIXTURE_SCENARIOS = ["active", "empty", "handoff", "timer-visible"] as const;
+export const UI_AUDIT_FIXTURE_SCENARIOS = [
+  "active",
+  "empty",
+  "handoff",
+  "timer-visible",
+  "strength-alternative",
+  "strength-after-lower-b",
+] as const;
 
 export type UiAuditFixtureScenario = (typeof UI_AUDIT_FIXTURE_SCENARIOS)[number];
 
@@ -45,6 +55,7 @@ export type UiAuditFixture = {
   settings?: SettingsPageData;
   analytics?: AnalyticsFixtures;
   plans?: PlanManagementData;
+  planReviews?: Record<string, PlanReview>;
   logWorkouts?: Record<string, LogWorkoutFixture>;
 };
 
@@ -979,7 +990,287 @@ const activeFixture: UiAuditFixture = {
         createdAt: "2026-04-09T00:00:00.000Z",
         updatedAt: "2026-04-09T00:00:00.000Z",
       },
+      {
+        id: "10000000-0000-4000-8000-000000000004",
+        name: "Strength Base",
+        primaryGoal: "STRENGTH",
+        status: "PREPARING",
+        isActive: false,
+        activeMesocycleId: null,
+        reviewMesocycleId: "ui-audit-meso-strength",
+        startDate: "2027-07-05T00:00:00.000Z",
+        endDate: "2027-08-09T00:00:00.000Z",
+        durationWeeks: 5,
+        mesocycleCount: 1,
+        createdAt: "2026-04-10T00:00:00.000Z",
+        updatedAt: "2026-04-10T00:00:00.000Z",
+      },
+      {
+        id: "10000000-0000-4000-8000-000000000006",
+        name: "Strength Ready",
+        primaryGoal: "STRENGTH",
+        status: "READY",
+        isActive: false,
+        activeMesocycleId: "ui-audit-meso-strength-ready",
+        reviewMesocycleId: "ui-audit-meso-strength-ready",
+        startDate: "2027-08-16T00:00:00.000Z",
+        endDate: "2027-09-20T00:00:00.000Z",
+        durationWeeks: 5,
+        mesocycleCount: 1,
+        createdAt: "2026-04-10T00:00:00.000Z",
+        updatedAt: "2026-04-10T00:00:00.000Z",
+      },
     ],
+  },
+  planReviews: {
+    "10000000-0000-4000-8000-000000000005": {
+      id: "10000000-0000-4000-8000-000000000005",
+      name: "Strength Express",
+      primaryGoal: "STRENGTH",
+      status: "PREPARING",
+      isActive: false,
+      activeMesocycleId: null,
+      reviewMesocycleId: "ui-audit-meso-strength-express",
+      startDate: "2027-07-05T00:00:00.000Z",
+      endDate: "2027-08-02T00:00:00.000Z",
+      durationWeeks: 4,
+      mesocycleCount: 1,
+      createdAt: "2026-04-10T00:00:00.000Z",
+      updatedAt: "2026-04-10T00:00:00.000Z",
+      strengthConfiguration: {
+        emphasis: "BALANCED",
+        daysPerWeek: 2,
+        sessionDurationMinutes: 45,
+        equipmentProfile: "FULL_GYM",
+        preferredLifts: {
+          squat: "AUTO",
+          press: "AUTO",
+          hinge: "AUTO",
+        },
+      },
+      weeklyStructure: [
+        {
+          slotId: "strength_full_body_a",
+          label: "Full Body A",
+          intent: "FULL_BODY",
+          estimatedMinutes: 45,
+          primaryLifts: [
+            {
+              exerciseId: "fixture-express-squat",
+              name: "Back Squat",
+              role: "CORE_COMPOUND",
+              setCount: 3,
+            },
+            {
+              exerciseId: "fixture-express-bench",
+              name: "Barbell Bench Press",
+              role: "CORE_COMPOUND",
+              setCount: 3,
+            },
+          ],
+          assistance: [
+            {
+              exerciseId: "fixture-express-row",
+              name: "Chest-Supported Row",
+              role: "ACCESSORY",
+              setCount: 2,
+            },
+          ],
+        },
+        {
+          slotId: "strength_full_body_b",
+          label: "Full Body B",
+          intent: "FULL_BODY",
+          estimatedMinutes: 45,
+          primaryLifts: [
+            {
+              exerciseId: "fixture-express-deadlift",
+              name: "Conventional Deadlift",
+              role: "CORE_COMPOUND",
+              setCount: 3,
+            },
+            {
+              exerciseId: "fixture-express-overhead",
+              name: "Overhead Press",
+              role: "CORE_COMPOUND",
+              setCount: 3,
+            },
+          ],
+          assistance: [
+            {
+              exerciseId: "fixture-express-pullup",
+              name: "Pull-Up",
+              role: "ACCESSORY",
+              setCount: 2,
+            },
+          ],
+        },
+      ],
+      mesocycles: [
+        {
+          id: "ui-audit-meso-strength-express",
+          mesoNumber: 1,
+          startWeek: 0,
+          durationWeeks: 4,
+          focus: "Balanced Strength",
+          volumeTarget: "MODERATE",
+          intensityBias: "STRENGTH",
+          blockCount: 3,
+        },
+      ],
+    },
+    "10000000-0000-4000-8000-000000000004": {
+      id: "10000000-0000-4000-8000-000000000004",
+      name: "Strength Base",
+      primaryGoal: "STRENGTH",
+      status: "PREPARING",
+      isActive: false,
+      activeMesocycleId: null,
+      reviewMesocycleId: "ui-audit-meso-strength",
+      startDate: "2027-07-05T00:00:00.000Z",
+      endDate: "2027-08-09T00:00:00.000Z",
+      durationWeeks: 5,
+      mesocycleCount: 1,
+      createdAt: "2026-04-10T00:00:00.000Z",
+      updatedAt: "2026-04-10T00:00:00.000Z",
+      strengthConfiguration: {
+        emphasis: "BALANCED",
+        daysPerWeek: 4,
+        sessionDurationMinutes: 60,
+        equipmentProfile: "FULL_GYM",
+        preferredLifts: {
+          squat: "AUTO",
+          press: "AUTO",
+          hinge: "AUTO",
+        },
+      },
+      weeklyStructure: [
+        {
+          slotId: "lower_a",
+          label: "Lower A",
+          intent: "SQUAT",
+          estimatedMinutes: 58,
+          primaryLifts: [
+            {
+              exerciseId: "fixture-back-squat",
+              name: "Back Squat",
+              role: "CORE_COMPOUND",
+              setCount: 4,
+            },
+          ],
+          assistance: [
+            {
+              exerciseId: "fixture-rdl",
+              name: "Romanian Deadlift",
+              role: "ACCESSORY",
+              setCount: 2,
+            },
+            {
+              exerciseId: "fixture-leg-curl-a",
+              name: "Leg Curl",
+              role: "ACCESSORY",
+              setCount: 2,
+            },
+          ],
+        },
+        {
+          slotId: "upper_a",
+          label: "Upper A",
+          intent: "PRESS",
+          estimatedMinutes: 55,
+          primaryLifts: [
+            {
+              exerciseId: "fixture-bench",
+              name: "Barbell Bench Press",
+              role: "CORE_COMPOUND",
+              setCount: 4,
+            },
+          ],
+          assistance: [
+            {
+              exerciseId: "fixture-row",
+              name: "Chest-Supported Row",
+              role: "ACCESSORY",
+              setCount: 2,
+            },
+            {
+              exerciseId: "fixture-triceps",
+              name: "Triceps Pushdown",
+              role: "ACCESSORY",
+              setCount: 2,
+            },
+          ],
+        },
+        {
+          slotId: "lower_b",
+          label: "Lower B",
+          intent: "HINGE",
+          estimatedMinutes: 60,
+          primaryLifts: [
+            {
+              exerciseId: "fixture-deadlift",
+              name: "Conventional Deadlift",
+              role: "CORE_COMPOUND",
+              setCount: 4,
+            },
+          ],
+          assistance: [
+            {
+              exerciseId: "fixture-front-squat",
+              name: "Front Squat",
+              role: "ACCESSORY",
+              setCount: 2,
+            },
+            {
+              exerciseId: "fixture-leg-curl-b",
+              name: "Leg Curl",
+              role: "ACCESSORY",
+              setCount: 2,
+            },
+          ],
+        },
+        {
+          slotId: "upper_b",
+          label: "Upper B",
+          intent: "PRESS",
+          estimatedMinutes: 54,
+          primaryLifts: [
+            {
+              exerciseId: "fixture-overhead-press",
+              name: "Overhead Press",
+              role: "CORE_COMPOUND",
+              setCount: 4,
+            },
+          ],
+          assistance: [
+            {
+              exerciseId: "fixture-pulldown",
+              name: "Lat Pulldown",
+              role: "ACCESSORY",
+              setCount: 2,
+            },
+            {
+              exerciseId: "fixture-dumbbell-bench",
+              name: "Dumbbell Bench Press",
+              role: "ACCESSORY",
+              setCount: 2,
+            },
+          ],
+        },
+      ],
+      mesocycles: [
+        {
+          id: "ui-audit-meso-strength",
+          mesoNumber: 1,
+          startWeek: 0,
+          durationWeeks: 5,
+          focus: "Balanced Strength",
+          volumeTarget: "MODERATE",
+          intensityBias: "STRENGTH",
+          blockCount: 3,
+        },
+      ],
+    },
   },
   home: {
     pendingHandoff: null,
@@ -1223,6 +1514,152 @@ const activeFixture: UiAuditFixture = {
   },
 };
 
+const strengthAlternativeHomeProgram = {
+  ...activeHomeProgram,
+  nextSession: {
+    ...activeHomeProgram.nextSession,
+    intent: "UPPER" as const,
+    slotId: "strength_upper_a",
+    slotSequenceIndex: 0,
+    workoutId: null,
+    isExisting: false,
+  },
+  eligibleAlternativeSessions: [
+    {
+      slotId: "strength_lower_b",
+      intent: "lower" as const,
+      label: "Lower B · Hinge",
+      sequenceIndex: 3,
+    },
+  ],
+  latestIncomplete: null,
+};
+
+const strengthAlternativeLogWorkout: LogWorkoutFixture = {
+  workoutId: "ui-audit-strength-lower-b",
+  sessionIdentityLabel: "Lower B · Hinge",
+  sessionTechnicalLabel: "Week 1 Session 4",
+  exercises: {
+    main: [
+      {
+        workoutExerciseId: "ui-audit-strength-deadlift-we",
+        name: "Conventional Deadlift",
+        equipment: ["barbell"],
+        movementPatterns: ["hinge"],
+        muscleTags: ["Hamstrings", "Glutes", "Lower Back"],
+        muscleTagGroups: {
+          primaryMuscles: ["Hamstrings", "Glutes"],
+          secondaryMuscles: ["Lower Back"],
+        },
+        isMainLift: true,
+        section: "MAIN",
+        sets: [
+          {
+            setId: "ui-audit-strength-deadlift-set-1",
+            setIndex: 1,
+            targetReps: 4,
+            targetRepRange: { min: 3, max: 6 },
+            targetLoad: 275,
+            targetRpe: 7,
+            restSeconds: 300,
+          },
+        ],
+      },
+    ],
+    accessory: [],
+  },
+};
+
+const strengthAlternativeFixture: UiAuditFixture = {
+  ...activeFixture,
+  scenario: "strength-alternative",
+  home: {
+    ...activeFixture.home!,
+    homeProgram: strengthAlternativeHomeProgram,
+    primaryAction: {
+      state: "planned",
+      mode: "generate",
+      label: "Start workout",
+      action: "generate-required-workout",
+      initialIntent: "upper",
+      initialSlotId: "strength_upper_a",
+      reasonLabel: "Up next",
+      reason: "Strength Upper A is the earliest unresolved canonical slot.",
+    },
+    decision: {
+      ...activeFixture.home!.decision!,
+      nextSessionLabel: "Upper A · Bench",
+      nextSessionDescription: "Strength upper session this week",
+    },
+  },
+  logWorkouts: {
+    [strengthAlternativeLogWorkout.workoutId]:
+      strengthAlternativeLogWorkout,
+  },
+};
+
+const strengthAfterLowerBFixture: UiAuditFixture = {
+  ...strengthAlternativeFixture,
+  scenario: "strength-after-lower-b",
+  home: {
+    ...strengthAlternativeFixture.home!,
+    homeProgram: {
+      ...strengthAlternativeHomeProgram,
+      eligibleAlternativeSessions: [],
+    },
+    primaryAction: {
+      state: "planned",
+      mode: "generate",
+      label: "Start workout",
+      action: "generate-required-workout",
+      initialIntent: "upper",
+      initialSlotId: "strength_upper_a",
+      reasonLabel: "Up next",
+      reason:
+        "Strength Upper A remains the earliest unresolved canonical slot.",
+    },
+    decision: {
+      ...strengthAlternativeFixture.home!.decision!,
+      nextSessionLabel: "Upper A · Bench",
+      nextSessionDescription: "Strength upper session this week",
+    },
+  },
+};
+
+const preparingStrengthReview =
+  activeFixture.planReviews!["10000000-0000-4000-8000-000000000004"]!;
+const activeFixtureWithReviewStates: UiAuditFixture = {
+  ...activeFixture,
+  planReviews: {
+    ...activeFixture.planReviews,
+    "10000000-0000-4000-8000-000000000006": {
+      ...preparingStrengthReview,
+      id: "10000000-0000-4000-8000-000000000006",
+      name: "Strength Ready",
+      status: "READY",
+      activeMesocycleId: "ui-audit-meso-strength-ready",
+      reviewMesocycleId: "ui-audit-meso-strength-ready",
+      mesocycles: preparingStrengthReview.mesocycles.map((mesocycle) => ({
+        ...mesocycle,
+        id: "ui-audit-meso-strength-ready",
+      })),
+    },
+    "10000000-0000-4000-8000-000000000007": {
+      ...preparingStrengthReview,
+      id: "10000000-0000-4000-8000-000000000007",
+      name: "Strength Empty Structure",
+      weeklyStructure: [],
+    },
+    "10000000-0000-4000-8000-000000000008": {
+      ...preparingStrengthReview,
+      id: "10000000-0000-4000-8000-000000000008",
+      name: "Strength Malformed Structure",
+      strengthConfiguration: null,
+      weeklyStructure: [],
+    },
+  },
+};
+
 const emptyFixture: UiAuditFixture = {
   scenario: "empty",
   plans: {
@@ -1307,10 +1744,12 @@ const timerVisibleFixture: UiAuditFixture = {
 };
 
 const fixtures: Record<UiAuditFixtureScenario, UiAuditFixture> = {
-  active: activeFixture,
+  active: activeFixtureWithReviewStates,
   empty: emptyFixture,
   handoff: handoffFixture,
   "timer-visible": timerVisibleFixture,
+  "strength-alternative": strengthAlternativeFixture,
+  "strength-after-lower-b": strengthAfterLowerBFixture,
 };
 
 export function getUiAuditFixtureByScenario(scenario: UiAuditFixtureScenario): UiAuditFixture {

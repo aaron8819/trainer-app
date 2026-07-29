@@ -15,8 +15,8 @@ export default async function PlansPage() {
         </p>
         <h1 className="page-title mt-2">Training plans</h1>
         <p className="mt-2 max-w-2xl text-sm text-slate-600">
-          Create and review hypertrophy plans, then explicitly choose which
-          READY plan drives your training.
+          Create and review hypertrophy or strength plans, then explicitly
+          choose which READY plan drives your training.
         </p>
         <PlanManagementClient initialData={data} />
       </div>

@@ -1,30 +1,29 @@
 import { headers } from "next/headers";
 import {
-  UI_AUDIT_FIXTURE_SCENARIOS,
   getUiAuditFixtureByScenario,
   type UiAuditFixture,
-  type UiAuditFixtureScenario,
 } from "./fixtures";
+import {
+  UI_AUDIT_FIXTURE_HEADER,
+  authorizeUiAuditFixtureRequest,
+  isUiAuditFixtureModeEnabled as isFixtureModeEnabled,
+} from "./access";
 
-export const UI_AUDIT_FIXTURE_HEADER = "x-ui-audit-fixture";
-
-function isUiAuditFixtureScenario(value: string | null | undefined): value is UiAuditFixtureScenario {
-  return UI_AUDIT_FIXTURE_SCENARIOS.includes(value as UiAuditFixtureScenario);
-}
+export { UI_AUDIT_FIXTURE_HEADER };
 
 export function isUiAuditFixtureModeEnabled(): boolean {
-  return process.env.UI_AUDIT_FIXTURE_MODE === "1" && process.env.NODE_ENV !== "production";
+  return isFixtureModeEnabled({
+    mode: process.env.UI_AUDIT_FIXTURE_MODE,
+    nodeEnv: process.env.NODE_ENV,
+  });
 }
 
-function resolveScenarioFromHeaders(requestHeaders: Headers | null): UiAuditFixtureScenario | null {
-  if (!isUiAuditFixtureModeEnabled()) {
-    return null;
-  }
-
-  const requestedScenario =
-    requestHeaders?.get(UI_AUDIT_FIXTURE_HEADER) ?? process.env.UI_AUDIT_FIXTURE_SCENARIO;
-
-  return isUiAuditFixtureScenario(requestedScenario) ? requestedScenario : null;
+function resolveScenarioFromHeaders(requestHeaders: Headers) {
+  return authorizeUiAuditFixtureRequest({
+    mode: process.env.UI_AUDIT_FIXTURE_MODE,
+    nodeEnv: process.env.NODE_ENV,
+    requestHeader: requestHeaders.get(UI_AUDIT_FIXTURE_HEADER),
+  });
 }
 
 export function getUiAuditFixtureFromHeaders(requestHeaders: Headers): UiAuditFixture | null {

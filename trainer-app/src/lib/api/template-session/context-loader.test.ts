@@ -270,6 +270,36 @@ describe("template-session context-loader mismatch policy", () => {
     );
   });
 
+  it("uses the selected strength plan as generation truth instead of the global profile goal", async () => {
+    loadActiveMesocycleMock.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 3,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+      macroCycle: {
+        id: "macro-1",
+        userId: "user-1",
+        primaryGoal: "STRENGTH",
+      },
+    });
+    mapGoalsMock.mockReturnValueOnce({ primary: "strength" });
+
+    const result = await loadMappedGenerationContext("user-1");
+
+    expect(mapGoalsMock).toHaveBeenCalledWith("STRENGTH", "NONE");
+    expect(result.mappedGoals.primary).toBe("strength");
+    expect(result.lifecycleRirTarget).toEqual({ min: 2, max: 3 });
+    expect(getRirTargetMock).not.toHaveBeenCalled();
+    expect(buildLifecyclePeriodizationMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        primaryGoal: "strength",
+        rirTarget: { min: 2, max: 3 },
+      }),
+    );
+  });
+
   it("forces accumulation semantics for anchored optional gap-fill after lifecycle advances to deload", async () => {
     loadActiveMesocycleMock.mockResolvedValueOnce({
       id: "meso-1",

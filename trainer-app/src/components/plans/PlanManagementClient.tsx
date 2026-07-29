@@ -3,9 +3,14 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { PlanManagementData, PlanSummary } from "@/lib/api/plan-management";
+import type { PlanManagementData, PlanSummary } from "@/lib/ui/plan-management";
 import { Button, buttonClassName } from "@/components/ui/Button";
 import { StatusBadge, type StatusBadgeTone } from "@/components/ui/StatusBadge";
+import {
+  planTypeDescription,
+  planTypeLabel,
+  type SupportedPlanType,
+} from "@/lib/plan-types";
 
 const STATUS_COPY: Record<
   PlanSummary["status"],
@@ -66,6 +71,8 @@ export function PlanManagementClient({
     initialData.activeMacroCycleId,
   );
   const [showCreate, setShowCreate] = useState(initialData.plans.length === 0);
+  const [newPlanType, setNewPlanType] =
+    useState<SupportedPlanType>("HYPERTROPHY");
   const [creating, setCreating] = useState(false);
   const [busyPlanId, setBusyPlanId] = useState<string | null>(null);
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
@@ -85,14 +92,36 @@ export function PlanManagementClient({
       const response = await fetch("/api/plans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: formData.get("name"),
-          startDate: formData.get("startDate"),
-          durationWeeks: Number(formData.get("durationWeeks")),
-        }),
+        body: JSON.stringify(
+          newPlanType === "HYPERTROPHY"
+            ? {
+                planType: "HYPERTROPHY",
+                name: formData.get("name"),
+                startDate: formData.get("startDate"),
+                durationWeeks: Number(formData.get("durationWeeks")),
+              }
+            : {
+                planType: "STRENGTH",
+                name: formData.get("name"),
+                startDate: formData.get("startDate"),
+                configuration: {
+                  emphasis: formData.get("emphasis"),
+                  daysPerWeek: Number(formData.get("daysPerWeek")),
+                  sessionDurationMinutes: Number(
+                    formData.get("sessionDurationMinutes"),
+                  ),
+                  equipmentProfile: formData.get("equipmentProfile"),
+                  preferredLifts: {
+                    squat: formData.get("squatPreference"),
+                    press: formData.get("pressPreference"),
+                    hinge: formData.get("hingePreference"),
+                  },
+                },
+              },
+        ),
       });
       const body = await responseBody(response);
-      if (!response.ok) {
+      if (!response.ok || body.error) {
         setError(body.error ?? "Could not create the plan.");
         return;
       }
@@ -254,26 +283,65 @@ export function PlanManagementClient({
           className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5"
           action={createPlan}
         >
-          <div className="flex flex-wrap items-start justify-between gap-2">
+          <fieldset>
+            <legend className="text-sm font-semibold text-slate-900">
+              What do you want this plan to prioritize?
+            </legend>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {(["HYPERTROPHY", "STRENGTH"] as const).map((planType) => (
+                <label
+                  key={planType}
+                  className={`cursor-pointer rounded-xl border p-3 ${
+                    newPlanType === planType
+                      ? "border-blue-400 bg-blue-50 ring-1 ring-blue-200"
+                      : "border-slate-200 bg-white"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="planType"
+                    value={planType}
+                    checked={newPlanType === planType}
+                    onChange={() => setNewPlanType(planType)}
+                    className="sr-only"
+                  />
+                  <span className="font-semibold text-slate-900">
+                    {planTypeLabel(planType)}
+                  </span>
+                  <span className="mt-1 block text-sm text-slate-600">
+                    {planTypeDescription(planType)}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <div className="mt-5 flex flex-wrap items-start justify-between gap-2">
             <div>
               <h3 className="font-semibold text-slate-900">
-                New hypertrophy plan
+                New {planTypeLabel(newPlanType).toLowerCase()} plan
               </h3>
               <p className="mt-1 text-sm text-slate-600">
                 We’ll generate the plan first. You’ll review it before it
                 becomes READY.
               </p>
             </div>
-            <StatusBadge tone="neutral">Hypertrophy</StatusBadge>
+            <StatusBadge tone="neutral">
+              {planTypeLabel(newPlanType)}
+            </StatusBadge>
           </div>
           <div className="mt-4 grid gap-4 sm:grid-cols-3">
             <label className="text-sm font-medium text-slate-800">
               Plan name
               <input
                 name="name"
+                key={newPlanType}
                 required
                 maxLength={60}
-                defaultValue={`Hypertrophy Plan ${plans.length + 1}`}
+                defaultValue={`${planTypeLabel(newPlanType)} Plan ${
+                  plans.filter(
+                    (plan) => plan.primaryGoal === newPlanType,
+                  ).length + 1
+                }`}
                 className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base"
               />
             </label>
@@ -287,20 +355,137 @@ export function PlanManagementClient({
                 className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base"
               />
             </label>
-            <label className="text-sm font-medium text-slate-800">
-              Duration
-              <select
-                name="durationWeeks"
-                defaultValue="24"
-                className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base"
-              >
-                <option value="16">16 weeks</option>
-                <option value="24">24 weeks</option>
-                <option value="32">32 weeks</option>
-                <option value="48">48 weeks</option>
-              </select>
-            </label>
+            {newPlanType === "HYPERTROPHY" ? (
+              <label className="text-sm font-medium text-slate-800">
+                Duration
+                <select
+                  name="durationWeeks"
+                  defaultValue="24"
+                  className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base"
+                >
+                  <option value="16">16 weeks</option>
+                  <option value="24">24 weeks</option>
+                  <option value="32">32 weeks</option>
+                  <option value="48">48 weeks</option>
+                </select>
+              </label>
+            ) : null}
           </div>
+          {newPlanType === "STRENGTH" ? (
+            <div className="mt-5 border-t border-slate-200 pt-5">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <label className="text-sm font-medium text-slate-800">
+                  Main emphasis
+                  <select
+                    name="emphasis"
+                    defaultValue="BALANCED"
+                    className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base"
+                  >
+                    <option value="BALANCED">Balanced strength</option>
+                    <option value="SQUAT">Improve my squat</option>
+                    <option value="BENCH">Improve my bench press</option>
+                    <option value="DEADLIFT">Improve my deadlift</option>
+                  </select>
+                </label>
+                <label className="text-sm font-medium text-slate-800">
+                  Training days
+                  <select
+                    name="daysPerWeek"
+                    defaultValue="4"
+                    className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base"
+                  >
+                    <option value="2">2 days per week</option>
+                    <option value="3">3 days per week</option>
+                    <option value="4">4 days per week</option>
+                    <option value="5">5 days per week</option>
+                  </select>
+                </label>
+                <label className="text-sm font-medium text-slate-800">
+                  Time per session
+                  <select
+                    name="sessionDurationMinutes"
+                    defaultValue="60"
+                    className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base"
+                  >
+                    <option value="45">About 45 minutes</option>
+                    <option value="60">About 60 minutes</option>
+                    <option value="75">About 75 minutes</option>
+                    <option value="90">About 90 minutes</option>
+                  </select>
+                </label>
+                <label className="text-sm font-medium text-slate-800">
+                  Available equipment
+                  <select
+                    name="equipmentProfile"
+                    defaultValue="FULL_GYM"
+                    className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base"
+                  >
+                    <option value="FULL_GYM">Full gym</option>
+                    <option value="BARBELL_HOME">Barbell, rack, and bench</option>
+                    <option value="DUMBBELLS">Dumbbells and bench</option>
+                    <option value="MACHINES">Machines and cables</option>
+                    <option value="BODYWEIGHT">Bodyweight and bands</option>
+                  </select>
+                </label>
+                <label className="text-sm font-medium text-slate-800">
+                  Squat pattern
+                  <select
+                    name="squatPreference"
+                    defaultValue="AUTO"
+                    className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base"
+                  >
+                    <option value="AUTO">Choose the best fit</option>
+                    <option value="BACK_SQUAT">Back squat</option>
+                    <option value="FRONT_SQUAT">Front squat</option>
+                    <option value="LEG_PRESS">Leg press</option>
+                    <option value="GOBLET_SQUAT">Goblet squat</option>
+                  </select>
+                </label>
+                <label className="text-sm font-medium text-slate-800">
+                  Main press
+                  <select
+                    name="pressPreference"
+                    defaultValue="AUTO"
+                    className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base"
+                  >
+                    <option value="AUTO">Choose the best fit</option>
+                    <option value="BARBELL_BENCH">Barbell bench press</option>
+                    <option value="DUMBBELL_BENCH">Dumbbell bench press</option>
+                    <option value="OVERHEAD_PRESS">Overhead press</option>
+                    <option value="MACHINE_PRESS">Machine press</option>
+                  </select>
+                </label>
+                <label className="text-sm font-medium text-slate-800">
+                  Hinge pattern
+                  <select
+                    name="hingePreference"
+                    defaultValue="AUTO"
+                    className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base"
+                  >
+                    <option value="AUTO">Choose the best fit</option>
+                    <option value="CONVENTIONAL_DEADLIFT">
+                      Conventional deadlift
+                    </option>
+                    <option value="TRAP_BAR_DEADLIFT">
+                      Trap-bar deadlift
+                    </option>
+                    <option value="ROMANIAN_DEADLIFT">
+                      Romanian deadlift
+                    </option>
+                  </select>
+                </label>
+              </div>
+              <p className="mt-4 text-xs text-slate-500">
+                Your saved experience level and active exercise limitations are
+                applied automatically. Strength recognizes left/right and common
+                phrasing for low or lower back, knee, shoulder, hip, elbow, and
+                wrist limitations. Unrecognized active limitations must be
+                updated before a plan can be created. If a preferred lift is
+                incompatible, the plan uses the closest safe
+                equipment-compatible option.
+              </p>
+            </div>
+          ) : null}
           <Button
             type="submit"
             size="touch"
@@ -316,8 +501,7 @@ export function PlanManagementClient({
         <section className="mt-6 rounded-2xl border border-dashed border-slate-300 p-8 text-center">
           <h3 className="font-semibold text-slate-900">No plans yet</h3>
           <p className="mt-2 text-sm text-slate-600">
-            Create a hypertrophy plan to review and finalize your first
-            program.
+            Create a plan to review and finalize your first program.
           </p>
         </section>
       ) : (
@@ -343,6 +527,9 @@ export function PlanManagementClient({
                       {plan.isActive ? (
                         <StatusBadge tone="positive">Active</StatusBadge>
                       ) : null}
+                      <StatusBadge tone="neutral">
+                        {planTypeLabel(plan.primaryGoal)}
+                      </StatusBadge>
                       <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
                     </div>
                     <p className="mt-2 text-sm text-slate-600">{status.detail}</p>

@@ -8,7 +8,13 @@ export type TimedFinisherStep = {
 };
 
 export type FinisherTimerState = {
-  state: "SELECTED" | "IN_PROGRESS" | "COMPLETED" | "PARTIAL" | "DISMISSED";
+  state:
+    | "SELECTED"
+    | "IN_PROGRESS"
+    | "COMPLETED"
+    | "PARTIAL"
+    | "SKIPPED"
+    | "DISMISSED";
   timerSegment: "PREPARATION" | "WORK" | "RECOVERY" | "FINISHED" | null;
   currentStepIndex: number;
   segmentStartedAt: Date | null;
@@ -98,6 +104,7 @@ export function projectFinisherTimer(input: {
   if (
     projected.state === "COMPLETED" ||
     projected.state === "PARTIAL" ||
+    projected.state === "SKIPPED" ||
     projected.state === "DISMISSED" ||
     projected.pausedAt ||
     !projected.timerSegment ||
@@ -219,6 +226,29 @@ export function projectFinisherTimer(input: {
   }
 
   return projected;
+}
+
+export function resolveFinisherOutcome(input: {
+  stepStatuses: Array<"PENDING" | "PARTIAL" | "COMPLETED" | "SKIPPED">;
+  activeWorkMs: number;
+  endedEarly: boolean;
+}): "COMPLETED" | "PARTIAL" | "SKIPPED" | "DISMISSED" {
+  const allCompleted =
+    input.stepStatuses.length > 0 &&
+    input.stepStatuses.every((status) => status === "COMPLETED");
+  if (allCompleted && !input.endedEarly) return "COMPLETED";
+
+  const allSkipped =
+    input.stepStatuses.length > 0 &&
+    input.stepStatuses.every((status) => status === "SKIPPED");
+  if (allSkipped && input.activeWorkMs === 0) return "SKIPPED";
+
+  const hasPerformedWork =
+    input.activeWorkMs > 0 ||
+    input.stepStatuses.some(
+      (status) => status === "COMPLETED" || status === "PARTIAL"
+    );
+  return hasPerformedWork ? "PARTIAL" : "DISMISSED";
 }
 
 export type FinisherRecommendationCandidate = {

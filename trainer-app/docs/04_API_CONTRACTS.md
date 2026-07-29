@@ -3,24 +3,29 @@
 ## `GET|POST /api/workouts/[id]/finisher`
 
 Both methods resolve the canonical owner and require an owner-scoped completed
-workout. GET returns active immutable routine details, derived durations,
-per-routine limitation warnings, one deterministic recommendation (or a safe
-unavailable reason), `serverTime`, and the selected/active/historical execution.
-GET is a pure read: it may project elapsed interval timestamps and step outcomes
+workout. GET returns the persisted offer's immutable routine details, original
+limitation warnings and recommendation context, `serverTime`, the current
+display execution, decline state, and retained execution history. With no
+offer, GET returns `offer: null`; the client must create it through the
+write-gated `offer` action before displaying choices. GET is a pure read: it may project elapsed interval timestamps and step outcomes
 in the response so refresh and background recovery land on the current segment,
 but it never creates, updates, completes, resolves, or deletes Finisher state.
 Projected responses expose `timer.syncRequired` and a stable boundary token.
 
 POST validates a strict discriminated action contract from
-`src/lib/validation.ts`: `select`, `start`, `dismiss`, `pause`, `resume`, `skip`,
-`substitute`, `end`, `feedback`, and explicit `sync`. `sync` and `dismiss`
-require the current execution revision. Every POST action is registered as
+`src/lib/validation.ts`: `offer`, `select`, `decline`, `start`, `dismiss`,
+`pause`, `resume`, `skip`, `substitute`, `end`, `feedback`, and explicit `sync`.
+Selection requires the durable offer identity, expected offer revision, and a
+client-stable execution UUID. Decline similarly carries offer identity/revision
+and a stable decision UUID. Every action against an existing execution requires
+its exact execution UUID and expected monotonic revision. Every POST action is registered as
 `finisher_execution` and is blocked by `TRAINER_WRITE_PAUSE=enabled`.
-Started-execution uniqueness is protected
-by the database and serializable selection/start transactions. Duplicate starts
-for the same immutable version are idempotent; incompatible or stale transitions
-return deterministic `409` codes. Mutable execution actions require the current
-execution revision. Client input never supplies ownership, workout completion,
+Active and started-execution uniqueness is protected by partial unique indexes
+and serializable selection transactions. Duplicate selection and decline
+decision identities are idempotent only when their immutable binding matches;
+conflicting, stale, replayed, or out-of-order requests return deterministic
+`409` codes. A stale request for dismissed A can address only A and cannot act
+on replacement B. Client input never supplies ownership, workout completion,
 elapsed duration, routine metadata, step order, or arbitrary substitutions.
 
 Manual selection and recommendation both consume canonical limitation
@@ -28,8 +33,9 @@ resolution. Unknown active text blocks recommendation and requires explicit
 acknowledgment before manual selection; known routine conflicts require the same
 acknowledgment.
 
-`POST /api/workouts/delete` rejects a workout with any attached Finisher
-execution with HTTP `409` and code `WORKOUT_FINISHER_HISTORY_CONFLICT`. The
+`POST /api/workouts/delete` rejects a workout with any attached Finisher offer
+or lifecycle history with HTTP `409` and code
+`WORKOUT_FINISHER_HISTORY_CONFLICT`. The
 transaction rolls back its workout revision claim, leaves both records
 unchanged, and does not expose Prisma or foreign-key details.
 

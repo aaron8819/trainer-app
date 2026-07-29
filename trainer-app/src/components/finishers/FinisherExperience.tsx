@@ -8,13 +8,21 @@ import type {
 
 type FinisherOffer = {
   serverTime: string;
+  offer: {
+    id: string;
+    revision: number;
+    offeredAt: string;
+    declinedAt: string | null;
+  } | null;
   routines: FinisherRoutineDto[];
   recommendation: {
     routineVersionId: string;
     reason: string;
   } | null;
   recommendationUnavailableReason: string | null;
+  declined: boolean;
   execution: FinisherExecutionDto | null;
+  history: FinisherExecutionDto[];
 };
 
 type WakeLockSentinel = {
@@ -75,7 +83,6 @@ export function FinisherExperience({
   const [category, setCategory] = useState<"ALL" | "CORE" | "CONDITIONING">("ALL");
   const [preview, setPreview] = useState<FinisherRoutineDto | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
-  const [declined, setDeclined] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [showSubstitutions, setShowSubstitutions] = useState(false);
   const [monotonicNow, setMonotonicNow] = useState(() =>
@@ -84,6 +91,7 @@ export function FinisherExperience({
   const [serverEpochAtMonotonicOrigin, setServerEpochAtMonotonicOrigin] =
     useState<number | null>(null);
   const [announcement, setAnnouncement] = useState("");
+  const [syncRetryVersion, setSyncRetryVersion] = useState(0);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [vibrationEnabled, setVibrationEnabled] = useState(false);
   const priorSegment = useRef<string | null>(null);
@@ -107,12 +115,22 @@ export function FinisherExperience({
     const sequence = ++requestSequence.current;
     const requestStartedAt = performance.now();
     try {
-      const response = await fetch(`/api/workouts/${workoutId}/finisher`, {
+      let response = await fetch(`/api/workouts/${workoutId}/finisher`, {
         cache: "no-store",
       });
-      const body = (await response.json()) as FinisherOffer & {
+      let body = (await response.json()) as FinisherOffer & {
         error?: string;
       };
+      if (response.ok && !body.offer && !historyOnly) {
+        response = await fetch(`/api/workouts/${workoutId}/finisher`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "offer" }),
+        });
+        body = (await response.json()) as FinisherOffer & {
+          error?: string;
+        };
+      }
       const responseReceivedAt = performance.now();
       if (!response.ok) {
         throw new Error(body.error ?? "Unable to load finishers");
@@ -136,7 +154,7 @@ export function FinisherExperience({
     } finally {
       setLoading(false);
     }
-  }, [workoutId]);
+  }, [historyOnly, workoutId]);
 
   useEffect(() => {
     void load();
@@ -334,21 +352,34 @@ export function FinisherExperience({
       if (syncAttempts.current.has(token)) return;
       syncAttempts.current.add(token);
       const id = window.setTimeout(
-        () =>
+        () => {
           void mutate({
             action: "sync",
+            executionId: execution.id,
             expectedRevision: execution.timer.revision,
-          }),
+          }).then((succeeded) => {
+            if (succeeded) return;
+            window.setTimeout(() => {
+              syncAttempts.current.delete(token);
+              if (!mounted.current) return;
+              setSyncRetryVersion((value) => value + 1);
+              void load();
+            }, 1_000);
+          });
+        },
         50,
       );
       return () => window.clearTimeout(id);
     }
-  }, [execution, mutate, remainingMs]);
+  }, [execution, load, mutate, remainingMs, syncRetryVersion]);
 
   useEffect(() => {
     if (
       focusSummaryAfterMutation.current &&
-      (execution?.state === "PARTIAL" || execution?.state === "COMPLETED")
+      (execution?.state === "PARTIAL" ||
+        execution?.state === "COMPLETED" ||
+        execution?.state === "SKIPPED" ||
+        execution?.state === "DISMISSED")
     ) {
       focusSummaryAfterMutation.current = false;
       summaryRef.current?.focus();
@@ -367,6 +398,7 @@ export function FinisherExperience({
         (routine) => routine.id === offer.recommendation?.routineVersionId
       ) ?? null
     : null;
+  const durableOffer = offer?.offer ?? null;
   const currentStep = execution
     ? execution.routine.steps[execution.timer.currentStepIndex] ?? null
     : null;
@@ -402,7 +434,10 @@ export function FinisherExperience({
 
   if (
     execution &&
-    (execution.state === "COMPLETED" || execution.state === "PARTIAL")
+    (execution.state === "COMPLETED" ||
+      execution.state === "PARTIAL" ||
+      execution.state === "SKIPPED" ||
+      execution.state === "DISMISSED")
   ) {
     return (
       <section
@@ -449,7 +484,9 @@ export function FinisherExperience({
               </p>
             ))}
         </div>
-        {!historyOnly ? (
+        {!historyOnly &&
+        (execution.state === "COMPLETED" ||
+          execution.state === "PARTIAL") ? (
           <label className="mt-4 block text-sm font-medium text-slate-700">
             Session difficulty (optional)
             <select
@@ -460,8 +497,9 @@ export function FinisherExperience({
               onChange={(event) => {
                 if (!event.target.value) return;
                 void mutate({
-                  action: "feedback",
-                  expectedRevision: execution.timer.revision,
+                      action: "feedback",
+                      executionId: execution.id,
+                      expectedRevision: execution.timer.revision,
                   difficultyFeedback: Number(event.target.value),
                 });
               }}
@@ -548,6 +586,7 @@ export function FinisherExperience({
                   onClick={() =>
                     void mutate({
                       action: "substitute",
+                      executionId: execution.id,
                       expectedRevision: execution.timer.revision,
                       alternativeId: alternative.id,
                     })
@@ -577,6 +616,7 @@ export function FinisherExperience({
             onClick={() =>
               void mutate({
                 action: paused ? "resume" : "pause",
+                executionId: execution.id,
                 expectedRevision: execution.timer.revision,
               })
             }
@@ -594,6 +634,7 @@ export function FinisherExperience({
             onClick={() =>
               void mutate({
                 action: "skip",
+                executionId: execution.id,
                 expectedRevision: execution.timer.revision,
               })
             }
@@ -631,6 +672,7 @@ export function FinisherExperience({
               focusSummaryAfterMutation.current = true;
               void mutate({
                 action: "end",
+                executionId: execution.id,
                 expectedRevision: execution.timer.revision,
               }).then((succeeded) => {
                 if (!succeeded) focusSummaryAfterMutation.current = false;
@@ -682,13 +724,14 @@ export function FinisherExperience({
         onPrimary={() =>
           void mutate({
             action: "start",
-            routineVersionId: execution.routine.id,
-            acknowledgeContraindication: acknowledged,
+            executionId: execution.id,
+            expectedRevision: execution.timer.revision,
           })
         }
         onBack={() =>
           void mutate({
             action: "dismiss",
+            executionId: execution.id,
             expectedRevision: execution.timer.revision,
           })
         }
@@ -707,6 +750,9 @@ export function FinisherExperience({
         onPrimary={() =>
           void mutate({
             action: "select",
+            offerId: durableOffer!.id,
+            expectedOfferRevision: durableOffer!.revision,
+            executionId: crypto.randomUUID(),
             routineVersionId: preview.id,
             acknowledgeContraindication: acknowledged,
           })
@@ -719,7 +765,7 @@ export function FinisherExperience({
     );
   }
 
-  if (declined) {
+  if (offer?.declined) {
     return (
       <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
         Workout complete. No finisher was started.
@@ -784,7 +830,16 @@ export function FinisherExperience({
         </button>
         <button
           className="min-h-11 rounded-full px-5 text-sm font-semibold text-slate-600"
-          onClick={() => setDeclined(true)}
+          disabled={submitting || !durableOffer}
+          onClick={() => {
+            if (!durableOffer) return;
+            void mutate({
+              action: "decline",
+              offerId: durableOffer.id,
+              expectedOfferRevision: durableOffer.revision,
+              decisionId: crypto.randomUUID(),
+            });
+          }}
           type="button"
         >
           Finish without a finisher

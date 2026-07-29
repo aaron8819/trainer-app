@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { findOwnerReadOnly, resolveOwner } from "@/lib/api/workout-context";
 import {
+  createFinisherOffer,
+  declineFinisherOffer,
   dismissSelectedFinisher,
   endFinisher,
   FinisherServiceError,
@@ -81,8 +83,13 @@ export async function POST(
     const context = await resolveContext(params, "write");
     const action = parsed.data;
     switch (action.action) {
+      case "offer":
+        return NextResponse.json(await createFinisherOffer(context));
       case "select":
         await selectFinisher({ ...context, ...action });
+        break;
+      case "decline":
+        await declineFinisherOffer({ ...context, ...action });
         break;
       case "start":
         await startFinisher({ ...context, ...action });

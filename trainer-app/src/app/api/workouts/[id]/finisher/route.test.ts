@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => {
     resolveOwner: vi.fn(),
     findOwnerReadOnly: vi.fn(),
     productionWritePauseResponse: vi.fn(),
+    createFinisherOffer: vi.fn(),
+    declineFinisherOffer: vi.fn(),
     getFinisherOffer: vi.fn(),
     pauseFinisher: vi.fn(),
     selectFinisher: vi.fn(),
@@ -41,6 +43,8 @@ vi.mock("@/lib/operations/production-write-gate-http", () => ({
 vi.mock("@/lib/api/finisher-service", () => {
   return {
     FinisherServiceError: mocks.FinisherServiceError,
+    createFinisherOffer: mocks.createFinisherOffer,
+    declineFinisherOffer: mocks.declineFinisherOffer,
     getFinisherOffer: mocks.getFinisherOffer,
     pauseFinisher: mocks.pauseFinisher,
     selectFinisher: mocks.selectFinisher,
@@ -75,6 +79,7 @@ beforeEach(() => {
   mocks.findOwnerReadOnly.mockResolvedValue({ id: "owner-1" });
   mocks.productionWritePauseResponse.mockReturnValue(null);
   mocks.getFinisherOffer.mockResolvedValue(offer);
+  mocks.createFinisherOffer.mockResolvedValue(offer);
 });
 
 describe("/api/workouts/[id]/finisher", () => {
@@ -104,12 +109,33 @@ describe("/api/workouts/[id]/finisher", () => {
     expect(mocks.substituteFinisherStep).not.toHaveBeenCalled();
   });
 
+  it("creates the durable offer through the write-gated POST action", async () => {
+    const response = await POST(
+      new Request("http://local.test", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "offer" }),
+      }),
+      context
+    );
+    expect(response.status).toBe(200);
+    expect(mocks.createFinisherOffer).toHaveBeenCalledWith({
+      userId: "owner-1",
+      workoutId: "workout-1",
+    });
+    expect(mocks.getFinisherOffer).not.toHaveBeenCalled();
+  });
+
   it("requires and forwards the optimistic execution revision", async () => {
     const response = await POST(
       new Request("http://local.test", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "pause", expectedRevision: 7 }),
+        body: JSON.stringify({
+          action: "pause",
+          executionId: "44444444-4444-4444-8444-444444444444",
+          expectedRevision: 7,
+        }),
       }),
       context
     );
@@ -118,6 +144,7 @@ describe("/api/workouts/[id]/finisher", () => {
       userId: "owner-1",
       workoutId: "workout-1",
       action: "pause",
+      executionId: "44444444-4444-4444-8444-444444444444",
       expectedRevision: 7,
     });
   });
@@ -158,7 +185,11 @@ describe("/api/workouts/[id]/finisher", () => {
       new Request("http://local.test", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "pause", expectedRevision: 7 }),
+        body: JSON.stringify({
+          action: "pause",
+          executionId: "44444444-4444-4444-8444-444444444444",
+          expectedRevision: 7,
+        }),
       }),
       context
     );

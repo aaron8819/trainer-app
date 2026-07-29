@@ -46,13 +46,21 @@ const routine: FinisherRoutineDto = {
 function offer(execution: FinisherExecutionDto | null = null) {
   return {
     serverTime: "2026-07-28T12:00:25.000Z",
+    offer: {
+      id: "55555555-5555-4555-8555-555555555555",
+      revision: 1,
+      offeredAt: "2026-07-28T12:00:00.000Z",
+      declinedAt: null,
+    },
     routines: [routine],
     recommendation: {
       routineVersionId: routine.id,
       reason: "Low-fatigue option that has not been performed recently.",
     },
     recommendationUnavailableReason: null,
+    declined: false,
     execution,
+    history: execution ? [execution] : [],
   };
 }
 
@@ -62,12 +70,15 @@ function execution(
   return {
     id: "44444444-4444-4444-8444-444444444444",
     workoutId: "workout-1",
+    routineVersionId: routine.id,
+    revision: 3,
     routine,
     state: "PARTIAL",
     selectedAt: "2026-07-28T12:00:00.000Z",
     startedAt: "2026-07-28T12:00:10.000Z",
     completedAt: null,
     endedAt: "2026-07-28T12:00:35.000Z",
+    dismissedAt: null,
     timer: {
       segment: "FINISHED",
       currentStepIndex: 0,
@@ -118,12 +129,27 @@ afterEach(() => {
 
 describe("FinisherExperience", () => {
   it("offers a recommendation, browse, preview, and decline after completion", async () => {
+    const declinedOffer = {
+      ...offer(),
+      declined: true,
+      offer: {
+        ...offer().offer!,
+        revision: 2,
+        declinedAt: "2026-07-28T12:00:30.000Z",
+      },
+    };
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => offer(),
-      })
+      vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => offer(),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => declinedOffer,
+        })
     );
     render(<FinisherExperience workoutId="workout-1" />);
 
@@ -141,7 +167,9 @@ describe("FinisherExperience", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Finish without a finisher" })
     );
-    expect(screen.getByText(/No finisher was started/i)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByText(/No finisher was started/i)).toBeInTheDocument()
+    );
   });
 
   it("shows partial performance as a separate Finisher summary", async () => {
@@ -398,6 +426,7 @@ describe("FinisherExperience", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(JSON.parse(fetchMock.mock.calls[1]![1]!.body as string)).toEqual({
       action: "sync",
+      executionId: "44444444-4444-4444-8444-444444444444",
       expectedRevision: 7,
     });
 
@@ -464,9 +493,131 @@ describe("FinisherExperience", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(JSON.parse(fetchMock.mock.calls[1]![1]!.body as string)).toEqual({
       action: "sync",
+      executionId: "44444444-4444-4444-8444-444444444444",
       expectedRevision: 7,
     });
     await new Promise((resolve) => window.setTimeout(resolve, 150));
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ["a rejected mutation", { ok: false, json: async () => ({ error: "rejected" }) }],
+    ["a thrown network failure", new Error("network unavailable")],
+  ])("releases the boundary token after %s and retries successfully", async (_name, failure) => {
+    const projected = execution({
+      state: "IN_PROGRESS",
+      timer: {
+        segment: "WORK",
+        currentStepIndex: 0,
+        segmentStartedAt: "2026-07-28T12:00:10.000Z",
+        segmentEndsAt: "2026-07-28T12:00:20.000Z",
+        pausedAt: null,
+        pausedRemainingMs: null,
+        revision: 7,
+        syncRequired: true,
+        syncToken: "execution:7:WORK:retry-boundary",
+      },
+    });
+    const persisted = execution({
+      state: "COMPLETED",
+      completedAt: "2026-07-28T12:00:20.000Z",
+      timer: {
+        ...projected.timer,
+        segment: "FINISHED",
+        revision: 8,
+        syncRequired: false,
+        syncToken: null,
+      },
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => offer(projected),
+      });
+    if (failure instanceof Error) {
+      fetchMock.mockRejectedValueOnce(failure);
+    } else {
+      fetchMock.mockResolvedValueOnce(failure);
+    }
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => offer(projected),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => offer(persisted),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<FinisherExperience workoutId="workout-1" />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4), {
+      timeout: 4_000,
+    });
+    expect(
+      JSON.parse(fetchMock.mock.calls[3]![1]!.body as string)
+    ).toMatchObject({
+      action: "sync",
+      executionId: projected.id,
+      expectedRevision: 7,
+    });
+    expect(
+      await screen.findByRole("region", { name: "Finisher summary" })
+    ).toBeInTheDocument();
+  });
+
+  it("refreshes after a stale sync conflict without replaying the old boundary", async () => {
+    const projected = execution({
+      state: "IN_PROGRESS",
+      timer: {
+        segment: "WORK",
+        currentStepIndex: 0,
+        segmentStartedAt: "2026-07-28T12:00:10.000Z",
+        segmentEndsAt: "2026-07-28T12:00:20.000Z",
+        pausedAt: null,
+        pausedRemainingMs: null,
+        revision: 7,
+        syncRequired: true,
+        syncToken: "execution:7:WORK:stale-boundary",
+      },
+    });
+    const persisted = execution({
+      state: "PARTIAL",
+      timer: {
+        ...projected.timer,
+        segment: "FINISHED",
+        revision: 8,
+        syncRequired: false,
+        syncToken: null,
+      },
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => offer(projected),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: "FINISHER_STALE_TRANSITION" }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => offer(persisted),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<FinisherExperience workoutId="workout-1" />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3), {
+      timeout: 4_000,
+    });
+    await new Promise((resolve) => window.setTimeout(resolve, 200));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(
+      await screen.findByRole("region", { name: "Finisher summary" })
+    ).toBeInTheDocument();
   });
 });

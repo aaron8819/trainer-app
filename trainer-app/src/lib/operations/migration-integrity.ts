@@ -381,6 +381,8 @@ export const PENDING_ARCHITECTURE_MANIFEST: readonly PendingMigrationExpectation
       { kind: "table", name: "FinisherRoutineVersion" },
       { kind: "table", name: "FinisherRoutineStep" },
       { kind: "table", name: "FinisherRoutineStepAlternative" },
+      { kind: "table", name: "FinisherOffer" },
+      { kind: "table", name: "FinisherOfferItem" },
       { kind: "table", name: "FinisherExecution" },
       { kind: "table", name: "FinisherExecutionStep" },
       ...[
@@ -401,8 +403,8 @@ export const PENDING_ARCHITECTURE_MANIFEST: readonly PendingMigrationExpectation
       })),
       {
         kind: "index",
-        table: "FinisherExecution",
-        name: "FinisherExecution_workoutId_key",
+        table: "FinisherOffer",
+        name: "FinisherOffer_workoutId_key",
         index: {
           unique: true,
           columns: ["workoutId"],
@@ -416,6 +418,18 @@ export const PENDING_ARCHITECTURE_MANIFEST: readonly PendingMigrationExpectation
         definitionIncludes: ["workoutId", "Workout", "ON DELETE RESTRICT"],
       },
       {
+        kind: "constraint",
+        table: "FinisherOffer",
+        name: "FinisherOffer_workoutId_fkey",
+        definitionIncludes: ["workoutId", "Workout", "ON DELETE RESTRICT"],
+      },
+      {
+        kind: "constraint",
+        table: "FinisherExecution",
+        name: "FinisherExecution_offerId_fkey",
+        definitionIncludes: ["offerId", "FinisherOffer", "ON DELETE RESTRICT"],
+      },
+      {
         kind: "function",
         name: "reject_finisher_definition_mutation",
         definitionIncludes: ["finisher routine versions are immutable"],
@@ -426,6 +440,22 @@ export const PENDING_ARCHITECTURE_MANIFEST: readonly PendingMigrationExpectation
         name: "FinisherRoutineVersion_immutable",
         definitionIncludes: ["reject_finisher_definition_mutation"],
       },
+      {
+        kind: "function",
+        name: "reject_finisher_history_deletion",
+        definitionIncludes: ["finisher lifecycle history cannot be deleted"],
+      },
+      ...[
+        ["FinisherOffer", "FinisherOffer_no_delete"],
+        ["FinisherOfferItem", "FinisherOfferItem_no_delete"],
+        ["FinisherExecution", "FinisherExecution_no_delete"],
+        ["FinisherExecutionStep", "FinisherExecutionStep_no_delete"],
+      ].map(([table, name]) => ({
+        kind: "trigger" as const,
+        table,
+        name,
+        definitionIncludes: ["reject_finisher_history_deletion"],
+      })),
       {
         kind: "trigger",
         table: "FinisherRoutineStep",

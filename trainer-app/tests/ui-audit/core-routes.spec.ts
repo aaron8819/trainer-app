@@ -613,6 +613,28 @@ test.describe("lightweight fixture interaction checks", () => {
         await route.fulfill({ json: { postSessionReview: null } });
       },
     );
+    await page.route(
+      "**/api/workouts/ui-audit-strength-lower-b/finisher",
+      async (route) => {
+        await route.fulfill({
+          json: {
+            serverTime: "2026-07-28T12:45:00.000Z",
+            offer: {
+              id: "ui-audit-finisher-offer",
+              revision: 1,
+              offeredAt: "2026-07-28T12:45:00.000Z",
+              declinedAt: "2026-07-28T12:45:00.000Z",
+            },
+            routines: [],
+            recommendation: null,
+            recommendationUnavailableReason: null,
+            declined: true,
+            execution: null,
+            history: [],
+          },
+        });
+      },
+    );
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await waitForStableRoute(page);

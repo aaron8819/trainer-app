@@ -3,17 +3,23 @@
 ## Optional post-workout Finisher boundary
 
 `src/lib/api/finisher-service.ts` is the sole DB-backed orchestration owner for
-Phase 1 Finishers. A `FinisherExecution` references one completed, owner-scoped
-`Workout`, but no Finisher path calls workout save, progression, volume,
+Phase 1 Finishers. A durable `FinisherOffer` freezes the immutable routine
+versions and recommendation context actually shown for one completed,
+owner-scoped `Workout`. Multiple `FinisherExecution` rows may record selected
+and dismissed choices, while partial unique indexes permit only one active and
+one started execution for the workout. No Finisher path calls workout save, progression, volume,
 effective-set, exercise-exposure, PR, or load-recommendation code. The completed
 workout is therefore terminal before a Finisher is offered and remains
-independent if the Finisher is dismissed, partial, corrected, or deleted.
+independent through decline, replacement, dismissal, performance, and outcome.
 
 Pure interval recovery and deterministic recommendation policy live in
 `src/lib/engine/finisher-domain.ts`; shared injury-text interpretation lives in
 `src/lib/engine/limitation-policy.ts` and is used for both recommendation and
-manual selection. GET uses `findOwnerReadOnly()` plus pure timestamp projection
-and never persists a transition. Only the explicit revision-guarded `sync`
+manual selection. GET uses `findOwnerReadOnly()` plus the persisted offer and
+pure timestamp projection; it never derives historical offer truth from the
+current catalog and never persists a transition. The write-gated `offer`
+mutation creates the durable offer before it is displayed. Only the explicit,
+execution-identity- and revision-guarded `sync`
 mutation promotes elapsed boundaries, and that mutation shares the production
 write gate with every other Finisher action. Routes and client components consume that
 owner rather than re-authoring timer or safety meaning. The generic seam is
@@ -21,6 +27,12 @@ intentionally limited to `placement=POST_WORKOUT`, `kind=FINISHER`, and
 `protocol=TIMED_INTERVALS`. Those enum dimensions permit a reviewed future
 placement or kind without claiming warm-ups, mobility blocks, or generic workout
 blocks exist today.
+
+The Finisher lifecycle is separate from
+`selectionMetadata.sessionDecisionReceipt`. The workout receipt remains original
+generated-plan evidence; `FinisherOffer`, retained executions, and execution
+steps are the sole offer/decision/performance evidence for this optional
+post-workout phase.
 
 ## Existing-workout mutation ownership
 

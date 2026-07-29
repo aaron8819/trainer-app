@@ -6,8 +6,15 @@
 history. Apply it only through the reviewed migration workflow while production
 writes are paused. Run the normal Prisma generation, contract, migration
 integrity/drift, and deployment readiness checks before release. Curated routine
-version 1 rows are created by the repository seed workflow; later definition
-changes must create a new version and must never update an existing version.
+version 1 rows are installed inside the same atomic migration with deterministic
+routine/version/step identities. Production must not run the broad general
+seed. Re-running `prisma migrate deploy` is safe because the migration ledger
+does not reapply a successful migration. Development seed uses the same
+canonical catalog and stable identities; it creates missing rows, verifies an
+existing immutable version exactly, and fails on drift instead of rewriting it.
+`npm run generate:finisher-catalog` verifies that the migration's generated SQL
+matches the canonical catalog. Later definition changes must create a new
+version and must never update an existing version.
 Because this migration exists only on the unmerged feature branch and has never
 been applied to a shared or production database, review corrections update this
 single migration in place. An additive follow-up migration would falsely imply
@@ -37,7 +44,7 @@ This is public endpoint evidence. It does not authenticate to Vercel, prove prov
 
 ## Disposable workout-mutation database tests
 
-`npm run test:db:workout-mutations` starts an isolated PostgreSQL 16 container, applies checked-in migrations, synchronizes that fresh database to the current Prisma schema, regenerates the matching client, runs CAS/race/rollback tests, and always removes the container. It sets its own `DATABASE_URL`/`TEST_DATABASE_URL` and does not read `.env.local` or mutate a configured database.
+`npm run test:db:workout-mutations -- --confirm-disposable` starts an isolated PostgreSQL 16 container, injects a failure after partial Finisher migration work and proves the explicit transaction leaves no target objects, applies checked-in migrations to a fresh empty database without the general seed, reruns `migrate deploy` to prove the permitted provisioning path is safe, verifies the exact curated catalog and immutable definitions, regenerates the matching client, runs lifecycle/ABA/CAS/race/rollback tests, and always removes the container. It sets its own `DATABASE_URL`/`TEST_DATABASE_URL` and does not read `.env.local` or mutate a configured database.
 
 Owner: Aaron
 Last reviewed: 2026-03-16
@@ -294,7 +301,7 @@ The evidence file is operator-controlled, uncommitted JSON. It must contain sani
 
 ```json
 {
-  "productionDeploymentCommit": "14f7bb3a0106780fc70263d7282b2547bae5bbba",
+  "productionDeploymentCommit": "24e9e62f70a5cf66cef21997157f7b79a411a00f",
   "requiredApplicationCommit": "<exact-reviewed-post-migration-application-commit>",
   "expectedPendingMigrations": [
     "20260728120000_add_finishers_phase_1"
@@ -335,17 +342,17 @@ The repository-authoritative write boundary is `TRAINER_WRITE_PAUSE=enabled`. It
 
 ### Finisher application sequencing verdict
 
-`14f7bb3a0106780fc70263d7282b2547bae5bbba → 20260728120000_add_finishers_phase_1 → requiredApplicationCommit` is the reviewed migration-first sequence and is safe only while the full write boundary is verified. The migration adds isolated Finisher definition and execution tables, enums, constraints, indexes, and immutable-definition triggers. The deployed base application does not reference those objects, so it remains compatible while writes are paused.
+`24e9e62f70a5cf66cef21997157f7b79a411a00f → 20260728120000_add_finishers_phase_1 → requiredApplicationCommit` is the reviewed migration-first sequence and is safe only while the full write boundary is verified. The migration atomically adds isolated Finisher definition, offer, and execution tables; constraints and triggers; and the exact curated catalog. The deployed base application does not reference those objects, so it remains compatible while writes are paused.
 
-Keep commit `14f7bb3a0106780fc70263d7282b2547bae5bbba` deployed and writes paused through migration; promote the exact reviewed `requiredApplicationCommit` before resuming writes. The evidence file must name that post-migration application commit explicitly because it is not known until integration; Gate A must not inherit a prior rollout's application target.
+Keep commit `24e9e62f70a5cf66cef21997157f7b79a411a00f` deployed and writes paused through migration; promote the exact reviewed `requiredApplicationCommit` before resuming writes. The evidence file must name that post-migration application commit explicitly because it is not known until integration; Gate A must not inherit a prior rollout's application target.
 
 ### Bounded Finisher production migration runbook
 
 This runbook is preparation only until the operator separately authorizes the exact migration action.
 
-1. Confirm Git/release identities. Require production `/api/version` and provider-side alias evidence to show `14f7bb3a0106780fc70263d7282b2547bae5bbba`; require the evidence file to name the exact reviewed post-migration application commit. Stop on any other commit or unresolved alias.
+1. Confirm Git/release identities. Require production `/api/version` and provider-side alias evidence to show `24e9e62f70a5cf66cef21997157f7b79a411a00f`; require the evidence file to name the exact reviewed post-migration application commit. Stop on any other commit or unresolved alias.
 2. Verify recovery evidence. Inspect provider PITR metadata or run `Inspect-TrainerBackup.ps1` against an already-created archive. Record sanitized provider/project and database identity, recovery timestamp, retention/recoverability, and operator verification time. Stop if it is stale, unverifiable, or targets another database.
-3. Enable the write boundary using the activation procedure below while keeping commit `14f7bb3a…` deployed. Require `ops:write-status` to print `PAUSED`, representative mutations to return the documented 503 contract, row/revision fingerprints to remain unchanged, and read paths to remain healthy. Stop if any write succeeds or any required read fails.
+3. Enable the write boundary using the activation procedure below while keeping commit `24e9e62f…` deployed. Require `ops:write-status` to print `PAUSED`, representative mutations to return the documented 503 contract, row/revision fingerprints to remain unchanged, and read paths to remain healthy. Stop if any write succeeds or any required read fails.
 4. Repeat immediate read-only checks against the reviewed environment:
 
    ```powershell
@@ -361,13 +368,13 @@ This runbook is preparation only until the operator separately authorizes the ex
    node --env-file=$rolloutEnv .\node_modules\prisma\build\index.js migrate deploy
    ```
 
-   Require Prisma to apply exactly `20260728120000_add_finishers_phase_1` once and exit zero. Stop on any other migration, error, connection ambiguity, or retry condition; do not edit `_prisma_migrations` or repeat blindly.
-7. While writes remain paused, verify the ledger shows 18 successful applied and zero pending, then verify all six Finisher tables, their foreign keys and indexes, explicit timing columns, and the immutable-definition function/triggers. Require no unexpected workout or descendant-data drift.
+   Require Prisma to apply exactly `20260728120000_add_finishers_phase_1` once and exit zero. That transaction also installs the exact four active curated version-1 definitions; do not run `npm run db:seed` in production. Stop on any other migration, error, connection ambiguity, or retry condition; do not edit `_prisma_migrations` or repeat blindly.
+7. While writes remain paused, verify the ledger shows 18 successful applied and zero pending, then verify all eight Finisher tables, their restrictive foreign keys, partial uniqueness, deletion/definition triggers, and exact deterministic active catalog. Run `npm run generate:finisher-catalog` from the reviewed source and require success. Require no unexpected workout or descendant-data drift.
 8. Run targeted read-only integrity checks, including the multi-plan inventory and relevant readiness/seed/snapshot audits for the now-migrated chain. Stop for any ownership mismatch, ambiguous plan, contradictory active state, invalid constraint, checksum drift, or unexplained count change.
 9. Promote or redeploy the exact `requiredApplicationCommit` recorded in the reviewed evidence file. Do not resume writes if the provider cannot prove that exact production alias assignment.
 10. Verify `/api/version` returns the exact new commit twice and the public origin remains HTTP 200. Verify selected read-only flows. Run dynamic smoke flows only under their separate explicit authorization and keep the boundary in place.
 11. Remove `TRAINER_WRITE_PAUSE` only through the resume procedure below after schema, deployment, and compatibility verification all pass. Require status `ENABLED`, one controlled authorized mutation with exactly one expected effect, and no remaining maintenance responses.
-12. If migration fails before commit, keep writes paused and confirm the transaction left no target objects; inspect ledger/catalog and escalate. If migration succeeds but verification or deployment fails, keep writes paused and prefer fix-forward. Restore only through the separately approved recovery plan. Never route the old app to a write-enabled migrated database because its handoff ordering is incompatible.
+12. If migration fails, PostgreSQL rolls back the explicit transaction, including all target objects and curated rows. Keep writes paused, confirm the ledger has no successful target row and the catalog has no target objects, then correct the cause and use the reviewed roll-forward path; do not perform object-by-object rollback. If migration committed but verification or deployment fails, keep writes paused and prefer fix-forward. Restore only through the separately approved recovery plan. Never route the old app to a write-enabled migrated database because its handoff ordering is incompatible.
 
 ### Disposable rollout-tooling gate
 
@@ -652,7 +659,7 @@ Do not begin migrations unless all eight steps pass.
 ## Resume procedure
 
 Do not resume until all migrations are applied, the new application deployment is verified,
-required active seed provenance is valid, and post-deployment smoke tests pass.
+the migration-provisioned Finisher catalog is exact, and post-deployment smoke tests pass.
 
 1. Remove `TRAINER_WRITE_PAUSE` or set it to a value other than exact `enabled` in Vercel
    Production.
@@ -670,7 +677,11 @@ If migration fails while paused:
 
 - keep writes paused;
 - do not automatically redeploy old code;
-- inspect the Prisma migration ledger and partial schema state;
+- for `20260728120000_add_finishers_phase_1`, confirm the failed explicit
+  transaction left no Finisher objects or curated rows and no successful ledger
+  row; do not claim or attempt an object-by-object rollback;
+- for another migration, inspect its reviewed atomicity contract before
+  classifying schema state;
 - follow the reviewed roll-forward or backup-restore plan;
 - leave read-only access available only if it is verified safe.
 

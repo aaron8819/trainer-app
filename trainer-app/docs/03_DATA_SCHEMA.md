@@ -9,7 +9,12 @@ Migration `20260728120000_add_finishers_phase_1` adds:
   `FinisherRoutineStepAlternative`: immutable versioned definition truth.
   Database triggers reject definition updates/deletes; executions use restrictive
   foreign keys so later catalog versions cannot rewrite history.
-- `FinisherExecution`: one database-unique row per `Workout`, explicit lifecycle,
+- `FinisherOffer` and `FinisherOfferItem`: one durable offer per workout,
+  including the exact immutable versions shown, recommendation identity/reason,
+  unavailable reason, and the limitation/workout/recent-performance context
+  used to explain it. Decline identity and time are persisted on the offer.
+- `FinisherExecution`: one retained selection decision with a stable UUID,
+  offer revision binding, explicit lifecycle,
   interval timestamps, exact pause remainder, separate active preparation and
   recovery totals, per-segment paused totals, transition revision, and optional
   difficulty feedback. Performed duration is active work plus active recovery;
@@ -19,15 +24,21 @@ Migration `20260728120000_add_finishers_phase_1` adds:
   work duration. `PARTIAL` distinguishes current work preserved by an early end
   from `COMPLETED`, `SKIPPED`, and untouched `PENDING` work.
 
-The lifecycle is `SELECTED -> IN_PROGRESS -> COMPLETED|PARTIAL`; selection may be
-deleted when dismissed before work starts. `SELECTED` has no `startedAt` and is
-excluded from performed history. The workout foreign key is restrictive and
+The lifecycle is `SELECTED -> IN_PROGRESS ->
+COMPLETED|PARTIAL|SKIPPED|DISMISSED`. Dismissal updates the selected execution;
+it never deletes or replaces it. Multiple retained executions preserve
+select-A/dismiss-A/select-B history. Partial unique indexes enforce at most one
+`SELECTED|IN_PROGRESS` execution and at most one execution with `startedAt` per
+workout. Stable execution identity plus a monotonic per-execution revision
+prevents replacement ABA; offer revision protects selection and decline.
+`SELECTED` has no `startedAt` and is excluded from performed history. The workout foreign key is restrictive and
 contains no cascade or reverse lifecycle field, so Finisher mutations cannot
 change workout completion. All schema changes are additive and existing workout
 history is untouched.
 
-The restrictive workout foreign key is also the history contract: workout
-deletion checks for any attached Finisher execution before child deletion and
+History tables reject deletion by trigger. The restrictive workout foreign key
+is also the history contract: workout deletion checks for an attached Finisher
+offer before child deletion and
 returns a deterministic conflict rather than cascading or leaking a database
 foreign-key error.
 

@@ -18,6 +18,11 @@
   plus active recovery. Pausing never adds active time, resuming preserves the
   exact remaining active interval, and ending partial finalizes the current
   active work slice once.
+- Terminal outcome is derived from performed evidence. Natural completion of
+  every step is `COMPLETED`; mixed completed/skipped or retained work is
+  `PARTIAL`; every step skipped with zero active work is `SKIPPED`; and ending
+  before any work is `DISMISSED`. Preparation and paused time never manufacture
+  performed work.
 
 Recommendation is deterministic. Active `Injury.bodyPart` values are normalized
 through the canonical injury seam; an unrecognized active limitation suppresses

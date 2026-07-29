@@ -14,7 +14,7 @@
   "finisherCategory": ["CORE", "CONDITIONING"],
   "finisherDifficulty": ["EASY", "MODERATE", "CHALLENGING"],
   "finisherDemand": ["LOW", "MODERATE", "HIGH"],
-  "finisherExecutionState": ["SELECTED", "IN_PROGRESS", "COMPLETED", "PARTIAL", "DISMISSED"],
+  "finisherExecutionState": ["SELECTED", "IN_PROGRESS", "COMPLETED", "PARTIAL", "SKIPPED", "DISMISSED"],
   "finisherTimerSegment": ["PREPARATION", "WORK", "RECOVERY", "FINISHED"],
   "finisherStepStatus": ["PENDING", "PARTIAL", "COMPLETED", "SKIPPED"]
 }

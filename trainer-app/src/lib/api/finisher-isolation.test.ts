@@ -58,7 +58,7 @@ describe("Phase 1 Finisher isolation", () => {
     );
     const getOfferBody = service.slice(
       service.indexOf("export async function getFinisherOffer"),
-      service.indexOf("async function createSelectedExecution"),
+      service.indexOf("export async function createFinisherOffer"),
     );
 
     expect(getOfferBody).not.toMatch(
@@ -74,18 +74,26 @@ describe("Phase 1 Finisher isolation", () => {
     );
   });
 
-  it("protects one execution and immutable version truth in the database", () => {
+  it("protects one active/started execution and immutable lifecycle truth in the database", () => {
     const schema = readFileSync("prisma/schema.prisma", "utf8");
     const migration = readFileSync(
       "prisma/migrations/20260728120000_add_finishers_phase_1/migration.sql",
       "utf8"
     );
-    expect(schema).toMatch(/workoutId\s+String\s+@unique/);
+    expect(schema).toContain("model FinisherOffer");
+    expect(schema).toContain("finisherExecutions");
     expect(schema).toContain("performedAlternativeId String?");
     expect(migration).toContain(
-      'CREATE UNIQUE INDEX "FinisherExecution_workoutId_key"'
+      'CREATE UNIQUE INDEX "FinisherExecution_one_active_per_workout"'
     );
+    expect(migration).toContain(
+      'CREATE UNIQUE INDEX "FinisherExecution_one_started_per_workout"'
+    );
+    expect(migration).toContain('CREATE UNIQUE INDEX "FinisherOffer_workoutId_key"');
     expect(migration).toContain('"FinisherRoutineVersion_immutable"');
+    expect(migration).toContain('"FinisherExecution_no_delete"');
+    expect(migration).toMatch(/^-- Phase 1[\s\S]*\nBEGIN;/);
+    expect(migration.trimEnd()).toMatch(/COMMIT;$/);
     expect(migration).toContain("ON DELETE RESTRICT");
   });
 

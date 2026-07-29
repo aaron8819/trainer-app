@@ -21,6 +21,19 @@ export type FinisherRoutineSeed = {
   }>;
 };
 
+export function stableFinisherCatalogId(key: string): string {
+  const hex = createHash("md5")
+    .update(`trainer:finisher:v1:${key}`)
+    .digest("hex");
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    `5${hex.slice(13, 16)}`,
+    `8${hex.slice(17, 20)}`,
+    hex.slice(20, 32),
+  ].join("-");
+}
+
 const timedSteps = (
   movements: Array<{
     movementName: string;
@@ -209,3 +222,4 @@ export function deriveFinisherDurationSeconds(
     return total + step.workSeconds + (includeRecovery ? step.recoverySeconds : 0);
   }, 0);
 }
+import { createHash } from "node:crypto";

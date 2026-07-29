@@ -4,9 +4,12 @@
 
 After the existing completion request returns canonical `COMPLETED`,
 `FinisherExperience` appears without delaying or reopening workout completion.
-It offers one explained recommendation, category-filtered browsing with preview,
-or finishing without an add-on. A selected definition is not performed until
-the first work interval starts.
+The component persists the offer before it displays one explained
+recommendation, category-filtered browsing with preview, or finishing without
+an add-on. Decline is a durable decision and survives refresh/remount. A
+selected definition is not performed until the first work interval starts;
+dismissed selections remain in history and a later choice uses a new execution
+identity.
 
 The mobile-first timer shows preparation, work, recovery, paused, substitution,
 partial confirmation, and completed states. Each response aligns `serverTime`
@@ -24,11 +27,16 @@ confirmation. A restrained polite live region announces segment/movement
 changes only; timer ticks are not announced. Controls remain keyboard operable
 and status does not rely only on color, sound, vibration, or motion.
 
-Completed and partial executions render in a separate Finisher section with
+Completed, partial, entirely skipped, and dismissed-before-performance attempts
+render truthfully in a separate Finisher section with
 routine/category, outcome, completed/skipped/partially-performed/substituted
 steps, exact active performed duration,
-and optional difficulty. The normal post-session review remains the main workout
-summary whether a Finisher is declined or ended partial.
+and optional difficulty only for performed outcomes. Failed automatic boundary
+sync keeps one request in flight, releases the boundary token after rejection
+or network failure, waits before retrying, and refreshes on stale conflict, so a
+zeroed terminal timer cannot remain indefinitely ahead of persisted state. The
+normal post-session review remains the main workout summary whether a Finisher
+is declined, skipped, dismissed, or ended partial.
 
 Phase 1 excludes plan-prescribed or multiple Finishers, user/AI-authored
 routines, lift-style logging, EMOM/AMRAP/rep/distance protocols, Finisher-driven

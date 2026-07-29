@@ -44,8 +44,8 @@ export async function deleteOwnedWorkout(input: {
               isActive: true,
             },
           },
-          finisherExecution: {
-            select: { id: true, state: true },
+          finisherOffer: {
+            select: { id: true },
           },
         },
       });
@@ -61,7 +61,7 @@ export async function deleteOwnedWorkout(input: {
           "Cannot delete a historical workout from a completed mesocycle after closeout finalized lifecycle history.",
         );
       }
-      if (workout.finisherExecution) {
+      if (workout.finisherOffer) {
         throw new DeleteWorkoutError(
           "Workout cannot be deleted because Finisher history is attached.",
           "WORKOUT_FINISHER_HISTORY_CONFLICT",

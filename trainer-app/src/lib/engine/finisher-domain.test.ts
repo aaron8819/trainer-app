@@ -3,6 +3,7 @@ import {
   deriveTimedFinisherDurationSeconds,
   projectFinisherTimer,
   recommendFinisher,
+  resolveFinisherOutcome,
   resolveTimerAfterSkippedStep,
   type FinisherRecommendationCandidate,
   type TimedFinisherStep,
@@ -14,6 +15,46 @@ const steps: TimedFinisherStep[] = [
   { id: "step-1", orderIndex: 0, workSeconds: 40, recoverySeconds: 20 },
   { id: "step-2", orderIndex: 1, workSeconds: 40, recoverySeconds: 20 },
 ];
+
+describe("finisher terminal outcomes", () => {
+  it("distinguishes completed, mixed, all-skipped, retained-work, and dismissed outcomes", () => {
+    expect(
+      resolveFinisherOutcome({
+        stepStatuses: ["COMPLETED", "COMPLETED"],
+        activeWorkMs: 80_000,
+        endedEarly: false,
+      })
+    ).toBe("COMPLETED");
+    expect(
+      resolveFinisherOutcome({
+        stepStatuses: ["COMPLETED", "SKIPPED"],
+        activeWorkMs: 40_000,
+        endedEarly: false,
+      })
+    ).toBe("PARTIAL");
+    expect(
+      resolveFinisherOutcome({
+        stepStatuses: ["SKIPPED", "SKIPPED"],
+        activeWorkMs: 0,
+        endedEarly: false,
+      })
+    ).toBe("SKIPPED");
+    expect(
+      resolveFinisherOutcome({
+        stepStatuses: ["PARTIAL", "SKIPPED"],
+        activeWorkMs: 1,
+        endedEarly: false,
+      })
+    ).toBe("PARTIAL");
+    expect(
+      resolveFinisherOutcome({
+        stepStatuses: ["PENDING", "PENDING"],
+        activeWorkMs: 0,
+        endedEarly: true,
+      })
+    ).toBe("DISMISSED");
+  });
+});
 
 describe("timed finisher duration", () => {
   it("derives Core Stability 10 as exactly ten minutes with final recovery", () => {

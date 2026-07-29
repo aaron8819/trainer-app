@@ -98,7 +98,7 @@ describe("CompletedWorkoutReview", () => {
     expect(screen.getByText("Preparing your post-session review...")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("Good session")).toBeInTheDocument());
 
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(3);
     expect(fetch).toHaveBeenCalledWith(
       "/api/workouts/workout-1/post-session-review",
       { cache: "no-store" }

@@ -213,14 +213,21 @@ describe("POST /api/workouts/delete", () => {
     );
   });
 
-  it.each(["SELECTED", "IN_PROGRESS", "PARTIAL", "COMPLETED"])(
+  it.each([
+    "SELECTED",
+    "IN_PROGRESS",
+    "PARTIAL",
+    "COMPLETED",
+    "SKIPPED",
+    "DISMISSED",
+  ])(
     "rejects deletion atomically when %s Finisher truth is attached",
     async (state) => {
       mocks.workoutFindFirst.mockResolvedValue({
         id: "workout-1",
         mesocycleId: null,
         mesocycle: null,
-        finisherExecution: { id: "finisher-1", state },
+        finisherOffer: { id: "finisher-offer-1", state },
       });
 
       const response = await POST(

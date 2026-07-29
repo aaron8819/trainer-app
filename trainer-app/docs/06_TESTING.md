@@ -65,7 +65,12 @@ Sources of truth:
   strips inherited DB-target variables before supplying the generated target, validates the
   canonical target inventory, applies the checked-in migration chain, and verifies main-save CAS,
   runtime mutation races, exact stimulus snapshot persistence, and immutable review-snapshot
-  storage without `db push` or `.env.local`.
+  storage without `db push` or `.env.local`. Finisher coverage first injects a
+  failure after partial target-migration work and proves full transaction
+  rollback; then it verifies fresh-database curated provisioning without the
+  broad seed, a safe second `migrate deploy`, immutable catalog definitions,
+  durable offer/decline/dismissal history, exact execution-identity ABA
+  isolation, mixed/all-skipped outcomes, and workout-deletion protection.
 - `npm run test:db:historical-snapshots -- --confirm-disposable`: explicit schema-dependent
   historical-evidence alias for the same consolidated disposable harness.
 - `npm run test:db:readiness-snapshots -- --confirm-disposable`: starts an isolated Docker PostgreSQL 16 container, applies all checked-in migrations without reading `.env.local`, verifies legacy-unknown migration behavior, partial unique enforcement, identical concurrent activation, conflicting payload rejection, forced replacement rollback, stale-evidence rejection, and owner isolation, then removes the container. Package scripts never supply disposable confirmation: the operator must type it for every mutating invocation, and aliases or wrappers must not embed it. Strict argument and inherited-target validation complete before `pg` or any other database-dependent module loads and before Docker work begins.

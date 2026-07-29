@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   parseExactDisposableConfirmationArgs,
@@ -51,6 +52,90 @@ function waitForPostgres(): void {
   throw new Error("DISPOSABLE_POSTGRES_DID_NOT_BECOME_READY");
 }
 
+function verifyAtomicFinisherMigrationFailure(): void {
+  run("docker", [
+    "exec",
+    "-i",
+    containerName,
+    "createdb",
+    "-U",
+    "trainer",
+    "finisher_failure_probe",
+  ]);
+  const migration = readFileSync(
+    join(
+      process.cwd(),
+      "prisma/migrations/20260728120000_add_finishers_phase_1/migration.sql"
+    ),
+    "utf8"
+  );
+  const injected = migration.replace(
+    /\nCOMMIT;\s*$/,
+    '\nSELECT * FROM "intentional_finisher_migration_failure";\n\nCOMMIT;\n'
+  );
+  const failed = spawnSync(
+    "docker",
+    [
+      "exec",
+      "-i",
+      containerName,
+      "psql",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-U",
+      "trainer",
+      "-d",
+      "finisher_failure_probe",
+    ],
+    { input: injected, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }
+  );
+  if (failed.status === 0) {
+    throw new Error("INJECTED_FINISHER_MIGRATION_FAILURE_DID_NOT_FAIL");
+  }
+  const relation = run(
+    "docker",
+    [
+      "exec",
+      "-i",
+      containerName,
+      "psql",
+      "-U",
+      "trainer",
+      "-d",
+      "finisher_failure_probe",
+      "-tAc",
+      `SELECT COALESCE(to_regclass('"FinisherRoutine"')::text, 'none')`,
+    ],
+    process.env,
+    true
+  );
+  const enumCount = run(
+    "docker",
+    [
+      "exec",
+      "-i",
+      containerName,
+      "psql",
+      "-U",
+      "trainer",
+      "-d",
+      "finisher_failure_probe",
+      "-tAc",
+      "SELECT count(*) FROM pg_type WHERE typname IN ('FinisherCategory', 'FinisherExecutionState')",
+    ],
+    process.env,
+    true
+  );
+  if (relation !== "none" || enumCount !== "0") {
+    throw new Error(
+      `FINISHER_MIGRATION_LEFT_PARTIAL_STATE:${relation}:${enumCount}`
+    );
+  }
+  console.log(
+    "Injected Finisher migration failure rolled back all target objects and catalog rows."
+  );
+}
+
 const invocation = parseExactDisposableConfirmationArgs(process.argv.slice(2));
 if (!invocation.valid) {
   console.error(invocation.message);
@@ -67,6 +152,7 @@ try {
     "postgres:16-alpine",
   ]);
   waitForPostgres();
+  verifyAtomicFinisherMigrationFailure();
   const port = run("docker", ["port", containerName, "5432/tcp"], process.env, true)
     .split(":")
     .at(-1);
@@ -86,6 +172,7 @@ try {
   if (!targetValidation.valid) {
     throw new Error(`DISPOSABLE_DATABASE_TARGET_INVALID:${targetValidation.reasons.join("|")}`);
   }
+  run(process.execPath, [join(process.cwd(), "node_modules/prisma/build/index.js"), "migrate", "deploy"], env);
   run(process.execPath, [join(process.cwd(), "node_modules/prisma/build/index.js"), "migrate", "deploy"], env);
   run(process.execPath, [
     join(process.cwd(), "node_modules/prisma/build/index.js"),

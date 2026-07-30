@@ -23,6 +23,8 @@ const mocks = vi.hoisted(() => ({
   preSessionReadinessSnapshotFindFirst: vi.fn(),
   loadLogWorkoutExecutionGuidance: vi.fn(),
   getUiAuditFixtureForServer: vi.fn(),
+  isFinisherRolloutEnabled: vi.fn(),
+  logWorkoutClientProps: vi.fn(),
 }));
 
 vi.mock("@/lib/api/workout-context", () => ({
@@ -55,7 +57,15 @@ vi.mock("@/lib/api/log-workout-execution-guidance", async (importOriginal) => ({
 }));
 
 vi.mock("@/components/LogWorkoutClient", () => ({
-  default: () => <div>LogWorkoutClient mounted</div>,
+  default: (props: { finishersEnabled?: boolean }) => {
+    mocks.logWorkoutClientProps(props);
+    return <div>LogWorkoutClient mounted</div>;
+  },
+}));
+
+vi.mock("@/lib/operations/finisher-rollout", () => ({
+  isFinisherRolloutEnabled: (...args: unknown[]) =>
+    mocks.isFinisherRolloutEnabled(...args),
 }));
 
 describe("LogWorkoutPage", () => {
@@ -69,6 +79,7 @@ describe("LogWorkoutPage", () => {
       byExerciseName: {},
     });
     mocks.getUiAuditFixtureForServer.mockResolvedValue(null);
+    mocks.isFinisherRolloutEnabled.mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -145,6 +156,37 @@ describe("LogWorkoutPage", () => {
     const view = render(ui);
 
     expect(view.getByText("LogWorkoutClient mounted")).toBeInTheDocument();
+    expect(mocks.logWorkoutClientProps).toHaveBeenCalledWith(
+      expect.objectContaining({ finishersEnabled: false }),
+    );
+  });
+
+  it("passes the canonical enabled decision into the post-save review path", async () => {
+    mocks.isFinisherRolloutEnabled.mockReturnValue(true);
+    mocks.workoutFindFirst.mockResolvedValue({
+      id: "workout-1",
+      userId: "user-1",
+      status: "IN_PROGRESS",
+      mesocycleId: "meso-1",
+      mesocycle: {
+        state: "ACTIVE_ACCUMULATION",
+        isActive: true,
+      },
+      exercises: [],
+      selectionMetadata: null,
+      selectionMode: "INTENT",
+      sessionIntent: "UPPER",
+    });
+
+    const { default: LogWorkoutPage } = await import("./page");
+    const ui = await LogWorkoutPage({
+      params: Promise.resolve({ id: "workout-1" }),
+    });
+    render(ui);
+
+    expect(mocks.logWorkoutClientProps).toHaveBeenCalledWith(
+      expect.objectContaining({ finishersEnabled: true }),
+    );
   });
 
   it("shows blocker navigation for closed-mesocycle workouts", async () => {

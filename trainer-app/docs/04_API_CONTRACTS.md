@@ -1,5 +1,89 @@
 # 04 API Contracts
 
+## `GET|POST /api/workouts/[id]/finisher`
+
+Both methods first evaluate the canonical server-only rollout setting in
+`src/lib/operations/finisher-rollout.ts`. Unless
+`TRAINER_FINISHERS_ROLLOUT` is exactly `enabled`, both methods return HTTP 503
+with code `FINISHERS_NOT_ENABLED` before request parsing, owner resolution,
+Prisma access, or any Finisher read/write. Client input cannot change that
+decision.
+
+When enabled, both methods resolve the canonical owner and require an owner-scoped completed
+workout. GET returns the persisted offer's immutable routine details, original
+limitation warnings and recommendation context, `serverTime`, the current
+display execution, decline state, and retained execution history. With no
+offer, GET returns `offer: null`; the client must create it through the
+write-gated `offer` action before displaying choices. GET is a pure read: it may project elapsed interval timestamps and step outcomes
+in the response so refresh and background recovery land on the current segment,
+but it never creates, updates, completes, resolves, or deletes Finisher state.
+Projected responses expose `timer.syncRequired` and a stable boundary token.
+
+POST validates a strict discriminated action contract from
+`src/lib/validation.ts`: `offer`, `select`, `decline`, `start`, `dismiss`,
+`pause`, `resume`, `skip`, `substitute`, `end`, `feedback`, and explicit `sync`.
+Selection requires the durable offer identity, expected offer revision, and a
+client-stable execution UUID. Decline similarly carries offer identity/revision
+and a stable decision UUID. Selection and decline share one permanent decision
+ID namespace. The stored canonical fingerprint binds ID, action, owner, workout,
+offer, exact offered item/routine when applicable, expected offer revision, and
+contraindication acknowledgment. An exact retry returns the original durable
+decision even after the offer advances. Reusing the ID with any changed field,
+including across selection and decline, returns
+`FINISHER_DECISION_ID_CONFLICT`; a new ID with a stale expected offer revision
+returns `FINISHER_STALE_OFFER`. Concurrent identical requests converge, while
+unique/serialization races are normalized to documented Finisher conflicts and
+never expose Prisma `P2002`.
+Every action against an existing execution requires
+its exact execution UUID and expected monotonic revision. Every POST action is registered as
+`finisher_execution` and is blocked by `TRAINER_WRITE_PAUSE=enabled`.
+`start`, `sync`, `pause`, `resume`, `skip`, `substitute`, `end`, `feedback`,
+and `dismiss` also require a client-generated UUID `commandId`. The server
+checks the durable command receipt before OCC: an exact committed retry returns
+the original command response even if its expected revision is now stale or a
+later command has advanced current state. Existing-execution command POSTs
+return that committed `FinisherExecution` DTO directly, including its persisted
+`serverTime`; they do not perform a later GET and substitute projected current
+state. GET remains the separate current-state projection contract. The request
+hash binds workout, execution, action, expected revision, and payload; reusing
+the ID with any different binding returns
+`FINISHER_COMMAND_ID_CONFLICT`. A distinct stale or out-of-order command keeps
+the existing `FINISHER_STALE_TRANSITION` behavior. Concurrent identical
+commands serialize to one transition and one receipt. At or after the receipt's
+exact 90-day `expiresAt`, retry and command-ID reuse return
+`FINISHER_COMMAND_EXPIRED` (`409`), whether or not payload cleanup has run.
+The command transaction reads PostgreSQL `clock_timestamp()` and uses that
+database value for receipt creation and replay expiration. The action's
+client-supplied display time does not establish or extend the receipt lifetime,
+so process-clock skew cannot change retry, collision, or cleanup semantics.
+Command rows are permanent database-enforced tombstones: application, Prisma,
+bulk, and direct SQL update/delete paths cannot rewrite their binding or remove
+the ID. Opportunistic cleanup invokes the constrained database function, which
+can clear only an already-expired response payload in an oldest-first batch;
+the immutable receipt continues to reject every retry or collision as expired.
+Active and started-execution uniqueness is protected by partial unique indexes
+and serializable selection transactions. Duplicate selection and decline
+decision identities are idempotent only when their immutable binding matches;
+conflicting, stale, replayed, or out-of-order requests return deterministic
+`409` codes. An exact duplicate command for dismissed A can replay only A's
+stored response; a distinct stale request for A can address only A and cannot act
+on replacement B. Client input never supplies ownership, workout completion,
+elapsed duration, routine metadata, step order, or arbitrary substitutions.
+Selection persists the exact finalized offer item, and database composite
+relationships independently verify the workout, offer, routine version, and
+historical owner even if a caller bypasses the API.
+
+Manual selection and recommendation both consume canonical limitation
+resolution. Unknown active text blocks recommendation and requires explicit
+acknowledgment before manual selection; known routine conflicts require the same
+acknowledgment.
+
+`POST /api/workouts/delete` rejects a workout with any attached Finisher offer
+or lifecycle history with HTTP `409` and code
+`WORKOUT_FINISHER_HISTORY_CONFLICT`. The
+transaction rolls back its workout revision claim, leaves both records
+unchanged, and does not expose Prisma or foreign-key details.
+
 Owner: Aaron  
 Last reviewed: 2026-03-19
 Purpose: Canonical API contract map for App Router endpoints and payload validation boundaries.

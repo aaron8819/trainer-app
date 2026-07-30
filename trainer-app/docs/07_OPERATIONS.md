@@ -1,5 +1,71 @@
 # 07 Operations
 
+## Phase 1 Finisher rollout
+
+The canonical runtime gate is the server-only
+`TRAINER_FINISHERS_ROLLOUT` setting owned by
+`src/lib/operations/finisher-rollout.ts`. Only the exact value `enabled`
+enables Finishers. Unset, empty, `false`, case variants, surrounding
+whitespace, and every other value disable the feature. Never expose this
+setting with a `NEXT_PUBLIC_` prefix. Disabled application paths do not query
+the Finisher schema, and changing the setting requires a new deployment.
+
+`20260728120000_add_finishers_phase_1` is additive and does not rewrite workout
+history. Apply it only through the reviewed migration workflow while production
+writes are paused. Run the normal Prisma generation, contract, migration
+integrity/drift, and deployment readiness checks before release. Curated routine
+version 1 rows are installed inside the same atomic migration with deterministic
+routine/version/step identities. Production must not run the broad general
+seed. Re-running `prisma migrate deploy` is safe because the migration ledger
+does not reapply a successful migration. Development seed uses the same
+canonical catalog and stable identities; it creates missing rows, verifies an
+existing immutable version exactly, and fails on drift instead of rewriting it.
+New versions and their complete child graph are created atomically and sealed
+before commit. Ordinary seed/application work cannot append to or rewrite a
+sealed definition.
+`npm run generate:finisher-catalog` verifies that the migration's generated SQL
+matches the canonical catalog. Later definition changes must create a new
+version and must never update an existing version.
+Because this migration exists only on the unmerged feature branch and has never
+been applied to a shared or production database, review corrections update this
+single migration in place. An additive follow-up migration would falsely imply
+that the reviewed, never-deployed defect was an accepted production schema.
+
+Finisher command receipt cleanup is application-initiated and opportunistic, but
+the database owns the only permitted mutation. After
+each successful or exactly replayed existing-execution command, the service
+invokes the security-definer cleanup function for one global oldest-first,
+`SKIP LOCKED` batch of at most 100 database-expired receipts. Public execute is
+revoked. `trainer_finisher_owner` and `trainer_finisher_cleanup` are fixed
+`NOLOGIN NOINHERIT` roles with no elevated attributes. The former owns all ten
+Finisher tables and protection functions; the latter owns only the cleanup
+function and has command-table `SELECT` plus column-level `UPDATE` on
+`response` and `cleanedAt`. `trainer_app_runtime` is the ordinary
+`LOGIN INHERIT` role with no elevated attributes or protected-role membership.
+It receives explicit least-privilege Finisher table grants and `EXECUTE` on
+the canonical cleanup function plus the read-only terminal-outcome validator
+invoked by deferred trigger wrappers, but no command-table update/delete
+privilege or execute access to any Finisher mutator.
+Default privileges do not grant any protected capability. The command trigger permits only the exact `response -> NULL` and
+`cleanedAt` transition made by that function; it rejects premature cleanup,
+restoration, mixed-field updates, every permanent-field update, and every row
+delete. Cleanup never deletes command IDs, executions, or execution steps.
+Logical `expiresAt`
+enforcement is synchronous and does not depend on cleanup success or cadence,
+and cleanup failure does not replace an already-committed command response.
+The function fixes `search_path` to `pg_catalog, pg_temp`, accepts only the
+bounded batch size, uses database time, and does not trust a custom GUC.
+
+These roles are a migration prerequisite, not created by the application
+migration. A separately authorized database administrator must provision their
+exact attributes before rollout and verify there are no memberships involving
+the three roles. The migration connection must remain the reviewed privileged
+direct connection capable of transferring ownership and grants; application
+`DATABASE_URL` must use `trainer_app_runtime`. Never run Prisma migration or
+seed commands through the runtime connection, and never give the runtime role
+membership in either non-login role. No role provisioning is authorized by
+this document alone.
+
 ## Codex remote identity and GitHub status
 
 Use the repository-level [`scripts/codex/README.md`](../../scripts/codex/README.md) for the offline remote-identity contract and the explicit authenticated `-GitHub` and `-Deployment` read-only status scopes. The Vercel scope validates the committed team, project, and production alias before reading process-scoped `VERCEL_TOKEN`, then uses built-in PowerShell with the official GET-only Vercel REST endpoint allowlist; it requires no Vercel CLI or project link. It reports the active alias deployment and Git SHA, and treats any previous successful production deployment only as a rollback candidate with unknown schema compatibility. GitHub deployment records do not establish active Vercel production truth, a Vercel rollback is distinct from a Git revert, and neither status scope authorizes remediation or writes.
@@ -24,7 +90,7 @@ This is public endpoint evidence. It does not authenticate to Vercel, prove prov
 
 ## Disposable workout-mutation database tests
 
-`npm run test:db:workout-mutations` starts an isolated PostgreSQL 16 container, applies checked-in migrations, synchronizes that fresh database to the current Prisma schema, regenerates the matching client, runs CAS/race/rollback tests, and always removes the container. It sets its own `DATABASE_URL`/`TEST_DATABASE_URL` and does not read `.env.local` or mutate a configured database.
+`npm run test:db:workout-mutations -- --confirm-disposable` starts an isolated PostgreSQL 16 container, injects a failure after partial Finisher migration work and proves the explicit transaction leaves no target objects, applies checked-in migrations to a fresh empty database without the general seed, reruns `migrate deploy` to prove the permitted provisioning path is safe, verifies the exact curated catalog and immutable definitions, regenerates the matching client, runs the protected Finisher Prisma relationship-drift check, proves deferred terminal parent/child coherence and permanent command-tombstone enforcement through Prisma, direct SQL, bulk, insert, delete, expiry, cleanup, race, and ABA paths, runs the remaining lifecycle/CAS/rollback tests, and always removes the container. It sets its own `DATABASE_URL`/`TEST_DATABASE_URL` and does not read `.env.local` or mutate a configured database.
 
 Owner: Aaron
 Last reviewed: 2026-03-16
@@ -225,22 +291,34 @@ Ledger classification follows Prisma row state, not step count:
 - A rolled-back row without a clean replacement remains rolled back and blocks. One clean successful replacement may coexist with rolled-back history. Multiple successful rows, or a successful row mixed with unresolved failed/incomplete rows, are ambiguous duplicates and block.
 - Repeating `prisma migrate resolve --applied <migration>` for an already successful row is not a repair; Prisma returns `P3008`. Do not repeat it and do not edit `_prisma_migrations`.
 
-Baseline uniqueness has two separate results. Semantic equivalence requires the same table, unique enforcement, ordered columns, predicate, PostgreSQL null semantics, and a valid/ready enforcing index. Catalog representation equivalence additionally requires the same object kind and constraint/index ownership linkage. Missing uniqueness, a non-unique replacement, changed column order or predicate, incompatible null semantics, invalid enforcement, a conflicting same-name object, unverifiable enforcement, or a representation required by a pending migration blocks Gate A.
+Baseline uniqueness has two separate results. Semantic equivalence requires the same table, unique enforcement, ordered columns, predicate, PostgreSQL null semantics, and a valid/ready enforcing index. Catalog representation equivalence additionally requires the same object kind and constraint/index ownership linkage. Missing uniqueness, a non-unique replacement, changed column order or predicate, incompatible null semantics, invalid enforcement, a conflicting same-name object, unverifiable enforcement, or a representation required by a pending migration blocks Gate A. Finisher expectations additionally require exact enabled trigger metadata; all material columns, constraints, indexes, owners, and grants; restrictive delete/update actions and the execution/version, step/version/order, and alternative/prescribed-step bindings with supporting uniqueness; and independently authored semantic clauses for irreversible `startedAt`, valid execution transitions, permanent performed uniqueness, the exact completed/partial/skipped/never-started-dismissed/performed-dismissed parent-child outcome matrix, deferred validation from both mutation paths, nonempty contiguous finalized offers, exact recommendation membership, finalized item immutability, and complete selection/decline decision identity including expected offer revision. These corrected semantic clauses are not read from the migration SQL. Gate A also checks protected-role attributes, memberships, schema-create access, default privileges, trigger/function dependencies and static references to Finisher relations/functions, the cleanup function's fixed search path and security-definer state, no caller-controlled setting, and both command cleanup consistency checks. Neutral names do not exempt a helper: any function referencing or triggering on a Finisher object is inventoried as a possible access or mutation path.
 
 `ExerciseAlias_alias_key` and `WorkoutTemplateExercise_templateId_orderIndex_key` are the two reviewed baseline representation differences. The baseline SQL creates standalone unique indexes; production may store identically named unique constraints backed by identically named unique indexes. Native PostgreSQL constraint-to-index linkage proves the same enforcement, and the pending multi-plan migration does not depend on those objects being standalone indexes. Therefore each is reported as semantic-equivalent, catalog-representation-different, and a non-blocking diagnostic warning. This narrow policy does not make other constraint/index differences harmless, and no production schema or ledger repair is required for these two objects or for the two valid resolved rows.
 
-Any partial pending-migration object or migration-blocking schema difference blocks Gate A. The current plan-management rollout policy expects 17 checked in, 16 clean successful applied, and exactly `20260727010000_add_plan_management_fields` pending. With clean schema/data evidence and passing disposable verification, that shape yields `technicalMigrationReady: true`. It remains `migrationAuthorizationReady: false` until fresh recovery, deployment, compatibility, write-boundary, and exact post-migration application-commit evidence is supplied, and remains `executionAuthorized: false` in every preparation run.
+Any partial pending-migration object, drift in the complete Finisher table,
+column, enum, key, index, constraint, trigger/function, relationship, or exact
+curated-row manifest, or other migration-blocking schema difference blocks
+Gate A. The current Finisher rollout policy expects 18 checked in, 17 clean
+successful applied, and exactly `20260728120000_add_finishers_phase_1` pending.
+That sequence is fixed repository policy, not operator evidence: an evidence
+file containing `expectedPendingMigrations` is rejected rather than trusted.
+With clean schema/data evidence and passing disposable verification, that shape
+yields `technicalMigrationReady: true`. It remains
+`migrationAuthorizationReady: false` until fresh recovery, deployment,
+compatibility, write-boundary, and exact post-migration application-commit
+evidence is supplied, and remains `executionAuthorized: false` in every
+preparation run.
 
-The command never deploys migrations, creates temporary objects, modifies the Prisma ledger, executes DDL, repairs schema state, or authorizes execution. A fully migrated 17-applied/0-pending target is reported as clean with `gateAApplicable: false`, `migrationAuthorizationReady: false`, and `executionAuthorized: false` because nothing remains for Gate A to authorize.
+The command never deploys migrations, creates temporary objects, modifies the Prisma ledger, executes DDL, repairs schema state, or authorizes execution. A fully migrated 18-applied/0-pending target is reported as clean with `gateAApplicable: false`, `migrationAuthorizationReady: false`, and `executionAuthorized: false` because nothing remains for Gate A to authorize. It still exits nonzero if that fully applied schema has checksum, order, schema, or data drift.
 
 ### Gate A readiness integrity
 
-`npm run ops:audit-readiness-integrity -- --env-file $rolloutEnv` is the canonical Gate A readiness-data check. It uses `DIRECT_URL`, requires the same explicit environment ownership as migration integrity, and supports both the first-10-migration schema and the fully migrated 17-migration schema. It does not import Prisma, call `loadNextWorkoutContext()`, generate a workout, reconstruct the next session, activate readiness, invalidate rows, repair data, or assign new identity evidence.
+`npm run ops:audit-readiness-integrity -- --env-file $rolloutEnv` is the canonical Gate A readiness-data check. It uses `DIRECT_URL`, requires the same explicit environment ownership as migration integrity, and supports both the first-10-migration schema and the fully migrated 18-migration schema. It does not import Prisma, call `loadNextWorkoutContext()`, generate a workout, reconstruct the next session, activate readiness, invalidate rows, repair data, or assign new identity evidence.
 
 The command detects its mode from PostgreSQL catalog objects and verifies that result against the Prisma ledger and checked-in migration checksums:
 
 - `pre_architecture_migration` requires exactly the first 10 migrations applied, the legacy readiness lifecycle columns present, and the seed-revision table, current-seed pointer, atomic-readiness identity columns, and both exact partial unique indexes absent. It queries only legacy columns. Every row is classified as `legacy_valid`, `legacy_duplicate`, `legacy_stale`, `legacy_invalid`, or `legacy_unknown`.
-- `fully_migrated` requires the complete checked-in chain (currently 17 migrations) applied and the complete seed-revision/readiness identity catalog, including both valid, ready, live partial unique indexes. It verifies canonical identity and target hashes, payload hashes, identity/contract versions, contract-to-row agreement, lifecycle consistency, duplicate active identities and logical targets under canonical recomputation, stale workout and seed revisions, readiness/projection/prescription fingerprint agreement, supersession integrity, and honest retained legacy rows.
+- `fully_migrated` requires the complete checked-in chain (currently 18 migrations) applied and the complete seed-revision/readiness identity catalog, including both valid, ready, live partial unique indexes. It verifies canonical identity and target hashes, payload hashes, identity/contract versions, contract-to-row agreement, lifecycle consistency, duplicate active identities and logical targets under canonical recomputation, stale workout and seed revisions, readiness/projection/prescription fingerprint agreement, supersession integrity, and honest retained legacy rows.
 - `partial_or_incompatible` covers every intermediate, incomplete, index-missing, or ledger/catalog-disagreeing state and fails closed without issuing a schema-specific readiness-row query.
 
 Pre-migration rows do not contain enough persisted evidence to prove exact post-migration identity. The report therefore labels exact checks `not_applicable_pre_migration`, leaves their finding arrays empty only under that explicit label, and never fabricates identity hashes, target hashes, projection fingerprints, or seed-revision references. The migration-safety section follows the checked-in atomic-readiness SQL: existing rows receive `identityStatus=LEGACY_UNKNOWN`, while the two new unique indexes include only active `EXACT` rows. It separately reports reconstructable active legacy-target duplicates and ambiguous targets; those integrity conflicts block readiness authorization even though the raw index DDL excludes legacy rows.
@@ -263,9 +341,10 @@ Focused and disposable verification commands:
 npm run test:migration-integrity
 npm run test:readiness-integrity
 npm run test:db:rollout-tooling
+npm run verify:finisher-schema-drift
 ```
 
-The PostgreSQL 16 rollout test uses the installed Prisma CLI to create zero-step resolved baseline and set-intent rows, requires repeat resolution to return `P3008` without changing schema or ledger fingerprints, rejects the stale 10/7 rollout shape, and proves the current 16/1 shape can become authorization-ready with simulated evidence while execution remains unauthorized. It also exercises standalone indexes, constraint-backed indexes, missing uniqueness, wrong column order, a non-unique index, a changed partial predicate, partial pending objects, checksum mismatch, failed/incomplete/rolled-back ledger rows, and the fully migrated 17/0 state. Its readiness states cover the legacy pre-architecture schema and the fully migrated chain. It does not load a configured rollout environment or connect to production.
+The PostgreSQL 16 rollout test uses the installed Prisma CLI to create zero-step resolved baseline and set-intent rows, requires repeat resolution to return `P3008` without changing schema or ledger fingerprints, rejects the stale 10/8 rollout shape, and proves the current 17/1 shape can become authorization-ready with simulated evidence while execution remains unauthorized. It also exercises standalone indexes, constraint-backed indexes, missing uniqueness, wrong column order, non-unique/invalid/unready/non-live indexes, changed predicates, columns and foreign-key actions, removed/cascading composite Finisher bindings, removed supporting uniqueness, missing/disabled/replica-only/retargeted triggers, removal or non-deferred timing of either terminal-coherence path, completed/partial/skipped/dismissal matrix weakening, command-delete event removal, weakened terminal/step/command functions, premature or identity-changing cleanup definitions, changed function owners, unexpected execute or table grants, protected-role membership, weakened security mode/search path, removed canonical grants, GUC reintroduction, neutrally named static-SQL helpers, unexpected trigger mutation paths, unvalidated/weakened checks, unexpected Finisher-owned objects and catalog rows, partial pending objects, checksum mismatch, failed/incomplete/rolled-back ledger rows, and the fully migrated 18/0 state. Its readiness states cover the legacy pre-architecture schema and the fully migrated chain. It does not load a configured rollout environment or connect to production.
 
 The exact repository-owned deploy command, once migration authorization is granted, is:
 
@@ -281,11 +360,8 @@ The evidence file is operator-controlled, uncommitted JSON. It must contain sani
 
 ```json
 {
-  "productionDeploymentCommit": "d7b899584995b1289c73019265464ee749a993c2",
-  "requiredApplicationCommit": "<exact-reviewed-post-migration-application-commit>",
-  "expectedPendingMigrations": [
-    "20260727010000_add_plan_management_fields"
-  ],
+  "productionDeploymentCommit": "<exact-integrated-master-squash-sha>",
+  "requiredApplicationCommit": "<exact-integrated-master-squash-sha>",
   "dataPreflight": {
     "valid": true,
     "verifiedAt": "<ISO-8601>",
@@ -294,7 +370,7 @@ The evidence file is operator-controlled, uncommitted JSON. It must contain sani
   "disposablePostgres": {
     "valid": true,
     "verifiedAt": "<ISO-8601>",
-    "repositoryHead": "<exact-40-character-tooling-commit>"
+    "repositoryHead": "<exact-integrated-master-squash-sha>"
   },
   "recoveryPoint": {
     "verified": true,
@@ -316,50 +392,132 @@ The evidence file is operator-controlled, uncommitted JSON. It must contain sani
 }
 ```
 
+All commit identities use the canonical full Git SHA: exactly 40 lowercase
+hexadecimal characters with no whitespace. Gate A requires exact equality among
+all three independently obtained values:
+
+- `requiredApplicationCommit` is recorded only through the separately
+  authorized evidence workflow after the integrated squash SHA exists.
+- `repositoryHead` is resolved by `ops:migration-status` from
+  `git rev-parse HEAD`; a value supplied in the evidence file cannot override
+  it.
+- `productionDeploymentCommit` comes from the independently checked
+  `/api/version` response and provider-side production-alias evidence.
+
+The authorized integrated SHA is therefore data supplied after merge, not a
+source-code allowlist. A feature-branch guess, the old base commit, an arbitrary
+valid SHA, or any mismatch fails closed before migration authorization. Do not
+derive all three values from one caller-supplied field or copy a claimed
+deployment SHA without the independent deployment checks.
+
 Acceptable recovery evidence is either a provider PITR point with confirmed retention/recoverability or a repository-created logical backup that passes `Inspect-TrainerBackup.ps1`. A logical archive whose manifest still says `restoreStatus: not_tested` is evidence of a structurally inspectable dump, not proof of a tested restore; the operator must record that limitation. Backup creation is a separate production read/export action and is not part of Gate A preparation.
 
 The repository-authoritative write boundary is `TRAINER_WRITE_PAUSE=enabled`. It blocks classified HTTP mutations and guarded remote operational writes, leaves documented read paths and dry-run diagnostics available, and requires a deployment of the same compatible commit before its state changes. Enable, verification, failure, and resume behavior is defined once in “Production write pause for database rollout” below.
 
-### Plan-management application sequencing verdict
+### Finisher application sequencing verdict
 
-`d7b899584995b1289c73019265464ee749a993c2 → 20260727010000_add_plan_management_fields → requiredApplicationCommit` is the reviewed migration-first sequence and is safe only while the full write boundary is verified. The migration adds nullable columns before deterministic per-owner name backfill, then establishes the name default, `NOT NULL` and length constraint, plus the non-unique owner/archive/version index. The deployed base application ignores the new fields, and its `MacroCycle` inserts remain valid through the database default.
+The reviewed sequence is runtime-inert application, then migration, then
+explicitly enabled application. Merging the application is safe before the
+migration only because `TRAINER_FINISHERS_ROLLOUT` fails closed and every
+application entry point avoids the Finisher schema while disabled. The exact
+integrated `master` squash SHA is not known until merge and must be recorded as
+`requiredApplicationCommit`; Gate A must not inherit a prior rollout's target.
+Ancestors, descendants, feature-branch heads, and arbitrary revisions fail
+closed.
 
-Keep commit `d7b899584995b1289c73019265464ee749a993c2` deployed and writes paused through migration; promote the exact reviewed `requiredApplicationCommit` before resuming writes. The evidence file must name that post-migration application commit explicitly because it is not known until integration; Gate A must not inherit a prior rollout's application target.
+### Bounded Finisher production migration runbook
 
-### Bounded plan-management production migration runbook
+This runbook documents order only. It does not authorize any merge, deployment,
+environment change, role change, migration, production access, or verification.
 
-This runbook is preparation only until the operator separately authorizes the exact migration action.
-
-1. Confirm Git/release identities. Require production `/api/version` and provider-side alias evidence to show `d7b899584995b1289c73019265464ee749a993c2`; require the evidence file to name the exact reviewed post-migration application commit. Stop on any other commit or unresolved alias.
-2. Verify recovery evidence. Inspect provider PITR metadata or run `Inspect-TrainerBackup.ps1` against an already-created archive. Record sanitized provider/project and database identity, recovery timestamp, retention/recoverability, and operator verification time. Stop if it is stale, unverifiable, or targets another database.
-3. Enable the write boundary using the activation procedure below while keeping commit `d7b89958…` deployed. Require `ops:write-status` to print `PAUSED`, representative mutations to return the documented 503 contract, row/revision fingerprints to remain unchanged, and read paths to remain healthy. Stop if any write succeeds or any required read fails.
-4. Repeat immediate read-only checks against the reviewed environment:
+1. Merge the reviewed runtime-inert application with
+   `TRAINER_FINISHERS_ROLLOUT` unset or otherwise disabled.
+2. Record the actual integrated `master` squash SHA. Do not substitute the
+   feature-branch head.
+3. Confirm `/api/version` and provider-side alias evidence identify that exact
+   SHA, and confirm the automatic production deployment remains inert: relevant
+   completed, incomplete, history, navigation, and deletion paths load without
+   Finisher UI or Finisher-schema access.
+4. Through the separately authorized evidence workflow, set that exact
+   integrated SHA as `requiredApplicationCommit`.
+5. Establish and verify the required recovery point.
+6. Activate and verify `TRAINER_WRITE_PAUSE=enabled`, keep
+   `TRAINER_FINISHERS_ROLLOUT` disabled, and satisfy all immediate preflight
+   requirements. Repeat the immediate read-only direct-database and migration
+   status checks:
 
    ```powershell
    npm run ops:check-direct-db -- --env-file $rolloutEnv
-   npm run ops:preflight-multi-plan -- --env-file $rolloutEnv
    npm run ops:migration-status -- --env-file $rolloutEnv --evidence-file $authorizationEvidence
    ```
 
-   Require a clean multi-plan report; exactly 17 checked in, 16 applied, and only `20260727010000_add_plan_management_fields` pending; zero checksum, ledger, order, schema, or data blockers; `technicalMigrationReady: true`; `migrationAuthorizationReady: true`; and `executionAuthorized: false`. Stop on any other result. The final false value is expected because execution authority is external to this preparation command.
-5. Obtain separate, explicit operator authorization for the exact target, command, database, recovery point, write boundary, and application sequence. Without it, stop here.
-6. Execute once from the reviewed worktree and environment:
+   Require exactly 18 checked in, 17 applied, and only
+   `20260728120000_add_finishers_phase_1` pending; zero checksum, ledger, order,
+   schema, or data blockers and `technicalMigrationReady: true`. Gate A remains
+   fail closed until the principal checks in the next steps also pass.
+7. Through the separately authorized database-administrator workflow, provision
+   the three required role principals before migration:
+   `trainer_app_runtime`, `trainer_finisher_owner`, and
+   `trainer_finisher_cleanup`. This prerequisite creates only the principals
+   with their reviewed role attributes; it does not create Finisher objects,
+   assign migration-owned object ownership, or grant Finisher table/function
+   privileges.
+8. Verify all three principals exist, have only the prerequisite attributes and
+   capabilities needed by the migration, and have no prohibited memberships.
+   The migration must remain responsible for transferring object ownership and
+   installing the reviewed grants and protections.
+9. Run Gate A and the required pre-migration authorization checks. Require the
+   exact canonical equality
+   `requiredApplicationCommit === repositoryHead === productionDeploymentCommit`,
+   `migrationAuthorizationReady: true`, and `executionAuthorized: false`.
+10. After separate explicit authorization for the exact target, recovery point,
+   paused-write boundary, command, and application sequence, run the authorized
+   production migration once:
 
    ```powershell
    node --env-file=$rolloutEnv .\node_modules\prisma\build\index.js migrate deploy
    ```
 
-   Require Prisma to apply exactly `20260727010000_add_plan_management_fields` once and exit zero. Stop on any other migration, error, connection ambiguity, or retry condition; do not edit `_prisma_migrations` or repeat blindly.
-7. While writes remain paused, verify the ledger shows 17 successful applied and zero pending, then verify `MacroCycle.name`, `MacroCycle.archivedAt`, `MacroCycle_name_length_check`, and `MacroCycle_userId_archivedAt_updatedAt_idx`. Require every existing plan name to be non-empty and at most 60 characters, require deterministic per-owner numbering for the backfilled rows, and require no unexpected schema or descendant-data drift.
-8. Run targeted read-only integrity checks, including the multi-plan inventory and relevant readiness/seed/snapshot audits for the now-migrated chain. Stop for any ownership mismatch, ambiguous plan, contradictory active state, invalid constraint, checksum drift, or unexplained count change.
-9. Promote or redeploy the exact `requiredApplicationCommit` recorded in the reviewed evidence file. Do not resume writes if the provider cannot prove that exact production alias assignment.
-10. Verify `/api/version` returns the exact new commit twice and the public origin remains HTTP 200. Verify selected read-only flows. Run dynamic smoke flows only under their separate explicit authorization and keep the boundary in place.
-11. Remove `TRAINER_WRITE_PAUSE` only through the resume procedure below after schema, deployment, and compatibility verification all pass. Require status `ENABLED`, one controlled authorized mutation with exactly one expected effect, and no remaining maintenance responses.
-12. If migration fails before commit, keep writes paused and confirm the transaction left no target objects; inspect ledger/catalog and escalate. If migration succeeds but verification or deployment fails, keep writes paused and prefer fix-forward. Restore only through the separately approved recovery plan. Never route the old app to a write-enabled migrated database because its handoff ordering is incompatible.
+   Require exactly that migration once and exit zero. Do not run
+   `npm run db:seed`, edit `_prisma_migrations`, or retry blindly.
+11. Verify the migration-owned object ownership, grants, restrictive
+    relationships, schema access, default privileges, triggers, functions, and
+    schema drift. Clearly distinguish these migration-created or
+    migration-assigned protections from the pre-migration principal
+    provisioning. Do not re-provision migration-owned grants after migration
+    unless an explicit reviewed recovery procedure requires it.
+12. Rerun Gate A and all required post-migration readiness checks. Require 18
+    successful applied migrations, zero pending, the exact ten-table schema and
+    curated catalog, correct roles/grants, no schema/data drift, and successful
+    targeted integrity checks. Keep the write pause and Finisher rollout
+    disabled.
+13. Only after migration, role/grant verification, Gate A, and required
+    post-migration checks succeed, set
+    `TRAINER_FINISHERS_ROLLOUT=enabled`.
+14. Create or promote the application deployment containing that enabled
+    setting. Require the production alias and `/api/version` to prove the exact
+    `requiredApplicationCommit`; an environment-variable edit does not change
+    an already-running deployment.
+15. Under separate authorization, perform bounded authenticated production
+    verification. Resume general writes only through the write-pause resume
+    procedure after every required check passes.
+
+If the migration fails, keep writes paused and Finishers disabled. Confirm the
+explicit transaction left no successful target ledger row, target object, or
+curated row, then use the reviewed roll-forward or recovery path. Do not perform
+object-by-object rollback.
+
+The Finisher flag can be disabled after rollout without reverting the migration
+or deleting, rewriting, or hiding persisted history from the database. A
+disabled application simply stops exposing and querying Finishers. An
+application rollback after migration is permitted only to a version proven
+compatible with the migrated schema. Never enable the flag before the
+migration, role provisioning, Gate A, and required post-migration checks
+succeed.
 
 ### Disposable rollout-tooling gate
 
-`npm run test:db:rollout-tooling -- --confirm-disposable` uses PostgreSQL 16, applies the first 10 migrations, validates the legacy architecture inventories, advances to the current 16/1 shape, verifies the repaired Gate A model with simulated evidence, applies the final migration, and verifies the fully migrated 17/0 state. `npm run test:db:multi-plan -- --confirm-disposable` separately proves the full prior chain, atomic foundation application, ambiguity rollback, exact one-candidate active-plan backfill, zero-candidate null state, deterministic multi-plan name backfill, target schema objects, and old-application compatibility. Both create and remove their containers and never read a configured production environment.
+`npm run test:db:rollout-tooling -- --confirm-disposable` uses PostgreSQL 16, applies the first 10 migrations, validates the legacy architecture inventories, advances to the current 17/1 shape, verifies the repaired Gate A model with simulated evidence, applies the final migration, and verifies the fully migrated 18/0 state. `npm run test:db:multi-plan -- --confirm-disposable` separately proves the earlier multi-plan migration chain and compatibility. Both create and remove their containers and never read a configured production environment.
 
 ## Pre-session readiness snapshot rollout
 
@@ -640,7 +798,7 @@ Do not begin migrations unless all eight steps pass.
 ## Resume procedure
 
 Do not resume until all migrations are applied, the new application deployment is verified,
-required active seed provenance is valid, and post-deployment smoke tests pass.
+the migration-provisioned Finisher catalog is exact, and post-deployment smoke tests pass.
 
 1. Remove `TRAINER_WRITE_PAUSE` or set it to a value other than exact `enabled` in Vercel
    Production.
@@ -658,7 +816,11 @@ If migration fails while paused:
 
 - keep writes paused;
 - do not automatically redeploy old code;
-- inspect the Prisma migration ledger and partial schema state;
+- for `20260728120000_add_finishers_phase_1`, confirm the failed explicit
+  transaction left no Finisher objects or curated rows and no successful ledger
+  row; do not claim or attempt an object-by-object rollback;
+- for another migration, inspect its reviewed atomicity contract before
+  classifying schema state;
 - follow the reviewed roll-forward or backup-restore plan;
 - leave read-only access available only if it is verified safe.
 

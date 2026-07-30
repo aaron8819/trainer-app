@@ -63,10 +63,22 @@ describe("CompletedWorkoutReview", () => {
   beforeEach(() => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ postSessionReview: review() }),
-      })
+      vi.fn().mockImplementation(async (input: RequestInfo | URL) =>
+        String(input).includes("/finisher")
+          ? {
+              ok: true,
+              json: async () => ({
+                routines: [],
+                recommendation: null,
+                recommendationUnavailableReason: "No routine available",
+                execution: null,
+              }),
+            }
+          : {
+              ok: true,
+              json: async () => ({ postSessionReview: review() }),
+            }
+      )
     );
   });
 
@@ -95,6 +107,28 @@ describe("CompletedWorkoutReview", () => {
     expect(screen.queryByText("Planned sets")).not.toBeInTheDocument();
     expect(screen.queryByText("RPE adherence")).not.toBeInTheDocument();
     expect(screen.queryByText("Session outcome")).not.toBeInTheDocument();
+    expect(
+      vi.mocked(fetch).mock.calls.some(([input]) =>
+        String(input).includes("/finisher"),
+      ),
+    ).toBe(false);
+  });
+
+  it("mounts the existing Finisher experience only when the server enables it", async () => {
+    render(
+      <CompletedWorkoutReview
+        workoutId="workout-1"
+        performanceSummary={performanceSummary}
+        finishersEnabled
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText("Good session")).toBeInTheDocument());
+    expect(
+      vi.mocked(fetch).mock.calls.some(([input]) =>
+        String(input).includes("/finisher"),
+      ),
+    ).toBe(true);
   });
 
   it("keeps the detailed set log behind a disclosure", async () => {

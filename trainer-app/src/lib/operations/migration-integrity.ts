@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import {
+  FINISHER_ROUTINE_SEEDS,
+  stableFinisherCatalogId,
+} from "../../../prisma/finisher-routine-seed-data";
 
 export const EXPECTED_MIGRATION_CHAIN = [
   "20260222_baseline",
@@ -20,16 +24,13 @@ export const EXPECTED_MIGRATION_CHAIN = [
   "20260714210000_make_pre_session_readiness_snapshots_atomic",
   "20260726120000_add_active_macrocycle_foundation",
   "20260727010000_add_plan_management_fields",
+  "20260728120000_add_finishers_phase_1",
 ] as const;
 
 export const MIGRATION_AUTHORIZATION_POLICY = {
-  targetMigration: "20260727010000_add_plan_management_fields",
+  targetMigration: "20260728120000_add_finishers_phase_1",
   expectedPendingMigrations: [
-    "20260727010000_add_plan_management_fields",
-  ],
-  requiredApplicationCommit: "",
-  compatibleProductionDeploymentCommits: [
-    "d7b899584995b1289c73019265464ee749a993c2",
+    "20260728120000_add_finishers_phase_1",
   ],
   operationalEvidenceMaxAgeMinutes: 30,
 } as const;
@@ -70,7 +71,6 @@ export type MigrationAuthorizationEvidence = {
   repositoryHead: string;
   productionDeploymentCommit: string;
   requiredApplicationCommit?: string;
-  expectedPendingMigrations?: string[];
   dataPreflight?: VerificationEvidence;
   disposablePostgres?: VerificationEvidence;
   recoveryPoint?: RecoveryPointEvidence;
@@ -111,10 +111,89 @@ export type IndexFact = {
   live?: boolean;
   constraintName?: string | null;
   constraintType?: string | null;
+  accessMethod?: string;
+  includeColumns?: string[];
 };
-export type ConstraintFact = { table: string; name: string; type: string; definition: string };
-export type TriggerFact = { table: string; name: string; definition: string };
-export type FunctionFact = { name: string; definition: string };
+export type ConstraintFact = {
+  table: string;
+  name: string;
+  type: string;
+  definition: string;
+  validated?: boolean;
+  deferrable?: boolean;
+  initiallyDeferred?: boolean;
+};
+export type TriggerFact = {
+  table: string;
+  name: string;
+  definition: string;
+  enabled?: string;
+  functionName?: string;
+  functionOwner?: string;
+};
+export type PrivilegeFact = {
+  grantee: string;
+  grantor: string;
+  privilege: string;
+  grantable: boolean;
+};
+export type FunctionFact = {
+  name: string;
+  definition: string;
+  language?: string;
+  arguments?: string;
+  resultType?: string;
+  volatility?: string;
+  securityDefiner?: boolean;
+  leakproof?: boolean;
+  strict?: boolean;
+  parallel?: string;
+  body?: string;
+  configuration?: string[] | null;
+  publicExecute?: boolean;
+  owner?: string;
+  privileges?: PrivilegeFact[];
+  referencedRelations?: string[];
+  referencedFunctions?: string[];
+  triggerTables?: string[];
+  mutationCapability?: boolean;
+};
+export type TableSecurityFact = {
+  table: string;
+  owner: string;
+  privileges: PrivilegeFact[];
+};
+export type ColumnPrivilegeFact = PrivilegeFact & {
+  table: string;
+  column: string;
+};
+export type RoleFact = {
+  name: string;
+  canLogin: boolean;
+  inherit: boolean;
+  superuser: boolean;
+  createRole: boolean;
+  createDb: boolean;
+  replication: boolean;
+  bypassRls: boolean;
+  publicSchemaCreate: boolean;
+};
+export type RoleMembershipFact = {
+  role: string;
+  member: string;
+  grantor: string;
+  adminOption: boolean;
+};
+export type DefaultPrivilegeFact = PrivilegeFact & {
+  owner: string;
+  objectType: string;
+  schema: string | null;
+};
+export type CatalogRowFact = {
+  table: string;
+  key: string;
+  values: Record<string, unknown>;
+};
 export type CatalogSnapshot = {
   tables: string[];
   columns: ColumnFact[];
@@ -123,6 +202,12 @@ export type CatalogSnapshot = {
   constraints: ConstraintFact[];
   triggers: TriggerFact[];
   functions: FunctionFact[];
+  tableSecurity?: TableSecurityFact[];
+  columnPrivileges?: ColumnPrivilegeFact[];
+  roles?: RoleFact[];
+  roleMemberships?: RoleMembershipFact[];
+  defaultPrivileges?: DefaultPrivilegeFact[];
+  catalogRows: CatalogRowFact[];
   unableToVerify?: string[];
 };
 
@@ -171,14 +256,56 @@ export const BASELINE_UNIQUENESS_EXPECTATIONS: readonly BaselineUniquenessExpect
   },
 ] as const;
 
-type ObjectKind = "table" | "column" | "index" | "constraint" | "trigger" | "function";
+type ObjectKind =
+  | "table"
+  | "column"
+  | "enum"
+  | "index"
+  | "constraint"
+  | "trigger"
+  | "function"
+  | "catalogRow";
 type ObjectExpectation = {
   kind: ObjectKind;
   name: string;
   table?: string;
   column?: Pick<ColumnFact, "type" | "nullable" | "default">;
-  index?: Pick<IndexFact, "unique" | "columns" | "predicate">;
-  constraint?: Pick<ConstraintFact, "type" | "definition">;
+  enum?: Pick<EnumFact, "values">;
+  index?: Pick<IndexFact, "unique" | "columns" | "predicate"> & {
+    accessMethod?: string;
+    includeColumns?: string[];
+    requireLiveEnforcement?: boolean;
+  };
+  constraint?: {
+    type: string;
+    definition?: string;
+    validated?: boolean;
+    deferrable?: boolean;
+    initiallyDeferred?: boolean;
+  };
+  trigger?: {
+    definition: string;
+    enabled: string;
+    functionName?: string;
+    functionOwner?: string;
+  };
+  function?: {
+    language: string;
+    arguments: string;
+    resultType: string;
+    volatility: string;
+    securityDefiner: boolean;
+    leakproof: boolean;
+    strict: boolean;
+    parallel: string;
+    body?: string;
+    bodyIncludes?: string[];
+    bodyExcludes?: string[];
+    configuration?: string[] | null;
+    publicExecute?: boolean;
+    owner?: string;
+  };
+  row?: Record<string, unknown>;
   definitionIncludes?: string[];
 };
 
@@ -188,6 +315,1122 @@ export type PendingMigrationExpectation = {
   retainedObjects?: string[];
   objects: ObjectExpectation[];
 };
+
+const finisherColumn = (
+  table: string,
+  name: string,
+  type: string,
+  nullable: boolean,
+  defaultValue: string | null = null,
+): ObjectExpectation => ({
+  kind: "column",
+  table,
+  name,
+  column: { type, nullable, default: defaultValue },
+});
+
+const finisherIndex = (
+  table: string,
+  name: string,
+  unique: boolean,
+  columns: string[],
+  predicate: string | null = null,
+): ObjectExpectation => ({
+  kind: "index",
+  table,
+  name,
+  index: {
+    unique,
+    columns,
+    predicate,
+    accessMethod: "btree",
+    includeColumns: [],
+    requireLiveEnforcement: true,
+  },
+});
+
+const FINISHER_MIGRATION_SQL = readFileSync(
+  join(
+    process.cwd(),
+    "prisma",
+    "migrations",
+    MIGRATION_AUTHORIZATION_POLICY.targetMigration,
+    "migration.sql",
+  ),
+  "utf8",
+);
+
+function finisherFunction(name: string): ObjectExpectation {
+  const match = FINISHER_MIGRATION_SQL.match(
+    new RegExp(
+      `CREATE FUNCTION ${name}\\(\\) RETURNS trigger\\s+LANGUAGE plpgsql AS \\$\\$([\\s\\S]*?)\\$\\$;`,
+    ),
+  );
+  if (!match?.[1]) {
+    throw new Error(`Missing canonical Finisher function definition: ${name}`);
+  }
+  return {
+    kind: "function",
+    name,
+    function: {
+      language: "plpgsql",
+      arguments: "",
+      resultType: "trigger",
+      volatility: "v",
+      securityDefiner: false,
+      leakproof: false,
+      strict: false,
+      parallel: "u",
+      body: match[1],
+      owner: "trainer_finisher_owner",
+      publicExecute: false,
+    },
+  };
+}
+
+function semanticFinisherFunction(
+  name: string,
+  bodyIncludes: string[],
+  bodyExcludes: string[] = [],
+  options: {
+    arguments?: string;
+    resultType?: string;
+  } = {},
+): ObjectExpectation {
+  return {
+    kind: "function",
+    name,
+    function: {
+      language: "plpgsql",
+      arguments: options.arguments ?? "",
+      resultType: options.resultType ?? "trigger",
+      volatility: "v",
+      securityDefiner: false,
+      leakproof: false,
+      strict: false,
+      parallel: "u",
+      bodyIncludes,
+      bodyExcludes,
+      owner: "trainer_finisher_owner",
+      publicExecute: false,
+    },
+  };
+}
+
+function finisherCleanupFunction(): ObjectExpectation {
+  const name = "cleanup_expired_finisher_execution_commands";
+  const match = FINISHER_MIGRATION_SQL.match(
+    /CREATE FUNCTION cleanup_expired_finisher_execution_commands\(\s*p_batch_size INTEGER DEFAULT 100\s*\) RETURNS INTEGER\s+LANGUAGE plpgsql\s+SECURITY DEFINER\s+SET search_path = pg_catalog, pg_temp\s+AS \$\$([\s\S]*?)\$\$;/,
+  );
+  if (!match?.[1]) {
+    throw new Error(`Missing canonical Finisher function definition: ${name}`);
+  }
+  return {
+    kind: "function",
+    name,
+    function: {
+      language: "plpgsql",
+      arguments: "p_batch_size integer",
+      resultType: "integer",
+      volatility: "v",
+      securityDefiner: true,
+      leakproof: false,
+      strict: false,
+      parallel: "u",
+      body: match[1],
+      configuration: ["search_path=pg_catalog, pg_temp"],
+      publicExecute: false,
+      owner: "trainer_finisher_cleanup",
+    },
+  };
+}
+
+function finisherTrigger(table: string, name: string): ObjectExpectation {
+  const match = FINISHER_MIGRATION_SQL.match(
+    new RegExp(
+      `CREATE (?:CONSTRAINT )?TRIGGER "${name}"[\\s\\S]*?;`,
+    ),
+  );
+  if (!match?.[0]) {
+    throw new Error(`Missing canonical Finisher trigger definition: ${name}`);
+  }
+  const functionName = match[0].match(
+    /EXECUTE FUNCTION ([a-zA-Z0-9_]+)\(/,
+  )?.[1];
+  return {
+    kind: "trigger",
+    table,
+    name,
+    trigger: {
+      definition: match[0],
+      enabled: "O",
+      functionName,
+      functionOwner: "trainer_finisher_owner",
+    },
+  };
+}
+
+function semanticFinisherTrigger(
+  table: string,
+  name: string,
+  definition: string,
+  functionName: string,
+): ObjectExpectation {
+  return {
+    kind: "trigger",
+    table,
+    name,
+    trigger: {
+      definition,
+      enabled: "O",
+      functionName,
+      functionOwner: "trainer_finisher_owner",
+    },
+  };
+}
+
+const finisherExactConstraint = (
+  table: string,
+  name: string,
+  type: string,
+  definition: string,
+  options: {
+    validated?: boolean;
+    deferrable?: boolean;
+    initiallyDeferred?: boolean;
+  } = {},
+): ObjectExpectation => ({
+  kind: "constraint",
+  table,
+  name,
+  constraint: {
+    type,
+    definition,
+    validated: options.validated ?? true,
+    deferrable: options.deferrable ?? false,
+    initiallyDeferred: options.initiallyDeferred ?? false,
+  },
+});
+
+const finisherSemanticConstraint = (
+  table: string,
+  name: string,
+  definitionIncludes: string[],
+): ObjectExpectation => ({
+  kind: "constraint",
+  table,
+  name,
+  constraint: {
+    type: "c",
+    validated: true,
+    deferrable: false,
+    initiallyDeferred: false,
+  },
+  definitionIncludes,
+});
+
+const FINISHER_TABLE_COLUMNS: Record<
+  string,
+  Array<[string, string, boolean, (string | null)?]>
+> = {
+  FinisherRoutine: [
+    ["id", "text", false],
+    ["code", "text", false],
+    [
+      "publicationState",
+      '"FinisherPublicationState"',
+      false,
+      "'ACTIVE'::\"FinisherPublicationState\"",
+    ],
+    ["retiredAt", "timestamp(3) without time zone", true],
+    [
+      "createdAt",
+      "timestamp(3) without time zone",
+      false,
+      "CURRENT_TIMESTAMP",
+    ],
+  ],
+  FinisherRoutineVersion: [
+    ["id", "text", false],
+    ["routineId", "text", false],
+    ["version", "integer", false],
+    ["name", "text", false],
+    ["description", "text", false],
+    ["category", '"FinisherCategory"', false],
+    [
+      "placement",
+      '"WorkoutPhasePlacement"',
+      false,
+      "'POST_WORKOUT'::\"WorkoutPhasePlacement\"",
+    ],
+    [
+      "kind",
+      '"WorkoutPhaseKind"',
+      false,
+      "'FINISHER'::\"WorkoutPhaseKind\"",
+    ],
+    [
+      "protocol",
+      '"WorkoutPhaseProtocol"',
+      false,
+      "'TIMED_INTERVALS'::\"WorkoutPhaseProtocol\"",
+    ],
+    ["difficulty", '"FinisherDifficulty"', false],
+    ["fatigueCost", '"FinisherDemand"', false],
+    ["impactLevel", '"FinisherDemand"', false],
+    ["preparationSeconds", "integer", false, "10"],
+    ["includesFinalRecovery", "boolean", false, "false"],
+    ["equipmentRequirements", "text[]", false, "ARRAY[]::text[]"],
+    ["bodyRegions", "text[]", false, "ARRAY[]::text[]"],
+    ["limitationTags", "text[]", false, "ARRAY[]::text[]"],
+    [
+      "createdAt",
+      "timestamp(3) without time zone",
+      false,
+      "CURRENT_TIMESTAMP",
+    ],
+    ["sealedAt", "timestamp(3) without time zone", true],
+  ],
+  FinisherRoutineStep: [
+    ["id", "text", false],
+    ["routineVersionId", "text", false],
+    ["orderIndex", "integer", false],
+    ["movementName", "text", false],
+    ["workSeconds", "integer", false],
+    ["recoverySeconds", "integer", false],
+    ["techniqueCues", "text[]", false, "ARRAY[]::text[]"],
+  ],
+  FinisherRoutineStepAlternative: [
+    ["id", "text", false],
+    ["routineStepId", "text", false],
+    ["orderIndex", "integer", false],
+    ["movementName", "text", false],
+  ],
+  FinisherOffer: [
+    ["id", "text", false],
+    ["workoutId", "text", false],
+    ["ownerId", "text", false],
+    ["revision", "integer", false, "1"],
+    [
+      "offeredAt",
+      "timestamp(3) without time zone",
+      false,
+      "CURRENT_TIMESTAMP",
+    ],
+    ["declinedAt", "timestamp(3) without time zone", true],
+    ["declineDecisionId", "text", true],
+    ["recommendedRoutineVersionId", "text", true],
+    ["recommendationReason", "text", true],
+    ["recommendationUnavailableReason", "text", true],
+    ["recommendationContext", "jsonb", false],
+    ["itemCount", "integer", false],
+    ["finalizedAt", "timestamp(3) without time zone", true],
+  ],
+  FinisherOfferItem: [
+    ["id", "text", false],
+    ["offerId", "text", false],
+    ["routineVersionId", "text", false],
+    ["position", "integer", false],
+    ["warnings", "text[]", false, "ARRAY[]::text[]"],
+  ],
+  FinisherDecision: [
+    ["id", "text", false],
+    ["ownerId", "text", false],
+    ["workoutId", "text", false],
+    ["offerId", "text", false],
+    ["action", '"FinisherDecisionAction"', false],
+    ["offerItemId", "text", true],
+    ["routineVersionId", "text", true],
+    ["expectedOfferRevision", "integer", false],
+    ["acknowledgeContraindication", "boolean", true],
+    ["requestFingerprint", "text", false],
+    [
+      "createdAt",
+      "timestamp(3) without time zone",
+      false,
+      "CURRENT_TIMESTAMP",
+    ],
+  ],
+  FinisherExecution: [
+    ["id", "text", false],
+    ["workoutId", "text", false],
+    ["ownerId", "text", false],
+    ["offerId", "text", false],
+    ["offerItemId", "text", false],
+    ["offerRevisionAtSelection", "integer", false],
+    ["routineVersionId", "text", false],
+    [
+      "state",
+      '"FinisherExecutionState"',
+      false,
+      "'SELECTED'::\"FinisherExecutionState\"",
+    ],
+    [
+      "selectedAt",
+      "timestamp(3) without time zone",
+      false,
+      "CURRENT_TIMESTAMP",
+    ],
+    ["finalizedAt", "timestamp(3) without time zone", true],
+    ["startedAt", "timestamp(3) without time zone", true],
+    ["completedAt", "timestamp(3) without time zone", true],
+    ["endedAt", "timestamp(3) without time zone", true],
+    ["dismissedAt", "timestamp(3) without time zone", true],
+    ["timerSegment", '"FinisherTimerSegment"', true],
+    ["currentStepIndex", "integer", false, "0"],
+    ["segmentStartedAt", "timestamp(3) without time zone", true],
+    ["segmentEndsAt", "timestamp(3) without time zone", true],
+    ["pausedAt", "timestamp(3) without time zone", true],
+    ["pausedRemainingMs", "integer", true],
+    ["preparationActiveMs", "integer", false, "0"],
+    ["recoveryActiveMs", "integer", false, "0"],
+    ["preparationPausedMs", "integer", false, "0"],
+    ["workPausedMs", "integer", false, "0"],
+    ["recoveryPausedMs", "integer", false, "0"],
+    ["revision", "integer", false, "1"],
+    ["difficultyFeedback", "integer", true],
+  ],
+  FinisherExecutionStep: [
+    ["id", "text", false],
+    ["executionId", "text", false],
+    ["routineStepId", "text", false],
+    ["routineVersionId", "text", false],
+    ["orderIndex", "integer", false],
+    ["performedAlternativeId", "text", true],
+    [
+      "status",
+      '"FinisherStepStatus"',
+      false,
+      "'PENDING'::\"FinisherStepStatus\"",
+    ],
+    ["startedAt", "timestamp(3) without time zone", true],
+    ["resolvedAt", "timestamp(3) without time zone", true],
+    ["actualWorkMs", "integer", false, "0"],
+    ["note", "text", true],
+  ],
+  FinisherExecutionCommand: [
+    ["id", "text", false],
+    ["workoutId", "text", false],
+    ["ownerId", "text", false],
+    ["executionId", "text", false],
+    ["action", '"FinisherExecutionAction"', false],
+    ["requestHash", "text", false],
+    ["expectedRevision", "integer", false],
+    ["resultRevision", "integer", false],
+    ["response", "jsonb", true],
+    [
+      "createdAt",
+      "timestamp(3) without time zone",
+      false,
+      "CURRENT_TIMESTAMP",
+    ],
+    ["expiresAt", "timestamp(3) without time zone", false],
+    ["cleanedAt", "timestamp(3) without time zone", true],
+  ],
+};
+
+const FINISHER_CATALOG_EXPECTATIONS: ObjectExpectation[] =
+  FINISHER_ROUTINE_SEEDS.flatMap((definition) => {
+    const routineId = stableFinisherCatalogId(`routine:${definition.code}`);
+    const versionId = stableFinisherCatalogId(
+      `version:${definition.code}:${definition.version}`,
+    );
+    return [
+      {
+        kind: "catalogRow",
+        table: "FinisherRoutine",
+        name: routineId,
+        row: {
+          id: routineId,
+          code: definition.code,
+          publicationState: "ACTIVE",
+          retiredAt: null,
+        },
+      },
+      {
+        kind: "catalogRow",
+        table: "FinisherRoutineVersion",
+        name: versionId,
+        row: {
+          id: versionId,
+          routineId,
+          version: definition.version,
+          name: definition.name,
+          description: definition.description,
+          category: definition.category,
+          placement: "POST_WORKOUT",
+          kind: "FINISHER",
+          protocol: "TIMED_INTERVALS",
+          difficulty: definition.difficulty,
+          fatigueCost: definition.fatigueCost,
+          impactLevel: definition.impactLevel,
+          preparationSeconds: definition.preparationSeconds,
+          includesFinalRecovery: definition.includesFinalRecovery,
+          equipmentRequirements: definition.equipmentRequirements,
+          bodyRegions: definition.bodyRegions,
+          limitationTags: definition.limitationTags,
+          sealed: true,
+        },
+      },
+      ...definition.steps.flatMap((step, orderIndex) => {
+        const stepId = stableFinisherCatalogId(
+          `step:${definition.code}:${definition.version}:${orderIndex}`,
+        );
+        return [
+          {
+            kind: "catalogRow" as const,
+            table: "FinisherRoutineStep",
+            name: stepId,
+            row: {
+              id: stepId,
+              routineVersionId: versionId,
+              orderIndex,
+              movementName: step.movementName,
+              workSeconds: step.workSeconds,
+              recoverySeconds: step.recoverySeconds,
+              techniqueCues: step.techniqueCues,
+            },
+          },
+          ...(step.alternatives ?? []).map(
+            (movementName, alternativeIndex) => {
+              const alternativeId = stableFinisherCatalogId(
+                `alternative:${definition.code}:${definition.version}:${orderIndex}:${alternativeIndex}`,
+              );
+              return {
+                kind: "catalogRow" as const,
+                table: "FinisherRoutineStepAlternative",
+                name: alternativeId,
+                row: {
+                  id: alternativeId,
+                  routineStepId: stepId,
+                  orderIndex: alternativeIndex,
+                  movementName,
+                },
+              };
+            },
+          ),
+        ];
+      }),
+    ] as ObjectExpectation[];
+  });
+
+const FINISHER_SCHEMA_EXPECTATIONS: ObjectExpectation[] = [
+  ...Object.entries(FINISHER_TABLE_COLUMNS).flatMap(([table, columns]) => [
+    { kind: "table" as const, name: table },
+    ...columns.map(([name, type, nullable, defaultValue]) =>
+      finisherColumn(table, name, type, nullable, defaultValue ?? null),
+    ),
+  ]),
+  ...[
+    ["WorkoutPhasePlacement", ["POST_WORKOUT"]],
+    ["WorkoutPhaseKind", ["FINISHER"]],
+    ["WorkoutPhaseProtocol", ["TIMED_INTERVALS"]],
+    ["FinisherCategory", ["CORE", "CONDITIONING"]],
+    ["FinisherDifficulty", ["EASY", "MODERATE", "CHALLENGING"]],
+    ["FinisherDemand", ["LOW", "MODERATE", "HIGH"]],
+    ["FinisherPublicationState", ["ACTIVE", "RETIRED"]],
+    [
+      "FinisherExecutionState",
+      [
+        "SELECTED",
+        "IN_PROGRESS",
+        "COMPLETED",
+        "PARTIAL",
+        "SKIPPED",
+        "DISMISSED",
+      ],
+    ],
+    [
+      "FinisherTimerSegment",
+      ["PREPARATION", "WORK", "RECOVERY", "FINISHED"],
+    ],
+    [
+      "FinisherStepStatus",
+      ["PENDING", "PARTIAL", "COMPLETED", "SKIPPED"],
+    ],
+    [
+      "FinisherExecutionAction",
+      [
+        "START",
+        "SYNC",
+        "PAUSE",
+        "RESUME",
+        "SKIP",
+        "SUBSTITUTE",
+        "END",
+        "FEEDBACK",
+        "DISMISS",
+      ],
+    ],
+    ["FinisherDecisionAction", ["SELECT", "DECLINE"]],
+  ].map(([name, values]) => ({
+    kind: "enum" as const,
+    name: name as string,
+    enum: { values: values as string[] },
+  })),
+  ...[
+    ["FinisherRoutine", "FinisherRoutine_code_key", true, ["code"], null],
+    [
+      "FinisherRoutineVersion",
+      "FinisherRoutineVersion_routineId_version_key",
+      true,
+      ["routineId", "version"],
+      null,
+    ],
+    [
+      "FinisherRoutineVersion",
+      "FinisherRoutineVersion_category_createdAt_idx",
+      false,
+      ["category", "createdAt"],
+      null,
+    ],
+    [
+      "FinisherRoutineStep",
+      "FinisherRoutineStep_routineVersionId_orderIndex_key",
+      true,
+      ["routineVersionId", "orderIndex"],
+      null,
+    ],
+    [
+      "FinisherRoutineStep",
+      "FinisherRoutineStep_id_routineVersionId_orderIndex_key",
+      true,
+      ["id", "routineVersionId", "orderIndex"],
+      null,
+    ],
+    [
+      "FinisherRoutineStepAlternative",
+      "FinisherRoutineStepAlternative_routineStepId_orderIndex_key",
+      true,
+      ["routineStepId", "orderIndex"],
+      null,
+    ],
+    [
+      "FinisherRoutineStepAlternative",
+      "FinisherRoutineStepAlternative_id_routineStepId_key",
+      true,
+      ["id", "routineStepId"],
+      null,
+    ],
+    ["FinisherOffer", "FinisherOffer_workoutId_key", true, ["workoutId"], null],
+    [
+      "Workout",
+      "Workout_id_userId_key",
+      true,
+      ["id", "userId"],
+      null,
+    ],
+    [
+      "FinisherOffer",
+      "FinisherOffer_workoutId_ownerId_key",
+      true,
+      ["workoutId", "ownerId"],
+      null,
+    ],
+    [
+      "FinisherOffer",
+      "FinisherOffer_id_workoutId_ownerId_key",
+      true,
+      ["id", "workoutId", "ownerId"],
+      null,
+    ],
+    [
+      "FinisherOffer",
+      "FinisherOffer_id_recommendedRoutineVersionId_key",
+      true,
+      ["id", "recommendedRoutineVersionId"],
+      null,
+    ],
+    [
+      "FinisherOffer",
+      "FinisherOffer_declineDecisionId_key",
+      true,
+      ["declineDecisionId"],
+      null,
+    ],
+    [
+      "FinisherOffer",
+      "FinisherOffer_recommendedRoutineVersionId_idx",
+      false,
+      ["recommendedRoutineVersionId"],
+      null,
+    ],
+    [
+      "FinisherOfferItem",
+      "FinisherOfferItem_offerId_routineVersionId_key",
+      true,
+      ["offerId", "routineVersionId"],
+      null,
+    ],
+    [
+      "FinisherOfferItem",
+      "FinisherOfferItem_offerId_position_key",
+      true,
+      ["offerId", "position"],
+      null,
+    ],
+    [
+      "FinisherOfferItem",
+      "FinisherOfferItem_id_offerId_routineVersionId_key",
+      true,
+      ["id", "offerId", "routineVersionId"],
+      null,
+    ],
+    [
+      "FinisherOfferItem",
+      "FinisherOfferItem_routineVersionId_idx",
+      false,
+      ["routineVersionId"],
+      null,
+    ],
+    [
+      "FinisherDecision",
+      "FinisherDecision_offerId_createdAt_idx",
+      false,
+      ["offerId", "createdAt"],
+      null,
+    ],
+    [
+      "FinisherExecution",
+      "FinisherExecution_one_active_per_workout",
+      true,
+      ["workoutId"],
+      "state = ANY (ARRAY['SELECTED'::\"FinisherExecutionState\", 'IN_PROGRESS'::\"FinisherExecutionState\"])",
+    ],
+    [
+      "FinisherExecution",
+      "FinisherExecution_one_started_per_workout",
+      true,
+      ["workoutId"],
+      '"startedAt" IS NOT NULL',
+    ],
+    [
+      "FinisherExecution",
+      "FinisherExecution_workoutId_selectedAt_idx",
+      false,
+      ["workoutId", "selectedAt"],
+      null,
+    ],
+    [
+      "FinisherExecution",
+      "FinisherExecution_offerId_selectedAt_idx",
+      false,
+      ["offerId", "selectedAt"],
+      null,
+    ],
+    [
+      "FinisherExecution",
+      "FinisherExecution_routineVersionId_startedAt_idx",
+      false,
+      ["routineVersionId", "startedAt"],
+      null,
+    ],
+    [
+      "FinisherExecution",
+      "FinisherExecution_state_segmentEndsAt_idx",
+      false,
+      ["state", "segmentEndsAt"],
+      null,
+    ],
+    [
+      "FinisherExecution",
+      "FinisherExecution_id_workoutId_key",
+      true,
+      ["id", "workoutId"],
+      null,
+    ],
+    [
+      "FinisherExecution",
+      "FinisherExecution_id_workoutId_ownerId_key",
+      true,
+      ["id", "workoutId", "ownerId"],
+      null,
+    ],
+    [
+      "FinisherExecution",
+      "FinisherExecution_id_routineVersionId_key",
+      true,
+      ["id", "routineVersionId"],
+      null,
+    ],
+    [
+      "FinisherExecutionStep",
+      "FinisherExecutionStep_executionId_routineStepId_key",
+      true,
+      ["executionId", "routineStepId"],
+      null,
+    ],
+    [
+      "FinisherExecutionStep",
+      "FinisherExecutionStep_performedAlternativeId_idx",
+      false,
+      ["performedAlternativeId"],
+      null,
+    ],
+    [
+      "FinisherExecutionCommand",
+      "FinisherExecutionCommand_executionId_createdAt_idx",
+      false,
+      ["executionId", "createdAt"],
+      null,
+    ],
+    [
+      "FinisherExecutionCommand",
+      "FinisherExecutionCommand_cleanedAt_expiresAt_id_idx",
+      false,
+      ["cleanedAt", "expiresAt", "id"],
+      null,
+    ],
+  ].map(([table, name, unique, columns, predicate]) =>
+    finisherIndex(
+      table as string,
+      name as string,
+      unique as boolean,
+      columns as string[],
+      predicate as string | null,
+    ),
+  ),
+  ...Object.keys(FINISHER_TABLE_COLUMNS).map((table) =>
+    finisherExactConstraint(table, `${table}_pkey`, "p", "PRIMARY KEY (id)"),
+  ),
+  ...[
+    ["FinisherRoutineVersion", "FinisherRoutineVersion_positive_version", "CHECK (version > 0)"],
+    ["FinisherRoutineVersion", "FinisherRoutineVersion_preparation_range", "CHECK (preparationSeconds >= 0 AND preparationSeconds <= 60)"],
+    ["FinisherRoutineStep", "FinisherRoutineStep_order_nonnegative", "CHECK (orderIndex >= 0)"],
+    ["FinisherRoutineStep", "FinisherRoutineStep_work_positive", "CHECK (workSeconds > 0)"],
+    ["FinisherRoutineStep", "FinisherRoutineStep_recovery_nonnegative", "CHECK (recoverySeconds >= 0)"],
+    ["FinisherRoutineStepAlternative", "FinisherRoutineStepAlternative_order_nonnegative", "CHECK (orderIndex >= 0)"],
+    ["FinisherOffer", "FinisherOffer_revision_positive", "CHECK (revision > 0)"],
+    ["FinisherOffer", "FinisherOffer_item_count_positive", "CHECK (itemCount > 0)"],
+    ["FinisherOfferItem", "FinisherOfferItem_position_nonnegative", "CHECK (position >= 0)"],
+    ["FinisherDecision", "FinisherDecision_expected_offer_revision_positive", "CHECK (expectedOfferRevision > 0)"],
+    ["FinisherDecision", "FinisherDecision_fingerprint_shape", "CHECK (requestFingerprint ~ '^[0-9a-f]{64}$'::text)"],
+    ["FinisherExecution", "FinisherExecution_offer_revision_positive", "CHECK (offerRevisionAtSelection > 0)"],
+    ["FinisherExecution", "FinisherExecution_step_nonnegative", "CHECK (currentStepIndex >= 0)"],
+    ["FinisherExecution", "FinisherExecution_pause_nonnegative", "CHECK (pausedRemainingMs IS NULL OR pausedRemainingMs >= 0)"],
+    ["FinisherExecution", "FinisherExecution_preparation_active_nonnegative", "CHECK (preparationActiveMs >= 0)"],
+    ["FinisherExecution", "FinisherExecution_recovery_active_nonnegative", "CHECK (recoveryActiveMs >= 0)"],
+    ["FinisherExecution", "FinisherExecution_preparation_pause_nonnegative", "CHECK (preparationPausedMs >= 0)"],
+    ["FinisherExecution", "FinisherExecution_work_pause_nonnegative", "CHECK (workPausedMs >= 0)"],
+    ["FinisherExecution", "FinisherExecution_recovery_pause_nonnegative", "CHECK (recoveryPausedMs >= 0)"],
+    ["FinisherExecution", "FinisherExecution_revision_positive", "CHECK (revision > 0)"],
+    ["FinisherExecution", "FinisherExecution_feedback_range", "CHECK (difficultyFeedback IS NULL OR difficultyFeedback >= 1 AND difficultyFeedback <= 10)"],
+    ["FinisherExecutionStep", "FinisherExecutionStep_actual_work_nonnegative", "CHECK (actualWorkMs >= 0)"],
+    ["FinisherExecutionCommand", "FinisherExecutionCommand_expected_revision_positive", "CHECK (expectedRevision > 0)"],
+    ["FinisherExecutionCommand", "FinisherExecutionCommand_result_revision_positive", "CHECK (resultRevision > 0)"],
+    ["FinisherExecutionCommand", "FinisherExecutionCommand_expiration_after_creation", "CHECK (expiresAt = (createdAt + '90 days'::interval))"],
+    ["FinisherExecutionCommand", "FinisherExecutionCommand_cleanup_consistent", "CHECK (response IS NOT NULL AND cleanedAt IS NULL OR response IS NULL AND cleanedAt IS NOT NULL AND cleanedAt >= expiresAt)"],
+  ].map(([table, name, definition]) =>
+    finisherExactConstraint(table, name, "c", definition),
+  ),
+  finisherSemanticConstraint(
+    "FinisherOffer",
+    "FinisherOffer_decline_consistent",
+    ["declinedAt IS NULL", "declineDecisionId IS NULL", "declinedAt IS NOT NULL", "declineDecisionId IS NOT NULL"],
+  ),
+  finisherSemanticConstraint(
+    "FinisherOffer",
+    "FinisherOffer_recommendation_consistent",
+    [
+      "recommendedRoutineVersionId IS NOT NULL",
+      "recommendationReason IS NOT NULL",
+      "recommendationUnavailableReason IS NULL",
+      "recommendedRoutineVersionId IS NULL",
+      "recommendationReason IS NULL",
+      "recommendationUnavailableReason IS NOT NULL",
+    ],
+  ),
+  finisherSemanticConstraint(
+    "FinisherDecision",
+    "FinisherDecision_action_shape",
+    [
+      "action = 'SELECT'::FinisherDecisionAction",
+      "offerItemId IS NOT NULL",
+      "routineVersionId IS NOT NULL",
+      "acknowledgeContraindication IS NOT NULL",
+      "action = 'DECLINE'::FinisherDecisionAction",
+      "offerItemId IS NULL",
+      "routineVersionId IS NULL",
+      "acknowledgeContraindication IS NULL",
+    ],
+  ),
+  finisherSemanticConstraint(
+    "FinisherExecution",
+    "FinisherExecution_lifecycle_consistent",
+    [
+      "state = 'SELECTED'::FinisherExecutionState",
+      "state = 'IN_PROGRESS'::FinisherExecutionState",
+      "state = 'COMPLETED'::FinisherExecutionState",
+      "state = ANY (ARRAY['PARTIAL'::FinisherExecutionState, 'SKIPPED'::FinisherExecutionState])",
+      "state = 'DISMISSED'::FinisherExecutionState",
+      "startedAt IS NULL",
+      "startedAt IS NOT NULL",
+      "completedAt IS NOT NULL",
+      "dismissedAt = endedAt",
+    ],
+  ),
+  finisherSemanticConstraint(
+    "FinisherExecution",
+    "FinisherExecution_timer_consistent",
+    [
+      "timerSegment IS NULL",
+      "timerSegment = ANY (ARRAY['PREPARATION'::FinisherTimerSegment, 'WORK'::FinisherTimerSegment, 'RECOVERY'::FinisherTimerSegment])",
+      "pausedAt IS NULL",
+      "pausedAt IS NOT NULL",
+      "pausedRemainingMs IS NOT NULL",
+      "timerSegment = 'FINISHED'::FinisherTimerSegment",
+      "segmentEndsAt = segmentStartedAt",
+    ],
+  ),
+  ...[
+    ["FinisherRoutineVersion", "FinisherRoutineVersion_routineId_fkey", "FOREIGN KEY (routineId) REFERENCES FinisherRoutine(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherRoutineStep", "FinisherRoutineStep_routineVersionId_fkey", "FOREIGN KEY (routineVersionId) REFERENCES FinisherRoutineVersion(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherRoutineStepAlternative", "FinisherRoutineStepAlternative_routineStepId_fkey", "FOREIGN KEY (routineStepId) REFERENCES FinisherRoutineStep(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherOffer", "FinisherOffer_workoutId_fkey", "FOREIGN KEY (workoutId, ownerId) REFERENCES Workout(id, userId) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherOffer", "FinisherOffer_recommendedRoutineVersionId_fkey", "FOREIGN KEY (recommendedRoutineVersionId) REFERENCES FinisherRoutineVersion(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherOfferItem", "FinisherOfferItem_offerId_fkey", "FOREIGN KEY (offerId) REFERENCES FinisherOffer(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherOfferItem", "FinisherOfferItem_routineVersionId_fkey", "FOREIGN KEY (routineVersionId) REFERENCES FinisherRoutineVersion(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherDecision", "FinisherDecision_offerId_fkey", "FOREIGN KEY (offerId, workoutId, ownerId) REFERENCES FinisherOffer(id, workoutId, ownerId) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherDecision", "FinisherDecision_offerItem_binding_fkey", "FOREIGN KEY (offerItemId, offerId, routineVersionId) REFERENCES FinisherOfferItem(id, offerId, routineVersionId) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherOffer", "FinisherOffer_declineDecisionId_fkey", "FOREIGN KEY (declineDecisionId) REFERENCES FinisherDecision(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherExecution", "FinisherExecution_workoutId_fkey", "FOREIGN KEY (workoutId, ownerId) REFERENCES Workout(id, userId) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherExecution", "FinisherExecution_offerId_fkey", "FOREIGN KEY (offerId, workoutId, ownerId) REFERENCES FinisherOffer(id, workoutId, ownerId) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherExecution", "FinisherExecution_offerItem_binding_fkey", "FOREIGN KEY (offerItemId, offerId, routineVersionId) REFERENCES FinisherOfferItem(id, offerId, routineVersionId) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherExecution", "FinisherExecution_routineVersionId_fkey", "FOREIGN KEY (routineVersionId) REFERENCES FinisherRoutineVersion(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherExecution", "FinisherExecution_decisionId_fkey", "FOREIGN KEY (id) REFERENCES FinisherDecision(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherExecutionStep", "FinisherExecutionStep_executionId_fkey", "FOREIGN KEY (executionId) REFERENCES FinisherExecution(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherExecutionStep", "FinisherExecutionStep_routineStepId_fkey", "FOREIGN KEY (routineStepId) REFERENCES FinisherRoutineStep(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherExecutionStep", "FinisherExecutionStep_executionId_routineVersionId_fkey", "FOREIGN KEY (executionId, routineVersionId) REFERENCES FinisherExecution(id, routineVersionId) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherExecutionStep", "FinisherExecutionStep_routineStep_binding_fkey", "FOREIGN KEY (routineStepId, routineVersionId, orderIndex) REFERENCES FinisherRoutineStep(id, routineVersionId, orderIndex) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherExecutionStep", "FinisherExecutionStep_performedAlternativeId_fkey", "FOREIGN KEY (performedAlternativeId) REFERENCES FinisherRoutineStepAlternative(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherExecutionStep", "FinisherExecutionStep_performedAlternative_binding_fkey", "FOREIGN KEY (performedAlternativeId, routineStepId) REFERENCES FinisherRoutineStepAlternative(id, routineStepId) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherExecutionCommand", "FinisherExecutionCommand_executionId_workoutId_fkey", "FOREIGN KEY (executionId, workoutId, ownerId) REFERENCES FinisherExecution(id, workoutId, ownerId) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+  ].map(([table, name, definition]) =>
+    finisherExactConstraint(table, name, "f", definition),
+  ),
+  finisherExactConstraint(
+    "FinisherOffer",
+    "FinisherOffer_recommended_item_fkey",
+    "f",
+    "FOREIGN KEY (id, recommendedRoutineVersionId) REFERENCES FinisherOfferItem(offerId, routineVersionId) ON UPDATE RESTRICT ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED",
+    { deferrable: true, initiallyDeferred: true },
+  ),
+  ...[
+    "guard_finisher_routine_identity",
+    "require_finisher_routine_version_sealed",
+    "guard_finisher_routine_version_mutation",
+    "guard_finisher_routine_child_mutation",
+    "guard_finisher_execution_identity",
+    "guard_finisher_execution_step_identity",
+    "guard_finisher_execution_step_evidence",
+    "guard_finisher_execution_command_tombstone",
+  ].map(finisherFunction),
+  semanticFinisherFunction("require_finisher_offer_finalized", [
+    'offer."finalizedAt"',
+    'offer."itemCount"',
+    'COUNT(*)::INTEGER',
+    'MIN(item."position")',
+    'MAX(item."position")',
+    "actual_item_count = 0",
+    "actual_item_count <> expected_item_count",
+    "minimum_position <> 0",
+    "maximum_position <> expected_item_count - 1",
+    'item."offerId" = NEW."id"',
+    'item."routineVersionId" = recommended_version_id',
+  ]),
+  semanticFinisherFunction("require_finisher_execution_finalized", [
+    'decision."action" = \'SELECT\'',
+    'decision."ownerId" = execution."ownerId"',
+    'decision."workoutId" = execution."workoutId"',
+    'decision."offerId" = execution."offerId"',
+    'decision."offerItemId" = execution."offerItemId"',
+    'decision."routineVersionId" = execution."routineVersionId"',
+    'decision."expectedOfferRevision" = execution."offerRevisionAtSelection"',
+  ]),
+  semanticFinisherFunction(
+    "validate_finisher_terminal_outcome",
+    [
+      'execution_row."state" NOT IN (\'COMPLETED\', \'PARTIAL\', \'SKIPPED\', \'DISMISSED\')',
+      'step."status" = \'PENDING\'',
+      'step."status" IN (\'COMPLETED\', \'PARTIAL\')',
+      'step."status" = \'SKIPPED\'',
+      'execution_row."state" = \'COMPLETED\'',
+      "completed_step_count <> prescribed_step_count",
+      "actual_work_ms <= 0",
+      'execution_row."state" = \'PARTIAL\'',
+      "completed_step_count + partial_step_count = 0",
+      'execution_row."state" = \'SKIPPED\'',
+      "skipped_step_count <> prescribed_step_count",
+      'execution_row."startedAt" IS NULL',
+      "pending_step_count <> prescribed_step_count",
+      "performed_step_count = 0",
+      'execution_row."currentStepIndex" <> maximum_order_index',
+      'execution_row."recoveryActiveMs" <> 0',
+      'execution_row."workPausedMs" <> 0',
+    ],
+    [],
+    {
+      arguments: "target_execution_id text",
+      resultType: "void",
+    },
+  ),
+  semanticFinisherFunction(
+    "validate_finisher_terminal_outcome_from_execution",
+    [
+      'validate_finisher_terminal_outcome(COALESCE(NEW."id", OLD."id"))',
+    ],
+  ),
+  semanticFinisherFunction(
+    "validate_finisher_terminal_outcome_from_step",
+    [
+      "TG_OP = 'DELETE'",
+      'OLD."executionId"',
+      'NEW."executionId"',
+      "validate_finisher_terminal_outcome",
+    ],
+  ),
+  semanticFinisherFunction("guard_finisher_offer_item_insert", [
+    'FROM "FinisherOffer"',
+    'WHERE "id" = NEW."offerId"',
+    "FOR UPDATE",
+    "IF NOT FOUND",
+    "finalized_at IS NOT NULL",
+  ]),
+  semanticFinisherFunction("guard_finisher_execution_step_insert", [
+    'FROM "FinisherExecution"',
+    'WHERE "id" = NEW."executionId"',
+    "FOR UPDATE",
+    "IF NOT FOUND",
+    "finalized_at IS NOT NULL",
+  ]),
+  semanticFinisherFunction("guard_finisher_offer_identity", [
+    'NEW."itemCount" IS DISTINCT FROM OLD."itemCount"',
+    'NEW."revision" <> OLD."revision" + 1',
+    'OLD."declineDecisionId" IS NOT NULL',
+    'NEW."declineDecisionId" IS DISTINCT FROM OLD."declineDecisionId"',
+    'decision."action" = \'DECLINE\'',
+    'decision."ownerId" = NEW."ownerId"',
+    'decision."workoutId" = NEW."workoutId"',
+    'decision."offerId" = NEW."id"',
+    'decision."expectedOfferRevision" = OLD."revision"',
+  ]),
+  semanticFinisherFunction("reject_finisher_offer_item_update", [
+    "finisher offer items are immutable",
+  ]),
+  semanticFinisherFunction("guard_finisher_execution_lifecycle", [
+    'OLD."finalizedAt" IS NULL',
+    "to_jsonb(NEW) - 'finalizedAt'",
+    'OLD."state" IN (\'COMPLETED\', \'PARTIAL\', \'SKIPPED\', \'DISMISSED\')',
+    'NEW."revision" <> OLD."revision" + 1',
+    'NEW."currentStepIndex" < OLD."currentStepIndex"',
+    'NEW."preparationActiveMs" < OLD."preparationActiveMs"',
+    'NEW."recoveryActiveMs" < OLD."recoveryActiveMs"',
+    'NEW."preparationPausedMs" < OLD."preparationPausedMs"',
+    'NEW."workPausedMs" < OLD."workPausedMs"',
+    'NEW."recoveryPausedMs" < OLD."recoveryPausedMs"',
+    'OLD."startedAt" IS NOT NULL',
+    'NEW."startedAt" IS DISTINCT FROM OLD."startedAt"',
+    'OLD."state" = \'SELECTED\' AND NEW."state" IN (\'SELECTED\', \'IN_PROGRESS\', \'COMPLETED\', \'DISMISSED\')',
+    'OLD."state" = \'IN_PROGRESS\' AND NEW."state" IN (\'IN_PROGRESS\', \'COMPLETED\', \'PARTIAL\', \'SKIPPED\', \'DISMISSED\')',
+  ]),
+  semanticFinisherFunction("guard_finisher_decision_history", [
+    "TG_OP = 'DELETE'",
+    "to_jsonb(NEW) IS DISTINCT FROM to_jsonb(OLD)",
+  ]),
+  semanticFinisherFunction("require_finisher_decision_applied", [
+    'NEW."action" = \'SELECT\'',
+    'execution."id" = NEW."id"',
+    'execution."ownerId" = NEW."ownerId"',
+    'execution."workoutId" = NEW."workoutId"',
+    'execution."offerId" = NEW."offerId"',
+    'execution."offerItemId" = NEW."offerItemId"',
+    'execution."routineVersionId" = NEW."routineVersionId"',
+    'execution."offerRevisionAtSelection" = NEW."expectedOfferRevision"',
+    'NEW."action" = \'DECLINE\'',
+    'offer."declineDecisionId" = NEW."id"',
+  ]),
+  semanticFinisherFunction("reject_finisher_history_deletion", [
+    "finisher lifecycle history cannot be deleted",
+  ]),
+  finisherCleanupFunction(),
+  ...[
+    ["FinisherRoutine", "FinisherRoutine_identity_immutable", "guard_finisher_routine_identity"],
+    ["FinisherRoutineVersion", "FinisherRoutineVersion_require_sealed", "require_finisher_routine_version_sealed"],
+    ["FinisherRoutineVersion", "FinisherRoutineVersion_immutable", "guard_finisher_routine_version_mutation"],
+    ["FinisherRoutineStep", "FinisherRoutineStep_immutable", "guard_finisher_routine_child_mutation"],
+    ["FinisherRoutineStepAlternative", "FinisherRoutineStepAlternative_immutable", "guard_finisher_routine_child_mutation"],
+    ["FinisherExecution", "FinisherExecution_identity_immutable", "guard_finisher_execution_identity"],
+    ["FinisherExecutionStep", "FinisherExecutionStep_identity_immutable", "guard_finisher_execution_step_identity"],
+    ["FinisherExecutionStep", "FinisherExecutionStep_evidence_immutable", "guard_finisher_execution_step_evidence"],
+    ["FinisherExecutionCommand", "FinisherExecutionCommand_tombstone", "guard_finisher_execution_command_tombstone"],
+    ["FinisherOffer", "FinisherOffer_no_delete", "reject_finisher_history_deletion"],
+    ["FinisherOfferItem", "FinisherOfferItem_no_delete", "reject_finisher_history_deletion"],
+    ["FinisherExecution", "FinisherExecution_no_delete", "reject_finisher_history_deletion"],
+    ["FinisherExecutionStep", "FinisherExecutionStep_no_delete", "reject_finisher_history_deletion"],
+    ["FinisherExecutionStep", "FinisherExecutionStep_insert_before_finalization"],
+  ].map(([table, name]) => finisherTrigger(table, name)),
+  semanticFinisherTrigger(
+    "FinisherOffer",
+    "FinisherOffer_identity_immutable",
+    'CREATE TRIGGER "FinisherOffer_identity_immutable" BEFORE UPDATE ON "FinisherOffer" FOR EACH ROW EXECUTE FUNCTION guard_finisher_offer_identity()',
+    "guard_finisher_offer_identity",
+  ),
+  semanticFinisherTrigger(
+    "FinisherOfferItem",
+    "FinisherOfferItem_immutable",
+    'CREATE TRIGGER "FinisherOfferItem_immutable" BEFORE UPDATE ON "FinisherOfferItem" FOR EACH ROW EXECUTE FUNCTION reject_finisher_offer_item_update()',
+    "reject_finisher_offer_item_update",
+  ),
+  semanticFinisherTrigger(
+    "FinisherOfferItem",
+    "FinisherOfferItem_insert_before_finalization",
+    'CREATE TRIGGER "FinisherOfferItem_insert_before_finalization" BEFORE INSERT ON "FinisherOfferItem" FOR EACH ROW EXECUTE FUNCTION guard_finisher_offer_item_insert()',
+    "guard_finisher_offer_item_insert",
+  ),
+  semanticFinisherTrigger(
+    "FinisherOffer",
+    "FinisherOffer_require_finalized",
+    'CREATE CONSTRAINT TRIGGER "FinisherOffer_require_finalized" AFTER INSERT ON "FinisherOffer" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION require_finisher_offer_finalized()',
+    "require_finisher_offer_finalized",
+  ),
+  semanticFinisherTrigger(
+    "FinisherExecution",
+    "FinisherExecution_lifecycle_guard",
+    'CREATE TRIGGER "FinisherExecution_lifecycle_guard" BEFORE UPDATE ON "FinisherExecution" FOR EACH ROW EXECUTE FUNCTION guard_finisher_execution_lifecycle()',
+    "guard_finisher_execution_lifecycle",
+  ),
+  semanticFinisherTrigger(
+    "FinisherExecution",
+    "FinisherExecution_require_finalized",
+    'CREATE CONSTRAINT TRIGGER "FinisherExecution_require_finalized" AFTER INSERT ON "FinisherExecution" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION require_finisher_execution_finalized()',
+    "require_finisher_execution_finalized",
+  ),
+  semanticFinisherTrigger(
+    "FinisherExecution",
+    "FinisherExecution_terminal_outcome_coherence",
+    'CREATE CONSTRAINT TRIGGER "FinisherExecution_terminal_outcome_coherence" AFTER INSERT OR UPDATE ON "FinisherExecution" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION validate_finisher_terminal_outcome_from_execution()',
+    "validate_finisher_terminal_outcome_from_execution",
+  ),
+  semanticFinisherTrigger(
+    "FinisherExecutionStep",
+    "FinisherExecutionStep_terminal_outcome_coherence",
+    'CREATE CONSTRAINT TRIGGER "FinisherExecutionStep_terminal_outcome_coherence" AFTER INSERT OR DELETE OR UPDATE ON "FinisherExecutionStep" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION validate_finisher_terminal_outcome_from_step()',
+    "validate_finisher_terminal_outcome_from_step",
+  ),
+  semanticFinisherTrigger(
+    "FinisherDecision",
+    "FinisherDecision_immutable",
+    'CREATE TRIGGER "FinisherDecision_immutable" BEFORE UPDATE OR DELETE ON "FinisherDecision" FOR EACH ROW EXECUTE FUNCTION guard_finisher_decision_history()',
+    "guard_finisher_decision_history",
+  ),
+  semanticFinisherTrigger(
+    "FinisherDecision",
+    "FinisherDecision_require_applied",
+    'CREATE CONSTRAINT TRIGGER "FinisherDecision_require_applied" AFTER INSERT ON "FinisherDecision" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION require_finisher_decision_applied()',
+    "require_finisher_decision_applied",
+  ),
+  ...FINISHER_CATALOG_EXPECTATIONS,
+];
 
 export const PENDING_ARCHITECTURE_MANIFEST: readonly PendingMigrationExpectation[] = [
   {
@@ -372,6 +1615,11 @@ export const PENDING_ARCHITECTURE_MANIFEST: readonly PendingMigrationExpectation
       },
     ],
   },
+  {
+    migration: "20260728120000_add_finishers_phase_1",
+    effect: "objects",
+    objects: FINISHER_SCHEMA_EXPECTATIONS,
+  },
 ] as const;
 
 type DefinitionExpectation =
@@ -534,6 +1782,22 @@ function normalize(value: string | null): string | null {
   return value?.replace(/\s+/g, " ").trim() ?? null;
 }
 
+function normalizeCatalogDefinition(value: string | null): string | null {
+  return normalize(value)
+    ?.replace(/\bpublic\./gi, "")
+    .replace(/"([^"]+)"/g, "$1")
+    .replace(
+      /\b(BEFORE|AFTER|INSTEAD OF) ((?:INSERT|UPDATE|DELETE|TRUNCATE)(?: OR (?:INSERT|UPDATE|DELETE|TRUNCATE))+) ON\b/gi,
+      (_match, timing: string, events: string) =>
+        `${timing.toUpperCase()} ${events
+          .toUpperCase()
+          .split(" OR ")
+          .sort()
+          .join(" OR ")} ON`,
+    )
+    .replace(/;$/, "") ?? null;
+}
+
 function stripRedundantOuterParentheses(value: string): string {
   let result = value;
   while (result.startsWith("(") && result.endsWith(")")) {
@@ -562,15 +1826,37 @@ function normalizeIndexPart(value: string | null): string | null {
 }
 
 function objectKey(object: ObjectExpectation): string {
+  if (object.kind === "function" && object.function?.arguments) {
+    return `${object.kind}:${object.name}(${object.function.arguments})`;
+  }
   return `${object.kind}:${object.table ? `${object.table}.` : ""}${object.name}`;
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
 }
 
 function objectExists(snapshot: CatalogSnapshot, object: ObjectExpectation): boolean {
   if (object.kind === "table") return snapshot.tables.includes(object.name);
   if (object.kind === "column") return snapshot.columns.some((item) => item.table === object.table && item.name === object.name);
+  if (object.kind === "enum") return snapshot.enums.some((item) => item.name === object.name);
   if (object.kind === "index") return snapshot.indexes.some((item) => item.table === object.table && item.name === object.name);
   if (object.kind === "constraint") return snapshot.constraints.some((item) => item.table === object.table && item.name === object.name);
   if (object.kind === "trigger") return snapshot.triggers.some((item) => item.table === object.table && item.name === object.name);
+  if (object.kind === "catalogRow") {
+    return snapshot.catalogRows.some(
+      (item) => item.table === object.table && item.key === object.name,
+    );
+  }
   return snapshot.functions.some((item) => item.name === object.name);
 }
 
@@ -580,24 +1866,492 @@ function pendingObjectCompatible(snapshot: CatalogSnapshot, object: ObjectExpect
     const actual = snapshot.columns.find((item) => item.table === object.table && item.name === object.name);
     return Boolean(actual && object.column && actual.type === object.column.type && actual.nullable === object.column.nullable && normalize(actual.default) === normalize(object.column.default));
   }
+  if (object.kind === "enum") {
+    const actual = snapshot.enums.find((item) => item.name === object.name);
+    return Boolean(
+      actual &&
+        object.enum &&
+        JSON.stringify(actual.values) === JSON.stringify(object.enum.values),
+    );
+  }
   if (object.kind === "index") {
     const actual = snapshot.indexes.find((item) => item.table === object.table && item.name === object.name);
     return Boolean(
       actual && object.index && actual.unique === object.index.unique &&
       JSON.stringify(actual.columns.map((part) => normalizeIndexPart(part))) === JSON.stringify(object.index.columns.map((part) => normalizeIndexPart(part))) &&
-      normalizeIndexPart(actual.predicate) === normalizeIndexPart(object.index.predicate),
+      normalizeIndexPart(actual.predicate) === normalizeIndexPart(object.index.predicate) &&
+      (!object.index.requireLiveEnforcement ||
+        (actual.valid === true &&
+          actual.ready === true &&
+          actual.live === true)) &&
+      (object.index.accessMethod == null ||
+        actual.accessMethod === object.index.accessMethod) &&
+      (object.index.includeColumns == null ||
+        JSON.stringify(actual.includeColumns ?? []) ===
+          JSON.stringify(object.index.includeColumns)),
     );
   }
   if (object.kind === "constraint") {
     const actual = snapshot.constraints.find((item) => item.table === object.table && item.name === object.name);
     if (!actual) return false;
-    if (object.constraint) return actual.type === object.constraint.type && normalize(actual.definition) === normalize(object.constraint.definition);
-    return (object.definitionIncludes ?? []).every((token) => actual.definition.includes(token));
+    if (object.constraint?.type && actual.type !== object.constraint.type) {
+      return false;
+    }
+    if (
+      object.constraint?.definition &&
+      normalizeCatalogDefinition(actual.definition) !==
+        normalizeCatalogDefinition(object.constraint.definition)
+    ) {
+      return false;
+    }
+    if (
+      object.constraint?.validated != null &&
+      actual.validated !== object.constraint.validated
+    ) {
+      return false;
+    }
+    if (
+      object.constraint?.deferrable != null &&
+      actual.deferrable !== object.constraint.deferrable
+    ) {
+      return false;
+    }
+    if (
+      object.constraint?.initiallyDeferred != null &&
+      actual.initiallyDeferred !== object.constraint.initiallyDeferred
+    ) {
+      return false;
+    }
+    const normalizedDefinition =
+      normalizeCatalogDefinition(actual.definition) ?? "";
+    return (object.definitionIncludes ?? []).every((token) =>
+      normalizedDefinition.includes(
+        normalizeCatalogDefinition(token) ?? "",
+      ),
+    );
   }
-  const definition = object.kind === "trigger"
-    ? snapshot.triggers.find((item) => item.table === object.table && item.name === object.name)?.definition
-    : snapshot.functions.find((item) => item.name === object.name)?.definition;
-  return Boolean(definition && (object.definitionIncludes ?? []).every((token) => definition.includes(token)));
+  if (object.kind === "catalogRow") {
+    const actual = snapshot.catalogRows.find(
+      (item) => item.table === object.table && item.key === object.name,
+    );
+    return Boolean(
+      actual &&
+        object.row &&
+        canonicalJson(actual.values) === canonicalJson(object.row),
+    );
+  }
+  if (object.kind === "trigger") {
+    const actual = snapshot.triggers.find(
+      (item) => item.table === object.table && item.name === object.name,
+    );
+    if (!actual) return false;
+    if (object.trigger) {
+      return (
+        actual.enabled === object.trigger.enabled &&
+        (object.trigger.functionName === undefined ||
+          actual.functionName === object.trigger.functionName) &&
+        (object.trigger.functionOwner === undefined ||
+          actual.functionOwner === object.trigger.functionOwner) &&
+        normalizeCatalogDefinition(actual.definition) ===
+          normalizeCatalogDefinition(object.trigger.definition)
+      );
+    }
+    return (object.definitionIncludes ?? []).every((token) =>
+      actual.definition.includes(token),
+    );
+  }
+  const actual = snapshot.functions.find(
+    (item) =>
+      item.name === object.name &&
+      (!object.function || item.arguments === object.function.arguments),
+  );
+  if (!actual) return false;
+  if (object.function) {
+    const actualBody = normalize(actual.body ?? null) ?? "";
+    const expectedBody = object.function.body;
+    return (
+      actual.language === object.function.language &&
+      actual.arguments === object.function.arguments &&
+      actual.resultType === object.function.resultType &&
+      actual.volatility === object.function.volatility &&
+      actual.securityDefiner === object.function.securityDefiner &&
+      actual.leakproof === object.function.leakproof &&
+      actual.strict === object.function.strict &&
+      actual.parallel === object.function.parallel &&
+      (object.function.configuration === undefined ||
+        canonicalJson(actual.configuration ?? null) ===
+          canonicalJson(object.function.configuration)) &&
+      (object.function.publicExecute === undefined ||
+        actual.publicExecute === object.function.publicExecute) &&
+      (object.function.owner === undefined ||
+        actual.owner === object.function.owner) &&
+      (expectedBody === undefined ||
+        actualBody === (normalize(expectedBody) ?? "")) &&
+      (object.function.bodyIncludes ?? []).every((token) =>
+        actualBody.includes(normalize(token) ?? ""),
+      ) &&
+      (object.function.bodyExcludes ?? []).every(
+        (token) => !actualBody.includes(normalize(token) ?? ""),
+      )
+    );
+  }
+  return (object.definitionIncludes ?? []).every((token) =>
+    actual.definition.includes(token),
+  );
+}
+
+const FINISHER_OWNER_ROLE = "trainer_finisher_owner";
+const FINISHER_CLEANUP_ROLE = "trainer_finisher_cleanup";
+const FINISHER_RUNTIME_ROLE = "trainer_app_runtime";
+
+function privilegeKeys(
+  privileges: PrivilegeFact[],
+  excludedGrantee?: string,
+): string[] {
+  return privileges
+    .filter((item) => item.grantee !== excludedGrantee)
+    .map(
+      (item) =>
+        `${item.grantee}:${item.privilege}:${item.grantable ? "grantable" : "plain"}`,
+    )
+    .sort();
+}
+
+function finisherSecurityIssues(
+  snapshot: CatalogSnapshot,
+  expectedTables: Set<string>,
+  expectedFunctions: Set<string>,
+): string[] {
+  if (![...expectedTables].every((table) => snapshot.tables.includes(table))) {
+    return [];
+  }
+  const issues: string[] = [];
+  const expectedTableGrants: Record<string, string[]> = {
+    FinisherRoutine: [`${FINISHER_RUNTIME_ROLE}:SELECT:plain`],
+    FinisherRoutineVersion: [`${FINISHER_RUNTIME_ROLE}:SELECT:plain`],
+    FinisherRoutineStep: [`${FINISHER_RUNTIME_ROLE}:SELECT:plain`],
+    FinisherRoutineStepAlternative: [`${FINISHER_RUNTIME_ROLE}:SELECT:plain`],
+    FinisherOffer: [
+      `${FINISHER_RUNTIME_ROLE}:INSERT:plain`,
+      `${FINISHER_RUNTIME_ROLE}:SELECT:plain`,
+      `${FINISHER_RUNTIME_ROLE}:UPDATE:plain`,
+    ],
+    FinisherOfferItem: [
+      `${FINISHER_RUNTIME_ROLE}:INSERT:plain`,
+      `${FINISHER_RUNTIME_ROLE}:SELECT:plain`,
+    ],
+    FinisherDecision: [
+      `${FINISHER_RUNTIME_ROLE}:INSERT:plain`,
+      `${FINISHER_RUNTIME_ROLE}:SELECT:plain`,
+    ],
+    FinisherExecution: [
+      `${FINISHER_RUNTIME_ROLE}:INSERT:plain`,
+      `${FINISHER_RUNTIME_ROLE}:SELECT:plain`,
+      `${FINISHER_RUNTIME_ROLE}:UPDATE:plain`,
+    ],
+    FinisherExecutionStep: [
+      `${FINISHER_RUNTIME_ROLE}:INSERT:plain`,
+      `${FINISHER_RUNTIME_ROLE}:SELECT:plain`,
+      `${FINISHER_RUNTIME_ROLE}:UPDATE:plain`,
+    ],
+    FinisherExecutionCommand: [
+      `${FINISHER_CLEANUP_ROLE}:SELECT:plain`,
+      `${FINISHER_RUNTIME_ROLE}:INSERT:plain`,
+      `${FINISHER_RUNTIME_ROLE}:SELECT:plain`,
+    ],
+  };
+
+  for (const table of expectedTables) {
+    const security = snapshot.tableSecurity?.find(
+      (item) => item.table === table,
+    );
+    if (!security) {
+      issues.push(`table-security:${table}:unverifiable`);
+      continue;
+    }
+    if (security.owner !== FINISHER_OWNER_ROLE) {
+      issues.push(`table-owner:${table}:${security.owner}`);
+    }
+    const actual = privilegeKeys(security.privileges, FINISHER_OWNER_ROLE);
+    const expected = [...(expectedTableGrants[table] ?? [])].sort();
+    if (canonicalJson(actual) !== canonicalJson(expected)) {
+      issues.push(`table-privileges:${table}:${actual.join(",")}`);
+    }
+  }
+
+  const protectedColumnGrants = (snapshot.columnPrivileges ?? [])
+    .filter((item) => expectedTables.has(item.table))
+    .map(
+      (item) =>
+        `${item.table}.${item.column}:${item.grantee}:${item.privilege}:${
+          item.grantable ? "grantable" : "plain"
+        }`,
+    )
+    .sort();
+  const expectedColumnGrants = [
+    `FinisherExecutionCommand.cleanedAt:${FINISHER_CLEANUP_ROLE}:UPDATE:plain`,
+    `FinisherExecutionCommand.response:${FINISHER_CLEANUP_ROLE}:UPDATE:plain`,
+  ].sort();
+  if (
+    canonicalJson(protectedColumnGrants) !== canonicalJson(expectedColumnGrants)
+  ) {
+    issues.push(
+      `column-privileges:${protectedColumnGrants.join(",") || "missing"}`,
+    );
+  }
+
+  for (const fn of snapshot.functions) {
+    const key =
+      fn.arguments && fn.arguments.length > 0
+        ? `function:${fn.name}(${fn.arguments})`
+        : `function:${fn.name}`;
+    if (!expectedFunctions.has(key)) continue;
+    const cleanup =
+      fn.name === "cleanup_expired_finisher_execution_commands";
+    const expectedOwner = cleanup
+      ? FINISHER_CLEANUP_ROLE
+      : FINISHER_OWNER_ROLE;
+    if (fn.owner !== expectedOwner) {
+      issues.push(`function-owner:${fn.name}:${fn.owner ?? "unverifiable"}`);
+    }
+    const actual = privilegeKeys(fn.privileges ?? [], expectedOwner);
+    const runtimeCallable =
+      cleanup || fn.name === "validate_finisher_terminal_outcome";
+    const expected = runtimeCallable
+      ? [`${FINISHER_RUNTIME_ROLE}:EXECUTE:plain`]
+      : [];
+    if (canonicalJson(actual) !== canonicalJson(expected)) {
+      issues.push(`function-privileges:${fn.name}:${actual.join(",")}`);
+    }
+    if (fn.body && /\b(?:current_setting|set_config)\s*\(/i.test(fn.body)) {
+      issues.push(`function-caller-setting-bypass:${fn.name}`);
+    }
+  }
+
+  const expectedRoleAttributes: Record<
+    string,
+    Pick<
+      RoleFact,
+      | "canLogin"
+      | "inherit"
+      | "superuser"
+      | "createRole"
+      | "createDb"
+      | "replication"
+      | "bypassRls"
+      | "publicSchemaCreate"
+    >
+  > = {
+    [FINISHER_RUNTIME_ROLE]: {
+      canLogin: true,
+      inherit: true,
+      superuser: false,
+      createRole: false,
+      createDb: false,
+      replication: false,
+      bypassRls: false,
+      publicSchemaCreate: false,
+    },
+    [FINISHER_OWNER_ROLE]: {
+      canLogin: false,
+      inherit: false,
+      superuser: false,
+      createRole: false,
+      createDb: false,
+      replication: false,
+      bypassRls: false,
+      publicSchemaCreate: false,
+    },
+    [FINISHER_CLEANUP_ROLE]: {
+      canLogin: false,
+      inherit: false,
+      superuser: false,
+      createRole: false,
+      createDb: false,
+      replication: false,
+      bypassRls: false,
+      publicSchemaCreate: false,
+    },
+  };
+  for (const [name, expected] of Object.entries(expectedRoleAttributes)) {
+    const actual = snapshot.roles?.find((role) => role.name === name);
+    if (!actual) {
+      issues.push(`role:${name}:unverifiable`);
+      continue;
+    }
+    const actualAttributes = {
+      canLogin: actual.canLogin,
+      inherit: actual.inherit,
+      superuser: actual.superuser,
+      createRole: actual.createRole,
+      createDb: actual.createDb,
+      replication: actual.replication,
+      bypassRls: actual.bypassRls,
+      publicSchemaCreate: actual.publicSchemaCreate,
+    };
+    if (canonicalJson(actualAttributes) !== canonicalJson(expected)) {
+      issues.push(`role:${name}:unsafe-attributes`);
+    }
+  }
+
+  const protectedRoles = new Set(Object.keys(expectedRoleAttributes));
+  for (const membership of snapshot.roleMemberships ?? []) {
+    if (
+      protectedRoles.has(membership.role) ||
+      protectedRoles.has(membership.member)
+    ) {
+      issues.push(
+        `role-membership:${membership.member}->${membership.role}`,
+      );
+    }
+  }
+  for (const privilege of snapshot.defaultPrivileges ?? []) {
+    if (
+      protectedRoles.has(privilege.owner) ||
+      protectedRoles.has(privilege.grantee)
+    ) {
+      issues.push(
+        `default-privilege:${privilege.owner}:${privilege.objectType}:${
+          privilege.grantee
+        }:${privilege.privilege}`,
+      );
+    }
+  }
+
+  const finisherRelations = new Set(
+    [...expectedTables].map((table) => `public.${table}`),
+  );
+  const finisherFunctionNames = new Set(
+    [...expectedFunctions].map((key) =>
+      key.slice("function:".length).replace(/\(.*$/, ""),
+    ),
+  );
+  for (const fn of snapshot.functions) {
+    const key =
+      fn.arguments && fn.arguments.length > 0
+        ? `function:${fn.name}(${fn.arguments})`
+        : `function:${fn.name}`;
+    const touchesFinisher =
+      (fn.referencedRelations ?? []).some((relation) =>
+        finisherRelations.has(relation),
+      ) ||
+      (fn.triggerTables ?? []).some((table) => expectedTables.has(table)) ||
+      (fn.referencedFunctions ?? []).some((name) =>
+        finisherFunctionNames.has(name.replace(/\(.*$/, "")),
+      );
+    if (touchesFinisher && !expectedFunctions.has(key)) {
+      issues.push(
+        `function-mutation-path:${fn.name}:${
+          fn.mutationCapability ? "mutation" : "access"
+        }`,
+      );
+    }
+  }
+
+  return issues.sort();
+}
+
+function unexpectedFinisherOwnedObjects(snapshot: CatalogSnapshot): string[] {
+  const expectedTables = new Set(Object.keys(FINISHER_TABLE_COLUMNS));
+  const expectedColumns = new Set(
+    FINISHER_SCHEMA_EXPECTATIONS.filter((item) => item.kind === "column").map(
+      objectKey,
+    ),
+  );
+  const expectedEnums = new Set(
+    FINISHER_SCHEMA_EXPECTATIONS.filter((item) => item.kind === "enum").map(
+      objectKey,
+    ),
+  );
+  const expectedIndexes = new Set(
+    FINISHER_SCHEMA_EXPECTATIONS.filter((item) => item.kind === "index").map(
+      objectKey,
+    ),
+  );
+  for (const table of expectedTables) {
+    expectedIndexes.add(`index:${table}.${table}_pkey`);
+  }
+  const expectedConstraints = new Set(
+    FINISHER_SCHEMA_EXPECTATIONS.filter(
+      (item) => item.kind === "constraint",
+    ).map(objectKey),
+  );
+  const expectedTriggers = new Set(
+    FINISHER_SCHEMA_EXPECTATIONS.filter((item) => item.kind === "trigger").map(
+      objectKey,
+    ),
+  );
+  const expectedFunctions = new Set(
+    FINISHER_SCHEMA_EXPECTATIONS.filter((item) => item.kind === "function").map(
+      objectKey,
+    ),
+  );
+  const expectedRows = new Set(
+    FINISHER_SCHEMA_EXPECTATIONS.filter(
+      (item) => item.kind === "catalogRow",
+    ).map(objectKey),
+  );
+  const unexpected: string[] = [];
+
+  for (const table of snapshot.tables.filter((name) =>
+    name.startsWith("Finisher"),
+  )) {
+    if (!expectedTables.has(table)) unexpected.push(`table:${table}`);
+  }
+  for (const column of snapshot.columns.filter((item) =>
+    expectedTables.has(item.table),
+  )) {
+    const key = `column:${column.table}.${column.name}`;
+    if (!expectedColumns.has(key)) unexpected.push(key);
+  }
+  for (const entry of snapshot.enums.filter(
+    (item) =>
+      item.name.startsWith("Finisher") ||
+      item.name.startsWith("WorkoutPhase"),
+  )) {
+    const key = `enum:${entry.name}`;
+    if (!expectedEnums.has(key)) unexpected.push(key);
+  }
+  for (const index of snapshot.indexes.filter((item) =>
+    expectedTables.has(item.table),
+  )) {
+    const key = `index:${index.table}.${index.name}`;
+    if (!expectedIndexes.has(key)) unexpected.push(key);
+  }
+  for (const constraint of snapshot.constraints.filter((item) =>
+    expectedTables.has(item.table),
+  )) {
+    const key = `constraint:${constraint.table}.${constraint.name}`;
+    const matchingConstraintTrigger =
+      constraint.type === "t" &&
+      expectedTriggers.has(`trigger:${constraint.table}.${constraint.name}`);
+    if (!expectedConstraints.has(key) && !matchingConstraintTrigger) {
+      unexpected.push(key);
+    }
+  }
+  for (const trigger of snapshot.triggers.filter((item) =>
+    expectedTables.has(item.table),
+  )) {
+    const key = `trigger:${trigger.table}.${trigger.name}`;
+    if (!expectedTriggers.has(key)) unexpected.push(key);
+  }
+  for (const fn of snapshot.functions.filter((item) =>
+    item.name.includes("finisher"),
+  )) {
+    const key =
+      fn.arguments && fn.arguments.length > 0
+        ? `function:${fn.name}(${fn.arguments})`
+        : `function:${fn.name}`;
+    if (!expectedFunctions.has(key)) unexpected.push(key);
+  }
+  for (const row of snapshot.catalogRows) {
+    const key = `catalogRow:${row.table}.${row.key}`;
+    if (!expectedRows.has(key)) unexpected.push(key);
+  }
+  unexpected.push(
+    ...finisherSecurityIssues(snapshot, expectedTables, expectedFunctions),
+  );
+  return unexpected.sort();
 }
 
 function definitionIssue(snapshot: CatalogSnapshot, expected: DefinitionExpectation): string | null {
@@ -734,7 +2488,7 @@ function migrationSchemaEffectsVerified(input: {
 }
 
 function isFullCommitSha(value: string): boolean {
-  return /^[0-9a-f]{40}$/i.test(value);
+  return /^[0-9a-f]{40}$/.test(value);
 }
 
 function isFreshEvidenceTimestamp(
@@ -902,6 +2656,7 @@ export function buildMigrationIntegrityReport(input: {
   const definitionIssues = APPLIED_SCHEMA_EXPECTATIONS.map((expected) => definitionIssue(input.catalog, expected)).filter((issue): issue is string => Boolean(issue));
   incompatible.push(...definitionIssues.filter((issue) => issue.includes(":incompatible")));
   const missingDefinitions = definitionIssues.filter((issue) => issue.endsWith(":missing"));
+  const unexpectedOwnedObjects = unexpectedFinisherOwnedObjects(input.catalog);
   const uniquenessAssessments = BASELINE_UNIQUENESS_EXPECTATIONS.map((expected) => assessBaselineUniqueness(input.catalog, expected));
   const uniquenessBlockingDifferences = uniquenessAssessments
     .filter((assessment) => assessment.migrationBlocking)
@@ -937,6 +2692,10 @@ export function buildMigrationIntegrityReport(input: {
       category: "applied_migration_object_incompatible" as const,
       difference,
     })),
+    ...unexpectedOwnedObjects.map((difference) => ({
+      category: "unexpected_finisher_owned_object" as const,
+      difference,
+    })),
     ...uniquenessBlockingDifferences.map((difference) => ({ category: "baseline_uniqueness" as const, ...difference })),
   ];
 
@@ -944,7 +2703,8 @@ export function buildMigrationIntegrityReport(input: {
     definitionIssues.length === 0 &&
     uniquenessBlockingDifferences.length === 0 &&
     appliedManifestMissing.length === 0 &&
-    appliedManifestIncompatible.length === 0;
+    appliedManifestIncompatible.length === 0 &&
+    unexpectedOwnedObjects.length === 0;
   const executed: string[] = [];
   const resolvedApplied: string[] = [];
   const unknownSuccessful: string[] = [];
@@ -997,9 +2757,9 @@ export function buildMigrationIntegrityReport(input: {
   const exactChain = JSON.stringify(checkedInNames) === JSON.stringify(EXPECTED_MIGRATION_CHAIN);
   const evidence = input.authorizationEvidence;
   const evaluatedAt = evidence?.evaluatedAt ?? new Date().toISOString();
-  const expectedPendingMigrations = evidence?.expectedPendingMigrations
-    ? [...evidence.expectedPendingMigrations]
-    : [...MIGRATION_AUTHORIZATION_POLICY.expectedPendingMigrations];
+  const expectedPendingMigrations: string[] = [
+    ...MIGRATION_AUTHORIZATION_POLICY.expectedPendingMigrations,
+  ];
   const pendingSequenceConfigured = expectedPendingSequenceValid(
     checkedInNames,
     expectedPendingMigrations,
@@ -1019,12 +2779,30 @@ export function buildMigrationIntegrityReport(input: {
   const productionDeploymentCommit =
     evidence?.productionDeploymentCommit ?? "";
   const requiredApplicationCommit =
-    evidence?.requiredApplicationCommit ??
-    MIGRATION_AUTHORIZATION_POLICY.requiredApplicationCommit;
+    evidence?.requiredApplicationCommit ?? "";
   const repositoryHeadIdentified = isFullCommitSha(repositoryHead);
+  const productionDeploymentCommitIdentified = isFullCommitSha(
+    productionDeploymentCommit,
+  );
   const requiredApplicationCommitIdentified = isFullCommitSha(
     requiredApplicationCommit,
   );
+  const requiredApplicationCommitMatchesRepositoryHead =
+    requiredApplicationCommitIdentified &&
+    repositoryHeadIdentified &&
+    requiredApplicationCommit === repositoryHead;
+  const requiredApplicationCommitMatchesProductionDeployment =
+    requiredApplicationCommitIdentified &&
+    productionDeploymentCommitIdentified &&
+    requiredApplicationCommit === productionDeploymentCommit;
+  const repositoryHeadMatchesProductionDeployment =
+    repositoryHeadIdentified &&
+    productionDeploymentCommitIdentified &&
+    repositoryHead === productionDeploymentCommit;
+  const applicationCommitBindingVerified =
+    requiredApplicationCommitMatchesRepositoryHead &&
+    requiredApplicationCommitMatchesProductionDeployment &&
+    repositoryHeadMatchesProductionDeployment;
   const migrationTargetIdentified =
     exactChain &&
     pendingSequenceConfigured &&
@@ -1062,14 +2840,8 @@ export function buildMigrationIntegrityReport(input: {
   );
   const applicationCompatibilityState =
     evidence?.applicationCompatibilityState ?? "unverified";
-  const compatibleProductionDeployment =
-    isFullCommitSha(productionDeploymentCommit) &&
-    MIGRATION_AUTHORIZATION_POLICY.compatibleProductionDeploymentCommits.includes(
-      productionDeploymentCommit as
-        (typeof MIGRATION_AUTHORIZATION_POLICY.compatibleProductionDeploymentCommits)[number],
-    );
   const productionDeploymentVerified =
-    compatibleProductionDeployment &&
+    applicationCommitBindingVerified &&
     isFreshEvidenceTimestamp(evidence?.deploymentVerifiedAt, evaluatedAt);
   const migrationOrderValid =
     orderViolations.length === 0 && pendingSequenceConfigured;
@@ -1090,7 +2862,9 @@ export function buildMigrationIntegrityReport(input: {
   const migrationAuthorizationReady =
     technicalMigrationReady &&
     repositoryHeadIdentified &&
+    productionDeploymentCommitIdentified &&
     requiredApplicationCommitIdentified &&
+    applicationCommitBindingVerified &&
     migrationTargetIdentified &&
     recoveryPointVerified &&
     writeBoundaryReady &&
@@ -1119,8 +2893,33 @@ export function buildMigrationIntegrityReport(input: {
   if (!disposablePostgresVerified) blockingReasons.push("disposable_postgres_verification_missing");
   if (writes !== 0) blockingReasons.push("inspection_writes_detected");
   if (!repositoryHeadIdentified) blockingReasons.push("repository_head_not_identified");
+  if (!productionDeploymentCommitIdentified) {
+    blockingReasons.push("production_deployment_commit_not_identified");
+  }
   if (!requiredApplicationCommitIdentified) blockingReasons.push("required_application_commit_not_identified");
-  if (!compatibleProductionDeployment) blockingReasons.push("production_deployment_commit_incompatible");
+  if (
+    requiredApplicationCommitIdentified &&
+    repositoryHeadIdentified &&
+    !requiredApplicationCommitMatchesRepositoryHead
+  ) {
+    blockingReasons.push("required_application_commit_repository_head_mismatch");
+  }
+  if (
+    requiredApplicationCommitIdentified &&
+    productionDeploymentCommitIdentified &&
+    !requiredApplicationCommitMatchesProductionDeployment
+  ) {
+    blockingReasons.push(
+      "required_application_commit_production_deployment_mismatch",
+    );
+  }
+  if (
+    repositoryHeadIdentified &&
+    productionDeploymentCommitIdentified &&
+    !repositoryHeadMatchesProductionDeployment
+  ) {
+    blockingReasons.push("repository_head_production_deployment_mismatch");
+  }
   if (!productionDeploymentVerified) blockingReasons.push("production_deployment_evidence_invalid_or_stale");
   if (!recoveryPointVerified) blockingReasons.push("recovery_point_unverified_or_stale");
   if (!writeBoundaryReady) blockingReasons.push("write_boundary_not_ready_or_stale");
@@ -1207,7 +3006,14 @@ export function buildMigrationIntegrityReport(input: {
       unknown,
       orderViolations,
     },
-    partialObjects: { unexpectedPresent, partiallyPresent, incompatible, unableToVerify, commentsOnly },
+    partialObjects: {
+      unexpectedPresent,
+      partiallyPresent,
+      incompatible,
+      unexpectedOwnedObjects,
+      unableToVerify,
+      commentsOnly,
+    },
     definitions: {
       checked: APPLIED_SCHEMA_EXPECTATIONS.length,
       missing: missingDefinitions,
@@ -1229,7 +3035,12 @@ export function buildMigrationIntegrityReport(input: {
       productionDeploymentVerified,
       migrationTargetIdentified,
       repositoryHeadIdentified,
+      productionDeploymentCommitIdentified,
       requiredApplicationCommitIdentified,
+      requiredApplicationCommitMatchesRepositoryHead,
+      requiredApplicationCommitMatchesProductionDeployment,
+      repositoryHeadMatchesProductionDeployment,
+      applicationCommitBindingVerified,
     },
   };
 }

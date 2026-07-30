@@ -13,6 +13,7 @@ import {
   SWAPPED_EXERCISE_BADGE_LABEL,
 } from "@/lib/ui/selection-metadata";
 import type { CompletedWorkoutExerciseSummary } from "@/components/log-workout/types";
+import { FinisherExperience } from "@/components/finishers/FinisherExperience";
 
 function formatRepTarget(
   targetReps: number,
@@ -25,11 +26,13 @@ function formatRepTarget(
 type CompletedWorkoutReviewProps = {
   workoutId: string;
   performanceSummary: CompletedWorkoutExerciseSummary[];
+  finishersEnabled?: boolean;
 };
 
 export function CompletedWorkoutReview({
   workoutId,
   performanceSummary,
+  finishersEnabled = false,
 }: CompletedWorkoutReviewProps) {
   const [postSessionReview, setPostSessionReview] =
     useState<PostSessionReviewDisplayDto | null>(null);
@@ -73,6 +76,8 @@ export function CompletedWorkoutReview({
 
   return (
     <div className="space-y-5 sm:space-y-6">
+      {finishersEnabled ? <FinisherExperience workoutId={workoutId} /> : null}
+
       {isLoadingPostSessionReview ? (
         <section
           aria-label="Post-session review loading"

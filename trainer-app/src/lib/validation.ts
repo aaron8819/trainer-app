@@ -440,6 +440,115 @@ export const activatePlanSchema = z.object({
   expectedActiveMacroCycleId: z.string().uuid().nullable(),
 });
 
+const finisherCommandIdSchema = z.string().uuid();
+export const FINISHER_EXECUTION_COMMAND_ACTION_VALUES = [
+  "start",
+  "sync",
+  "pause",
+  "resume",
+  "skip",
+  "substitute",
+  "end",
+  "feedback",
+  "dismiss",
+] as const;
+
+export const finisherActionSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("offer") }).strict(),
+  z
+    .object({
+      action: z.literal("select"),
+      offerId: z.string().uuid(),
+      expectedOfferRevision: z.number().int().min(1),
+      executionId: z.string().uuid(),
+      routineVersionId: z.string().uuid(),
+      acknowledgeContraindication: z.boolean().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("start"),
+      executionId: z.string().uuid(),
+      expectedRevision: z.number().int().min(1),
+      commandId: finisherCommandIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("decline"),
+      offerId: z.string().uuid(),
+      expectedOfferRevision: z.number().int().min(1),
+      decisionId: z.string().uuid(),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("dismiss"),
+      executionId: z.string().uuid(),
+      expectedRevision: z.number().int().min(1),
+      commandId: finisherCommandIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("sync"),
+      executionId: z.string().uuid(),
+      expectedRevision: z.number().int().min(1),
+      commandId: finisherCommandIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("pause"),
+      executionId: z.string().uuid(),
+      expectedRevision: z.number().int().min(1),
+      commandId: finisherCommandIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("resume"),
+      executionId: z.string().uuid(),
+      expectedRevision: z.number().int().min(1),
+      commandId: finisherCommandIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("skip"),
+      executionId: z.string().uuid(),
+      expectedRevision: z.number().int().min(1),
+      commandId: finisherCommandIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("substitute"),
+      executionId: z.string().uuid(),
+      expectedRevision: z.number().int().min(1),
+      alternativeId: z.string().uuid(),
+      commandId: finisherCommandIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("end"),
+      executionId: z.string().uuid(),
+      expectedRevision: z.number().int().min(1),
+      commandId: finisherCommandIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("feedback"),
+      executionId: z.string().uuid(),
+      expectedRevision: z.number().int().min(1),
+      difficultyFeedback: z.number().int().min(1).max(10),
+      commandId: finisherCommandIdSchema,
+    })
+    .strict(),
+]);
+
 // Phase 3: Readiness & Autoregulation schemas
 export const readinessSignalSchema = z.object({
   subjective: z.object({

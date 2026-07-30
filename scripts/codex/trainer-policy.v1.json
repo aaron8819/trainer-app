@@ -55,7 +55,7 @@
       },
       "productionWritesMayEverBeAllowed": true,
       "implementationChecks": ["prisma-generate", "verify-contracts", "git-diff-check"],
-      "releaseChecks": ["test-migration-integrity"],
+      "releaseChecks": ["test-migration-integrity", "verify-finisher-schema-drift"],
       "warnings": ["This inspection does not authorize migration execution, direct SQL, repair, backfill, or any database write."],
       "authorizationRequirements": ["Obtain separate authorization for each database target and mutation step."]
     },
@@ -74,7 +74,7 @@
     }
   },
   "verification": {
-    "commandOrder": ["database-backup-tests", "codex-tooling-tests", "codex-registry-validator", "npm-test-environment-classification", "npm-test-inventory-credential-free", "git-diff-check", "test-fast", "verify-contracts", "verify-completed-review", "verify-version", "test-audit-matrix", "verify", "prisma-generate", "test-migration-integrity", "audit-future-week"],
+    "commandOrder": ["database-backup-tests", "codex-tooling-tests", "codex-registry-validator", "npm-test-environment-classification", "npm-test-inventory-credential-free", "git-diff-check", "test-fast", "verify-contracts", "verify-completed-review", "verify-version", "test-audit-matrix", "verify", "prisma-generate", "test-migration-integrity", "verify-finisher-schema-drift", "audit-future-week"],
     "pathRules": [
       {
         "name": "database-backup-tooling",
@@ -98,7 +98,7 @@
         "name": "prisma-persistence",
         "patterns": ["trainer-app/prisma/**"],
         "implementation": ["prisma-generate", "verify-contracts"],
-        "release": ["test-migration-integrity"]
+        "release": ["test-migration-integrity", "verify-finisher-schema-drift"]
       },
       {
         "name": "completed-workout-review",
@@ -443,6 +443,26 @@
       "requiresPowerShell": false,
       "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "test:migration-integrity"] }
     },
+    "verify-finisher-schema-drift": {
+      "command": "npm run verify:finisher-schema-drift",
+      "defaultSideEffectClass": "database-read",
+      "accessesNetwork": false,
+      "accessesDatabase": true,
+      "writesLocalArtifacts": false,
+      "explicitAuthorizationRequired": true,
+      "verificationTier": "release",
+      "executableInImplementationMode": false,
+      "requiresCleanWorktree": false,
+      "requiresDependencies": true,
+      "requiresDocker": false,
+      "requiresDatabase": true,
+      "requiresNetwork": false,
+      "requiresPrisma": true,
+      "requiresNode": true,
+      "requiresNpm": true,
+      "requiresPowerShell": false,
+      "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "verify:finisher-schema-drift"] }
+    },
     "test-audit-matrix": {
       "command": "npm run test:audit:matrix",
       "defaultSideEffectClass": "local-test",
@@ -675,10 +695,12 @@
         "path": "trainer-app/prisma",
         "extensions": [".ts"],
         "recursive": false,
-        "ignored": [
-          "trainer-app/prisma/exercise-aliases.ts",
-          "trainer-app/prisma/muscle-seed-data.ts"
-        ]
+      "ignored": [
+        "trainer-app/prisma/exercise-aliases.ts",
+        "trainer-app/prisma/finisher-routine-migration-sql.ts",
+        "trainer-app/prisma/finisher-routine-seed-data.ts",
+        "trainer-app/prisma/muscle-seed-data.ts"
+      ]
       }
     ],
     "knownMutationFlags": [
@@ -724,6 +746,7 @@
     { "id": "npm-test-db-rollout-tooling", "packageScript": "test:db:rollout-tooling", "command": "tsx scripts/test-rollout-tooling-postgres.ts", "sourceLocation": "trainer-app/package.json#scripts.test:db:rollout-tooling", "entrypoint": "trainer-app/scripts/test-rollout-tooling-postgres.ts", "profile": "disposable-database-write", "flagEscalations": [{ "flag": "--confirm-disposable", "sideEffectClass": "disposable-database-write", "authorizationRequirement": "Explicit confirmation that the harness-created PostgreSQL target may be mutated." }], "notes": "Requires operator-supplied --confirm-disposable, then creates, migrates, verifies, and removes a disposable PostgreSQL target." },
     { "id": "npm-test-readiness-integrity", "packageScript": "test:readiness-integrity", "command": "vitest run src/lib/operations/readiness-integrity.test.ts src/lib/operations/readiness-integrity-postgres.test.ts src/lib/operations/readiness-integrity-cli.test.ts", "sourceLocation": "trainer-app/package.json#scripts.test:readiness-integrity", "entrypoint": null, "profile": "disposable-database-write", "flagEscalations": [], "notes": "Includes PostgreSQL-backed tests that write only to an explicit disposable target." },
     { "id": "test-migration-integrity", "packageScript": "test:migration-integrity", "command": "vitest run src/lib/operations/migration-integrity.test.ts src/lib/operations/migration-integrity-postgres.test.ts", "sourceLocation": "trainer-app/package.json#scripts.test:migration-integrity", "entrypoint": null, "profile": "disposable-database-write", "flagEscalations": [], "notes": "Includes migration-integrity tests against disposable database fixtures." },
+    { "id": "verify-finisher-schema-drift", "packageScript": "verify:finisher-schema-drift", "command": "tsx scripts/check-finisher-schema-drift.ts", "sourceLocation": "trainer-app/package.json#scripts.verify:finisher-schema-drift", "entrypoint": "trainer-app/scripts/check-finisher-schema-drift.ts", "profile": "database-read", "flagEscalations": [], "notes": "Read-only Prisma diff against an explicitly supplied fully migrated disposable PostgreSQL database; fails closed on destructive protected Finisher relationship drift." },
     { "id": "npm-test-watch", "packageScript": "test:watch", "command": "vitest --watch", "sourceLocation": "trainer-app/package.json#scripts.test:watch", "entrypoint": null, "profile": "disposable-database-write", "flagEscalations": [], "notes": "Long-running raw watch process that can collect mutation-capable DB files; their in-file target and confirmation guard remains mandatory." },
     { "id": "npm-test-slow", "packageScript": "test:slow", "command": "vitest run --passWithNoTests \"src/**/*.slow.test.ts\"", "sourceLocation": "trainer-app/package.json#scripts.test:slow", "entrypoint": null, "profile": "read-only", "flagEscalations": [], "notes": "Local slow-test selection." },
     { "id": "test-fast", "packageScript": "test:fast", "command": "vitest run src/lib/engine/selection-v2/ src/lib/engine/explainability/ src/lib/api/template-session.test.ts", "sourceLocation": "trainer-app/package.json#scripts.test:fast", "entrypoint": null, "profile": "read-only", "flagEscalations": [], "notes": "Local focused test selection." },
@@ -771,7 +794,8 @@
     { "id": "npm-verify-production-version", "packageScript": "verify:production-version", "command": "tsx scripts/verify-production-version.ts", "sourceLocation": "trainer-app/package.json#scripts.verify:production-version", "entrypoint": "trainer-app/scripts/verify-production-version.ts", "profile": "network-read-only", "flagEscalations": [], "notes": "Performs explicit GET-only commit identity and production-alias availability checks against an operator-supplied HTTPS origin." },
     { "id": "npm-verify-workout-mutations", "packageScript": "verify:workout-mutations", "command": "tsx scripts/check-workout-mutation-ownership.ts", "sourceLocation": "trainer-app/package.json#scripts.verify:workout-mutations", "entrypoint": "trainer-app/scripts/check-workout-mutation-ownership.ts", "profile": "read-only", "flagEscalations": [], "notes": "Static route ownership validation." },
     { "id": "npm-verify-production-write-gate", "packageScript": "verify:production-write-gate", "command": "tsx scripts/check-production-write-gate.ts", "sourceLocation": "trainer-app/package.json#scripts.verify:production-write-gate", "entrypoint": "trainer-app/scripts/check-production-write-gate.ts", "profile": "read-only", "flagEscalations": [], "notes": "Static production-write gate validation." },
-    { "id": "npm-verify-fast", "packageScript": "verify:fast", "command": "npm run test:preflight && npm run lint && tsc --noEmit && npm run test:fast && npm run verify:contracts", "sourceLocation": "trainer-app/package.json#scripts.verify:fast", "entrypoint": null, "profile": "local-artifact-write", "flagEscalations": [], "notes": "Fails closed through the local dependency preflight, then uses npm's project-local executable resolution. Writes ESLint cache." },
+    { "id": "npm-generate-finisher-catalog", "packageScript": "generate:finisher-catalog", "command": "tsx scripts/generate-finisher-catalog-sql.ts", "sourceLocation": "trainer-app/package.json#scripts.generate:finisher-catalog", "entrypoint": "trainer-app/scripts/generate-finisher-catalog-sql.ts", "profile": "read-only", "flagEscalations": [{ "flag": "--refresh", "sideEffectClass": "local-artifact-write", "authorizationRequirement": "Explicit authorization to refresh the checked-in Finisher catalog SQL block." }], "notes": "Checks the migration catalog block against the canonical TypeScript catalog; --refresh refreshes that local block." },
+    { "id": "npm-verify-fast", "packageScript": "verify:fast", "command": "npm run test:preflight && npm run lint && tsc --noEmit && npm run test:fast && npm run generate:finisher-catalog && npm run verify:contracts", "sourceLocation": "trainer-app/package.json#scripts.verify:fast", "entrypoint": null, "profile": "local-artifact-write", "flagEscalations": [], "notes": "Fails closed through the local dependency preflight, then uses npm's project-local executable resolution. Writes ESLint cache." },
     { "id": "verify", "packageScript": "verify", "command": "npm run verify:fast && npm run verify:completed-review && npm run verify:version && npm run verify:workout-mutations && npm run verify:production-write-gate", "sourceLocation": "trainer-app/package.json#scripts.verify", "entrypoint": null, "profile": "local-artifact-write", "flagEscalations": [], "notes": "Runs local verification and writes ESLint cache through verify:fast." },
     { "id": "npm-sync-exercise-library", "packageScript": "sync:exercise-library", "command": "tsx scripts/sync-exercise-library.ts", "sourceLocation": "trainer-app/package.json#scripts.sync:exercise-library", "entrypoint": "trainer-app/scripts/sync-exercise-library.ts", "profile": "database-read", "flagEscalations": [{ "flag": "--apply", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for catalog-only writes to the exact database target." }], "notes": "Dry-run by default; --apply synchronizes catalog rows." },
     { "id": "npm-sync-exercise-library-apply", "packageScript": "sync:exercise-library:apply", "command": "tsx scripts/sync-exercise-library.ts --apply", "sourceLocation": "trainer-app/package.json#scripts.sync:exercise-library:apply", "entrypoint": "trainer-app/scripts/sync-exercise-library.ts", "profile": "production-write", "flagEscalations": [{ "flag": "--apply", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for catalog-only writes to the exact database target." }], "notes": "Package wrapper is mutating by default because it includes --apply." },

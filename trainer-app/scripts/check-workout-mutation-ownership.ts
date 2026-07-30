@@ -5,7 +5,7 @@ const runtimeMutationOwners = [
   "src/app/api/logs/set/route.ts",
   "src/app/api/workouts/[id]/add-exercise/route.ts",
   "src/app/api/workouts/[id]/exercises/[exerciseId]/add-set/route.ts",
-  "src/app/api/workouts/delete/route.ts",
+  "src/lib/api/workout-deletion.ts",
   "src/lib/api/mesocycle-week-close.ts",
   "src/lib/api/runtime-exercise-remove-service.ts",
   "src/lib/api/runtime-exercise-swap-service.ts",
@@ -20,6 +20,16 @@ for (const relativePath of runtimeMutationOwners) {
   if (/revision\s*:\s*\{[\s\S]*?increment\s*:\s*1\s*\}/.test(source)) {
     failures.push(`${relativePath}: contains an unconditional local revision increment`);
   }
+}
+
+const deleteRoute = readFileSync(
+  join(process.cwd(), "src/app/api/workouts/delete/route.ts"),
+  "utf8",
+);
+if (!deleteRoute.includes("deleteOwnedWorkout")) {
+  failures.push(
+    "src/app/api/workouts/delete/route.ts: missing canonical workout deletion owner",
+  );
 }
 
 const canonicalClaim = readFileSync(

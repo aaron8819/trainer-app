@@ -1,5 +1,44 @@
 # 02 Domain Engine
 
+## Phase 1 Finisher policy
+
+`src/lib/engine/finisher-domain.ts` owns two pure policies:
+
+- Interval duration is derived from ordered step work/recovery durations and the
+  versioned `includesFinalRecovery` flag. Preparation is outside advertised
+  duration.
+- Timer position is projected from persisted segment timestamps and pause
+  remainder. One projection may cross multiple elapsed work/recovery boundaries;
+  expired segments are not replayed after refresh or backgrounding. Skipping
+  resolves the current step and starts the next work segment immediately, with
+  no recovery for the skipped step.
+- Authoritative accounting accumulates active preparation separately, active
+  work on each step, active recovery on the execution, and paused time in
+  preparation/work/recovery buckets. Performed duration is exactly active work
+  plus active recovery. Pausing never adds active time, resuming preserves the
+  exact remaining active interval, and ending partial finalizes the current
+  active work slice once.
+- Terminal outcome is derived from performed evidence. Natural completion of
+  every step is `COMPLETED`; mixed completed/skipped or retained work is
+  `PARTIAL`; every step skipped with zero active work is `SKIPPED`; and ending
+  before any work is `DISMISSED`. Preparation and paused time never manufacture
+  performed work.
+
+Recommendation is deterministic. Active `Injury.bodyPart` values are normalized
+through the canonical injury seam; an unrecognized active limitation suppresses
+recommendation, known conflicts are excluded, reliable equipment context would
+filter unavailable routines, and recent performance is down-ranked. After a
+demanding lower-body workout, high-impact candidates and non-low-fatigue
+leg-focused candidates are excluded rather than down-ranked; no safe candidate
+means no recommendation. Stable name/id ordering breaks ties. Manual browsing
+remains available, but known contraindications and any unrecognized active
+limitation text require explicit acknowledgement. Substitutions must be
+predefined.
+
+Finishers do not contribute inputs to plan progression, workout-slot lifecycle,
+hypertrophy/strength volume, effective sets, exercise exposure, PRs, or future
+load recommendations.
+
 Owner: Aaron
 Last reviewed: 2026-03-19
 Purpose: Canonical reference for workout-generation domain logic, including selection, progression, periodization, readiness, and explainability.

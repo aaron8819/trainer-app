@@ -1,5 +1,73 @@
 # 05 UI Flows
 
+## Post-workout Finisher
+
+The server-only decision in `src/lib/operations/finisher-rollout.ts` owns all
+Finisher exposure. Missing, malformed, and unexpected configuration keeps both
+the completed-workout page and the post-save review from mounting
+`FinisherExperience`; no Finisher loading, request, offer, control, timer,
+history, or error state appears. The client receives only the server's boolean
+decision and cannot enable the feature.
+
+When the rollout is enabled and the existing completion request returns canonical `COMPLETED`,
+`FinisherExperience` appears without delaying or reopening workout completion.
+The component persists the offer before it displays one explained
+recommendation, category-filtered browsing with preview, or finishing without
+an add-on. Decline is a durable decision and survives refresh/remount. A
+selected definition is not performed until the first work interval starts;
+dismissed selections remain in history and a later choice uses a new execution
+identity.
+
+The mobile-first timer shows preparation, work, recovery, paused, substitution,
+partial confirmation, and completed states. Each response aligns `serverTime`
+to a monotonic client clock for display only; client wall-clock skew never
+drives state transitions. A revision/boundary token permits at most one
+non-overlapping `sync` mutation until the server returns a new revision.
+Visibility recovery refreshes the pure projection before synchronization.
+Each execution mutation gets one stable command UUID. The client reuses the
+same UUID and exact request body for automatic network and server-error retries,
+and generates a new UUID only for a new logical command.
+Durable POST responses are merged before their clocks are applied. For the same
+execution, a higher revision wins; equal revisions use later `serverTime` as a
+deterministic tie-breaker; an older revision or another execution cannot
+replace current state. Timer calibration changes only when that incoming result
+is the selected authority. A delayed replay therefore cannot regress the
+active segment, remaining/elapsed time, or terminal presentation, while a newer
+POST or current GET projection still recalibrates normally.
+Loads and commands share one latest-started request sequence. Success, failure,
+and finalization may update visible data, error, loading, submission, or timer
+calibration state only while that request is still current and the component is
+mounted. A late load therefore cannot overwrite a newer command/load result,
+surface an obsolete error, or clear state owned by the newer request.
+The timer requests screen wake lock while running and exposes independent
+opt-in sound/vibration controls with textual fallbacks.
+
+End confirmation uses a labeled and described modal dialog, moves focus to the
+safe continue action, supports Escape while no request is pending, restores the
+trigger on cancellation, and moves focus to the resulting summary after
+confirmation. A restrained polite live region announces segment/movement
+changes only; timer ticks are not announced. Controls remain keyboard operable
+and status does not rely only on color, sound, vibration, or motion.
+
+Read projection and synchronization share the canonical terminal-outcome
+resolver, so an elapsed timer reports the same completed, partial, or skipped
+outcome that a later sync persists without writing during GET. Completed,
+partial, entirely skipped, and dismissed-before-performance attempts
+render truthfully in a separate Finisher section with
+routine/category, outcome, completed/skipped/partially-performed/substituted
+steps, exact active performed duration,
+and optional difficulty only for performed outcomes. Failed automatic boundary
+sync keeps one request in flight, releases the boundary token after rejection
+or network failure, waits before retrying, and refreshes on stale conflict, so a
+zeroed terminal timer cannot remain indefinitely ahead of persisted state. The
+normal post-session review remains the main workout summary whether a Finisher
+is declined, skipped, dismissed, or ended partial.
+
+Phase 1 excludes plan-prescribed or multiple Finishers, user/AI-authored
+routines, lift-style logging, EMOM/AMRAP/rep/distance protocols, Finisher-driven
+progression, main-workout block conversion, pre-workout warm-ups, and mobility
+blocks.
+
 ## Workout-session revision flow
 
 The logging session owns one current workout revision. Every successful runtime command replaces that state with the server-returned revision, and the next command or final save sends it as `expectedRevision`. The client never predicts a revision. A `409` leaves optimistic state unapplied and requires the existing refresh/reload recovery path.

@@ -20,7 +20,8 @@ const authorizationEvidenceFile = join(
   `${containerName}-authorization-evidence.json`,
 );
 const preMigrationCount = 10;
-const currentProductionAppliedCount = 16;
+const currentProductionAppliedCount = 17;
+const targetMigration = "20260728120000_add_finishers_phase_1";
 
 type CommandResult = { status: number; stdout: string; stderr: string };
 
@@ -78,6 +79,21 @@ function psql(sql: string, tuplesOnly = false): string {
   if (tuplesOnly) args.push("-tA");
   const result = requireSuccess(run("docker", args, { input: sql, quiet: true }), "psql");
   return result.stdout.trim();
+}
+
+function provisionFinisherRoles(): void {
+  psql(`
+    CREATE ROLE trainer_app_runtime
+      LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+      NOREPLICATION NOBYPASSRLS
+      PASSWORD 'trainer-app-runtime';
+    CREATE ROLE trainer_finisher_owner
+      NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+      NOREPLICATION NOBYPASSRLS;
+    CREATE ROLE trainer_finisher_cleanup
+      NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+      NOREPLICATION NOBYPASSRLS;
+  `);
 }
 
 function migrationDirectories(): string[] {
@@ -296,6 +312,68 @@ function requireUniquenessAssessment(
     assessment.migrationBlocking !== expected.blocks
   ) {
     throw new Error(`Unexpected uniqueness assessment for ${objectName}: ${JSON.stringify(assessment)}`);
+  }
+}
+
+function requireFinisherGateAFailure(
+  label: string,
+  expectedDifference: string,
+): void {
+  psql(
+    `DELETE FROM public._prisma_migrations WHERE migration_name = '${targetMigration}';`,
+  );
+  try {
+    const report = cliWithExpectedStatus(
+      "scripts/check-migration-status.ts",
+      [],
+      1,
+    );
+    const chain = objectField(report, "chain");
+    const differences = JSON.stringify(
+      objectField(report, "schemaIntegrity").blockingDifferences,
+    );
+    if (
+      chain.gateAApplicable !== true ||
+      numberField(chain, "pending") !== 1 ||
+      report.schemaPreflightValid !== false ||
+      report.technicalMigrationReady !== false ||
+      report.migrationAuthorizationReady !== false ||
+      !differences.includes(expectedDifference)
+    ) {
+      throw new Error(
+        `${label} did not fail Gate A with the expected exact-integrity difference: ${JSON.stringify(report)}`,
+      );
+    }
+  } finally {
+    recordMigration(targetMigration, currentProductionAppliedCount);
+  }
+}
+
+function requireFinisherAppliedSchemaFailure(
+  label: string,
+  expectedDifference: string,
+): void {
+  const report = cliWithExpectedStatus(
+    "scripts/check-migration-status.ts",
+    [],
+    1,
+  );
+  const chain = objectField(report, "chain");
+  const differences = JSON.stringify({
+    blocking: objectField(report, "schemaIntegrity").blockingDifferences,
+    definitions: objectField(report, "definitions"),
+  });
+  if (
+    chain.gateAApplicable !== false ||
+    numberField(chain, "pending") !== 0 ||
+    report.schemaPreflightValid !== false ||
+    report.technicalMigrationReady !== false ||
+    report.migrationAuthorizationReady !== false ||
+    !differences.includes(expectedDifference)
+  ) {
+    throw new Error(
+      `${label} did not fail applied-schema integrity with the expected difference: ${JSON.stringify(report)}`,
+    );
   }
 }
 
@@ -571,6 +649,7 @@ try {
     "postgres:16-alpine",
   ], { quiet: true }), "docker run");
   waitForPostgres();
+  provisionFinisherRoles();
   const port = requireSuccess(run("docker", ["port", containerName, "5432/tcp"], { quiet: true }), "docker port")
     .stdout.trim().split(":").at(-1);
   if (!port) throw new Error("DISPOSABLE_ROLLOUT_POSTGRES_PORT_NOT_FOUND");
@@ -585,8 +664,7 @@ try {
     authorizationEvidenceFile,
     JSON.stringify({
       repositoryHead,
-      productionDeploymentCommit:
-        "d7b899584995b1289c73019265464ee749a993c2",
+      productionDeploymentCommit: repositoryHead,
       requiredApplicationCommit: repositoryHead,
       dataPreflight: {
         valid: true,
@@ -623,7 +701,7 @@ try {
   );
 
   const migrations = migrationDirectories();
-  if (migrations.length !== 17) throw new Error(`Expected 17 migrations, found ${migrations.length}`);
+  if (migrations.length !== 18) throw new Error(`Expected 18 migrations, found ${migrations.length}`);
   const baselineMigration = migrations[0];
   const setIntentMigration = migrations[9];
 
@@ -779,9 +857,18 @@ try {
   if (beforeStateA !== afterStateA) throw new Error("State A migration integrity inspection changed disposable database state");
   const stateALedger = objectField(migrationStateA, "ledger");
   const stateASchema = objectField(migrationStateA, "schemaIntegrity");
+  const stateAChain = objectField(migrationStateA, "chain");
   if (
-    numberField(objectField(migrationStateA, "chain"), "applied") !== 10 ||
-    numberField(objectField(migrationStateA, "chain"), "pending") !== 7 ||
+    numberField(stateAChain, "applied") !== 10 ||
+    numberField(stateAChain, "pending") !== 8 ||
+    stateAChain.targetMigration !== targetMigration ||
+    stateAChain.exactExpectedPending !== false ||
+    JSON.stringify(arrayField(stateAChain, "expectedPendingMigrations")) !==
+      JSON.stringify([targetMigration]) ||
+    arrayField(migrationStateA, "unexpectedMigrations").length !== 7 ||
+    !arrayField(migrationStateA, "blockingReasons").includes(
+      "pending_migration_sequence_mismatch",
+    ) ||
     numberField(objectField(migrationStateA, "checksums"), "matched") !== 10 ||
     arrayField(stateALedger, "incomplete").length !== 0 ||
     arrayField(stateALedger, "orderViolations").length !== 0 ||
@@ -1011,7 +1098,7 @@ try {
     )::text;
   `, true);
   if (workoutEvidenceAfter !== workoutEvidenceBefore) {
-    throw new Error("Migrations 011-016 changed existing workout, exercise, set, or log evidence");
+    throw new Error("Migrations 011-017 changed existing workout, exercise, set, or log evidence");
   }
 
   const currentProductionState = cliWithExpectedStatus(
@@ -1032,6 +1119,44 @@ try {
     );
   }
 
+  const trustedEvidence = JSON.parse(
+    readFileSync(authorizationEvidenceFile, "utf8"),
+  ) as Record<string, unknown>;
+  writeFileSync(
+    authorizationEvidenceFile,
+    JSON.stringify({
+      ...trustedEvidence,
+      expectedPendingMigrations: [
+        targetMigration,
+        "20990101000000_forged_operator_policy",
+      ],
+    }),
+  );
+  const forgedPolicyResult = run(
+    process.execPath,
+    [
+      join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs"),
+      "scripts/check-migration-status.ts",
+      "--env-file",
+      envFile,
+      "--confirm-disposable",
+      "--evidence-file",
+      authorizationEvidenceFile,
+    ],
+    { quiet: true },
+  );
+  if (
+    forgedPolicyResult.status !== 1 ||
+    !`${forgedPolicyResult.stdout}\n${forgedPolicyResult.stderr}`.includes(
+      "Migration authorization evidence cannot define repository migration policy.",
+    )
+  ) {
+    throw new Error(
+      `Forged operator pending-migration policy was not rejected: ${forgedPolicyResult.stdout}\n${forgedPolicyResult.stderr}`,
+    );
+  }
+  writeFileSync(authorizationEvidenceFile, JSON.stringify(trustedEvidence));
+
   applyMigrations(migrations.slice(currentProductionAppliedCount));
   recordMigrations(
     migrations.slice(currentProductionAppliedCount),
@@ -1043,13 +1168,823 @@ try {
   const afterStateE = databaseStateFingerprint();
   if (beforeStateE !== afterStateE) throw new Error("State E migration integrity inspection changed disposable database state");
   if (
-    numberField(objectField(migrationStateE, "chain"), "applied") !== 17 ||
+    numberField(objectField(migrationStateE, "chain"), "applied") !== 18 ||
     numberField(objectField(migrationStateE, "chain"), "pending") !== 0 ||
     objectField(migrationStateE, "chain").gateAApplicable !== false ||
+    migrationStateE.schemaPreflightValid !== true ||
+    numberField(objectField(migrationStateE, "schemaIntegrity"), "semanticDriftBlocking") !== 0 ||
     migrationStateE.migrationAuthorizationReady !== false
   ) {
     throw new Error(`State E did not report a clean fully migrated non-Gate-A state: ${JSON.stringify(migrationStateE)}`);
   }
+
+  psql(
+    `ALTER TABLE "FinisherOfferItem" DISABLE TRIGGER "FinisherOfferItem_immutable";`,
+  );
+  requireFinisherGateAFailure(
+    "Disabled Finisher protection trigger",
+    "FinisherOfferItem_immutable",
+  );
+  psql(
+    `ALTER TABLE "FinisherOfferItem" ENABLE TRIGGER "FinisherOfferItem_immutable";`,
+  );
+  psql(
+    `ALTER TABLE "FinisherOfferItem" ENABLE REPLICA TRIGGER "FinisherOfferItem_immutable";`,
+  );
+  requireFinisherGateAFailure(
+    "Replica-only Finisher protection trigger",
+    "FinisherOfferItem_immutable",
+  );
+  psql(
+    `ALTER TABLE "FinisherOfferItem" ENABLE TRIGGER "FinisherOfferItem_immutable";`,
+  );
+
+  const createCanonicalOfferItemTrigger = `
+    CREATE TRIGGER "FinisherOfferItem_immutable"
+    BEFORE UPDATE ON "FinisherOfferItem"
+    FOR EACH ROW EXECUTE FUNCTION reject_finisher_offer_item_update();
+  `;
+  psql(`DROP TRIGGER "FinisherOfferItem_immutable" ON "FinisherOfferItem";`);
+  requireFinisherAppliedSchemaFailure(
+    "Missing Finisher protection trigger",
+    "FinisherOfferItem_immutable",
+  );
+  psql(createCanonicalOfferItemTrigger);
+  for (const [label, replacement, cleanup] of [
+    [
+      "altered-event",
+      `CREATE TRIGGER "FinisherOfferItem_immutable"
+       BEFORE UPDATE OR DELETE ON "FinisherOfferItem"
+       FOR EACH ROW EXECUTE FUNCTION reject_finisher_offer_item_update();`,
+      `DROP TRIGGER "FinisherOfferItem_immutable" ON "FinisherOfferItem";`,
+    ],
+    [
+      "altered-timing",
+      `CREATE TRIGGER "FinisherOfferItem_immutable"
+       AFTER UPDATE ON "FinisherOfferItem"
+       FOR EACH ROW EXECUTE FUNCTION reject_finisher_offer_item_update();`,
+      `DROP TRIGGER "FinisherOfferItem_immutable" ON "FinisherOfferItem";`,
+    ],
+    [
+      "altered-table",
+      `CREATE TRIGGER "FinisherOfferItem_immutable"
+       BEFORE UPDATE ON "FinisherOffer"
+       FOR EACH ROW EXECUTE FUNCTION reject_finisher_offer_item_update();`,
+      `DROP TRIGGER "FinisherOfferItem_immutable" ON "FinisherOffer";`,
+    ],
+  ] as const) {
+    psql(`
+      DROP TRIGGER "FinisherOfferItem_immutable" ON "FinisherOfferItem";
+      ${replacement}
+    `);
+    requireFinisherGateAFailure(
+      `${label} Finisher protection trigger`,
+      "FinisherOfferItem_immutable",
+    );
+    psql(`
+      ${cleanup}
+      ${createCanonicalOfferItemTrigger}
+    `);
+  }
+
+  psql(
+    `ALTER TABLE "FinisherExecutionStep" DISABLE TRIGGER "FinisherExecutionStep_evidence_immutable";`,
+  );
+  requireFinisherGateAFailure(
+    "Disabled terminal step evidence trigger",
+    "FinisherExecutionStep_evidence_immutable",
+  );
+  psql(
+    `ALTER TABLE "FinisherExecutionStep" ENABLE TRIGGER "FinisherExecutionStep_evidence_immutable";`,
+  );
+  for (const [table, trigger, label] of [
+    [
+      "FinisherExecution",
+      "FinisherExecution_terminal_outcome_coherence",
+      "Disabled terminal coherence parent path",
+    ],
+    [
+      "FinisherExecutionStep",
+      "FinisherExecutionStep_terminal_outcome_coherence",
+      "Disabled terminal coherence child path",
+    ],
+  ] as const) {
+    psql(`ALTER TABLE "${table}" DISABLE TRIGGER "${trigger}";`);
+    requireFinisherGateAFailure(label, trigger);
+    psql(`ALTER TABLE "${table}" ENABLE TRIGGER "${trigger}";`);
+  }
+
+  psql(`
+    DROP TRIGGER "FinisherExecution_terminal_outcome_coherence"
+      ON "FinisherExecution";
+    CREATE TRIGGER "FinisherExecution_terminal_outcome_coherence"
+      AFTER INSERT OR UPDATE ON "FinisherExecution"
+      FOR EACH ROW EXECUTE FUNCTION
+        validate_finisher_terminal_outcome_from_execution();
+  `);
+  requireFinisherGateAFailure(
+    "Terminal parent validation is no longer deferred",
+    "FinisherExecution_terminal_outcome_coherence",
+  );
+  psql(`
+    DROP TRIGGER "FinisherExecution_terminal_outcome_coherence"
+      ON "FinisherExecution";
+    CREATE CONSTRAINT TRIGGER "FinisherExecution_terminal_outcome_coherence"
+      AFTER INSERT OR UPDATE ON "FinisherExecution"
+      DEFERRABLE INITIALLY DEFERRED
+      FOR EACH ROW EXECUTE FUNCTION
+        validate_finisher_terminal_outcome_from_execution();
+  `);
+
+  const canonicalTerminalOutcomeFunction = psql(
+    `
+      SELECT pg_get_functiondef(p.oid)
+      FROM pg_catalog.pg_proc p
+      JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public'
+        AND p.proname = 'validate_finisher_terminal_outcome'
+        AND pg_get_function_identity_arguments(p.oid) =
+          'target_execution_id text';
+    `,
+    true,
+  );
+  psql(`
+    CREATE OR REPLACE FUNCTION
+      validate_finisher_terminal_outcome(target_execution_id TEXT)
+    RETURNS void
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      RETURN;
+    END;
+    $$;
+  `);
+  requireFinisherGateAFailure(
+    "Terminal outcome matrix permits contradictory commits",
+    "validate_finisher_terminal_outcome",
+  );
+  psql(`${canonicalTerminalOutcomeFunction};`);
+  for (const [label, canonicalClause] of [
+    [
+      "Completed outcome permits pending prescribed steps",
+      "completed_step_count <> prescribed_step_count",
+    ],
+    [
+      "Partial outcome permits no performed step evidence",
+      "completed_step_count + partial_step_count = 0",
+    ],
+    [
+      "Skipped outcome permits contradictory step evidence",
+      "skipped_step_count <> prescribed_step_count",
+    ],
+    [
+      "Never-started dismissal permits touched child evidence",
+      "pending_step_count <> prescribed_step_count",
+    ],
+    [
+      "Performed dismissal permits cleared child evidence",
+      "performed_step_count = 0",
+    ],
+  ] as const) {
+    const weakened = canonicalTerminalOutcomeFunction.replace(
+      canonicalClause,
+      "FALSE",
+    );
+    if (weakened === canonicalTerminalOutcomeFunction) {
+      throw new Error(
+        `Canonical terminal outcome function omitted expected clause: ${canonicalClause}`,
+      );
+    }
+    psql(`${weakened};`);
+    requireFinisherGateAFailure(label, "validate_finisher_terminal_outcome");
+    psql(`${canonicalTerminalOutcomeFunction};`);
+  }
+
+  psql(
+    `ALTER TABLE "FinisherExecutionCommand" ENABLE REPLICA TRIGGER "FinisherExecutionCommand_tombstone";`,
+  );
+  requireFinisherGateAFailure(
+    "Replica-only command tombstone trigger",
+    "FinisherExecutionCommand_tombstone",
+  );
+  psql(
+    `ALTER TABLE "FinisherExecutionCommand" ENABLE TRIGGER "FinisherExecutionCommand_tombstone";`,
+  );
+
+  const createCanonicalCommandTombstoneTrigger = `
+    CREATE TRIGGER "FinisherExecutionCommand_tombstone"
+    BEFORE UPDATE OR DELETE ON "FinisherExecutionCommand"
+    FOR EACH ROW EXECUTE FUNCTION guard_finisher_execution_command_tombstone();
+  `;
+  psql(
+    `DROP TRIGGER "FinisherExecutionCommand_tombstone" ON "FinisherExecutionCommand";`,
+  );
+  requireFinisherAppliedSchemaFailure(
+    "Missing command tombstone trigger",
+    "FinisherExecutionCommand_tombstone",
+  );
+  psql(createCanonicalCommandTombstoneTrigger);
+  psql(`
+    DROP TRIGGER "FinisherExecutionCommand_tombstone" ON "FinisherExecutionCommand";
+    CREATE TRIGGER "FinisherExecutionCommand_tombstone"
+    BEFORE UPDATE ON "FinisherExecutionCommand"
+    FOR EACH ROW EXECUTE FUNCTION guard_finisher_execution_command_tombstone();
+  `);
+  requireFinisherGateAFailure(
+    "Command tombstone trigger permits deletion",
+    "FinisherExecutionCommand_tombstone",
+  );
+  psql(`
+    DROP TRIGGER "FinisherExecutionCommand_tombstone" ON "FinisherExecutionCommand";
+    ${createCanonicalCommandTombstoneTrigger}
+  `);
+
+  for (const [functionName, label, weakenedBody] of [
+    [
+      "guard_finisher_execution_lifecycle",
+      "Weakened execution lifecycle condition",
+      `BEGIN RETURN NEW; END;`,
+    ],
+    [
+      "require_finisher_offer_finalized",
+      "Weakened finalized-offer completeness",
+      `BEGIN RETURN NULL; END;`,
+    ],
+    [
+      "require_finisher_execution_finalized",
+      "Omitted selection decision binding",
+      `BEGIN RETURN NULL; END;`,
+    ],
+    [
+      "guard_finisher_offer_identity",
+      "Omitted decline decision revision binding",
+      `BEGIN RETURN NEW; END;`,
+    ],
+    [
+      "require_finisher_decision_applied",
+      "Weakened durable decision application",
+      `BEGIN RETURN NULL; END;`,
+    ],
+    [
+      "guard_finisher_execution_step_evidence",
+      "Omitted protected terminal step field",
+      `BEGIN RETURN NEW; END;`,
+    ],
+    [
+      "guard_finisher_execution_command_tombstone",
+      "Permitted command receipt identity rewriting",
+      `BEGIN RETURN COALESCE(NEW, OLD); END;`,
+    ],
+  ] as const) {
+    const canonicalFunction = psql(
+      `
+        SELECT pg_get_functiondef(p.oid)
+        FROM pg_catalog.pg_proc p
+        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'public'
+          AND p.proname = '${functionName}'
+          AND pg_get_function_identity_arguments(p.oid) = '';
+      `,
+      true,
+    );
+    psql(`
+      CREATE OR REPLACE FUNCTION ${functionName}() RETURNS trigger
+      LANGUAGE plpgsql AS $$
+      ${weakenedBody}
+      $$;
+    `);
+    requireFinisherGateAFailure(label, functionName);
+    psql(`${canonicalFunction};`);
+  }
+
+  const canonicalCleanupFunction = psql(
+    `
+      SELECT pg_get_functiondef(p.oid)
+      FROM pg_catalog.pg_proc p
+      JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public'
+        AND p.proname = 'cleanup_expired_finisher_execution_commands'
+        AND pg_get_function_identity_arguments(p.oid) = 'p_batch_size integer';
+    `,
+    true,
+  );
+  psql(`
+    CREATE OR REPLACE FUNCTION cleanup_expired_finisher_execution_commands(
+      p_batch_size INTEGER DEFAULT 100
+    ) RETURNS INTEGER
+    LANGUAGE plpgsql
+    SECURITY DEFINER
+    SET search_path = pg_catalog, public
+    AS $$
+    BEGIN
+      RETURN 0;
+    END;
+    $$;
+  `);
+  requireFinisherGateAFailure(
+    "Cleanup permitted before expiration or skipped immutable enforcement",
+    "cleanup_expired_finisher_execution_commands",
+  );
+  psql(`${canonicalCleanupFunction};`);
+  psql(
+    `GRANT EXECUTE ON FUNCTION cleanup_expired_finisher_execution_commands(INTEGER) TO PUBLIC;`,
+  );
+  requireFinisherGateAFailure(
+    "Cleanup function exposed to public execution",
+    "cleanup_expired_finisher_execution_commands",
+  );
+  psql(
+    `REVOKE ALL ON FUNCTION cleanup_expired_finisher_execution_commands(INTEGER) FROM PUBLIC;`,
+  );
+
+  psql(
+    `ALTER FUNCTION cleanup_expired_finisher_execution_commands(INTEGER)
+     OWNER TO trainer_finisher_owner;`,
+  );
+  requireFinisherGateAFailure(
+    "Cleanup function owner changed",
+    "function-owner:cleanup_expired_finisher_execution_commands",
+  );
+  psql(
+    `ALTER FUNCTION cleanup_expired_finisher_execution_commands(INTEGER)
+     OWNER TO trainer_finisher_cleanup;`,
+  );
+
+  psql(`
+    CREATE ROLE trainer_unexpected_grantee
+      NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+      NOREPLICATION NOBYPASSRLS;
+    GRANT EXECUTE ON FUNCTION
+      cleanup_expired_finisher_execution_commands(INTEGER)
+    TO trainer_unexpected_grantee;
+  `);
+  requireFinisherGateAFailure(
+    "Unexpected role can execute cleanup",
+    "function-privileges:cleanup_expired_finisher_execution_commands",
+  );
+  psql(`
+    REVOKE ALL ON FUNCTION
+      cleanup_expired_finisher_execution_commands(INTEGER)
+    FROM trainer_unexpected_grantee;
+    DROP ROLE trainer_unexpected_grantee;
+  `);
+
+  psql(
+    `GRANT UPDATE ON TABLE "FinisherExecutionCommand"
+     TO trainer_app_runtime;`,
+  );
+  requireFinisherGateAFailure(
+    "Runtime received direct command mutation privilege",
+    "table-privileges:FinisherExecutionCommand",
+  );
+  psql(
+    `REVOKE UPDATE ON TABLE "FinisherExecutionCommand"
+     FROM trainer_app_runtime;`,
+  );
+
+  psql(`GRANT trainer_finisher_cleanup TO trainer_app_runtime;`);
+  requireFinisherGateAFailure(
+    "Runtime can assume the cleanup role",
+    "role-membership:trainer_app_runtime->trainer_finisher_cleanup",
+  );
+  psql(`REVOKE trainer_finisher_cleanup FROM trainer_app_runtime;`);
+
+  psql(
+    `ALTER FUNCTION cleanup_expired_finisher_execution_commands(INTEGER)
+     SECURITY INVOKER;`,
+  );
+  requireFinisherGateAFailure(
+    "Cleanup function security mode weakened",
+    "cleanup_expired_finisher_execution_commands",
+  );
+  psql(
+    `ALTER FUNCTION cleanup_expired_finisher_execution_commands(INTEGER)
+     SECURITY DEFINER;`,
+  );
+  psql(
+    `ALTER FUNCTION cleanup_expired_finisher_execution_commands(INTEGER)
+     SET search_path TO pg_catalog, public;`,
+  );
+  requireFinisherGateAFailure(
+    "Cleanup function search path weakened",
+    "cleanup_expired_finisher_execution_commands",
+  );
+  psql(
+    `ALTER FUNCTION cleanup_expired_finisher_execution_commands(INTEGER)
+     SET search_path TO pg_catalog, pg_temp;`,
+  );
+
+  psql(`
+    CREATE FUNCTION command_cleanup_bypass() RETURNS void
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      UPDATE public."FinisherExecutionCommand"
+      SET "response" = NULL
+      WHERE FALSE;
+      RETURN;
+    END;
+    $$;
+    REVOKE ALL ON FUNCTION command_cleanup_bypass() FROM PUBLIC;
+  `);
+  requireFinisherGateAFailure(
+    "Neutrally named static SQL cleanup bypass",
+    "function-mutation-path:command_cleanup_bypass",
+  );
+  psql(`DROP FUNCTION command_cleanup_bypass();`);
+
+  psql(`
+    CREATE FUNCTION command_tombstone_passthrough() RETURNS trigger
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      RETURN NEW;
+    END;
+    $$;
+    REVOKE ALL ON FUNCTION command_tombstone_passthrough() FROM PUBLIC;
+    CREATE TRIGGER "Command_tombstone_passthrough"
+    BEFORE UPDATE ON "FinisherExecutionCommand"
+    FOR EACH ROW EXECUTE FUNCTION command_tombstone_passthrough();
+  `);
+  requireFinisherGateAFailure(
+    "Unexpected trigger provides a Finisher mutation path",
+    "function-mutation-path:command_tombstone_passthrough",
+  );
+  psql(`
+    DROP TRIGGER "Command_tombstone_passthrough"
+      ON "FinisherExecutionCommand";
+    DROP FUNCTION command_tombstone_passthrough();
+  `);
+
+  psql(
+    `REVOKE EXECUTE ON FUNCTION
+      cleanup_expired_finisher_execution_commands(INTEGER)
+     FROM trainer_app_runtime;`,
+  );
+  requireFinisherGateAFailure(
+    "Canonical runtime cleanup grant removed",
+    "function-privileges:cleanup_expired_finisher_execution_commands",
+  );
+  psql(
+    `GRANT EXECUTE ON FUNCTION
+      cleanup_expired_finisher_execution_commands(INTEGER)
+     TO trainer_app_runtime;`,
+  );
+
+  const canonicalCommandTombstoneFunction = psql(
+    `
+      SELECT pg_get_functiondef(p.oid)
+      FROM pg_catalog.pg_proc p
+      JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public'
+        AND p.proname = 'guard_finisher_execution_command_tombstone'
+        AND pg_get_function_identity_arguments(p.oid) = '';
+    `,
+    true,
+  );
+  psql(`
+    CREATE OR REPLACE FUNCTION
+      guard_finisher_execution_command_tombstone()
+    RETURNS trigger
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      IF current_setting(
+        'trainer.finisher_command_cleanup',
+        TRUE
+      ) = 'enabled' THEN
+        RETURN NEW;
+      END IF;
+      RETURN COALESCE(NEW, OLD);
+    END;
+    $$;
+  `);
+  requireFinisherGateAFailure(
+    "Caller-controlled cleanup setting reintroduced",
+    "function-caller-setting-bypass:guard_finisher_execution_command_tombstone",
+  );
+  psql(`${canonicalCommandTombstoneFunction};`);
+
+  for (const [column, label] of [
+    ["indisvalid", "invalid"],
+    ["indisready", "unready"],
+    ["indislive", "non-live"],
+  ] as const) {
+    psql(`
+      SET allow_system_table_mods = on;
+      UPDATE pg_catalog.pg_index
+      SET ${column} = false
+      WHERE indexrelid = '"FinisherExecution_one_active_per_workout"'::regclass;
+    `);
+    requireFinisherGateAFailure(
+      `${label} Finisher partial unique index`,
+      "FinisherExecution_one_active_per_workout",
+    );
+    psql(`
+      SET allow_system_table_mods = on;
+      UPDATE pg_catalog.pg_index
+      SET ${column} = true
+      WHERE indexrelid = '"FinisherExecution_one_active_per_workout"'::regclass;
+    `);
+  }
+
+  const createCanonicalActiveExecutionIndex = `
+    CREATE UNIQUE INDEX "FinisherExecution_one_active_per_workout"
+      ON "FinisherExecution"("workoutId")
+      WHERE "state" IN ('SELECTED', 'IN_PROGRESS');
+  `;
+  psql(`DROP INDEX "FinisherExecution_one_active_per_workout";`);
+  requireFinisherAppliedSchemaFailure(
+    "Missing Finisher partial unique index",
+    "FinisherExecution_one_active_per_workout",
+  );
+  psql(createCanonicalActiveExecutionIndex);
+
+  for (const [label, replacement] of [
+    [
+      "altered-predicate",
+      `CREATE UNIQUE INDEX "FinisherExecution_one_active_per_workout"
+         ON "FinisherExecution"("workoutId")
+         WHERE "state" = 'SELECTED';`,
+    ],
+    [
+      "altered-column",
+      `CREATE UNIQUE INDEX "FinisherExecution_one_active_per_workout"
+         ON "FinisherExecution"("offerId")
+         WHERE "state" IN ('SELECTED', 'IN_PROGRESS');`,
+    ],
+    [
+      "non-unique",
+      `CREATE INDEX "FinisherExecution_one_active_per_workout"
+         ON "FinisherExecution"("workoutId")
+         WHERE "state" IN ('SELECTED', 'IN_PROGRESS');`,
+    ],
+  ] as const) {
+    psql(`
+      DROP INDEX "FinisherExecution_one_active_per_workout";
+      ${replacement}
+    `);
+    requireFinisherGateAFailure(
+      `${label} Finisher partial unique index`,
+      "FinisherExecution_one_active_per_workout",
+    );
+    psql(`
+      DROP INDEX "FinisherExecution_one_active_per_workout";
+      ${createCanonicalActiveExecutionIndex}
+    `);
+  }
+
+  const createCanonicalPerformedExecutionIndex = `
+    CREATE UNIQUE INDEX "FinisherExecution_one_started_per_workout"
+      ON "FinisherExecution"("workoutId")
+      WHERE "startedAt" IS NOT NULL;
+  `;
+  psql(`DROP INDEX "FinisherExecution_one_started_per_workout";`);
+  requireFinisherAppliedSchemaFailure(
+    "Missing permanent performed-history uniqueness",
+    "FinisherExecution_one_started_per_workout",
+  );
+  psql(createCanonicalPerformedExecutionIndex);
+  psql(`
+    DROP INDEX "FinisherExecution_one_started_per_workout";
+    CREATE UNIQUE INDEX "FinisherExecution_one_started_per_workout"
+      ON "FinisherExecution"("workoutId")
+      WHERE "state" = 'IN_PROGRESS';
+  `);
+  requireFinisherAppliedSchemaFailure(
+    "Weakened permanent performed-history uniqueness",
+    "FinisherExecution_one_started_per_workout",
+  );
+  psql(`
+    DROP INDEX "FinisherExecution_one_started_per_workout";
+    ${createCanonicalPerformedExecutionIndex}
+  `);
+
+  const canonicalOfferItemInsertFunction = psql(
+    `
+      SELECT pg_get_functiondef(p.oid)
+      FROM pg_catalog.pg_proc p
+      JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public'
+        AND p.proname = 'guard_finisher_offer_item_insert'
+        AND pg_get_function_identity_arguments(p.oid) = '';
+    `,
+    true,
+  );
+  psql(`
+    CREATE OR REPLACE FUNCTION guard_finisher_offer_item_insert() RETURNS trigger
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      RETURN NEW;
+    END;
+    $$;
+  `);
+  requireFinisherGateAFailure(
+    "Weakened Finisher protection function",
+    "guard_finisher_offer_item_insert",
+  );
+  psql(`${canonicalOfferItemInsertFunction};`);
+  psql(
+    `ALTER FUNCTION guard_finisher_offer_item_insert() SECURITY DEFINER;`,
+  );
+  requireFinisherGateAFailure(
+    "Altered Finisher function security",
+    "guard_finisher_offer_item_insert",
+  );
+  psql(
+    `ALTER FUNCTION guard_finisher_offer_item_insert() SECURITY INVOKER;`,
+  );
+
+  const canonicalFeedbackConstraint = `
+    ALTER TABLE "FinisherExecution"
+    ADD CONSTRAINT "FinisherExecution_feedback_range"
+    CHECK (
+      "difficultyFeedback" IS NULL
+      OR "difficultyFeedback" BETWEEN 1 AND 10
+    );
+  `;
+  psql(`
+    ALTER TABLE "FinisherExecution"
+      DROP CONSTRAINT "FinisherExecution_feedback_range";
+    ALTER TABLE "FinisherExecution"
+      ADD CONSTRAINT "FinisherExecution_feedback_range"
+      CHECK ("difficultyFeedback" IS NULL OR "difficultyFeedback" >= 1);
+  `);
+  requireFinisherGateAFailure(
+    "Weakened Finisher Boolean constraint",
+    "FinisherExecution_feedback_range",
+  );
+  psql(`
+    ALTER TABLE "FinisherExecution"
+      DROP CONSTRAINT "FinisherExecution_feedback_range";
+    ${canonicalFeedbackConstraint}
+  `);
+  psql(`
+    ALTER TABLE "FinisherExecution"
+      DROP CONSTRAINT "FinisherExecution_feedback_range";
+    ALTER TABLE "FinisherExecution"
+      ADD CONSTRAINT "FinisherExecution_feedback_range"
+      CHECK (
+        "difficultyFeedback" IS NULL
+        OR "difficultyFeedback" BETWEEN 1 AND 10
+      ) NOT VALID;
+  `);
+  requireFinisherGateAFailure(
+    "Unvalidated Finisher constraint",
+    "FinisherExecution_feedback_range",
+  );
+  psql(`
+    ALTER TABLE "FinisherExecution"
+      VALIDATE CONSTRAINT "FinisherExecution_feedback_range";
+  `);
+
+  psql(`
+    ALTER TABLE "FinisherDecision"
+      ALTER COLUMN "expectedOfferRevision" DROP NOT NULL;
+  `);
+  requireFinisherGateAFailure(
+    "Nullable decision expected revision",
+    "FinisherDecision.expectedOfferRevision",
+  );
+  psql(`
+    ALTER TABLE "FinisherDecision"
+      ALTER COLUMN "expectedOfferRevision" SET NOT NULL;
+  `);
+  psql(`
+    ALTER TABLE "FinisherDecision"
+      DROP CONSTRAINT "FinisherDecision_fingerprint_shape";
+  `);
+  requireFinisherAppliedSchemaFailure(
+    "Missing durable decision fingerprint constraint",
+    "FinisherDecision_fingerprint_shape",
+  );
+  psql(`
+    ALTER TABLE "FinisherDecision"
+      ADD CONSTRAINT "FinisherDecision_fingerprint_shape"
+      CHECK ("requestFingerprint" ~ '^[0-9a-f]{64}$');
+  `);
+
+  psql(`
+    ALTER TABLE "FinisherOfferItem"
+      DROP CONSTRAINT "FinisherOfferItem_offerId_fkey";
+    ALTER TABLE "FinisherOfferItem"
+      ADD CONSTRAINT "FinisherOfferItem_offerId_fkey"
+      FOREIGN KEY ("offerId") REFERENCES "FinisherOffer"("id")
+      ON DELETE CASCADE ON UPDATE CASCADE;
+  `);
+  requireFinisherGateAFailure(
+    "Altered Finisher foreign-key action",
+    "FinisherOfferItem_offerId_fkey",
+  );
+  psql(`
+    ALTER TABLE "FinisherOfferItem"
+      DROP CONSTRAINT "FinisherOfferItem_offerId_fkey";
+    ALTER TABLE "FinisherOfferItem"
+      ADD CONSTRAINT "FinisherOfferItem_offerId_fkey"
+      FOREIGN KEY ("offerId") REFERENCES "FinisherOffer"("id")
+      ON DELETE RESTRICT ON UPDATE RESTRICT;
+  `);
+
+  psql(`
+    ALTER TABLE "FinisherExecutionStep"
+      DROP CONSTRAINT
+        "FinisherExecutionStep_executionId_routineVersionId_fkey";
+  `);
+  requireFinisherAppliedSchemaFailure(
+    "Missing execution-to-routine-version binding",
+    "FinisherExecutionStep_executionId_routineVersionId_fkey",
+  );
+  psql(`
+    ALTER TABLE "FinisherExecutionStep"
+      ADD CONSTRAINT
+        "FinisherExecutionStep_executionId_routineVersionId_fkey"
+      FOREIGN KEY ("executionId", "routineVersionId")
+      REFERENCES "FinisherExecution"("id", "routineVersionId")
+      ON DELETE RESTRICT ON UPDATE RESTRICT;
+  `);
+
+  psql(`
+    ALTER TABLE "FinisherExecutionStep"
+      DROP CONSTRAINT "FinisherExecutionStep_routineStep_binding_fkey";
+    ALTER TABLE "FinisherExecutionStep"
+      ADD CONSTRAINT "FinisherExecutionStep_routineStep_binding_fkey"
+      FOREIGN KEY ("routineStepId", "routineVersionId", "orderIndex")
+      REFERENCES "FinisherRoutineStep"(
+        "id", "routineVersionId", "orderIndex"
+      )
+      ON DELETE RESTRICT ON UPDATE CASCADE;
+  `);
+  requireFinisherGateAFailure(
+    "Protected step/version/order update action became cascading",
+    "FinisherExecutionStep_routineStep_binding_fkey",
+  );
+  psql(`
+    ALTER TABLE "FinisherExecutionStep"
+      DROP CONSTRAINT "FinisherExecutionStep_routineStep_binding_fkey";
+    ALTER TABLE "FinisherExecutionStep"
+      ADD CONSTRAINT "FinisherExecutionStep_routineStep_binding_fkey"
+      FOREIGN KEY ("routineStepId", "routineVersionId", "orderIndex")
+      REFERENCES "FinisherRoutineStep"(
+        "id", "routineVersionId", "orderIndex"
+      )
+      ON DELETE RESTRICT ON UPDATE RESTRICT;
+  `);
+
+  psql(`
+    ALTER TABLE "FinisherExecutionStep"
+      DROP CONSTRAINT
+        "FinisherExecutionStep_performedAlternative_binding_fkey";
+  `);
+  requireFinisherAppliedSchemaFailure(
+    "Missing performed-alternative-to-prescribed-step binding",
+    "FinisherExecutionStep_performedAlternative_binding_fkey",
+  );
+  psql(`
+    ALTER TABLE "FinisherExecutionStep"
+      ADD CONSTRAINT
+        "FinisherExecutionStep_performedAlternative_binding_fkey"
+      FOREIGN KEY ("performedAlternativeId", "routineStepId")
+      REFERENCES "FinisherRoutineStepAlternative"("id", "routineStepId")
+      ON DELETE RESTRICT ON UPDATE RESTRICT;
+  `);
+
+  psql(`
+    ALTER TABLE "FinisherExecutionStep"
+      DROP CONSTRAINT
+        "FinisherExecutionStep_performedAlternative_binding_fkey";
+    DROP INDEX
+      "FinisherRoutineStepAlternative_id_routineStepId_key";
+  `);
+  requireFinisherAppliedSchemaFailure(
+    "Missing supporting performed-alternative binding uniqueness",
+    "FinisherRoutineStepAlternative_id_routineStepId_key",
+  );
+  psql(`
+    CREATE UNIQUE INDEX
+      "FinisherRoutineStepAlternative_id_routineStepId_key"
+      ON "FinisherRoutineStepAlternative"("id", "routineStepId");
+    ALTER TABLE "FinisherExecutionStep"
+      ADD CONSTRAINT
+        "FinisherExecutionStep_performedAlternative_binding_fkey"
+      FOREIGN KEY ("performedAlternativeId", "routineStepId")
+      REFERENCES "FinisherRoutineStepAlternative"("id", "routineStepId")
+      ON DELETE RESTRICT ON UPDATE RESTRICT;
+  `);
+
+  psql(`
+    INSERT INTO "FinisherRoutine" ("id", "code", "publicationState")
+    VALUES (
+      '00000000-0000-4000-8000-000000000099',
+      'unexpected-active-rollout-fixture',
+      'ACTIVE'
+    );
+  `);
+  requireFinisherGateAFailure(
+    "Unexpected active Finisher catalog row",
+    "00000000-0000-4000-8000-000000000099",
+  );
+  psql(`
+    ALTER TABLE "FinisherRoutine" DISABLE TRIGGER "FinisherRoutine_identity_immutable";
+    DELETE FROM "FinisherRoutine"
+    WHERE "id" = '00000000-0000-4000-8000-000000000099';
+    ALTER TABLE "FinisherRoutine" ENABLE TRIGGER "FinisherRoutine_identity_immutable";
+  `);
 
   const fullSeedA = cli("scripts/backfill-immutable-seed-revisions.ts", []);
   const fullSeedB = cli("scripts/backfill-immutable-seed-revisions.ts", []);
@@ -1181,13 +2116,16 @@ try {
       resolvedBaseline: "prisma_cli_zero_step_applied",
       resolvedSetIntent: "prisma_cli_zero_step_applied",
       repeatedResolve: "P3008_state_unchanged",
-      stateA: "legacy_10_applied_7_pending_rejected",
+      stateA: "legacy_10_applied_8_pending_rejected",
       stateB: "partial_object_blocked",
       stateC: "checksum_mismatch_blocked",
       stateD: "failed_rolled_back_and_unfinished_ledger_blocked",
-      currentProductionState: "16_applied_1_pending_authorization_ready_execution_not_authorized",
+      currentProductionState: "17_applied_1_pending_authorization_ready_execution_not_authorized",
+      forgedOperatorPendingPolicy: "rejected_before_integrity_evaluation",
       stateE: "fully_migrated_gate_a_not_applicable",
       baselineUniquenessVariants: "standalone_constraint_missing_wrong_order_non_unique_partial_predicate",
+      finisherExactIntegrityNegatives:
+        "disabled_replica_only_missing_altered_event_altered_timing_altered_table_trigger_command_delete_event_removed_invalid_unready_nonlive_missing_altered_predicate_altered_column_nonunique_partial_index_weakened_terminal_parent_child_matrix_step_command_and_security_changed_function_cleanup_body_owner_grant_role_membership_search_path_public_execute_runtime_mutation_removed_grant_guc_neutral_helper_unexpected_trigger_drift_weakened_unvalidated_and_fk_action_composite_binding_uniqueness_changed_constraint_unexpected_active_catalog_row",
       readOnlyFingerprintsStable: true,
     },
     readinessIntegrity: {

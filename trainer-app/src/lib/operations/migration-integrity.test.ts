@@ -1,3 +1,5 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   APPLIED_SCHEMA_EXPECTATIONS,
@@ -17,6 +19,9 @@ import {
 } from "./migration-integrity";
 
 const REPOSITORY_HEAD = "b".repeat(40);
+const FUTURE_INTEGRATED_HEAD = "c".repeat(40);
+const ARBITRARY_HEAD = "d".repeat(40);
+const OLD_BASE_HEAD = "24e9e62f70a5cf66cef21997157f7b79a411a00f";
 const EVALUATED_AT = "2026-07-26T18:00:00.000Z";
 const VERIFIED_AT = "2026-07-26T17:50:00.000Z";
 const TARGET_FINGERPRINT = "5952f3ffb454";
@@ -61,6 +66,12 @@ function addCompatibleManifestObject(
       ...object.column!,
     });
   }
+  if (object.kind === "enum") {
+    catalog.enums.push({
+      name: object.name,
+      values: [...(object.enum?.values ?? [])],
+    });
+  }
   if (object.kind === "index") {
     catalog.indexes.push({
       table: object.table!,
@@ -86,13 +97,55 @@ function addCompatibleManifestObject(
     catalog.triggers.push({
       table: object.table!,
       name: object.name,
-      definition: object.definitionIncludes?.join(" ") ?? "",
+      definition:
+        object.trigger?.definition ??
+        object.definitionIncludes?.join(" ") ??
+        "",
+      enabled: object.trigger?.enabled,
+      functionName: object.trigger?.functionName,
+      functionOwner: object.trigger?.functionOwner,
     });
   }
   if (object.kind === "function") {
     catalog.functions.push({
       name: object.name,
       definition: object.definitionIncludes?.join(" ") ?? "",
+      ...object.function,
+      body:
+        object.function?.body ??
+        object.function?.bodyIncludes?.join("\n") ??
+        "",
+      privileges:
+        object.name === "cleanup_expired_finisher_execution_commands"
+          ? [
+              {
+                grantee: "trainer_finisher_cleanup",
+                grantor: "trainer_finisher_cleanup",
+                privilege: "EXECUTE",
+                grantable: false,
+              },
+              {
+                grantee: "trainer_app_runtime",
+                grantor: "trainer_finisher_cleanup",
+                privilege: "EXECUTE",
+                grantable: false,
+              },
+            ]
+          : [
+              {
+                grantee: "trainer_finisher_owner",
+                grantor: "trainer_finisher_owner",
+                privilege: "EXECUTE",
+                grantable: false,
+              },
+            ],
+    });
+  }
+  if (object.kind === "catalogRow") {
+    catalog.catalogRows.push({
+      table: object.table!,
+      key: object.name,
+      values: structuredClone(object.row ?? {}),
     });
   }
 }
@@ -101,7 +154,7 @@ function cleanCatalog(
   appliedCount = EXPECTED_MIGRATION_CHAIN.length - 1,
 ): CatalogSnapshot {
   const catalog: CatalogSnapshot = {
-    tables: [], columns: [], enums: [], indexes: [], constraints: [], triggers: [], functions: [],
+    tables: [], columns: [], enums: [], indexes: [], constraints: [], triggers: [], functions: [], catalogRows: [],
   };
   for (const expectation of APPLIED_SCHEMA_EXPECTATIONS) {
     if (expectation.kind === "table") catalog.tables.push(expectation.name);
@@ -143,6 +196,80 @@ function cleanCatalog(
       addCompatibleManifestObject(catalog, migrationIndex, objectIndex);
     }
   }
+  if (catalog.tables.includes("FinisherExecutionCommand")) {
+    const runtimeGrants: Record<string, string[]> = {
+      FinisherRoutine: ["SELECT"],
+      FinisherRoutineVersion: ["SELECT"],
+      FinisherRoutineStep: ["SELECT"],
+      FinisherRoutineStepAlternative: ["SELECT"],
+      FinisherOffer: ["INSERT", "SELECT", "UPDATE"],
+      FinisherOfferItem: ["INSERT", "SELECT"],
+      FinisherDecision: ["INSERT", "SELECT"],
+      FinisherExecution: ["INSERT", "SELECT", "UPDATE"],
+      FinisherExecutionStep: ["INSERT", "SELECT", "UPDATE"],
+      FinisherExecutionCommand: ["INSERT", "SELECT"],
+    };
+    catalog.tableSecurity = Object.entries(runtimeGrants).map(
+      ([table, privileges]) => ({
+        table,
+        owner: "trainer_finisher_owner",
+        privileges: [
+          ...privileges.map((privilege) => ({
+            grantee: "trainer_app_runtime",
+            grantor: "trainer_finisher_owner",
+            privilege,
+            grantable: false,
+          })),
+          ...(table === "FinisherExecutionCommand"
+            ? [
+                {
+                  grantee: "trainer_finisher_cleanup",
+                  grantor: "trainer_finisher_owner",
+                  privilege: "SELECT",
+                  grantable: false,
+                },
+              ]
+            : []),
+        ],
+      }),
+    );
+    catalog.columnPrivileges = ["cleanedAt", "response"].map((column) => ({
+      table: "FinisherExecutionCommand",
+      column,
+      grantee: "trainer_finisher_cleanup",
+      grantor: "trainer_finisher_owner",
+      privilege: "UPDATE",
+      grantable: false,
+    }));
+    catalog.roles = [
+      {
+        name: "trainer_app_runtime",
+        canLogin: true,
+        inherit: true,
+        superuser: false,
+        createRole: false,
+        createDb: false,
+        replication: false,
+        bypassRls: false,
+        publicSchemaCreate: false,
+      },
+      ...["trainer_finisher_owner", "trainer_finisher_cleanup"].map(
+        (name) => ({
+          name,
+          canLogin: false,
+          inherit: false,
+          superuser: false,
+          createRole: false,
+          createDb: false,
+          replication: false,
+          bypassRls: false,
+          publicSchemaCreate: false,
+        }),
+      ),
+    ];
+    catalog.roleMemberships = [];
+    catalog.defaultPrivileges = [];
+  }
   return catalog;
 }
 
@@ -151,8 +278,7 @@ function fullEvidence(
 ): MigrationAuthorizationEvidence {
   return {
     repositoryHead: REPOSITORY_HEAD,
-    productionDeploymentCommit:
-      MIGRATION_AUTHORIZATION_POLICY.compatibleProductionDeploymentCommits[0],
+    productionDeploymentCommit: REPOSITORY_HEAD,
     requiredApplicationCommit: REPOSITORY_HEAD,
     dataPreflight: {
       valid: true,
@@ -203,10 +329,12 @@ function addPendingObject(catalog: CatalogSnapshot, migrationIndex: number, obje
   if (!object) return;
   if (object.kind === "table") catalog.tables.push(object.name);
   if (object.kind === "column") catalog.columns.push({ table: object.table!, name: object.name, type: "text", nullable: true, default: null });
+  if (object.kind === "enum") catalog.enums.push({ name: object.name, values: [] });
   if (object.kind === "index") catalog.indexes.push({ table: object.table!, name: object.name, unique: false, columns: [], predicate: null });
   if (object.kind === "constraint") catalog.constraints.push({ table: object.table!, name: object.name, type: "f", definition: "fixture" });
   if (object.kind === "trigger") catalog.triggers.push({ table: object.table!, name: object.name, definition: "fixture" });
   if (object.kind === "function") catalog.functions.push({ name: object.name, definition: "fixture" });
+  if (object.kind === "catalogRow") catalog.catalogRows.push({ table: object.table!, key: object.name, values: {} });
 }
 
 function pendingObjectIndex(migrationIndex: number, kind: string): number {
@@ -216,6 +344,17 @@ function pendingObjectIndex(migrationIndex: number, kind: string): number {
 }
 
 describe("migration integrity", () => {
+  it("declares the checked-in migration directories in exact filesystem order", () => {
+    const directories = readdirSync(resolve("prisma/migrations"), {
+      withFileTypes: true,
+    })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
+
+    expect(directories).toEqual([...EXPECTED_MIGRATION_CHAIN]);
+  });
+
   it("accepts the applied prefix and the exact expected pending migration", () => {
     const result = report();
     expect(result.chain).toMatchObject({
@@ -495,17 +634,27 @@ describe("migration integrity", () => {
     ]);
   });
 
-  it("derives readiness from an explicit pending sequence instead of a fixed count", () => {
-    const expectedPendingMigrations = EXPECTED_MIGRATION_CHAIN.slice(-2);
+  it("does not let forged operator evidence redefine the trusted pending sequence", () => {
+    const observedPendingMigrations = EXPECTED_MIGRATION_CHAIN.slice(-2);
     const result = report({
       ledgerRows: appliedPrefix(EXPECTED_MIGRATION_CHAIN.length - 2),
       catalog: cleanCatalog(EXPECTED_MIGRATION_CHAIN.length - 2),
-      authorizationEvidence: fullEvidence({
-        expectedPendingMigrations: [...expectedPendingMigrations],
-      }),
+      authorizationEvidence: {
+        ...fullEvidence(),
+        expectedPendingMigrations: [...observedPendingMigrations],
+      } as MigrationAuthorizationEvidence & {
+        expectedPendingMigrations: string[];
+      },
     });
-    expect(result.pendingMigrations).toEqual(expectedPendingMigrations);
-    expect(result.technicalMigrationReady).toBe(true);
+    expect(result.pendingMigrations).toEqual(observedPendingMigrations);
+    expect(result.chain.expectedPendingMigrations).toEqual([
+      "20260728120000_add_finishers_phase_1",
+    ]);
+    expect(result.technicalMigrationReady).toBe(false);
+    expect(result.migrationAuthorizationReady).toBe(false);
+    expect(result.blockingReasons).toContain(
+      "pending_migration_sequence_mismatch",
+    );
   });
 
   it("rejects an unexpected second pending migration", () => {
@@ -553,6 +702,152 @@ describe("migration integrity", () => {
     expect(result.technicalMigrationReady).toBe(true);
     expect(result.writeBoundaryReady).toBe(false);
     expect(result.migrationAuthorizationReady).toBe(false);
+  });
+
+  it("authorizes any future integrated commit when all three trusted values match exactly", () => {
+    const result = report({
+      authorizationEvidence: fullEvidence({
+        repositoryHead: FUTURE_INTEGRATED_HEAD,
+        productionDeploymentCommit: FUTURE_INTEGRATED_HEAD,
+        requiredApplicationCommit: FUTURE_INTEGRATED_HEAD,
+        disposablePostgres: {
+          valid: true,
+          verifiedAt: VERIFIED_AT,
+          repositoryHead: FUTURE_INTEGRATED_HEAD,
+        },
+      }),
+    });
+    expect(result.evidence).toMatchObject({
+      repositoryHeadIdentified: true,
+      productionDeploymentCommitIdentified: true,
+      requiredApplicationCommitIdentified: true,
+      requiredApplicationCommitMatchesRepositoryHead: true,
+      requiredApplicationCommitMatchesProductionDeployment: true,
+      repositoryHeadMatchesProductionDeployment: true,
+      applicationCommitBindingVerified: true,
+      productionDeploymentVerified: true,
+    });
+    expect(result.migrationAuthorizationReady).toBe(true);
+    expect(result.executionAuthorized).toBe(false);
+    expect(result.writes).toBe(0);
+  });
+
+  it("rejects requiredApplicationCommit when it differs from repositoryHead", () => {
+    const result = report({
+      authorizationEvidence: fullEvidence({
+        requiredApplicationCommit: FUTURE_INTEGRATED_HEAD,
+        productionDeploymentCommit: FUTURE_INTEGRATED_HEAD,
+      }),
+    });
+    expect(result.evidence.requiredApplicationCommitMatchesRepositoryHead).toBe(
+      false,
+    );
+    expect(result.blockingReasons).toContain(
+      "required_application_commit_repository_head_mismatch",
+    );
+    expect(result.migrationAuthorizationReady).toBe(false);
+    expect(result.executionAuthorized).toBe(false);
+    expect(result.writes).toBe(0);
+  });
+
+  it("rejects requiredApplicationCommit when it differs from productionDeploymentCommit", () => {
+    const result = report({
+      authorizationEvidence: fullEvidence({
+        productionDeploymentCommit: FUTURE_INTEGRATED_HEAD,
+      }),
+    });
+    expect(
+      result.evidence.requiredApplicationCommitMatchesProductionDeployment,
+    ).toBe(false);
+    expect(result.blockingReasons).toContain(
+      "required_application_commit_production_deployment_mismatch",
+    );
+    expect(result.migrationAuthorizationReady).toBe(false);
+    expect(result.executionAuthorized).toBe(false);
+    expect(result.writes).toBe(0);
+  });
+
+  it("rejects repositoryHead when it differs from productionDeploymentCommit", () => {
+    const result = report({
+      authorizationEvidence: fullEvidence({
+        repositoryHead: FUTURE_INTEGRATED_HEAD,
+        requiredApplicationCommit: FUTURE_INTEGRATED_HEAD,
+        disposablePostgres: {
+          valid: true,
+          verifiedAt: VERIFIED_AT,
+          repositoryHead: FUTURE_INTEGRATED_HEAD,
+        },
+      }),
+    });
+    expect(result.evidence.repositoryHeadMatchesProductionDeployment).toBe(
+      false,
+    );
+    expect(result.blockingReasons).toContain(
+      "repository_head_production_deployment_mismatch",
+    );
+    expect(result.migrationAuthorizationReady).toBe(false);
+    expect(result.executionAuthorized).toBe(false);
+    expect(result.writes).toBe(0);
+  });
+
+  it("rejects an arbitrary canonical SHA that is not the checked-out and deployed commit", () => {
+    const result = report({
+      authorizationEvidence: fullEvidence({
+        requiredApplicationCommit: ARBITRARY_HEAD,
+      }),
+    });
+    expect(result.evidence.requiredApplicationCommitIdentified).toBe(true);
+    expect(result.evidence.applicationCommitBindingVerified).toBe(false);
+    expect(result.migrationAuthorizationReady).toBe(false);
+    expect(result.executionAuthorized).toBe(false);
+    expect(result.writes).toBe(0);
+  });
+
+  it("rejects the old base deployment after a different integrated commit is authorized", () => {
+    const result = report({
+      authorizationEvidence: fullEvidence({
+        productionDeploymentCommit: OLD_BASE_HEAD,
+      }),
+    });
+    expect(result.evidence.productionDeploymentCommitIdentified).toBe(true);
+    expect(result.evidence.productionDeploymentVerified).toBe(false);
+    expect(result.blockingReasons).toEqual(
+      expect.arrayContaining([
+        "required_application_commit_production_deployment_mismatch",
+        "repository_head_production_deployment_mismatch",
+      ]),
+    );
+    expect(result.migrationAuthorizationReady).toBe(false);
+    expect(result.executionAuthorized).toBe(false);
+    expect(result.writes).toBe(0);
+  });
+
+  it.each([
+    ["short", "b".repeat(39)],
+    ["malformed", "g".repeat(40)],
+    ["uppercase", "B".repeat(40)],
+    ["padded", ` ${REPOSITORY_HEAD} `],
+    ["overlong", "b".repeat(41)],
+  ])("rejects a %s commit value in every authorization field", (_label, value) => {
+    for (const field of [
+      "repositoryHead",
+      "productionDeploymentCommit",
+      "requiredApplicationCommit",
+    ] as const) {
+      const evidence = fullEvidence({ [field]: value });
+      if (field === "repositoryHead") {
+        evidence.disposablePostgres = {
+          valid: true,
+          verifiedAt: VERIFIED_AT,
+          repositoryHead: value,
+        };
+      }
+      const result = report({ authorizationEvidence: evidence });
+      expect(result.technicalMigrationReady).toBe(true);
+      expect(result.migrationAuthorizationReady).toBe(false);
+      expect(result.executionAuthorized).toBe(false);
+      expect(result.writes).toBe(0);
+    }
   });
 
   it("models the captured production shape without granting execution", () => {
@@ -650,6 +945,485 @@ describe("migration integrity", () => {
       expect.objectContaining({ category: "baseline_uniqueness" }),
     ]));
     expect(result.migrationAuthorizationReady).toBe(false);
+  });
+
+  it("documents role-principal provisioning before Gate A and migration-owned grants after migration", () => {
+    const operations = readFileSync(resolve("docs/07_OPERATIONS.md"), "utf8");
+    const orderedMarkers = [
+      "1. Merge the reviewed runtime-inert application",
+      "2. Record the actual integrated `master` squash SHA.",
+      "3. Confirm `/api/version` and provider-side alias evidence",
+      "4. Through the separately authorized evidence workflow",
+      "5. Establish and verify the required recovery point.",
+      "6. Activate and verify `TRAINER_WRITE_PAUSE=enabled`",
+      "7. Through the separately authorized database-administrator workflow",
+      "8. Verify all three principals exist",
+      "9. Run Gate A and the required pre-migration authorization checks.",
+      "10. After separate explicit authorization",
+      "11. Verify the migration-owned object ownership, grants, restrictive",
+      "12. Rerun Gate A and all required post-migration readiness checks.",
+      "13. Only after migration, role/grant verification, Gate A, and required",
+      "14. Create or promote the application deployment",
+      "15. Under separate authorization, perform bounded authenticated",
+    ];
+    let previousIndex = -1;
+    for (const marker of orderedMarkers) {
+      const markerIndex = operations.indexOf(marker);
+      expect(markerIndex, marker).toBeGreaterThan(previousIndex);
+      previousIndex = markerIndex;
+    }
+    expect(operations).toContain(
+      "Do not re-provision migration-owned grants after migration",
+    );
+  });
+
+  it.each([
+    [
+      "missing material column",
+      (catalog: CatalogSnapshot) => {
+        catalog.columns = catalog.columns.filter(
+          (column) =>
+            !(
+              column.table === "FinisherExecution" &&
+              column.name === "revision"
+            ),
+        );
+      },
+    ],
+    [
+      "altered material column",
+      (catalog: CatalogSnapshot) => {
+        catalog.columns.find(
+          (column) =>
+            column.table === "FinisherRoutineVersion" &&
+            column.name === "sealedAt",
+        )!.nullable = false;
+      },
+    ],
+    [
+      "missing enum value",
+      (catalog: CatalogSnapshot) => {
+        catalog.enums.find(
+          (enumeration) => enumeration.name === "FinisherExecutionAction",
+        )!.values.pop();
+      },
+    ],
+    [
+      "altered partial unique index",
+      (catalog: CatalogSnapshot) => {
+        catalog.indexes.find(
+          (index) => index.name === "FinisherExecution_one_active_per_workout",
+        )!.predicate = '"state" = \'SELECTED\'';
+      },
+    ],
+    [
+      "missing permanent performed-history uniqueness",
+      (catalog: CatalogSnapshot) => {
+        catalog.indexes = catalog.indexes.filter(
+          (index) =>
+            index.name !== "FinisherExecution_one_started_per_workout",
+        );
+      },
+    ],
+    [
+      "permitting startedAt clearing",
+      (catalog: CatalogSnapshot) => {
+        const fn = catalog.functions.find(
+          (item) => item.name === "guard_finisher_execution_lifecycle",
+        )!;
+        fn.body = fn.body!.replace(
+          'NEW."startedAt" IS DISTINCT FROM OLD."startedAt"',
+          "false",
+        );
+      },
+    ],
+    [
+      "allowing an empty finalized offer",
+      (catalog: CatalogSnapshot) => {
+        const fn = catalog.functions.find(
+          (item) => item.name === "require_finisher_offer_finalized",
+        )!;
+        fn.body = fn.body!.replace("actual_item_count = 0", "false");
+      },
+    ],
+    [
+      "allowing a recommendation outside the offer",
+      (catalog: CatalogSnapshot) => {
+        const fn = catalog.functions.find(
+          (item) => item.name === "require_finisher_offer_finalized",
+        )!;
+        fn.body = fn.body!.replace(
+          'item."routineVersionId" = recommended_version_id',
+          "true",
+        );
+      },
+    ],
+    [
+      "weakening contiguous offer order",
+      (catalog: CatalogSnapshot) => {
+        const fn = catalog.functions.find(
+          (item) => item.name === "require_finisher_offer_finalized",
+        )!;
+        fn.body = fn.body!.replace(
+          "maximum_position <> expected_item_count - 1",
+          "false",
+        );
+      },
+    ],
+    [
+      "removing finalized offer-item immutability",
+      (catalog: CatalogSnapshot) => {
+        catalog.triggers = catalog.triggers.filter(
+          (trigger) => trigger.name !== "FinisherOfferItem_immutable",
+        );
+      },
+    ],
+    [
+      "omitting expected offer revision from selection identity",
+      (catalog: CatalogSnapshot) => {
+        const fn = catalog.functions.find(
+          (item) => item.name === "require_finisher_execution_finalized",
+        )!;
+        fn.body = fn.body!.replace(
+          'decision."expectedOfferRevision" = execution."offerRevisionAtSelection"',
+          "true",
+        );
+      },
+    ],
+    [
+      "omitting expected offer revision from decline identity",
+      (catalog: CatalogSnapshot) => {
+        const fn = catalog.functions.find(
+          (item) => item.name === "guard_finisher_offer_identity",
+        )!;
+        fn.body = fn.body!.replace(
+          'decision."expectedOfferRevision" = OLD."revision"',
+          "true",
+        );
+      },
+    ],
+    [
+      "removing durable decision fingerprint",
+      (catalog: CatalogSnapshot) => {
+        catalog.columns = catalog.columns.filter(
+          (column) =>
+            !(
+              column.table === "FinisherDecision" &&
+              column.name === "requestFingerprint"
+            ),
+        );
+      },
+    ],
+    [
+      "missing check constraint",
+      (catalog: CatalogSnapshot) => {
+        catalog.constraints = catalog.constraints.filter(
+          (constraint) =>
+            constraint.name !== "FinisherExecution_feedback_range",
+        );
+      },
+    ],
+    [
+      "altered foreign-key action",
+      (catalog: CatalogSnapshot) => {
+        catalog.constraints.find(
+          (constraint) =>
+            constraint.name === "FinisherOffer_workoutId_fkey",
+        )!.definition =
+          'FOREIGN KEY ("workoutId") REFERENCES "Workout"(id) ON UPDATE CASCADE ON DELETE CASCADE';
+      },
+    ],
+    [
+      "missing immutability trigger",
+      (catalog: CatalogSnapshot) => {
+        catalog.triggers = catalog.triggers.filter(
+          (trigger) => trigger.name !== "FinisherRoutineStep_immutable",
+        );
+      },
+    ],
+    [
+      "missing execution lifecycle trigger",
+      (catalog: CatalogSnapshot) => {
+        catalog.triggers = catalog.triggers.filter(
+          (trigger) =>
+            trigger.name !== "FinisherExecution_lifecycle_guard",
+        );
+      },
+    ],
+    [
+      "disabled terminal step trigger",
+      (catalog: CatalogSnapshot) => {
+        catalog.triggers.find(
+          (trigger) =>
+            trigger.name === "FinisherExecutionStep_evidence_immutable",
+        )!.enabled = "D";
+      },
+    ],
+    [
+      "replica-only command tombstone trigger",
+      (catalog: CatalogSnapshot) => {
+        catalog.triggers.find(
+          (trigger) =>
+            trigger.name === "FinisherExecutionCommand_tombstone",
+        )!.enabled = "R";
+      },
+    ],
+    [
+      "command trigger attached to wrong table",
+      (catalog: CatalogSnapshot) => {
+        catalog.triggers.find(
+          (trigger) =>
+            trigger.name === "FinisherExecutionCommand_tombstone",
+        )!.table = "FinisherExecution";
+      },
+    ],
+    [
+      "command trigger omits delete",
+      (catalog: CatalogSnapshot) => {
+        const trigger = catalog.triggers.find(
+          (item) => item.name === "FinisherExecutionCommand_tombstone",
+        )!;
+        trigger.definition = trigger.definition.replace(
+          "BEFORE UPDATE OR DELETE",
+          "BEFORE UPDATE",
+        );
+      },
+    ],
+    [
+      "altered immutability function",
+      (catalog: CatalogSnapshot) => {
+        catalog.functions.find(
+          (fn) => fn.name === "guard_finisher_routine_child_mutation",
+        )!.body = "BEGIN RETURN NEW; END;";
+      },
+    ],
+    [
+      "weakened lifecycle terminal-state condition",
+      (catalog: CatalogSnapshot) => {
+        const fn = catalog.functions.find(
+          (item) =>
+            item.name === "guard_finisher_execution_lifecycle",
+        )!;
+        fn.body = fn.body!.replace(", 'PARTIAL'", "");
+      },
+    ],
+    [
+      "omitted protected step field",
+      (catalog: CatalogSnapshot) => {
+        const fn = catalog.functions.find(
+          (item) => item.name === "guard_finisher_execution_step_evidence",
+        )!;
+        fn.body = fn.body!.replace(
+          'OLD."startedAt" IS NOT NULL',
+          "false",
+        );
+      },
+    ],
+    [
+      "cleanup allowed before expiration",
+      (catalog: CatalogSnapshot) => {
+        const fn = catalog.functions.find(
+          (item) =>
+            item.name === "cleanup_expired_finisher_execution_commands",
+        )!;
+        fn.body = fn.body!.replace(
+          'AND command."expiresAt" <= cleanup_time',
+          "",
+        );
+      },
+    ],
+    [
+      "cleanup modifies permanent receipt identity",
+      (catalog: CatalogSnapshot) => {
+        const fn = catalog.functions.find(
+          (item) =>
+            item.name === "cleanup_expired_finisher_execution_commands",
+        )!;
+        fn.body = fn.body!.replace(
+          '"cleanedAt" = cleanup_time',
+          '"cleanedAt" = cleanup_time, "resultRevision" = "resultRevision" + 1',
+        );
+      },
+    ],
+    [
+      "cleanup is executable by public",
+      (catalog: CatalogSnapshot) => {
+        catalog.functions.find(
+          (item) =>
+            item.name === "cleanup_expired_finisher_execution_commands",
+        )!.publicExecute = true;
+      },
+    ],
+    [
+      "missing curated catalog row",
+      (catalog: CatalogSnapshot) => {
+        catalog.catalogRows = catalog.catalogRows.filter(
+          (row) =>
+            !(
+              row.table === "FinisherRoutine" &&
+              row.values.code === "core-stability-10"
+            ),
+        );
+      },
+    ],
+    [
+      "altered curated relationship",
+      (catalog: CatalogSnapshot) => {
+        const step = catalog.catalogRows.find(
+          (row) => row.table === "FinisherRoutineStep",
+        )!;
+        step.values.routineVersionId = "drifted-version";
+      },
+    ],
+  ] as const)("fails closed for applied Finisher drift: %s", (_label, mutate) => {
+    const catalog = cleanCatalog(EXPECTED_MIGRATION_CHAIN.length);
+    mutate(catalog);
+    const result = report({
+      ledgerRows: appliedPrefix(EXPECTED_MIGRATION_CHAIN.length),
+      catalog,
+    });
+    expect(result.schemaPreflightValid).toBe(false);
+    expect([
+      ...result.definitions.appliedManifestMissing,
+      ...result.definitions.appliedManifestIncompatible,
+    ]).not.toHaveLength(0);
+  });
+
+  it.each([
+    [
+      "cleanup function owner changes",
+      (catalog: CatalogSnapshot) => {
+        catalog.functions.find(
+          (fn) => fn.name === "cleanup_expired_finisher_execution_commands",
+        )!.owner = "trainer_app_runtime";
+      },
+    ],
+    [
+      "an unexpected role receives execute",
+      (catalog: CatalogSnapshot) => {
+        catalog.functions.find(
+          (fn) => fn.name === "cleanup_expired_finisher_execution_commands",
+        )!.privileges!.push({
+          grantee: "unexpected_cleanup",
+          grantor: "trainer_finisher_cleanup",
+          privilege: "EXECUTE",
+          grantable: false,
+        });
+      },
+    ],
+    [
+      "runtime receives direct command update",
+      (catalog: CatalogSnapshot) => {
+        catalog.tableSecurity!.find(
+          (table) => table.table === "FinisherExecutionCommand",
+        )!.privileges.push({
+          grantee: "trainer_app_runtime",
+          grantor: "trainer_finisher_owner",
+          privilege: "UPDATE",
+          grantable: false,
+        });
+      },
+    ],
+    [
+      "role membership reaches cleanup authority",
+      (catalog: CatalogSnapshot) => {
+        catalog.roleMemberships!.push({
+          role: "trainer_finisher_cleanup",
+          member: "trainer_app_runtime",
+          grantor: "trainer",
+          adminOption: false,
+        });
+      },
+    ],
+    [
+      "cleanup security mode weakens",
+      (catalog: CatalogSnapshot) => {
+        catalog.functions.find(
+          (fn) => fn.name === "cleanup_expired_finisher_execution_commands",
+        )!.securityDefiner = false;
+      },
+    ],
+    [
+      "cleanup search path weakens",
+      (catalog: CatalogSnapshot) => {
+        catalog.functions.find(
+          (fn) => fn.name === "cleanup_expired_finisher_execution_commands",
+        )!.configuration = ["search_path=pg_catalog, public"];
+      },
+    ],
+    [
+      "a neutrally named static SQL helper touches tombstones",
+      (catalog: CatalogSnapshot) => {
+        catalog.functions.push({
+          name: "command_cleanup_bypass",
+          definition:
+            'CREATE FUNCTION command_cleanup_bypass() RETURNS void LANGUAGE sql AS $$ UPDATE "FinisherExecutionCommand" SET "response" = NULL $$',
+          language: "sql",
+          arguments: "",
+          resultType: "void",
+          volatility: "v",
+          securityDefiner: true,
+          leakproof: false,
+          strict: false,
+          parallel: "u",
+          body: 'UPDATE "FinisherExecutionCommand" SET "response" = NULL',
+          owner: "trainer_finisher_owner",
+          privileges: [],
+          referencedRelations: ["public.FinisherExecutionCommand"],
+          referencedFunctions: [],
+          triggerTables: [],
+          mutationCapability: true,
+          publicExecute: false,
+        });
+      },
+    ],
+    [
+      "an unexpected trigger creates another mutation path",
+      (catalog: CatalogSnapshot) => {
+        catalog.triggers.push({
+          table: "FinisherExecutionCommand",
+          name: "command_audit_side_effect",
+          definition:
+            'CREATE TRIGGER command_audit_side_effect BEFORE UPDATE ON "FinisherExecutionCommand" FOR EACH ROW EXECUTE FUNCTION command_cleanup_bypass()',
+          enabled: "O",
+          functionName: "command_cleanup_bypass",
+          functionOwner: "trainer_finisher_owner",
+        });
+      },
+    ],
+    [
+      "the protected runtime cleanup grant is removed",
+      (catalog: CatalogSnapshot) => {
+        const fn = catalog.functions.find(
+          (item) =>
+            item.name === "cleanup_expired_finisher_execution_commands",
+        )!;
+        fn.privileges = fn.privileges!.filter(
+          (privilege) => privilege.grantee !== "trainer_app_runtime",
+        );
+      },
+    ],
+    [
+      "a caller-controlled setting bypass returns",
+      (catalog: CatalogSnapshot) => {
+        const fn = catalog.functions.find(
+          (item) => item.name === "guard_finisher_execution_command_tombstone",
+        )!;
+        fn.body = `${fn.body}\nPERFORM current_setting('trainer.finisher_command_cleanup', true);`;
+      },
+    ],
+  ] as const)("fails Gate A privilege/dependency drift: %s", (_label, mutate) => {
+    const catalog = cleanCatalog(EXPECTED_MIGRATION_CHAIN.length);
+    mutate(catalog);
+    const result = report({
+      ledgerRows: appliedPrefix(EXPECTED_MIGRATION_CHAIN.length),
+      catalog,
+    });
+    expect(result.schemaPreflightValid).toBe(false);
+    expect(
+      result.partialObjects.unexpectedOwnedObjects.length +
+        result.definitions.appliedManifestIncompatible.length,
+    ).toBeGreaterThan(0);
   });
 
   it("reports a fully migrated state as clean but not Gate A applicable", () => {

@@ -100,6 +100,13 @@ export async function resolveOwner() {
   throw new Error("resolveOwner retry loop exhausted");
 }
 
+export async function findOwnerReadOnly() {
+  const configuredOwnerEmail = process.env.OWNER_EMAIL?.trim().toLowerCase();
+  return prisma.user.findUnique({
+    where: { email: configuredOwnerEmail ?? "owner@local" },
+  });
+}
+
 export async function loadWorkoutContext(userId: string) {
   const [profile, goals, constraints, injuries, exercises, workouts, preferences, checkIns] = await Promise.all([
     prisma.profile.findUnique({ where: { userId } }),

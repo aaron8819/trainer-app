@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   parseExactDisposableConfirmationArgs,
@@ -51,6 +52,314 @@ function waitForPostgres(): void {
   throw new Error("DISPOSABLE_POSTGRES_DID_NOT_BECOME_READY");
 }
 
+function psql(sql: string, database = "trainer"): void {
+  const result = spawnSync(
+    "docker",
+    [
+      "exec",
+      "-i",
+      containerName,
+      "psql",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-U",
+      "trainer",
+      "-d",
+      database,
+    ],
+    { input: sql, encoding: "utf8", stdio: ["pipe", "inherit", "inherit"] },
+  );
+  if (result.status !== 0) {
+    throw new Error(`DISPOSABLE_FINISHER_ROLE_SQL_FAILED:${result.status}`);
+  }
+}
+
+function provisionFinisherRoles(): void {
+  psql(`
+    CREATE ROLE trainer_app_runtime
+      LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+      NOREPLICATION NOBYPASSRLS
+      PASSWORD 'trainer-app-runtime';
+    CREATE ROLE trainer_finisher_owner
+      NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+      NOREPLICATION NOBYPASSRLS;
+    CREATE ROLE trainer_finisher_cleanup
+      NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+      NOREPLICATION NOBYPASSRLS;
+  `);
+}
+
+function grantDisposableRuntimeApplicationAccess(): void {
+  psql(`
+    GRANT USAGE ON SCHEMA public TO trainer_app_runtime;
+    DO $$
+    DECLARE
+      relation_name TEXT;
+    BEGIN
+      FOR relation_name IN
+        SELECT c.relname
+        FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public'
+          AND c.relkind IN ('r', 'p')
+          AND c.relname NOT LIKE 'Finisher%'
+      LOOP
+        EXECUTE format(
+          'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.%I TO trainer_app_runtime',
+          relation_name
+        );
+      END LOOP;
+    END;
+    $$;
+    GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public
+    TO trainer_app_runtime;
+  `);
+}
+
+function verifyAtomicFinisherMigrationFailure(): void {
+  run("docker", [
+    "exec",
+    "-i",
+    containerName,
+    "createdb",
+    "-U",
+    "trainer",
+    "finisher_failure_probe",
+  ]);
+  const migration = readFileSync(
+    join(
+      process.cwd(),
+      "prisma/migrations/20260728120000_add_finishers_phase_1/migration.sql"
+    ),
+    "utf8"
+  );
+  const injected = migration.replace(
+    /\nCOMMIT;\s*$/,
+    '\nSELECT * FROM "intentional_finisher_migration_failure";\n\nCOMMIT;\n'
+  );
+  const failed = spawnSync(
+    "docker",
+    [
+      "exec",
+      "-i",
+      containerName,
+      "psql",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-U",
+      "trainer",
+      "-d",
+      "finisher_failure_probe",
+    ],
+    { input: injected, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }
+  );
+  if (failed.status === 0) {
+    throw new Error("INJECTED_FINISHER_MIGRATION_FAILURE_DID_NOT_FAIL");
+  }
+  const relation = run(
+    "docker",
+    [
+      "exec",
+      "-i",
+      containerName,
+      "psql",
+      "-U",
+      "trainer",
+      "-d",
+      "finisher_failure_probe",
+      "-tAc",
+      `SELECT COALESCE(to_regclass('"FinisherRoutine"')::text, 'none')`,
+    ],
+    process.env,
+    true
+  );
+  const enumCount = run(
+    "docker",
+    [
+      "exec",
+      "-i",
+      containerName,
+      "psql",
+      "-U",
+      "trainer",
+      "-d",
+      "finisher_failure_probe",
+      "-tAc",
+      "SELECT count(*) FROM pg_type WHERE typname IN ('FinisherCategory', 'FinisherExecutionState')",
+    ],
+    process.env,
+    true
+  );
+  if (relation !== "none" || enumCount !== "0") {
+    throw new Error(
+      `FINISHER_MIGRATION_LEFT_PARTIAL_STATE:${relation}:${enumCount}`
+    );
+  }
+  console.log(
+    "Injected Finisher migration failure rolled back all target objects and catalog rows."
+  );
+}
+
+function verifyFinisherSeedOrderDrift(
+  env: NodeJS.ProcessEnv,
+): void {
+  const seedCommand = [
+    join(process.cwd(), "node_modules/tsx/dist/cli.mjs"),
+    "prisma/seed.ts",
+  ];
+  run(process.execPath, seedCommand, env);
+
+  const scenarios = [
+    {
+      label: "step",
+      table: "FinisherRoutineStep",
+      trigger: "FinisherRoutineStep_immutable",
+      mutate: `
+        UPDATE "FinisherRoutineStep" s
+        SET "orderIndex" = s."orderIndex" + 100
+        FROM "FinisherRoutineVersion" v
+        JOIN "FinisherRoutine" r ON r."id" = v."routineId"
+        WHERE s."routineVersionId" = v."id"
+          AND r."code" = 'core-stability-10';
+      `,
+      observed: `
+        SELECT min(s."orderIndex")::text || '|' || max(s."orderIndex")::text
+        FROM "FinisherRoutineStep" s
+        JOIN "FinisherRoutineVersion" v ON v."id" = s."routineVersionId"
+        JOIN "FinisherRoutine" r ON r."id" = v."routineId"
+        WHERE r."code" = 'core-stability-10';
+      `,
+      expectedObserved: "100|109",
+      restore: `
+        UPDATE "FinisherRoutineStep" s
+        SET "orderIndex" = s."orderIndex" - 100
+        FROM "FinisherRoutineVersion" v
+        JOIN "FinisherRoutine" r ON r."id" = v."routineId"
+        WHERE s."routineVersionId" = v."id"
+          AND r."code" = 'core-stability-10';
+      `,
+    },
+    {
+      label: "alternative",
+      table: "FinisherRoutineStepAlternative",
+      trigger: "FinisherRoutineStepAlternative_immutable",
+      mutate: `
+        UPDATE "FinisherRoutineStepAlternative"
+        SET "orderIndex" = "orderIndex" + 100
+        WHERE "id" = (
+          SELECT a."id"
+          FROM "FinisherRoutineStepAlternative" a
+          ORDER BY a."id"
+          LIMIT 1
+        );
+      `,
+      observed: `
+        SELECT max("orderIndex")::text
+        FROM "FinisherRoutineStepAlternative";
+      `,
+      expectedObserved: "100",
+      restore: `
+        UPDATE "FinisherRoutineStepAlternative"
+        SET "orderIndex" = "orderIndex" - 100
+        WHERE "orderIndex" >= 100;
+      `,
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const mutateSql = `
+      ALTER TABLE "${scenario.table}" DISABLE TRIGGER "${scenario.trigger}";
+      ${scenario.mutate}
+      ALTER TABLE "${scenario.table}" ENABLE TRIGGER "${scenario.trigger}";
+    `;
+    const mutation = spawnSync(
+      "docker",
+      [
+        "exec",
+        "-i",
+        containerName,
+        "psql",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-U",
+        "trainer",
+        "-d",
+        "trainer",
+      ],
+      { input: mutateSql, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] },
+    );
+    if (mutation.status !== 0) {
+      throw new Error(`FINISHER_${scenario.label.toUpperCase()}_ORDER_DRIFT_SETUP_FAILED`);
+    }
+    const failed = spawnSync(process.execPath, seedCommand, {
+      cwd: process.cwd(),
+      env,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const output = `${failed.stdout ?? ""}\n${failed.stderr ?? ""}`;
+    if (
+      failed.status === 0 ||
+      !output.includes("Immutable finisher routine drift detected")
+    ) {
+      throw new Error(
+        `FINISHER_${scenario.label.toUpperCase()}_ORDER_DRIFT_NOT_REJECTED`,
+      );
+    }
+    const observed = run(
+      "docker",
+      [
+        "exec",
+        "-i",
+        containerName,
+        "psql",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-U",
+        "trainer",
+        "-d",
+        "trainer",
+        "-tAc",
+        scenario.observed,
+      ],
+      process.env,
+      true,
+    );
+    if (observed !== scenario.expectedObserved) {
+      throw new Error(
+        `FINISHER_${scenario.label.toUpperCase()}_ORDER_DRIFT_WAS_REWRITTEN:${observed}`,
+      );
+    }
+    const restoreSql = `
+      ALTER TABLE "${scenario.table}" DISABLE TRIGGER "${scenario.trigger}";
+      ${scenario.restore}
+      ALTER TABLE "${scenario.table}" ENABLE TRIGGER "${scenario.trigger}";
+    `;
+    const restore = spawnSync(
+      "docker",
+      [
+        "exec",
+        "-i",
+        containerName,
+        "psql",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-U",
+        "trainer",
+        "-d",
+        "trainer",
+      ],
+      { input: restoreSql, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] },
+    );
+    if (restore.status !== 0) {
+      throw new Error(`FINISHER_${scenario.label.toUpperCase()}_ORDER_DRIFT_RESTORE_FAILED`);
+    }
+  }
+  console.log(
+    "Ordinary seed execution rejected step and alternative numeric order drift without rewriting immutable rows.",
+  );
+}
+
 const invocation = parseExactDisposableConfirmationArgs(process.argv.slice(2));
 if (!invocation.valid) {
   console.error(invocation.message);
@@ -67,12 +376,15 @@ try {
     "postgres:16-alpine",
   ]);
   waitForPostgres();
+  provisionFinisherRoles();
+  verifyAtomicFinisherMigrationFailure();
   const port = run("docker", ["port", containerName, "5432/tcp"], process.env, true)
     .split(":")
     .at(-1);
   if (!port) throw new Error("DISPOSABLE_POSTGRES_PORT_NOT_FOUND");
   const databaseUrl = `postgresql://trainer:trainer-workout-occ@127.0.0.1:${port}/trainer`;
-  const env = {
+  const runtimeDatabaseUrl = `postgresql://trainer_app_runtime:trainer-app-runtime@127.0.0.1:${port}/trainer`;
+  const migrationEnv = {
     ...sanitizeDatabaseTargetEnvironment(process.env),
     DATABASE_URL: databaseUrl,
     TEST_DATABASE_URL: databaseUrl,
@@ -80,27 +392,40 @@ try {
     TRAINER_DISPOSABLE_DB_CONFIRMED: "1",
   };
   const targetValidation = validateDisposableDatabaseTargets({
-    environment: env,
+    environment: migrationEnv,
     confirmed: true,
   });
   if (!targetValidation.valid) {
     throw new Error(`DISPOSABLE_DATABASE_TARGET_INVALID:${targetValidation.reasons.join("|")}`);
   }
-  run(process.execPath, [join(process.cwd(), "node_modules/prisma/build/index.js"), "migrate", "deploy"], env);
+  run(process.execPath, [join(process.cwd(), "node_modules/prisma/build/index.js"), "migrate", "deploy"], migrationEnv);
+  run(process.execPath, [join(process.cwd(), "node_modules/prisma/build/index.js"), "migrate", "deploy"], migrationEnv);
+  grantDisposableRuntimeApplicationAccess();
   run(process.execPath, [
     join(process.cwd(), "node_modules/prisma/build/index.js"),
     "generate",
-  ], env);
+  ], migrationEnv);
+  run(process.execPath, [
+    join(process.cwd(), "node_modules/tsx/dist/cli.mjs"),
+    "scripts/check-finisher-schema-drift.ts",
+  ], migrationEnv);
+  const testEnv = {
+    ...migrationEnv,
+    DATABASE_URL: runtimeDatabaseUrl,
+    TEST_DATABASE_URL: databaseUrl,
+  };
   run(process.execPath, [
     join(process.cwd(), "node_modules/vitest/vitest.mjs"), "run",
     "src/lib/api/save-workout/persistence.db.test.ts",
+    "src/lib/api/finisher-service.db.test.ts",
     "src/lib/api/workout-mutation.db.test.ts",
-  ], env);
+  ], testEnv);
   run(process.execPath, [
     join(process.cwd(), "node_modules/vitest/vitest.mjs"), "run",
     "src/lib/api/workout-mutation.db.test.ts",
     "-t", "runs the integrated workout lifecycle release gate",
-  ], env);
+  ], testEnv);
+  verifyFinisherSeedOrderDrift(migrationEnv);
 } finally {
   spawnSync("docker", ["rm", "-f", containerName], { stdio: "ignore" });
 }

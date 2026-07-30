@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
+  FINISHER_EXECUTION_COMMAND_ACTION_VALUES,
   WORKOUT_EXERCISE_SECTION_VALUES,
   WORKOUT_SAVE_ACTION_VALUES,
   WORKOUT_SELECTION_MODE_VALUES,
@@ -14,6 +15,7 @@ type ContractsDoc = {
   workoutSelectionMode: string[];
   workoutSessionIntentDb: string[];
   workoutExerciseSection: string[];
+  finisherExecutionCommandAction: string[];
 };
 
 function asSorted(values: readonly string[]): string[] {
@@ -46,6 +48,11 @@ function main() {
     ...compareContract("workoutSelectionMode", WORKOUT_SELECTION_MODE_VALUES, docs.workoutSelectionMode),
     ...compareContract("workoutSessionIntentDb", WORKOUT_SESSION_INTENT_DB_VALUES, docs.workoutSessionIntentDb),
     ...compareContract("workoutExerciseSection", WORKOUT_EXERCISE_SECTION_VALUES, docs.workoutExerciseSection),
+    ...compareContract(
+      "finisherExecutionCommandAction",
+      FINISHER_EXECUTION_COMMAND_ACTION_VALUES,
+      docs.finisherExecutionCommandAction,
+    ),
   ];
 
   if (errors.length > 0) {

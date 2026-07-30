@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   generateWorkoutExplanation: vi.fn(),
   workoutFindFirst: vi.fn(),
   injuryFindMany: vi.fn(),
+  isFinisherRolloutEnabled: vi.fn(),
 }));
 
 vi.mock("@/lib/api/workout-context", () => ({
@@ -42,6 +43,15 @@ vi.mock("@/lib/db/prisma", () => ({
   },
 }));
 
+vi.mock("@/lib/operations/finisher-rollout", () => ({
+  isFinisherRolloutEnabled: (...args: unknown[]) =>
+    mocks.isFinisherRolloutEnabled(...args),
+}));
+
+vi.mock("@/components/finishers/FinisherExperience", () => ({
+  FinisherExperience: () => <div>FinisherExperience mounted</div>,
+}));
+
 describe("WorkoutDetailPage", { timeout: 15000 }, () => {
   beforeEach(() => {
     mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
@@ -50,6 +60,7 @@ describe("WorkoutDetailPage", { timeout: 15000 }, () => {
     });
     mocks.generateWorkoutExplanation.mockResolvedValue({ error: "unavailable" });
     mocks.injuryFindMany.mockResolvedValue([]);
+    mocks.isFinisherRolloutEnabled.mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -74,6 +85,50 @@ describe("WorkoutDetailPage", { timeout: 15000 }, () => {
     render(ui);
 
     expect(screen.getByRole("link", { name: "Audit" })).toHaveAttribute("href", "/workout/workout-1/audit");
+  });
+
+  it("does not mount Finishers for a completed workout while rollout is disabled", async () => {
+    mocks.workoutFindFirst.mockResolvedValue({
+      id: "workout-1",
+      userId: "user-1",
+      status: "COMPLETED",
+      estimatedMinutes: 55,
+      selectionMetadata: null,
+      sessionIntent: "PUSH",
+      exercises: [],
+    });
+
+    const { default: WorkoutDetailPage } = await import("./page");
+    const ui = await WorkoutDetailPage({
+      params: Promise.resolve({ id: "workout-1" }),
+    });
+    render(ui);
+
+    expect(
+      screen.queryByText("FinisherExperience mounted"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Audit" })).toBeInTheDocument();
+  });
+
+  it("uses the same canonical server decision to expose Finishers", async () => {
+    mocks.isFinisherRolloutEnabled.mockReturnValue(true);
+    mocks.workoutFindFirst.mockResolvedValue({
+      id: "workout-1",
+      userId: "user-1",
+      status: "COMPLETED",
+      estimatedMinutes: 55,
+      selectionMetadata: null,
+      sessionIntent: "PUSH",
+      exercises: [],
+    });
+
+    const { default: WorkoutDetailPage } = await import("./page");
+    const ui = await WorkoutDetailPage({
+      params: Promise.resolve({ id: "workout-1" }),
+    });
+    render(ui);
+
+    expect(screen.getByText("FinisherExperience mounted")).toBeInTheDocument();
   });
 
   it("renders a partial-specific title when the workout is reviewable and resumable", async () => {

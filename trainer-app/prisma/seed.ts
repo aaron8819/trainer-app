@@ -15,6 +15,10 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { exerciseAliases } from "./exercise-aliases";
 import exercisesJson from "./exercises_comprehensive.json";
+import {
+  FINISHER_ROUTINE_SEEDS,
+  stableFinisherCatalogId,
+} from "./finisher-routine-seed-data";
 import { MUSCLE_SEED_ROWS } from "./muscle-seed-data";
 
 const connectionString = process.env.DATABASE_URL;
@@ -900,6 +904,186 @@ async function seedWorkoutTemplates(userId: string) {
   console.log(`  ${created} templates created, ${updated} updated.`);
 }
 
+async function seedFinisherRoutine(
+  definition: (typeof FINISHER_ROUTINE_SEEDS)[number]
+) {
+  await prisma.$transaction(async (tx) => {
+    const routine = await tx.finisherRoutine.upsert({
+      where: { code: definition.code },
+      update: {},
+      create: {
+        id: stableFinisherCatalogId(`routine:${definition.code}`),
+        code: definition.code,
+      },
+      select: { id: true },
+    });
+    const expectedRoutineId = stableFinisherCatalogId(
+      `routine:${definition.code}`
+    );
+    if (routine.id !== expectedRoutineId) {
+      throw new Error(
+        `Stable finisher routine identity drift detected for ${definition.code}`
+      );
+    }
+    const existing = await tx.finisherRoutineVersion.findUnique({
+      where: {
+        routineId_version: {
+          routineId: routine.id,
+          version: definition.version,
+        },
+      },
+      include: {
+        steps: {
+          orderBy: { orderIndex: "asc" },
+          include: {
+            alternatives: { orderBy: { orderIndex: "asc" } },
+          },
+        },
+      },
+    });
+
+    if (existing) {
+      if (!existing.sealedAt) {
+        throw new Error(
+          `Unsealed finisher routine version detected for ${definition.code} v${definition.version}`
+        );
+      }
+      const actual = {
+        id: existing.id,
+        name: existing.name,
+        description: existing.description,
+        category: existing.category,
+        placement: existing.placement,
+        kind: existing.kind,
+        protocol: existing.protocol,
+        difficulty: existing.difficulty,
+        fatigueCost: existing.fatigueCost,
+        impactLevel: existing.impactLevel,
+        preparationSeconds: existing.preparationSeconds,
+        includesFinalRecovery: existing.includesFinalRecovery,
+        equipmentRequirements: existing.equipmentRequirements,
+        bodyRegions: existing.bodyRegions,
+        limitationTags: existing.limitationTags,
+        steps: existing.steps.map((step) => ({
+          id: step.id,
+          orderIndex: step.orderIndex,
+          movementName: step.movementName,
+          workSeconds: step.workSeconds,
+          recoverySeconds: step.recoverySeconds,
+          techniqueCues: step.techniqueCues,
+          alternatives: step.alternatives.map((alternative) => ({
+            id: alternative.id,
+            orderIndex: alternative.orderIndex,
+            movementName: alternative.movementName,
+          })),
+        })),
+      };
+      const expected = {
+        id: stableFinisherCatalogId(
+          `version:${definition.code}:${definition.version}`
+        ),
+        name: definition.name,
+        description: definition.description,
+        category: definition.category,
+        placement: "POST_WORKOUT",
+        kind: "FINISHER",
+        protocol: "TIMED_INTERVALS",
+        difficulty: definition.difficulty,
+        fatigueCost: definition.fatigueCost,
+        impactLevel: definition.impactLevel,
+        preparationSeconds: definition.preparationSeconds,
+        includesFinalRecovery: definition.includesFinalRecovery,
+        equipmentRequirements: definition.equipmentRequirements,
+        bodyRegions: definition.bodyRegions,
+        limitationTags: definition.limitationTags,
+        steps: definition.steps.map((step, orderIndex) => ({
+          id: stableFinisherCatalogId(
+            `step:${definition.code}:${definition.version}:${orderIndex}`
+          ),
+          orderIndex,
+          movementName: step.movementName,
+          workSeconds: step.workSeconds,
+          recoverySeconds: step.recoverySeconds,
+          techniqueCues: step.techniqueCues,
+          alternatives: (step.alternatives ?? []).map(
+            (movementName, alternativeIndex) => ({
+              id: stableFinisherCatalogId(
+                `alternative:${definition.code}:${definition.version}:${orderIndex}:${alternativeIndex}`
+              ),
+              orderIndex: alternativeIndex,
+              movementName,
+            })
+          ),
+        })),
+      };
+      if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+        throw new Error(
+          `Immutable finisher routine drift detected for ${definition.code} v${definition.version}`
+        );
+      }
+      return;
+    }
+
+    const created = await tx.finisherRoutineVersion.create({
+      data: {
+        id: stableFinisherCatalogId(
+          `version:${definition.code}:${definition.version}`
+        ),
+        routineId: routine.id,
+        version: definition.version,
+        name: definition.name,
+        description: definition.description,
+        category: definition.category,
+        placement: "POST_WORKOUT",
+        kind: "FINISHER",
+        protocol: "TIMED_INTERVALS",
+        difficulty: definition.difficulty,
+        fatigueCost: definition.fatigueCost,
+        impactLevel: definition.impactLevel,
+        preparationSeconds: definition.preparationSeconds,
+        includesFinalRecovery: definition.includesFinalRecovery,
+        equipmentRequirements: definition.equipmentRequirements,
+        bodyRegions: definition.bodyRegions,
+        limitationTags: definition.limitationTags,
+        steps: {
+          create: definition.steps.map((step, orderIndex) => ({
+            id: stableFinisherCatalogId(
+              `step:${definition.code}:${definition.version}:${orderIndex}`
+            ),
+            orderIndex,
+            movementName: step.movementName,
+            workSeconds: step.workSeconds,
+            recoverySeconds: step.recoverySeconds,
+            techniqueCues: step.techniqueCues,
+            alternatives: {
+              create: (step.alternatives ?? []).map(
+                (movementName, alternativeIndex) => ({
+                  id: stableFinisherCatalogId(
+                    `alternative:${definition.code}:${definition.version}:${orderIndex}:${alternativeIndex}`
+                  ),
+                  orderIndex: alternativeIndex,
+                  movementName,
+                })
+              ),
+            },
+          })),
+        },
+      },
+    });
+    await tx.finisherRoutineVersion.update({
+      where: { id: created.id },
+      data: { sealedAt: new Date() },
+    });
+  });
+}
+
+async function seedFinisherRoutines() {
+  console.log("Seeding immutable finisher routine versions...");
+  for (const definition of FINISHER_ROUTINE_SEEDS) {
+    await seedFinisherRoutine(definition);
+  }
+}
+
 async function pruneStaleExercises() {
   const canonicalNames = new Set(exercisesJson.exercises.map((e) => e.name));
   const allExercises = await prisma.exercise.findMany({
@@ -967,6 +1151,7 @@ async function main() {
   await seedExerciseEquipmentFromJson();
   const user = await seedOwner();
   await seedWorkoutTemplates(user.id);
+  await seedFinisherRoutines();
   console.log("Pruning stale exercises...");
   await pruneStaleExercises();
   console.log("✅ Seed complete.");

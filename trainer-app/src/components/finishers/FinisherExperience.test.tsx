@@ -1,0 +1,1000 @@
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  estimateServerEpochAtMonotonicOrigin,
+  FinisherExperience,
+  mergeFinisherCommandResult,
+} from "./FinisherExperience";
+import type {
+  FinisherExecutionDto,
+  FinisherRoutineDto,
+} from "@/lib/api/finisher-service";
+
+const routine: FinisherRoutineDto = {
+  id: "11111111-1111-4111-8111-111111111111",
+  routineId: "22222222-2222-4222-8222-222222222222",
+  code: "core-stability-10",
+  version: 1,
+  name: "Core Stability 10",
+  description: "Ten controlled core movements.",
+  category: "CORE",
+  placement: "POST_WORKOUT",
+  kind: "FINISHER",
+  protocol: "TIMED_INTERVALS",
+  difficulty: "MODERATE",
+  fatigueCost: "MODERATE",
+  impactLevel: "LOW",
+  preparationSeconds: 10,
+  includesFinalRecovery: true,
+  durationSeconds: 600,
+  equipmentRequirements: ["BODYWEIGHT"],
+  bodyRegions: ["core"],
+  limitationTags: [],
+  warnings: [],
+  steps: [
+    {
+      id: "33333333-3333-4333-8333-333333333333",
+      orderIndex: 0,
+      movementName: "Dead Bug",
+      workSeconds: 40,
+      recoverySeconds: 20,
+      techniqueCues: ["Slow and controlled."],
+      alternatives: [],
+    },
+  ],
+};
+
+function offer(execution: FinisherExecutionDto | null = null) {
+  return {
+    serverTime: "2026-07-28T12:00:25.000Z",
+    offer: {
+      id: "55555555-5555-4555-8555-555555555555",
+      revision: 1,
+      offeredAt: "2026-07-28T12:00:00.000Z",
+      declinedAt: null,
+    },
+    routines: [routine],
+    recommendation: {
+      routineVersionId: routine.id,
+      reason: "Low-fatigue option that has not been performed recently.",
+    },
+    recommendationUnavailableReason: null,
+    declined: false,
+    execution,
+    history: execution ? [execution] : [],
+  };
+}
+
+function execution(
+  overrides: Partial<FinisherExecutionDto> = {}
+): FinisherExecutionDto {
+  return {
+    serverTime: "2026-07-28T12:00:25.000Z",
+    id: "44444444-4444-4444-8444-444444444444",
+    workoutId: "workout-1",
+    routineVersionId: routine.id,
+    revision: 3,
+    routine,
+    state: "PARTIAL",
+    selectedAt: "2026-07-28T12:00:00.000Z",
+    startedAt: "2026-07-28T12:00:10.000Z",
+    completedAt: null,
+    endedAt: "2026-07-28T12:00:35.000Z",
+    dismissedAt: null,
+    timer: {
+      segment: "FINISHED",
+      currentStepIndex: 0,
+      segmentStartedAt: "2026-07-28T12:00:35.000Z",
+      segmentEndsAt: "2026-07-28T12:00:35.000Z",
+      pausedAt: null,
+      pausedRemainingMs: null,
+      revision: 3,
+      syncRequired: false,
+      syncToken: null,
+    },
+    resolvedStepCount: 1,
+    completedStepCount: 0,
+    skippedStepCount: 1,
+    substitutionCount: 0,
+    actualDurationSeconds: 25,
+    difficultyFeedback: null,
+    steps: [
+      {
+        id: "step-execution-1",
+        orderIndex: 0,
+        prescribedMovement: "Dead Bug",
+        performedMovement: "Dead Bug",
+        status: "SKIPPED",
+        startedAt: "2026-07-28T12:00:10.000Z",
+        resolvedAt: "2026-07-28T12:00:35.000Z",
+        actualWorkMs: 25_000,
+        performedAlternativeId: null,
+      },
+    ],
+    timing: {
+      preparationActiveMs: 10_000,
+      activeWorkMs: 25_000,
+      activeRecoveryMs: 0,
+      preparationPausedMs: 0,
+      workPausedMs: 0,
+      recoveryPausedMs: 0,
+    },
+    ...overrides,
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
+
+function response(body: unknown, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+  };
+}
+
+function makeVisibilityRefreshable() {
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+}
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+describe("FinisherExperience", () => {
+  it("merges a durable replay without regressing newer current or history state", () => {
+    const currentExecution = execution({
+      revision: 5,
+      serverTime: "2026-07-28T12:00:30.000Z",
+      timer: {
+        ...execution().timer,
+        revision: 5,
+      },
+    });
+    const replayedCommand = execution({
+      revision: 4,
+      serverTime: "2026-07-28T12:00:20.000Z",
+      timer: {
+        ...execution().timer,
+        revision: 4,
+      },
+    });
+
+    const merged = mergeFinisherCommandResult(
+      offer(currentExecution),
+      replayedCommand,
+    );
+
+    expect(merged.serverTime).toBe("2026-07-28T12:00:25.000Z");
+    expect(merged.execution).toEqual(currentExecution);
+    expect(merged.history).toEqual([currentExecution]);
+  });
+
+  it("keeps command X from recalibrating or replacing command Y after reordered durable responses", () => {
+    const commandY = execution({
+      revision: 9,
+      serverTime: "2026-07-28T12:09:00.000Z",
+      state: "IN_PROGRESS",
+      timer: {
+        ...execution().timer,
+        segment: "WORK",
+        revision: 9,
+        segmentStartedAt: "2026-07-28T12:08:50.000Z",
+        segmentEndsAt: "2026-07-28T12:09:30.000Z",
+      },
+    });
+    const delayedRetryForX = execution({
+      revision: 8,
+      serverTime: "2099-01-01T00:00:00.000Z",
+      state: "IN_PROGRESS",
+      timer: {
+        ...commandY.timer,
+        revision: 8,
+        segmentStartedAt: "2026-07-28T12:07:50.000Z",
+        segmentEndsAt: "2026-07-28T12:08:30.000Z",
+      },
+    });
+
+    const merged = mergeFinisherCommandResult(
+      {
+        ...offer(commandY),
+        serverTime: commandY.serverTime,
+      },
+      delayedRetryForX,
+    );
+
+    expect(merged.execution).toBe(commandY);
+    expect(merged.history).toEqual([commandY]);
+    expect(merged.serverTime).toBe(commandY.serverTime);
+    expect(merged.execution?.timer).toEqual(commandY.timer);
+  });
+
+  it("resolves equal revisions deterministically by server time and accepts a newer revision", () => {
+    const current = execution({
+      revision: 6,
+      serverTime: "2026-07-28T12:06:00.000Z",
+    });
+    const olderEqualRevision = execution({
+      revision: 6,
+      serverTime: "2026-07-28T12:05:59.999Z",
+    });
+    const newerEqualRevision = execution({
+      revision: 6,
+      serverTime: "2026-07-28T12:06:00.001Z",
+    });
+    const newerRevision = execution({
+      revision: 7,
+      serverTime: "2026-07-28T12:06:01.000Z",
+    });
+
+    const unchanged = mergeFinisherCommandResult(
+      { ...offer(current), serverTime: current.serverTime },
+      olderEqualRevision,
+    );
+    expect(unchanged.execution).toBe(current);
+    expect(unchanged.serverTime).toBe(current.serverTime);
+
+    const equalAdvanced = mergeFinisherCommandResult(
+      { ...offer(current), serverTime: current.serverTime },
+      newerEqualRevision,
+    );
+    expect(equalAdvanced.execution).toBe(newerEqualRevision);
+    expect(equalAdvanced.serverTime).toBe(newerEqualRevision.serverTime);
+
+    const advanced = mergeFinisherCommandResult(
+      { ...offer(current), serverTime: current.serverTime },
+      newerRevision,
+    );
+    expect(advanced.execution).toBe(newerRevision);
+    expect(advanced.serverTime).toBe(newerRevision.serverTime);
+  });
+
+  it("keeps terminal and GET-synchronized state ahead of stale active or other-execution responses", () => {
+    const terminal = execution({
+      revision: 12,
+      serverTime: "2026-07-28T12:12:00.000Z",
+      state: "COMPLETED",
+    });
+    const staleActive = execution({
+      revision: 11,
+      serverTime: "2099-12-31T23:59:59.999Z",
+      state: "IN_PROGRESS",
+      timer: {
+        ...execution().timer,
+        segment: "WORK",
+        revision: 11,
+      },
+    });
+    const staleOtherExecution = execution({
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      revision: 99,
+      serverTime: "2100-01-01T00:00:00.000Z",
+      state: "IN_PROGRESS",
+    });
+    const synchronized = {
+      ...offer(terminal),
+      serverTime: terminal.serverTime,
+    };
+
+    const afterStalePost = mergeFinisherCommandResult(
+      synchronized,
+      staleActive,
+    );
+    expect(afterStalePost.execution).toBe(terminal);
+    expect(afterStalePost.serverTime).toBe(terminal.serverTime);
+
+    const afterOtherExecution = mergeFinisherCommandResult(
+      afterStalePost,
+      staleOtherExecution,
+    );
+    expect(afterOtherExecution.execution).toBe(terminal);
+    expect(afterOtherExecution.serverTime).toBe(terminal.serverTime);
+    expect(afterOtherExecution.history).toEqual([
+      terminal,
+      staleOtherExecution,
+    ]);
+  });
+
+  it("keeps a newer successful command visible when an older load fails", async () => {
+    const staleLoad = deferred<ReturnType<typeof response>>();
+    const declinedOffer = {
+      ...offer(),
+      declined: true,
+      offer: {
+        ...offer().offer!,
+        revision: 2,
+        declinedAt: "2026-07-28T12:00:30.000Z",
+      },
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(response(offer()))
+      .mockReturnValueOnce(staleLoad.promise)
+      .mockResolvedValueOnce(response(declinedOffer));
+    vi.stubGlobal("fetch", fetchMock);
+    makeVisibilityRefreshable();
+
+    render(<FinisherExperience workoutId="workout-1" />);
+    await screen.findByRole("button", {
+      name: "Finish without a finisher",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Finish without a finisher",
+      }),
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    await waitFor(() =>
+      expect(screen.getByText(/No finisher was started/i)).toBeInTheDocument(),
+    );
+
+    staleLoad.reject(new Error("obsolete load failure"));
+
+    await waitFor(() =>
+      expect(screen.queryByText("obsolete load failure")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText(/No finisher was started/i)).toBeInTheDocument();
+  });
+
+  it("keeps a newer successful load authoritative when an older load fails", async () => {
+    const staleLoad = deferred<ReturnType<typeof response>>();
+    const newest = offer(
+      execution({
+        revision: 8,
+        state: "COMPLETED",
+        completedAt: "2026-07-28T12:01:00.000Z",
+      }),
+    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(response(offer()))
+      .mockReturnValueOnce(staleLoad.promise)
+      .mockResolvedValueOnce(response(newest));
+    vi.stubGlobal("fetch", fetchMock);
+    makeVisibilityRefreshable();
+
+    render(<FinisherExperience workoutId="workout-1" />);
+    await screen.findByText("Add an optional finisher?");
+    document.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    await screen.findByRole("region", { name: "Finisher summary" });
+    staleLoad.reject(new Error("obsolete refresh failure"));
+
+    await waitFor(() =>
+      expect(screen.queryByText("obsolete refresh failure")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText("Completed")).toBeInTheDocument();
+  });
+
+  it("does not let an older load clear loading owned by a newer load", async () => {
+    const olderLoad = deferred<ReturnType<typeof response>>();
+    const newerLoad = deferred<ReturnType<typeof response>>();
+    const fetchMock = vi
+      .fn()
+      .mockReturnValueOnce(olderLoad.promise)
+      .mockReturnValueOnce(newerLoad.promise);
+    vi.stubGlobal("fetch", fetchMock);
+    makeVisibilityRefreshable();
+
+    render(<FinisherExperience workoutId="workout-1" />);
+    expect(
+      screen.getByRole("region", { name: "Finisher loading" }),
+    ).toBeInTheDocument();
+    document.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    olderLoad.resolve(response(offer()));
+    await Promise.resolve();
+    expect(
+      screen.getByRole("region", { name: "Finisher loading" }),
+    ).toBeInTheDocument();
+
+    newerLoad.resolve(response(offer()));
+    await screen.findByText("Add an optional finisher?");
+    expect(
+      screen.queryByRole("region", { name: "Finisher loading" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows an error from the current authoritative request", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new Error("current load failure")),
+    );
+
+    render(<FinisherExperience workoutId="workout-1" />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "current load failure",
+    );
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("does not update state when a load rejects after unmount", async () => {
+    const pendingLoad = deferred<ReturnType<typeof response>>();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(pendingLoad.promise));
+
+    const rendered = render(<FinisherExperience workoutId="workout-1" />);
+    rendered.unmount();
+    pendingLoad.reject(new Error("rejected after unmount"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(consoleError).not.toHaveBeenCalled();
+  });
+
+  it("does not regress terminal state when an older active load succeeds late", async () => {
+    const active = execution({
+      revision: 7,
+      state: "IN_PROGRESS",
+      endedAt: null,
+      timer: {
+        ...execution().timer,
+        segment: "WORK",
+        revision: 7,
+        segmentEndsAt: "2026-07-28T12:01:00.000Z",
+      },
+    });
+    const terminal = execution({
+      revision: 8,
+      state: "COMPLETED",
+      completedAt: "2026-07-28T12:01:00.000Z",
+      timer: {
+        ...execution().timer,
+        revision: 8,
+      },
+    });
+    const staleLoad = deferred<ReturnType<typeof response>>();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(response(offer(active)))
+      .mockReturnValueOnce(staleLoad.promise)
+      .mockResolvedValueOnce(response(terminal));
+    vi.stubGlobal("fetch", fetchMock);
+    makeVisibilityRefreshable();
+
+    render(<FinisherExperience workoutId="workout-1" />);
+    await screen.findByRole("button", { name: "Pause" });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+
+    await screen.findByRole("region", { name: "Finisher summary" });
+    staleLoad.resolve(
+      response(
+        offer(
+          execution({
+            ...active,
+            revision: 6,
+            timer: { ...active.timer, revision: 6 },
+          }),
+        ),
+      ),
+    );
+
+    await waitFor(() => expect(screen.getByText("Completed")).toBeInTheDocument());
+    expect(
+      screen.getByRole("region", { name: "Finisher summary" }),
+    ).toBeInTheDocument();
+  });
+
+  it("offers a recommendation, browse, preview, and decline after completion", async () => {
+    const declinedOffer = {
+      ...offer(),
+      declined: true,
+      offer: {
+        ...offer().offer!,
+        revision: 2,
+        declinedAt: "2026-07-28T12:00:30.000Z",
+      },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => offer(),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => declinedOffer,
+        })
+    );
+    render(<FinisherExperience workoutId="workout-1" />);
+
+    await waitFor(() =>
+      expect(screen.getByText("Add an optional finisher?")).toBeInTheDocument()
+    );
+    expect(screen.getByText("Core Stability 10")).toBeInTheDocument();
+    expect(screen.getByText(/already saved.*tracked separately/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    expect(screen.getByText("Finisher preview")).toBeInTheDocument();
+    expect(screen.getByText(/1\. Dead Bug/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Finish without a finisher" })
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/No finisher was started/i)).toBeInTheDocument()
+    );
+  });
+
+  it("shows partial performance as a separate Finisher summary", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => offer(execution()),
+      })
+    );
+    render(<FinisherExperience workoutId="workout-1" historyOnly />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("region", { name: "Finisher summary" })).toBeInTheDocument()
+    );
+    expect(screen.getByText("Partial")).toBeInTheDocument();
+    expect(screen.getByText(/0 completed · 1 skipped · 0:25/)).toBeInTheDocument();
+    expect(screen.getByText(/Dead Bug — skipped/)).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Finisher session difficulty")
+    ).not.toBeInTheDocument();
+  });
+
+  it("labels a substituted current step as partially performed without claiming completion", async () => {
+    const partial = execution({
+      resolvedStepCount: 1,
+      completedStepCount: 0,
+      skippedStepCount: 0,
+      substitutionCount: 1,
+      steps: [
+        {
+          id: "step-execution-1",
+          orderIndex: 0,
+          prescribedMovement: "Dead Bug",
+          performedMovement: "Heel Tap Dead Bug",
+          status: "PARTIAL",
+          startedAt: "2026-07-28T12:00:10.000Z",
+          resolvedAt: "2026-07-28T12:00:25.000Z",
+          actualWorkMs: 15_000,
+          performedAlternativeId:
+            "55555555-5555-4555-8555-555555555555",
+        },
+      ],
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => offer(partial),
+      }),
+    );
+
+    render(<FinisherExperience workoutId="workout-1" />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          /Heel Tap Dead Bug \(for Dead Bug\) — partially performed/,
+        ),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.getByText(/0 completed · 0 skipped · 1 substituted/)).toBeInTheDocument();
+  });
+
+  it("restores a paused timer with Resume and End Finisher recovery actions", async () => {
+    const paused = execution({
+      state: "IN_PROGRESS",
+      endedAt: null,
+      resolvedStepCount: 0,
+      skippedStepCount: 0,
+      actualDurationSeconds: 15,
+      timer: {
+        segment: "WORK",
+        currentStepIndex: 0,
+        segmentStartedAt: "2026-07-28T12:00:10.000Z",
+        segmentEndsAt: null,
+        pausedAt: "2026-07-28T12:00:25.000Z",
+        pausedRemainingMs: 25_000,
+        revision: 4,
+        syncRequired: false,
+        syncToken: null,
+      },
+      steps: [
+        {
+          id: "step-execution-1",
+          orderIndex: 0,
+          prescribedMovement: "Dead Bug",
+          performedMovement: "Dead Bug",
+          status: "PENDING",
+          startedAt: "2026-07-28T12:00:10.000Z",
+          resolvedAt: null,
+          actualWorkMs: 0,
+          performedAlternativeId: null,
+        },
+      ],
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => offer(paused),
+      })
+    );
+    render(<FinisherExperience workoutId="workout-1" />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Resume" })).toBeInTheDocument()
+    );
+    expect(screen.getByRole("button", { name: "End finisher" })).toBeInTheDocument();
+    expect(screen.getByLabelText("25 seconds remaining")).toBeInTheDocument();
+  });
+
+  it("aligns display time to server time independently of wall-clock skew", () => {
+    const origin = estimateServerEpochAtMonotonicOrigin({
+      serverTime: "2026-07-28T12:00:10.000Z",
+      requestStartedAt: 1_000,
+      responseReceivedAt: 1_200,
+    });
+    expect(origin + 1_100).toBe(
+      new Date("2026-07-28T12:00:10.000Z").getTime(),
+    );
+    expect(origin + 6_100).toBe(
+      new Date("2026-07-28T12:00:15.000Z").getTime(),
+    );
+  });
+
+  it.each([
+    ["materially ahead", "2036-07-28T12:00:00.000Z"],
+    ["materially behind", "2016-07-28T12:00:00.000Z"],
+  ])("ignores a client wall clock that is %s", (_label, clientTime) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(clientTime);
+    const origin = estimateServerEpochAtMonotonicOrigin({
+      serverTime: "2026-07-28T12:00:10.000Z",
+      requestStartedAt: 1_000,
+      responseReceivedAt: 1_200,
+    });
+    expect(origin + 1_100).toBe(
+      new Date("2026-07-28T12:00:10.000Z").getTime(),
+    );
+  });
+
+  it("renders the routine's actual preparation duration", async () => {
+    const twelveSecondPreparation = {
+      ...routine,
+      preparationSeconds: 12,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          ...offer(),
+          routines: [twelveSecondPreparation],
+        }),
+      }),
+    );
+    render(<FinisherExperience workoutId="workout-1" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Preview" }));
+    expect(
+      screen.getByText(/12-second optional preparation/),
+    ).toBeInTheDocument();
+  });
+
+  it("uses a labeled modal dialog, supports Escape, and restores trigger focus", async () => {
+    const running = execution({
+      state: "IN_PROGRESS",
+      endedAt: null,
+      resolvedStepCount: 0,
+      skippedStepCount: 0,
+      timer: {
+        segment: "WORK",
+        currentStepIndex: 0,
+        segmentStartedAt: "2026-07-28T12:00:10.000Z",
+        segmentEndsAt: "2026-07-28T12:00:50.000Z",
+        pausedAt: null,
+        pausedRemainingMs: null,
+        revision: 4,
+        syncRequired: false,
+        syncToken: null,
+      },
+      steps: [
+        {
+          id: "step-execution-1",
+          orderIndex: 0,
+          prescribedMovement: "Dead Bug",
+          performedMovement: "Dead Bug",
+          status: "PENDING",
+          startedAt: "2026-07-28T12:00:10.000Z",
+          resolvedAt: null,
+          actualWorkMs: 0,
+          performedAlternativeId: null,
+        },
+      ],
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => offer(running),
+      }),
+    );
+    render(<FinisherExperience workoutId="workout-1" />);
+    const trigger = await screen.findByRole("button", { name: "End finisher" });
+
+    fireEvent.click(trigger);
+    const dialog = screen.getByRole("dialog", {
+      name: "End this finisher as partial?",
+    });
+    expect(dialog).toHaveAttribute("aria-describedby", "end-finisher-description");
+    expect(
+      screen.getByRole("button", { name: "Continue finisher" }),
+    ).toHaveFocus();
+
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
+  it("sends at most one synchronization request for one revision boundary while the response is slow", async () => {
+    const projected = execution({
+      revision: 7,
+      state: "IN_PROGRESS",
+      endedAt: null,
+      timer: {
+        segment: "RECOVERY",
+        currentStepIndex: 0,
+        segmentStartedAt: "2026-07-28T12:00:50.000Z",
+        segmentEndsAt: "2026-07-28T12:01:10.000Z",
+        pausedAt: null,
+        pausedRemainingMs: null,
+        revision: 7,
+        syncRequired: true,
+        syncToken: "execution:7:WORK:boundary",
+      },
+    });
+    let resolveSync: ((value: unknown) => void) | undefined;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => offer(projected),
+      })
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveSync = resolve;
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<FinisherExperience workoutId="workout-1" />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => window.setTimeout(resolve, 350));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchMock.mock.calls[1]![1]!.body as string)).toMatchObject({
+      action: "sync",
+      executionId: "44444444-4444-4444-8444-444444444444",
+      expectedRevision: 7,
+      commandId: expect.any(String),
+    });
+
+    resolveSync?.({
+      ok: true,
+      json: async () =>
+        execution({
+          ...projected,
+          timer: {
+            ...projected.timer,
+            revision: 8,
+            syncRequired: false,
+            syncToken: null,
+          },
+        }),
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument(),
+    );
+  });
+
+  it("synchronizes a terminal projection when the read model requires persistence", async () => {
+    const projected = execution({
+      state: "COMPLETED",
+      completedAt: "2026-07-28T12:01:10.000Z",
+      endedAt: null,
+      timer: {
+        segment: "FINISHED",
+        currentStepIndex: 0,
+        segmentStartedAt: "2026-07-28T12:01:10.000Z",
+        segmentEndsAt: "2026-07-28T12:01:10.000Z",
+        pausedAt: null,
+        pausedRemainingMs: null,
+        revision: 7,
+        syncRequired: true,
+        syncToken: "execution:7:FINISHED:boundary",
+      },
+    });
+    const persisted = execution({
+      ...projected,
+      timer: {
+        ...projected.timer,
+        revision: 8,
+        syncRequired: false,
+        syncToken: null,
+      },
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => offer(projected),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => persisted,
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<FinisherExperience workoutId="workout-1" />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(JSON.parse(fetchMock.mock.calls[1]![1]!.body as string)).toMatchObject({
+      action: "sync",
+      executionId: "44444444-4444-4444-8444-444444444444",
+      expectedRevision: 7,
+      commandId: expect.any(String),
+    });
+    await new Promise((resolve) => window.setTimeout(resolve, 150));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    [
+      "a server error",
+      {
+        ok: false,
+        status: 500,
+        json: async () => ({ error: "server unavailable" }),
+      },
+    ],
+    ["a thrown network failure", new Error("network unavailable")],
+  ])("retries %s with the same command identity", async (_name, failure) => {
+    const projected = execution({
+      revision: 7,
+      state: "IN_PROGRESS",
+      timer: {
+        segment: "WORK",
+        currentStepIndex: 0,
+        segmentStartedAt: "2026-07-28T12:00:10.000Z",
+        segmentEndsAt: "2026-07-28T12:00:20.000Z",
+        pausedAt: null,
+        pausedRemainingMs: null,
+        revision: 7,
+        syncRequired: true,
+        syncToken: "execution:7:WORK:retry-boundary",
+      },
+    });
+    const persisted = execution({
+      revision: 8,
+      state: "COMPLETED",
+      completedAt: "2026-07-28T12:00:20.000Z",
+      timer: {
+        ...projected.timer,
+        segment: "FINISHED",
+        revision: 8,
+        syncRequired: false,
+        syncToken: null,
+      },
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => offer(projected),
+      });
+    if (failure instanceof Error) {
+      fetchMock.mockRejectedValueOnce(failure);
+    } else {
+      fetchMock.mockResolvedValueOnce(failure);
+    }
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => persisted,
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<FinisherExperience workoutId="workout-1" />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3), {
+      timeout: 4_000,
+    });
+    const firstCommand = JSON.parse(
+      fetchMock.mock.calls[1]![1]!.body as string,
+    );
+    const retryCommand = JSON.parse(
+      fetchMock.mock.calls[2]![1]!.body as string,
+    );
+    expect(retryCommand).toMatchObject({
+      action: "sync",
+      executionId: projected.id,
+      expectedRevision: 7,
+      commandId: firstCommand.commandId,
+    });
+    expect(
+      await screen.findByRole("region", { name: "Finisher summary" })
+    ).toBeInTheDocument();
+  });
+
+  it("refreshes after a stale sync conflict without replaying the old boundary", async () => {
+    const projected = execution({
+      state: "IN_PROGRESS",
+      timer: {
+        segment: "WORK",
+        currentStepIndex: 0,
+        segmentStartedAt: "2026-07-28T12:00:10.000Z",
+        segmentEndsAt: "2026-07-28T12:00:20.000Z",
+        pausedAt: null,
+        pausedRemainingMs: null,
+        revision: 7,
+        syncRequired: true,
+        syncToken: "execution:7:WORK:stale-boundary",
+      },
+    });
+    const persisted = execution({
+      state: "PARTIAL",
+      timer: {
+        ...projected.timer,
+        segment: "FINISHED",
+        revision: 8,
+        syncRequired: false,
+        syncToken: null,
+      },
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => offer(projected),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: "FINISHER_STALE_TRANSITION" }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => offer(persisted),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<FinisherExperience workoutId="workout-1" />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3), {
+      timeout: 4_000,
+    });
+    await new Promise((resolve) => window.setTimeout(resolve, 200));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(
+      await screen.findByRole("region", { name: "Finisher summary" })
+    ).toBeInTheDocument();
+  });
+});

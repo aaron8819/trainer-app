@@ -65,11 +65,56 @@ Sources of truth:
   strips inherited DB-target variables before supplying the generated target, validates the
   canonical target inventory, applies the checked-in migration chain, and verifies main-save CAS,
   runtime mutation races, exact stimulus snapshot persistence, and immutable review-snapshot
-  storage without `db push` or `.env.local`.
+  storage without `db push` or `.env.local`. Finisher coverage first injects a
+  failure after partial target-migration work and proves full transaction
+  rollback; then it verifies fresh-database curated provisioning without the
+  broad seed, a safe second `migrate deploy`, transactionally sealed catalog
+  definitions, rejection of post-seal child insert/update/delete/reassignment
+  (including bulk operations), relationally finalized offers and exact
+  cross-version-safe execution prescriptions, exact composite
+  execution/offer/item/workout/owner binding, rejection of mismatched and
+  concurrent direct/Prisma construction, historical owner-transfer and
+  parent-deletion protection, a migrated-database-to-Prisma SQL diff that fails
+  on destructive protected relationship changes while naming the three
+  supported database-only simple foreign keys, distinct
+  migration/runtime/owner/cleanup roles,
+  runtime impersonation and function-replacement rejection, database-clock
+  creation with deliberately skewed application clocks, direct-database rejection of
+  post-finalization append/reorder/reassignment/delete, durable
+  offer/decline/dismissal history,
+  receipt-safe retries for every existing-execution command, exact
+  command-response HTTP replay after later state, exact-boundary receipt
+  expiration, permanent command update/delete tombstones, constrained
+  before/at/after-expiry cleanup, deferred terminal parent/child outcome
+  coherence from both mutation paths, original all-pending completion,
+  partial/skip/dismissal contradiction, mixed transaction, direct SQL, bulk,
+  rollback-preservation, and parent/child race attacks, bounded concurrent payload cleanup,
+  execution-identity ABA isolation, and projected-versus-persisted completed,
+  mixed, all-skipped, preparation-only, retained-work, and substitution
+  outcomes, plus workout-deletion protection. After the DB suites, it runs the
+  ordinary development seed and proves pure numeric step and alternative order
+  drift fails without rewriting immutable catalog rows.
 - `npm run test:db:historical-snapshots -- --confirm-disposable`: explicit schema-dependent
   historical-evidence alias for the same consolidated disposable harness.
 - `npm run test:db:readiness-snapshots -- --confirm-disposable`: starts an isolated Docker PostgreSQL 16 container, applies all checked-in migrations without reading `.env.local`, verifies legacy-unknown migration behavior, partial unique enforcement, identical concurrent activation, conflicting payload rejection, forced replacement rollback, stale-evidence rejection, and owner isolation, then removes the container. Package scripts never supply disposable confirmation: the operator must type it for every mutating invocation, and aliases or wrappers must not embed it. Strict argument and inherited-target validation complete before `pg` or any other database-dependent module loads and before Docker work begins.
 - `npm run test:db:rollout-tooling -- --confirm-disposable`: runs rollout-tooling integration coverage against a harness-created disposable PostgreSQL target. Its effective argument list must be exactly `["--confirm-disposable"]`; additional, duplicate, positional, misspelled, embedded, or malformed arguments are rejected before Docker or database-dependent loading.
+  Its Finisher Gate A cases verify exact table/function ownership, complete
+  grants, protected role attributes and memberships, security-definer mode,
+  fixed search path, static relation/function dependencies, neutral helper and
+  unexpected-trigger discovery, removed/broadened privileges, and
+  caller-controlled-setting bypass rejection, both deferred terminal-coherence
+  trigger paths, the independently authored outcome matrix, restrictive
+  composite historical bindings, and supporting uniqueness.
+- `npm run verify:finisher-schema-drift`: read-only Prisma SQL diff from an
+  explicitly supplied fully migrated disposable PostgreSQL database to the
+  canonical Prisma schema. Its normalized statement-level allowlist accepts and
+  reports only the exact three overlapping simple foreign-key drops retained as
+  supported database-only extensions. Every other executable statement fails
+  closed, including unrelated additive/destructive drift, missing protected
+  relationships proposed as restrictive additions, supporting-uniqueness
+  changes, and malformed or unrecognized SQL. Credential-free CI exercises the
+  pure normalized-diff contract tests; the disposable workout-mutation harness
+  exercises the live migrated database comparison.
 - Immutable seed changes require focused revision/receipt/save/runtime/audit tests, `npm run verify:contracts`, `npm run verify`, and a real `prisma migrate deploy` on disposable PostgreSQL.
 - `npm run lint`: ESLint with cache at `.eslintcache`; generated/local-only outputs such as `artifacts/`, `.tmp/`, `.vercel/`, `output/`, `playwright-report/`, and `test-results/` are ignored by ESLint
 - `npm run test:ui-audit`: Playwright core-route UI audit plus lightweight fixture-backed interaction checks against mobile and desktop projects

@@ -1,5 +1,183 @@
 # 03 Data Schema
 
+## Phase 1 Finisher persistence
+
+Migration `20260728120000_add_finishers_phase_1` adds:
+
+- `FinisherRoutine`: stable curated identity and active/retired publication state.
+- `FinisherRoutineVersion`, `FinisherRoutineStep`, and
+  `FinisherRoutineStepAlternative`: immutable versioned definition truth.
+  A new version and all children are created in one transaction, then the
+  version is sealed before commit. A deferred constraint rejects unsealed
+  versions, and database triggers reject every later
+  version/step/alternative insert, update, reassignment, or delete. Executions
+  use restrictive foreign keys so later catalog versions cannot rewrite
+  history.
+- `FinisherOffer` and `FinisherOfferItem`: one durable offer per workout,
+  including the exact immutable versions shown, recommendation identity/reason,
+  unavailable reason, and the limitation/workout/recent-performance context
+  used to explain it. Decline identity and time are persisted on the offer.
+  The offer stores the historical owner and uses `(workoutId, ownerId)` to
+  reference the same `(Workout.id, Workout.userId)` pair.
+  The offer persists the exact positive item count. Deferred validation requires
+  a nonempty item set whose unique positions are exactly `0..itemCount - 1`.
+  A composite restrictive foreign key binds a recommendation to a routine
+  version among that exact offer's items. Parent-row locking and visibility
+  checks serialize construction/finalization against concurrent insertion;
+  insert/update/delete guards prevent later append, reorder, reassignment, or
+  removal.
+- `FinisherExecution`: one retained selection decision with a stable UUID,
+  offer revision binding, explicit lifecycle, and the exact selected offer-item
+  identity. Composite restrictive foreign keys require
+  `(offerId, workoutId, ownerId)` to identify one offer and
+  `(offerItemId, offerId, routineVersionId)` to identify one item in that offer.
+  A separate restrictive routine-version relationship preserves the immutable
+  catalog lineage. Thus workout, historical owner, finalized offer, offered
+  routine version, selected item, and execution cannot be mixed or reassigned
+  by application code, Prisma, or direct SQL. The execution also retains
+  interval timestamps, exact pause remainder, separate active preparation and
+  recovery totals, per-segment paused totals, transition revision, and optional
+  difficulty feedback. Performed duration is active work plus active recovery;
+  preparation and all paused time are excluded. Once the execution enters
+  `COMPLETED`, `PARTIAL`, `SKIPPED`, or `DISMISSED`, database enforcement freezes
+  its outcome, duration, timing, segment, and lifecycle evidence. The existing
+  optional feedback action may change only `difficultyFeedback` together with
+  the monotonic OCC revision.
+- `FinisherDecision`: the global permanent idempotency namespace shared by
+  selection and decline. Each immutable row stores action, owner, workout,
+  offer, exact offered item/routine for selection, expected offer revision,
+  contraindication acknowledgment, and the canonical request fingerprint.
+  Deferred bidirectional validation requires every selection decision to
+  resolve to its exact execution and every decline decision to resolve to its
+  exact declined offer. Exact retries therefore use durable original request
+  evidence after the offer revision advances; cross-action, cross-owner,
+  cross-workout, cross-offer, cross-routine, and wrong-revision ID reuse cannot
+  collide ambiguously.
+- `FinisherExecutionStep`: prescribed step identity, optional predefined
+  performed alternative, resolved status/timestamps, and accumulated active
+  work duration. Each row stores and relationally binds its routine version and
+  exact order. Execution finalization requires the prescribed rows to equal the
+  complete version step set in both directions; composite foreign keys prevent
+  a step or alternative from another version/step. Finalized prescriptions
+  reject append, reorder, reassignment, and delete. `PARTIAL` distinguishes current work preserved by an early end
+  from `COMPLETED`, `SKIPPED`, and untouched `PENDING` work. A resolved step is
+  immediately immutable, including substitution, status, active work, timing,
+  note, identity, and order. Parent-row locking serializes child updates with
+  terminalization; after the parent is terminal, even untouched `PENDING` steps
+  cannot be inserted, updated, cleared, reset, reassigned, reordered, or deleted.
+  A single deferred database validator owns terminal parent/child coherence. A
+  constraint trigger on `FinisherExecution` covers parent insert/update and a
+  second constraint trigger on `FinisherExecutionStep` covers child
+  insert/update/delete. Both validate the committed transaction shape while
+  parent-row locking serializes terminalization with concurrent child changes.
+  The authoritative terminal outcome matrix is:
+  - `COMPLETED`: `startedAt`, `completedAt`, and equal `endedAt` are present;
+    the active index is the last prescribed step; every prescribed step is
+    `COMPLETED`, started, resolved in timestamp order, and has positive actual
+    work; no pending, partial, or skipped step remains. Derived actual duration
+    is positive active work plus active recovery.
+  - `PARTIAL`: `startedAt` and `endedAt` are present while `completedAt` is
+    null; the active index remains within the prescription; at least one step
+    is `COMPLETED` or `PARTIAL`, and accumulated actual work is positive.
+    Completed/partial work, zero-work skips, and untouched future pending steps
+    remain exact. Derived actual duration is positive active work plus active
+    recovery.
+  - `SKIPPED`: `startedAt` and `endedAt` are present while `completedAt` is
+    null; the active index is the last prescribed step; every prescribed step
+    is started, resolved `SKIPPED`, and has zero actual work; active recovery is
+    zero. Derived actual duration is zero.
+  - never-started `DISMISSED`: `startedAt` remains null; every prescribed step
+    remains `PENDING` with null start/resolution timestamps and zero actual
+    work. Preparation-only active/paused time may be retained, but work and
+    recovery active/paused evidence remains zero. A direct selected dismissal
+    has null actual duration; ending during preparation retains zero duration
+    and finished timer evidence.
+  - performed `DISMISSED`: `startedAt` remains non-null and at least one
+    prescribed step retains started, resolved, or positive-work evidence.
+    Resolved/performed steps, future pending steps, accumulated active/paused
+    time, substitutions, and the active index are preserved. Derived actual
+    duration may be zero at the exact work boundary or positive afterward.
+  For every terminal result, `PENDING` steps have no resolution or actual work;
+  `COMPLETED`/`PARTIAL` steps have positive actual work; `SKIPPED` steps have
+  zero actual work; and every resolved step has ordered start/resolution
+  timestamps no later than the parent outcome timestamp. A predefined
+  alternative remains bound to its exact prescribed step whether it was chosen
+  before a later skip, performed, or left pending. Feedback-only terminal
+  updates change only feedback plus the monotonic execution revision and must
+  continue to satisfy this matrix.
+- `FinisherExecutionCommand`: durable idempotency receipt for every command
+  against an existing execution. `commandId` is globally unique; the request
+  hash binds workout, execution, action, expected revision, and payload,
+  while the stored response/result revision makes committed retries
+  deterministic. `(executionId, workoutId, ownerId)` must identify the exact
+  historical execution. PostgreSQL `clock_timestamp()` establishes
+  `createdAt`, `expiresAt = createdAt + interval '90 days'`, and replay
+  expiration inside the command transaction; caller time cannot alter the
+  receipt boundary. A receipt is logically expired when database time is equal
+  to or later than `expiresAt`. Cleanup clears only the response payload and stamps
+  `cleanedAt`; the compact command tombstone and globally unique ID remain so
+  an expired command can never be reused. A database trigger rejects every
+  command update or delete except the exact one-way expired payload cleanup.
+  Cleanup runs only through the bounded security-definer function owned by the
+  fixed non-login `trainer_finisher_cleanup` role. `PUBLIC` cannot execute it;
+  only `trainer_app_runtime` receives the safe function interface and has no
+  command-table update/delete privilege or membership in either privileged
+  role. The fixed non-login `trainer_finisher_owner` role owns every Finisher
+  table and protection function. The cleanup role receives only command-table
+  read plus column-level update on `response` and `cleanedAt`; it preserves command/workout/execution/action,
+  request hash, expected/result revisions, and creation/expiration timestamps.
+  A cleared response cannot be restored. Retained execution and step history is
+  permanent and independent of receipt cleanup.
+
+The lifecycle is `SELECTED -> IN_PROGRESS ->
+COMPLETED|PARTIAL|SKIPPED|DISMISSED`, with the bounded direct fast-forward
+`SELECTED -> COMPLETED` when one synchronization crosses the full timed
+routine. `startedAt` may be set only when the execution becomes performed and
+is then immutable: it cannot be cleared or changed by terminalization, direct
+SQL, Prisma, bulk updates, or races. Lifecycle checks require terminal outcome
+timestamps and timer shape to agree with status, while the transition trigger
+keeps step index, active/paused totals, timestamps, and revision monotonic.
+`DISMISSED` with null `startedAt` is a never-started dismissal;
+`DISMISSED` with non-null immutable `startedAt` is a performed terminal outcome.
+Dismissal updates the selected execution;
+it never deletes or replaces it. Multiple retained executions preserve
+select-A/dismiss-A/select-B history. Partial unique indexes enforce at most one
+`SELECTED|IN_PROGRESS` execution and permanently at most one execution that has
+ever acquired `startedAt` per workout. Stable execution identity plus a
+monotonic per-execution revision
+prevents replacement ABA; offer revision protects selection and decline.
+`SELECTED` has no `startedAt` and is excluded from performed history. Every
+historical parent relationship uses restrictive update/delete behavior.
+Consequently a workout with Finisher history cannot transfer `userId`, an
+offer cannot transfer workout or owner, and workouts/offers/history cannot be
+cascade-deleted. Workouts without Finisher history retain their existing update
+and deletion behavior. Finisher mutations cannot change workout completion.
+All schema changes are additive and existing workout history is untouched.
+
+Definition/history identity bindings reject reassignment, and history tables
+reject deletion by trigger. The restrictive composite workout foreign key
+is also the history contract: workout deletion checks for an attached Finisher
+offer before child deletion and
+returns a deterministic conflict rather than cascading or leaking a database
+foreign-key error.
+
+The canonical Prisma schema models the composite execution/version,
+prescribed-step/version/order, and performed-alternative/prescribed-step
+bindings directly, with their supporting composite uniqueness and restrictive
+update/delete actions. Explicit Prisma relation maps preserve the reviewed
+constraint identities instead of proposing name-only renames. PostgreSQL
+additionally retains three redundant simple
+restrictive foreign keys on execution step `executionId`, `routineStepId`, and
+`performedAlternativeId`. Prisma cannot model each simple relation and its
+overlapping composite relation simultaneously, so those three named
+constraints are intentional database-only extensions. The
+`verify:finisher-schema-drift` check uses a statement-level exact allowlist:
+it permits and reports only those three named drops on
+`FinisherExecutionStep`. Every other executable statement fails closed,
+including additive drift, unrelated destructive drift, restoration of a
+missing protected relationship, supporting-uniqueness changes, and malformed
+or unrecognized SQL.
+
 Owner: Aaron  
 Last reviewed: 2026-03-19  
 Purpose: Canonical data-model reference for runtime persistence used by workout generation, logging, templates, analytics, readiness, and periodization.
@@ -46,7 +224,7 @@ Canonical machine-readable values in `docs/contracts/runtime-contracts.json` cur
 - Workout saves rewrite workout exercises/sets when exercise payload is supplied (`/api/workouts/save`).
 - Set logging upserts by `workoutSetId` (`/api/logs/set`), making log state idempotent per set.
 - `SetLog.setIntent` persists performed-set intent. `WORK` is the default for old rows and omitted payloads; `WARMUP` marks a logged warmup/ramp set that remains visible as performed reality but is excluded from work-set evidence, progression/next-exposure anchors, prescription calibration, and weekly/effective volume. There is no automatic historical reclassification.
-- Performed `WorkoutExercise`/`SetLog` history keyed by `Exercise.id` is authoritative for exercise rotation and freshness. `LegacyExerciseExposure` maps the old physical `ExerciseExposure` table as `@@ignore` for read-only rollout comparison only; it has no generated Prisma client API, no production reader or writer, and its name-keyed counts and averages are untrusted. The transitional migration intentionally retains its data for a later explicit drop.
+- Performed `WorkoutExercise`/`SetLog` history keyed by `Exercise.id` is authoritative for exercise rotation and freshness. `LegacyExerciseExposure` maps the old physical `ExerciseExposure` table as `@@ignore` for read-only rollout comparison only; it has no generated Prisma client API, no production reader or writer, and its name-keyed counts and averages are untrusted. Its ignored relation mapping retains the existing database foreign-key identity solely for exact schema-drift comparison. The transitional migration intentionally retains its data for a later explicit drop.
 - Filtered/rejected intent exercises are persisted to `FilteredExercise` for later explainability rendering.
 - `Constraints` now persists scheduling constraints as `daysPerWeek` and `splitType` (no `sessionMinutes` field) in `prisma/schema.prisma`, and is mapped into runtime constraints in `src/lib/api/workout-context.ts`.
 - Existing-workout saves are guarded atomically by `Workout.revision`: `persistWorkoutRow()` updates only `{ id, userId, revision: expectedRevision }` and increments the revision in that same `updateMany` statement. A failed predicate performs no child, receipt/reconciliation, filtered-exercise, completion, or lifecycle mutation.

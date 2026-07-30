@@ -360,8 +360,8 @@ The evidence file is operator-controlled, uncommitted JSON. It must contain sani
 
 ```json
 {
-  "productionDeploymentCommit": "24e9e62f70a5cf66cef21997157f7b79a411a00f",
-  "requiredApplicationCommit": "<exact-reviewed-post-migration-application-commit>",
+  "productionDeploymentCommit": "<exact-integrated-master-squash-sha>",
+  "requiredApplicationCommit": "<exact-integrated-master-squash-sha>",
   "dataPreflight": {
     "valid": true,
     "verifiedAt": "<ISO-8601>",
@@ -370,7 +370,7 @@ The evidence file is operator-controlled, uncommitted JSON. It must contain sani
   "disposablePostgres": {
     "valid": true,
     "verifiedAt": "<ISO-8601>",
-    "repositoryHead": "<exact-40-character-tooling-commit>"
+    "repositoryHead": "<exact-integrated-master-squash-sha>"
   },
   "recoveryPoint": {
     "verified": true,
@@ -391,6 +391,24 @@ The evidence file is operator-controlled, uncommitted JSON. It must contain sani
   "deploymentVerifiedAt": "<ISO-8601>"
 }
 ```
+
+All commit identities use the canonical full Git SHA: exactly 40 lowercase
+hexadecimal characters with no whitespace. Gate A requires exact equality among
+all three independently obtained values:
+
+- `requiredApplicationCommit` is recorded only through the separately
+  authorized evidence workflow after the integrated squash SHA exists.
+- `repositoryHead` is resolved by `ops:migration-status` from
+  `git rev-parse HEAD`; a value supplied in the evidence file cannot override
+  it.
+- `productionDeploymentCommit` comes from the independently checked
+  `/api/version` response and provider-side production-alias evidence.
+
+The authorized integrated SHA is therefore data supplied after merge, not a
+source-code allowlist. A feature-branch guess, the old base commit, an arbitrary
+valid SHA, or any mismatch fails closed before migration authorization. Do not
+derive all three values from one caller-supplied field or copy a claimed
+deployment SHA without the independent deployment checks.
 
 Acceptable recovery evidence is either a provider PITR point with confirmed retention/recoverability or a repository-created logical backup that passes `Inspect-TrainerBackup.ps1`. A logical archive whose manifest still says `restoreStatus: not_tested` is evidence of a structurally inspectable dump, not proof of a tested restore; the operator must record that limitation. Backup creation is a separate production read/export action and is not part of Gate A preparation.
 
@@ -422,11 +440,11 @@ environment change, role change, migration, production access, or verification.
    Finisher UI or Finisher-schema access.
 4. Through the separately authorized evidence workflow, set that exact
    integrated SHA as `requiredApplicationCommit`.
-5. Establish the required recovery point and activate/verify
-   `TRAINER_WRITE_PAUSE=enabled`. Confirm the prerequisite protected/runtime
-   role principals have their reviewed attributes and memberships because the
-   migration transfers ownership and grants atomically. Do not enable the
-   Finisher rollout setting. Repeat immediate read-only checks:
+5. Establish and verify the required recovery point.
+6. Activate and verify `TRAINER_WRITE_PAUSE=enabled`, keep
+   `TRAINER_FINISHERS_ROLLOUT` disabled, and satisfy all immediate preflight
+   requirements. Repeat the immediate read-only direct-database and migration
+   status checks:
 
    ```powershell
    npm run ops:check-direct-db -- --env-file $rolloutEnv
@@ -435,9 +453,24 @@ environment change, role change, migration, production access, or verification.
 
    Require exactly 18 checked in, 17 applied, and only
    `20260728120000_add_finishers_phase_1` pending; zero checksum, ledger, order,
-   schema, or data blockers; `technicalMigrationReady: true`;
-   `migrationAuthorizationReady: true`; and `executionAuthorized: false`.
-6. After separate explicit authorization for the exact target, recovery point,
+   schema, or data blockers and `technicalMigrationReady: true`. Gate A remains
+   fail closed until the principal checks in the next steps also pass.
+7. Through the separately authorized database-administrator workflow, provision
+   the three required role principals before migration:
+   `trainer_app_runtime`, `trainer_finisher_owner`, and
+   `trainer_finisher_cleanup`. This prerequisite creates only the principals
+   with their reviewed role attributes; it does not create Finisher objects,
+   assign migration-owned object ownership, or grant Finisher table/function
+   privileges.
+8. Verify all three principals exist, have only the prerequisite attributes and
+   capabilities needed by the migration, and have no prohibited memberships.
+   The migration must remain responsible for transferring object ownership and
+   installing the reviewed grants and protections.
+9. Run Gate A and the required pre-migration authorization checks. Require the
+   exact canonical equality
+   `requiredApplicationCommit === repositoryHead === productionDeploymentCommit`,
+   `migrationAuthorizationReady: true`, and `executionAuthorized: false`.
+10. After separate explicit authorization for the exact target, recovery point,
    paused-write boundary, command, and application sequence, run the authorized
    production migration once:
 
@@ -447,22 +480,25 @@ environment change, role change, migration, production access, or verification.
 
    Require exactly that migration once and exit zero. Do not run
    `npm run db:seed`, edit `_prisma_migrations`, or retry blindly.
-7. Provision and verify the required roles/grants through the authorized role
-   workflow. The migration owns object ownership and grant definitions; require
-   the exact reviewed runtime/protected-role attributes, memberships, table
-   privileges, function execution privileges, schema access, and default
-   privileges before continuing.
-8. Rerun Gate A and all required post-migration checks. Require 18 successful
-   applied migrations, zero pending, the exact ten-table schema and curated
-   catalog, correct roles/grants, no schema/data drift, and successful targeted
-   integrity checks. Keep the write pause and Finisher rollout disabled.
-9. Only after migration, role provisioning, Gate A, and required post-migration
-   checks succeed, set `TRAINER_FINISHERS_ROLLOUT=enabled`.
-10. Create or promote the application deployment containing that enabled
+11. Verify the migration-owned object ownership, grants, restrictive
+    relationships, schema access, default privileges, triggers, functions, and
+    schema drift. Clearly distinguish these migration-created or
+    migration-assigned protections from the pre-migration principal
+    provisioning. Do not re-provision migration-owned grants after migration
+    unless an explicit reviewed recovery procedure requires it.
+12. Rerun Gate A and all required post-migration readiness checks. Require 18
+    successful applied migrations, zero pending, the exact ten-table schema and
+    curated catalog, correct roles/grants, no schema/data drift, and successful
+    targeted integrity checks. Keep the write pause and Finisher rollout
+    disabled.
+13. Only after migration, role/grant verification, Gate A, and required
+    post-migration checks succeed, set
+    `TRAINER_FINISHERS_ROLLOUT=enabled`.
+14. Create or promote the application deployment containing that enabled
     setting. Require the production alias and `/api/version` to prove the exact
     `requiredApplicationCommit`; an environment-variable edit does not change
     an already-running deployment.
-11. Under separate authorization, perform bounded authenticated production
+15. Under separate authorization, perform bounded authenticated production
     verification. Resume general writes only through the write-pause resume
     procedure after every required check passes.
 

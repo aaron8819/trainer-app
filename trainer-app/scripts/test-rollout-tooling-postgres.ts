@@ -664,8 +664,7 @@ try {
     authorizationEvidenceFile,
     JSON.stringify({
       repositoryHead,
-      productionDeploymentCommit:
-        "24e9e62f70a5cf66cef21997157f7b79a411a00f",
+      productionDeploymentCommit: repositoryHead,
       requiredApplicationCommit: repositoryHead,
       dataPreflight: {
         valid: true,

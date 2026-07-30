@@ -1,4 +1,4 @@
-import { readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -19,6 +19,9 @@ import {
 } from "./migration-integrity";
 
 const REPOSITORY_HEAD = "b".repeat(40);
+const FUTURE_INTEGRATED_HEAD = "c".repeat(40);
+const ARBITRARY_HEAD = "d".repeat(40);
+const OLD_BASE_HEAD = "24e9e62f70a5cf66cef21997157f7b79a411a00f";
 const EVALUATED_AT = "2026-07-26T18:00:00.000Z";
 const VERIFIED_AT = "2026-07-26T17:50:00.000Z";
 const TARGET_FINGERPRINT = "5952f3ffb454";
@@ -275,8 +278,7 @@ function fullEvidence(
 ): MigrationAuthorizationEvidence {
   return {
     repositoryHead: REPOSITORY_HEAD,
-    productionDeploymentCommit:
-      MIGRATION_AUTHORIZATION_POLICY.compatibleProductionDeploymentCommits[0],
+    productionDeploymentCommit: REPOSITORY_HEAD,
     requiredApplicationCommit: REPOSITORY_HEAD,
     dataPreflight: {
       valid: true,
@@ -702,27 +704,150 @@ describe("migration integrity", () => {
     expect(result.migrationAuthorizationReady).toBe(false);
   });
 
-  it("accepts the exact documented pre-migration production commit and rejects its incompatible predecessor", () => {
-    const documented = report({
+  it("authorizes any future integrated commit when all three trusted values match exactly", () => {
+    const result = report({
       authorizationEvidence: fullEvidence({
-        productionDeploymentCommit:
-          "24e9e62f70a5cf66cef21997157f7b79a411a00f",
+        repositoryHead: FUTURE_INTEGRATED_HEAD,
+        productionDeploymentCommit: FUTURE_INTEGRATED_HEAD,
+        requiredApplicationCommit: FUTURE_INTEGRATED_HEAD,
+        disposablePostgres: {
+          valid: true,
+          verifiedAt: VERIFIED_AT,
+          repositoryHead: FUTURE_INTEGRATED_HEAD,
+        },
       }),
     });
-    expect(documented.evidence.productionDeploymentVerified).toBe(true);
-    expect(documented.migrationAuthorizationReady).toBe(true);
+    expect(result.evidence).toMatchObject({
+      repositoryHeadIdentified: true,
+      productionDeploymentCommitIdentified: true,
+      requiredApplicationCommitIdentified: true,
+      requiredApplicationCommitMatchesRepositoryHead: true,
+      requiredApplicationCommitMatchesProductionDeployment: true,
+      repositoryHeadMatchesProductionDeployment: true,
+      applicationCommitBindingVerified: true,
+      productionDeploymentVerified: true,
+    });
+    expect(result.migrationAuthorizationReady).toBe(true);
+    expect(result.executionAuthorized).toBe(false);
+    expect(result.writes).toBe(0);
+  });
 
-    const predecessor = report({
+  it("rejects requiredApplicationCommit when it differs from repositoryHead", () => {
+    const result = report({
       authorizationEvidence: fullEvidence({
-        productionDeploymentCommit:
-          "14f7bb3a0106780fc70263d7282b2547bae5bbba",
+        requiredApplicationCommit: FUTURE_INTEGRATED_HEAD,
+        productionDeploymentCommit: FUTURE_INTEGRATED_HEAD,
       }),
     });
-    expect(predecessor.evidence.productionDeploymentVerified).toBe(false);
-    expect(predecessor.migrationAuthorizationReady).toBe(false);
-    expect(predecessor.blockingReasons).toContain(
-      "production_deployment_evidence_invalid_or_stale",
+    expect(result.evidence.requiredApplicationCommitMatchesRepositoryHead).toBe(
+      false,
     );
+    expect(result.blockingReasons).toContain(
+      "required_application_commit_repository_head_mismatch",
+    );
+    expect(result.migrationAuthorizationReady).toBe(false);
+    expect(result.executionAuthorized).toBe(false);
+    expect(result.writes).toBe(0);
+  });
+
+  it("rejects requiredApplicationCommit when it differs from productionDeploymentCommit", () => {
+    const result = report({
+      authorizationEvidence: fullEvidence({
+        productionDeploymentCommit: FUTURE_INTEGRATED_HEAD,
+      }),
+    });
+    expect(
+      result.evidence.requiredApplicationCommitMatchesProductionDeployment,
+    ).toBe(false);
+    expect(result.blockingReasons).toContain(
+      "required_application_commit_production_deployment_mismatch",
+    );
+    expect(result.migrationAuthorizationReady).toBe(false);
+    expect(result.executionAuthorized).toBe(false);
+    expect(result.writes).toBe(0);
+  });
+
+  it("rejects repositoryHead when it differs from productionDeploymentCommit", () => {
+    const result = report({
+      authorizationEvidence: fullEvidence({
+        repositoryHead: FUTURE_INTEGRATED_HEAD,
+        requiredApplicationCommit: FUTURE_INTEGRATED_HEAD,
+        disposablePostgres: {
+          valid: true,
+          verifiedAt: VERIFIED_AT,
+          repositoryHead: FUTURE_INTEGRATED_HEAD,
+        },
+      }),
+    });
+    expect(result.evidence.repositoryHeadMatchesProductionDeployment).toBe(
+      false,
+    );
+    expect(result.blockingReasons).toContain(
+      "repository_head_production_deployment_mismatch",
+    );
+    expect(result.migrationAuthorizationReady).toBe(false);
+    expect(result.executionAuthorized).toBe(false);
+    expect(result.writes).toBe(0);
+  });
+
+  it("rejects an arbitrary canonical SHA that is not the checked-out and deployed commit", () => {
+    const result = report({
+      authorizationEvidence: fullEvidence({
+        requiredApplicationCommit: ARBITRARY_HEAD,
+      }),
+    });
+    expect(result.evidence.requiredApplicationCommitIdentified).toBe(true);
+    expect(result.evidence.applicationCommitBindingVerified).toBe(false);
+    expect(result.migrationAuthorizationReady).toBe(false);
+    expect(result.executionAuthorized).toBe(false);
+    expect(result.writes).toBe(0);
+  });
+
+  it("rejects the old base deployment after a different integrated commit is authorized", () => {
+    const result = report({
+      authorizationEvidence: fullEvidence({
+        productionDeploymentCommit: OLD_BASE_HEAD,
+      }),
+    });
+    expect(result.evidence.productionDeploymentCommitIdentified).toBe(true);
+    expect(result.evidence.productionDeploymentVerified).toBe(false);
+    expect(result.blockingReasons).toEqual(
+      expect.arrayContaining([
+        "required_application_commit_production_deployment_mismatch",
+        "repository_head_production_deployment_mismatch",
+      ]),
+    );
+    expect(result.migrationAuthorizationReady).toBe(false);
+    expect(result.executionAuthorized).toBe(false);
+    expect(result.writes).toBe(0);
+  });
+
+  it.each([
+    ["short", "b".repeat(39)],
+    ["malformed", "g".repeat(40)],
+    ["uppercase", "B".repeat(40)],
+    ["padded", ` ${REPOSITORY_HEAD} `],
+    ["overlong", "b".repeat(41)],
+  ])("rejects a %s commit value in every authorization field", (_label, value) => {
+    for (const field of [
+      "repositoryHead",
+      "productionDeploymentCommit",
+      "requiredApplicationCommit",
+    ] as const) {
+      const evidence = fullEvidence({ [field]: value });
+      if (field === "repositoryHead") {
+        evidence.disposablePostgres = {
+          valid: true,
+          verifiedAt: VERIFIED_AT,
+          repositoryHead: value,
+        };
+      }
+      const result = report({ authorizationEvidence: evidence });
+      expect(result.technicalMigrationReady).toBe(true);
+      expect(result.migrationAuthorizationReady).toBe(false);
+      expect(result.executionAuthorized).toBe(false);
+      expect(result.writes).toBe(0);
+    }
   });
 
   it("models the captured production shape without granting execution", () => {
@@ -820,6 +945,36 @@ describe("migration integrity", () => {
       expect.objectContaining({ category: "baseline_uniqueness" }),
     ]));
     expect(result.migrationAuthorizationReady).toBe(false);
+  });
+
+  it("documents role-principal provisioning before Gate A and migration-owned grants after migration", () => {
+    const operations = readFileSync(resolve("docs/07_OPERATIONS.md"), "utf8");
+    const orderedMarkers = [
+      "1. Merge the reviewed runtime-inert application",
+      "2. Record the actual integrated `master` squash SHA.",
+      "3. Confirm `/api/version` and provider-side alias evidence",
+      "4. Through the separately authorized evidence workflow",
+      "5. Establish and verify the required recovery point.",
+      "6. Activate and verify `TRAINER_WRITE_PAUSE=enabled`",
+      "7. Through the separately authorized database-administrator workflow",
+      "8. Verify all three principals exist",
+      "9. Run Gate A and the required pre-migration authorization checks.",
+      "10. After separate explicit authorization",
+      "11. Verify the migration-owned object ownership, grants, restrictive",
+      "12. Rerun Gate A and all required post-migration readiness checks.",
+      "13. Only after migration, role/grant verification, Gate A, and required",
+      "14. Create or promote the application deployment",
+      "15. Under separate authorization, perform bounded authenticated",
+    ];
+    let previousIndex = -1;
+    for (const marker of orderedMarkers) {
+      const markerIndex = operations.indexOf(marker);
+      expect(markerIndex, marker).toBeGreaterThan(previousIndex);
+      previousIndex = markerIndex;
+    }
+    expect(operations).toContain(
+      "Do not re-provision migration-owned grants after migration",
+    );
   });
 
   it.each([

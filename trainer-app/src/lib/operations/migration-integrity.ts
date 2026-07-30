@@ -32,10 +32,6 @@ export const MIGRATION_AUTHORIZATION_POLICY = {
   expectedPendingMigrations: [
     "20260728120000_add_finishers_phase_1",
   ],
-  requiredApplicationCommit: "",
-  compatibleProductionDeploymentCommits: [
-    "24e9e62f70a5cf66cef21997157f7b79a411a00f",
-  ],
   operationalEvidenceMaxAgeMinutes: 30,
 } as const;
 
@@ -2492,7 +2488,7 @@ function migrationSchemaEffectsVerified(input: {
 }
 
 function isFullCommitSha(value: string): boolean {
-  return /^[0-9a-f]{40}$/i.test(value);
+  return /^[0-9a-f]{40}$/.test(value);
 }
 
 function isFreshEvidenceTimestamp(
@@ -2783,12 +2779,30 @@ export function buildMigrationIntegrityReport(input: {
   const productionDeploymentCommit =
     evidence?.productionDeploymentCommit ?? "";
   const requiredApplicationCommit =
-    evidence?.requiredApplicationCommit ??
-    MIGRATION_AUTHORIZATION_POLICY.requiredApplicationCommit;
+    evidence?.requiredApplicationCommit ?? "";
   const repositoryHeadIdentified = isFullCommitSha(repositoryHead);
+  const productionDeploymentCommitIdentified = isFullCommitSha(
+    productionDeploymentCommit,
+  );
   const requiredApplicationCommitIdentified = isFullCommitSha(
     requiredApplicationCommit,
   );
+  const requiredApplicationCommitMatchesRepositoryHead =
+    requiredApplicationCommitIdentified &&
+    repositoryHeadIdentified &&
+    requiredApplicationCommit === repositoryHead;
+  const requiredApplicationCommitMatchesProductionDeployment =
+    requiredApplicationCommitIdentified &&
+    productionDeploymentCommitIdentified &&
+    requiredApplicationCommit === productionDeploymentCommit;
+  const repositoryHeadMatchesProductionDeployment =
+    repositoryHeadIdentified &&
+    productionDeploymentCommitIdentified &&
+    repositoryHead === productionDeploymentCommit;
+  const applicationCommitBindingVerified =
+    requiredApplicationCommitMatchesRepositoryHead &&
+    requiredApplicationCommitMatchesProductionDeployment &&
+    repositoryHeadMatchesProductionDeployment;
   const migrationTargetIdentified =
     exactChain &&
     pendingSequenceConfigured &&
@@ -2826,14 +2840,8 @@ export function buildMigrationIntegrityReport(input: {
   );
   const applicationCompatibilityState =
     evidence?.applicationCompatibilityState ?? "unverified";
-  const compatibleProductionDeployment =
-    isFullCommitSha(productionDeploymentCommit) &&
-    MIGRATION_AUTHORIZATION_POLICY.compatibleProductionDeploymentCommits.includes(
-      productionDeploymentCommit as
-        (typeof MIGRATION_AUTHORIZATION_POLICY.compatibleProductionDeploymentCommits)[number],
-    );
   const productionDeploymentVerified =
-    compatibleProductionDeployment &&
+    applicationCommitBindingVerified &&
     isFreshEvidenceTimestamp(evidence?.deploymentVerifiedAt, evaluatedAt);
   const migrationOrderValid =
     orderViolations.length === 0 && pendingSequenceConfigured;
@@ -2854,7 +2862,9 @@ export function buildMigrationIntegrityReport(input: {
   const migrationAuthorizationReady =
     technicalMigrationReady &&
     repositoryHeadIdentified &&
+    productionDeploymentCommitIdentified &&
     requiredApplicationCommitIdentified &&
+    applicationCommitBindingVerified &&
     migrationTargetIdentified &&
     recoveryPointVerified &&
     writeBoundaryReady &&
@@ -2883,8 +2893,33 @@ export function buildMigrationIntegrityReport(input: {
   if (!disposablePostgresVerified) blockingReasons.push("disposable_postgres_verification_missing");
   if (writes !== 0) blockingReasons.push("inspection_writes_detected");
   if (!repositoryHeadIdentified) blockingReasons.push("repository_head_not_identified");
+  if (!productionDeploymentCommitIdentified) {
+    blockingReasons.push("production_deployment_commit_not_identified");
+  }
   if (!requiredApplicationCommitIdentified) blockingReasons.push("required_application_commit_not_identified");
-  if (!compatibleProductionDeployment) blockingReasons.push("production_deployment_commit_incompatible");
+  if (
+    requiredApplicationCommitIdentified &&
+    repositoryHeadIdentified &&
+    !requiredApplicationCommitMatchesRepositoryHead
+  ) {
+    blockingReasons.push("required_application_commit_repository_head_mismatch");
+  }
+  if (
+    requiredApplicationCommitIdentified &&
+    productionDeploymentCommitIdentified &&
+    !requiredApplicationCommitMatchesProductionDeployment
+  ) {
+    blockingReasons.push(
+      "required_application_commit_production_deployment_mismatch",
+    );
+  }
+  if (
+    repositoryHeadIdentified &&
+    productionDeploymentCommitIdentified &&
+    !repositoryHeadMatchesProductionDeployment
+  ) {
+    blockingReasons.push("repository_head_production_deployment_mismatch");
+  }
   if (!productionDeploymentVerified) blockingReasons.push("production_deployment_evidence_invalid_or_stale");
   if (!recoveryPointVerified) blockingReasons.push("recovery_point_unverified_or_stale");
   if (!writeBoundaryReady) blockingReasons.push("write_boundary_not_ready_or_stale");
@@ -3000,7 +3035,12 @@ export function buildMigrationIntegrityReport(input: {
       productionDeploymentVerified,
       migrationTargetIdentified,
       repositoryHeadIdentified,
+      productionDeploymentCommitIdentified,
       requiredApplicationCommitIdentified,
+      requiredApplicationCommitMatchesRepositoryHead,
+      requiredApplicationCommitMatchesProductionDeployment,
+      repositoryHeadMatchesProductionDeployment,
+      applicationCommitBindingVerified,
     },
   };
 }

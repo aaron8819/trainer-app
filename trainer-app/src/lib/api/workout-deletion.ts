@@ -1,6 +1,7 @@
 import { WorkoutStatus } from "@prisma/client";
 import { reconcileMesocycleLifecycle } from "./mesocycle-lifecycle-reconciliation";
 import { executeWorkoutMutation } from "./workout-mutation";
+import { isFinisherRolloutEnabled } from "@/lib/operations/finisher-rollout";
 
 export class DeleteWorkoutError extends Error {
   readonly status = 409 as const;
@@ -44,9 +45,6 @@ export async function deleteOwnedWorkout(input: {
               isActive: true,
             },
           },
-          finisherOffer: {
-            select: { id: true },
-          },
         },
       });
       if (!workout) {
@@ -61,11 +59,17 @@ export async function deleteOwnedWorkout(input: {
           "Cannot delete a historical workout from a completed mesocycle after closeout finalized lifecycle history.",
         );
       }
-      if (workout.finisherOffer) {
-        throw new DeleteWorkoutError(
-          "Workout cannot be deleted because Finisher history is attached.",
-          "WORKOUT_FINISHER_HISTORY_CONFLICT",
-        );
+      if (isFinisherRolloutEnabled()) {
+        const finisherOffer = await tx.finisherOffer.findUnique({
+          where: { workoutId: workout.id },
+          select: { id: true },
+        });
+        if (finisherOffer) {
+          throw new DeleteWorkoutError(
+            "Workout cannot be deleted because Finisher history is attached.",
+            "WORKOUT_FINISHER_HISTORY_CONFLICT",
+          );
+        }
       }
 
       const exercises = await tx.workoutExercise.findMany({

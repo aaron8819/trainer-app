@@ -16,6 +16,7 @@ import {
   substituteFinisherStep,
   syncFinisher,
 } from "@/lib/api/finisher-service";
+import { finisherRolloutUnavailableResponse } from "@/lib/operations/finisher-rollout-http";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { finisherActionSchema } from "@/lib/validation";
 
@@ -52,6 +53,9 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unavailable = finisherRolloutUnavailableResponse();
+  if (unavailable) return unavailable;
+
   try {
     const context = await resolveContext(params, "read");
     return NextResponse.json(await getFinisherOffer(context));
@@ -64,6 +68,9 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unavailable = finisherRolloutUnavailableResponse();
+  if (unavailable) return unavailable;
+
   const paused = productionWritePauseResponse(
     "finisher_execution",
     "/api/workouts/[id]/finisher"

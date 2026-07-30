@@ -2,7 +2,14 @@
 
 ## `GET|POST /api/workouts/[id]/finisher`
 
-Both methods resolve the canonical owner and require an owner-scoped completed
+Both methods first evaluate the canonical server-only rollout setting in
+`src/lib/operations/finisher-rollout.ts`. Unless
+`TRAINER_FINISHERS_ROLLOUT` is exactly `enabled`, both methods return HTTP 503
+with code `FINISHERS_NOT_ENABLED` before request parsing, owner resolution,
+Prisma access, or any Finisher read/write. Client input cannot change that
+decision.
+
+When enabled, both methods resolve the canonical owner and require an owner-scoped completed
 workout. GET returns the persisted offer's immutable routine details, original
 limitation warnings and recommendation context, `serverTime`, the current
 display execution, decline state, and retained execution history. With no

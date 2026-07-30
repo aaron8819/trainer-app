@@ -2,7 +2,14 @@
 
 ## Post-workout Finisher
 
-After the existing completion request returns canonical `COMPLETED`,
+The server-only decision in `src/lib/operations/finisher-rollout.ts` owns all
+Finisher exposure. Missing, malformed, and unexpected configuration keeps both
+the completed-workout page and the post-save review from mounting
+`FinisherExperience`; no Finisher loading, request, offer, control, timer,
+history, or error state appears. The client receives only the server's boolean
+decision and cannot enable the feature.
+
+When the rollout is enabled and the existing completion request returns canonical `COMPLETED`,
 `FinisherExperience` appears without delaying or reopening workout completion.
 The component persists the offer before it displays one explained
 recommendation, category-filtered browsing with preview, or finishing without

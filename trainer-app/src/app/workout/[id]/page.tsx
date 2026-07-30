@@ -30,6 +30,7 @@ import { evaluateTargetReps } from "@/lib/session-semantics/target-evaluation";
 import { buildSessionSummaryModel } from "@/lib/ui/session-summary";
 import { getWorkoutDetailTitle, getWorkoutWorkflowState } from "@/lib/workout-workflow";
 import { getCanonicalDeloadProgressionTriggerText } from "@/lib/deload/semantics";
+import { isFinisherRolloutEnabled } from "@/lib/operations/finisher-rollout";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -234,7 +235,7 @@ export default async function WorkoutDetailPage({
         </div>
 
         <section className="mt-6 space-y-6 sm:mt-8 sm:space-y-8">
-          {workout.status === "COMPLETED" ? (
+          {isFinisherRolloutEnabled() && workout.status === "COMPLETED" ? (
             <FinisherExperience workoutId={workout.id} />
           ) : null}
 

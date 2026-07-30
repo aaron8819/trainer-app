@@ -76,6 +76,46 @@ describe("Phase 1 Finisher isolation", () => {
     );
   });
 
+  it("keeps every application entry point behind one server rollout owner", () => {
+    const route = readFileSync(
+      "src/app/api/workouts/[id]/finisher/route.ts",
+      "utf8",
+    );
+    const workoutPage = readFileSync(
+      "src/app/workout/[id]/page.tsx",
+      "utf8",
+    );
+    const logPage = readFileSync("src/app/log/[id]/page.tsx", "utf8");
+    const completedReview = readFileSync(
+      "src/components/log-workout/CompletedWorkoutReview.tsx",
+      "utf8",
+    );
+    const deletion = readFileSync(
+      "src/lib/api/workout-deletion.ts",
+      "utf8",
+    );
+
+    expect(route.indexOf("finisherRolloutUnavailableResponse")).toBeLessThan(
+      route.indexOf('resolveContext(params, "read")'),
+    );
+    expect(route.indexOf("finisherRolloutUnavailableResponse")).toBeLessThan(
+      route.indexOf("finisherActionSchema.safeParse"),
+    );
+    expect(workoutPage).toContain(
+      'isFinisherRolloutEnabled() && workout.status === "COMPLETED"',
+    );
+    expect(logPage).toContain(
+      "const finishersEnabled = isFinisherRolloutEnabled()",
+    );
+    expect(completedReview).toContain(
+      "finishersEnabled ? <FinisherExperience",
+    );
+    expect(deletion).not.toContain("finisherOffer: {\n");
+    expect(deletion.indexOf("isFinisherRolloutEnabled()")).toBeLessThan(
+      deletion.indexOf("tx.finisherOffer.findUnique"),
+    );
+  });
+
   it("protects one active/started execution and immutable lifecycle truth in the database", () => {
     const schema = readFileSync("prisma/schema.prisma", "utf8");
     const migration = readFileSync(

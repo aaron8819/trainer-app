@@ -21,6 +21,7 @@ import {
   normalizeLogWorkoutGuidanceExerciseLabel,
   type LogWorkoutExecutionGuidanceByExercise,
 } from "@/lib/api/log-workout-execution-guidance";
+import { isFinisherRolloutEnabled } from "@/lib/operations/finisher-rollout";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -171,6 +172,7 @@ export default async function LogWorkoutPage({
     );
   }
 
+  const finishersEnabled = isFinisherRolloutEnabled();
   const fixture = await getUiAuditFixtureForServer();
   const logFixture = fixture?.logWorkouts?.[resolvedParams.id] ?? null;
   if (logFixture) {
@@ -200,6 +202,7 @@ export default async function LogWorkoutPage({
             initialRestTimer={buildInitialRestTimer(logFixture.initialRestTimerDurationSeconds)}
             sessionIdentityLabel={logFixture.sessionIdentityLabel}
             sessionTechnicalLabel={logFixture.sessionTechnicalLabel}
+            finishersEnabled={finishersEnabled}
           />
         </div>
       </main>
@@ -341,6 +344,7 @@ export default async function LogWorkoutPage({
           capabilities={logCapabilities}
           sessionIdentityLabel={sessionIdentityLabel}
           sessionTechnicalLabel={sessionTechnicalLabel}
+          finishersEnabled={finishersEnabled}
         />
       </div>
     </main>

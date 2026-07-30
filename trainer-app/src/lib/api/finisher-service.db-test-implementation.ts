@@ -39,10 +39,12 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
     let alternativeId: string;
     let preparationRoutineVersionId: string;
     let shoulderRoutineVersionId: string;
+    const originalRollout = process.env.TRAINER_FINISHERS_ROLLOUT;
 
     const now = new Date("2026-07-28T12:00:00.000Z");
 
     beforeAll(async () => {
+      process.env.TRAINER_FINISHERS_ROLLOUT = "enabled";
       pool = new Pool({ connectionString: databaseUrl });
       runtimePool = new Pool({
         connectionString: process.env.DATABASE_URL,
@@ -270,6 +272,11 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       await client?.$disconnect();
       await runtimePool?.end();
       await pool?.end();
+      if (originalRollout == null) {
+        delete process.env.TRAINER_FINISHERS_ROLLOUT;
+      } else {
+        process.env.TRAINER_FINISHERS_ROLLOUT = originalRollout;
+      }
     });
 
     function createWorkout(

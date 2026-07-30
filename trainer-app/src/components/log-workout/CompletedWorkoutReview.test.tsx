@@ -98,7 +98,7 @@ describe("CompletedWorkoutReview", () => {
     expect(screen.getByText("Preparing your post-session review...")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("Good session")).toBeInTheDocument());
 
-    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(fetch).toHaveBeenCalledTimes(1);
     expect(fetch).toHaveBeenCalledWith(
       "/api/workouts/workout-1/post-session-review",
       { cache: "no-store" }
@@ -107,6 +107,28 @@ describe("CompletedWorkoutReview", () => {
     expect(screen.queryByText("Planned sets")).not.toBeInTheDocument();
     expect(screen.queryByText("RPE adherence")).not.toBeInTheDocument();
     expect(screen.queryByText("Session outcome")).not.toBeInTheDocument();
+    expect(
+      vi.mocked(fetch).mock.calls.some(([input]) =>
+        String(input).includes("/finisher"),
+      ),
+    ).toBe(false);
+  });
+
+  it("mounts the existing Finisher experience only when the server enables it", async () => {
+    render(
+      <CompletedWorkoutReview
+        workoutId="workout-1"
+        performanceSummary={performanceSummary}
+        finishersEnabled
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText("Good session")).toBeInTheDocument());
+    expect(
+      vi.mocked(fetch).mock.calls.some(([input]) =>
+        String(input).includes("/finisher"),
+      ),
+    ).toBe(true);
   });
 
   it("keeps the detailed set log behind a disclosure", async () => {

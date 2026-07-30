@@ -2,6 +2,14 @@
 
 ## Phase 1 Finisher rollout
 
+The canonical runtime gate is the server-only
+`TRAINER_FINISHERS_ROLLOUT` setting owned by
+`src/lib/operations/finisher-rollout.ts`. Only the exact value `enabled`
+enables Finishers. Unset, empty, `false`, case variants, surrounding
+whitespace, and every other value disable the feature. Never expose this
+setting with a `NEXT_PUBLIC_` prefix. Disabled application paths do not query
+the Finisher schema, and changing the setting requires a new deployment.
+
 `20260728120000_add_finishers_phase_1` is additive and does not rewrite workout
 history. Apply it only through the reviewed migration workflow while production
 writes are paused. Run the normal Prisma generation, contract, migration
@@ -390,43 +398,86 @@ The repository-authoritative write boundary is `TRAINER_WRITE_PAUSE=enabled`. It
 
 ### Finisher application sequencing verdict
 
-`24e9e62f70a5cf66cef21997157f7b79a411a00f → 20260728120000_add_finishers_phase_1 → requiredApplicationCommit` is the reviewed migration-first sequence and is safe only while the full write boundary is verified. The migration atomically adds isolated Finisher definition, offer, and execution tables; constraints and triggers; and the exact curated catalog. The deployed base application does not reference those objects, so it remains compatible while writes are paused.
-
-Keep commit `24e9e62f70a5cf66cef21997157f7b79a411a00f` deployed and writes paused through migration; promote the exact reviewed `requiredApplicationCommit` before resuming writes. The evidence file must name that post-migration application commit explicitly because it is not known until integration; Gate A must not inherit a prior rollout's application target.
-Gate A intentionally accepts only that exact documented pre-migration
-application commit. Ancestors, descendants, and arbitrary revisions fail
-closed; changing the production base requires a reviewed policy, runbook, and
-regression-test update together.
+The reviewed sequence is runtime-inert application, then migration, then
+explicitly enabled application. Merging the application is safe before the
+migration only because `TRAINER_FINISHERS_ROLLOUT` fails closed and every
+application entry point avoids the Finisher schema while disabled. The exact
+integrated `master` squash SHA is not known until merge and must be recorded as
+`requiredApplicationCommit`; Gate A must not inherit a prior rollout's target.
+Ancestors, descendants, feature-branch heads, and arbitrary revisions fail
+closed.
 
 ### Bounded Finisher production migration runbook
 
-This runbook is preparation only until the operator separately authorizes the exact migration action.
+This runbook documents order only. It does not authorize any merge, deployment,
+environment change, role change, migration, production access, or verification.
 
-1. Confirm Git/release identities. Require production `/api/version` and provider-side alias evidence to show `24e9e62f70a5cf66cef21997157f7b79a411a00f`; require the evidence file to name the exact reviewed post-migration application commit. Stop on any other commit or unresolved alias.
-2. Verify recovery evidence. Inspect provider PITR metadata or run `Inspect-TrainerBackup.ps1` against an already-created archive. Record sanitized provider/project and database identity, recovery timestamp, retention/recoverability, and operator verification time. Stop if it is stale, unverifiable, or targets another database.
-3. Enable the write boundary using the activation procedure below while keeping commit `24e9e62f…` deployed. Require `ops:write-status` to print `PAUSED`, representative mutations to return the documented 503 contract, row/revision fingerprints to remain unchanged, and read paths to remain healthy. Stop if any write succeeds or any required read fails.
-4. Repeat immediate read-only checks against the reviewed environment:
+1. Merge the reviewed runtime-inert application with
+   `TRAINER_FINISHERS_ROLLOUT` unset or otherwise disabled.
+2. Record the actual integrated `master` squash SHA. Do not substitute the
+   feature-branch head.
+3. Confirm `/api/version` and provider-side alias evidence identify that exact
+   SHA, and confirm the automatic production deployment remains inert: relevant
+   completed, incomplete, history, navigation, and deletion paths load without
+   Finisher UI or Finisher-schema access.
+4. Through the separately authorized evidence workflow, set that exact
+   integrated SHA as `requiredApplicationCommit`.
+5. Establish the required recovery point and activate/verify
+   `TRAINER_WRITE_PAUSE=enabled`. Confirm the prerequisite protected/runtime
+   role principals have their reviewed attributes and memberships because the
+   migration transfers ownership and grants atomically. Do not enable the
+   Finisher rollout setting. Repeat immediate read-only checks:
 
    ```powershell
    npm run ops:check-direct-db -- --env-file $rolloutEnv
    npm run ops:migration-status -- --env-file $rolloutEnv --evidence-file $authorizationEvidence
    ```
 
-   Require exactly 18 checked in, 17 applied, and only `20260728120000_add_finishers_phase_1` pending; zero checksum, ledger, order, schema, or data blockers; `technicalMigrationReady: true`; `migrationAuthorizationReady: true`; and `executionAuthorized: false`. Stop on any other result. The final false value is expected because execution authority is external to this preparation command.
-5. Obtain separate, explicit operator authorization for the exact target, command, database, recovery point, write boundary, and application sequence. Without it, stop here.
-6. Execute once from the reviewed worktree and environment:
+   Require exactly 18 checked in, 17 applied, and only
+   `20260728120000_add_finishers_phase_1` pending; zero checksum, ledger, order,
+   schema, or data blockers; `technicalMigrationReady: true`;
+   `migrationAuthorizationReady: true`; and `executionAuthorized: false`.
+6. After separate explicit authorization for the exact target, recovery point,
+   paused-write boundary, command, and application sequence, run the authorized
+   production migration once:
 
    ```powershell
    node --env-file=$rolloutEnv .\node_modules\prisma\build\index.js migrate deploy
    ```
 
-   Require Prisma to apply exactly `20260728120000_add_finishers_phase_1` once and exit zero. That transaction also installs the exact four active curated version-1 definitions; do not run `npm run db:seed` in production. Stop on any other migration, error, connection ambiguity, or retry condition; do not edit `_prisma_migrations` or repeat blindly.
-7. While writes remain paused, verify the ledger shows 18 successful applied and zero pending, then verify all ten Finisher tables, every material column/enum/key/index/check/foreign-key action, definition sealing and history-protection triggers/functions, and the exact deterministic active catalog with stable routine/version/step/alternative relationships. Run `npm run generate:finisher-catalog` from the reviewed source and require success. Require no unexpected workout or descendant-data drift.
-8. Run targeted read-only integrity checks, including the multi-plan inventory and relevant readiness/seed/snapshot audits for the now-migrated chain. Stop for any ownership mismatch, ambiguous plan, contradictory active state, invalid constraint, checksum drift, or unexplained count change.
-9. Promote or redeploy the exact `requiredApplicationCommit` recorded in the reviewed evidence file. Do not resume writes if the provider cannot prove that exact production alias assignment.
-10. Verify `/api/version` returns the exact new commit twice and the public origin remains HTTP 200. Verify selected read-only flows. Run dynamic smoke flows only under their separate explicit authorization and keep the boundary in place.
-11. Remove `TRAINER_WRITE_PAUSE` only through the resume procedure below after schema, deployment, and compatibility verification all pass. Require status `ENABLED`, one controlled authorized mutation with exactly one expected effect, and no remaining maintenance responses.
-12. If migration fails, PostgreSQL rolls back the explicit transaction, including all target objects and curated rows. Keep writes paused, confirm the ledger has no successful target row and the catalog has no target objects, then correct the cause and use the reviewed roll-forward path; do not perform object-by-object rollback. If migration committed but verification or deployment fails, keep writes paused and prefer fix-forward. Restore only through the separately approved recovery plan. Never route the old app to a write-enabled migrated database because its handoff ordering is incompatible.
+   Require exactly that migration once and exit zero. Do not run
+   `npm run db:seed`, edit `_prisma_migrations`, or retry blindly.
+7. Provision and verify the required roles/grants through the authorized role
+   workflow. The migration owns object ownership and grant definitions; require
+   the exact reviewed runtime/protected-role attributes, memberships, table
+   privileges, function execution privileges, schema access, and default
+   privileges before continuing.
+8. Rerun Gate A and all required post-migration checks. Require 18 successful
+   applied migrations, zero pending, the exact ten-table schema and curated
+   catalog, correct roles/grants, no schema/data drift, and successful targeted
+   integrity checks. Keep the write pause and Finisher rollout disabled.
+9. Only after migration, role provisioning, Gate A, and required post-migration
+   checks succeed, set `TRAINER_FINISHERS_ROLLOUT=enabled`.
+10. Create or promote the application deployment containing that enabled
+    setting. Require the production alias and `/api/version` to prove the exact
+    `requiredApplicationCommit`; an environment-variable edit does not change
+    an already-running deployment.
+11. Under separate authorization, perform bounded authenticated production
+    verification. Resume general writes only through the write-pause resume
+    procedure after every required check passes.
+
+If the migration fails, keep writes paused and Finishers disabled. Confirm the
+explicit transaction left no successful target ledger row, target object, or
+curated row, then use the reviewed roll-forward or recovery path. Do not perform
+object-by-object rollback.
+
+The Finisher flag can be disabled after rollout without reverting the migration
+or deleting, rewriting, or hiding persisted history from the database. A
+disabled application simply stops exposing and querying Finishers. An
+application rollback after migration is permitted only to a version proven
+compatible with the migrated schema. Never enable the flag before the
+migration, role provisioning, Gate A, and required post-migration checks
+succeed.
 
 ### Disposable rollout-tooling gate
 

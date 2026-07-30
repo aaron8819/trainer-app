@@ -229,6 +229,7 @@ export default function LogWorkoutClient({
   },
   initialRestTimer,
   onQueueExerciseRowRender,
+  finishersEnabled = false,
 }: {
   workoutId: string;
   initialRevision?: number;
@@ -240,6 +241,7 @@ export default function LogWorkoutClient({
   onQueueExerciseRowRender?: (exerciseId: string) => void;
   sessionIdentityLabel?: string | null;
   sessionTechnicalLabel?: string | null;
+  finishersEnabled?: boolean;
 }) {
   const {
     data,
@@ -1221,6 +1223,7 @@ export default function LogWorkoutClient({
         <CompletedWorkoutReview
           workoutId={workoutId}
           performanceSummary={performanceSummary}
+          finishersEnabled={finishersEnabled}
         />
       ) : null}
 

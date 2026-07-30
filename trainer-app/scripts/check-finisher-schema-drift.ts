@@ -46,5 +46,5 @@ if (report.issues.length > 0) {
 }
 
 console.log(
-  "Prisma diff proposes no destructive weakening of protected Finisher relationships.",
+  "Prisma diff contains no unexpected schema statements.",
 );

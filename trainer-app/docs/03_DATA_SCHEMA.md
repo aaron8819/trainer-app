@@ -164,14 +164,19 @@ foreign-key error.
 The canonical Prisma schema models the composite execution/version,
 prescribed-step/version/order, and performed-alternative/prescribed-step
 bindings directly, with their supporting composite uniqueness and restrictive
-update/delete actions. PostgreSQL additionally retains three redundant simple
+update/delete actions. Explicit Prisma relation maps preserve the reviewed
+constraint identities instead of proposing name-only renames. PostgreSQL
+additionally retains three redundant simple
 restrictive foreign keys on execution step `executionId`, `routineStepId`, and
 `performedAlternativeId`. Prisma cannot model each simple relation and its
 overlapping composite relation simultaneously, so those three named
 constraints are intentional database-only extensions. The
-`verify:finisher-schema-drift` check permits only those exact proposed drops
-while rejecting any destructive or cascading change to protected Finisher
-relationships.
+`verify:finisher-schema-drift` check uses a statement-level exact allowlist:
+it permits and reports only those three named drops on
+`FinisherExecutionStep`. Every other executable statement fails closed,
+including additive drift, unrelated destructive drift, restoration of a
+missing protected relationship, supporting-uniqueness changes, and malformed
+or unrecognized SQL.
 
 Owner: Aaron  
 Last reviewed: 2026-03-19  
@@ -219,7 +224,7 @@ Canonical machine-readable values in `docs/contracts/runtime-contracts.json` cur
 - Workout saves rewrite workout exercises/sets when exercise payload is supplied (`/api/workouts/save`).
 - Set logging upserts by `workoutSetId` (`/api/logs/set`), making log state idempotent per set.
 - `SetLog.setIntent` persists performed-set intent. `WORK` is the default for old rows and omitted payloads; `WARMUP` marks a logged warmup/ramp set that remains visible as performed reality but is excluded from work-set evidence, progression/next-exposure anchors, prescription calibration, and weekly/effective volume. There is no automatic historical reclassification.
-- Performed `WorkoutExercise`/`SetLog` history keyed by `Exercise.id` is authoritative for exercise rotation and freshness. `LegacyExerciseExposure` maps the old physical `ExerciseExposure` table as `@@ignore` for read-only rollout comparison only; it has no generated Prisma client API, no production reader or writer, and its name-keyed counts and averages are untrusted. The transitional migration intentionally retains its data for a later explicit drop.
+- Performed `WorkoutExercise`/`SetLog` history keyed by `Exercise.id` is authoritative for exercise rotation and freshness. `LegacyExerciseExposure` maps the old physical `ExerciseExposure` table as `@@ignore` for read-only rollout comparison only; it has no generated Prisma client API, no production reader or writer, and its name-keyed counts and averages are untrusted. Its ignored relation mapping retains the existing database foreign-key identity solely for exact schema-drift comparison. The transitional migration intentionally retains its data for a later explicit drop.
 - Filtered/rejected intent exercises are persisted to `FilteredExercise` for later explainability rendering.
 - `Constraints` now persists scheduling constraints as `daysPerWeek` and `splitType` (no `sessionMinutes` field) in `prisma/schema.prisma`, and is mapped into runtime constraints in `src/lib/api/workout-context.ts`.
 - Existing-workout saves are guarded atomically by `Workout.revision`: `persistWorkoutRow()` updates only `{ id, userId, revision: expectedRevision }` and increments the revision in that same `updateMany` statement. A failed predicate performs no child, receipt/reconciliation, filtered-exercise, completion, or lifecycle mutation.

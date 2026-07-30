@@ -19,91 +19,155 @@ export const INTENTIONAL_DATABASE_ONLY_FINISHER_RELATIONSHIPS = [
 const intentionalDatabaseOnly = new Set<string>(
   INTENTIONAL_DATABASE_ONLY_FINISHER_RELATIONSHIPS,
 );
+const intentionalDatabaseOnlyTable = "FinisherExecutionStep";
 
 export type FinisherSchemaDriftReport = {
   issues: string[];
   intentionalDatabaseOnlyExtensions: string[];
 };
 
-function statements(sql: string): string[] {
-  return sql
-    .replace(/^\s*--.*$/gm, "")
-    .split(";")
-    .map((statement) => statement.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
+type SqlStatements = {
+  statements: string[];
+  issues: string[];
+};
+
+function splitSqlStatements(sql: string): SqlStatements {
+  const statements: string[] = [];
+  const issues: string[] = [];
+  let current = "";
+  let state: "normal" | "single-quote" | "double-quote" | "line-comment" | "block-comment" =
+    "normal";
+  let blockCommentDepth = 0;
+
+  const pushStatement = () => {
+    const normalized = current.replace(/\s+/g, " ").trim();
+    if (normalized) statements.push(normalized);
+    current = "";
+  };
+
+  for (let index = 0; index < sql.length; index += 1) {
+    const character = sql[index]!;
+    const next = sql[index + 1];
+
+    if (state === "line-comment") {
+      if (character === "\n" || character === "\r") {
+        current += " ";
+        state = "normal";
+      }
+      continue;
+    }
+
+    if (state === "block-comment") {
+      if (character === "/" && next === "*") {
+        blockCommentDepth += 1;
+        index += 1;
+      } else if (character === "*" && next === "/") {
+        blockCommentDepth -= 1;
+        index += 1;
+        if (blockCommentDepth === 0) {
+          current += " ";
+          state = "normal";
+        }
+      }
+      continue;
+    }
+
+    if (state === "single-quote") {
+      current += character;
+      if (character === "'" && next === "'") {
+        current += next;
+        index += 1;
+      } else if (character === "'") {
+        state = "normal";
+      }
+      continue;
+    }
+
+    if (state === "double-quote") {
+      current += character;
+      if (character === '"' && next === '"') {
+        current += next;
+        index += 1;
+      } else if (character === '"') {
+        state = "normal";
+      }
+      continue;
+    }
+
+    if (character === "-" && next === "-") {
+      current += " ";
+      state = "line-comment";
+      index += 1;
+    } else if (character === "/" && next === "*") {
+      current += " ";
+      state = "block-comment";
+      blockCommentDepth = 1;
+      index += 1;
+    } else if (character === "'") {
+      current += character;
+      state = "single-quote";
+    } else if (character === '"') {
+      current += character;
+      state = "double-quote";
+    } else if (character === ";") {
+      pushStatement();
+    } else {
+      current += character;
+    }
+  }
+
+  if (state === "block-comment") {
+    issues.push("malformed-sql:unterminated-block-comment");
+  } else if (state === "single-quote") {
+    issues.push("malformed-sql:unterminated-string");
+  } else if (state === "double-quote") {
+    issues.push("malformed-sql:unterminated-identifier");
+  }
+  pushStatement();
+
+  return { statements, issues };
 }
 
 function unquote(identifier: string): string {
-  return identifier.replace(/^"|"$/g, "");
+  return identifier.startsWith('"') && identifier.endsWith('"')
+    ? identifier.slice(1, -1).replaceAll('""', '"')
+    : identifier;
 }
 
-function isFinisherIdentifier(identifier: string): boolean {
-  return unquote(identifier).startsWith("Finisher");
+function isTransactionWrapper(statement: string): boolean {
+  return /^(?:BEGIN(?: TRANSACTION)?|START TRANSACTION|COMMIT(?: TRANSACTION)?)$/i.test(
+    statement,
+  );
 }
 
 export function inspectFinisherSchemaDiff(
   sql: string,
 ): FinisherSchemaDriftReport {
-  const issues = new Set<string>();
+  const parsed = splitSqlStatements(sql);
+  const issues = new Set<string>(parsed.issues);
   const extensions = new Set<string>();
+  const identifier = String.raw`(?:"(?:[^"]|"")*"|[A-Za-z_][A-Za-z0-9_$]*)`;
+  const expectedDrop = new RegExp(
+    String.raw`^ALTER\s+TABLE\s+(${identifier})\s+DROP\s+CONSTRAINT\s+(${identifier})$`,
+    "i",
+  );
 
-  for (const statement of statements(sql)) {
-    const droppedConstraint = statement.match(
-      /^ALTER TABLE ("[^"]+"|\S+) DROP CONSTRAINT ("[^"]+"|\S+)$/i,
-    );
-    if (droppedConstraint) {
-      const table = unquote(droppedConstraint[1]!);
-      const constraint = unquote(droppedConstraint[2]!);
-      if (!isFinisherIdentifier(table) && !isFinisherIdentifier(constraint)) {
-        continue;
-      }
-      if (intentionalDatabaseOnly.has(constraint)) {
+  for (const statement of parsed.statements) {
+    if (isTransactionWrapper(statement)) continue;
+
+    const drop = statement.match(expectedDrop);
+    if (drop) {
+      const table = unquote(drop[1]!);
+      const constraint = unquote(drop[2]!);
+      if (
+        table === intentionalDatabaseOnlyTable &&
+        intentionalDatabaseOnly.has(constraint)
+      ) {
         extensions.add(constraint);
-      } else {
-        issues.add(`destructive-constraint-drop:${table}.${constraint}`);
-      }
-      continue;
-    }
-
-    const droppedIndex = statement.match(/^DROP INDEX ("[^"]+"|\S+)$/i);
-    if (droppedIndex && isFinisherIdentifier(droppedIndex[1]!)) {
-      issues.add(`destructive-index-drop:${unquote(droppedIndex[1]!)}`);
-      continue;
-    }
-
-    const droppedTable = statement.match(
-      /^DROP TABLE ("[^"]+"|\S+)(?: CASCADE)?$/i,
-    );
-    if (droppedTable && isFinisherIdentifier(droppedTable[1]!)) {
-      issues.add(`destructive-table-drop:${unquote(droppedTable[1]!)}`);
-      continue;
-    }
-
-    const addedForeignKey = statement.match(
-      /^ALTER TABLE ("[^"]+"|\S+) ADD CONSTRAINT ("[^"]+"|\S+) FOREIGN KEY .+ ON DELETE (\w+) ON UPDATE (\w+)$/i,
-    );
-    if (addedForeignKey) {
-      const table = unquote(addedForeignKey[1]!);
-      const constraint = unquote(addedForeignKey[2]!);
-      if (!isFinisherIdentifier(table) && !isFinisherIdentifier(constraint)) {
         continue;
       }
-      const onDelete = addedForeignKey[3]!.toUpperCase();
-      const onUpdate = addedForeignKey[4]!.toUpperCase();
-      if (onDelete !== "RESTRICT" || onUpdate !== "RESTRICT") {
-        issues.add(
-          `weak-foreign-key-action:${table}.${constraint}:delete=${onDelete}:update=${onUpdate}`,
-        );
-      }
-      continue;
     }
-
-    if (
-      /\b(?:DROP|CASCADE)\b/i.test(statement) &&
-      /"Finisher[A-Za-z0-9_]*"/.test(statement)
-    ) {
-      issues.add(`unrecognized-destructive-finisher-diff:${statement}`);
-    }
+    issues.add(`unexpected-statement:${statement}`);
   }
 
   return {

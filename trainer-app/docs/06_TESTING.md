@@ -107,13 +107,14 @@ Sources of truth:
   composite historical bindings, and supporting uniqueness.
 - `npm run verify:finisher-schema-drift`: read-only Prisma SQL diff from an
   explicitly supplied fully migrated disposable PostgreSQL database to the
-  canonical Prisma schema. It fails closed on protected Finisher constraint or
-  uniqueness removal, delete/update cascades, and unrecognized destructive
-  Finisher SQL. It reports, rather than silently ignores, the exact three
-  overlapping simple foreign keys retained as supported database-only
-  extensions. Credential-free CI exercises its pure normalized-diff contract
-  tests; the disposable workout-mutation harness exercises the live migrated
-  database comparison.
+  canonical Prisma schema. Its normalized statement-level allowlist accepts and
+  reports only the exact three overlapping simple foreign-key drops retained as
+  supported database-only extensions. Every other executable statement fails
+  closed, including unrelated additive/destructive drift, missing protected
+  relationships proposed as restrictive additions, supporting-uniqueness
+  changes, and malformed or unrecognized SQL. Credential-free CI exercises the
+  pure normalized-diff contract tests; the disposable workout-mutation harness
+  exercises the live migrated database comparison.
 - Immutable seed changes require focused revision/receipt/save/runtime/audit tests, `npm run verify:contracts`, `npm run verify`, and a real `prisma migrate deploy` on disposable PostgreSQL.
 - `npm run lint`: ESLint with cache at `.eslintcache`; generated/local-only outputs such as `artifacts/`, `.tmp/`, `.vercel/`, `output/`, `playwright-report/`, and `test-results/` are ignored by ESLint
 - `npm run test:ui-audit`: Playwright core-route UI audit plus lightweight fixture-backed interaction checks against mobile and desktop projects

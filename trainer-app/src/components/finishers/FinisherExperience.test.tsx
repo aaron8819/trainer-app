@@ -123,9 +123,32 @@ function execution(
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
+
+function response(body: unknown, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+  };
+}
+
+function makeVisibilityRefreshable() {
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+}
+
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -281,6 +304,194 @@ describe("FinisherExperience", () => {
       terminal,
       staleOtherExecution,
     ]);
+  });
+
+  it("keeps a newer successful command visible when an older load fails", async () => {
+    const staleLoad = deferred<ReturnType<typeof response>>();
+    const declinedOffer = {
+      ...offer(),
+      declined: true,
+      offer: {
+        ...offer().offer!,
+        revision: 2,
+        declinedAt: "2026-07-28T12:00:30.000Z",
+      },
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(response(offer()))
+      .mockReturnValueOnce(staleLoad.promise)
+      .mockResolvedValueOnce(response(declinedOffer));
+    vi.stubGlobal("fetch", fetchMock);
+    makeVisibilityRefreshable();
+
+    render(<FinisherExperience workoutId="workout-1" />);
+    await screen.findByRole("button", {
+      name: "Finish without a finisher",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Finish without a finisher",
+      }),
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    await waitFor(() =>
+      expect(screen.getByText(/No finisher was started/i)).toBeInTheDocument(),
+    );
+
+    staleLoad.reject(new Error("obsolete load failure"));
+
+    await waitFor(() =>
+      expect(screen.queryByText("obsolete load failure")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText(/No finisher was started/i)).toBeInTheDocument();
+  });
+
+  it("keeps a newer successful load authoritative when an older load fails", async () => {
+    const staleLoad = deferred<ReturnType<typeof response>>();
+    const newest = offer(
+      execution({
+        revision: 8,
+        state: "COMPLETED",
+        completedAt: "2026-07-28T12:01:00.000Z",
+      }),
+    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(response(offer()))
+      .mockReturnValueOnce(staleLoad.promise)
+      .mockResolvedValueOnce(response(newest));
+    vi.stubGlobal("fetch", fetchMock);
+    makeVisibilityRefreshable();
+
+    render(<FinisherExperience workoutId="workout-1" />);
+    await screen.findByText("Add an optional finisher?");
+    document.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    await screen.findByRole("region", { name: "Finisher summary" });
+    staleLoad.reject(new Error("obsolete refresh failure"));
+
+    await waitFor(() =>
+      expect(screen.queryByText("obsolete refresh failure")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText("Completed")).toBeInTheDocument();
+  });
+
+  it("does not let an older load clear loading owned by a newer load", async () => {
+    const olderLoad = deferred<ReturnType<typeof response>>();
+    const newerLoad = deferred<ReturnType<typeof response>>();
+    const fetchMock = vi
+      .fn()
+      .mockReturnValueOnce(olderLoad.promise)
+      .mockReturnValueOnce(newerLoad.promise);
+    vi.stubGlobal("fetch", fetchMock);
+    makeVisibilityRefreshable();
+
+    render(<FinisherExperience workoutId="workout-1" />);
+    expect(
+      screen.getByRole("region", { name: "Finisher loading" }),
+    ).toBeInTheDocument();
+    document.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    olderLoad.resolve(response(offer()));
+    await Promise.resolve();
+    expect(
+      screen.getByRole("region", { name: "Finisher loading" }),
+    ).toBeInTheDocument();
+
+    newerLoad.resolve(response(offer()));
+    await screen.findByText("Add an optional finisher?");
+    expect(
+      screen.queryByRole("region", { name: "Finisher loading" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows an error from the current authoritative request", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new Error("current load failure")),
+    );
+
+    render(<FinisherExperience workoutId="workout-1" />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "current load failure",
+    );
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("does not update state when a load rejects after unmount", async () => {
+    const pendingLoad = deferred<ReturnType<typeof response>>();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(pendingLoad.promise));
+
+    const rendered = render(<FinisherExperience workoutId="workout-1" />);
+    rendered.unmount();
+    pendingLoad.reject(new Error("rejected after unmount"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(consoleError).not.toHaveBeenCalled();
+  });
+
+  it("does not regress terminal state when an older active load succeeds late", async () => {
+    const active = execution({
+      revision: 7,
+      state: "IN_PROGRESS",
+      endedAt: null,
+      timer: {
+        ...execution().timer,
+        segment: "WORK",
+        revision: 7,
+        segmentEndsAt: "2026-07-28T12:01:00.000Z",
+      },
+    });
+    const terminal = execution({
+      revision: 8,
+      state: "COMPLETED",
+      completedAt: "2026-07-28T12:01:00.000Z",
+      timer: {
+        ...execution().timer,
+        revision: 8,
+      },
+    });
+    const staleLoad = deferred<ReturnType<typeof response>>();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(response(offer(active)))
+      .mockReturnValueOnce(staleLoad.promise)
+      .mockResolvedValueOnce(response(terminal));
+    vi.stubGlobal("fetch", fetchMock);
+    makeVisibilityRefreshable();
+
+    render(<FinisherExperience workoutId="workout-1" />);
+    await screen.findByRole("button", { name: "Pause" });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+
+    await screen.findByRole("region", { name: "Finisher summary" });
+    staleLoad.resolve(
+      response(
+        offer(
+          execution({
+            ...active,
+            revision: 6,
+            timer: { ...active.timer, revision: 6 },
+          }),
+        ),
+      ),
+    );
+
+    await waitFor(() => expect(screen.getByText("Completed")).toBeInTheDocument());
+    expect(
+      screen.getByRole("region", { name: "Finisher summary" }),
+    ).toBeInTheDocument();
   });
 
   it("offers a recommendation, browse, preview, and decline after completion", async () => {

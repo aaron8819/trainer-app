@@ -27,6 +27,11 @@ replace current state. Timer calibration changes only when that incoming result
 is the selected authority. A delayed replay therefore cannot regress the
 active segment, remaining/elapsed time, or terminal presentation, while a newer
 POST or current GET projection still recalibrates normally.
+Loads and commands share one latest-started request sequence. Success, failure,
+and finalization may update visible data, error, loading, submission, or timer
+calibration state only while that request is still current and the component is
+mounted. A late load therefore cannot overwrite a newer command/load result,
+surface an obsolete error, or clear state owned by the newer request.
 The timer requests screen wake lock while running and exposes independent
 opt-in sound/vibration controls with textual fallbacks.
 

@@ -171,7 +171,6 @@ export function FinisherExperience({
   const syncAttempts = useRef(new Set<string>());
   const pendingCommandIds = useRef(new Map<string, string>());
   const requestSequence = useRef(0);
-  const latestAppliedRequest = useRef(0);
   const mounted = useRef(true);
   const endButtonRef = useRef<HTMLButtonElement | null>(null);
   const summaryRef = useRef<HTMLElement | null>(null);
@@ -180,6 +179,11 @@ export function FinisherExperience({
     typeof navigator !== "undefined" && "wakeLock" in navigator;
   const supportsVibration =
     typeof navigator !== "undefined" && "vibrate" in navigator;
+  const isAuthoritativeRequest = useCallback(
+    (sequence: number) =>
+      mounted.current && sequence === requestSequence.current,
+    [],
+  );
 
   const load = useCallback(async () => {
     if (submittingRef.current) return;
@@ -193,6 +197,7 @@ export function FinisherExperience({
         error?: string;
       };
       if (response.ok && !body.offer && !historyOnly) {
+        if (!isAuthoritativeRequest(sequence)) return;
         response = await fetch(`/api/workouts/${workoutId}/finisher`, {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -206,8 +211,7 @@ export function FinisherExperience({
       if (!response.ok) {
         throw new Error(body.error ?? "Unable to load finishers");
       }
-      if (!mounted.current || sequence < latestAppliedRequest.current) return;
-      latestAppliedRequest.current = sequence;
+      if (!isAuthoritativeRequest(sequence)) return;
       setServerEpochAtMonotonicOrigin(
         estimateServerEpochAtMonotonicOrigin({
           serverTime: body.serverTime,
@@ -220,13 +224,17 @@ export function FinisherExperience({
       setOffer(body);
       setError(null);
     } catch (loadError) {
-      setError(
-        loadError instanceof Error ? loadError.message : "Unable to load finishers"
-      );
+      if (isAuthoritativeRequest(sequence)) {
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Unable to load finishers",
+        );
+      }
     } finally {
-      setLoading(false);
+      if (isAuthoritativeRequest(sequence)) setLoading(false);
     }
-  }, [historyOnly, workoutId]);
+  }, [historyOnly, isAuthoritativeRequest, workoutId]);
 
   useEffect(() => {
     void load();
@@ -357,10 +365,10 @@ export function FinisherExperience({
   const mutate = useCallback(
     async (body: Record<string, unknown>) => {
       if (submittingRef.current) return false;
+      const sequence = ++requestSequence.current;
       submittingRef.current = true;
       setSubmitting(true);
       setError(null);
-      const sequence = ++requestSequence.current;
       const requestStartedAt = performance.now();
       const action = typeof body.action === "string" ? body.action : "";
       const executionCommand =
@@ -395,9 +403,14 @@ export function FinisherExperience({
         try {
           attempt = await send();
         } catch {
+          if (!isAuthoritativeRequest(sequence)) return false;
           attempt = await send();
         }
-        if (!attempt.response.ok && attempt.response.status >= 500) {
+        if (
+          isAuthoritativeRequest(sequence) &&
+          !attempt.response.ok &&
+          attempt.response.status >= 500
+        ) {
           attempt = await send();
         }
         const { response, result } = attempt;
@@ -409,10 +422,7 @@ export function FinisherExperience({
           throw new Error(result.error ?? "Finisher action failed");
         }
         if (pendingKey) pendingCommandIds.current.delete(pendingKey);
-        if (!mounted.current || sequence < latestAppliedRequest.current) {
-          return false;
-        }
-        latestAppliedRequest.current = sequence;
+        if (!isAuthoritativeRequest(sequence)) return false;
         if (executionCommand) {
           const commandResult = result as FinisherExecutionDto;
           const current = offerRef.current;
@@ -449,7 +459,7 @@ export function FinisherExperience({
         setConfirmEnd(false);
         return true;
       } catch (mutationError) {
-        if (mounted.current) {
+        if (isAuthoritativeRequest(sequence)) {
           setError(
             mutationError instanceof Error
               ? mutationError.message
@@ -459,10 +469,10 @@ export function FinisherExperience({
         return false;
       } finally {
         submittingRef.current = false;
-        if (mounted.current) setSubmitting(false);
+        if (isAuthoritativeRequest(sequence)) setSubmitting(false);
       }
     },
-    [workoutId],
+    [isAuthoritativeRequest, workoutId],
   );
 
   useEffect(() => {

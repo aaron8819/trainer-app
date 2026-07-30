@@ -2584,6 +2584,240 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       ).toBe(0);
     });
 
+    it("rejects contradictory terminal parent and child commits atomically through runtime SQL", async () => {
+      async function readHistory(executionId: string) {
+        return client.finisherExecution.findUniqueOrThrow({
+          where: { id: executionId },
+          include: {
+            stepExecutions: { orderBy: { orderIndex: "asc" } },
+          },
+        });
+      }
+
+      async function expectRejectedWithoutHistoryChange(
+        executionId: string,
+        attack: () => Promise<unknown>,
+      ) {
+        const before = await readHistory(executionId);
+        await expect(attack()).rejects.toThrow();
+        await expect(readHistory(executionId)).resolves.toEqual(before);
+      }
+
+      const selectedWorkout = await createWorkout("COMPLETED");
+      const selected = await selectFinisher({
+        userId: ownerId,
+        workoutId: selectedWorkout.id,
+        routineVersionId,
+        now,
+      });
+      await expectRejectedWithoutHistoryChange(selected.id, () =>
+        runtimePool.query(
+          `WITH terminal_clock AS (
+             SELECT clock_timestamp()::timestamp(3) AS at
+           )
+           UPDATE "FinisherExecution" execution
+           SET "state" = 'COMPLETED',
+               "startedAt" = terminal_clock.at,
+               "completedAt" = terminal_clock.at,
+               "endedAt" = terminal_clock.at,
+               "timerSegment" = 'FINISHED',
+               "currentStepIndex" = 1,
+               "segmentStartedAt" = terminal_clock.at,
+               "segmentEndsAt" = terminal_clock.at,
+               "revision" = execution."revision" + 1
+           FROM terminal_clock
+           WHERE execution."id" = $1`,
+          [selected.id],
+        ),
+      );
+
+      for (const terminalState of ["COMPLETED", "PARTIAL", "SKIPPED"] as const) {
+        const workout = await createWorkout("COMPLETED");
+        const started = await startFinisher({
+          userId: ownerId,
+          workoutId: workout.id,
+          routineVersionId,
+          now,
+        });
+        await expectRejectedWithoutHistoryChange(started.id, () =>
+          runtimePool.query(
+            `WITH terminal_clock AS (
+               SELECT clock_timestamp()::timestamp(3) AS at
+             )
+             UPDATE "FinisherExecution" execution
+             SET "state" = $2::"FinisherExecutionState",
+                 "completedAt" = CASE WHEN $2 = 'COMPLETED' THEN terminal_clock.at ELSE NULL END,
+                 "endedAt" = terminal_clock.at,
+                 "timerSegment" = 'FINISHED',
+                 "currentStepIndex" = 1,
+                 "segmentStartedAt" = terminal_clock.at,
+                 "segmentEndsAt" = terminal_clock.at,
+                 "revision" = execution."revision" + 1
+             FROM terminal_clock
+             WHERE execution."id" = $1`,
+            [started.id, terminalState],
+          ),
+        );
+      }
+
+      const mixedWorkout = await createWorkout("COMPLETED");
+      const mixed = await startFinisher({
+        userId: ownerId,
+        workoutId: mixedWorkout.id,
+        routineVersionId,
+        now,
+      });
+      const mixedBefore = await readHistory(mixed.id);
+      const mixedConnection = await runtimePool.connect();
+      try {
+        await mixedConnection.query("BEGIN");
+        await mixedConnection.query(
+          `WITH terminal_clock AS (
+             SELECT clock_timestamp()::timestamp(3) AS at
+           )
+           UPDATE "FinisherExecutionStep" step
+           SET "status" = 'SKIPPED',
+               "startedAt" = COALESCE(step."startedAt", terminal_clock.at),
+               "resolvedAt" = terminal_clock.at
+           FROM terminal_clock
+           WHERE step."executionId" = $1`,
+          [mixed.id],
+        );
+        await mixedConnection.query(
+          `WITH terminal_clock AS (
+             SELECT clock_timestamp()::timestamp(3) AS at
+           )
+           UPDATE "FinisherExecution" execution
+           SET "state" = 'COMPLETED',
+               "completedAt" = terminal_clock.at,
+               "endedAt" = terminal_clock.at,
+               "timerSegment" = 'FINISHED',
+               "currentStepIndex" = 1,
+               "segmentStartedAt" = terminal_clock.at,
+               "segmentEndsAt" = terminal_clock.at,
+               "revision" = execution."revision" + 1
+           FROM terminal_clock
+           WHERE execution."id" = $1`,
+          [mixed.id],
+        );
+        await expect(mixedConnection.query("COMMIT")).rejects.toThrow();
+      } finally {
+        await mixedConnection.query("ROLLBACK").catch(() => undefined);
+        mixedConnection.release();
+      }
+      await expect(readHistory(mixed.id)).resolves.toEqual(mixedBefore);
+
+      const bulkExecutions = [];
+      for (let index = 0; index < 2; index += 1) {
+        const workout = await createWorkout("COMPLETED");
+        bulkExecutions.push(
+          await selectFinisher({
+            userId: ownerId,
+            workoutId: workout.id,
+            routineVersionId,
+            now,
+          }),
+        );
+      }
+      const bulkBefore = await Promise.all(
+        bulkExecutions.map((execution) => readHistory(execution.id)),
+      );
+      await expect(
+        runtimePool.query(
+          `WITH terminal_clock AS (
+             SELECT clock_timestamp()::timestamp(3) AS at
+           )
+           UPDATE "FinisherExecution" execution
+           SET "state" = 'COMPLETED',
+               "startedAt" = terminal_clock.at,
+               "completedAt" = terminal_clock.at,
+               "endedAt" = terminal_clock.at,
+               "timerSegment" = 'FINISHED',
+               "currentStepIndex" = 1,
+               "segmentStartedAt" = terminal_clock.at,
+               "segmentEndsAt" = terminal_clock.at,
+               "revision" = execution."revision" + 1
+           FROM terminal_clock
+           WHERE execution."id" = ANY($1::text[])`,
+          [bulkExecutions.map((execution) => execution.id)],
+        ),
+      ).rejects.toThrow();
+      await expect(
+        Promise.all(
+          bulkExecutions.map((execution) => readHistory(execution.id)),
+        ),
+      ).resolves.toEqual(bulkBefore);
+    });
+
+    it("serializes terminalization against child mutation without freezing invalid evidence", async () => {
+      const workout = await createWorkout("COMPLETED");
+      const started = await startFinisher({
+        userId: ownerId,
+        workoutId: workout.id,
+        routineVersionId,
+        now,
+      });
+      const original = await client.finisherExecution.findUniqueOrThrow({
+        where: { id: started.id },
+        include: { stepExecutions: { orderBy: { orderIndex: "asc" } } },
+      });
+      const parentConnection = await runtimePool.connect();
+      const childConnection = await runtimePool.connect();
+      try {
+        await parentConnection.query("BEGIN");
+        await parentConnection.query(
+          `WITH terminal_clock AS (
+             SELECT clock_timestamp()::timestamp(3) AS at
+           )
+           UPDATE "FinisherExecution" execution
+           SET "state" = 'COMPLETED',
+               "completedAt" = terminal_clock.at,
+               "endedAt" = terminal_clock.at,
+               "timerSegment" = 'FINISHED',
+               "currentStepIndex" = 1,
+               "segmentStartedAt" = terminal_clock.at,
+               "segmentEndsAt" = terminal_clock.at,
+               "revision" = execution."revision" + 1
+           FROM terminal_clock
+           WHERE execution."id" = $1`,
+          [started.id],
+        );
+
+        await childConnection.query("BEGIN");
+        const childMutation = childConnection.query(
+          `UPDATE "FinisherExecutionStep"
+           SET "performedAlternativeId" = $2
+           WHERE "executionId" = $1 AND "orderIndex" = 0`,
+          [started.id, alternativeId],
+        );
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        await expect(parentConnection.query("COMMIT")).rejects.toThrow();
+        await parentConnection.query("ROLLBACK").catch(() => undefined);
+        await expect(childMutation).resolves.toMatchObject({ rowCount: 1 });
+        await childConnection.query("COMMIT");
+      } finally {
+        await parentConnection.query("ROLLBACK").catch(() => undefined);
+        await childConnection.query("ROLLBACK").catch(() => undefined);
+        parentConnection.release();
+        childConnection.release();
+      }
+
+      const after = await client.finisherExecution.findUniqueOrThrow({
+        where: { id: started.id },
+        include: { stepExecutions: { orderBy: { orderIndex: "asc" } } },
+      });
+      expect(after).toMatchObject({
+        state: original.state,
+        completedAt: original.completedAt,
+        endedAt: original.endedAt,
+        revision: original.revision,
+      });
+      expect(after.stepExecutions[0]!.performedAlternativeId).toBe(alternativeId);
+      expect(after.stepExecutions.slice(1)).toEqual(
+        original.stepExecutions.slice(1),
+      );
+    });
+
     it("makes performed lifecycle history irreversible for runtime SQL and preserves both dismissal meanings", async () => {
       const { preparationSeconds } =
         await client.finisherRoutineVersion.findUniqueOrThrow({

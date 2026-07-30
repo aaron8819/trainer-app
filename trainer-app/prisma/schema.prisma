@@ -539,7 +539,7 @@ model FinisherRoutine {
 model FinisherRoutineVersion {
   id                    String                @id @default(uuid())
   routineId             String
-  routine               FinisherRoutine       @relation(fields: [routineId], references: [id], onDelete: Restrict)
+  routine               FinisherRoutine       @relation(fields: [routineId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   version               Int
   name                  String
   description           String
@@ -569,7 +569,7 @@ model FinisherRoutineVersion {
 model FinisherRoutineStep {
   id               String                           @id @default(uuid())
   routineVersionId String
-  routineVersion   FinisherRoutineVersion           @relation(fields: [routineVersionId], references: [id], onDelete: Restrict)
+  routineVersion   FinisherRoutineVersion           @relation(fields: [routineVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   orderIndex       Int
   movementName     String
   workSeconds      Int
@@ -585,7 +585,7 @@ model FinisherRoutineStep {
 model FinisherRoutineStepAlternative {
   id             String                  @id @default(uuid())
   routineStepId  String
-  routineStep    FinisherRoutineStep     @relation(fields: [routineStepId], references: [id], onDelete: Restrict)
+  routineStep    FinisherRoutineStep     @relation(fields: [routineStepId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   orderIndex     Int
   movementName   String
   executionSteps FinisherExecutionStep[]
@@ -604,7 +604,7 @@ model FinisherOffer {
   declinedAt                      DateTime?
   declineDecisionId               String?                 @unique
   recommendedRoutineVersionId     String?
-  recommendedRoutineVersion       FinisherRoutineVersion? @relation("FinisherRecommendedRoutine", fields: [recommendedRoutineVersionId], references: [id], onDelete: Restrict)
+  recommendedRoutineVersion       FinisherRoutineVersion? @relation("FinisherRecommendedRoutine", fields: [recommendedRoutineVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   recommendationReason            String?
   recommendationUnavailableReason String?
   recommendationContext           Json
@@ -625,9 +625,9 @@ model FinisherOffer {
 model FinisherOfferItem {
   id               String                 @id @default(uuid())
   offerId          String
-  offer            FinisherOffer          @relation(fields: [offerId], references: [id], onDelete: Restrict)
+  offer            FinisherOffer          @relation(fields: [offerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   routineVersionId String
-  routineVersion   FinisherRoutineVersion @relation(fields: [routineVersionId], references: [id], onDelete: Restrict)
+  routineVersion   FinisherRoutineVersion @relation(fields: [routineVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   position         Int
   warnings         String[]               @default([])
   executions       FinisherExecution[]
@@ -651,7 +651,7 @@ model FinisherExecution {
   offerItem                FinisherOfferItem          @relation(fields: [offerItemId, offerId, routineVersionId], references: [id, offerId, routineVersionId], onDelete: Restrict, onUpdate: Restrict)
   offerRevisionAtSelection Int
   routineVersionId         String
-  routineVersion           FinisherRoutineVersion     @relation(fields: [routineVersionId], references: [id], onDelete: Restrict)
+  routineVersion           FinisherRoutineVersion     @relation(fields: [routineVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   state                    FinisherExecutionState     @default(SELECTED)
   selectedAt               DateTime                   @default(now())
   finalizedAt              DateTime?
@@ -708,13 +708,13 @@ model FinisherDecision {
 model FinisherExecutionStep {
   id                     String                          @id @default(uuid())
   executionId            String
-  execution              FinisherExecution               @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  execution              FinisherExecution               @relation(fields: [executionId, routineVersionId], references: [id, routineVersionId], onDelete: Restrict, onUpdate: Restrict, map: "FinisherExecutionStep_executionId_routineVersionId_fkey")
   routineStepId          String
-  routineStep            FinisherRoutineStep             @relation(fields: [routineStepId], references: [id], onDelete: Restrict)
+  routineStep            FinisherRoutineStep             @relation(fields: [routineStepId, routineVersionId, orderIndex], references: [id, routineVersionId, orderIndex], onDelete: Restrict, onUpdate: Restrict, map: "FinisherExecutionStep_routineStep_binding_fkey")
   routineVersionId       String
   orderIndex             Int
   performedAlternativeId String?
-  performedAlternative   FinisherRoutineStepAlternative? @relation(fields: [performedAlternativeId], references: [id], onDelete: Restrict)
+  performedAlternative   FinisherRoutineStepAlternative? @relation(fields: [performedAlternativeId, routineStepId], references: [id, routineStepId], onDelete: Restrict, onUpdate: Restrict, map: "FinisherExecutionStep_performedAlternative_binding_fkey")
   status                 FinisherStepStatus              @default(PENDING)
   startedAt              DateTime?
   resolvedAt             DateTime?

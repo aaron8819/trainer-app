@@ -1258,6 +1258,108 @@ try {
   psql(
     `ALTER TABLE "FinisherExecutionStep" ENABLE TRIGGER "FinisherExecutionStep_evidence_immutable";`,
   );
+  for (const [table, trigger, label] of [
+    [
+      "FinisherExecution",
+      "FinisherExecution_terminal_outcome_coherence",
+      "Disabled terminal coherence parent path",
+    ],
+    [
+      "FinisherExecutionStep",
+      "FinisherExecutionStep_terminal_outcome_coherence",
+      "Disabled terminal coherence child path",
+    ],
+  ] as const) {
+    psql(`ALTER TABLE "${table}" DISABLE TRIGGER "${trigger}";`);
+    requireFinisherGateAFailure(label, trigger);
+    psql(`ALTER TABLE "${table}" ENABLE TRIGGER "${trigger}";`);
+  }
+
+  psql(`
+    DROP TRIGGER "FinisherExecution_terminal_outcome_coherence"
+      ON "FinisherExecution";
+    CREATE TRIGGER "FinisherExecution_terminal_outcome_coherence"
+      AFTER INSERT OR UPDATE ON "FinisherExecution"
+      FOR EACH ROW EXECUTE FUNCTION
+        validate_finisher_terminal_outcome_from_execution();
+  `);
+  requireFinisherGateAFailure(
+    "Terminal parent validation is no longer deferred",
+    "FinisherExecution_terminal_outcome_coherence",
+  );
+  psql(`
+    DROP TRIGGER "FinisherExecution_terminal_outcome_coherence"
+      ON "FinisherExecution";
+    CREATE CONSTRAINT TRIGGER "FinisherExecution_terminal_outcome_coherence"
+      AFTER INSERT OR UPDATE ON "FinisherExecution"
+      DEFERRABLE INITIALLY DEFERRED
+      FOR EACH ROW EXECUTE FUNCTION
+        validate_finisher_terminal_outcome_from_execution();
+  `);
+
+  const canonicalTerminalOutcomeFunction = psql(
+    `
+      SELECT pg_get_functiondef(p.oid)
+      FROM pg_catalog.pg_proc p
+      JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public'
+        AND p.proname = 'validate_finisher_terminal_outcome'
+        AND pg_get_function_identity_arguments(p.oid) =
+          'target_execution_id text';
+    `,
+    true,
+  );
+  psql(`
+    CREATE OR REPLACE FUNCTION
+      validate_finisher_terminal_outcome(target_execution_id TEXT)
+    RETURNS void
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      RETURN;
+    END;
+    $$;
+  `);
+  requireFinisherGateAFailure(
+    "Terminal outcome matrix permits contradictory commits",
+    "validate_finisher_terminal_outcome",
+  );
+  psql(`${canonicalTerminalOutcomeFunction};`);
+  for (const [label, canonicalClause] of [
+    [
+      "Completed outcome permits pending prescribed steps",
+      "completed_step_count <> prescribed_step_count",
+    ],
+    [
+      "Partial outcome permits no performed step evidence",
+      "completed_step_count + partial_step_count = 0",
+    ],
+    [
+      "Skipped outcome permits contradictory step evidence",
+      "skipped_step_count <> prescribed_step_count",
+    ],
+    [
+      "Never-started dismissal permits touched child evidence",
+      "pending_step_count <> prescribed_step_count",
+    ],
+    [
+      "Performed dismissal permits cleared child evidence",
+      "performed_step_count = 0",
+    ],
+  ] as const) {
+    const weakened = canonicalTerminalOutcomeFunction.replace(
+      canonicalClause,
+      "FALSE",
+    );
+    if (weakened === canonicalTerminalOutcomeFunction) {
+      throw new Error(
+        `Canonical terminal outcome function omitted expected clause: ${canonicalClause}`,
+      );
+    }
+    psql(`${weakened};`);
+    requireFinisherGateAFailure(label, "validate_finisher_terminal_outcome");
+    psql(`${canonicalTerminalOutcomeFunction};`);
+  }
+
   psql(
     `ALTER TABLE "FinisherExecutionCommand" ENABLE REPLICA TRIGGER "FinisherExecutionCommand_tombstone";`,
   );
@@ -1777,7 +1879,93 @@ try {
     ALTER TABLE "FinisherOfferItem"
       ADD CONSTRAINT "FinisherOfferItem_offerId_fkey"
       FOREIGN KEY ("offerId") REFERENCES "FinisherOffer"("id")
+      ON DELETE RESTRICT ON UPDATE RESTRICT;
+  `);
+
+  psql(`
+    ALTER TABLE "FinisherExecutionStep"
+      DROP CONSTRAINT
+        "FinisherExecutionStep_executionId_routineVersionId_fkey";
+  `);
+  requireFinisherAppliedSchemaFailure(
+    "Missing execution-to-routine-version binding",
+    "FinisherExecutionStep_executionId_routineVersionId_fkey",
+  );
+  psql(`
+    ALTER TABLE "FinisherExecutionStep"
+      ADD CONSTRAINT
+        "FinisherExecutionStep_executionId_routineVersionId_fkey"
+      FOREIGN KEY ("executionId", "routineVersionId")
+      REFERENCES "FinisherExecution"("id", "routineVersionId")
+      ON DELETE RESTRICT ON UPDATE RESTRICT;
+  `);
+
+  psql(`
+    ALTER TABLE "FinisherExecutionStep"
+      DROP CONSTRAINT "FinisherExecutionStep_routineStep_binding_fkey";
+    ALTER TABLE "FinisherExecutionStep"
+      ADD CONSTRAINT "FinisherExecutionStep_routineStep_binding_fkey"
+      FOREIGN KEY ("routineStepId", "routineVersionId", "orderIndex")
+      REFERENCES "FinisherRoutineStep"(
+        "id", "routineVersionId", "orderIndex"
+      )
       ON DELETE RESTRICT ON UPDATE CASCADE;
+  `);
+  requireFinisherGateAFailure(
+    "Protected step/version/order update action became cascading",
+    "FinisherExecutionStep_routineStep_binding_fkey",
+  );
+  psql(`
+    ALTER TABLE "FinisherExecutionStep"
+      DROP CONSTRAINT "FinisherExecutionStep_routineStep_binding_fkey";
+    ALTER TABLE "FinisherExecutionStep"
+      ADD CONSTRAINT "FinisherExecutionStep_routineStep_binding_fkey"
+      FOREIGN KEY ("routineStepId", "routineVersionId", "orderIndex")
+      REFERENCES "FinisherRoutineStep"(
+        "id", "routineVersionId", "orderIndex"
+      )
+      ON DELETE RESTRICT ON UPDATE RESTRICT;
+  `);
+
+  psql(`
+    ALTER TABLE "FinisherExecutionStep"
+      DROP CONSTRAINT
+        "FinisherExecutionStep_performedAlternative_binding_fkey";
+  `);
+  requireFinisherAppliedSchemaFailure(
+    "Missing performed-alternative-to-prescribed-step binding",
+    "FinisherExecutionStep_performedAlternative_binding_fkey",
+  );
+  psql(`
+    ALTER TABLE "FinisherExecutionStep"
+      ADD CONSTRAINT
+        "FinisherExecutionStep_performedAlternative_binding_fkey"
+      FOREIGN KEY ("performedAlternativeId", "routineStepId")
+      REFERENCES "FinisherRoutineStepAlternative"("id", "routineStepId")
+      ON DELETE RESTRICT ON UPDATE RESTRICT;
+  `);
+
+  psql(`
+    ALTER TABLE "FinisherExecutionStep"
+      DROP CONSTRAINT
+        "FinisherExecutionStep_performedAlternative_binding_fkey";
+    DROP INDEX
+      "FinisherRoutineStepAlternative_id_routineStepId_key";
+  `);
+  requireFinisherAppliedSchemaFailure(
+    "Missing supporting performed-alternative binding uniqueness",
+    "FinisherRoutineStepAlternative_id_routineStepId_key",
+  );
+  psql(`
+    CREATE UNIQUE INDEX
+      "FinisherRoutineStepAlternative_id_routineStepId_key"
+      ON "FinisherRoutineStepAlternative"("id", "routineStepId");
+    ALTER TABLE "FinisherExecutionStep"
+      ADD CONSTRAINT
+        "FinisherExecutionStep_performedAlternative_binding_fkey"
+      FOREIGN KEY ("performedAlternativeId", "routineStepId")
+      REFERENCES "FinisherRoutineStepAlternative"("id", "routineStepId")
+      ON DELETE RESTRICT ON UPDATE RESTRICT;
   `);
 
   psql(`
@@ -1938,7 +2126,7 @@ try {
       stateE: "fully_migrated_gate_a_not_applicable",
       baselineUniquenessVariants: "standalone_constraint_missing_wrong_order_non_unique_partial_predicate",
       finisherExactIntegrityNegatives:
-        "disabled_replica_only_missing_altered_event_altered_timing_altered_table_trigger_command_delete_event_removed_invalid_unready_nonlive_missing_altered_predicate_altered_column_nonunique_partial_index_weakened_terminal_step_command_and_security_changed_function_cleanup_body_owner_grant_role_membership_search_path_public_execute_runtime_mutation_removed_grant_guc_neutral_helper_unexpected_trigger_drift_weakened_unvalidated_and_fk_action_changed_constraint_unexpected_active_catalog_row",
+        "disabled_replica_only_missing_altered_event_altered_timing_altered_table_trigger_command_delete_event_removed_invalid_unready_nonlive_missing_altered_predicate_altered_column_nonunique_partial_index_weakened_terminal_parent_child_matrix_step_command_and_security_changed_function_cleanup_body_owner_grant_role_membership_search_path_public_execute_runtime_mutation_removed_grant_guc_neutral_helper_unexpected_trigger_drift_weakened_unvalidated_and_fk_action_composite_binding_uniqueness_changed_constraint_unexpected_active_catalog_row",
       readOnlyFingerprintsStable: true,
     },
     readinessIntegrity: {

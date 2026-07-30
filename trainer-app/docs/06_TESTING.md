@@ -74,7 +74,10 @@ Sources of truth:
   cross-version-safe execution prescriptions, exact composite
   execution/offer/item/workout/owner binding, rejection of mismatched and
   concurrent direct/Prisma construction, historical owner-transfer and
-  parent-deletion protection, distinct migration/runtime/owner/cleanup roles,
+  parent-deletion protection, a migrated-database-to-Prisma SQL diff that fails
+  on destructive protected relationship changes while naming the three
+  supported database-only simple foreign keys, distinct
+  migration/runtime/owner/cleanup roles,
   runtime impersonation and function-replacement rejection, database-clock
   creation with deliberately skewed application clocks, direct-database rejection of
   post-finalization append/reorder/reassignment/delete, durable
@@ -82,8 +85,10 @@ Sources of truth:
   receipt-safe retries for every existing-execution command, exact
   command-response HTTP replay after later state, exact-boundary receipt
   expiration, permanent command update/delete tombstones, constrained
-  before/at/after-expiry cleanup, terminal parent/step mutation rejection across
-  Prisma/direct SQL/bulk/insert/delete paths, bounded concurrent payload cleanup,
+  before/at/after-expiry cleanup, deferred terminal parent/child outcome
+  coherence from both mutation paths, original all-pending completion,
+  partial/skip/dismissal contradiction, mixed transaction, direct SQL, bulk,
+  rollback-preservation, and parent/child race attacks, bounded concurrent payload cleanup,
   execution-identity ABA isolation, and projected-versus-persisted completed,
   mixed, all-skipped, preparation-only, retained-work, and substitution
   outcomes, plus workout-deletion protection. After the DB suites, it runs the
@@ -97,7 +102,18 @@ Sources of truth:
   grants, protected role attributes and memberships, security-definer mode,
   fixed search path, static relation/function dependencies, neutral helper and
   unexpected-trigger discovery, removed/broadened privileges, and
-  caller-controlled-setting bypass rejection.
+  caller-controlled-setting bypass rejection, both deferred terminal-coherence
+  trigger paths, the independently authored outcome matrix, restrictive
+  composite historical bindings, and supporting uniqueness.
+- `npm run verify:finisher-schema-drift`: read-only Prisma SQL diff from an
+  explicitly supplied fully migrated disposable PostgreSQL database to the
+  canonical Prisma schema. It fails closed on protected Finisher constraint or
+  uniqueness removal, delete/update cascades, and unrecognized destructive
+  Finisher SQL. It reports, rather than silently ignores, the exact three
+  overlapping simple foreign keys retained as supported database-only
+  extensions. Credential-free CI exercises its pure normalized-diff contract
+  tests; the disposable workout-mutation harness exercises the live migrated
+  database comparison.
 - Immutable seed changes require focused revision/receipt/save/runtime/audit tests, `npm run verify:contracts`, `npm run verify`, and a real `prisma migrate deploy` on disposable PostgreSQL.
 - `npm run lint`: ESLint with cache at `.eslintcache`; generated/local-only outputs such as `artifacts/`, `.tmp/`, `.vercel/`, `output/`, `playwright-report/`, and `test-results/` are ignored by ESLint
 - `npm run test:ui-audit`: Playwright core-route UI audit plus lightweight fixture-backed interaction checks against mobile and desktop projects

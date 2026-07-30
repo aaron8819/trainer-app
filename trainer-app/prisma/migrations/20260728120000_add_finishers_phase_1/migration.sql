@@ -427,25 +427,25 @@ CREATE INDEX "FinisherExecutionCommand_cleanedAt_expiresAt_id_idx" ON "FinisherE
 
 ALTER TABLE "FinisherRoutineVersion"
   ADD CONSTRAINT "FinisherRoutineVersion_routineId_fkey"
-  FOREIGN KEY ("routineId") REFERENCES "FinisherRoutine"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  FOREIGN KEY ("routineId") REFERENCES "FinisherRoutine"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE "FinisherRoutineStep"
   ADD CONSTRAINT "FinisherRoutineStep_routineVersionId_fkey"
-  FOREIGN KEY ("routineVersionId") REFERENCES "FinisherRoutineVersion"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  FOREIGN KEY ("routineVersionId") REFERENCES "FinisherRoutineVersion"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE "FinisherRoutineStepAlternative"
   ADD CONSTRAINT "FinisherRoutineStepAlternative_routineStepId_fkey"
-  FOREIGN KEY ("routineStepId") REFERENCES "FinisherRoutineStep"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  FOREIGN KEY ("routineStepId") REFERENCES "FinisherRoutineStep"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE "FinisherOffer"
   ADD CONSTRAINT "FinisherOffer_workoutId_fkey"
   FOREIGN KEY ("workoutId", "ownerId") REFERENCES "Workout"("id", "userId") ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE "FinisherOffer"
   ADD CONSTRAINT "FinisherOffer_recommendedRoutineVersionId_fkey"
-  FOREIGN KEY ("recommendedRoutineVersionId") REFERENCES "FinisherRoutineVersion"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  FOREIGN KEY ("recommendedRoutineVersionId") REFERENCES "FinisherRoutineVersion"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE "FinisherOfferItem"
   ADD CONSTRAINT "FinisherOfferItem_offerId_fkey"
-  FOREIGN KEY ("offerId") REFERENCES "FinisherOffer"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  FOREIGN KEY ("offerId") REFERENCES "FinisherOffer"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE "FinisherOfferItem"
   ADD CONSTRAINT "FinisherOfferItem_routineVersionId_fkey"
-  FOREIGN KEY ("routineVersionId") REFERENCES "FinisherRoutineVersion"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  FOREIGN KEY ("routineVersionId") REFERENCES "FinisherRoutineVersion"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE "FinisherOffer"
   ADD CONSTRAINT "FinisherOffer_recommended_item_fkey"
   FOREIGN KEY ("id", "recommendedRoutineVersionId") REFERENCES "FinisherOfferItem"("offerId", "routineVersionId") ON DELETE RESTRICT ON UPDATE RESTRICT
@@ -479,19 +479,19 @@ ALTER TABLE "FinisherExecutionStep"
   FOREIGN KEY ("executionId") REFERENCES "FinisherExecution"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE "FinisherExecutionStep"
   ADD CONSTRAINT "FinisherExecutionStep_routineStepId_fkey"
-  FOREIGN KEY ("routineStepId") REFERENCES "FinisherRoutineStep"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  FOREIGN KEY ("routineStepId") REFERENCES "FinisherRoutineStep"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE "FinisherExecutionStep"
   ADD CONSTRAINT "FinisherExecutionStep_executionId_routineVersionId_fkey"
-  FOREIGN KEY ("executionId", "routineVersionId") REFERENCES "FinisherExecution"("id", "routineVersionId") ON DELETE RESTRICT ON UPDATE CASCADE;
+  FOREIGN KEY ("executionId", "routineVersionId") REFERENCES "FinisherExecution"("id", "routineVersionId") ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE "FinisherExecutionStep"
   ADD CONSTRAINT "FinisherExecutionStep_routineStep_binding_fkey"
-  FOREIGN KEY ("routineStepId", "routineVersionId", "orderIndex") REFERENCES "FinisherRoutineStep"("id", "routineVersionId", "orderIndex") ON DELETE RESTRICT ON UPDATE CASCADE;
+  FOREIGN KEY ("routineStepId", "routineVersionId", "orderIndex") REFERENCES "FinisherRoutineStep"("id", "routineVersionId", "orderIndex") ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE "FinisherExecutionStep"
   ADD CONSTRAINT "FinisherExecutionStep_performedAlternativeId_fkey"
-  FOREIGN KEY ("performedAlternativeId") REFERENCES "FinisherRoutineStepAlternative"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  FOREIGN KEY ("performedAlternativeId") REFERENCES "FinisherRoutineStepAlternative"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE "FinisherExecutionStep"
   ADD CONSTRAINT "FinisherExecutionStep_performedAlternative_binding_fkey"
-  FOREIGN KEY ("performedAlternativeId", "routineStepId") REFERENCES "FinisherRoutineStepAlternative"("id", "routineStepId") ON DELETE RESTRICT ON UPDATE CASCADE;
+  FOREIGN KEY ("performedAlternativeId", "routineStepId") REFERENCES "FinisherRoutineStepAlternative"("id", "routineStepId") ON DELETE RESTRICT ON UPDATE RESTRICT;
 ALTER TABLE "FinisherExecutionCommand"
   ADD CONSTRAINT "FinisherExecutionCommand_executionId_workoutId_fkey"
   FOREIGN KEY ("executionId", "workoutId", "ownerId") REFERENCES "FinisherExecution"("id", "workoutId", "ownerId") ON DELETE RESTRICT ON UPDATE RESTRICT;
@@ -727,6 +727,194 @@ CREATE CONSTRAINT TRIGGER "FinisherExecution_require_finalized"
 AFTER INSERT ON "FinisherExecution"
 DEFERRABLE INITIALLY DEFERRED
 FOR EACH ROW EXECUTE FUNCTION require_finisher_execution_finalized();
+
+-- Terminal outcome meaning is owned by one deferred parent/child validator.
+-- Immediate lifecycle triggers preserve monotonic history while these constraint
+-- triggers judge only the final state of the surrounding transaction.
+CREATE FUNCTION validate_finisher_terminal_outcome(target_execution_id TEXT) RETURNS void
+LANGUAGE plpgsql AS $$
+DECLARE
+  execution_row "FinisherExecution"%ROWTYPE;
+  prescribed_step_count INTEGER;
+  pending_step_count INTEGER;
+  partial_step_count INTEGER;
+  completed_step_count INTEGER;
+  skipped_step_count INTEGER;
+  started_step_count INTEGER;
+  resolved_step_count INTEGER;
+  performed_step_count INTEGER;
+  actual_work_ms BIGINT;
+  minimum_order_index INTEGER;
+  maximum_order_index INTEGER;
+BEGIN
+  SELECT *
+  INTO execution_row
+  FROM "FinisherExecution"
+  WHERE "id" = target_execution_id
+  FOR UPDATE;
+
+  IF NOT FOUND
+    OR execution_row."state" NOT IN ('COMPLETED', 'PARTIAL', 'SKIPPED', 'DISMISSED')
+  THEN
+    RETURN;
+  END IF;
+
+  SELECT
+    COUNT(*)::INTEGER,
+    COUNT(*) FILTER (WHERE step."status" = 'PENDING')::INTEGER,
+    COUNT(*) FILTER (WHERE step."status" = 'PARTIAL')::INTEGER,
+    COUNT(*) FILTER (WHERE step."status" = 'COMPLETED')::INTEGER,
+    COUNT(*) FILTER (WHERE step."status" = 'SKIPPED')::INTEGER,
+    COUNT(*) FILTER (WHERE step."startedAt" IS NOT NULL)::INTEGER,
+    COUNT(*) FILTER (WHERE step."resolvedAt" IS NOT NULL)::INTEGER,
+    COUNT(*) FILTER (
+      WHERE step."startedAt" IS NOT NULL
+        OR step."resolvedAt" IS NOT NULL
+        OR step."actualWorkMs" > 0
+    )::INTEGER,
+    COALESCE(SUM(step."actualWorkMs"), 0),
+    MIN(step."orderIndex"),
+    MAX(step."orderIndex")
+  INTO
+    prescribed_step_count,
+    pending_step_count,
+    partial_step_count,
+    completed_step_count,
+    skipped_step_count,
+    started_step_count,
+    resolved_step_count,
+    performed_step_count,
+    actual_work_ms,
+    minimum_order_index,
+    maximum_order_index
+  FROM "FinisherExecutionStep" step
+  WHERE step."executionId" = target_execution_id;
+
+  IF prescribed_step_count = 0
+    OR minimum_order_index <> 0
+    OR execution_row."currentStepIndex" < minimum_order_index
+    OR execution_row."currentStepIndex" > maximum_order_index
+  THEN
+    RAISE EXCEPTION 'terminal finisher outcome requires a valid active prescribed step';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM "FinisherExecutionStep" step
+    WHERE step."executionId" = target_execution_id
+      AND (
+        (
+          step."status" = 'PENDING'
+          AND (step."resolvedAt" IS NOT NULL OR step."actualWorkMs" <> 0)
+        )
+        OR
+        (
+          step."status" <> 'PENDING'
+          AND (
+            step."startedAt" IS NULL
+            OR step."resolvedAt" IS NULL
+            OR step."resolvedAt" < step."startedAt"
+          )
+        )
+        OR
+        (
+          step."status" IN ('COMPLETED', 'PARTIAL')
+          AND step."actualWorkMs" <= 0
+        )
+        OR
+        (
+          step."status" = 'SKIPPED'
+          AND step."actualWorkMs" <> 0
+        )
+        OR
+        (
+          execution_row."startedAt" IS NOT NULL
+          AND step."startedAt" IS NOT NULL
+          AND step."startedAt" < execution_row."startedAt"
+        )
+        OR
+        (
+          step."resolvedAt" IS NOT NULL
+          AND step."resolvedAt" > execution_row."endedAt"
+        )
+      )
+  ) THEN
+    RAISE EXCEPTION 'terminal finisher outcome contradicts prescribed step evidence';
+  END IF;
+
+  IF execution_row."state" = 'COMPLETED' THEN
+    IF completed_step_count <> prescribed_step_count
+      OR pending_step_count <> 0
+      OR partial_step_count <> 0
+      OR skipped_step_count <> 0
+      OR resolved_step_count <> prescribed_step_count
+      OR actual_work_ms <= 0
+      OR execution_row."currentStepIndex" <> maximum_order_index
+    THEN
+      RAISE EXCEPTION 'completed finisher outcome requires every prescribed step to contain completed work';
+    END IF;
+  ELSIF execution_row."state" = 'PARTIAL' THEN
+    IF actual_work_ms <= 0
+      OR completed_step_count + partial_step_count = 0
+    THEN
+      RAISE EXCEPTION 'partial finisher outcome requires genuine performed step evidence';
+    END IF;
+  ELSIF execution_row."state" = 'SKIPPED' THEN
+    IF skipped_step_count <> prescribed_step_count
+      OR pending_step_count <> 0
+      OR partial_step_count <> 0
+      OR completed_step_count <> 0
+      OR resolved_step_count <> prescribed_step_count
+      OR actual_work_ms <> 0
+      OR execution_row."recoveryActiveMs" <> 0
+      OR execution_row."currentStepIndex" <> maximum_order_index
+    THEN
+      RAISE EXCEPTION 'skipped finisher outcome requires every prescribed step to contain zero-work skip evidence';
+    END IF;
+  ELSIF execution_row."startedAt" IS NULL THEN
+    IF pending_step_count <> prescribed_step_count
+      OR started_step_count <> 0
+      OR resolved_step_count <> 0
+      OR actual_work_ms <> 0
+      OR execution_row."recoveryActiveMs" <> 0
+      OR execution_row."workPausedMs" <> 0
+      OR execution_row."recoveryPausedMs" <> 0
+    THEN
+      RAISE EXCEPTION 'never-started dismissed finisher must retain untouched prescribed step evidence';
+    END IF;
+  ELSIF performed_step_count = 0 THEN
+    RAISE EXCEPTION 'performed dismissed finisher must retain started or resolved prescribed step evidence';
+  END IF;
+END;
+$$;
+
+CREATE FUNCTION validate_finisher_terminal_outcome_from_execution() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  PERFORM validate_finisher_terminal_outcome(COALESCE(NEW."id", OLD."id"));
+  RETURN NULL;
+END;
+$$;
+
+CREATE FUNCTION validate_finisher_terminal_outcome_from_step() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  PERFORM validate_finisher_terminal_outcome(
+    CASE WHEN TG_OP = 'DELETE' THEN OLD."executionId" ELSE NEW."executionId" END
+  );
+  RETURN NULL;
+END;
+$$;
+
+CREATE CONSTRAINT TRIGGER "FinisherExecution_terminal_outcome_coherence"
+AFTER INSERT OR UPDATE ON "FinisherExecution"
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION validate_finisher_terminal_outcome_from_execution();
+
+CREATE CONSTRAINT TRIGGER "FinisherExecutionStep_terminal_outcome_coherence"
+AFTER INSERT OR UPDATE OR DELETE ON "FinisherExecutionStep"
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION validate_finisher_terminal_outcome_from_step();
 
 CREATE FUNCTION guard_finisher_offer_item_insert() RETURNS trigger
 LANGUAGE plpgsql AS $$
@@ -1206,6 +1394,9 @@ ALTER FUNCTION guard_finisher_routine_version_mutation() OWNER TO trainer_finish
 ALTER FUNCTION guard_finisher_routine_child_mutation() OWNER TO trainer_finisher_owner;
 ALTER FUNCTION require_finisher_offer_finalized() OWNER TO trainer_finisher_owner;
 ALTER FUNCTION require_finisher_execution_finalized() OWNER TO trainer_finisher_owner;
+ALTER FUNCTION validate_finisher_terminal_outcome(TEXT) OWNER TO trainer_finisher_owner;
+ALTER FUNCTION validate_finisher_terminal_outcome_from_execution() OWNER TO trainer_finisher_owner;
+ALTER FUNCTION validate_finisher_terminal_outcome_from_step() OWNER TO trainer_finisher_owner;
 ALTER FUNCTION guard_finisher_offer_item_insert() OWNER TO trainer_finisher_owner;
 ALTER FUNCTION guard_finisher_execution_step_insert() OWNER TO trainer_finisher_owner;
 ALTER FUNCTION guard_finisher_offer_identity() OWNER TO trainer_finisher_owner;
@@ -1662,6 +1853,9 @@ REVOKE ALL ON FUNCTION
   guard_finisher_routine_child_mutation(),
   require_finisher_offer_finalized(),
   require_finisher_execution_finalized(),
+  validate_finisher_terminal_outcome(TEXT),
+  validate_finisher_terminal_outcome_from_execution(),
+  validate_finisher_terminal_outcome_from_step(),
   guard_finisher_offer_item_insert(),
   guard_finisher_execution_step_insert(),
   guard_finisher_offer_identity(),
@@ -1677,6 +1871,8 @@ REVOKE ALL ON FUNCTION
 FROM PUBLIC, trainer_app_runtime, trainer_finisher_cleanup;
 REVOKE ALL ON FUNCTION cleanup_expired_finisher_execution_commands(INTEGER)
 FROM PUBLIC, trainer_finisher_owner;
+GRANT EXECUTE ON FUNCTION validate_finisher_terminal_outcome(TEXT)
+TO trainer_app_runtime;
 GRANT EXECUTE ON FUNCTION cleanup_expired_finisher_execution_commands(INTEGER)
 TO trainer_app_runtime;
 

@@ -396,14 +396,18 @@ function semanticFinisherFunction(
   name: string,
   bodyIncludes: string[],
   bodyExcludes: string[] = [],
+  options: {
+    arguments?: string;
+    resultType?: string;
+  } = {},
 ): ObjectExpectation {
   return {
     kind: "function",
     name,
     function: {
       language: "plpgsql",
-      arguments: "",
-      resultType: "trigger",
+      arguments: options.arguments ?? "",
+      resultType: options.resultType ?? "trigger",
       volatility: "v",
       securityDefiner: false,
       leakproof: false,
@@ -1183,13 +1187,13 @@ const FINISHER_SCHEMA_EXPECTATIONS: ObjectExpectation[] = [
     ],
   ),
   ...[
-    ["FinisherRoutineVersion", "FinisherRoutineVersion_routineId_fkey", "FOREIGN KEY (routineId) REFERENCES FinisherRoutine(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
-    ["FinisherRoutineStep", "FinisherRoutineStep_routineVersionId_fkey", "FOREIGN KEY (routineVersionId) REFERENCES FinisherRoutineVersion(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
-    ["FinisherRoutineStepAlternative", "FinisherRoutineStepAlternative_routineStepId_fkey", "FOREIGN KEY (routineStepId) REFERENCES FinisherRoutineStep(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
+    ["FinisherRoutineVersion", "FinisherRoutineVersion_routineId_fkey", "FOREIGN KEY (routineId) REFERENCES FinisherRoutine(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherRoutineStep", "FinisherRoutineStep_routineVersionId_fkey", "FOREIGN KEY (routineVersionId) REFERENCES FinisherRoutineVersion(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherRoutineStepAlternative", "FinisherRoutineStepAlternative_routineStepId_fkey", "FOREIGN KEY (routineStepId) REFERENCES FinisherRoutineStep(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
     ["FinisherOffer", "FinisherOffer_workoutId_fkey", "FOREIGN KEY (workoutId, ownerId) REFERENCES Workout(id, userId) ON UPDATE RESTRICT ON DELETE RESTRICT"],
-    ["FinisherOffer", "FinisherOffer_recommendedRoutineVersionId_fkey", "FOREIGN KEY (recommendedRoutineVersionId) REFERENCES FinisherRoutineVersion(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
-    ["FinisherOfferItem", "FinisherOfferItem_offerId_fkey", "FOREIGN KEY (offerId) REFERENCES FinisherOffer(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
-    ["FinisherOfferItem", "FinisherOfferItem_routineVersionId_fkey", "FOREIGN KEY (routineVersionId) REFERENCES FinisherRoutineVersion(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
+    ["FinisherOffer", "FinisherOffer_recommendedRoutineVersionId_fkey", "FOREIGN KEY (recommendedRoutineVersionId) REFERENCES FinisherRoutineVersion(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherOfferItem", "FinisherOfferItem_offerId_fkey", "FOREIGN KEY (offerId) REFERENCES FinisherOffer(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherOfferItem", "FinisherOfferItem_routineVersionId_fkey", "FOREIGN KEY (routineVersionId) REFERENCES FinisherRoutineVersion(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
     ["FinisherDecision", "FinisherDecision_offerId_fkey", "FOREIGN KEY (offerId, workoutId, ownerId) REFERENCES FinisherOffer(id, workoutId, ownerId) ON UPDATE RESTRICT ON DELETE RESTRICT"],
     ["FinisherDecision", "FinisherDecision_offerItem_binding_fkey", "FOREIGN KEY (offerItemId, offerId, routineVersionId) REFERENCES FinisherOfferItem(id, offerId, routineVersionId) ON UPDATE RESTRICT ON DELETE RESTRICT"],
     ["FinisherOffer", "FinisherOffer_declineDecisionId_fkey", "FOREIGN KEY (declineDecisionId) REFERENCES FinisherDecision(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
@@ -1199,11 +1203,11 @@ const FINISHER_SCHEMA_EXPECTATIONS: ObjectExpectation[] = [
     ["FinisherExecution", "FinisherExecution_routineVersionId_fkey", "FOREIGN KEY (routineVersionId) REFERENCES FinisherRoutineVersion(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
     ["FinisherExecution", "FinisherExecution_decisionId_fkey", "FOREIGN KEY (id) REFERENCES FinisherDecision(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
     ["FinisherExecutionStep", "FinisherExecutionStep_executionId_fkey", "FOREIGN KEY (executionId) REFERENCES FinisherExecution(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
-    ["FinisherExecutionStep", "FinisherExecutionStep_routineStepId_fkey", "FOREIGN KEY (routineStepId) REFERENCES FinisherRoutineStep(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
-    ["FinisherExecutionStep", "FinisherExecutionStep_executionId_routineVersionId_fkey", "FOREIGN KEY (executionId, routineVersionId) REFERENCES FinisherExecution(id, routineVersionId) ON UPDATE CASCADE ON DELETE RESTRICT"],
-    ["FinisherExecutionStep", "FinisherExecutionStep_routineStep_binding_fkey", "FOREIGN KEY (routineStepId, routineVersionId, orderIndex) REFERENCES FinisherRoutineStep(id, routineVersionId, orderIndex) ON UPDATE CASCADE ON DELETE RESTRICT"],
-    ["FinisherExecutionStep", "FinisherExecutionStep_performedAlternativeId_fkey", "FOREIGN KEY (performedAlternativeId) REFERENCES FinisherRoutineStepAlternative(id) ON UPDATE CASCADE ON DELETE RESTRICT"],
-    ["FinisherExecutionStep", "FinisherExecutionStep_performedAlternative_binding_fkey", "FOREIGN KEY (performedAlternativeId, routineStepId) REFERENCES FinisherRoutineStepAlternative(id, routineStepId) ON UPDATE CASCADE ON DELETE RESTRICT"],
+    ["FinisherExecutionStep", "FinisherExecutionStep_routineStepId_fkey", "FOREIGN KEY (routineStepId) REFERENCES FinisherRoutineStep(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherExecutionStep", "FinisherExecutionStep_executionId_routineVersionId_fkey", "FOREIGN KEY (executionId, routineVersionId) REFERENCES FinisherExecution(id, routineVersionId) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherExecutionStep", "FinisherExecutionStep_routineStep_binding_fkey", "FOREIGN KEY (routineStepId, routineVersionId, orderIndex) REFERENCES FinisherRoutineStep(id, routineVersionId, orderIndex) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherExecutionStep", "FinisherExecutionStep_performedAlternativeId_fkey", "FOREIGN KEY (performedAlternativeId) REFERENCES FinisherRoutineStepAlternative(id) ON UPDATE RESTRICT ON DELETE RESTRICT"],
+    ["FinisherExecutionStep", "FinisherExecutionStep_performedAlternative_binding_fkey", "FOREIGN KEY (performedAlternativeId, routineStepId) REFERENCES FinisherRoutineStepAlternative(id, routineStepId) ON UPDATE RESTRICT ON DELETE RESTRICT"],
     ["FinisherExecutionCommand", "FinisherExecutionCommand_executionId_workoutId_fkey", "FOREIGN KEY (executionId, workoutId, ownerId) REFERENCES FinisherExecution(id, workoutId, ownerId) ON UPDATE RESTRICT ON DELETE RESTRICT"],
   ].map(([table, name, definition]) =>
     finisherExactConstraint(table, name, "f", definition),
@@ -1247,6 +1251,48 @@ const FINISHER_SCHEMA_EXPECTATIONS: ObjectExpectation[] = [
     'decision."routineVersionId" = execution."routineVersionId"',
     'decision."expectedOfferRevision" = execution."offerRevisionAtSelection"',
   ]),
+  semanticFinisherFunction(
+    "validate_finisher_terminal_outcome",
+    [
+      'execution_row."state" NOT IN (\'COMPLETED\', \'PARTIAL\', \'SKIPPED\', \'DISMISSED\')',
+      'step."status" = \'PENDING\'',
+      'step."status" IN (\'COMPLETED\', \'PARTIAL\')',
+      'step."status" = \'SKIPPED\'',
+      'execution_row."state" = \'COMPLETED\'',
+      "completed_step_count <> prescribed_step_count",
+      "actual_work_ms <= 0",
+      'execution_row."state" = \'PARTIAL\'',
+      "completed_step_count + partial_step_count = 0",
+      'execution_row."state" = \'SKIPPED\'',
+      "skipped_step_count <> prescribed_step_count",
+      'execution_row."startedAt" IS NULL',
+      "pending_step_count <> prescribed_step_count",
+      "performed_step_count = 0",
+      'execution_row."currentStepIndex" <> maximum_order_index',
+      'execution_row."recoveryActiveMs" <> 0',
+      'execution_row."workPausedMs" <> 0',
+    ],
+    [],
+    {
+      arguments: "target_execution_id text",
+      resultType: "void",
+    },
+  ),
+  semanticFinisherFunction(
+    "validate_finisher_terminal_outcome_from_execution",
+    [
+      'validate_finisher_terminal_outcome(COALESCE(NEW."id", OLD."id"))',
+    ],
+  ),
+  semanticFinisherFunction(
+    "validate_finisher_terminal_outcome_from_step",
+    [
+      "TG_OP = 'DELETE'",
+      'OLD."executionId"',
+      'NEW."executionId"',
+      "validate_finisher_terminal_outcome",
+    ],
+  ),
   semanticFinisherFunction("guard_finisher_offer_item_insert", [
     'FROM "FinisherOffer"',
     'WHERE "id" = NEW."offerId"',
@@ -1362,6 +1408,18 @@ const FINISHER_SCHEMA_EXPECTATIONS: ObjectExpectation[] = [
     "FinisherExecution_require_finalized",
     'CREATE CONSTRAINT TRIGGER "FinisherExecution_require_finalized" AFTER INSERT ON "FinisherExecution" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION require_finisher_execution_finalized()',
     "require_finisher_execution_finalized",
+  ),
+  semanticFinisherTrigger(
+    "FinisherExecution",
+    "FinisherExecution_terminal_outcome_coherence",
+    'CREATE CONSTRAINT TRIGGER "FinisherExecution_terminal_outcome_coherence" AFTER INSERT OR UPDATE ON "FinisherExecution" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION validate_finisher_terminal_outcome_from_execution()',
+    "validate_finisher_terminal_outcome_from_execution",
+  ),
+  semanticFinisherTrigger(
+    "FinisherExecutionStep",
+    "FinisherExecutionStep_terminal_outcome_coherence",
+    'CREATE CONSTRAINT TRIGGER "FinisherExecutionStep_terminal_outcome_coherence" AFTER INSERT OR DELETE OR UPDATE ON "FinisherExecutionStep" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION validate_finisher_terminal_outcome_from_step()',
+    "validate_finisher_terminal_outcome_from_step",
   ),
   semanticFinisherTrigger(
     "FinisherDecision",
@@ -2061,7 +2119,9 @@ function finisherSecurityIssues(
       issues.push(`function-owner:${fn.name}:${fn.owner ?? "unverifiable"}`);
     }
     const actual = privilegeKeys(fn.privileges ?? [], expectedOwner);
-    const expected = cleanup
+    const runtimeCallable =
+      cleanup || fn.name === "validate_finisher_terminal_outcome";
+    const expected = runtimeCallable
       ? [`${FINISHER_RUNTIME_ROLE}:EXECUTE:plain`]
       : [];
     if (canonicalJson(actual) !== canonicalJson(expected)) {

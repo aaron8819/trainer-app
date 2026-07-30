@@ -65,6 +65,46 @@ Migration `20260728120000_add_finishers_phase_1` adds:
   note, identity, and order. Parent-row locking serializes child updates with
   terminalization; after the parent is terminal, even untouched `PENDING` steps
   cannot be inserted, updated, cleared, reset, reassigned, reordered, or deleted.
+  A single deferred database validator owns terminal parent/child coherence. A
+  constraint trigger on `FinisherExecution` covers parent insert/update and a
+  second constraint trigger on `FinisherExecutionStep` covers child
+  insert/update/delete. Both validate the committed transaction shape while
+  parent-row locking serializes terminalization with concurrent child changes.
+  The authoritative terminal outcome matrix is:
+  - `COMPLETED`: `startedAt`, `completedAt`, and equal `endedAt` are present;
+    the active index is the last prescribed step; every prescribed step is
+    `COMPLETED`, started, resolved in timestamp order, and has positive actual
+    work; no pending, partial, or skipped step remains. Derived actual duration
+    is positive active work plus active recovery.
+  - `PARTIAL`: `startedAt` and `endedAt` are present while `completedAt` is
+    null; the active index remains within the prescription; at least one step
+    is `COMPLETED` or `PARTIAL`, and accumulated actual work is positive.
+    Completed/partial work, zero-work skips, and untouched future pending steps
+    remain exact. Derived actual duration is positive active work plus active
+    recovery.
+  - `SKIPPED`: `startedAt` and `endedAt` are present while `completedAt` is
+    null; the active index is the last prescribed step; every prescribed step
+    is started, resolved `SKIPPED`, and has zero actual work; active recovery is
+    zero. Derived actual duration is zero.
+  - never-started `DISMISSED`: `startedAt` remains null; every prescribed step
+    remains `PENDING` with null start/resolution timestamps and zero actual
+    work. Preparation-only active/paused time may be retained, but work and
+    recovery active/paused evidence remains zero. A direct selected dismissal
+    has null actual duration; ending during preparation retains zero duration
+    and finished timer evidence.
+  - performed `DISMISSED`: `startedAt` remains non-null and at least one
+    prescribed step retains started, resolved, or positive-work evidence.
+    Resolved/performed steps, future pending steps, accumulated active/paused
+    time, substitutions, and the active index are preserved. Derived actual
+    duration may be zero at the exact work boundary or positive afterward.
+  For every terminal result, `PENDING` steps have no resolution or actual work;
+  `COMPLETED`/`PARTIAL` steps have positive actual work; `SKIPPED` steps have
+  zero actual work; and every resolved step has ordered start/resolution
+  timestamps no later than the parent outcome timestamp. A predefined
+  alternative remains bound to its exact prescribed step whether it was chosen
+  before a later skip, performed, or left pending. Feedback-only terminal
+  updates change only feedback plus the monotonic execution revision and must
+  continue to satisfy this matrix.
 - `FinisherExecutionCommand`: durable idempotency receipt for every command
   against an existing execution. `commandId` is globally unique; the request
   hash binds workout, execution, action, expected revision, and payload,
@@ -120,6 +160,18 @@ is also the history contract: workout deletion checks for an attached Finisher
 offer before child deletion and
 returns a deterministic conflict rather than cascading or leaking a database
 foreign-key error.
+
+The canonical Prisma schema models the composite execution/version,
+prescribed-step/version/order, and performed-alternative/prescribed-step
+bindings directly, with their supporting composite uniqueness and restrictive
+update/delete actions. PostgreSQL additionally retains three redundant simple
+restrictive foreign keys on execution step `executionId`, `routineStepId`, and
+`performedAlternativeId`. Prisma cannot model each simple relation and its
+overlapping composite relation simultaneously, so those three named
+constraints are intentional database-only extensions. The
+`verify:finisher-schema-drift` check permits only those exact proposed drops
+while rejecting any destructive or cascading change to protected Finisher
+relationships.
 
 Owner: Aaron  
 Last reviewed: 2026-03-19  

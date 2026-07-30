@@ -55,7 +55,7 @@
       },
       "productionWritesMayEverBeAllowed": true,
       "implementationChecks": ["prisma-generate", "verify-contracts", "git-diff-check"],
-      "releaseChecks": ["test-migration-integrity"],
+      "releaseChecks": ["test-migration-integrity", "verify-finisher-schema-drift"],
       "warnings": ["This inspection does not authorize migration execution, direct SQL, repair, backfill, or any database write."],
       "authorizationRequirements": ["Obtain separate authorization for each database target and mutation step."]
     },
@@ -74,7 +74,7 @@
     }
   },
   "verification": {
-    "commandOrder": ["database-backup-tests", "codex-tooling-tests", "codex-registry-validator", "npm-test-environment-classification", "npm-test-inventory-credential-free", "git-diff-check", "test-fast", "verify-contracts", "verify-completed-review", "verify-version", "test-audit-matrix", "verify", "prisma-generate", "test-migration-integrity", "audit-future-week"],
+    "commandOrder": ["database-backup-tests", "codex-tooling-tests", "codex-registry-validator", "npm-test-environment-classification", "npm-test-inventory-credential-free", "git-diff-check", "test-fast", "verify-contracts", "verify-completed-review", "verify-version", "test-audit-matrix", "verify", "prisma-generate", "test-migration-integrity", "verify-finisher-schema-drift", "audit-future-week"],
     "pathRules": [
       {
         "name": "database-backup-tooling",
@@ -98,7 +98,7 @@
         "name": "prisma-persistence",
         "patterns": ["trainer-app/prisma/**"],
         "implementation": ["prisma-generate", "verify-contracts"],
-        "release": ["test-migration-integrity"]
+        "release": ["test-migration-integrity", "verify-finisher-schema-drift"]
       },
       {
         "name": "completed-workout-review",
@@ -443,6 +443,26 @@
       "requiresPowerShell": false,
       "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "test:migration-integrity"] }
     },
+    "verify-finisher-schema-drift": {
+      "command": "npm run verify:finisher-schema-drift",
+      "defaultSideEffectClass": "database-read",
+      "accessesNetwork": false,
+      "accessesDatabase": true,
+      "writesLocalArtifacts": false,
+      "explicitAuthorizationRequired": true,
+      "verificationTier": "release",
+      "executableInImplementationMode": false,
+      "requiresCleanWorktree": false,
+      "requiresDependencies": true,
+      "requiresDocker": false,
+      "requiresDatabase": true,
+      "requiresNetwork": false,
+      "requiresPrisma": true,
+      "requiresNode": true,
+      "requiresNpm": true,
+      "requiresPowerShell": false,
+      "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "verify:finisher-schema-drift"] }
+    },
     "test-audit-matrix": {
       "command": "npm run test:audit:matrix",
       "defaultSideEffectClass": "local-test",
@@ -726,6 +746,7 @@
     { "id": "npm-test-db-rollout-tooling", "packageScript": "test:db:rollout-tooling", "command": "tsx scripts/test-rollout-tooling-postgres.ts", "sourceLocation": "trainer-app/package.json#scripts.test:db:rollout-tooling", "entrypoint": "trainer-app/scripts/test-rollout-tooling-postgres.ts", "profile": "disposable-database-write", "flagEscalations": [{ "flag": "--confirm-disposable", "sideEffectClass": "disposable-database-write", "authorizationRequirement": "Explicit confirmation that the harness-created PostgreSQL target may be mutated." }], "notes": "Requires operator-supplied --confirm-disposable, then creates, migrates, verifies, and removes a disposable PostgreSQL target." },
     { "id": "npm-test-readiness-integrity", "packageScript": "test:readiness-integrity", "command": "vitest run src/lib/operations/readiness-integrity.test.ts src/lib/operations/readiness-integrity-postgres.test.ts src/lib/operations/readiness-integrity-cli.test.ts", "sourceLocation": "trainer-app/package.json#scripts.test:readiness-integrity", "entrypoint": null, "profile": "disposable-database-write", "flagEscalations": [], "notes": "Includes PostgreSQL-backed tests that write only to an explicit disposable target." },
     { "id": "test-migration-integrity", "packageScript": "test:migration-integrity", "command": "vitest run src/lib/operations/migration-integrity.test.ts src/lib/operations/migration-integrity-postgres.test.ts", "sourceLocation": "trainer-app/package.json#scripts.test:migration-integrity", "entrypoint": null, "profile": "disposable-database-write", "flagEscalations": [], "notes": "Includes migration-integrity tests against disposable database fixtures." },
+    { "id": "verify-finisher-schema-drift", "packageScript": "verify:finisher-schema-drift", "command": "tsx scripts/check-finisher-schema-drift.ts", "sourceLocation": "trainer-app/package.json#scripts.verify:finisher-schema-drift", "entrypoint": "trainer-app/scripts/check-finisher-schema-drift.ts", "profile": "database-read", "flagEscalations": [], "notes": "Read-only Prisma diff against an explicitly supplied fully migrated disposable PostgreSQL database; fails closed on destructive protected Finisher relationship drift." },
     { "id": "npm-test-watch", "packageScript": "test:watch", "command": "vitest --watch", "sourceLocation": "trainer-app/package.json#scripts.test:watch", "entrypoint": null, "profile": "disposable-database-write", "flagEscalations": [], "notes": "Long-running raw watch process that can collect mutation-capable DB files; their in-file target and confirmation guard remains mandatory." },
     { "id": "npm-test-slow", "packageScript": "test:slow", "command": "vitest run --passWithNoTests \"src/**/*.slow.test.ts\"", "sourceLocation": "trainer-app/package.json#scripts.test:slow", "entrypoint": null, "profile": "read-only", "flagEscalations": [], "notes": "Local slow-test selection." },
     { "id": "test-fast", "packageScript": "test:fast", "command": "vitest run src/lib/engine/selection-v2/ src/lib/engine/explainability/ src/lib/api/template-session.test.ts", "sourceLocation": "trainer-app/package.json#scripts.test:fast", "entrypoint": null, "profile": "read-only", "flagEscalations": [], "notes": "Local focused test selection." },

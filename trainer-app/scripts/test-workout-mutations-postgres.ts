@@ -405,6 +405,10 @@ try {
     join(process.cwd(), "node_modules/prisma/build/index.js"),
     "generate",
   ], migrationEnv);
+  run(process.execPath, [
+    join(process.cwd(), "node_modules/tsx/dist/cli.mjs"),
+    "scripts/check-finisher-schema-drift.ts",
+  ], migrationEnv);
   const testEnv = {
     ...migrationEnv,
     DATABASE_URL: runtimeDatabaseUrl,

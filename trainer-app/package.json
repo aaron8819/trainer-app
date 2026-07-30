@@ -23,6 +23,7 @@
         "test:db:rollout-tooling": "tsx scripts/test-rollout-tooling-postgres.ts",
         "test:readiness-integrity": "vitest run src/lib/operations/readiness-integrity.test.ts src/lib/operations/readiness-integrity-postgres.test.ts src/lib/operations/readiness-integrity-cli.test.ts",
         "test:migration-integrity": "vitest run src/lib/operations/migration-integrity.test.ts src/lib/operations/migration-integrity-postgres.test.ts",
+        "verify:finisher-schema-drift": "tsx scripts/check-finisher-schema-drift.ts",
         "test:watch": "vitest --watch",
         "test:slow": "vitest run --passWithNoTests \"src/**/*.slow.test.ts\"",
         "test:fast": "vitest run src/lib/engine/selection-v2/ src/lib/engine/explainability/ src/lib/api/template-session.test.ts",

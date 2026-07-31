@@ -1192,6 +1192,7 @@ describe("command coverage honesty", () => {
       "test:readiness-integrity",
       "test:migration-integrity",
       "test:watch",
+      "ops:generate-finisher-disposable-evidence",
     ]);
     const approvedAliases = new Map([
       ["test:db:historical-snapshots", "npm run test:db:workout-mutations"],

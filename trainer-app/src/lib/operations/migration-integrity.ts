@@ -11,6 +11,11 @@ import {
   type FinisherPrincipalAuditRecord,
   type FinisherPrincipalSnapshot,
 } from "./finisher-principal-contract";
+import {
+  assessFinisherProviderVerification,
+  type FinisherProviderVerification,
+  type ProviderVerificationExpectation,
+} from "./finisher-provider-verification";
 
 export const EXPECTED_MIGRATION_CHAIN = [
   "20260222_baseline",
@@ -70,32 +75,7 @@ export type LiveFinisherPrincipalVerification = {
   snapshot: FinisherPrincipalSnapshot;
 };
 
-export type CanonicalOperationalVerification = {
-  source: "canonical_live_operational_verification";
-  verifiedAt: string;
-  repositoryHead: string;
-  requiredApplicationCommit: string;
-  targetFingerprint: string;
-  projectFingerprint?: string;
-  database: string;
-  deployment: {
-    verified: boolean;
-    commit: string;
-    identity: string;
-    source: "vercel_authenticated_read_only" | "disposable_not_applicable" | "unavailable";
-  };
-  recoveryPoint: {
-    verified: boolean;
-    identity: string;
-    source: "provider_authenticated_read_only" | "disposable_not_applicable" | "unavailable";
-  };
-  writePause: {
-    verified: boolean;
-    identity: string;
-    source: "provider_authenticated_read_only" | "disposable_not_applicable" | "unavailable";
-  };
-  applicationCompatibilityState: ApplicationCompatibilityState;
-};
+export type CanonicalOperationalVerification = FinisherProviderVerification;
 
 export type LedgerRow = {
   id: string;
@@ -2637,6 +2617,7 @@ export function buildMigrationIntegrityReport(input: {
   finisherPrincipalLiveVerification?: LiveFinisherPrincipalVerification;
   finisherPrincipalAuditRecord?: FinisherPrincipalAuditRecord;
   operationalVerification?: CanonicalOperationalVerification;
+  providerVerificationExpectation?: ProviderVerificationExpectation;
 }) {
   const checkedInNames = input.checkedIn.map((migration) => migration.name);
   const checkedInByName = new Map(input.checkedIn.map((migration) => [migration.name, migration]));
@@ -2860,7 +2841,7 @@ export function buildMigrationIntegrityReport(input: {
   const exactChain = JSON.stringify(checkedInNames) === JSON.stringify(EXPECTED_MIGRATION_CHAIN);
   const evidence = input.authorizationEvidence;
   const evaluatedAt =
-    input.operationalVerification?.verifiedAt ??
+    evidence?.evaluatedAt ??
     input.finisherPrincipalLiveVerification?.verifiedAt ??
     new Date().toISOString();
   const expectedPendingMigrations: string[] = [
@@ -2883,7 +2864,26 @@ export function buildMigrationIntegrityReport(input: {
   const gateAApplicable = pendingNames.length > 0;
   const repositoryHead = evidence?.repositoryHead ?? "";
   const operational = input.operationalVerification;
-  const productionDeploymentCommit = operational?.deployment.commit ?? "";
+  const providerAssessment =
+    operational && input.providerVerificationExpectation
+      ? assessFinisherProviderVerification(
+          operational,
+          input.providerVerificationExpectation,
+        )
+      : null;
+  const providerEvidence = providerAssessment?.evidence;
+  const providerBindingValid = Boolean(
+    providerEvidence &&
+      providerAssessment?.reasons.every(
+        (reason) =>
+          reason === "provider_recovery_point_unverified" ||
+          reason === "provider_recovery_point_creation_capability_unavailable" ||
+          reason === "provider_recovery_point_incomplete" ||
+          reason === "provider_evidence_operational_order_invalid",
+      ),
+  );
+  const productionDeploymentCommit =
+    providerEvidence?.deployment.sourceCommit ?? "";
   const requiredApplicationCommit =
     evidence?.requiredApplicationCommit ?? "";
   const repositoryHeadIdentified = isFullCommitSha(repositoryHead);
@@ -2917,38 +2917,40 @@ export function buildMigrationIntegrityReport(input: {
   // preflight is therefore the freshly inspected clean schema/pending state,
   // never a caller-provided assertion.
   const dataPreflightValid = schemaClean && writes === 0;
-  // A disposable target is the only environment this command can itself prove
-  // exercised the migration. Remote verification must come from an authenticated
-  // operational seam; audit JSON is deliberately unable to assert this fact.
-  const disposablePostgresVerified = input.target.classification === "disposable";
+  const disposablePostgresVerified = Boolean(
+    providerBindingValid &&
+      providerEvidence?.disposable.authenticated &&
+      providerEvidence.disposable.terminalState.migrationApplied &&
+      providerEvidence.disposable.terminalState.exactSchemaVerified &&
+      providerEvidence.disposable.terminalState.exactCatalogVerified &&
+      providerEvidence.disposable.terminalState.restrictedAdministratorWorkflowVerified &&
+      providerEvidence.disposable.terminalState.principalTerminalStateVerified &&
+      providerEvidence.disposable.terminalState.productionWritePathCoverageVerified,
+  );
   const recoveryPointVerified = Boolean(
-    operational?.source === "canonical_live_operational_verification" &&
-      operational.recoveryPoint.verified &&
-      operational.recoveryPoint.source !== "unavailable" &&
-      operational.recoveryPoint.identity.trim() &&
-      isFreshEvidenceTimestamp(operational.verifiedAt, evaluatedAt),
+    providerBindingValid &&
+      providerEvidence?.recoveryPoint.verified &&
+      providerEvidence.recoveryPoint.creationCapability === "provider_operation" &&
+      providerEvidence.recoveryPoint.state === "COMPLETED" &&
+      providerEvidence.recoveryPoint.operationId &&
+      providerEvidence.recoveryPoint.resourceId,
   );
   const writeBoundaryReady = Boolean(
-    operational?.source === "canonical_live_operational_verification" &&
-      operational.writePause.verified &&
-      operational.writePause.source !== "unavailable" &&
-      operational.writePause.identity.trim() &&
-      isFreshEvidenceTimestamp(operational.verifiedAt, evaluatedAt),
+    providerBindingValid &&
+      providerEvidence?.writePause.verified &&
+      providerEvidence.writePause.runtimeStatus === "PAUSED" &&
+      providerEvidence.writePause.mutationCoverageVerified &&
+      providerEvidence.writePause.bypassPaths.length === 0,
   );
   const applicationCompatibilityState =
-    operational?.applicationCompatibilityState ?? "unverified";
+    providerEvidence?.applicationCompatibilityState ?? "unverified";
   const productionDeploymentVerified =
     applicationCommitBindingVerified &&
-    operational?.source === "canonical_live_operational_verification" &&
-    operational.deployment.verified &&
-    operational.deployment.source !== "unavailable" &&
-    operational.repositoryHead === repositoryHead &&
-    operational.requiredApplicationCommit === requiredApplicationCommit &&
-    operational.targetFingerprint === input.target.fingerprint &&
-    (input.target.projectFingerprint == null ||
-      operational.projectFingerprint === input.target.projectFingerprint) &&
-    operational.database === input.target.database &&
-    isFreshEvidenceTimestamp(operational.verifiedAt, evaluatedAt);
+    providerBindingValid &&
+    providerEvidence?.deployment.authenticated === true &&
+    providerEvidence.deployment.state === "READY" &&
+    providerEvidence.deployment.environment === "production" &&
+    isFreshEvidenceTimestamp(providerEvidence.deployment.verifiedAt, evaluatedAt);
   const principalLive = input.finisherPrincipalLiveVerification;
   const principalReasons: string[] = [];
   if (!principalLive) {
@@ -3011,6 +3013,7 @@ export function buildMigrationIntegrityReport(input: {
     writes === 0;
   const migrationAuthorizationReady =
     technicalMigrationReady &&
+    input.target.classification === "remote" &&
     principalVerificationValid &&
     repositoryHeadIdentified &&
     productionDeploymentCommitIdentified &&
@@ -3020,6 +3023,7 @@ export function buildMigrationIntegrityReport(input: {
     recoveryPointVerified &&
     writeBoundaryReady &&
     productionDeploymentVerified &&
+    providerAssessment?.valid === true &&
     applicationCompatibilityState === "compatible_with_write_boundary";
   const executionAuthorized = false;
   const unexpectedMigrations = Array.from(
@@ -3042,6 +3046,11 @@ export function buildMigrationIntegrityReport(input: {
   if (!schemaPreflightValid) blockingReasons.push("schema_preflight_invalid");
   if (gateAApplicable && !dataPreflightValid) blockingReasons.push("data_preflight_invalid_or_stale");
   if (!disposablePostgresVerified) blockingReasons.push("disposable_postgres_verification_missing");
+  if (!providerAssessment) {
+    blockingReasons.push("canonical_provider_verification_missing");
+  } else if (!providerAssessment.valid) {
+    blockingReasons.push(...providerAssessment.reasons);
+  }
   if (!principalVerificationValid) {
     blockingReasons.push(
       ...principalReasons.map(
@@ -3214,6 +3223,9 @@ export function buildMigrationIntegrityReport(input: {
       requiredApplicationCommitMatchesProductionDeployment,
       repositoryHeadMatchesProductionDeployment,
       applicationCommitBindingVerified,
+      providerVerificationValid: providerAssessment?.valid ?? false,
+      providerVerificationReasons:
+        providerAssessment?.reasons ?? ["canonical_provider_verification_missing"],
     },
   };
 }

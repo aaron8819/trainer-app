@@ -1,0 +1,55 @@
+name: Finisher canonical disposable verification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: finisher-disposable-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: PostgreSQL 16 exact-head verification
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CI: true
+      TZ: America/Chicago
+    defaults:
+      run:
+        working-directory: trainer-app
+
+    steps:
+      - name: Check out exact workflow head
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: trainer-app/package-lock.json
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Verify exact head and generate evidence
+        run: >-
+          npm run ops:generate-finisher-disposable-evidence --
+          --expected-commit "${{ github.sha }}"
+          --output "${{ runner.temp }}/finisher-disposable-evidence.json"
+
+      - name: Upload exact-head evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: finisher-disposable-evidence
+          path: ${{ runner.temp }}/finisher-disposable-evidence.json
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

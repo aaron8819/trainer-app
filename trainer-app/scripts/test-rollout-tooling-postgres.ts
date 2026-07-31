@@ -1468,14 +1468,14 @@ try {
   const currentProductionState = cliWithExpectedStatus(
     "scripts/check-migration-status.ts",
     [],
-    0,
+    1,
   );
   if (
     numberField(objectField(currentProductionState, "chain"), "applied") !==
       currentProductionAppliedCount ||
     numberField(objectField(currentProductionState, "chain"), "pending") !== 1 ||
-    currentProductionState.technicalMigrationReady !== true ||
-    currentProductionState.migrationAuthorizationReady !== true ||
+    currentProductionState.technicalMigrationReady !== false ||
+    currentProductionState.migrationAuthorizationReady !== false ||
     currentProductionState.executionAuthorized !== false
   ) {
     throw new Error(
@@ -1567,10 +1567,12 @@ try {
   const refreshedGateA = cliWithExpectedStatus(
     "scripts/check-migration-status.ts",
     [],
-    0,
+    1,
   );
-  if (refreshedGateA.migrationAuthorizationReady !== true) {
-    throw new Error("Gate A did not recover after restoring the exact prerequisite.");
+  if (refreshedGateA.migrationAuthorizationReady !== false) {
+    throw new Error(
+      "Disposable Gate A did not remain fail closed without canonical provider evidence.",
+    );
   }
 
   const canonicalFinisherMigration = readFileSync(
@@ -2658,7 +2660,7 @@ try {
       stateB: "partial_object_blocked",
       stateC: "checksum_mismatch_blocked",
       stateD: "failed_rolled_back_and_unfinished_ledger_blocked",
-      currentProductionState: "17_applied_1_pending_authorization_ready_execution_not_authorized",
+      currentProductionState: "17_applied_1_pending_provider_evidence_required_execution_not_authorized",
       forgedOperatorPendingPolicy: "rejected_before_integrity_evaluation",
       stateE: "fully_migrated_gate_a_not_applicable",
       baselineUniquenessVariants: "standalone_constraint_missing_wrong_order_non_unique_partial_predicate",

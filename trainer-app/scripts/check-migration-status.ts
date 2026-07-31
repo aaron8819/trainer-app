@@ -6,10 +6,17 @@ import { Client } from "pg";
 import {
   buildMigrationIntegrityReport,
   loadCheckedInMigrations,
-  type CanonicalOperationalVerification,
   type LiveFinisherPrincipalVerification,
   type MigrationAuthorizationEvidence,
 } from "@/lib/operations/migration-integrity";
+import { collectFinisherProviderVerification } from "@/lib/operations/finisher-provider-adapters";
+import {
+  FINISHER_MIGRATION_GIT_BLOB,
+  FINISHER_MIGRATION_PATH,
+  migrationInventorySha256,
+  type FinisherProviderVerification,
+  type ProviderVerificationExpectation,
+} from "@/lib/operations/finisher-provider-verification";
 import {
   FINISHER_PRINCIPAL_AUDIT_SCHEMA,
   FINISHER_PRINCIPAL_AUDIT_VERSION,
@@ -74,7 +81,6 @@ function loadAuditInput(argv: string[]): MigrationAuthorizationEvidence {
       argv,
       "--required-application-commit",
     ),
-    evaluatedAt: new Date().toISOString(),
   };
 }
 
@@ -105,68 +111,23 @@ function loadPrincipalAuditRecord(
   }
 }
 
-function operationalVerification(options: {
-  targetClass: "disposable" | "remote";
-  verifiedAt: string;
-  repositoryHead: string;
-  requiredApplicationCommit: string;
-  targetFingerprint: string;
-  projectFingerprint?: string;
-  database: string;
-}): CanonicalOperationalVerification {
-  if (options.targetClass === "disposable") {
-    return {
-      source: "canonical_live_operational_verification",
-      verifiedAt: options.verifiedAt,
-      repositoryHead: options.repositoryHead,
-      requiredApplicationCommit: options.requiredApplicationCommit,
-      targetFingerprint: options.targetFingerprint,
-      projectFingerprint: options.projectFingerprint,
-      database: options.database,
-      deployment: {
-        verified: true,
-        commit: options.repositoryHead,
-        identity: "disposable-not-applicable",
-        source: "disposable_not_applicable",
-      },
-      recoveryPoint: {
-        verified: true,
-        identity: "disposable-not-applicable",
-        source: "disposable_not_applicable",
-      },
-      writePause: {
-        verified: true,
-        identity: "disposable-not-applicable",
-        source: "disposable_not_applicable",
-      },
-      applicationCompatibilityState: "compatible_with_write_boundary",
-    };
+function vercelIdentity() {
+  const contract = JSON.parse(
+    readFileSync(resolve(process.cwd(), "..", "scripts", "codex", "trainer-remote.v1.json"), "utf8"),
+  ) as { vercel?: Record<string, unknown> };
+  const vercel = contract.vercel;
+  if (!vercel) throw new Error("Committed Vercel provider identity is unavailable.");
+  for (const key of ["teamId", "teamSlug", "projectId", "projectName", "productionAlias"] as const) {
+    if (typeof vercel[key] !== "string" || !vercel[key]) {
+      throw new Error(`Committed Vercel provider identity ${key} is unavailable.`);
+    }
   }
-  return {
-    source: "canonical_live_operational_verification",
-    verifiedAt: options.verifiedAt,
-    repositoryHead: options.repositoryHead,
-    requiredApplicationCommit: options.requiredApplicationCommit,
-    targetFingerprint: options.targetFingerprint,
-    projectFingerprint: options.projectFingerprint,
-    database: options.database,
-    deployment: {
-      verified: false,
-      commit: "",
-      identity: "unavailable",
-      source: "unavailable",
-    },
-    recoveryPoint: {
-      verified: false,
-      identity: "unavailable",
-      source: "unavailable",
-    },
-    writePause: {
-      verified: false,
-      identity: "unavailable",
-      source: "unavailable",
-    },
-    applicationCompatibilityState: "unverified",
+  return vercel as {
+    teamId: string;
+    teamSlug: string;
+    projectId: string;
+    projectName: string;
+    productionAlias: string;
   };
 }
 
@@ -217,6 +178,74 @@ async function main(): Promise<void> {
       const auditInput = loadAuditInput(argv);
       const principalAuditRecord = loadPrincipalAuditRecord(argv);
       const runtimePassword = process.env[FINISHER_RUNTIME_PASSWORD_VARIABLE];
+      const checkedInMigrations = loadCheckedInMigrations();
+      let providerVerification: FinisherProviderVerification | undefined;
+      let providerVerificationExpectation:
+        | ProviderVerificationExpectation
+        | undefined;
+      if (directTargetClass === "remote" && argv.includes("--verify-providers")) {
+        const expectedProjectReference = requiredArgument(
+          argv,
+          "--expected-project-reference",
+        );
+        if (expectedProjectReference !== projectReference) {
+          throw new Error(
+            "The expected Supabase project reference does not match the authenticated direct target.",
+          );
+        }
+        const vercel = vercelIdentity();
+        const providerTarget = {
+          environment: "production" as const,
+          githubOwner: "aaron8819",
+          githubRepository: "trainer-app",
+          vercelTeamId: vercel.teamId,
+          vercelTeamSlug: vercel.teamSlug,
+          vercelProjectId: vercel.projectId,
+          vercelProjectName: vercel.projectName,
+          productionAlias: vercel.productionAlias,
+          supabaseOrganizationId: requiredArgument(
+            argv,
+            "--expected-supabase-organization-id",
+          ),
+          supabaseProjectRef: expectedProjectReference,
+          database,
+        };
+        providerVerification = await collectFinisherProviderVerification({
+          requiredApplicationCommit:
+            auditInput.requiredApplicationCommit ?? "",
+          disposableRunId: requiredArgument(argv, "--disposable-run-id"),
+          target: providerTarget,
+          vercelToken: process.env.VERCEL_TOKEN,
+          supabaseToken: process.env.SUPABASE_ACCESS_TOKEN,
+        });
+        const repositoryBlob = execFileSync(
+          "git",
+          ["rev-parse", `${auditInput.repositoryHead}:${FINISHER_MIGRATION_PATH}`],
+          { encoding: "utf8" },
+        ).trim();
+        if (repositoryBlob !== FINISHER_MIGRATION_GIT_BLOB) {
+          throw new Error("The checked-out Finisher migration Git blob is not the reviewed identity.");
+        }
+        const migrationBytes = execFileSync(
+          "git",
+          ["cat-file", "blob", repositoryBlob],
+          { encoding: null },
+        );
+        const inventory = checkedInMigrations.map((migration) => migration.name);
+        providerVerificationExpectation = {
+          evaluatedAt: "",
+          repositoryHead: auditInput.repositoryHead,
+          requiredApplicationCommit:
+            auditInput.requiredApplicationCommit ?? "",
+          migrationPath: FINISHER_MIGRATION_PATH,
+          migrationGitBlob: FINISHER_MIGRATION_GIT_BLOB,
+          migrationSha256: createHash("sha256")
+            .update(migrationBytes)
+            .digest("hex"),
+          migrationInventorySha256: migrationInventorySha256(inventory),
+          target: providerTarget,
+        };
+      }
 
       const client = new Client({
         connectionString: directUrl,
@@ -291,22 +320,17 @@ async function main(): Promise<void> {
           databaseWrites: 0,
           snapshot,
         };
+        const evaluatedAt = new Date().toISOString();
         const report = buildMigrationIntegrityReport({
           target,
-          checkedIn: loadCheckedInMigrations(),
-          authorizationEvidence: auditInput,
+          checkedIn: checkedInMigrations,
+          authorizationEvidence: { ...auditInput, evaluatedAt },
           finisherPrincipalLiveVerification: livePrincipal,
           finisherPrincipalAuditRecord: principalAuditRecord,
-          operationalVerification: operationalVerification({
-            targetClass: directTargetClass,
-            verifiedAt,
-            repositoryHead: auditInput.repositoryHead,
-            requiredApplicationCommit:
-              auditInput.requiredApplicationCommit ?? "",
-            targetFingerprint: target.fingerprint,
-            projectFingerprint: target.projectFingerprint,
-            database,
-          }),
+          operationalVerification: providerVerification,
+          providerVerificationExpectation: providerVerificationExpectation
+            ? { ...providerVerificationExpectation, evaluatedAt }
+            : undefined,
           ...inspection,
         });
         console.log(

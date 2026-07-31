@@ -2108,25 +2108,31 @@ BEGIN
     RAISE EXCEPTION 'Finisher terminal roles own or receive default privileges';
   END IF;
 
-  SELECT pg_catalog.count(*) INTO terminal_mismatch_count
-  FROM (
-    SELECT expected.name
+  WITH expected(table_name, relation_kind, owner_oid, row_security, force_row_security) AS (
+    SELECT name, 'r'::"char", owner_role.oid, false, false
     FROM unnest(ARRAY[
       'FinisherRoutine', 'FinisherRoutineVersion', 'FinisherRoutineStep',
       'FinisherRoutineStepAlternative', 'FinisherOffer', 'FinisherOfferItem',
       'FinisherDecision', 'FinisherExecution', 'FinisherExecutionStep',
       'FinisherExecutionCommand'
-    ]) expected(name)
-    LEFT JOIN pg_catalog.pg_class class
-      ON class.relname = expected.name
-    LEFT JOIN pg_catalog.pg_namespace namespace
-      ON namespace.oid = class.relnamespace AND namespace.nspname = 'public'
-    WHERE namespace.oid IS NULL
-      OR class.relkind NOT IN ('r', 'p')
-      OR class.relowner <> owner_role.oid
-      OR class.relrowsecurity
-      OR class.relforcerowsecurity
-  ) mismatches;
+    ]) expected_names(name)
+  ), actual AS (
+    SELECT class.relname, class.relkind, class.relowner,
+      class.relrowsecurity, class.relforcerowsecurity
+    FROM pg_catalog.pg_class class
+    JOIN pg_catalog.pg_namespace namespace ON namespace.oid = class.relnamespace
+    WHERE namespace.nspname = 'public'
+      AND (
+        (class.relkind IN ('r', 'p') AND class.relowner = owner_role.oid)
+        OR
+        (class.relkind IN ('r', 'p', 'v', 'm', 'f') AND class.relname LIKE 'Finisher%')
+      )
+  ), differences AS (
+    (SELECT * FROM expected EXCEPT SELECT * FROM actual)
+    UNION ALL
+    (SELECT * FROM actual EXCEPT SELECT * FROM expected)
+  )
+  SELECT pg_catalog.count(*) INTO terminal_mismatch_count FROM differences;
   IF terminal_mismatch_count <> 0 THEN
     RAISE EXCEPTION 'Finisher terminal table ownership or RLS state is not exact';
   END IF;
@@ -2152,7 +2158,15 @@ BEGIN
         COALESCE(
           pg_catalog.pg_get_expr(default_value.adbin, default_value.adrelid),
           '<none>'
-        ),
+        ) ||
+        CASE attribute.attidentity
+          WHEN '' THEN ''
+          ELSE ':identity=' || attribute.attidentity::text
+        END ||
+        CASE attribute.attgenerated
+          WHEN '' THEN ''
+          ELSE ':generated=' || attribute.attgenerated::text
+        END,
         '|' ORDER BY attribute.attnum
       ) AS column_signature
     FROM pg_catalog.pg_attribute attribute
@@ -2176,60 +2190,129 @@ BEGIN
     RAISE EXCEPTION 'Finisher terminal column structure is not exact';
   END IF;
 
-  WITH expected(index_name) AS (
+  WITH expected(
+    table_name,
+    index_name,
+    is_unique,
+    is_primary,
+    key_columns,
+    predicate
+  ) AS (
     VALUES
-      ('FinisherRoutine_pkey'),
-      ('FinisherRoutine_code_key'),
-      ('FinisherRoutineVersion_pkey'),
-      ('FinisherRoutineVersion_routineId_version_key'),
-      ('FinisherRoutineVersion_category_createdAt_idx'),
-      ('FinisherRoutineStep_pkey'),
-      ('FinisherRoutineStep_routineVersionId_orderIndex_key'),
-      ('FinisherRoutineStep_id_routineVersionId_orderIndex_key'),
-      ('FinisherRoutineStepAlternative_pkey'),
-      ('FinisherRoutineStepAlternative_routineStepId_orderIndex_key'),
-      ('FinisherRoutineStepAlternative_id_routineStepId_key'),
-      ('FinisherOffer_pkey'),
-      ('FinisherOffer_workoutId_key'),
-      ('FinisherOffer_workoutId_ownerId_key'),
-      ('FinisherOffer_declineDecisionId_key'),
-      ('FinisherOffer_id_workoutId_ownerId_key'),
-      ('FinisherOffer_id_recommendedRoutineVersionId_key'),
-      ('FinisherOffer_recommendedRoutineVersionId_idx'),
-      ('FinisherOfferItem_pkey'),
-      ('FinisherOfferItem_offerId_routineVersionId_key'),
-      ('FinisherOfferItem_offerId_position_key'),
-      ('FinisherOfferItem_id_offerId_routineVersionId_key'),
-      ('FinisherOfferItem_routineVersionId_idx'),
-      ('FinisherDecision_pkey'),
-      ('FinisherDecision_offerId_createdAt_idx'),
-      ('FinisherExecution_pkey'),
-      ('FinisherExecution_one_active_per_workout'),
-      ('FinisherExecution_one_started_per_workout'),
-      ('FinisherExecution_workoutId_selectedAt_idx'),
-      ('FinisherExecution_offerId_selectedAt_idx'),
-      ('FinisherExecution_routineVersionId_startedAt_idx'),
-      ('FinisherExecution_state_segmentEndsAt_idx'),
-      ('FinisherExecution_id_workoutId_key'),
-      ('FinisherExecution_id_workoutId_ownerId_key'),
-      ('FinisherExecution_id_routineVersionId_key'),
-      ('FinisherExecutionStep_pkey'),
-      ('FinisherExecutionStep_executionId_routineStepId_key'),
-      ('FinisherExecutionStep_performedAlternativeId_idx'),
-      ('FinisherExecutionCommand_pkey'),
-      ('FinisherExecutionCommand_executionId_createdAt_idx'),
-      ('FinisherExecutionCommand_cleanedAt_expiresAt_id_idx')
+      ('FinisherRoutine', 'FinisherRoutine_pkey', true, true, ARRAY['id'], NULL),
+      ('FinisherRoutine', 'FinisherRoutine_code_key', true, false, ARRAY['code'], NULL),
+      ('FinisherRoutineVersion', 'FinisherRoutineVersion_pkey', true, true, ARRAY['id'], NULL),
+      ('FinisherRoutineVersion', 'FinisherRoutineVersion_routineId_version_key', true, false, ARRAY['routineId', 'version'], NULL),
+      ('FinisherRoutineVersion', 'FinisherRoutineVersion_category_createdAt_idx', false, false, ARRAY['category', 'createdAt'], NULL),
+      ('FinisherRoutineStep', 'FinisherRoutineStep_pkey', true, true, ARRAY['id'], NULL),
+      ('FinisherRoutineStep', 'FinisherRoutineStep_routineVersionId_orderIndex_key', true, false, ARRAY['routineVersionId', 'orderIndex'], NULL),
+      ('FinisherRoutineStep', 'FinisherRoutineStep_id_routineVersionId_orderIndex_key', true, false, ARRAY['id', 'routineVersionId', 'orderIndex'], NULL),
+      ('FinisherRoutineStepAlternative', 'FinisherRoutineStepAlternative_pkey', true, true, ARRAY['id'], NULL),
+      ('FinisherRoutineStepAlternative', 'FinisherRoutineStepAlternative_routineStepId_orderIndex_key', true, false, ARRAY['routineStepId', 'orderIndex'], NULL),
+      ('FinisherRoutineStepAlternative', 'FinisherRoutineStepAlternative_id_routineStepId_key', true, false, ARRAY['id', 'routineStepId'], NULL),
+      ('FinisherOffer', 'FinisherOffer_pkey', true, true, ARRAY['id'], NULL),
+      ('FinisherOffer', 'FinisherOffer_workoutId_key', true, false, ARRAY['workoutId'], NULL),
+      ('FinisherOffer', 'FinisherOffer_workoutId_ownerId_key', true, false, ARRAY['workoutId', 'ownerId'], NULL),
+      ('FinisherOffer', 'FinisherOffer_declineDecisionId_key', true, false, ARRAY['declineDecisionId'], NULL),
+      ('FinisherOffer', 'FinisherOffer_id_workoutId_ownerId_key', true, false, ARRAY['id', 'workoutId', 'ownerId'], NULL),
+      ('FinisherOffer', 'FinisherOffer_id_recommendedRoutineVersionId_key', true, false, ARRAY['id', 'recommendedRoutineVersionId'], NULL),
+      ('FinisherOffer', 'FinisherOffer_recommendedRoutineVersionId_idx', false, false, ARRAY['recommendedRoutineVersionId'], NULL),
+      ('FinisherOfferItem', 'FinisherOfferItem_pkey', true, true, ARRAY['id'], NULL),
+      ('FinisherOfferItem', 'FinisherOfferItem_offerId_routineVersionId_key', true, false, ARRAY['offerId', 'routineVersionId'], NULL),
+      ('FinisherOfferItem', 'FinisherOfferItem_offerId_position_key', true, false, ARRAY['offerId', 'position'], NULL),
+      ('FinisherOfferItem', 'FinisherOfferItem_id_offerId_routineVersionId_key', true, false, ARRAY['id', 'offerId', 'routineVersionId'], NULL),
+      ('FinisherOfferItem', 'FinisherOfferItem_routineVersionId_idx', false, false, ARRAY['routineVersionId'], NULL),
+      ('FinisherDecision', 'FinisherDecision_pkey', true, true, ARRAY['id'], NULL),
+      ('FinisherDecision', 'FinisherDecision_offerId_createdAt_idx', false, false, ARRAY['offerId', 'createdAt'], NULL),
+      ('FinisherExecution', 'FinisherExecution_pkey', true, true, ARRAY['id'], NULL),
+      ('FinisherExecution', 'FinisherExecution_one_active_per_workout', true, false, ARRAY['workoutId'], '(state = ANY (ARRAY[''SELECTED''::"FinisherExecutionState", ''IN_PROGRESS''::"FinisherExecutionState"]))'),
+      ('FinisherExecution', 'FinisherExecution_one_started_per_workout', true, false, ARRAY['workoutId'], '("startedAt" IS NOT NULL)'),
+      ('FinisherExecution', 'FinisherExecution_workoutId_selectedAt_idx', false, false, ARRAY['workoutId', 'selectedAt'], NULL),
+      ('FinisherExecution', 'FinisherExecution_offerId_selectedAt_idx', false, false, ARRAY['offerId', 'selectedAt'], NULL),
+      ('FinisherExecution', 'FinisherExecution_routineVersionId_startedAt_idx', false, false, ARRAY['routineVersionId', 'startedAt'], NULL),
+      ('FinisherExecution', 'FinisherExecution_state_segmentEndsAt_idx', false, false, ARRAY['state', 'segmentEndsAt'], NULL),
+      ('FinisherExecution', 'FinisherExecution_id_workoutId_key', true, false, ARRAY['id', 'workoutId'], NULL),
+      ('FinisherExecution', 'FinisherExecution_id_workoutId_ownerId_key', true, false, ARRAY['id', 'workoutId', 'ownerId'], NULL),
+      ('FinisherExecution', 'FinisherExecution_id_routineVersionId_key', true, false, ARRAY['id', 'routineVersionId'], NULL),
+      ('FinisherExecutionStep', 'FinisherExecutionStep_pkey', true, true, ARRAY['id'], NULL),
+      ('FinisherExecutionStep', 'FinisherExecutionStep_executionId_routineStepId_key', true, false, ARRAY['executionId', 'routineStepId'], NULL),
+      ('FinisherExecutionStep', 'FinisherExecutionStep_performedAlternativeId_idx', false, false, ARRAY['performedAlternativeId'], NULL),
+      ('FinisherExecutionCommand', 'FinisherExecutionCommand_pkey', true, true, ARRAY['id'], NULL),
+      ('FinisherExecutionCommand', 'FinisherExecutionCommand_executionId_createdAt_idx', false, false, ARRAY['executionId', 'createdAt'], NULL),
+      ('FinisherExecutionCommand', 'FinisherExecutionCommand_cleanedAt_expiresAt_id_idx', false, false, ARRAY['cleanedAt', 'expiresAt', 'id'], NULL)
+  ), expected_contract AS (
+    SELECT table_name, index_name, is_unique, is_primary, 'btree'::name AS access_method,
+      key_columns,
+      ARRAY(
+        SELECT pg_catalog.quote_ident(key_column)
+        FROM unnest(key_columns) WITH ORDINALITY ordered_key(key_column, position)
+        ORDER BY position
+      ) AS key_definitions,
+      predicate,
+      true AS is_valid,
+      true AS is_ready,
+      true AS is_live,
+      true AS is_immediate,
+      false AS is_exclusion,
+      false AS nulls_not_distinct,
+      false AS has_included_columns,
+      false AS has_expressions,
+      false AS has_index_options,
+      false AS has_relation_options,
+      true AS uses_default_tablespace,
+      true AS uses_permanent_persistence,
+      owner_role.oid AS owning_relation_owner
+    FROM expected
   ), actual AS (
-    SELECT index_class.relname AS index_name,
-      index_class.relowner = owner_role.oid AS owned_by_finisher_owner
+    SELECT table_class.relname AS table_name,
+      index_class.relname AS index_name,
+      index_metadata.indisunique,
+      index_metadata.indisprimary,
+      access_method.amname,
+      ARRAY(
+        SELECT attribute.attname
+        FROM unnest(index_metadata.indkey) WITH ORDINALITY index_key(attribute_number, position)
+        LEFT JOIN pg_catalog.pg_attribute attribute
+          ON attribute.attrelid = table_class.oid
+          AND attribute.attnum = index_key.attribute_number
+        WHERE position <= index_metadata.indnkeyatts
+        ORDER BY position
+      ),
+      ARRAY(
+        SELECT pg_catalog.pg_get_indexdef(index_metadata.indexrelid, position, false)
+        FROM pg_catalog.generate_series(1, index_metadata.indnkeyatts) position
+        ORDER BY position
+      ),
+      pg_catalog.pg_get_expr(index_metadata.indpred, index_metadata.indrelid),
+      index_metadata.indisvalid,
+      index_metadata.indisready,
+      index_metadata.indislive,
+      index_metadata.indimmediate,
+      index_metadata.indisexclusion,
+      index_metadata.indnullsnotdistinct,
+      index_metadata.indnatts <> index_metadata.indnkeyatts,
+      index_metadata.indexprs IS NOT NULL,
+      EXISTS (
+        SELECT 1 FROM unnest(index_metadata.indoption) option_value
+        WHERE option_value <> 0
+      ),
+      index_class.reloptions IS NOT NULL,
+      index_class.reltablespace = 0,
+      index_class.relpersistence = 'p',
+      table_class.relowner
     FROM pg_catalog.pg_index index_metadata
     JOIN pg_catalog.pg_class table_class
       ON table_class.oid = index_metadata.indrelid
     JOIN pg_catalog.pg_class index_class
       ON index_class.oid = index_metadata.indexrelid
-    JOIN pg_catalog.pg_namespace namespace
-      ON namespace.oid = table_class.relnamespace
-    WHERE namespace.nspname = 'public'
+    JOIN pg_catalog.pg_namespace table_namespace
+      ON table_namespace.oid = table_class.relnamespace
+    JOIN pg_catalog.pg_namespace index_namespace
+      ON index_namespace.oid = index_class.relnamespace
+    JOIN pg_catalog.pg_am access_method
+      ON access_method.oid = index_class.relam
+    WHERE table_namespace.nspname = 'public'
+      AND index_namespace.nspname = 'public'
       AND table_class.relname IN (
         'FinisherRoutine', 'FinisherRoutineVersion', 'FinisherRoutineStep',
         'FinisherRoutineStepAlternative', 'FinisherOffer', 'FinisherOfferItem',
@@ -2237,15 +2320,13 @@ BEGIN
         'FinisherExecutionCommand'
       )
   ), differences AS (
-    (SELECT index_name FROM expected
-      EXCEPT
-      SELECT index_name FROM actual WHERE owned_by_finisher_owner)
+    (SELECT * FROM expected_contract EXCEPT SELECT * FROM actual)
     UNION ALL
-    (SELECT index_name FROM actual EXCEPT SELECT index_name FROM expected)
+    (SELECT * FROM actual EXCEPT SELECT * FROM expected_contract)
   )
   SELECT pg_catalog.count(*) INTO terminal_mismatch_count FROM differences;
   IF terminal_mismatch_count <> 0 THEN
-    RAISE EXCEPTION 'Finisher terminal index inventory or ownership is not exact';
+    RAISE EXCEPTION 'Finisher terminal index inventory, definition, or owning-relation ownership is not exact';
   END IF;
 
   SELECT pg_catalog.count(*) INTO terminal_mismatch_count

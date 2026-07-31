@@ -593,8 +593,9 @@ environment change, role change, migration, production access, or verification.
 
    Require exactly that migration once and exit zero. Do not run
    `npm run db:seed`, edit `_prisma_migrations`, or retry blindly.
-12. Immediately verify the migration-owned object ownership, index and function
-    ownership, exact table/column/type structure, type and object grants,
+12. Immediately verify the migration-owned object ownership, exact index
+    inventory and definitions, function ownership/signatures, exact
+    table/column/type structure, type and object grants,
     RLS-disabled state, terminal role contract, restrictive
     relationships, schema access, default privileges, triggers, functions, and
     schema drift. Clearly distinguish these migration-created or
@@ -642,7 +643,11 @@ traces the real principal provision -> live credential proof -> Gate A flow,
 proves clean/partial/idempotent provisioning, proves provisioning creates
 no Finisher schema objects, advances to the current 17/1 shape, and then applies
 and verifies the fully migrated 18/0 state with the post-migration
-ownership/grant checks still distinct. `npm run test:db:multi-plan
+ownership/grant checks still distinct. It also injects missing and unexpected
+tables, column presence/nullability/identity drift, missing and structurally drifted
+indexes, and owning-relation drift before the terminal migration block; every
+case must fail at its intended terminal check and leave no Finisher object or
+temporary capability after transaction rollback. `npm run test:db:multi-plan
 -- --confirm-disposable` separately proves the earlier multi-plan migration
 chain and compatibility. Both create and remove their containers and never read
 a configured production environment.

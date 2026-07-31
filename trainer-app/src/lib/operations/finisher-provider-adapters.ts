@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, rmSync } from "node:fs";
+import { lstatSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -7,6 +7,7 @@ import {
   disposableEvidenceSchema,
   FINISHER_DISPOSABLE_ARTIFACT,
   FINISHER_DISPOSABLE_WORKFLOW,
+  FINISHER_PRODUCTION_DATABASE,
   type FinisherProviderVerification,
 } from "./finisher-provider-verification";
 import {
@@ -15,6 +16,8 @@ import {
   FINISHER_PROVIDER_EVIDENCE_VERSION,
   FINISHER_PROVIDER_TOOL_VERSION,
 } from "./finisher-provider-verification";
+
+const MAX_DISPOSABLE_ARTIFACT_BYTES = 64 * 1024;
 
 export type ProviderFailureCode =
   | "credentials_unavailable"
@@ -25,6 +28,7 @@ export type ProviderFailureCode =
   | "resource_missing"
   | "wrong_identity"
   | "wrong_commit"
+  | "source_binding_unavailable"
   | "not_ready"
   | "stale_alias"
   | "malformed_provider_response"
@@ -54,6 +58,23 @@ function string(value: unknown): string {
     throw new ProviderVerificationError("malformed_provider_response");
   }
   return value;
+}
+
+function sourceString(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new ProviderVerificationError("source_binding_unavailable");
+  }
+  return value;
+}
+
+function sourceIdentifier(value: unknown): string {
+  if (
+    (typeof value !== "string" && typeof value !== "number") ||
+    !String(value).trim()
+  ) {
+    throw new ProviderVerificationError("source_binding_unavailable");
+  }
+  return String(value);
 }
 
 function timestamp(value: unknown): string {
@@ -109,6 +130,8 @@ function vercelUrl(path: string, query: Record<string, string> = {}): URL {
 export async function verifyVercelProductionDeployment(input: {
   expectedCommit: string;
   expected: {
+    githubOwner: string;
+    githubRepository: string;
     teamId: string;
     teamSlug: string;
     projectId: string;
@@ -145,6 +168,22 @@ export async function verifyVercelProductionDeployment(input: {
   ) {
     throw new ProviderVerificationError("wrong_identity");
   }
+  if (project.link == null) {
+    throw new ProviderVerificationError("source_binding_unavailable");
+  }
+  const projectLink = object(project.link);
+  const linkedRepositoryId = sourceIdentifier(projectLink.repoId);
+  const linkedOwner = sourceString(projectLink.org);
+  const linkedRepository = sourceString(projectLink.repo);
+  const linkedProductionBranch = sourceString(projectLink.productionBranch);
+  if (
+    projectLink.type !== "github" ||
+    linkedOwner !== input.expected.githubOwner ||
+    linkedRepository !== input.expected.githubRepository ||
+    linkedProductionBranch !== "master"
+  ) {
+    throw new ProviderVerificationError("wrong_identity");
+  }
   const targets = object(project.targets);
   const productionTarget = object(targets.production);
   const alias = await request(
@@ -177,9 +216,23 @@ export async function verifyVercelProductionDeployment(input: {
   if ((deployment.readyState ?? deployment.state) !== "READY") {
     throw new ProviderVerificationError("not_ready");
   }
+  if (deployment.gitSource == null || deployment.meta == null) {
+    throw new ProviderVerificationError("source_binding_unavailable");
+  }
+  const gitSource = object(deployment.gitSource);
+  const sourceCommit = sourceString(gitSource.sha).toLowerCase();
+  const sourceProvider = sourceString(gitSource.type);
+  const sourceBranch = sourceString(gitSource.ref);
+  if (
+    sourceProvider !== "github" ||
+    sourceIdentifier(gitSource.repoId) !== linkedRepositoryId ||
+    sourceBranch !== "master"
+  ) {
+    throw new ProviderVerificationError("wrong_identity");
+  }
   const meta = object(deployment.meta);
-  const sourceCommit = string(meta.githubCommitSha).toLowerCase();
-  if (sourceCommit !== input.expectedCommit) {
+  const metadataCommit = sourceString(meta.githubCommitSha).toLowerCase();
+  if (sourceCommit !== input.expectedCommit || metadataCommit !== sourceCommit) {
     throw new ProviderVerificationError("wrong_commit");
   }
   return {
@@ -194,6 +247,9 @@ export async function verifyVercelProductionDeployment(input: {
     alias: input.expected.productionAlias,
     deploymentId,
     state: "READY",
+    sourceProvider: "github",
+    sourceRepository: `${input.expected.githubOwner}/${input.expected.githubRepository}`,
+    sourceBranch: "master",
     sourceCommit,
     createdAt: timestamp(deployment.createdAt ?? deployment.created),
     readyAt: timestamp(deployment.ready),
@@ -251,6 +307,14 @@ export async function verifyGitHubDisposableEvidence(input: {
   const artifact = object(matches[0]);
   if (artifact.expired === true || artifact.workflow_run == null) {
     throw new ProviderVerificationError("resource_missing");
+  }
+  const artifactSize = Number(artifact.size_in_bytes);
+  if (
+    !Number.isSafeInteger(artifactSize) ||
+    artifactSize <= 0 ||
+    artifactSize > MAX_DISPOSABLE_ARTIFACT_BYTES
+  ) {
+    throw new ProviderVerificationError("malformed_provider_response");
   }
   const workflowRun = object(artifact.workflow_run);
   if (workflowRun.id?.toString() !== input.runId || workflowRun.head_sha !== input.expectedCommit) {
@@ -322,7 +386,16 @@ export function createGhDisposableClient(): GitHubDisposableClient {
         if (files.length !== 1 || files[0] !== "finisher-disposable-evidence.json") {
           throw new ProviderVerificationError("malformed_provider_response");
         }
-        return JSON.parse(readFileSync(join(directory, files[0]), "utf8"));
+        const evidencePath = join(directory, files[0]);
+        const evidenceFile = lstatSync(evidencePath);
+        if (
+          !evidenceFile.isFile() ||
+          evidenceFile.size <= 0 ||
+          evidenceFile.size > MAX_DISPOSABLE_ARTIFACT_BYTES
+        ) {
+          throw new ProviderVerificationError("malformed_provider_response");
+        }
+        return JSON.parse(readFileSync(evidencePath, "utf8"));
       } catch (error) {
         if (error instanceof ProviderVerificationError) throw error;
         throw new ProviderVerificationError("malformed_provider_response");
@@ -341,6 +414,9 @@ export async function inspectSupabaseRecoveryCapability(input: {
   fetcher?: JsonFetcher;
   now?: () => string;
 }): Promise<FinisherProviderVerification["recoveryPoint"]> {
+  if (input.database !== FINISHER_PRODUCTION_DATABASE) {
+    throw new ProviderVerificationError("wrong_identity");
+  }
   const fetcher = input.fetcher ?? fetch;
   const request = (path: string) =>
     providerJson({
@@ -374,7 +450,7 @@ export async function inspectSupabaseRecoveryCapability(input: {
     authenticated: true,
     organizationId: input.organizationId,
     projectRef: input.projectRef,
-    database: input.database,
+    database: FINISHER_PRODUCTION_DATABASE,
     creationCapability: "unavailable_no_authoritative_creation_api",
     creationAuthorizedAt: null,
     operationId: null,
@@ -464,7 +540,10 @@ export async function verifyProductionWritePause(input: {
     deploymentId: input.deployment.deploymentId,
     commitSha: input.deployment.sourceCommit,
     enforcement: "application_all_classified_write_paths",
-    initiationOperationId: input.deployment.deploymentId,
+    initiationCapability:
+      "unavailable_requires_authorized_environment_update_and_redeployment",
+    initiationAuthorizedAt: null,
+    initiationOperationId: null,
     initiationObservedAt: input.deployment.createdAt,
     establishedAt: input.deployment.readyAt,
     runtimeStatus: "PAUSED",
@@ -532,6 +611,8 @@ export async function collectFinisherProviderVerification(input: {
   const deployment = await verifyVercelProductionDeployment({
     expectedCommit: input.requiredApplicationCommit,
     expected: {
+      githubOwner: input.target.githubOwner,
+      githubRepository: input.target.githubRepository,
       teamId: input.target.vercelTeamId,
       teamSlug: input.target.vercelTeamSlug,
       projectId: input.target.vercelProjectId,

@@ -415,14 +415,17 @@ out of order fail closed.
 Every successful result binds all of the following:
 
 - authenticated GitHub owner/repository and exact default-branch commit;
-- authenticated Vercel account/team/project, production alias, active production
-  deployment ID, READY state, Git source commit, creation time, and readiness time;
+- authenticated Vercel account/team/project, exact linked GitHub owner/repository
+  and `master` production branch, production alias, active production deployment
+  ID, READY state, Git source repository/ref/commit, creation time, and readiness
+  time;
 - exact repository-relative migration path, Git blob, SHA-256 of the Git blob
   bytes, and ordered migration-inventory digest;
-- authenticated Supabase organization/project/database identity and recovery
-  resource state;
-- the production runtime write-status response from the same exact Vercel
-  deployment, plus the repository-verified complete mutation-path inventory;
+- authenticated Supabase organization/project identity, the exact `postgres`
+  database bound independently by the direct target, and recovery resource state;
+- the production runtime write-status response from the independently verified
+  paused exact-commit Vercel deployment, plus the repository-verified complete
+  mutation-path inventory;
 - schema, contract, and tool versions, provider resource IDs, provider-observed
   timestamps, verification timestamps, provenance, and sanitized failures.
 
@@ -453,7 +456,9 @@ ambiguous source state, runs the real PostgreSQL 16 rollout harness and
 restricted-administrator principal lifecycle, verifies the 17-applied/one-pending
 pre-state and exact terminal state, hashes the migration from the checked-out
 Git object, and uploads exactly one seven-day
-`finisher-disposable-evidence` artifact.
+`finisher-disposable-evidence` artifact. Official workflow dependencies are
+pinned to immutable commit SHAs, and the authenticated consumer rejects missing,
+expired, duplicate, stale-attempt, malformed, nested, or oversized artifacts.
 
 After the tooling PR is merged, and only for the exact integrated commit under
 review, an operator may dispatch and inspect it:
@@ -497,7 +502,8 @@ The command uses only authenticated GET requests plus the public no-store
 runtime write-status GET. It distinguishes missing credentials, rejected
 authentication, insufficient authorization, rate limiting, network failures,
 missing resources, identity mismatches, non-ready deployment, wrong commit,
-stale alias, malformed response, and unavailable capability. It never reports
+missing source binding, stale alias, malformed response, and unavailable
+capability. It never reports
 headers, tokens, credential-bearing URLs, or raw provider response bodies.
 
 Provider-backed Gate A uses the same live collector rather than importing the
@@ -567,6 +573,14 @@ version, exact commit, production classification, enforcement class, and
 effective `PAUSED`/`ENABLED` state. Configuration intent without an active
 exact-commit paused deployment fails. The static ownership guard must also pass;
 one unclassified application or operational write path blocks authorization.
+The initial compatible production deployment and the later paused exact-commit
+redeployment are distinct provider resources and must have distinct independently
+verified timestamps; the paused deployment cannot be backdated to the initial
+deployment. The current adapter reports effective runtime state but records pause
+initiation capability as unavailable, with no authorization timestamp or operation
+ID. Therefore even an already-paused response cannot make
+`migrationAuthorizationReady` true until a reviewed adapter can authenticate the
+separately authorized Vercel environment update and paused redeployment.
 
 If any provider operation is partially completed, do not retry blindly. Keep
 Finishers disabled, preserve the provider operation/resource ID, rerun only the

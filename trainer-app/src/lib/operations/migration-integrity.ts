@@ -2879,6 +2879,8 @@ export function buildMigrationIntegrityReport(input: {
           reason === "provider_recovery_point_unverified" ||
           reason === "provider_recovery_point_creation_capability_unavailable" ||
           reason === "provider_recovery_point_incomplete" ||
+          reason === "provider_write_pause_initiation_capability_unavailable" ||
+          reason === "provider_write_pause_initiation_unverified" ||
           reason === "provider_evidence_operational_order_invalid",
       ),
   );
@@ -2938,6 +2940,9 @@ export function buildMigrationIntegrityReport(input: {
   const writeBoundaryReady = Boolean(
     providerBindingValid &&
       providerEvidence?.writePause.verified &&
+      providerEvidence.writePause.initiationCapability === "provider_operation" &&
+      providerEvidence.writePause.initiationAuthorizedAt &&
+      providerEvidence.writePause.initiationOperationId &&
       providerEvidence.writePause.runtimeStatus === "PAUSED" &&
       providerEvidence.writePause.mutationCoverageVerified &&
       providerEvidence.writePause.bypassPaths.length === 0,

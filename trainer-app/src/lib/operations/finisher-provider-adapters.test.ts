@@ -20,6 +20,8 @@ import {
 const COMMIT = "a".repeat(40);
 const NOW = "2026-07-31T18:00:00.000Z";
 const expected = {
+  githubOwner: "aaron8819",
+  githubRepository: "trainer-app",
   teamId: "team_trainer",
   teamSlug: "trainer-team",
   projectId: "prj_trainer",
@@ -36,6 +38,10 @@ function json(body: unknown, status = 200): Response {
 
 function vercelFetcher(options: {
   commit?: string;
+  missingSource?: boolean;
+  sourceBranch?: string;
+  sourceOwner?: string;
+  sourceRepository?: string;
   target?: string;
   aliasDeploymentId?: string;
   deploymentId?: string;
@@ -52,6 +58,13 @@ function vercelFetcher(options: {
         id: expected.projectId,
         name: expected.projectName,
         accountId: expected.teamId,
+        link: {
+          type: "github",
+          org: options.sourceOwner ?? expected.githubOwner,
+          repo: options.sourceRepository ?? expected.githubRepository,
+          repoId: 123,
+          productionBranch: options.sourceBranch ?? "master",
+        },
         targets: {
           production: { id: options.aliasDeploymentId ?? "dpl_current" },
         },
@@ -73,6 +86,16 @@ function vercelFetcher(options: {
         readyState: "READY",
         createdAt: Date.parse("2026-07-31T17:30:00.000Z"),
         ready: Date.parse("2026-07-31T17:31:00.000Z"),
+        ...(options.missingSource
+          ? {}
+          : {
+              gitSource: {
+                type: "github",
+                repoId: 123,
+                ref: options.sourceBranch ?? "master",
+                sha: options.commit ?? COMMIT,
+              },
+            }),
         meta: { githubCommitSha: options.commit ?? COMMIT },
       });
     }
@@ -93,6 +116,9 @@ function deployment(): FinisherProviderVerification["deployment"] {
     alias: expected.productionAlias,
     deploymentId: "dpl_current",
     state: "READY",
+    sourceProvider: "github",
+    sourceRepository: "aaron8819/trainer-app",
+    sourceBranch: "master",
     sourceCommit: COMMIT,
     createdAt: "2026-07-31T17:30:00.000Z",
     readyAt: "2026-07-31T17:31:00.000Z",
@@ -167,6 +193,7 @@ function githubClient(overrides: Partial<GitHubDisposableClient> = {}): GitHubDi
         id: 200,
         name: "finisher-disposable-evidence",
         expired: false,
+        size_in_bytes: 4096,
         digest: `sha256:${"d".repeat(64)}`,
         workflow_run: { id: 100, head_sha: COMMIT },
       }],
@@ -195,6 +222,10 @@ describe("Vercel production deployment adapter", () => {
   it.each([
     ["preview deployment", { target: "preview" }, "stale_alias"],
     ["READY wrong commit", { commit: "b".repeat(40) }, "wrong_commit"],
+    ["wrong source owner", { sourceOwner: "other-owner" }, "wrong_identity"],
+    ["wrong source repository", { sourceRepository: "other-app" }, "wrong_identity"],
+    ["wrong source branch", { sourceBranch: "feature" }, "wrong_identity"],
+    ["missing source binding", { missingSource: true }, "source_binding_unavailable"],
     ["stale alias", { deploymentId: "dpl_other" }, "stale_alias"],
   ])("rejects %s", async (_label, options, code) => {
     await expect(verifyVercelProductionDeployment({
@@ -217,6 +248,13 @@ describe("Vercel production deployment adapter", () => {
             id: expected.projectId,
             name: expected.projectName,
             accountId: expected.teamId,
+            link: {
+              type: "github",
+              org: expected.githubOwner,
+              repo: expected.githubRepository,
+              repoId: 123,
+              productionBranch: "master",
+            },
             targets: { production: { id: "dpl_newer" } },
           });
         }
@@ -237,6 +275,13 @@ describe("Vercel production deployment adapter", () => {
               id: "prj_other",
               name: expected.projectName,
               accountId: expected.teamId,
+              link: {
+                type: "github",
+                org: expected.githubOwner,
+                repo: expected.githubRepository,
+                repoId: 123,
+                productionBranch: "master",
+              },
               targets: { production: { id: "dpl_current" } },
             })
           : base(url),
@@ -323,11 +368,62 @@ describe("GitHub exact-head disposable adapter", () => {
     })).rejects.toMatchObject({ code: "wrong_identity" });
   });
 
+  it("rejects the wrong workflow and unsuccessful run conclusion", async () => {
+    for (const [run, code] of [
+      [{
+        id: 100,
+        path: ".github/workflows/other.yml",
+        event: "workflow_dispatch",
+        head_branch: "master",
+        head_sha: COMMIT,
+        status: "completed",
+        conclusion: "success",
+        run_attempt: 1,
+      }, "wrong_commit"],
+      [{
+        id: 100,
+        path: FINISHER_DISPOSABLE_WORKFLOW,
+        event: "workflow_dispatch",
+        head_branch: "master",
+        head_sha: COMMIT,
+        status: "completed",
+        conclusion: "failure",
+        run_attempt: 1,
+      }, "not_ready"],
+    ] as const) {
+      await expect(verifyGitHubDisposableEvidence({
+        runId: "100",
+        expectedCommit: COMMIT,
+        client: githubClient({ getRun: async () => run }),
+      })).rejects.toMatchObject({ code });
+    }
+  });
+
+  it("rejects expired artifacts", async () => {
+    await expect(verifyGitHubDisposableEvidence({
+      runId: "100",
+      expectedCommit: COMMIT,
+      client: githubClient({
+        getArtifacts: async () => ({
+          artifacts: [{
+            id: 200,
+            name: "finisher-disposable-evidence",
+            expired: true,
+            size_in_bytes: 4096,
+            digest: `sha256:${"d".repeat(64)}`,
+            workflow_run: { id: 100, head_sha: COMMIT },
+          }],
+        }),
+      }),
+    })).rejects.toMatchObject({ code: "resource_missing" });
+  });
+
   it("rejects duplicate artifacts", async () => {
     const duplicate = {
       id: 200,
       name: "finisher-disposable-evidence",
       expired: false,
+      size_in_bytes: 4096,
       digest: `sha256:${"d".repeat(64)}`,
       workflow_run: { id: 100, head_sha: COMMIT },
     };
@@ -343,6 +439,39 @@ describe("GitHub exact-head disposable adapter", () => {
       runId: "100",
       expectedCommit: COMMIT,
       client: githubClient({ downloadEvidence: async () => ({ ...artifactEvidence(), claimedSuccess: true }) }),
+    })).rejects.toMatchObject({ code: "malformed_provider_response" });
+  });
+
+  it("rejects stale attempts and oversized artifacts", async () => {
+    await expect(verifyGitHubDisposableEvidence({
+      runId: "100",
+      expectedCommit: COMMIT,
+      client: githubClient({
+        getRun: async () => ({
+          id: 100,
+          path: FINISHER_DISPOSABLE_WORKFLOW,
+          event: "workflow_dispatch",
+          head_branch: "master",
+          head_sha: COMMIT,
+          status: "completed",
+          conclusion: "success",
+          run_attempt: 2,
+        }),
+      }),
+    })).rejects.toMatchObject({ code: "wrong_commit" });
+
+    const oversized = {
+      id: 200,
+      name: "finisher-disposable-evidence",
+      expired: false,
+      size_in_bytes: 64 * 1024 + 1,
+      digest: `sha256:${"d".repeat(64)}`,
+      workflow_run: { id: 100, head_sha: COMMIT },
+    };
+    await expect(verifyGitHubDisposableEvidence({
+      runId: "100",
+      expectedCommit: COMMIT,
+      client: githubClient({ getArtifacts: async () => ({ artifacts: [oversized] }) }),
     })).rejects.toMatchObject({ code: "malformed_provider_response" });
   });
 });
@@ -377,6 +506,21 @@ describe("Supabase recovery capability adapter", () => {
       fetcher: async () => json({ ref: "q".repeat(20), organization_id: "org_other" }),
     })).rejects.toMatchObject({ code: "wrong_identity" });
   });
+
+  it("rejects a caller-selected non-production database before provider access", async () => {
+    let requests = 0;
+    await expect(inspectSupabaseRecoveryCapability({
+      organizationId: "org_trainer",
+      projectRef: "p".repeat(20),
+      database: "other",
+      token: "token",
+      fetcher: async () => {
+        requests += 1;
+        return json({});
+      },
+    })).rejects.toMatchObject({ code: "wrong_identity" });
+    expect(requests).toBe(0);
+  });
 });
 
 describe("production write-pause verifier", () => {
@@ -392,7 +536,14 @@ describe("production write-pause verifier", () => {
         status: "PAUSED",
         enforcement: "application_all_classified_write_paths",
       }),
-    })).resolves.toMatchObject({ verified: true, bypassPaths: [] });
+    })).resolves.toMatchObject({
+      verified: true,
+      bypassPaths: [],
+      initiationCapability:
+        "unavailable_requires_authorized_environment_update_and_redeployment",
+      initiationAuthorizedAt: null,
+      initiationOperationId: null,
+    });
   });
 
   it("rejects configuration intent when runtime enforcement is not active", async () => {

@@ -10,6 +10,7 @@ import {
   assessFinisherProviderVerification,
   FINISHER_MIGRATION_GIT_BLOB,
   FINISHER_MIGRATION_PATH,
+  FINISHER_PRODUCTION_DATABASE,
   migrationInventorySha256,
 } from "@/lib/operations/finisher-provider-verification";
 import { EXPECTED_MIGRATION_CHAIN } from "@/lib/operations/migration-integrity";
@@ -81,6 +82,10 @@ async function main() {
     .digest("hex");
   const inventorySha256 = migrationInventorySha256([...EXPECTED_MIGRATION_CHAIN]);
   const vercel = configuredVercelIdentity();
+  const database = required(argv, "--expected-database");
+  if (database !== FINISHER_PRODUCTION_DATABASE) {
+    throw new Error(`The expected production database must be ${FINISHER_PRODUCTION_DATABASE}.`);
+  }
   const target = {
     environment: "production" as const,
     githubOwner: "aaron8819",
@@ -92,7 +97,7 @@ async function main() {
     productionAlias: vercel.productionAlias,
     supabaseOrganizationId: required(argv, "--expected-supabase-organization-id"),
     supabaseProjectRef: required(argv, "--expected-supabase-project-ref"),
-    database: required(argv, "--expected-database"),
+    database: FINISHER_PRODUCTION_DATABASE,
   };
   const evidence = await collectFinisherProviderVerification({
     requiredApplicationCommit,

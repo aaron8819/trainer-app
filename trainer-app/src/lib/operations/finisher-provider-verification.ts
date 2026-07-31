@@ -10,6 +10,7 @@ export const FINISHER_MIGRATION_PATH =
   "trainer-app/prisma/migrations/20260728120000_add_finishers_phase_1/migration.sql" as const;
 export const FINISHER_MIGRATION_GIT_BLOB =
   "55985a32851d9de042b43db3880b5cb857373313" as const;
+export const FINISHER_PRODUCTION_DATABASE = "postgres" as const;
 export const FINISHER_DISPOSABLE_WORKFLOW =
   ".github/workflows/finisher-disposable-verification.yml" as const;
 export const FINISHER_DISPOSABLE_ARTIFACT =
@@ -43,7 +44,7 @@ const targetIdentitySchema = z
     productionAlias: nonEmpty,
     supabaseOrganizationId: nonEmpty,
     supabaseProjectRef: z.string().regex(/^[a-z0-9]{20}$/),
-    database: nonEmpty,
+    database: z.literal(FINISHER_PRODUCTION_DATABASE),
   })
   .strict();
 
@@ -60,6 +61,9 @@ const deploymentSchema = z
     alias: nonEmpty,
     deploymentId: nonEmpty,
     state: z.literal("READY"),
+    sourceProvider: z.literal("github"),
+    sourceRepository: nonEmpty,
+    sourceBranch: z.literal("master"),
     sourceCommit: fullSha,
     createdAt: timestamp,
     readyAt: timestamp,
@@ -124,7 +128,7 @@ const recoveryPointSchema = z
     authenticated: z.literal(true),
     organizationId: nonEmpty,
     projectRef: z.string().regex(/^[a-z0-9]{20}$/),
-    database: nonEmpty,
+    database: z.literal(FINISHER_PRODUCTION_DATABASE),
     creationCapability: z.enum([
       "provider_operation",
       "unavailable_no_authoritative_creation_api",
@@ -157,7 +161,12 @@ const writePauseSchema = z
     deploymentId: nonEmpty,
     commitSha: fullSha,
     enforcement: z.literal("application_all_classified_write_paths"),
-    initiationOperationId: nonEmpty,
+    initiationCapability: z.enum([
+      "provider_operation",
+      "unavailable_requires_authorized_environment_update_and_redeployment",
+    ]),
+    initiationAuthorizedAt: timestamp.nullable(),
+    initiationOperationId: nonEmpty.nullable(),
     initiationObservedAt: timestamp,
     establishedAt: timestamp,
     runtimeStatus: z.literal("PAUSED"),
@@ -294,9 +303,11 @@ export function assessFinisherProviderVerification(
     evidence.deployment.projectId !== evidence.target.vercelProjectId ||
     evidence.deployment.projectName !== evidence.target.vercelProjectName ||
     evidence.deployment.alias !== evidence.target.productionAlias ||
+    evidence.deployment.sourceRepository !==
+      `${evidence.target.githubOwner}/${evidence.target.githubRepository}` ||
+    evidence.deployment.sourceBranch !== "master" ||
     evidence.writePause.teamId !== evidence.target.vercelTeamId ||
     evidence.writePause.projectId !== evidence.target.vercelProjectId ||
-    evidence.writePause.deploymentId !== evidence.deployment.deploymentId ||
     evidence.recoveryPoint.organizationId !== evidence.target.supabaseOrganizationId ||
     evidence.recoveryPoint.projectRef !== evidence.target.supabaseProjectRef ||
     evidence.recoveryPoint.database !== evidence.target.database
@@ -317,13 +328,29 @@ export function assessFinisherProviderVerification(
   ) {
     reasons.push("provider_recovery_point_incomplete");
   }
+  if (evidence.writePause.initiationCapability !== "provider_operation") {
+    reasons.push("provider_write_pause_initiation_capability_unavailable");
+  }
+  if (
+    evidence.writePause.initiationAuthorizedAt === null ||
+    evidence.writePause.initiationOperationId === null
+  ) {
+    reasons.push("provider_write_pause_initiation_unverified");
+  }
   for (const observedAt of [
+    evidence.deployment.createdAt,
+    evidence.deployment.readyAt,
+    evidence.deployment.aliasObservedAt,
     evidence.deployment.verifiedAt,
+    evidence.disposable.startedAt,
     evidence.disposable.completedAt,
     evidence.disposable.verifiedAt,
+    evidence.recoveryPoint.creationAuthorizedAt,
     evidence.recoveryPoint.providerCreatedAt,
     evidence.recoveryPoint.checkpointAt,
     evidence.recoveryPoint.verifiedAt,
+    evidence.writePause.initiationAuthorizedAt,
+    evidence.writePause.initiationObservedAt,
     evidence.writePause.establishedAt,
     evidence.writePause.verifiedAt,
     evidence.verifiedAt,
@@ -340,6 +367,7 @@ export function assessFinisherProviderVerification(
       evidence.recoveryPoint.creationAuthorizedAt,
       evidence.recoveryPoint.providerCreatedAt,
       evidence.recoveryPoint.verifiedAt,
+      evidence.writePause.initiationAuthorizedAt,
       evidence.writePause.initiationObservedAt,
       evidence.writePause.establishedAt,
       evidence.writePause.verifiedAt,
@@ -347,6 +375,17 @@ export function assessFinisherProviderVerification(
     )
   ) {
     reasons.push("provider_evidence_operational_order_invalid");
+  }
+  if (
+    !ordered(
+      evidence.deployment.verifiedAt,
+      evidence.disposable.verifiedAt,
+      evidence.recoveryPoint.verifiedAt,
+      evidence.writePause.verifiedAt,
+      evidence.verifiedAt,
+    )
+  ) {
+    reasons.push("provider_evidence_verification_order_invalid");
   }
   return { valid: reasons.length === 0, reasons: [...new Set(reasons)].sort(), evidence };
 }

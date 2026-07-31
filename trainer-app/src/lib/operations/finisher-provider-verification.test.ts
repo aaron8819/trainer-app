@@ -61,11 +61,14 @@ function evidence(): FinisherProviderVerification {
       alias: "trainer.example.com",
       deploymentId: "dpl_current",
       state: "READY",
+      sourceProvider: "github",
+      sourceRepository: "aaron8819/trainer-app",
+      sourceBranch: "master",
       sourceCommit: COMMIT,
       createdAt: "2026-07-31T17:30:00.000Z",
       readyAt: "2026-07-31T17:31:00.000Z",
-      aliasObservedAt: "2026-07-31T17:55:00.000Z",
-      verifiedAt: "2026-07-31T17:55:00.000Z",
+      aliasObservedAt: "2026-07-31T17:31:30.000Z",
+      verifiedAt: "2026-07-31T17:31:30.000Z",
       provenance: "vercel_authenticated_read_only_rest",
     },
     disposable: {
@@ -104,7 +107,7 @@ function evidence(): FinisherProviderVerification {
       authenticated: true,
       artifactId: "200",
       artifactDigest: "c".repeat(64),
-      verifiedAt: "2026-07-31T17:55:00.000Z",
+      verifiedAt: "2026-07-31T17:38:30.000Z",
       provenance: "github_authenticated_actions_artifact",
     },
     recoveryPoint: {
@@ -132,11 +135,13 @@ function evidence(): FinisherProviderVerification {
       teamId: "team_trainer",
       projectId: "prj_trainer",
       environment: "production",
-      deploymentId: "dpl_current",
+      deploymentId: "dpl_paused",
       commitSha: COMMIT,
       enforcement: "application_all_classified_write_paths",
-      initiationOperationId: "dpl_current",
-      initiationObservedAt: "2026-07-31T17:46:00.000Z",
+      initiationCapability: "provider_operation",
+      initiationAuthorizedAt: "2026-07-31T17:46:00.000Z",
+      initiationOperationId: "dpl_paused",
+      initiationObservedAt: "2026-07-31T17:46:30.000Z",
       establishedAt: "2026-07-31T17:47:00.000Z",
       runtimeStatus: "PAUSED",
       runtimeContractVersion: 1,
@@ -215,6 +220,14 @@ describe("Finisher provider verification contract", () => {
     );
   });
 
+  it("rejects future-dated verification evidence", () => {
+    const value = evidence();
+    value.verifiedAt = "2026-07-31T18:00:01.000Z";
+    expect(assessFinisherProviderVerification(value, expectation()).reasons).toContain(
+      "provider_evidence_expired_or_future",
+    );
+  });
+
   it("rejects a stale recovery resource even when it was read recently", () => {
     const value = evidence();
     value.recoveryPoint.providerCreatedAt = "2026-07-31T16:00:00.000Z";
@@ -246,6 +259,20 @@ describe("Finisher provider verification contract", () => {
     );
   });
 
+  it("rejects effective pause evidence when initiation capability is unavailable", () => {
+    const value = evidence();
+    value.writePause.initiationCapability =
+      "unavailable_requires_authorized_environment_update_and_redeployment";
+    value.writePause.initiationAuthorizedAt = null;
+    value.writePause.initiationOperationId = null;
+    expect(assessFinisherProviderVerification(value, expectation()).reasons).toEqual(
+      expect.arrayContaining([
+        "provider_write_pause_initiation_capability_unavailable",
+        "provider_write_pause_initiation_unverified",
+      ]),
+    );
+  });
+
   it("rejects evidence produced before the corresponding action and out of order", () => {
     const value = evidence();
     value.recoveryPoint.creationAuthorizedAt = "2026-07-31T17:20:00.000Z";
@@ -256,9 +283,9 @@ describe("Finisher provider verification contract", () => {
 
   it("rejects wrong provider database identity", () => {
     const value = evidence();
-    value.recoveryPoint.database = "other";
+    (value.recoveryPoint as { database: string }).database = "other";
     expect(assessFinisherProviderVerification(value, expectation()).reasons).toContain(
-      "provider_evidence_internal_target_conflict",
+      "provider_evidence_schema_invalid",
     );
   });
 

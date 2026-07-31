@@ -485,11 +485,14 @@ function fullOperationalVerification(
       alias: "trainer.example.com",
       deploymentId: "dpl_trainer",
       state: "READY",
+      sourceProvider: "github",
+      sourceRepository: "aaron8819/trainer-app",
+      sourceBranch: "master",
       sourceCommit: bindingHead,
-      createdAt: "2026-07-26T17:20:00.000Z",
-      readyAt: "2026-07-26T17:30:00.000Z",
-      aliasObservedAt: VERIFIED_AT,
-      verifiedAt: VERIFIED_AT,
+      createdAt: "2026-07-26T17:30:00.000Z",
+      readyAt: "2026-07-26T17:31:00.000Z",
+      aliasObservedAt: "2026-07-26T17:31:30.000Z",
+      verifiedAt: "2026-07-26T17:31:30.000Z",
       provenance: "vercel_authenticated_read_only_rest",
     },
     disposable: {
@@ -529,12 +532,12 @@ function fullOperationalVerification(
         productionWritePathCoverageVerified: true,
         databaseWritesOutsideDisposable: 0,
       },
-      startedAt: "2026-07-26T17:31:00.000Z",
+      startedAt: "2026-07-26T17:32:00.000Z",
       completedAt: "2026-07-26T17:35:00.000Z",
       authenticated: true,
       artifactId: "456",
       artifactDigest: "2".repeat(64),
-      verifiedAt: VERIFIED_AT,
+      verifiedAt: "2026-07-26T17:35:30.000Z",
       provenance: "github_authenticated_actions_artifact",
     },
     recoveryPoint: {
@@ -562,11 +565,13 @@ function fullOperationalVerification(
       teamId: "team_trainer",
       projectId: "prj_trainer",
       environment: "production",
-      deploymentId: "dpl_trainer",
+      deploymentId: "dpl_trainer_paused",
       commitSha: bindingHead,
       enforcement: "application_all_classified_write_paths",
-      initiationOperationId: "dpl_trainer",
-      initiationObservedAt: "2026-07-26T17:41:00.000Z",
+      initiationCapability: "provider_operation",
+      initiationAuthorizedAt: "2026-07-26T17:41:00.000Z",
+      initiationOperationId: "dpl_trainer_paused",
+      initiationObservedAt: "2026-07-26T17:41:30.000Z",
       establishedAt: "2026-07-26T17:42:00.000Z",
       runtimeStatus: "PAUSED",
       runtimeContractVersion: 1,
@@ -1019,6 +1024,25 @@ describe("migration integrity", () => {
     expect(result.technicalMigrationReady).toBe(false);
     expect(result.writeBoundaryReady).toBe(false);
     expect(result.migrationAuthorizationReady).toBe(false);
+  });
+
+  it("keeps Gate A closed when pause enforcement is effective but initiation is unavailable", () => {
+    const operational = fullOperationalVerification();
+    const result = report({
+      operationalVerification: fullOperationalVerification({
+        writePause: {
+          ...operational.writePause,
+          initiationCapability:
+            "unavailable_requires_authorized_environment_update_and_redeployment",
+          initiationAuthorizedAt: null,
+          initiationOperationId: null,
+        },
+      }),
+    });
+    expect(result.technicalMigrationReady).toBe(true);
+    expect(result.writeBoundaryReady).toBe(false);
+    expect(result.migrationAuthorizationReady).toBe(false);
+    expect(result.executionAuthorized).toBe(false);
   });
 
   it("authorizes any future integrated commit when all three trusted values match exactly", () => {

@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import {
   FINISHER_MIGRATION_GIT_BLOB,
   FINISHER_MIGRATION_PATH,
+  FINISHER_PRODUCTION_DATABASE,
 } from "@/lib/operations/finisher-provider-verification";
 
 type Operation = "recovery-point" | "write-pause";
@@ -71,8 +72,10 @@ const migrationSha256 = createHash("sha256")
 const account = required(argv, "--expected-provider-account-id");
 const project = required(argv, "--expected-project-reference");
 const database = required(argv, "--expected-database");
-if (database !== "postgres") {
-  throw new Error("The expected database must be the explicit production database postgres.");
+if (database !== FINISHER_PRODUCTION_DATABASE) {
+  throw new Error(
+    `The expected database must be the explicit production database ${FINISHER_PRODUCTION_DATABASE}.`,
+  );
 }
 if (operation === "recovery-point" && !/^[a-z0-9]{20}$/.test(project)) {
   throw new Error("Recovery-point scope requires one exact Supabase project reference.");

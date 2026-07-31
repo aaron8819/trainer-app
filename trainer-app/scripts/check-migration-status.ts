@@ -13,6 +13,7 @@ import { collectFinisherProviderVerification } from "@/lib/operations/finisher-p
 import {
   FINISHER_MIGRATION_GIT_BLOB,
   FINISHER_MIGRATION_PATH,
+  FINISHER_PRODUCTION_DATABASE,
   migrationInventorySha256,
   type FinisherProviderVerification,
   type ProviderVerificationExpectation,
@@ -193,6 +194,15 @@ async function main(): Promise<void> {
             "The expected Supabase project reference does not match the authenticated direct target.",
           );
         }
+        const expectedDatabase = requiredArgument(argv, "--expected-database");
+        if (
+          expectedDatabase !== FINISHER_PRODUCTION_DATABASE ||
+          database !== FINISHER_PRODUCTION_DATABASE
+        ) {
+          throw new Error(
+            `The authenticated direct target and expected database must both be ${FINISHER_PRODUCTION_DATABASE}.`,
+          );
+        }
         const vercel = vercelIdentity();
         const providerTarget = {
           environment: "production" as const,
@@ -208,7 +218,7 @@ async function main(): Promise<void> {
             "--expected-supabase-organization-id",
           ),
           supabaseProjectRef: expectedProjectReference,
-          database,
+          database: FINISHER_PRODUCTION_DATABASE,
         };
         providerVerification = await collectFinisherProviderVerification({
           requiredApplicationCommit:

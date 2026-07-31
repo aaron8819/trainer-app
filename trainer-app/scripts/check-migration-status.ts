@@ -6,15 +6,26 @@ import { Client } from "pg";
 import {
   buildMigrationIntegrityReport,
   loadCheckedInMigrations,
+  type CanonicalOperationalVerification,
+  type LiveFinisherPrincipalVerification,
   type MigrationAuthorizationEvidence,
 } from "@/lib/operations/migration-integrity";
 import {
-  FINISHER_PRINCIPAL_EVIDENCE_KEY_VARIABLE,
-  parsePrincipalVerificationEvidence,
+  FINISHER_PRINCIPAL_AUDIT_SCHEMA,
+  FINISHER_PRINCIPAL_AUDIT_VERSION,
+  FINISHER_RUNTIME_PASSWORD_VARIABLE,
+  FINISHER_TARGET_MIGRATION,
   projectFingerprint,
-  type FinisherPrincipalVerificationEvidence,
+  type FinisherPrincipalAuditRecord,
 } from "@/lib/operations/finisher-principal-contract";
-import { inspectMigrationDatabase } from "@/lib/operations/migration-integrity-postgres";
+import {
+  inspectFinisherPrincipals,
+  verifyRuntimeCredentialReadOnly,
+} from "@/lib/operations/finisher-principal-postgres";
+import {
+  inspectMigrationDatabase,
+  readFinisherCatalogRows,
+} from "@/lib/operations/migration-integrity-postgres";
 import {
   classifyRolloutTarget,
   runWithRolloutEnvironment,
@@ -25,54 +36,149 @@ function fingerprint(connectionString: string): string {
   return createHash("sha256").update(hostname).digest("hex").slice(0, 12);
 }
 
-function loadAuthorizationEvidence(
-  argv: string[],
-): MigrationAuthorizationEvidence {
-  const evidenceFlagIndex = argv.indexOf("--evidence-file");
-  const evidencePath =
-    evidenceFlagIndex >= 0 ? argv[evidenceFlagIndex + 1] : undefined;
+function readArgument(argv: string[], name: string): string | undefined {
+  const inline = argv.find((argument) => argument.startsWith(`${name}=`));
+  if (inline) return inline.slice(name.length + 1) || undefined;
+  const index = argv.indexOf(name);
+  if (index < 0) return undefined;
+  const value = argv[index + 1];
+  return value && !value.startsWith("--") ? value : undefined;
+}
+
+function requiredArgument(argv: string[], name: string): string {
+  const value = readArgument(argv, name);
+  if (!value) throw new Error(`Missing required ${name} <value>.`);
+  return value;
+}
+
+function loadAuditInput(argv: string[]): MigrationAuthorizationEvidence {
+  const evidencePath = readArgument(argv, "--evidence-file");
   const supplied = evidencePath
     ? (JSON.parse(
         readFileSync(resolve(evidencePath), "utf8"),
       ) as Partial<MigrationAuthorizationEvidence>)
     : {};
   if (supplied == null || typeof supplied !== "object" || Array.isArray(supplied)) {
-    throw new Error("Migration authorization evidence must be a JSON object.");
+    throw new Error("Migration audit input must be a JSON object.");
   }
-  if ("expectedPendingMigrations" in supplied) {
+  for (const forbidden of [
+    "expectedPendingMigrations",
+    "finisherPrincipals",
+    "productionDeploymentCommit",
+    "requiredApplicationCommit",
+    "recoveryPoint",
+    "writeBoundary",
+    "deploymentVerifiedAt",
+  ]) {
+    if (!(forbidden in supplied)) continue;
     throw new Error(
-      "Migration authorization evidence cannot define repository migration policy.",
-    );
-  }
-  if ("finisherPrincipals" in supplied) {
-    throw new Error(
-      "Finisher principal claims must come from --principal-evidence-file.",
+      `Migration audit input cannot supply authoritative ${forbidden} state.`,
     );
   }
   const repositoryHead = execFileSync("git", ["rev-parse", "HEAD"], {
     encoding: "utf8",
   }).trim();
   return {
-    productionDeploymentCommit: "",
     ...supplied,
     repositoryHead,
+    requiredApplicationCommit: requiredArgument(
+      argv,
+      "--required-application-commit",
+    ),
     evaluatedAt: new Date().toISOString(),
   };
 }
 
-function loadPrincipalEvidence(
+function loadPrincipalAuditRecord(
   argv: string[],
-): FinisherPrincipalVerificationEvidence | undefined {
-  const flagIndex = argv.indexOf("--principal-evidence-file");
-  const evidencePath = flagIndex >= 0 ? argv[flagIndex + 1] : undefined;
+): FinisherPrincipalAuditRecord | undefined {
+  if (readArgument(argv, "--principal-evidence-file")) {
+    throw new Error(
+      "--principal-evidence-file is no longer authoritative; use --principal-audit-file only for retained audit context.",
+    );
+  }
+  const evidencePath = readArgument(argv, "--principal-audit-file");
   if (!evidencePath) return undefined;
   try {
-    return parsePrincipalVerificationEvidence(
-      JSON.parse(readFileSync(resolve(evidencePath), "utf8")) as unknown,
-    );
+    const value = JSON.parse(
+      readFileSync(resolve(evidencePath), "utf8"),
+    ) as FinisherPrincipalAuditRecord;
+    if (
+      value.schema !== FINISHER_PRINCIPAL_AUDIT_SCHEMA ||
+      value.version !== FINISHER_PRINCIPAL_AUDIT_VERSION ||
+      value.authority !== "sanitized_audit_record_only"
+    ) {
+      throw new Error("invalid audit record");
+    }
+    return value;
   } catch {
-    throw new Error("Finisher principal evidence is malformed.");
+    throw new Error("Finisher principal audit record is malformed.");
   }
+}
+
+function operationalVerification(options: {
+  targetClass: "disposable" | "remote";
+  verifiedAt: string;
+  repositoryHead: string;
+  requiredApplicationCommit: string;
+  targetFingerprint: string;
+  projectFingerprint?: string;
+  database: string;
+}): CanonicalOperationalVerification {
+  if (options.targetClass === "disposable") {
+    return {
+      source: "canonical_live_operational_verification",
+      verifiedAt: options.verifiedAt,
+      repositoryHead: options.repositoryHead,
+      requiredApplicationCommit: options.requiredApplicationCommit,
+      targetFingerprint: options.targetFingerprint,
+      projectFingerprint: options.projectFingerprint,
+      database: options.database,
+      deployment: {
+        verified: true,
+        commit: options.repositoryHead,
+        identity: "disposable-not-applicable",
+        source: "disposable_not_applicable",
+      },
+      recoveryPoint: {
+        verified: true,
+        identity: "disposable-not-applicable",
+        source: "disposable_not_applicable",
+      },
+      writePause: {
+        verified: true,
+        identity: "disposable-not-applicable",
+        source: "disposable_not_applicable",
+      },
+      applicationCompatibilityState: "compatible_with_write_boundary",
+    };
+  }
+  return {
+    source: "canonical_live_operational_verification",
+    verifiedAt: options.verifiedAt,
+    repositoryHead: options.repositoryHead,
+    requiredApplicationCommit: options.requiredApplicationCommit,
+    targetFingerprint: options.targetFingerprint,
+    projectFingerprint: options.projectFingerprint,
+    database: options.database,
+    deployment: {
+      verified: false,
+      commit: "",
+      identity: "unavailable",
+      source: "unavailable",
+    },
+    recoveryPoint: {
+      verified: false,
+      identity: "unavailable",
+      source: "unavailable",
+    },
+    writePause: {
+      verified: false,
+      identity: "unavailable",
+      source: "unavailable",
+    },
+    applicationCompatibilityState: "unverified",
+  };
 }
 
 async function main(): Promise<void> {
@@ -81,59 +187,148 @@ async function main(): Promise<void> {
     {
       argv,
       allowWrite: false,
-      requiredVariables: [
-        "DATABASE_URL",
-        "DIRECT_URL",
-        FINISHER_PRINCIPAL_EVIDENCE_KEY_VARIABLE,
-      ],
+      requiredVariables: ["DATABASE_URL", "DIRECT_URL"],
     },
     async (environment) => {
       const directUrl = process.env.DIRECT_URL;
-      if (!directUrl) throw new Error("The explicitly named environment file must define DIRECT_URL.");
-      const directTargetClass = classifyRolloutTarget(directUrl, argv.includes("--confirm-disposable"));
+      if (!directUrl) {
+        throw new Error(
+          "The explicitly named environment file must define DIRECT_URL.",
+        );
+      }
+      const directTargetClass = classifyRolloutTarget(
+        directUrl,
+        argv.includes("--confirm-disposable"),
+      );
       if (directTargetClass !== environment.targetClass) {
-        throw new Error("DATABASE_URL and DIRECT_URL resolve to different sanitized target classes.");
+        throw new Error(
+          "DATABASE_URL and DIRECT_URL resolve to different sanitized target classes.",
+        );
       }
       if (directTargetClass === "local") {
-        throw new Error("Gate A migration integrity requires a remote target; disposable targets are allowed only with --confirm-disposable.");
+        throw new Error(
+          "Gate A migration integrity requires a remote target; disposable targets are allowed only with --confirm-disposable.",
+        );
       }
 
-      const client = new Client({ connectionString: directUrl, connectionTimeoutMillis: 5_000 });
+      const directTarget = new URL(directUrl);
+      const database = directTarget.pathname.replace(/^\//, "");
+      const projectReference =
+        /^db\.([a-z0-9]{20})\.supabase\.co$/i.exec(
+          directTarget.hostname,
+        )?.[1] ?? (directTargetClass === "disposable" ? "disposable" : "");
+      const target = {
+        classification: directTargetClass,
+        fingerprint: fingerprint(directUrl),
+        projectFingerprint: projectReference
+          ? projectFingerprint(projectReference)
+          : undefined,
+        database,
+      };
+      const auditInput = loadAuditInput(argv);
+      const principalAuditRecord = loadPrincipalAuditRecord(argv);
+      const runtimePassword = process.env[FINISHER_RUNTIME_PASSWORD_VARIABLE];
+
+      const client = new Client({
+        connectionString: directUrl,
+        connectionTimeoutMillis: 5_000,
+        statement_timeout: 10_000,
+      });
       try {
         await client.connect();
         const inspection = await inspectMigrationDatabase(client);
-        const authorizationEvidence = loadAuthorizationEvidence(argv);
-        const finisherPrincipalEvidence = loadPrincipalEvidence(argv);
-        const directTarget = new URL(directUrl);
-        const projectReference =
-          /^db\.([a-z0-9]{20})\.supabase\.co$/i.exec(
-            directTarget.hostname,
-          )?.[1] ?? (directTargetClass === "disposable" ? "disposable" : "");
+        const credentialVerified = runtimePassword
+          ? await verifyRuntimeCredentialReadOnly({
+              directUrl,
+              expectedDatabase: database,
+              password: runtimePassword,
+            })
+          : false;
+        const targetMigrationApplied = inspection.ledgerRows.some(
+          (row) =>
+            row.migrationName === FINISHER_TARGET_MIGRATION &&
+            row.finishedAt !== null &&
+            row.rolledBackAt === null &&
+            !row.logs?.trim(),
+        );
+        const finisherCatalogTablesPresent = [
+          "FinisherRoutine",
+          "FinisherRoutineVersion",
+          "FinisherRoutineStep",
+          "FinisherRoutineStepAlternative",
+        ].every((table) => inspection.catalog.tables.includes(table));
+        if (finisherCatalogTablesPresent && runtimePassword && credentialVerified) {
+          const runtimeUrl = new URL(directUrl);
+          runtimeUrl.username = "trainer_app_runtime";
+          runtimeUrl.password = runtimePassword;
+          const runtimeClient = new Client({
+            connectionString: runtimeUrl.toString(),
+            connectionTimeoutMillis: 5_000,
+            statement_timeout: 10_000,
+          });
+          try {
+            await runtimeClient.connect();
+            await runtimeClient.query(
+              "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
+            );
+            inspection.catalog.catalogRows =
+              await readFinisherCatalogRows(runtimeClient);
+            await runtimeClient.query("COMMIT");
+            inspection.catalog.unableToVerify = (
+              inspection.catalog.unableToVerify ?? []
+            ).filter((label) => label !== "finisherCatalogRows");
+          } finally {
+            await runtimeClient.end().catch(() => undefined);
+          }
+        }
+        const snapshot = await inspectFinisherPrincipals(client, {
+          phase: targetMigrationApplied ? "terminal" : "migration_capable",
+          runtimeCredentialVerified: credentialVerified,
+        });
+        const verifiedAt = new Date().toISOString();
+        const livePrincipal: LiveFinisherPrincipalVerification = {
+          source: "fresh_live_database_verification",
+          verifiedAt,
+          repositoryHead: auditInput.repositoryHead,
+          requiredApplicationCommit: auditInput.requiredApplicationCommit ?? "",
+          targetMigration: FINISHER_TARGET_MIGRATION,
+          targetFingerprint: target.fingerprint,
+          projectFingerprint: target.projectFingerprint,
+          database,
+          credentialProof: credentialVerified
+            ? "bounded_runtime_authentication"
+            : "unavailable",
+          readOnlyTransaction: true,
+          databaseWrites: 0,
+          snapshot,
+        };
         const report = buildMigrationIntegrityReport({
-          target: {
-            classification: directTargetClass,
-            fingerprint: fingerprint(directUrl),
-            projectFingerprint: projectReference
-              ? projectFingerprint(projectReference)
-              : undefined,
-            database: directTarget.pathname.replace(/^\//, ""),
-          },
+          target,
           checkedIn: loadCheckedInMigrations(),
-          authorizationEvidence,
-          finisherPrincipalEvidence,
-          finisherPrincipalEvidenceKey:
-            process.env[FINISHER_PRINCIPAL_EVIDENCE_KEY_VARIABLE],
+          authorizationEvidence: auditInput,
+          finisherPrincipalLiveVerification: livePrincipal,
+          finisherPrincipalAuditRecord: principalAuditRecord,
+          operationalVerification: operationalVerification({
+            targetClass: directTargetClass,
+            verifiedAt,
+            repositoryHead: auditInput.repositoryHead,
+            requiredApplicationCommit:
+              auditInput.requiredApplicationCommit ?? "",
+            targetFingerprint: target.fingerprint,
+            projectFingerprint: target.projectFingerprint,
+            database,
+          }),
           ...inspection,
         });
         console.log(
           `Migration integrity: checkedIn=${report.chain.checkedIn}, applied=${report.chain.applied}, ` +
-          `pending=${report.chain.pending}, incomplete=${report.ledger.incomplete.length}, ` +
-          `orderViolations=${report.ledger.orderViolations.length}, checksumsMatched=${report.checksums.matched}, ` +
-          `semanticDriftBlocking=${report.schemaIntegrity.semanticDriftBlocking}, ` +
-          `representationWarnings=${report.schemaIntegrity.representationWarningCount}, ` +
-          `technicalMigrationReady=${report.technicalMigrationReady}, ` +
-          `migrationAuthorizationReady=${report.migrationAuthorizationReady}, ` +
-          `executionAuthorized=${report.executionAuthorized}.`,
+            `pending=${report.chain.pending}, incomplete=${report.ledger.incomplete.length}, ` +
+            `orderViolations=${report.ledger.orderViolations.length}, checksumsMatched=${report.checksums.matched}, ` +
+            `semanticDriftBlocking=${report.schemaIntegrity.semanticDriftBlocking}, ` +
+            `representationWarnings=${report.schemaIntegrity.representationWarningCount}, ` +
+            `technicalMigrationReady=${report.technicalMigrationReady}, ` +
+            `migrationAuthorizationReady=${report.migrationAuthorizationReady}, ` +
+            `executionAuthorized=${report.executionAuthorized}.`,
         );
         console.log(JSON.stringify(report, null, 2));
         if (
@@ -158,9 +353,12 @@ main().catch((error) => {
     message.startsWith("The explicitly named environment file") ||
     message.startsWith("DATABASE_URL and DIRECT_URL") ||
     message.startsWith("Gate A migration integrity") ||
-    message.startsWith("Migration authorization evidence") ||
-    message.startsWith("Finisher principal evidence") ||
-    message.startsWith("Missing required --env-file")
+    message.startsWith("Migration audit input") ||
+    message.startsWith("Finisher principal") ||
+    message.startsWith("--principal-evidence-file") ||
+    message.startsWith("TRAINER_APP_RUNTIME_PASSWORD") ||
+    message.startsWith("FINISHER_PRINCIPAL_") ||
+    message.startsWith("Missing required")
       ? message
       : "Migration integrity inspection failed. Run ops:check-direct-db for the sanitized connection classification.";
   console.error(safeMessage);

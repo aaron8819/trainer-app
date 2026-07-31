@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { QueryResult, QueryResultRow } from "pg";
 import {
   postgresScramVerifier,
+  provisionFinisherPrincipals,
   verifyFinisherPrincipalsReadOnly,
 } from "./finisher-principal-postgres";
 
+const ADMINISTRATOR = "migration_admin";
 const ROLE_ROWS = [
   {
     name: "trainer_app_runtime",
@@ -16,7 +18,7 @@ const ROLE_ROWS = [
     can_replicate: false,
     bypasses_rls: false,
     public_schema_create: false,
-    password_state: "scram_sha_256_configured",
+    default_privilege_count: "0",
   },
   ...["trainer_finisher_owner", "trainer_finisher_cleanup"].map((name) => ({
     name,
@@ -27,9 +29,32 @@ const ROLE_ROWS = [
     can_create_db: false,
     can_replicate: false,
     bypasses_rls: false,
-    public_schema_create: false,
-    password_state: "not_configured",
+    public_schema_create: true,
+    default_privilege_count: "0",
   })),
+];
+
+const MEMBERSHIPS = [
+  ...ROLE_ROWS.map((role) => ({
+    granted_role: role.name,
+    member_role: ADMINISTRATOR,
+    grantor_role: "postgres",
+    grantor_is_bootstrap_superuser: true,
+    admin_option: true,
+    inherit_option: false,
+    set_option: false,
+  })),
+  ...["trainer_finisher_owner", "trainer_finisher_cleanup"].map(
+    (grantedRole) => ({
+      granted_role: grantedRole,
+      member_role: ADMINISTRATOR,
+      grantor_role: ADMINISTRATOR,
+      grantor_is_bootstrap_superuser: false,
+      admin_option: false,
+      inherit_option: false,
+      set_option: true,
+    }),
+  ),
 ];
 
 function result(rows: unknown[]) {
@@ -52,22 +77,42 @@ describe("Finisher principal PostgreSQL adapter", () => {
     expect(verifier).not.toContain(password);
   });
 
-  it("runs verification in an explicit read-only transaction", async () => {
+  it("runs complete migration-capable verification in an explicit read-only transaction", async () => {
     const statements: string[] = [];
     const client = {
       async query<R extends QueryResultRow>(
         sql: string,
       ): Promise<QueryResult<R>> {
         statements.push(sql.trim());
-        const rows = sql.includes("FROM pg_catalog.pg_roles")
-          ? ROLE_ROWS
-          : [];
+        let rows: unknown[] = [];
+        if (sql.includes("WHERE role.rolname = ANY")) rows = ROLE_ROWS;
+        else if (sql.includes("FROM pg_catalog.pg_auth_members")) {
+          rows = MEMBERSHIPS;
+        } else if (sql.includes("AS current_role")) {
+          rows = [
+            {
+              current_role: ADMINISTRATOR,
+              session_role: ADMINISTRATOR,
+              can_login: true,
+              is_superuser: false,
+              can_create_role: true,
+              createrole_self_grant: "",
+              server_version_number: 160010,
+            },
+          ];
+        } else if (sql.includes("WITH protected_roles AS")) {
+          rows = [{ object_count: "0", capability_count: "0" }];
+        }
         return result(rows) as QueryResult<R>;
       },
     };
 
-    const roles = await verifyFinisherPrincipalsReadOnly(client);
-    expect(roles).toHaveLength(3);
+    const snapshot = await verifyFinisherPrincipalsReadOnly(client, {
+      phase: "migration_capable",
+      runtimeCredentialVerified: true,
+    });
+    expect(snapshot.roles).toHaveLength(3);
+    expect(snapshot.memberships).toHaveLength(5);
     expect(statements[0]).toBe(
       "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
     );
@@ -79,5 +124,47 @@ describe("Finisher principal PostgreSQL adapter", () => {
         ),
       ),
     ).toBe(false);
+  });
+
+  it("rolls back the provisioning transaction after an injected mid-operation failure", async () => {
+    const statements: string[] = [];
+    const client = {
+      async query<R extends QueryResultRow>(
+        sql: string,
+      ): Promise<QueryResult<R>> {
+        const statement = sql.trim();
+        statements.push(statement);
+        if (statement.startsWith("CREATE ROLE")) {
+          throw new Error("INJECTED_PROVISIONING_FAILURE");
+        }
+        let rows: unknown[] = [];
+        if (sql.includes("AS current_role")) {
+          rows = [
+            {
+              current_role: ADMINISTRATOR,
+              session_role: ADMINISTRATOR,
+              can_login: true,
+              is_superuser: false,
+              can_create_role: true,
+              createrole_self_grant: "",
+              server_version_number: 160010,
+            },
+          ];
+        } else if (sql.includes("WITH protected_roles AS")) {
+          rows = [{ object_count: "0", capability_count: "0" }];
+        }
+        return result(rows) as QueryResult<R>;
+      },
+    };
+
+    await expect(
+      provisionFinisherPrincipals(client, {
+        runtimePassword: "unique-runtime-password",
+        existingRuntimeCredentialVerified: false,
+      }),
+    ).rejects.toThrow("INJECTED_PROVISIONING_FAILURE");
+    expect(statements[0]).toBe("BEGIN");
+    expect(statements.at(-1)).toBe("ROLLBACK");
+    expect(statements).not.toContain("COMMIT");
   });
 });

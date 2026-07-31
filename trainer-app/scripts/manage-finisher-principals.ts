@@ -4,27 +4,20 @@ import { resolve } from "node:path";
 import dotenv from "dotenv";
 import { Client } from "pg";
 import {
-  FINISHER_PRINCIPAL_EVIDENCE_KEY_VARIABLE,
-  FINISHER_PRINCIPAL_EVIDENCE_SCHEMA,
-  FINISHER_PRINCIPAL_EVIDENCE_VERSION,
-  FINISHER_PRINCIPAL_PROVISION_SCHEMA,
+  FINISHER_PRINCIPAL_AUDIT_SCHEMA,
+  FINISHER_PRINCIPAL_AUDIT_VERSION,
   FINISHER_PRINCIPAL_VERIFIER,
   FINISHER_RUNTIME_PASSWORD_VARIABLE,
-  authorizationContext,
-  canonicalEvidenceJson,
-  evidenceSignature,
-  evidenceSignatureMatches,
+  FINISHER_TARGET_MIGRATION,
   isFullCommitSha,
-  parsePrincipalProvisionEvidence,
   projectFingerprint,
-  sha256Hex,
   targetFingerprint,
+  type FinisherPrincipalAuditRecord,
   type FinisherPrincipalBinding,
-  type FinisherPrincipalProvisionEvidence,
-  type FinisherPrincipalVerificationEvidence,
 } from "@/lib/operations/finisher-principal-contract";
 import {
   provisionFinisherPrincipals,
+  verifyRuntimeCredentialReadOnly,
   verifyFinisherPrincipalsReadOnly,
 } from "@/lib/operations/finisher-principal-postgres";
 
@@ -33,25 +26,28 @@ type EnvironmentName = "production" | "disposable";
 
 const HELP = `Trainer Finisher prerequisite principal workflow
 
-Verification (zero database writes):
+Fresh live verification (zero database writes):
   npm run ops:finisher-principals -- --mode verify --environment production \\
     --env-file <reviewed-env> --expected-project-reference <20-char-ref> \\
     --expected-database postgres --required-application-commit <full-sha> \\
-    --provisioning-evidence-file <provision.json> --evidence-file <new-verify.json>
+    --evidence-file <new-audit-record.json>
 
 Provisioning (protected database-administrator write):
   npm run ops:finisher-principals -- --mode provision --environment production \\
     --env-file <reviewed-env> --expected-project-reference <20-char-ref> \\
     --expected-database postgres --required-application-commit <full-sha> \\
-    --authorization-evidence-file <reviewed-authorization.json> \\
     --write --confirm-remote-write \\
     --confirm-principal-provisioning trainer-principals:<20-char-ref> \\
-    --evidence-file <new-provision.json>
+    --evidence-file <new-audit-record.json>
 
-The environment file supplies DIRECT_URL, the evidence key, and write-pause
-state. Provisioning reads TRAINER_APP_RUNTIME_PASSWORD only from the
-operator-controlled process environment.
-The command never prints connection strings, credentials, or password hashes.`;
+The environment file supplies only the reviewed database target. The runtime
+password is process-scoped in TRAINER_APP_RUNTIME_PASSWORD and is proven by a
+bounded read-only login to the independently resolved target. Generated JSON is
+a sanitized audit record, never an authorization token or attestation.
+
+Production provisioning currently fails closed until canonical provider-backed
+recovery-point and write-pause verification is available to this command. The
+command never accepts operator-authored JSON as a replacement for those facts.`;
 
 function readArgument(argv: string[], name: string): string | undefined {
   const inline = argv.find((argument) => argument.startsWith(`${name}=`));
@@ -70,13 +66,18 @@ function requiredArgument(argv: string[], name: string): string {
 
 function loadExplicitEnvironment(argv: string[]): Record<string, string> {
   const envFile = resolve(requiredArgument(argv, "--env-file"));
+  let parsed: Record<string, string>;
   try {
-    return dotenv.parse(readFileSync(envFile));
+    parsed = dotenv.parse(readFileSync(envFile));
   } catch {
+    throw new Error("Unable to load the explicitly named environment file.");
+  }
+  if (parsed[FINISHER_RUNTIME_PASSWORD_VARIABLE]) {
     throw new Error(
-      "Unable to load the explicitly named environment file.",
+      `${FINISHER_RUNTIME_PASSWORD_VARIABLE} must be process-scoped, not stored in the environment file.`,
     );
   }
+  return parsed;
 }
 
 function repositoryHead(): string {
@@ -168,19 +169,15 @@ function buildBinding(options: {
   expectedProjectReference: string;
   database: string;
 }): FinisherPrincipalBinding {
-  const unsigned = {
+  return {
     repositoryHead: options.repositoryHead,
     requiredApplicationCommit: options.requiredApplicationCommit,
-    targetMigration: "20260728120000_add_finishers_phase_1" as const,
+    targetMigration: FINISHER_TARGET_MIGRATION,
     environment: options.environment,
     targetClassification: options.classification,
     targetFingerprint: targetFingerprint(options.hostname),
     projectFingerprint: projectFingerprint(options.expectedProjectReference),
     database: options.database,
-  };
-  return {
-    ...unsigned,
-    authorizationContext: authorizationContext(unsigned),
   };
 }
 
@@ -198,14 +195,16 @@ async function verifyConnectedIdentity(
   const result = await client.query<{
     database_name: string;
     current_role: string;
+    session_role: string;
   }>(
-    "SELECT current_database() AS database_name, current_user AS current_role",
+    "SELECT current_database() AS database_name, current_user AS current_role, session_user AS session_role",
   );
   const observed = result.rows[0];
   if (!observed || observed.database_name !== expectedDatabase) {
     throw new Error("Connected database identity does not match the expected target.");
   }
   if (
+    observed.current_role !== observed.session_role ||
     [
       "trainer_app_runtime",
       "trainer_finisher_owner",
@@ -213,7 +212,7 @@ async function verifyConnectedIdentity(
     ].includes(observed.current_role)
   ) {
     throw new Error(
-      "Principal administration requires a distinct administrator connection.",
+      "Principal administration requires a distinct direct administrator session.",
     );
   }
 }
@@ -222,7 +221,6 @@ function validateProvisionAuthorization(options: {
   argv: string[];
   environmentName: EnvironmentName;
   expectedProjectReference: string;
-  parsedEnvironment: Record<string, string>;
 }): void {
   if (!options.argv.includes("--write")) {
     throw new Error("Provisioning requires explicit --write authorization.");
@@ -236,79 +234,22 @@ function validateProvisionAuthorization(options: {
       "Provisioning requires the exact project-bound --confirm-principal-provisioning value.",
     );
   }
+  if (readArgument(options.argv, "--authorization-evidence-file")) {
+    throw new Error(
+      "Operator-authored authorization evidence cannot replace live provider verification.",
+    );
+  }
   if (options.environmentName === "production") {
     if (!options.argv.includes("--confirm-remote-write")) {
       throw new Error(
         "Production provisioning requires --confirm-remote-write.",
       );
     }
-    if (options.parsedEnvironment.TRAINER_WRITE_PAUSE !== "enabled") {
-      throw new Error(
-        "Production principal provisioning requires a verified TRAINER_WRITE_PAUSE=enabled environment.",
-      );
-    }
-    const authorizationEvidencePath = requiredArgument(
-      options.argv,
-      "--authorization-evidence-file",
+    throw new Error(
+      "PRODUCTION_PRINCIPAL_PROVISIONING_BLOCKED: canonical provider verification for the recovery point and active write pause is unavailable; fail closed without connecting.",
     );
-    let evidence: Record<string, unknown>;
-    try {
-      evidence = JSON.parse(
-        readFileSync(resolve(authorizationEvidencePath), "utf8"),
-      ) as Record<string, unknown>;
-      if (!evidence || typeof evidence !== "object" || Array.isArray(evidence)) {
-        throw new Error("invalid evidence shape");
-      }
-    } catch {
-      throw new Error(
-        "Production provisioning requires a readable authorization evidence JSON object.",
-      );
-    }
-    const now = Date.now();
-    const fresh = (value: unknown): boolean => {
-      if (typeof value !== "string") return false;
-      const timestamp = Date.parse(value);
-      return (
-        Number.isFinite(timestamp) &&
-        timestamp <= now &&
-        now - timestamp <= 30 * 60_000
-      );
-    };
-    const recovery =
-      evidence.recoveryPoint &&
-      typeof evidence.recoveryPoint === "object" &&
-      !Array.isArray(evidence.recoveryPoint)
-        ? (evidence.recoveryPoint as Record<string, unknown>)
-        : {};
-    const writeBoundary =
-      evidence.writeBoundary &&
-      typeof evidence.writeBoundary === "object" &&
-      !Array.isArray(evidence.writeBoundary)
-        ? (evidence.writeBoundary as Record<string, unknown>)
-        : {};
-    const head = repositoryHead();
-    if (
-      evidence.productionDeploymentCommit !== head ||
-      evidence.requiredApplicationCommit !== head ||
-      !fresh(evidence.deploymentVerifiedAt) ||
-      recovery.verified !== true ||
-      typeof recovery.providerProjectIdentity !== "string" ||
-      recovery.providerProjectIdentity.trim().length === 0 ||
-      typeof recovery.databaseIdentity !== "string" ||
-      recovery.databaseIdentity.trim().length === 0 ||
-      recovery.retentionConfirmed !== true ||
-      recovery.recoverabilityConfirmed !== true ||
-      recovery.freshForExecution !== true ||
-      !fresh(recovery.operatorVerifiedAt) ||
-      writeBoundary.ready !== true ||
-      writeBoundary.mechanism !== "production-write-gate" ||
-      !fresh(writeBoundary.verifiedAt)
-    ) {
-      throw new Error(
-        "Production provisioning requires fresh commit-bound deployment, recovery-point, and write-pause evidence.",
-      );
-    }
-  } else if (options.argv.includes("--confirm-remote-write")) {
+  }
+  if (options.argv.includes("--confirm-remote-write")) {
     throw new Error(
       "--confirm-remote-write is invalid for a disposable target.",
     );
@@ -355,16 +296,15 @@ async function main(): Promise<void> {
 
   const parsedEnvironment = loadExplicitEnvironment(argv);
   const directUrl = parsedEnvironment.DIRECT_URL;
-  const signingKey =
-    parsedEnvironment[FINISHER_PRINCIPAL_EVIDENCE_KEY_VARIABLE];
   if (!directUrl) {
     throw new Error(
       "The explicitly named environment file must define DIRECT_URL.",
     );
   }
-  if (!signingKey || signingKey.length < 32) {
+  const runtimePassword = process.env[FINISHER_RUNTIME_PASSWORD_VARIABLE];
+  if (!runtimePassword) {
     throw new Error(
-      `The explicitly named environment file must define ${FINISHER_PRINCIPAL_EVIDENCE_KEY_VARIABLE} with at least 32 characters.`,
+      `${FINISHER_RUNTIME_PASSWORD_VARIABLE} is required in the process environment for exact runtime credential verification.`,
     );
   }
 
@@ -390,126 +330,101 @@ async function main(): Promise<void> {
       argv,
       environmentName,
       expectedProjectReference,
-      parsedEnvironment,
     });
-    const runtimePassword = process.env[FINISHER_RUNTIME_PASSWORD_VARIABLE];
-    if (!runtimePassword) {
-      throw new Error(
-        `Provisioning requires ${FINISHER_RUNTIME_PASSWORD_VARIABLE} in the explicit environment file.`,
-      );
-    }
-    const startedAt = new Date().toISOString();
-    const client = new Client({
-      connectionString: directUrl,
-      connectionTimeoutMillis: 5_000,
+  } else if (
+    argv.includes("--write") ||
+    argv.includes("--confirm-remote-write") ||
+    readArgument(argv, "--confirm-principal-provisioning") ||
+    readArgument(argv, "--authorization-evidence-file")
+  ) {
+    throw new Error("Verification mode rejects every provisioning/write flag.");
+  }
+
+  const startedAt = new Date().toISOString();
+  const administrator = new Client({
+    connectionString: directUrl,
+    connectionTimeoutMillis: 5_000,
+    statement_timeout: 10_000,
+  });
+  try {
+    await administrator.connect();
+    await verifyConnectedIdentity(administrator, expectedDatabase);
+    const credentialBefore = await verifyRuntimeCredentialReadOnly({
+      directUrl,
+      expectedDatabase,
+      password: runtimePassword,
     });
-    try {
-      await client.connect();
-      await verifyConnectedIdentity(client, expectedDatabase);
-      const result = await provisionFinisherPrincipals(client, runtimePassword);
-      const unsigned: Omit<FinisherPrincipalProvisionEvidence, "signature"> = {
-        schema: FINISHER_PRINCIPAL_PROVISION_SCHEMA,
-        version: FINISHER_PRINCIPAL_EVIDENCE_VERSION,
+
+    if (mode === "provision") {
+      const result = await provisionFinisherPrincipals(administrator, {
+        runtimePassword,
+        existingRuntimeCredentialVerified: credentialBefore,
+      });
+      const credentialAfter = await verifyRuntimeCredentialReadOnly({
+        directUrl,
+        expectedDatabase,
+        password: runtimePassword,
+      });
+      if (!credentialAfter) {
+        throw new Error("FINISHER_PRINCIPAL_RUNTIME_CREDENTIAL_MISMATCH");
+      }
+      const liveState = await verifyFinisherPrincipalsReadOnly(administrator, {
+        phase: "migration_capable",
+        runtimeCredentialVerified: true,
+      });
+      const evidence: FinisherPrincipalAuditRecord = {
+        schema: FINISHER_PRINCIPAL_AUDIT_SCHEMA,
+        version: FINISHER_PRINCIPAL_AUDIT_VERSION,
         verifier: FINISHER_PRINCIPAL_VERIFIER,
+        authority: "sanitized_audit_record_only",
         binding,
+        operation: "provision",
         startedAt,
         completedAt: new Date().toISOString(),
+        readOnlyTransaction: false,
         databaseWrites: result.databaseWrites,
         createdPrincipals: result.createdPrincipals,
         credentialConfigured: result.credentialConfigured,
-      };
-      const evidence: FinisherPrincipalProvisionEvidence = {
-        ...unsigned,
-        signature: evidenceSignature(unsigned, signingKey),
+        liveState,
       };
       writeEvidence(evidenceFile, evidence);
       console.log(
         `Finisher principal provisioning verified: target=${binding.targetFingerprint} ` +
-          `created=${result.createdPrincipals.length} credentialConfigured=${result.credentialConfigured} ` +
-          `databaseWrites=${result.databaseWrites}.`,
+          `phase=${liveState.phase} created=${result.createdPrincipals.length} ` +
+          `credentialConfigured=${result.credentialConfigured} databaseWrites=${result.databaseWrites}.`,
       );
-    } finally {
-      await client.end().catch(() => undefined);
+      return;
     }
-    return;
-  }
 
-  if (
-    argv.includes("--write") ||
-    argv.includes("--confirm-remote-write") ||
-    readArgument(argv, "--confirm-principal-provisioning")
-  ) {
-    throw new Error("Verification mode rejects every provisioning/write flag.");
-  }
-  const provisionEvidencePath = requiredArgument(
-    argv,
-    "--provisioning-evidence-file",
-  );
-  const provisionEvidenceRaw = JSON.parse(
-    readFileSync(resolve(provisionEvidencePath), "utf8"),
-  ) as unknown;
-  const provisionEvidence =
-    parsePrincipalProvisionEvidence(provisionEvidenceRaw);
-  if (
-    provisionEvidence.schema !== FINISHER_PRINCIPAL_PROVISION_SCHEMA ||
-    provisionEvidence.version !== FINISHER_PRINCIPAL_EVIDENCE_VERSION ||
-    provisionEvidence.verifier !== FINISHER_PRINCIPAL_VERIFIER ||
-    !evidenceSignatureMatches(
-      provisionEvidence as unknown as Record<string, unknown>,
-      signingKey,
-    ) ||
-    canonicalEvidenceJson(provisionEvidence.binding) !==
-      canonicalEvidenceJson(binding)
-  ) {
-    throw new Error(
-      "Provisioning evidence is invalid or belongs to another authorization context.",
-    );
-  }
-
-  const verificationStartedAt = new Date().toISOString();
-  if (
-    Date.parse(provisionEvidence.completedAt) >
-    Date.parse(verificationStartedAt)
-  ) {
-    throw new Error("Provisioning evidence completion is after verification start.");
-  }
-  const client = new Client({
-    connectionString: directUrl,
-    connectionTimeoutMillis: 5_000,
-  });
-  try {
-    await client.connect();
-    await verifyConnectedIdentity(client, expectedDatabase);
-    const roles = await verifyFinisherPrincipalsReadOnly(client);
-    const unsigned: Omit<
-      FinisherPrincipalVerificationEvidence,
-      "signature"
-    > = {
-      schema: FINISHER_PRINCIPAL_EVIDENCE_SCHEMA,
-      version: FINISHER_PRINCIPAL_EVIDENCE_VERSION,
+    if (!credentialBefore) {
+      throw new Error("FINISHER_PRINCIPAL_RUNTIME_CREDENTIAL_MISMATCH");
+    }
+    const liveState = await verifyFinisherPrincipalsReadOnly(administrator, {
+      phase: "migration_capable",
+      runtimeCredentialVerified: true,
+    });
+    const evidence: FinisherPrincipalAuditRecord = {
+      schema: FINISHER_PRINCIPAL_AUDIT_SCHEMA,
+      version: FINISHER_PRINCIPAL_AUDIT_VERSION,
       verifier: FINISHER_PRINCIPAL_VERIFIER,
+      authority: "sanitized_audit_record_only",
       binding,
-      provisioningEvidenceHash: sha256Hex(
-        canonicalEvidenceJson(provisionEvidence),
-      ),
-      provisioningCompletedAt: provisionEvidence.completedAt,
-      verificationStartedAt,
-      verifiedAt: new Date().toISOString(),
-      readOnlyTransaction: true as const,
-      databaseWrites: 0 as const,
-      roles,
-    };
-    const evidence: FinisherPrincipalVerificationEvidence = {
-      ...unsigned,
-      signature: evidenceSignature(unsigned, signingKey),
+      operation: "verify",
+      startedAt,
+      completedAt: new Date().toISOString(),
+      readOnlyTransaction: true,
+      databaseWrites: 0,
+      createdPrincipals: [],
+      credentialConfigured: false,
+      liveState,
     };
     writeEvidence(evidenceFile, evidence);
     console.log(
       `Finisher principal verification passed: target=${binding.targetFingerprint} ` +
-        `roles=${roles.length} databaseWrites=0.`,
+        `phase=${liveState.phase} roles=${liveState.roles.length} databaseWrites=0.`,
     );
   } finally {
-    await client.end().catch(() => undefined);
+    await administrator.end().catch(() => undefined);
   }
 }
 
@@ -527,7 +442,10 @@ main().catch((error) => {
     message.startsWith("Principal administration") ||
     message.startsWith("Provisioning") ||
     message.startsWith("Verification mode") ||
-    message.startsWith("FINISHER_PRINCIPAL_")
+    message.startsWith("Operator-authored") ||
+    message.startsWith("TRAINER_") ||
+    message.startsWith("FINISHER_PRINCIPAL_") ||
+    message.startsWith("PRODUCTION_PRINCIPAL_")
       ? message
       : "Finisher principal workflow failed without emitting connection or credential details.";
   console.error(safe);

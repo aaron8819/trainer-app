@@ -294,12 +294,13 @@ No backup or inspection result grants migration authorization. Database backups 
 `npm run ops:check-direct-db -- --env-file $rolloutEnv` resolves DNS, opens a short TCP connection, and performs the PostgreSQL/TLS/authentication handshake without running SQL. It reports a redacted host fingerprint and distinguishes DNS, timeout, network rejection, TLS, authentication, database rejection, and success. Pooler connectivity is not sufficient evidence for Prisma migration deployment, and the transaction pooler must not replace `DIRECT_URL`.
 
 After the direct check succeeds, `npm run ops:migration-status -- --env-file
-$rolloutEnv --evidence-file <reviewed-json> --principal-evidence-file
-<canonical-principal-verification-json>` performs the complete read-only Gate A
-migration-integrity verification through `DIRECT_URL`. Counts alone are
-insufficient. The principal evidence flag is mandatory while the Finisher
-migration is pending; an operator-authored principal block inside the general
-authorization file is rejected. `src/lib/operations/migration-integrity.ts`
+$rolloutEnv --evidence-file <sanitized-audit-input> --principal-audit-file
+<sanitized-principal-audit-record> --required-application-commit <full-sha>`
+performs the read-only Gate A migration-integrity verification through
+`DIRECT_URL`. Counts and caller-authored evidence are insufficient. The command
+always re-reads the principal catalog and proves the runtime credential with a
+bounded read-only login. A principal audit record is optional explanatory
+output and is never authorization input. `src/lib/operations/migration-integrity.ts`
 owns the rollout policy and result model. The command:
 
 - hashes the exact checked-out migration SQL bytes with SHA-256, matching how Prisma creates `_prisma_migrations.checksum`, and validates historical rows with Prisma's exact compatibility set: the script as read, `CRLF` converted to `LF`, and `LF` converted to `CRLF`;
@@ -314,10 +315,11 @@ ledger, Prisma-compatible checksums, applied and pending schema state,
 migration-specific data preflight, commit-bound disposable PostgreSQL
 verification, and live prerequisite-role catalog state are all valid. No
 Finisher table must exist for the prerequisite-role checks.
-`migrationAuthorizationReady` additionally requires signed canonical principal
-evidence,
-fresh recovery-point, production-deployment, application-compatibility, and
-`TRAINER_WRITE_PAUSE` evidence plus exact migration and application commits.
+`migrationAuthorizationReady` additionally requires fresh live principal
+verification, canonical provider verification of the recovery point,
+production deployment and write pause, application compatibility, and exact
+migration and application commits. The current command has no authenticated
+provider adapter for those hosted facts, so remote Gate A remains fail closed.
 `executionAuthorized` is always `false` in this preparation command. A clean
 data preflight never grants operational or execution authorization.
 
@@ -394,12 +396,17 @@ Do not run it during preflight. A backup being available, a reachable direct end
 
 ### Authorization evidence contract
 
-The evidence file is operator-controlled, uncommitted JSON. It must contain sanitized identity only—never URLs, credentials, tokens, passwords, or environment values. Gate A resolves `repositoryHead` itself and evaluates freshness against its own current timestamp; supplied values cannot override either fact.
+The evidence and principal-audit files are operator-controlled, uncommitted JSON.
+They contain sanitized observations only—never URLs, credentials, tokens,
+passwords, password hashes, or environment values. They are audit records, not
+authority. Gate A resolves repository HEAD, database identity, migration state,
+principal state, credential equality, and its evaluation time from live seams.
+It rejects caller fields that attempt to supply the expected pending sequence,
+principal verification, deployment commit, required commit, recovery point,
+write pause, or deployment timestamp.
 
 ```json
 {
-  "productionDeploymentCommit": "<exact-integrated-master-squash-sha>",
-  "requiredApplicationCommit": "<exact-integrated-master-squash-sha>",
   "dataPreflight": {
     "valid": true,
     "verifiedAt": "<ISO-8601>",
@@ -409,66 +416,52 @@ The evidence file is operator-controlled, uncommitted JSON. It must contain sani
     "valid": true,
     "verifiedAt": "<ISO-8601>",
     "repositoryHead": "<exact-integrated-master-squash-sha>"
-  },
-  "recoveryPoint": {
-    "verified": true,
-    "providerProjectIdentity": "<sanitized-provider/project>",
-    "databaseIdentity": "<sanitized-database>",
-    "recoveryTimestamp": "<ISO-8601>",
-    "retentionConfirmed": true,
-    "recoverabilityConfirmed": true,
-    "freshForExecution": true,
-    "operatorVerifiedAt": "<ISO-8601>"
-  },
-  "writeBoundary": {
-    "ready": true,
-    "mechanism": "production-write-gate",
-    "verifiedAt": "<ISO-8601>"
-  },
-  "applicationCompatibilityState": "compatible_with_write_boundary",
-  "deploymentVerifiedAt": "<ISO-8601>"
+  }
 }
 ```
 
-Finisher prerequisite evidence is a second file and cannot be embedded as an
-operator-authored claim in the authorization JSON. Gate A accepts it only
-through `--principal-evidence-file`. The canonical verifier signs it with
-`TRAINER_FINISHER_PRINCIPAL_EVIDENCE_KEY`, read from the same explicitly named
-operator environment file. The signing key must contain at least 32 characters
-and is never printed or written to evidence. The signed evidence contains only:
+The principal command writes a second sanitized audit record using exclusive
+creation (`wx`). It contains only:
 
 - schema/version and canonical verifier identity;
-- repository HEAD, required application commit, target migration, production
-  environment classification, sanitized target/project fingerprints, database
-  name, and a derived authorization-context hash;
-- the hash and completion time of the canonical provisioning receipt;
-- verification start/completion times proving verification followed
-  provisioning;
-- the exact sanitized attributes, credential state, empty membership arrays,
-  and zero default-privilege count for each principal;
-- `readOnlyTransaction: true`, `databaseWrites: 0`, and the signature.
+- repository HEAD, required application commit, target migration, environment
+  classification, sanitized target/project fingerprints, and database name;
+- the observed lifecycle phase, administrator properties, exact role
+  attributes, membership option bits and bootstrap grantor classification,
+  schema-create state, credential-verification result, default privileges, and
+  pre-migration object/capability counts;
+- `authority: sanitized_audit_record_only`, `readOnlyTransaction`, and the exact
+  write count.
 
-It contains no URL, credential, password hash, token, project reference, or
-environment value. Gate A recomputes the signature and authorization context,
-binds both target fingerprints and the database to the live `DIRECT_URL`,
-requires exact commit equality, requires verification after provisioning,
-applies the existing 30-minute operational freshness window, and requires zero
-reported writes. Missing, malformed, stale, wrong-target, cross-commit,
-wrong-context, unsigned/re-signed-by-an-unknown-caller, write-reporting, missing
-principal, attribute mismatch, credential mismatch, default privilege, or any
-incoming/outgoing membership fails closed.
+`TRAINER_APP_RUNTIME_PASSWORD` is process-scoped and must not appear in the
+named environment file. Exact credential equality is proven by opening a
+bounded connection as `trainer_app_runtime`, starting a repeatable-read
+read-only transaction, and checking the connected database, role, and
+`transaction_read_only=on`. Existing roles are never accepted merely because a
+password was supplied, and provisioning never rotates an existing credential.
+
+PostgreSQL 16 automatically gives a non-superuser `CREATEROLE` creator an
+ADMIN membership whose grantor is the bootstrap superuser and whose INHERIT and
+SET options are false. The prerequisite phase retains those three unavoidable
+rows and adds only two temporary administrator-granted memberships with SET
+true for the owner and cleanup roles, plus temporary CREATE on `public` for
+those two roles. The migration removes only those temporary rows and schema
+capabilities. Terminal verification requires the exact three unavoidable
+creator-admin rows and rejects every broader membership or default privilege.
 
 All commit identities use the canonical full Git SHA: exactly 40 lowercase
 hexadecimal characters with no whitespace. Gate A requires exact equality among
 all three independently obtained values:
 
-- `requiredApplicationCommit` is recorded only through the separately
-  authorized evidence workflow after the integrated squash SHA exists.
+- `requiredApplicationCommit` is passed through the dedicated command-line
+  argument after the integrated squash SHA exists; the command requires exact
+  equality with repository HEAD.
 - `repositoryHead` is resolved by `ops:migration-status` from
   `git rev-parse HEAD`; a value supplied in the evidence file cannot override
   it.
-- `productionDeploymentCommit` comes from the independently checked
-  `/api/version` response and provider-side production-alias evidence.
+- `productionDeploymentCommit` must come from an authenticated provider adapter
+  plus the independently checked `/api/version` response; caller JSON cannot
+  supply it.
 
 The authorized integrated SHA is therefore data supplied after merge, not a
 source-code allowlist. A feature-branch guess, the old base commit, an arbitrary
@@ -514,13 +507,15 @@ environment change, role change, migration, production access, or verification.
 
    ```powershell
    npm run ops:check-direct-db -- --env-file $rolloutEnv
-   npm run ops:migration-status -- --env-file $rolloutEnv --evidence-file $authorizationEvidence
+   npm run ops:migration-status -- --env-file $rolloutEnv `
+     --evidence-file $auditInput `
+     --required-application-commit $integratedSha
    ```
 
    Require exactly 18 checked in, 17 applied, and only
    `20260728120000_add_finishers_phase_1` pending; zero checksum, ledger, order,
    non-principal schema, or data blockers. This immediate preflight is expected
-   to remain fail closed with missing principal evidence; it must not report
+   to remain fail closed with missing live principal verification; it must not report
    `technicalMigrationReady: true` yet.
 7. Through the separately authorized database-administrator workflow, provision
    the three required role principals before migration:
@@ -536,20 +531,25 @@ environment change, role change, migration, production access, or verification.
    npm run ops:finisher-principals -- --mode provision --environment production `
      --env-file $rolloutEnv --expected-project-reference $projectReference `
      --expected-database postgres --required-application-commit $integratedSha `
-     --authorization-evidence-file $authorizationEvidence `
      --write --confirm-remote-write `
      --confirm-principal-provisioning "trainer-principals:$projectReference" `
-     --evidence-file $principalProvisionEvidence
+     --evidence-file $principalProvisionAudit
    Remove-Item Env:TRAINER_APP_RUNTIME_PASSWORD
    ```
 
-   `DIRECT_URL`, `TRAINER_FINISHER_PRINCIPAL_EVIDENCE_KEY`, and
-   `TRAINER_WRITE_PAUSE=enabled` come only from the named environment file.
+   `DIRECT_URL` comes only from the named environment file. The runtime password
+   is process-scoped and the command rejects it if it is stored in that file.
    Production mode accepts only the exact direct
    `db.<project-reference>.supabase.co` host, the exact expected database, and a
    project-bound confirmation. It rejects poolers, loopback/disposable
    classification, ambiguous hosts, a runtime/principal connection, missing
    write pause, and every incomplete authorization combination before writes.
+   **Current residual prerequisite:** the repository does not yet have a
+   canonical authenticated provider adapter for the recovery point and active
+   write pause. Production provisioning therefore fails closed before database
+   connection even when the confirmation flags are present. Do not substitute
+   caller JSON, manual screenshots, or an ad hoc SQL session. Implement and
+   separately review that provider verification seam before using this step.
 8. Verify all three principals exist, have only the prerequisite attributes and
    capabilities needed by the migration, and have no prohibited memberships.
    The migration must remain responsible for transferring object ownership and
@@ -557,25 +557,30 @@ environment change, role change, migration, production access, or verification.
    verification-only command:
 
    ```powershell
+   $env:TRAINER_APP_RUNTIME_PASSWORD = Read-Host "Runtime role password" -MaskInput
    npm run ops:finisher-principals -- --mode verify --environment production `
      --env-file $rolloutEnv --expected-project-reference $projectReference `
      --expected-database postgres --required-application-commit $integratedSha `
-     --provisioning-evidence-file $principalProvisionEvidence `
-     --evidence-file $principalVerificationEvidence
+     --evidence-file $principalVerificationAudit
+   Remove-Item Env:TRAINER_APP_RUNTIME_PASSWORD
    ```
 
    Verification rejects every write/provisioning flag, uses a repeatable-read
    read-only transaction, reports `databaseWrites: 0`, and creates only the
-   local sanitized evidence file.
+   local sanitized audit file. Existing-runtime password mismatch fails without
+   rotating the credential.
 9. Run Gate A and the required pre-migration authorization checks. Require the
    exact canonical equality
    `requiredApplicationCommit === repositoryHead === productionDeploymentCommit`,
    `migrationAuthorizationReady: true`, and `executionAuthorized: false`:
 
    ```powershell
+   $env:TRAINER_APP_RUNTIME_PASSWORD = Read-Host "Runtime role password" -MaskInput
    npm run ops:migration-status -- --env-file $rolloutEnv `
-     --evidence-file $authorizationEvidence `
-     --principal-evidence-file $principalVerificationEvidence
+     --evidence-file $auditInput `
+     --principal-audit-file $principalVerificationAudit `
+     --required-application-commit $integratedSha
+   Remove-Item Env:TRAINER_APP_RUNTIME_PASSWORD
    ```
 10. After separate explicit authorization for the exact target, recovery point,
    paused-write boundary, command, and application sequence, run the authorized
@@ -595,12 +600,17 @@ environment change, role change, migration, production access, or verification.
     and do not rerun principal provisioning as a substitute for repair.
     Migration-owned ownership or grants may be repaired only through a
     separately reviewed recovery procedure.
-12. Rerun Gate A and all required post-migration readiness checks. Require 18
+12. Run the post-migration integrity verification and all required readiness
+    checks. Gate A is no longer applicable after the target is applied. Require 18
     successful applied migrations, zero pending, the exact ten-table schema and
     curated catalog, correct roles/grants, no schema/data drift, and successful
     targeted integrity checks. Keep the write pause and Finisher rollout
-    disabled.
-13. Only after migration, role/grant verification, Gate A, and required
+    disabled. Run `ops:migration-status` again with the process-scoped runtime
+    password so the terminal catalog is read through the least-privileged
+    runtime connection; require `gateAApplicable: false` and zero integrity
+    blockers.
+13. Only after migration, role/grant verification, post-migration integrity,
+    and required
     post-migration checks succeed, set
     `TRAINER_FINISHERS_ROLLOUT=enabled`.
 14. Create or promote the application deployment containing that enabled
@@ -627,8 +637,8 @@ succeed.
 ### Disposable rollout-tooling gate
 
 `npm run test:db:rollout-tooling -- --confirm-disposable` uses PostgreSQL 16,
-traces the real principal provision -> signed read-only evidence -> Gate A
-flow, proves clean/partial/idempotent provisioning, proves provisioning creates
+traces the real principal provision -> live credential proof -> Gate A flow,
+proves clean/partial/idempotent provisioning, proves provisioning creates
 no Finisher schema objects, advances to the current 17/1 shape, and then applies
 and verifies the fully migrated 18/0 state with the post-migration
 ownership/grant checks still distinct. `npm run test:db:multi-plan

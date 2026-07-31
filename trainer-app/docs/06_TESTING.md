@@ -99,7 +99,11 @@ Sources of truth:
 - `npm run test:db:readiness-snapshots -- --confirm-disposable`: starts an isolated Docker PostgreSQL 16 container, applies all checked-in migrations without reading `.env.local`, verifies legacy-unknown migration behavior, partial unique enforcement, identical concurrent activation, conflicting payload rejection, forced replacement rollback, stale-evidence rejection, and owner isolation, then removes the container. Package scripts never supply disposable confirmation: the operator must type it for every mutating invocation, and aliases or wrappers must not embed it. Strict argument and inherited-target validation complete before `pg` or any other database-dependent module loads and before Docker work begins.
 - `npm run test:db:rollout-tooling -- --confirm-disposable`: runs rollout-tooling integration coverage against a harness-created disposable PostgreSQL target. Its effective argument list must be exactly `["--confirm-disposable"]`; additional, duplicate, positional, misspelled, embedded, or malformed arguments are rejected before Docker or database-dependent loading.
   Its Finisher Gate A cases verify exact table/function ownership, complete
-  grants, protected role attributes and memberships, security-definer mode,
+  grants, protected role attributes and PostgreSQL 16 membership option bits,
+  exact existing-runtime credential authentication, prerequisite and terminal
+  lifecycle states, wrong-password non-rotation, transaction rollback after an
+  injected provisioning failure, migration rollback when a prerequisite drifts
+  after Gate A, security-definer mode,
   fixed search path, static relation/function dependencies, neutral helper and
   unexpected-trigger discovery, removed/broadened privileges, and
   caller-controlled-setting bypass rejection, both deferred terminal-coherence

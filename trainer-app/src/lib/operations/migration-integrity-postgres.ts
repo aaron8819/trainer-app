@@ -22,6 +22,39 @@ type ReadOnlyClient = {
 
 const READ_ONLY_STATEMENT = /^(?:SELECT|WITH|SHOW|BEGIN\b.*\bREAD ONLY\b|COMMIT\b|ROLLBACK\b|SAVEPOINT\b|RELEASE\b)/i;
 
+const FINISHER_CATALOG_ROWS_SQL = `
+  SELECT 'FinisherRoutine' AS table_name, r."id" AS row_key,
+    to_jsonb(r) - 'createdAt' AS values
+  FROM "FinisherRoutine" r
+  UNION ALL
+  SELECT 'FinisherRoutineVersion', v."id",
+    (to_jsonb(v) - 'createdAt' - 'sealedAt')
+      || jsonb_build_object('sealed', v."sealedAt" IS NOT NULL)
+  FROM "FinisherRoutineVersion" v
+  UNION ALL
+  SELECT 'FinisherRoutineStep', s."id", to_jsonb(s)
+  FROM "FinisherRoutineStep" s
+  UNION ALL
+  SELECT 'FinisherRoutineStepAlternative', a."id", to_jsonb(a)
+  FROM "FinisherRoutineStepAlternative" a
+  ORDER BY table_name, row_key
+`;
+
+export async function readFinisherCatalogRows(
+  client: ReadOnlyClient,
+): Promise<CatalogRowFact[]> {
+  const result = await readQuery<{
+    table_name: string;
+    row_key: string;
+    values: Record<string, unknown>;
+  }>(client, FINISHER_CATALOG_ROWS_SQL);
+  return result.rows.map((row) => ({
+    table: row.table_name,
+    key: row.row_key,
+    values: row.values,
+  }));
+}
+
 export function assertReadOnlyStatement(sql: string): void {
   const normalized = sql.replace(/^\s*(?:--[^\n]*\n\s*)*/, "").trim();
   if (!READ_ONLY_STATEMENT.test(normalized)) {
@@ -410,12 +443,18 @@ export async function inspectMigrationDatabase(client: ReadOnlyClient): Promise<
       role_name: string;
       member_name: string;
       grantor_name: string;
+      grantor_is_bootstrap_superuser: boolean;
       admin_option: boolean;
+      inherit_option: boolean;
+      set_option: boolean;
     }>("roleMemberships", `
       SELECT granted.rolname AS role_name,
         member.rolname AS member_name,
         grantor.rolname AS grantor_name,
-        membership.admin_option
+        grantor.oid = 10 AND grantor.rolsuper AS grantor_is_bootstrap_superuser,
+        membership.admin_option,
+        membership.inherit_option,
+        membership.set_option
       FROM pg_catalog.pg_auth_members membership
       JOIN pg_catalog.pg_roles granted ON granted.oid = membership.roleid
       JOIN pg_catalog.pg_roles member ON member.oid = membership.member
@@ -461,23 +500,7 @@ export async function inspectMigrationDatabase(client: ReadOnlyClient): Promise<
           table_name: string;
           row_key: string;
           values: Record<string, unknown>;
-        }>("finisherCatalogRows", `
-          SELECT 'FinisherRoutine' AS table_name, r."id" AS row_key,
-            to_jsonb(r) - 'createdAt' AS values
-          FROM "FinisherRoutine" r
-          UNION ALL
-          SELECT 'FinisherRoutineVersion', v."id",
-            (to_jsonb(v) - 'createdAt' - 'sealedAt')
-              || jsonb_build_object('sealed', v."sealedAt" IS NOT NULL)
-          FROM "FinisherRoutineVersion" v
-          UNION ALL
-          SELECT 'FinisherRoutineStep', s."id", to_jsonb(s)
-          FROM "FinisherRoutineStep" s
-          UNION ALL
-          SELECT 'FinisherRoutineStepAlternative', a."id", to_jsonb(a)
-          FROM "FinisherRoutineStepAlternative" a
-          ORDER BY table_name, row_key
-        `)
+        }>("finisherCatalogRows", FINISHER_CATALOG_ROWS_SQL)
       : [];
 
     const enumValues = new Map<string, string[]>();
@@ -617,7 +640,11 @@ export async function inspectMigrationDatabase(client: ReadOnlyClient): Promise<
             role: row.role_name,
             member: row.member_name,
             grantor: row.grantor_name,
+            grantorIsBootstrapSuperuser:
+              row.grantor_is_bootstrap_superuser,
             adminOption: row.admin_option,
+            inheritOption: row.inherit_option,
+            setOption: row.set_option,
           }),
         ),
         defaultPrivileges: defaultPrivilegeRows.map(

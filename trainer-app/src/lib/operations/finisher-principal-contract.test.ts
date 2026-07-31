@@ -1,181 +1,211 @@
 import { describe, expect, it } from "vitest";
 import {
-  FINISHER_PRINCIPAL_EVIDENCE_SCHEMA,
-  FINISHER_PRINCIPAL_EVIDENCE_VERSION,
-  FINISHER_PRINCIPAL_VERIFIER,
-  authorizationContext,
-  evidenceSignature,
-  expectedEvidenceRoles,
-  verifyPrincipalEvidenceForGate,
-  type FinisherPrincipalVerificationEvidence,
+  FINISHER_PRINCIPAL_CONTRACT,
+  principalSnapshotContractReasons,
+  principalSnapshotMatchesContract,
+  type FinisherPrincipalPhase,
+  type FinisherPrincipalSnapshot,
+  type FinisherRoleMembership,
 } from "./finisher-principal-contract";
 
-const KEY = "test-finisher-principal-evidence-key-32";
-const HEAD = "a".repeat(40);
-const VERIFIED_AT = "2026-07-30T12:00:00.000Z";
-const EVALUATED_AT = "2026-07-30T12:10:00.000Z";
+const ADMINISTRATOR = "supabase_migration_admin";
+const BOOTSTRAP = "supabase_admin";
 
-function evidence(
-  mutate?: (value: FinisherPrincipalVerificationEvidence) => void,
-): FinisherPrincipalVerificationEvidence {
-  const unsignedBinding = {
-    repositoryHead: HEAD,
-    requiredApplicationCommit: HEAD,
-    targetMigration: "20260728120000_add_finishers_phase_1" as const,
-    environment: "production" as const,
-    targetClassification: "remote" as const,
-    targetFingerprint: "target123456",
-    projectFingerprint: "project123456789",
-    database: "postgres",
+function automaticMembership(grantedRole: string): FinisherRoleMembership {
+  return {
+    grantedRole,
+    memberRole: ADMINISTRATOR,
+    grantorRole: BOOTSTRAP,
+    grantorIsBootstrapSuperuser: true,
+    admin: true,
+    inherit: false,
+    set: false,
   };
-  const unsigned: FinisherPrincipalVerificationEvidence = {
-    schema: FINISHER_PRINCIPAL_EVIDENCE_SCHEMA,
-    version: FINISHER_PRINCIPAL_EVIDENCE_VERSION,
-    verifier: FINISHER_PRINCIPAL_VERIFIER,
-    binding: {
-      ...unsignedBinding,
-      authorizationContext: authorizationContext(unsignedBinding),
-    },
-    provisioningEvidenceHash: "b".repeat(64),
-    provisioningCompletedAt: "2026-07-30T11:58:00.000Z",
-    verificationStartedAt: "2026-07-30T11:59:00.000Z",
-    verifiedAt: VERIFIED_AT,
-    readOnlyTransaction: true as const,
-    databaseWrites: 0 as const,
-    roles: expectedEvidenceRoles(),
-    signature: "",
-  };
-  const result = structuredClone(unsigned);
-  mutate?.(result);
-  result.signature = evidenceSignature(result, KEY);
-  return result;
 }
 
-function verify(value: FinisherPrincipalVerificationEvidence | undefined) {
-  return verifyPrincipalEvidenceForGate({
-    evidence: value,
-    signingKey: KEY,
-    repositoryHead: HEAD,
-    requiredApplicationCommit: HEAD,
-    target: {
-      classification: "remote",
-      fingerprint: "target123456",
-      projectFingerprint: "project123456789",
-      database: "postgres",
-    },
-    evaluatedAt: EVALUATED_AT,
-    maxAgeMinutes: 30,
-  });
+function supplementalMembership(grantedRole: string): FinisherRoleMembership {
+  return {
+    grantedRole,
+    memberRole: ADMINISTRATOR,
+    grantorRole: ADMINISTRATOR,
+    grantorIsBootstrapSuperuser: false,
+    admin: false,
+    inherit: false,
+    set: true,
+  };
 }
 
-describe("Finisher prerequisite principal evidence", () => {
-  it("accepts only the canonical signed, fresh, zero-write contract", () => {
-    expect(verify(evidence())).toEqual({ valid: true, reasons: [] });
-  });
+function snapshot(phase: FinisherPrincipalPhase): FinisherPrincipalSnapshot {
+  const memberships = FINISHER_PRINCIPAL_CONTRACT.map((role) =>
+    automaticMembership(role.name),
+  );
+  if (phase === "migration_capable") {
+    memberships.push(
+      supplementalMembership("trainer_finisher_owner"),
+      supplementalMembership("trainer_finisher_cleanup"),
+    );
+  }
+  return {
+    phase,
+    serverVersionNumber: 160010,
+    administrator: {
+      currentRole: ADMINISTRATOR,
+      sessionRole: ADMINISTRATOR,
+      canLogin: true,
+      superuser: false,
+      createRole: true,
+      createroleSelfGrant: "",
+    },
+    roles: FINISHER_PRINCIPAL_CONTRACT.map((role) => ({
+      name: role.name,
+      canLogin: role.canLogin,
+      inherit: role.inherit,
+      superuser: false,
+      createDb: false,
+      createRole: false,
+      replication: false,
+      bypassRls: false,
+      publicSchemaCreate:
+        phase === "migration_capable" && role.name !== "trainer_app_runtime",
+      credential:
+        role.name === "trainer_app_runtime"
+          ? ("verified_matching" as const)
+          : ("not_applicable" as const),
+      defaultPrivilegeCount: 0,
+    })),
+    memberships,
+    finisherObjectCount: phase === "terminal" ? 42 : 0,
+    finisherObjectCapabilityCount: phase === "terminal" ? 42 : 0,
+  };
+}
 
+describe("Finisher principal phase contract", () => {
   it.each([
-    ["missing", undefined, "missing"],
-    [
-      "stale",
-      evidence((value) => {
-        value.verifiedAt = "2026-07-30T10:00:00.000Z";
-      }),
-      "stale_or_invalid_timestamp",
-    ],
-    [
-      "cross-commit",
-      evidence((value) => {
-        value.binding.repositoryHead = "c".repeat(40);
-      }),
-      "authorization_context_mismatch",
-    ],
-    [
-      "wrong target",
-      evidence((value) => {
-        value.binding.targetFingerprint = "wrong-target";
-      }),
-      "target_mismatch",
-    ],
-    [
-      "write-reporting",
-      evidence((value) => {
-        (value as { databaseWrites: number }).databaseWrites = 1;
-      }),
-      "writes_reported",
-    ],
-    [
-      "verification-before-provisioning",
-      evidence((value) => {
-        value.provisioningCompletedAt = "2026-07-30T12:01:00.000Z";
-      }),
-      "verification_order_invalid",
-    ],
-  ] as const)("fails closed for %s evidence", (_label, value, reason) => {
-    expect(verify(value).reasons).toContain(reason);
+    "prerequisite",
+    "migration_capable",
+    "terminal",
+  ] as const)("accepts the exact %s state", (phase) => {
+    expect(principalSnapshotContractReasons(snapshot(phase))).toEqual([]);
+    expect(principalSnapshotMatchesContract(snapshot(phase))).toBe(true);
   });
 
-  it("rejects a caller-authored claim without the canonical signature", () => {
-    const value = evidence();
-    value.roles[0].superuser = true;
-    expect(verify(value).reasons).toContain("signature_invalid");
+  it("requires PostgreSQL 16 and a direct non-superuser CREATEROLE administrator", () => {
+    for (const mutate of [
+      (value: FinisherPrincipalSnapshot) => (value.serverVersionNumber = 150010),
+      (value: FinisherPrincipalSnapshot) => (value.serverVersionNumber = 170000),
+      (value: FinisherPrincipalSnapshot) =>
+        (value.administrator.currentRole = "set_role_target"),
+      (value: FinisherPrincipalSnapshot) =>
+        (value.administrator.superuser = true),
+      (value: FinisherPrincipalSnapshot) =>
+        (value.administrator.createRole = false),
+      (value: FinisherPrincipalSnapshot) =>
+        (value.administrator.createroleSelfGrant = "set"),
+    ]) {
+      const value = snapshot("migration_capable");
+      mutate(value);
+      expect(principalSnapshotMatchesContract(value)).toBe(false);
+    }
   });
 
-  it.each([
-    "canLogin",
-    "inherit",
-    "superuser",
-    "createDb",
-    "createRole",
-    "replication",
-    "bypassRls",
-    "publicSchemaCreate",
-  ] as const)("rejects an incorrect %s attribute", (attribute) => {
-    const value = evidence((candidate) => {
-      candidate.roles[0][attribute] = !candidate.roles[0][attribute];
+  it("rejects every prohibited protected-role attribute", () => {
+    for (const roleIndex of [0, 1, 2]) {
+      for (const attribute of [
+        "superuser",
+        "createDb",
+        "createRole",
+        "replication",
+        "bypassRls",
+      ] as const) {
+        const value = snapshot("migration_capable");
+        value.roles[roleIndex][attribute] = true;
+        expect(principalSnapshotMatchesContract(value)).toBe(false);
+      }
+    }
+  });
+
+  it("rejects wrong LOGIN and INHERIT attributes", () => {
+    for (const [roleIndex, attribute] of [
+      [0, "canLogin"],
+      [0, "inherit"],
+      [1, "canLogin"],
+      [1, "inherit"],
+      [2, "canLogin"],
+      [2, "inherit"],
+    ] as const) {
+      const value = snapshot("migration_capable");
+      value.roles[roleIndex][attribute] = !value.roles[roleIndex][attribute];
+      expect(principalSnapshotMatchesContract(value)).toBe(false);
+    }
+  });
+
+  it("requires an exact runtime credential proof and no NOLOGIN credential checks", () => {
+    const wrongRuntimePassword = snapshot("migration_capable");
+    wrongRuntimePassword.roles[0].credential = "authentication_failed";
+    expect(principalSnapshotContractReasons(wrongRuntimePassword)).toContain(
+      "runtime_credential_not_verified",
+    );
+
+    const meaninglessOwnerCredential = snapshot("migration_capable");
+    meaninglessOwnerCredential.roles[1].credential = "configured_unverified";
+    expect(principalSnapshotMatchesContract(meaninglessOwnerCredential)).toBe(
+      false,
+    );
+  });
+
+  it("accepts only bootstrap-granted ADMIN true, INHERIT false, SET false automatic memberships", () => {
+    for (const attribute of ["admin", "inherit", "set"] as const) {
+      const value = snapshot("prerequisite");
+      value.memberships[0][attribute] = !value.memberships[0][attribute];
+      expect(principalSnapshotMatchesContract(value)).toBe(false);
+    }
+    const wrongGrantor = snapshot("prerequisite");
+    wrongGrantor.memberships[0].grantorIsBootstrapSuperuser = false;
+    expect(principalSnapshotMatchesContract(wrongGrantor)).toBe(false);
+  });
+
+  it("requires only owner and cleanup supplemental SET memberships during migration", () => {
+    const missing = snapshot("migration_capable");
+    missing.memberships.pop();
+    expect(principalSnapshotMatchesContract(missing)).toBe(false);
+
+    const broad = snapshot("migration_capable");
+    broad.memberships.at(-1)!.inherit = true;
+    expect(principalSnapshotMatchesContract(broad)).toBe(false);
+
+    const runtimeSet = snapshot("migration_capable");
+    runtimeSet.memberships.push(supplementalMembership("trainer_app_runtime"));
+    expect(principalSnapshotMatchesContract(runtimeSet)).toBe(false);
+  });
+
+  it("requires temporary schema CREATE only in migration-capable state", () => {
+    const prerequisiteBroad = snapshot("prerequisite");
+    prerequisiteBroad.roles[1].publicSchemaCreate = true;
+    expect(principalSnapshotMatchesContract(prerequisiteBroad)).toBe(false);
+
+    const migrationMissing = snapshot("migration_capable");
+    migrationMissing.roles[2].publicSchemaCreate = false;
+    expect(principalSnapshotMatchesContract(migrationMissing)).toBe(false);
+
+    const terminalBroad = snapshot("terminal");
+    terminalBroad.roles[1].publicSchemaCreate = true;
+    expect(principalSnapshotMatchesContract(terminalBroad)).toBe(false);
+  });
+
+  it("rejects unexpected memberships, default privileges, and pre-migration Finisher objects", () => {
+    const membership = snapshot("migration_capable");
+    membership.memberships.push({
+      ...supplementalMembership("trainer_finisher_owner"),
+      memberRole: "unexpected_member",
     });
-    expect(verify(value).reasons).toContain("principal_contract_mismatch");
-  });
+    expect(principalSnapshotMatchesContract(membership)).toBe(false);
 
-  it.each([
-    [
-      "missing principal",
-      (value: FinisherPrincipalVerificationEvidence): void => {
-        value.roles.pop();
-      },
-    ],
-    [
-      "extra granted membership",
-      (value: FinisherPrincipalVerificationEvidence): void => {
-        value.roles[0].membershipsGranted.push("unexpected");
-      },
-    ],
-    [
-      "extra received membership",
-      (value: FinisherPrincipalVerificationEvidence): void => {
-        value.roles[1].membershipsReceived.push("unexpected");
-      },
-    ],
-    [
-      "default privilege",
-      (value: FinisherPrincipalVerificationEvidence): void => {
-        value.roles[2].defaultPrivilegeCount = 1;
-      },
-    ],
-    [
-      "missing runtime credential",
-      (value: FinisherPrincipalVerificationEvidence): void => {
-        value.roles[0].credential = "not_configured";
-      },
-    ],
-  ] as const)("rejects %s", (_label, mutate) => {
-    const value = evidence(mutate);
-    expect(verify(value).reasons).toContain("principal_contract_mismatch");
-  });
+    const defaults = snapshot("migration_capable");
+    defaults.roles[2].defaultPrivilegeCount = 1;
+    expect(principalSnapshotMatchesContract(defaults)).toBe(false);
 
-  it("contains no credential, connection string, or password hash", () => {
-    const serialized = JSON.stringify(evidence());
-    expect(serialized).not.toContain("postgresql://");
-    expect(serialized).not.toContain("SCRAM-SHA-256$");
-    expect(serialized.toLowerCase()).not.toContain("password");
+    const objects = snapshot("migration_capable");
+    objects.finisherObjectCount = 1;
+    expect(principalSnapshotMatchesContract(objects)).toBe(false);
   });
 });

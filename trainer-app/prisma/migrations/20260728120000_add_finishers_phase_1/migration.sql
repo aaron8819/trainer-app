@@ -6,7 +6,35 @@ DECLARE
   runtime_role pg_catalog.pg_roles%ROWTYPE;
   owner_role pg_catalog.pg_roles%ROWTYPE;
   cleanup_role pg_catalog.pg_roles%ROWTYPE;
+  executor_role pg_catalog.pg_roles%ROWTYPE;
+  protected_membership_count integer;
+  automatic_membership_count integer;
+  temporary_membership_count integer;
+  default_privilege_count integer;
+  preexisting_object_count integer;
 BEGIN
+  IF pg_catalog.current_setting('server_version_num')::integer < 160000
+    OR pg_catalog.current_setting('server_version_num')::integer >= 170000
+  THEN
+    RAISE EXCEPTION 'Finisher migration requires PostgreSQL 16';
+  END IF;
+
+  IF current_user <> session_user THEN
+    RAISE EXCEPTION 'Finisher migration requires current_user and session_user to be the same administrator';
+  END IF;
+
+  SELECT * INTO executor_role
+  FROM pg_catalog.pg_roles
+  WHERE rolname = session_user;
+  IF executor_role.rolname IS NULL
+    OR NOT executor_role.rolcanlogin
+    OR executor_role.rolsuper
+    OR NOT executor_role.rolcreaterole
+    OR pg_catalog.current_setting('createrole_self_grant') <> ''
+  THEN
+    RAISE EXCEPTION 'Finisher migration executor must be a PostgreSQL 16 non-superuser LOGIN CREATEROLE administrator with empty createrole_self_grant';
+  END IF;
+
   SELECT * INTO runtime_role
   FROM pg_catalog.pg_roles
   WHERE rolname = 'trainer_app_runtime';
@@ -25,6 +53,8 @@ BEGIN
   END IF;
 
   IF NOT runtime_role.rolcanlogin
+    OR NOT runtime_role.rolinherit
+    OR runtime_role.rolpassword IS NULL
     OR runtime_role.rolsuper
     OR runtime_role.rolcreaterole
     OR runtime_role.rolcreatedb
@@ -52,18 +82,74 @@ BEGIN
     RAISE EXCEPTION 'finisher owner or cleanup role has unsafe attributes';
   END IF;
 
-  IF pg_catalog.pg_has_role(
-      'trainer_app_runtime',
-      'trainer_finisher_owner',
-      'MEMBER'
-    )
-    OR pg_catalog.pg_has_role(
-      'trainer_app_runtime',
-      'trainer_finisher_cleanup',
-      'MEMBER'
-    )
+  IF pg_catalog.has_schema_privilege('trainer_app_runtime', 'public', 'CREATE')
+    OR NOT pg_catalog.has_schema_privilege('trainer_finisher_owner', 'public', 'CREATE')
+    OR NOT pg_catalog.has_schema_privilege('trainer_finisher_cleanup', 'public', 'CREATE')
   THEN
-    RAISE EXCEPTION 'trainer_app_runtime must not be a member of privileged finisher roles';
+    RAISE EXCEPTION 'Finisher migration-capable schema CREATE privileges are not exact';
+  END IF;
+
+  SELECT pg_catalog.count(*) INTO protected_membership_count
+  FROM pg_catalog.pg_auth_members membership
+  WHERE membership.roleid IN (runtime_role.oid, owner_role.oid, cleanup_role.oid)
+     OR membership.member IN (runtime_role.oid, owner_role.oid, cleanup_role.oid);
+
+  SELECT pg_catalog.count(*) INTO automatic_membership_count
+  FROM pg_catalog.pg_auth_members membership
+  JOIN pg_catalog.pg_roles grantor ON grantor.oid = membership.grantor
+  WHERE membership.roleid IN (runtime_role.oid, owner_role.oid, cleanup_role.oid)
+    AND membership.member = executor_role.oid
+    AND grantor.oid = 10
+    AND grantor.rolsuper
+    AND membership.admin_option
+    AND NOT membership.inherit_option
+    AND NOT membership.set_option;
+
+  SELECT pg_catalog.count(*) INTO temporary_membership_count
+  FROM pg_catalog.pg_auth_members membership
+  WHERE membership.roleid IN (owner_role.oid, cleanup_role.oid)
+    AND membership.member = executor_role.oid
+    AND membership.grantor = executor_role.oid
+    AND NOT membership.admin_option
+    AND NOT membership.inherit_option
+    AND membership.set_option;
+
+  IF protected_membership_count <> 5
+    OR automatic_membership_count <> 3
+    OR temporary_membership_count <> 2
+  THEN
+    RAISE EXCEPTION 'Finisher migration-capable role memberships or options are not exact';
+  END IF;
+
+  SELECT pg_catalog.count(*) INTO default_privilege_count
+  FROM pg_catalog.pg_default_acl defaults
+  CROSS JOIN LATERAL pg_catalog.aclexplode(defaults.defaclacl) privilege
+  WHERE defaults.defaclrole IN (runtime_role.oid, owner_role.oid, cleanup_role.oid)
+     OR privilege.grantee IN (runtime_role.oid, owner_role.oid, cleanup_role.oid);
+  IF default_privilege_count <> 0 THEN
+    RAISE EXCEPTION 'Finisher roles must not own or receive default privileges';
+  END IF;
+
+  SELECT pg_catalog.count(*) INTO preexisting_object_count
+  FROM (
+    SELECT class.oid
+    FROM pg_catalog.pg_class class
+    JOIN pg_catalog.pg_namespace namespace ON namespace.oid = class.relnamespace
+    WHERE namespace.nspname = 'public' AND class.relname LIKE 'Finisher%'
+    UNION ALL
+    SELECT procedure.oid
+    FROM pg_catalog.pg_proc procedure
+    JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
+    WHERE namespace.nspname = 'public'
+      AND procedure.proname LIKE '%finisher%'
+    UNION ALL
+    SELECT type.oid
+    FROM pg_catalog.pg_type type
+    JOIN pg_catalog.pg_namespace namespace ON namespace.oid = type.typnamespace
+    WHERE namespace.nspname = 'public' AND type.typname LIKE 'Finisher%'
+  ) existing;
+  IF preexisting_object_count <> 0 THEN
+    RAISE EXCEPTION 'Finisher migration-owned objects already exist before migration';
   END IF;
 END;
 $$;
@@ -1411,6 +1497,11 @@ ALTER FUNCTION reject_finisher_history_deletion() OWNER TO trainer_finisher_owne
 ALTER FUNCTION guard_finisher_execution_command_tombstone() OWNER TO trainer_finisher_owner;
 ALTER FUNCTION cleanup_expired_finisher_execution_commands(INTEGER) OWNER TO trainer_finisher_cleanup;
 
+-- The executor owns the schema, while the dedicated owner roles own the new
+-- objects. Grant schema visibility before assuming the object owner role.
+GRANT USAGE ON SCHEMA public TO trainer_app_runtime, trainer_finisher_cleanup;
+SET LOCAL ROLE trainer_finisher_owner;
+
 -- BEGIN GENERATED FINISHER CATALOG
 
 INSERT INTO "FinisherRoutine" ("id", "code") VALUES ('823708ba-e570-53b2-8133-c3e3067250c5', 'core-stability-10');
@@ -1827,7 +1918,6 @@ REVOKE ALL ON TABLE
   "FinisherExecutionCommand"
 FROM PUBLIC, trainer_app_runtime, trainer_finisher_cleanup;
 
-GRANT USAGE ON SCHEMA public TO trainer_app_runtime, trainer_finisher_cleanup;
 GRANT SELECT ON TABLE
   "FinisherRoutine",
   "FinisherRoutineVersion",
@@ -1869,11 +1959,118 @@ REVOKE ALL ON FUNCTION
   reject_finisher_history_deletion(),
   guard_finisher_execution_command_tombstone()
 FROM PUBLIC, trainer_app_runtime, trainer_finisher_cleanup;
+-- Run deferred catalog integrity triggers while the transaction is still
+-- executing as the object owner. No deferred owner access may survive the
+-- terminal removal of the executor's temporary SET membership.
+SET CONSTRAINTS ALL IMMEDIATE;
+RESET ROLE;
+SET LOCAL ROLE trainer_finisher_cleanup;
 REVOKE ALL ON FUNCTION cleanup_expired_finisher_execution_commands(INTEGER)
 FROM PUBLIC, trainer_finisher_owner;
-GRANT EXECUTE ON FUNCTION validate_finisher_terminal_outcome(TEXT)
-TO trainer_app_runtime;
 GRANT EXECUTE ON FUNCTION cleanup_expired_finisher_execution_commands(INTEGER)
 TO trainer_app_runtime;
+RESET ROLE;
+SET LOCAL ROLE trainer_finisher_owner;
+GRANT EXECUTE ON FUNCTION validate_finisher_terminal_outcome(TEXT)
+TO trainer_app_runtime;
+RESET ROLE;
+
+-- Remove only migration-temporary capabilities. PostgreSQL 16's creator-admin
+-- memberships (bootstrap-superuser grantor, ADMIN true, INHERIT/SET false) are
+-- unavoidable for a non-superuser CREATEROLE administrator and remain intact.
+REVOKE CREATE ON SCHEMA public
+FROM trainer_finisher_owner, trainer_finisher_cleanup;
+REVOKE trainer_finisher_owner FROM SESSION_USER GRANTED BY SESSION_USER;
+REVOKE trainer_finisher_cleanup FROM SESSION_USER GRANTED BY SESSION_USER;
+
+DO $$
+DECLARE
+  runtime_role pg_catalog.pg_roles%ROWTYPE;
+  owner_role pg_catalog.pg_roles%ROWTYPE;
+  cleanup_role pg_catalog.pg_roles%ROWTYPE;
+  executor_role pg_catalog.pg_roles%ROWTYPE;
+  protected_membership_count integer;
+  automatic_membership_count integer;
+  default_privilege_count integer;
+BEGIN
+  SELECT * INTO runtime_role FROM pg_catalog.pg_roles
+  WHERE rolname = 'trainer_app_runtime';
+  SELECT * INTO owner_role FROM pg_catalog.pg_roles
+  WHERE rolname = 'trainer_finisher_owner';
+  SELECT * INTO cleanup_role FROM pg_catalog.pg_roles
+  WHERE rolname = 'trainer_finisher_cleanup';
+  SELECT * INTO executor_role FROM pg_catalog.pg_roles
+  WHERE rolname = session_user;
+
+  IF runtime_role.rolname IS NULL
+    OR owner_role.rolname IS NULL
+    OR cleanup_role.rolname IS NULL
+    OR executor_role.rolname IS NULL
+    OR current_user <> session_user
+    OR executor_role.rolsuper
+    OR NOT executor_role.rolcreaterole
+    OR NOT runtime_role.rolcanlogin
+    OR NOT runtime_role.rolinherit
+    OR runtime_role.rolpassword IS NULL
+    OR runtime_role.rolsuper
+    OR runtime_role.rolcreaterole
+    OR runtime_role.rolcreatedb
+    OR runtime_role.rolreplication
+    OR runtime_role.rolbypassrls
+    OR owner_role.rolcanlogin
+    OR owner_role.rolinherit
+    OR owner_role.rolsuper
+    OR owner_role.rolcreaterole
+    OR owner_role.rolcreatedb
+    OR owner_role.rolreplication
+    OR owner_role.rolbypassrls
+    OR cleanup_role.rolcanlogin
+    OR cleanup_role.rolinherit
+    OR cleanup_role.rolsuper
+    OR cleanup_role.rolcreaterole
+    OR cleanup_role.rolcreatedb
+    OR cleanup_role.rolreplication
+    OR cleanup_role.rolbypassrls
+  THEN
+    RAISE EXCEPTION 'Finisher terminal role attributes are not exact';
+  END IF;
+
+  IF pg_catalog.has_schema_privilege('trainer_app_runtime', 'public', 'CREATE')
+    OR pg_catalog.has_schema_privilege('trainer_finisher_owner', 'public', 'CREATE')
+    OR pg_catalog.has_schema_privilege('trainer_finisher_cleanup', 'public', 'CREATE')
+  THEN
+    RAISE EXCEPTION 'Finisher terminal roles retain temporary schema CREATE';
+  END IF;
+
+  SELECT pg_catalog.count(*) INTO protected_membership_count
+  FROM pg_catalog.pg_auth_members membership
+  WHERE membership.roleid IN (runtime_role.oid, owner_role.oid, cleanup_role.oid)
+     OR membership.member IN (runtime_role.oid, owner_role.oid, cleanup_role.oid);
+
+  SELECT pg_catalog.count(*) INTO automatic_membership_count
+  FROM pg_catalog.pg_auth_members membership
+  JOIN pg_catalog.pg_roles grantor ON grantor.oid = membership.grantor
+  WHERE membership.roleid IN (runtime_role.oid, owner_role.oid, cleanup_role.oid)
+    AND membership.member = executor_role.oid
+    AND grantor.oid = 10
+    AND grantor.rolsuper
+    AND membership.admin_option
+    AND NOT membership.inherit_option
+    AND NOT membership.set_option;
+
+  IF protected_membership_count <> 3 OR automatic_membership_count <> 3 THEN
+    RAISE EXCEPTION 'Finisher terminal memberships are not the exact safe PostgreSQL-created set';
+  END IF;
+
+  SELECT pg_catalog.count(*) INTO default_privilege_count
+  FROM pg_catalog.pg_default_acl defaults
+  CROSS JOIN LATERAL pg_catalog.aclexplode(defaults.defaclacl) privilege
+  WHERE defaults.defaclrole IN (runtime_role.oid, owner_role.oid, cleanup_role.oid)
+     OR privilege.grantee IN (runtime_role.oid, owner_role.oid, cleanup_role.oid);
+  IF default_privilege_count <> 0 THEN
+    RAISE EXCEPTION 'Finisher terminal roles own or receive default privileges';
+  END IF;
+END;
+$$;
 
 COMMIT;

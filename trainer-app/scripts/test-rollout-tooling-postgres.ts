@@ -1,5 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
-import { readFileSync, readdirSync, writeFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -39,9 +45,18 @@ const principalWrongTargetEvidenceFile = join(
   tmpdir(),
   `${containerName}-principal-wrong-target.json`,
 );
+const principalWrongPasswordEvidenceFile = join(
+  tmpdir(),
+  `${containerName}-principal-wrong-password.json`,
+);
 const preMigrationCount = 10;
 const currentProductionAppliedCount = 17;
 const targetMigration = "20260728120000_add_finishers_phase_1";
+const migrationAdministrator = "trainer_migration_admin";
+const migrationAdministratorPassword = "trainer-migration-admin";
+const runtimePassword = "trainer-app-runtime";
+const wrongRuntimePassword = "trainer-app-runtime-wrong";
+let repositoryHead = "";
 
 type CommandResult = { status: number; stdout: string; stderr: string };
 
@@ -101,6 +116,39 @@ function psql(sql: string, tuplesOnly = false): string {
   return result.stdout.trim();
 }
 
+function runPsqlAsMigrationAdministrator(
+  sql: string,
+  tuplesOnly = false,
+): CommandResult {
+  const args = [
+    "exec",
+    "-e",
+    `PGPASSWORD=${migrationAdministratorPassword}`,
+    "-i",
+    containerName,
+    "psql",
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-U",
+    migrationAdministrator,
+    "-d",
+    "trainer",
+  ];
+  if (tuplesOnly) args.push("-tA");
+  return run("docker", args, { input: sql, quiet: true });
+}
+
+function psqlAsMigrationAdministrator(
+  sql: string,
+  tuplesOnly = false,
+): string {
+  const result = requireSuccess(
+    runPsqlAsMigrationAdministrator(sql, tuplesOnly),
+    "migration-administrator psql",
+  );
+  return result.stdout.trim();
+}
+
 function migrationDirectories(): string[] {
   const root = join(process.cwd(), "prisma", "migrations");
   return readdirSync(root, { withFileTypes: true })
@@ -112,7 +160,7 @@ function migrationDirectories(): string[] {
 function applyMigrations(names: string[]): void {
   for (const name of names) {
     const sql = readFileSync(join(process.cwd(), "prisma", "migrations", name, "migration.sql"), "utf8");
-    psql(sql);
+    psqlAsMigrationAdministrator(sql);
   }
 }
 
@@ -122,7 +170,7 @@ function migrationChecksum(name: string): string {
 }
 
 function recordMigration(name: string, index: number): void {
-  psql(`
+  psqlAsMigrationAdministrator(`
     INSERT INTO public._prisma_migrations (
       id, checksum, finished_at, migration_name, logs, rolled_back_at, applied_steps_count
     ) VALUES (
@@ -195,12 +243,17 @@ function cli(script: string, args: string[]): Record<string, unknown> {
       ? [
           "--evidence-file",
           authorizationEvidenceFile,
-          "--principal-evidence-file",
+          "--principal-audit-file",
           principalVerificationEvidenceFile,
+          "--required-application-commit",
+          repositoryHead,
         ]
       : [];
   const result = requireSuccess(
-    run(process.execPath, [join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs"), script, "--env-file", envFile, "--confirm-disposable", ...evidenceArgs, ...args], { quiet: true }),
+    run(process.execPath, [join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs"), script, "--env-file", envFile, "--confirm-disposable", ...evidenceArgs, ...args], {
+      quiet: true,
+      env: { TRAINER_APP_RUNTIME_PASSWORD: runtimePassword },
+    }),
     `${script} ${args.join(" ")}`,
   );
   if (result.stdout.includes("configured-remote.invalid")) {
@@ -215,20 +268,28 @@ function cliWithExpectedStatus(script: string, args: string[], expectedStatus: n
       ? [
           "--evidence-file",
           authorizationEvidenceFile,
-          "--principal-evidence-file",
+          "--principal-audit-file",
           principalVerificationEvidenceFile,
+          "--required-application-commit",
+          repositoryHead,
         ]
       : [];
   const result = run(
     process.execPath,
     [join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs"), script, "--env-file", envFile, "--confirm-disposable", ...evidenceArgs, ...args],
-    { quiet: true },
+    {
+      quiet: true,
+      env: { TRAINER_APP_RUNTIME_PASSWORD: runtimePassword },
+    },
   );
   if (result.status !== expectedStatus) {
     throw new Error(`Unexpected ${script} status=${result.status}; expected=${expectedStatus}\n${result.stdout}\n${result.stderr}`);
   }
   if (`${result.stdout}\n${result.stderr}`.includes("trainer-rollout")) {
     throw new Error("Disposable connection credential or container identifier leaked into migration output");
+  }
+  if (!result.stdout.trim()) {
+    throw new Error(`No migration report was emitted:\n${result.stderr}`);
   }
   return parseLastJson(result.stdout);
 }
@@ -270,6 +331,34 @@ function databaseStateFingerprint(): string {
         migration_name || ':' || coalesce(logs, '') || ':' || coalesce(rolled_back_at::text, '') || ':' || applied_steps_count::text
       FROM public._prisma_migrations
     ) facts;
+  `, true);
+}
+
+function principalStateFingerprint(): string {
+  return psql(`
+    WITH protected_roles AS (
+      SELECT oid, rolname, rolcanlogin, rolinherit, rolsuper, rolcreatedb,
+        rolcreaterole, rolreplication, rolbypassrls, rolpassword
+      FROM pg_catalog.pg_authid
+      WHERE rolname IN (
+        'trainer_app_runtime',
+        'trainer_finisher_owner',
+        'trainer_finisher_cleanup'
+      )
+    ), facts AS (
+      SELECT 'role:' || row_to_json(role)::text AS value
+      FROM protected_roles role
+      UNION ALL
+      SELECT 'membership:' || row_to_json(membership)::text
+      FROM pg_catalog.pg_auth_members membership
+      WHERE membership.roleid IN (SELECT oid FROM protected_roles)
+         OR membership.member IN (SELECT oid FROM protected_roles)
+      UNION ALL
+      SELECT 'schema:' || role.rolname || ':' ||
+        pg_catalog.has_schema_privilege(role.rolname, 'public', 'CREATE')::text
+      FROM protected_roles role
+    )
+    SELECT md5(string_agg(value, E'\\n' ORDER BY value)) FROM facts;
   `, true);
 }
 
@@ -344,9 +433,7 @@ function requireFinisherGateAFailure(
       1,
     );
     const chain = objectField(report, "chain");
-    const differences = JSON.stringify(
-      objectField(report, "schemaIntegrity").blockingDifferences,
-    );
+    const differences = JSON.stringify(report);
     if (
       chain.gateAApplicable !== true ||
       numberField(chain, "pending") !== 1 ||
@@ -664,16 +751,25 @@ try {
     "postgres:16-alpine",
   ], { quiet: true }), "docker run");
   waitForPostgres();
+  psql(`
+    CREATE ROLE ${migrationAdministrator}
+      LOGIN NOINHERIT NOSUPERUSER NOCREATEDB CREATEROLE
+      NOREPLICATION NOBYPASSRLS
+      PASSWORD '${migrationAdministratorPassword}';
+    ALTER DATABASE trainer OWNER TO ${migrationAdministrator};
+    ALTER SCHEMA public OWNER TO ${migrationAdministrator};
+  `);
   const port = requireSuccess(run("docker", ["port", containerName, "5432/tcp"], { quiet: true }), "docker port")
     .stdout.trim().split(":").at(-1);
   if (!port) throw new Error("DISPOSABLE_ROLLOUT_POSTGRES_PORT_NOT_FOUND");
-  const disposableUrl = `postgresql://trainer:trainer-rollout@127.0.0.1:${port}/trainer`;
+  const disposableUrl =
+    `postgresql://${migrationAdministrator}:${migrationAdministratorPassword}` +
+    `@127.0.0.1:${port}/trainer`;
   writeFileSync(
     envFile,
-    `DATABASE_URL=${disposableUrl}\nDIRECT_URL=${disposableUrl}\n` +
-      "TRAINER_FINISHER_PRINCIPAL_EVIDENCE_KEY=disposable-principal-evidence-key-32\n",
+    `DATABASE_URL=${disposableUrl}\nDIRECT_URL=${disposableUrl}\n`,
   );
-  const repositoryHead = requireSuccess(
+  repositoryHead = requireSuccess(
     run("git", ["rev-parse", "HEAD"], { quiet: true }),
     "git rev-parse HEAD",
   ).stdout.trim();
@@ -714,7 +810,7 @@ try {
       ],
       {
         quiet: true,
-        env: { TRAINER_APP_RUNTIME_PASSWORD: "trainer-app-runtime" },
+        env: { TRAINER_APP_RUNTIME_PASSWORD: runtimePassword },
       },
     ),
     "canonical principal provisioning",
@@ -723,7 +819,7 @@ try {
     readFileSync(principalProvisionEvidenceFile, "utf8"),
   ) as Record<string, unknown>;
   if (
-    cleanProvisionEvidence.databaseWrites !== 4 ||
+    cleanProvisionEvidence.databaseWrites !== 8 ||
     cleanProvisionEvidence.credentialConfigured !== true ||
     arrayField(cleanProvisionEvidence, "createdPrincipals").length !== 3
   ) {
@@ -732,12 +828,16 @@ try {
     );
   }
   psql(`
+    REVOKE CREATE ON SCHEMA public
+      FROM trainer_finisher_owner, trainer_finisher_cleanup;
     DROP ROLE trainer_finisher_cleanup;
     DROP ROLE trainer_finisher_owner;
     DROP ROLE trainer_app_runtime;
+  `);
+  psqlAsMigrationAdministrator(`
     CREATE ROLE trainer_app_runtime
       LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
-      NOREPLICATION NOBYPASSRLS PASSWORD 'trainer-app-runtime';
+      NOREPLICATION NOBYPASSRLS PASSWORD '${runtimePassword}';
   `);
   requireSuccess(
     run(
@@ -755,7 +855,7 @@ try {
       ],
       {
         quiet: true,
-        env: { TRAINER_APP_RUNTIME_PASSWORD: "trainer-app-runtime" },
+        env: { TRAINER_APP_RUNTIME_PASSWORD: runtimePassword },
       },
     ),
     "partial principal provisioning",
@@ -764,7 +864,7 @@ try {
     readFileSync(principalPartialEvidenceFile, "utf8"),
   ) as Record<string, unknown>;
   if (
-    partialEvidence.databaseWrites !== 2 ||
+    partialEvidence.databaseWrites !== 6 ||
     partialEvidence.credentialConfigured !== false ||
     arrayField(partialEvidence, "createdPrincipals").length !== 2
   ) {
@@ -772,6 +872,39 @@ try {
       `Partial principal provisioning was not exact: ${JSON.stringify(partialEvidence)}`,
     );
   }
+  const beforeWrongPasswordProvision = principalStateFingerprint();
+  const wrongPasswordProvision = run(
+    process.execPath,
+    [
+      principalCommand,
+      ...principalCommonArgs,
+      "--mode",
+      "provision",
+      "--write",
+      "--confirm-principal-provisioning",
+      "trainer-principals:disposable",
+      "--evidence-file",
+      principalWrongPasswordEvidenceFile,
+    ],
+    {
+      quiet: true,
+      env: { TRAINER_APP_RUNTIME_PASSWORD: wrongRuntimePassword },
+    },
+  );
+  const wrongPasswordOutput =
+    `${wrongPasswordProvision.stdout}\n${wrongPasswordProvision.stderr}`;
+  if (
+    wrongPasswordProvision.status === 0 ||
+    principalStateFingerprint() !== beforeWrongPasswordProvision ||
+    wrongPasswordOutput.includes(wrongRuntimePassword) ||
+    wrongPasswordOutput.includes(runtimePassword) ||
+    existsSync(principalWrongPasswordEvidenceFile)
+  ) {
+    throw new Error(
+      "Existing runtime credential mismatch did not fail without rotation, evidence, or secret output.",
+    );
+  }
+  rmSync(principalWrongPasswordEvidenceFile, { force: true });
   requireSuccess(
     run(
       process.execPath,
@@ -788,7 +921,7 @@ try {
       ],
       {
         quiet: true,
-        env: { TRAINER_APP_RUNTIME_PASSWORD: "trainer-app-runtime" },
+        env: { TRAINER_APP_RUNTIME_PASSWORD: runtimePassword },
       },
     ),
     "idempotent principal provisioning",
@@ -813,12 +946,13 @@ try {
         ...principalCommonArgs,
         "--mode",
         "verify",
-        "--provisioning-evidence-file",
-        principalRepeatEvidenceFile,
         "--evidence-file",
         principalVerificationEvidenceFile,
       ],
-      { quiet: true },
+      {
+        quiet: true,
+        env: { TRAINER_APP_RUNTIME_PASSWORD: runtimePassword },
+      },
     ),
     "read-only principal verification",
   );
@@ -828,7 +962,8 @@ try {
   if (
     principalVerification.databaseWrites !== 0 ||
     principalVerification.readOnlyTransaction !== true ||
-    arrayField(principalVerification, "roles").length !== 3
+    arrayField(objectField(principalVerification, "liveState"), "roles")
+      .length !== 3
   ) {
     throw new Error(
       `Principal verification evidence was not read-only and complete: ${JSON.stringify(principalVerification)}`,
@@ -878,11 +1013,6 @@ try {
         FROM pg_catalog.pg_proc p
         CROSS JOIN LATERAL pg_catalog.aclexplode(p.proacl) privilege
         WHERE privilege.grantee IN (SELECT oid FROM protected_roles)
-        UNION ALL
-        SELECT n.oid
-        FROM pg_catalog.pg_namespace n
-        CROSS JOIN LATERAL pg_catalog.aclexplode(n.nspacl) privilege
-        WHERE privilege.grantee IN (SELECT oid FROM protected_roles)
       )
       SELECT count(*) FROM capabilities;
     `,
@@ -893,6 +1023,20 @@ try {
       "Principal provisioning created object ownership or explicit object grants.",
     );
   }
+  const temporarySchemaCapabilities = psql(`
+    SELECT pg_catalog.count(*)
+    FROM pg_catalog.pg_roles role
+    WHERE role.rolname IN (
+      'trainer_finisher_owner',
+      'trainer_finisher_cleanup'
+    )
+      AND pg_catalog.has_schema_privilege(role.rolname, 'public', 'CREATE');
+  `, true);
+  if (temporarySchemaCapabilities !== "2") {
+    throw new Error(
+      "Principal provisioning did not install the two exact temporary schema CREATE capabilities.",
+    );
+  }
   const wrongTarget = run(
     process.execPath,
     [
@@ -901,12 +1045,13 @@ try {
       "--expected-database=wrong_database",
       "--mode",
       "verify",
-      "--provisioning-evidence-file",
-      principalRepeatEvidenceFile,
       "--evidence-file",
       principalWrongTargetEvidenceFile,
     ],
-    { quiet: true },
+    {
+      quiet: true,
+      env: { TRAINER_APP_RUNTIME_PASSWORD: runtimePassword },
+    },
   );
   if (
     wrongTarget.status === 0 ||
@@ -921,9 +1066,6 @@ try {
   writeFileSync(
     authorizationEvidenceFile,
     JSON.stringify({
-      repositoryHead,
-      productionDeploymentCommit: repositoryHead,
-      requiredApplicationCommit: repositoryHead,
       dataPreflight: {
         valid: true,
         verifiedAt: evidenceTimestamp,
@@ -937,23 +1079,6 @@ try {
         verifiedAt: evidenceTimestamp,
         repositoryHead,
       },
-      recoveryPoint: {
-        verified: true,
-        providerProjectIdentity: "disposable-postgres",
-        databaseIdentity: "trainer",
-        recoveryTimestamp: evidenceTimestamp,
-        retentionConfirmed: true,
-        recoverabilityConfirmed: true,
-        freshForExecution: true,
-        operatorVerifiedAt: evidenceTimestamp,
-      },
-      writeBoundary: {
-        ready: true,
-        mechanism: "production-write-gate",
-        verifiedAt: evidenceTimestamp,
-      },
-      applicationCompatibilityState: "compatible_with_write_boundary",
-      deploymentVerifiedAt: evidenceTimestamp,
       evaluatedAt: evidenceTimestamp,
     }),
   );
@@ -1400,15 +1525,20 @@ try {
       "--confirm-disposable",
       "--evidence-file",
       authorizationEvidenceFile,
-      "--principal-evidence-file",
+      "--principal-audit-file",
       principalVerificationEvidenceFile,
+      "--required-application-commit",
+      repositoryHead,
     ],
-    { quiet: true },
+    {
+      quiet: true,
+      env: { TRAINER_APP_RUNTIME_PASSWORD: runtimePassword },
+    },
   );
   if (
     forgedPolicyResult.status !== 1 ||
     !`${forgedPolicyResult.stdout}\n${forgedPolicyResult.stderr}`.includes(
-      "Migration authorization evidence cannot define repository migration policy.",
+      "Migration audit input cannot supply authoritative expectedPendingMigrations state.",
     )
   ) {
     throw new Error(
@@ -1416,6 +1546,49 @@ try {
     );
   }
   writeFileSync(authorizationEvidenceFile, JSON.stringify(trustedEvidence));
+
+  psqlAsMigrationAdministrator(
+    "REVOKE CREATE ON SCHEMA public FROM trainer_finisher_cleanup;",
+  );
+  const beforePrerequisiteDriftMigration = `${databaseStateFingerprint()}|${principalStateFingerprint()}`;
+  const prerequisiteDriftMigration = runPsqlAsMigrationAdministrator(
+    readFileSync(
+      join(
+        process.cwd(),
+        "prisma",
+        "migrations",
+        targetMigration,
+        "migration.sql",
+      ),
+      "utf8",
+    ),
+  );
+  const afterPrerequisiteDriftMigration = `${databaseStateFingerprint()}|${principalStateFingerprint()}`;
+  if (
+    prerequisiteDriftMigration.status === 0 ||
+    beforePrerequisiteDriftMigration !== afterPrerequisiteDriftMigration ||
+    psql(
+      `SELECT count(*) FROM pg_catalog.pg_class c
+       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+       WHERE n.nspname = 'public' AND c.relname LIKE 'Finisher%';`,
+      true,
+    ) !== "0"
+  ) {
+    throw new Error(
+      "Migration did not fail atomically when a principal prerequisite drifted after Gate A.",
+    );
+  }
+  psqlAsMigrationAdministrator(
+    "GRANT CREATE ON SCHEMA public TO trainer_finisher_cleanup;",
+  );
+  const refreshedGateA = cliWithExpectedStatus(
+    "scripts/check-migration-status.ts",
+    [],
+    0,
+  );
+  if (refreshedGateA.migrationAuthorizationReady !== true) {
+    throw new Error("Gate A did not recover after restoring the exact prerequisite.");
+  }
 
   applyMigrations(migrations.slice(currentProductionAppliedCount));
   recordMigrations(
@@ -1804,7 +1977,7 @@ try {
   psql(`GRANT trainer_finisher_cleanup TO trainer_app_runtime;`);
   requireFinisherGateAFailure(
     "Runtime can assume the cleanup role",
-    "role-membership:trainer_app_runtime->trainer_finisher_cleanup",
+    "finisher_principal_live_contract_membership_mismatch",
   );
   psql(`REVOKE trainer_finisher_cleanup FROM trainer_app_runtime;`);
 
@@ -2375,9 +2548,10 @@ try {
       partialCreation: "two_missing_principals_only",
       idempotentRepeat: "zero_database_writes",
       verification: "repeatable_read_read_only_zero_writes",
-      evidence: "signed_sanitized_commit_target_and_provision_bound",
+      evidence: "sanitized_audit_only_live_verification_authoritative",
       preMigrationFinisherObjects: 0,
       preMigrationObjectOwnershipOrGrants: 0,
+      wrongExistingCredential: "rejected_without_rotation_or_evidence",
       wrongTarget: "rejected_without_secret_output",
     },
     directEndpointDiagnostic: "successful_direct_connection",
@@ -2418,5 +2592,6 @@ try {
   rmSync(principalRepeatEvidenceFile, { force: true });
   rmSync(principalPartialEvidenceFile, { force: true });
   rmSync(principalWrongTargetEvidenceFile, { force: true });
+  rmSync(principalWrongPasswordEvidenceFile, { force: true });
   spawnSync("docker", ["rm", "-f", containerName], { stdio: "ignore" });
 }

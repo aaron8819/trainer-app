@@ -74,9 +74,25 @@ function addCompatibleManifestObject(
     });
   }
   if (object.kind === "enum") {
+    const finisherOwned =
+      object.name.startsWith("Finisher") ||
+      object.name.startsWith("WorkoutPhase");
     catalog.enums.push({
       name: object.name,
       values: [...(object.enum?.values ?? [])],
+      ...(finisherOwned
+        ? {
+            owner: "trainer_finisher_owner",
+            privileges: [
+              {
+                grantee: "trainer_app_runtime",
+                grantor: "trainer_finisher_owner",
+                privilege: "USAGE",
+                grantable: false,
+              },
+            ],
+          }
+        : {}),
     });
   }
   if (object.kind === "index") {
@@ -220,6 +236,8 @@ function cleanCatalog(
       ([table, privileges]) => ({
         table,
         owner: "trainer_finisher_owner",
+        rowSecurity: false,
+        forceRowSecurity: false,
         privileges: [
           ...privileges.map((privilege) => ({
             grantee: "trainer_app_runtime",
@@ -328,16 +346,6 @@ function fullEvidence(
   return {
     repositoryHead: REPOSITORY_HEAD,
     requiredApplicationCommit: REPOSITORY_HEAD,
-    dataPreflight: {
-      valid: true,
-      verifiedAt: VERIFIED_AT,
-      targetFingerprint: TARGET_FINGERPRINT,
-    },
-    disposablePostgres: {
-      valid: true,
-      verifiedAt: VERIFIED_AT,
-      repositoryHead: REPOSITORY_HEAD,
-    },
     evaluatedAt: EVALUATED_AT,
     ...overrides,
   };
@@ -456,7 +464,7 @@ function fullOperationalVerification(
 function report(overrides: Partial<Parameters<typeof buildMigrationIntegrityReport>[0]> = {}) {
   return buildMigrationIntegrityReport({
     target: {
-      classification: "remote",
+      classification: "disposable",
       fingerprint: TARGET_FINGERPRINT,
       projectFingerprint: "project-fingerprint",
       database: "postgres",
@@ -817,12 +825,7 @@ describe("migration integrity", () => {
     expect(result.technicalMigrationReady).toBe(false);
   });
 
-  it("requires clean data preflight but does not treat it as authorization", () => {
-    const withoutData = report({
-      authorizationEvidence: fullEvidence({ dataPreflight: undefined }),
-    });
-    expect(withoutData.technicalMigrationReady).toBe(false);
-
+  it("derives clean data preflight from the fresh zero-write catalog inspection", () => {
     const technicalOnly = report({
       operationalVerification: fullOperationalVerification({
         deployment: {
@@ -884,11 +887,6 @@ describe("migration integrity", () => {
       authorizationEvidence: fullEvidence({
         repositoryHead: FUTURE_INTEGRATED_HEAD,
         requiredApplicationCommit: FUTURE_INTEGRATED_HEAD,
-        disposablePostgres: {
-          valid: true,
-          verifiedAt: VERIFIED_AT,
-          repositoryHead: FUTURE_INTEGRATED_HEAD,
-        },
       }),
       finisherPrincipalLiveVerification: fullPrincipalVerification(
         {},
@@ -958,11 +956,6 @@ describe("migration integrity", () => {
       authorizationEvidence: fullEvidence({
         repositoryHead: FUTURE_INTEGRATED_HEAD,
         requiredApplicationCommit: FUTURE_INTEGRATED_HEAD,
-        disposablePostgres: {
-          valid: true,
-          verifiedAt: VERIFIED_AT,
-          repositoryHead: FUTURE_INTEGRATED_HEAD,
-        },
       }),
       finisherPrincipalLiveVerification: fullPrincipalVerification(
         {},
@@ -1027,11 +1020,6 @@ describe("migration integrity", () => {
     const evidence = fullEvidence({
       repositoryHead: value,
       requiredApplicationCommit: value,
-      disposablePostgres: {
-        valid: true,
-        verifiedAt: VERIFIED_AT,
-        repositoryHead: value,
-      },
     });
     const result = report({ authorizationEvidence: evidence });
     expect(result.technicalMigrationReady).toBe(true);
@@ -1042,6 +1030,12 @@ describe("migration integrity", () => {
 
   it("models the captured production shape without granting execution", () => {
     const result = report({
+      target: {
+        classification: "remote",
+        fingerprint: TARGET_FINGERPRINT,
+        projectFingerprint: "project-fingerprint",
+        database: "postgres",
+      },
       operationalVerification: fullOperationalVerification({
         recoveryPoint: {
           verified: false,
@@ -1063,10 +1057,13 @@ describe("migration integrity", () => {
       pendingMigrations: [MIGRATION_AUTHORIZATION_POLICY.targetMigration],
       schemaPreflightValid: true,
       dataPreflightValid: true,
-      technicalMigrationReady: true,
+      technicalMigrationReady: false,
       migrationAuthorizationReady: false,
       executionAuthorized: false,
     });
+    expect(result.blockingReasons).toContain(
+      "disposable_postgres_verification_missing",
+    );
   });
 
   it("can become authorization-ready with complete evidence but never execution-authorized in preparation mode", () => {
@@ -1620,6 +1617,35 @@ describe("migration integrity", () => {
   });
 
   it.each([
+    [
+      "row-level security is unexpectedly enabled",
+      (catalog: CatalogSnapshot) => {
+        catalog.tableSecurity!.find(
+          (table) => table.table === "FinisherExecution",
+        )!.rowSecurity = true;
+      },
+    ],
+    [
+      "enum ownership changes",
+      (catalog: CatalogSnapshot) => {
+        catalog.enums.find(
+          (enumeration) => enumeration.name === "FinisherExecutionState",
+        )!.owner = "trainer_app_runtime";
+      },
+    ],
+    [
+      "PUBLIC receives enum usage",
+      (catalog: CatalogSnapshot) => {
+        catalog.enums.find(
+          (enumeration) => enumeration.name === "FinisherExecutionState",
+        )!.privileges!.push({
+          grantee: "PUBLIC",
+          grantor: "trainer_finisher_owner",
+          privilege: "USAGE",
+          grantable: false,
+        });
+      },
+    ],
     [
       "cleanup function owner changes",
       (catalog: CatalogSnapshot) => {

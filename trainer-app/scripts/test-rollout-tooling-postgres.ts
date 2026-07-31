@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import {
   existsSync,
   readFileSync,
@@ -1062,26 +1062,7 @@ try {
   ) {
     throw new Error("Wrong-target principal verification did not fail safely.");
   }
-  const evidenceTimestamp = new Date().toISOString();
-  writeFileSync(
-    authorizationEvidenceFile,
-    JSON.stringify({
-      dataPreflight: {
-        valid: true,
-        verifiedAt: evidenceTimestamp,
-        targetFingerprint: createHash("sha256")
-          .update("127.0.0.1")
-          .digest("hex")
-          .slice(0, 12),
-      },
-      disposablePostgres: {
-        valid: true,
-        verifiedAt: evidenceTimestamp,
-        repositoryHead,
-      },
-      evaluatedAt: evidenceTimestamp,
-    }),
-  );
+  writeFileSync(authorizationEvidenceFile, "{}");
 
   const migrations = migrationDirectories();
   if (migrations.length !== 18) throw new Error(`Expected 18 migrations, found ${migrations.length}`);
@@ -1509,6 +1490,8 @@ try {
     authorizationEvidenceFile,
     JSON.stringify({
       ...trustedEvidence,
+      dataPreflight: { valid: true },
+      disposablePostgres: { valid: true, repositoryHead },
       expectedPendingMigrations: [
         targetMigration,
         "20990101000000_forged_operator_policy",
@@ -1538,7 +1521,7 @@ try {
   if (
     forgedPolicyResult.status !== 1 ||
     !`${forgedPolicyResult.stdout}\n${forgedPolicyResult.stderr}`.includes(
-      "Migration audit input cannot supply authoritative expectedPendingMigrations state.",
+      "Migration audit input is non-authoritative and cannot supply dataPreflight, disposablePostgres, expectedPendingMigrations.",
     )
   ) {
     throw new Error(

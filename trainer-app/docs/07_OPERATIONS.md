@@ -294,7 +294,7 @@ No backup or inspection result grants migration authorization. Database backups 
 `npm run ops:check-direct-db -- --env-file $rolloutEnv` resolves DNS, opens a short TCP connection, and performs the PostgreSQL/TLS/authentication handshake without running SQL. It reports a redacted host fingerprint and distinguishes DNS, timeout, network rejection, TLS, authentication, database rejection, and success. Pooler connectivity is not sufficient evidence for Prisma migration deployment, and the transaction pooler must not replace `DIRECT_URL`.
 
 After the direct check succeeds, `npm run ops:migration-status -- --env-file
-$rolloutEnv --evidence-file <sanitized-audit-input> --principal-audit-file
+$rolloutEnv --principal-audit-file
 <sanitized-principal-audit-record> --required-application-commit <full-sha>`
 performs the read-only Gate A migration-integrity verification through
 `DIRECT_URL`. Counts and caller-authored evidence are insufficient. The command
@@ -312,9 +312,9 @@ owns the rollout policy and result model. The command:
 
 `technicalMigrationReady` means the repository chain, exact pending sequence,
 ledger, Prisma-compatible checksums, applied and pending schema state,
-migration-specific data preflight, commit-bound disposable PostgreSQL
-verification, and live prerequisite-role catalog state are all valid. No
-Finisher table must exist for the prerequisite-role checks.
+migration-specific data preflight, and current disposable PostgreSQL target
+verification are all valid. No Finisher table must exist for the separate live
+prerequisite-role checks.
 `migrationAuthorizationReady` additionally requires fresh live principal
 verification, canonical provider verification of the recovery point,
 production deployment and write pause, application compatibility, and exact
@@ -342,8 +342,10 @@ Gate A. The current Finisher rollout policy expects 18 checked in, 17 clean
 successful applied, and exactly `20260728120000_add_finishers_phase_1` pending.
 That sequence is fixed repository policy, not operator evidence: an evidence
 file containing `expectedPendingMigrations` is rejected rather than trusted.
-With clean schema/data evidence and passing disposable verification, that shape
-yields `technicalMigrationReady: true`. It remains
+On the current disposable PostgreSQL target, clean schema/data inspection yields
+`technicalMigrationReady: true`. A remote target remains false until a canonical,
+commit-bound disposable-workflow verifier exists; caller JSON cannot fill that
+gap. It remains
 `migrationAuthorizationReady: false` until fresh recovery, deployment,
 compatibility, write-boundary, and exact post-migration application-commit
 evidence is supplied, and remains `executionAuthorized: false` in every
@@ -396,28 +398,19 @@ Do not run it during preflight. A backup being available, a reachable direct end
 
 ### Authorization evidence contract
 
-The evidence and principal-audit files are operator-controlled, uncommitted JSON.
-They contain sanitized observations only—never URLs, credentials, tokens,
-passwords, password hashes, or environment values. They are audit records, not
-authority. Gate A resolves repository HEAD, database identity, migration state,
+The optional migration audit-input file is operator-controlled and may contain
+only an empty JSON object; any supplied fact is rejected. Principal-audit files
+contain sanitized observations only—never URLs, credentials, tokens, passwords,
+password hashes, or environment values. They are audit records, not authority.
+Gate A resolves repository HEAD, database identity, migration state,
 principal state, credential equality, and its evaluation time from live seams.
-It rejects caller fields that attempt to supply the expected pending sequence,
-principal verification, deployment commit, required commit, recovery point,
-write pause, or deployment timestamp.
+It rejects every caller field, including fields that attempt to supply data
+preflight, disposable execution, the expected pending sequence, principal
+verification, deployment commit, required commit, recovery point, write pause,
+or deployment timestamp.
 
 ```json
-{
-  "dataPreflight": {
-    "valid": true,
-    "verifiedAt": "<ISO-8601>",
-    "targetFingerprint": "<Gate-A-sanitized-fingerprint>"
-  },
-  "disposablePostgres": {
-    "valid": true,
-    "verifiedAt": "<ISO-8601>",
-    "repositoryHead": "<exact-integrated-master-squash-sha>"
-  }
-}
+{}
 ```
 
 The principal command writes a second sanitized audit record using exclusive
@@ -508,15 +501,15 @@ environment change, role change, migration, production access, or verification.
    ```powershell
    npm run ops:check-direct-db -- --env-file $rolloutEnv
    npm run ops:migration-status -- --env-file $rolloutEnv `
-     --evidence-file $auditInput `
      --required-application-commit $integratedSha
    ```
 
    Require exactly 18 checked in, 17 applied, and only
    `20260728120000_add_finishers_phase_1` pending; zero checksum, ledger, order,
    non-principal schema, or data blockers. This immediate preflight is expected
-   to remain fail closed with missing live principal verification; it must not report
-   `technicalMigrationReady: true` yet.
+   to remain fail closed because canonical commit-bound disposable-workflow and
+   live principal verification are unavailable; it must not report
+   `technicalMigrationReady: true` or `migrationAuthorizationReady: true`.
 7. Through the separately authorized database-administrator workflow, provision
    the three required role principals before migration:
    `trainer_app_runtime`, `trainer_finisher_owner`, and
@@ -572,12 +565,14 @@ environment change, role change, migration, production access, or verification.
 9. Run Gate A and the required pre-migration authorization checks. Require the
    exact canonical equality
    `requiredApplicationCommit === repositoryHead === productionDeploymentCommit`,
-   `migrationAuthorizationReady: true`, and `executionAuthorized: false`:
+   `migrationAuthorizationReady: false`, and `executionAuthorized: false`
+   until canonical provider verification and commit-bound disposable-workflow
+   verification are implemented. An operator-authored file cannot satisfy
+   either prerequisite:
 
    ```powershell
    $env:TRAINER_APP_RUNTIME_PASSWORD = Read-Host "Runtime role password" -MaskInput
    npm run ops:migration-status -- --env-file $rolloutEnv `
-     --evidence-file $auditInput `
      --principal-audit-file $principalVerificationAudit `
      --required-application-commit $integratedSha
    Remove-Item Env:TRAINER_APP_RUNTIME_PASSWORD

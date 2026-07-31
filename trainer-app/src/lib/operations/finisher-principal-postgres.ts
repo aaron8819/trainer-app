@@ -59,6 +59,21 @@ const PRINCIPAL_NAMES = FINISHER_PRINCIPAL_CONTRACT.map(
   (principal) => principal.name,
 );
 
+const FINISHER_ENUM_NAMES = [
+  "WorkoutPhasePlacement",
+  "WorkoutPhaseKind",
+  "WorkoutPhaseProtocol",
+  "FinisherCategory",
+  "FinisherDifficulty",
+  "FinisherDemand",
+  "FinisherPublicationState",
+  "FinisherExecutionState",
+  "FinisherTimerSegment",
+  "FinisherStepStatus",
+  "FinisherExecutionAction",
+  "FinisherDecisionAction",
+] as const;
+
 const INSPECT_SQL = `
   SELECT role.rolname AS name,
     role.rolcanlogin AS can_login,
@@ -131,7 +146,7 @@ const OBJECT_STATE_SQL = `
     SELECT t.oid
     FROM pg_catalog.pg_type t
     JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
-    WHERE n.nspname = 'public' AND t.typname LIKE 'Finisher%'
+    WHERE n.nspname = 'public' AND t.typname = ANY($2::text[])
   ),
   capabilities AS (
     SELECT c.oid
@@ -150,6 +165,15 @@ const OBJECT_STATE_SQL = `
     SELECT p.oid
     FROM pg_catalog.pg_proc p
     CROSS JOIN LATERAL pg_catalog.aclexplode(p.proacl) privilege
+    WHERE privilege.grantee IN (SELECT oid FROM protected_roles)
+    UNION ALL
+    SELECT t.oid
+    FROM pg_catalog.pg_type t
+    WHERE t.typowner IN (SELECT oid FROM protected_roles)
+    UNION ALL
+    SELECT t.oid
+    FROM pg_catalog.pg_type t
+    CROSS JOIN LATERAL pg_catalog.aclexplode(t.typacl) privilege
     WHERE privilege.grantee IN (SELECT oid FROM protected_roles)
   )
   SELECT
@@ -229,7 +253,7 @@ export async function inspectFinisherPrincipals(
       client.query<AdministratorRow>(ADMINISTRATOR_SQL),
       client.query<{ object_count: string; capability_count: string }>(
         OBJECT_STATE_SQL,
-        [PRINCIPAL_NAMES],
+        [PRINCIPAL_NAMES, FINISHER_ENUM_NAMES],
       ),
     ]);
   const administrator = administratorResult.rows[0];

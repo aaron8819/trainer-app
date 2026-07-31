@@ -49,18 +49,9 @@ export type ApplicationCompatibilityState =
   | "incompatible"
   | "unverified";
 
-export type VerificationEvidence = {
-  valid: boolean;
-  verifiedAt: string;
-  repositoryHead?: string;
-  targetFingerprint?: string;
-};
-
 export type MigrationAuthorizationEvidence = {
   repositoryHead: string;
   requiredApplicationCommit?: string;
-  dataPreflight?: VerificationEvidence;
-  disposablePostgres?: VerificationEvidence;
   evaluatedAt?: string;
 };
 
@@ -124,7 +115,12 @@ export type ColumnFact = {
   default: string | null;
 };
 
-export type EnumFact = { name: string; values: string[] };
+export type EnumFact = {
+  name: string;
+  values: string[];
+  owner?: string;
+  privileges?: PrivilegeFact[];
+};
 export type IndexFact = {
   table: string;
   name: string;
@@ -188,6 +184,8 @@ export type TableSecurityFact = {
   table: string;
   owner: string;
   privileges: PrivilegeFact[];
+  rowSecurity?: boolean;
+  forceRowSecurity?: boolean;
 };
 export type ColumnPrivilegeFact = PrivilegeFact & {
   table: string;
@@ -2056,6 +2054,11 @@ function finisherSecurityIssues(
     snapshot.tables.includes(table),
   );
   const issues: string[] = [];
+  const expectedEnums = new Set(
+    FINISHER_SCHEMA_EXPECTATIONS.filter((item) => item.kind === "enum").map(
+      (item) => item.name,
+    ),
+  );
   const expectedTableGrants: Record<string, string[]> = {
     FinisherRoutine: [`${FINISHER_RUNTIME_ROLE}:SELECT:plain`],
     FinisherRoutineVersion: [`${FINISHER_RUNTIME_ROLE}:SELECT:plain`],
@@ -2102,6 +2105,11 @@ function finisherSecurityIssues(
     if (security.owner !== FINISHER_OWNER_ROLE) {
       issues.push(`table-owner:${table}:${security.owner}`);
     }
+    if (security.rowSecurity !== false || security.forceRowSecurity !== false) {
+      issues.push(
+        `table-rls:${table}:${String(security.rowSecurity)}:${String(security.forceRowSecurity)}`,
+      );
+    }
     const actual = privilegeKeys(security.privileges, FINISHER_OWNER_ROLE);
     const expected = [...(expectedTableGrants[table] ?? [])].sort();
     if (canonicalJson(actual) !== canonicalJson(expected)) {
@@ -2130,6 +2138,24 @@ function finisherSecurityIssues(
       issues.push(
         `column-privileges:${protectedColumnGrants.join(",") || "missing"}`,
       );
+    }
+  }
+
+  if (finisherObjectsPresent) {
+    for (const enumName of expectedEnums) {
+      const enumFact = snapshot.enums.find((item) => item.name === enumName);
+      if (!enumFact || enumFact.owner == null || enumFact.privileges == null) {
+        issues.push(`enum-security:${enumName}:unverifiable`);
+        continue;
+      }
+      if (enumFact.owner !== FINISHER_OWNER_ROLE) {
+        issues.push(`enum-owner:${enumName}:${enumFact.owner}`);
+      }
+      const actual = privilegeKeys(enumFact.privileges, FINISHER_OWNER_ROLE);
+      const expected = [`${FINISHER_RUNTIME_ROLE}:USAGE:plain`];
+      if (canonicalJson(actual) !== canonicalJson(expected)) {
+        issues.push(`enum-privileges:${enumName}:${actual.join(",")}`);
+      }
     }
   }
 
@@ -2887,18 +2913,14 @@ export function buildMigrationIntegrityReport(input: {
     exactChain &&
     pendingSequenceConfigured &&
     checkedInNames.includes(MIGRATION_AUTHORIZATION_POLICY.targetMigration);
-  const dataPreflightValid = Boolean(
-    evidence?.dataPreflight?.valid &&
-      evidence.dataPreflight.targetFingerprint === input.target.fingerprint &&
-      isFreshEvidenceTimestamp(
-        evidence.dataPreflight.verifiedAt,
-        evaluatedAt,
-      ),
-  );
-  const disposablePostgresVerified = Boolean(
-    evidence?.disposablePostgres?.valid &&
-      evidence.disposablePostgres.repositoryHead === repositoryHead,
-  );
+  // This migration is additive and does not rewrite pre-existing rows. Its data
+  // preflight is therefore the freshly inspected clean schema/pending state,
+  // never a caller-provided assertion.
+  const dataPreflightValid = schemaClean && writes === 0;
+  // A disposable target is the only environment this command can itself prove
+  // exercised the migration. Remote verification must come from an authenticated
+  // operational seam; audit JSON is deliberately unable to assert this fact.
+  const disposablePostgresVerified = input.target.classification === "disposable";
   const recoveryPointVerified = Boolean(
     operational?.source === "canonical_live_operational_verification" &&
       operational.recoveryPoint.verified &&
@@ -3013,12 +3035,12 @@ export function buildMigrationIntegrityReport(input: {
   if (!gateAApplicable) blockingReasons.push("no_pending_migration");
   if (!exactChain) blockingReasons.push("repository_migration_chain_mismatch");
   if (!migrationTargetIdentified) blockingReasons.push("migration_target_not_identified");
-  if (!exactPending) blockingReasons.push("pending_migration_sequence_mismatch");
+  if (gateAApplicable && !exactPending) blockingReasons.push("pending_migration_sequence_mismatch");
   if (!ledgerClean) blockingReasons.push("migration_ledger_not_clean");
   if (!migrationOrderValid) blockingReasons.push("migration_order_invalid");
   if (!migrationChecksumsValid) blockingReasons.push("migration_checksum_drift");
   if (!schemaPreflightValid) blockingReasons.push("schema_preflight_invalid");
-  if (!dataPreflightValid) blockingReasons.push("data_preflight_invalid_or_stale");
+  if (gateAApplicable && !dataPreflightValid) blockingReasons.push("data_preflight_invalid_or_stale");
   if (!disposablePostgresVerified) blockingReasons.push("disposable_postgres_verification_missing");
   if (!principalVerificationValid) {
     blockingReasons.push(

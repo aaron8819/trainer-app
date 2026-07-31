@@ -53,33 +53,22 @@ function requiredArgument(argv: string[], name: string): string {
 
 function loadAuditInput(argv: string[]): MigrationAuthorizationEvidence {
   const evidencePath = readArgument(argv, "--evidence-file");
-  const supplied = evidencePath
-    ? (JSON.parse(
-        readFileSync(resolve(evidencePath), "utf8"),
-      ) as Partial<MigrationAuthorizationEvidence>)
-    : {};
-  if (supplied == null || typeof supplied !== "object" || Array.isArray(supplied)) {
-    throw new Error("Migration audit input must be a JSON object.");
-  }
-  for (const forbidden of [
-    "expectedPendingMigrations",
-    "finisherPrincipals",
-    "productionDeploymentCommit",
-    "requiredApplicationCommit",
-    "recoveryPoint",
-    "writeBoundary",
-    "deploymentVerifiedAt",
-  ]) {
-    if (!(forbidden in supplied)) continue;
-    throw new Error(
-      `Migration audit input cannot supply authoritative ${forbidden} state.`,
-    );
+  if (evidencePath) {
+    const supplied = JSON.parse(readFileSync(resolve(evidencePath), "utf8")) as unknown;
+    if (supplied == null || typeof supplied !== "object" || Array.isArray(supplied)) {
+      throw new Error("Migration audit input must be a JSON object.");
+    }
+    const keys = Object.keys(supplied);
+    if (keys.length > 0) {
+      throw new Error(
+        `Migration audit input is non-authoritative and cannot supply ${keys.sort().join(", ")}.`,
+      );
+    }
   }
   const repositoryHead = execFileSync("git", ["rev-parse", "HEAD"], {
     encoding: "utf8",
   }).trim();
   return {
-    ...supplied,
     repositoryHead,
     requiredApplicationCommit: requiredArgument(
       argv,

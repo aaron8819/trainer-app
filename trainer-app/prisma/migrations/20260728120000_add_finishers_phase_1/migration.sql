@@ -52,9 +52,11 @@ BEGIN
     RAISE EXCEPTION 'required finisher database roles are not provisioned';
   END IF;
 
+  -- PostgreSQL masks role passwords from this non-superuser executor. Exact
+  -- runtime credential equality is therefore established by Gate A's bounded
+  -- login, not inferred from pg_roles inside this transaction.
   IF NOT runtime_role.rolcanlogin
     OR NOT runtime_role.rolinherit
-    OR runtime_role.rolpassword IS NULL
     OR runtime_role.rolsuper
     OR runtime_role.rolcreaterole
     OR runtime_role.rolcreatedb
@@ -146,7 +148,14 @@ BEGIN
     SELECT type.oid
     FROM pg_catalog.pg_type type
     JOIN pg_catalog.pg_namespace namespace ON namespace.oid = type.typnamespace
-    WHERE namespace.nspname = 'public' AND type.typname LIKE 'Finisher%'
+    WHERE namespace.nspname = 'public'
+      AND type.typname IN (
+        'WorkoutPhasePlacement', 'WorkoutPhaseKind', 'WorkoutPhaseProtocol',
+        'FinisherCategory', 'FinisherDifficulty', 'FinisherDemand',
+        'FinisherPublicationState', 'FinisherExecutionState',
+        'FinisherTimerSegment', 'FinisherStepStatus',
+        'FinisherExecutionAction', 'FinisherDecisionAction'
+      )
   ) existing;
   IF preexisting_object_count <> 0 THEN
     RAISE EXCEPTION 'Finisher migration-owned objects already exist before migration';
@@ -1474,6 +1483,19 @@ ALTER TABLE "FinisherExecution" OWNER TO trainer_finisher_owner;
 ALTER TABLE "FinisherExecutionStep" OWNER TO trainer_finisher_owner;
 ALTER TABLE "FinisherExecutionCommand" OWNER TO trainer_finisher_owner;
 
+ALTER TYPE "WorkoutPhasePlacement" OWNER TO trainer_finisher_owner;
+ALTER TYPE "WorkoutPhaseKind" OWNER TO trainer_finisher_owner;
+ALTER TYPE "WorkoutPhaseProtocol" OWNER TO trainer_finisher_owner;
+ALTER TYPE "FinisherCategory" OWNER TO trainer_finisher_owner;
+ALTER TYPE "FinisherDifficulty" OWNER TO trainer_finisher_owner;
+ALTER TYPE "FinisherDemand" OWNER TO trainer_finisher_owner;
+ALTER TYPE "FinisherPublicationState" OWNER TO trainer_finisher_owner;
+ALTER TYPE "FinisherExecutionState" OWNER TO trainer_finisher_owner;
+ALTER TYPE "FinisherTimerSegment" OWNER TO trainer_finisher_owner;
+ALTER TYPE "FinisherStepStatus" OWNER TO trainer_finisher_owner;
+ALTER TYPE "FinisherExecutionAction" OWNER TO trainer_finisher_owner;
+ALTER TYPE "FinisherDecisionAction" OWNER TO trainer_finisher_owner;
+
 ALTER FUNCTION guard_finisher_routine_identity() OWNER TO trainer_finisher_owner;
 ALTER FUNCTION require_finisher_routine_version_sealed() OWNER TO trainer_finisher_owner;
 ALTER FUNCTION guard_finisher_routine_version_mutation() OWNER TO trainer_finisher_owner;
@@ -1501,6 +1523,21 @@ ALTER FUNCTION cleanup_expired_finisher_execution_commands(INTEGER) OWNER TO tra
 -- objects. Grant schema visibility before assuming the object owner role.
 GRANT USAGE ON SCHEMA public TO trainer_app_runtime, trainer_finisher_cleanup;
 SET LOCAL ROLE trainer_finisher_owner;
+
+REVOKE ALL ON TYPE
+  "WorkoutPhasePlacement", "WorkoutPhaseKind", "WorkoutPhaseProtocol",
+  "FinisherCategory", "FinisherDifficulty", "FinisherDemand",
+  "FinisherPublicationState", "FinisherExecutionState",
+  "FinisherTimerSegment", "FinisherStepStatus",
+  "FinisherExecutionAction", "FinisherDecisionAction"
+FROM PUBLIC, trainer_app_runtime, trainer_finisher_cleanup;
+GRANT USAGE ON TYPE
+  "WorkoutPhasePlacement", "WorkoutPhaseKind", "WorkoutPhaseProtocol",
+  "FinisherCategory", "FinisherDifficulty", "FinisherDemand",
+  "FinisherPublicationState", "FinisherExecutionState",
+  "FinisherTimerSegment", "FinisherStepStatus",
+  "FinisherExecutionAction", "FinisherDecisionAction"
+TO trainer_app_runtime;
 
 -- BEGIN GENERATED FINISHER CATALOG
 
@@ -1992,6 +2029,7 @@ DECLARE
   protected_membership_count integer;
   automatic_membership_count integer;
   default_privilege_count integer;
+  terminal_mismatch_count integer;
 BEGIN
   SELECT * INTO runtime_role FROM pg_catalog.pg_roles
   WHERE rolname = 'trainer_app_runtime';
@@ -2011,7 +2049,6 @@ BEGIN
     OR NOT executor_role.rolcreaterole
     OR NOT runtime_role.rolcanlogin
     OR NOT runtime_role.rolinherit
-    OR runtime_role.rolpassword IS NULL
     OR runtime_role.rolsuper
     OR runtime_role.rolcreaterole
     OR runtime_role.rolcreatedb
@@ -2069,6 +2106,262 @@ BEGIN
      OR privilege.grantee IN (runtime_role.oid, owner_role.oid, cleanup_role.oid);
   IF default_privilege_count <> 0 THEN
     RAISE EXCEPTION 'Finisher terminal roles own or receive default privileges';
+  END IF;
+
+  SELECT pg_catalog.count(*) INTO terminal_mismatch_count
+  FROM (
+    SELECT expected.name
+    FROM unnest(ARRAY[
+      'FinisherRoutine', 'FinisherRoutineVersion', 'FinisherRoutineStep',
+      'FinisherRoutineStepAlternative', 'FinisherOffer', 'FinisherOfferItem',
+      'FinisherDecision', 'FinisherExecution', 'FinisherExecutionStep',
+      'FinisherExecutionCommand'
+    ]) expected(name)
+    LEFT JOIN pg_catalog.pg_class class
+      ON class.relname = expected.name
+    LEFT JOIN pg_catalog.pg_namespace namespace
+      ON namespace.oid = class.relnamespace AND namespace.nspname = 'public'
+    WHERE namespace.oid IS NULL
+      OR class.relkind NOT IN ('r', 'p')
+      OR class.relowner <> owner_role.oid
+      OR class.relrowsecurity
+      OR class.relforcerowsecurity
+  ) mismatches;
+  IF terminal_mismatch_count <> 0 THEN
+    RAISE EXCEPTION 'Finisher terminal table ownership or RLS state is not exact';
+  END IF;
+
+  SELECT pg_catalog.count(*) INTO terminal_mismatch_count
+  FROM pg_catalog.pg_index index_metadata
+  JOIN pg_catalog.pg_class table_class
+    ON table_class.oid = index_metadata.indrelid
+  JOIN pg_catalog.pg_class index_class
+    ON index_class.oid = index_metadata.indexrelid
+  JOIN pg_catalog.pg_namespace namespace
+    ON namespace.oid = table_class.relnamespace
+  WHERE namespace.nspname = 'public'
+    AND table_class.relname IN (
+      'FinisherRoutine', 'FinisherRoutineVersion', 'FinisherRoutineStep',
+      'FinisherRoutineStepAlternative', 'FinisherOffer', 'FinisherOfferItem',
+      'FinisherDecision', 'FinisherExecution', 'FinisherExecutionStep',
+      'FinisherExecutionCommand'
+    )
+    AND index_class.relowner <> owner_role.oid;
+  IF terminal_mismatch_count <> 0 THEN
+    RAISE EXCEPTION 'Finisher terminal index ownership is not exact';
+  END IF;
+
+  SELECT pg_catalog.count(*) INTO terminal_mismatch_count
+  FROM (
+    SELECT expected.name
+    FROM unnest(ARRAY[
+      'WorkoutPhasePlacement', 'WorkoutPhaseKind', 'WorkoutPhaseProtocol',
+      'FinisherCategory', 'FinisherDifficulty', 'FinisherDemand',
+      'FinisherPublicationState', 'FinisherExecutionState',
+      'FinisherTimerSegment', 'FinisherStepStatus',
+      'FinisherExecutionAction', 'FinisherDecisionAction'
+    ]) expected(name)
+    LEFT JOIN pg_catalog.pg_type type ON type.typname = expected.name
+    LEFT JOIN pg_catalog.pg_namespace namespace
+      ON namespace.oid = type.typnamespace AND namespace.nspname = 'public'
+    WHERE namespace.oid IS NULL OR type.typowner <> owner_role.oid
+  ) mismatches;
+  IF terminal_mismatch_count <> 0 THEN
+    RAISE EXCEPTION 'Finisher terminal enum ownership is not exact';
+  END IF;
+
+  WITH expected(table_name, grantee_name, privilege_type, grantor_name, is_grantable) AS (
+    VALUES
+      ('FinisherRoutine', 'trainer_app_runtime', 'SELECT', 'trainer_finisher_owner', false),
+      ('FinisherRoutineVersion', 'trainer_app_runtime', 'SELECT', 'trainer_finisher_owner', false),
+      ('FinisherRoutineStep', 'trainer_app_runtime', 'SELECT', 'trainer_finisher_owner', false),
+      ('FinisherRoutineStepAlternative', 'trainer_app_runtime', 'SELECT', 'trainer_finisher_owner', false),
+      ('FinisherOffer', 'trainer_app_runtime', 'SELECT', 'trainer_finisher_owner', false),
+      ('FinisherOffer', 'trainer_app_runtime', 'INSERT', 'trainer_finisher_owner', false),
+      ('FinisherOffer', 'trainer_app_runtime', 'UPDATE', 'trainer_finisher_owner', false),
+      ('FinisherOfferItem', 'trainer_app_runtime', 'SELECT', 'trainer_finisher_owner', false),
+      ('FinisherOfferItem', 'trainer_app_runtime', 'INSERT', 'trainer_finisher_owner', false),
+      ('FinisherDecision', 'trainer_app_runtime', 'SELECT', 'trainer_finisher_owner', false),
+      ('FinisherDecision', 'trainer_app_runtime', 'INSERT', 'trainer_finisher_owner', false),
+      ('FinisherExecution', 'trainer_app_runtime', 'SELECT', 'trainer_finisher_owner', false),
+      ('FinisherExecution', 'trainer_app_runtime', 'INSERT', 'trainer_finisher_owner', false),
+      ('FinisherExecution', 'trainer_app_runtime', 'UPDATE', 'trainer_finisher_owner', false),
+      ('FinisherExecutionStep', 'trainer_app_runtime', 'SELECT', 'trainer_finisher_owner', false),
+      ('FinisherExecutionStep', 'trainer_app_runtime', 'INSERT', 'trainer_finisher_owner', false),
+      ('FinisherExecutionStep', 'trainer_app_runtime', 'UPDATE', 'trainer_finisher_owner', false),
+      ('FinisherExecutionCommand', 'trainer_app_runtime', 'SELECT', 'trainer_finisher_owner', false),
+      ('FinisherExecutionCommand', 'trainer_app_runtime', 'INSERT', 'trainer_finisher_owner', false),
+      ('FinisherExecutionCommand', 'trainer_finisher_cleanup', 'SELECT', 'trainer_finisher_owner', false)
+  ), actual AS (
+    SELECT class.relname, grantee.rolname, privilege.privilege_type,
+      grantor.rolname, privilege.is_grantable
+    FROM pg_catalog.pg_class class
+    JOIN pg_catalog.pg_namespace namespace ON namespace.oid = class.relnamespace
+    CROSS JOIN LATERAL pg_catalog.aclexplode(class.relacl) privilege
+    JOIN pg_catalog.pg_roles grantee ON grantee.oid = privilege.grantee
+    JOIN pg_catalog.pg_roles grantor ON grantor.oid = privilege.grantor
+    WHERE namespace.nspname = 'public'
+      AND class.relname IN (SELECT table_name FROM expected)
+      AND privilege.grantee <> owner_role.oid
+  ), differences AS (
+    (SELECT * FROM expected EXCEPT SELECT * FROM actual)
+    UNION ALL
+    (SELECT * FROM actual EXCEPT SELECT * FROM expected)
+  )
+  SELECT pg_catalog.count(*) INTO terminal_mismatch_count FROM differences;
+  IF terminal_mismatch_count <> 0 THEN
+    RAISE EXCEPTION 'Finisher terminal table grants are not exact';
+  END IF;
+
+  WITH expected(type_name, grantee_name, privilege_type, grantor_name, is_grantable) AS (
+    SELECT name, 'trainer_app_runtime', 'USAGE', 'trainer_finisher_owner', false
+    FROM unnest(ARRAY[
+      'WorkoutPhasePlacement', 'WorkoutPhaseKind', 'WorkoutPhaseProtocol',
+      'FinisherCategory', 'FinisherDifficulty', 'FinisherDemand',
+      'FinisherPublicationState', 'FinisherExecutionState',
+      'FinisherTimerSegment', 'FinisherStepStatus',
+      'FinisherExecutionAction', 'FinisherDecisionAction'
+    ]) names(name)
+  ), actual AS (
+    SELECT type.typname, COALESCE(grantee.rolname, 'PUBLIC'),
+      privilege.privilege_type, grantor.rolname, privilege.is_grantable
+    FROM pg_catalog.pg_type type
+    JOIN pg_catalog.pg_namespace namespace ON namespace.oid = type.typnamespace
+    CROSS JOIN LATERAL pg_catalog.aclexplode(type.typacl) privilege
+    LEFT JOIN pg_catalog.pg_roles grantee ON grantee.oid = privilege.grantee
+    JOIN pg_catalog.pg_roles grantor ON grantor.oid = privilege.grantor
+    WHERE namespace.nspname = 'public'
+      AND type.typname IN (SELECT type_name FROM expected)
+      AND privilege.grantee <> owner_role.oid
+  ), differences AS (
+    (SELECT * FROM expected EXCEPT SELECT * FROM actual)
+    UNION ALL
+    (SELECT * FROM actual EXCEPT SELECT * FROM expected)
+  )
+  SELECT pg_catalog.count(*) INTO terminal_mismatch_count FROM differences;
+  IF terminal_mismatch_count <> 0 THEN
+    RAISE EXCEPTION 'Finisher terminal enum grants are not exact';
+  END IF;
+
+  WITH expected(function_name, owner_name) AS (
+    SELECT name, 'trainer_finisher_owner'
+    FROM unnest(ARRAY[
+      'guard_finisher_routine_identity',
+      'require_finisher_routine_version_sealed',
+      'guard_finisher_routine_version_mutation',
+      'guard_finisher_routine_child_mutation',
+      'require_finisher_offer_finalized',
+      'require_finisher_execution_finalized',
+      'validate_finisher_terminal_outcome',
+      'validate_finisher_terminal_outcome_from_execution',
+      'validate_finisher_terminal_outcome_from_step',
+      'guard_finisher_offer_item_insert',
+      'guard_finisher_execution_step_insert',
+      'guard_finisher_offer_identity',
+      'reject_finisher_offer_item_update',
+      'guard_finisher_execution_identity',
+      'guard_finisher_execution_step_identity',
+      'guard_finisher_execution_lifecycle',
+      'guard_finisher_decision_history',
+      'require_finisher_decision_applied',
+      'guard_finisher_execution_step_evidence',
+      'reject_finisher_history_deletion',
+      'guard_finisher_execution_command_tombstone'
+    ]) names(name)
+    UNION ALL
+    SELECT 'cleanup_expired_finisher_execution_commands', 'trainer_finisher_cleanup'
+  ), actual AS (
+    SELECT procedure.proname, owner.rolname
+    FROM pg_catalog.pg_proc procedure
+    JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
+    JOIN pg_catalog.pg_roles owner ON owner.oid = procedure.proowner
+    WHERE namespace.nspname = 'public'
+      AND procedure.proname IN (SELECT function_name FROM expected)
+  ), differences AS (
+    (SELECT * FROM expected EXCEPT SELECT * FROM actual)
+    UNION ALL
+    (SELECT * FROM actual EXCEPT SELECT * FROM expected)
+  )
+  SELECT pg_catalog.count(*) INTO terminal_mismatch_count FROM differences;
+  IF terminal_mismatch_count <> 0 THEN
+    RAISE EXCEPTION 'Finisher terminal function ownership is not exact';
+  END IF;
+
+  WITH expected(function_name, grantee_name, privilege_type, grantor_name, is_grantable) AS (
+    VALUES
+      ('validate_finisher_terminal_outcome', 'trainer_app_runtime', 'EXECUTE', 'trainer_finisher_owner', false),
+      ('cleanup_expired_finisher_execution_commands', 'trainer_app_runtime', 'EXECUTE', 'trainer_finisher_cleanup', false)
+  ), actual AS (
+    SELECT procedure.proname, COALESCE(grantee.rolname, 'PUBLIC'),
+      privilege.privilege_type, grantor.rolname, privilege.is_grantable
+    FROM pg_catalog.pg_proc procedure
+    JOIN pg_catalog.pg_namespace namespace ON namespace.oid = procedure.pronamespace
+    CROSS JOIN LATERAL pg_catalog.aclexplode(
+      COALESCE(procedure.proacl, pg_catalog.acldefault('f', procedure.proowner))
+    ) privilege
+    LEFT JOIN pg_catalog.pg_roles grantee ON grantee.oid = privilege.grantee
+    JOIN pg_catalog.pg_roles grantor ON grantor.oid = privilege.grantor
+    WHERE namespace.nspname = 'public'
+      AND procedure.proname IN (
+        SELECT function_name FROM expected
+        UNION
+        SELECT name FROM unnest(ARRAY[
+          'guard_finisher_routine_identity',
+          'require_finisher_routine_version_sealed',
+          'guard_finisher_routine_version_mutation',
+          'guard_finisher_routine_child_mutation',
+          'require_finisher_offer_finalized',
+          'require_finisher_execution_finalized',
+          'validate_finisher_terminal_outcome_from_execution',
+          'validate_finisher_terminal_outcome_from_step',
+          'guard_finisher_offer_item_insert',
+          'guard_finisher_execution_step_insert',
+          'guard_finisher_offer_identity',
+          'reject_finisher_offer_item_update',
+          'guard_finisher_execution_identity',
+          'guard_finisher_execution_step_identity',
+          'guard_finisher_execution_lifecycle',
+          'guard_finisher_decision_history',
+          'require_finisher_decision_applied',
+          'guard_finisher_execution_step_evidence',
+          'reject_finisher_history_deletion',
+          'guard_finisher_execution_command_tombstone'
+        ]) names(name)
+      )
+      AND privilege.grantee <> procedure.proowner
+  ), differences AS (
+    (SELECT * FROM expected EXCEPT SELECT * FROM actual)
+    UNION ALL
+    (SELECT * FROM actual EXCEPT SELECT * FROM expected)
+  )
+  SELECT pg_catalog.count(*) INTO terminal_mismatch_count FROM differences;
+  IF terminal_mismatch_count <> 0 THEN
+    RAISE EXCEPTION 'Finisher terminal function grants are not exact';
+  END IF;
+
+  WITH expected(table_name, column_name, grantee_name, privilege_type, grantor_name, is_grantable) AS (
+    VALUES
+      ('FinisherExecutionCommand', 'response', 'trainer_finisher_cleanup', 'UPDATE', 'trainer_finisher_owner', false),
+      ('FinisherExecutionCommand', 'cleanedAt', 'trainer_finisher_cleanup', 'UPDATE', 'trainer_finisher_owner', false)
+  ), actual AS (
+    SELECT class.relname, attribute.attname, grantee.rolname,
+      privilege.privilege_type, grantor.rolname, privilege.is_grantable
+    FROM pg_catalog.pg_attribute attribute
+    JOIN pg_catalog.pg_class class ON class.oid = attribute.attrelid
+    JOIN pg_catalog.pg_namespace namespace ON namespace.oid = class.relnamespace
+    CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) privilege
+    JOIN pg_catalog.pg_roles grantee ON grantee.oid = privilege.grantee
+    JOIN pg_catalog.pg_roles grantor ON grantor.oid = privilege.grantor
+    WHERE namespace.nspname = 'public'
+      AND class.relname LIKE 'Finisher%'
+  ), differences AS (
+    (SELECT * FROM expected EXCEPT SELECT * FROM actual)
+    UNION ALL
+    (SELECT * FROM actual EXCEPT SELECT * FROM expected)
+  )
+  SELECT pg_catalog.count(*) INTO terminal_mismatch_count FROM differences;
+  IF terminal_mismatch_count <> 0 THEN
+    RAISE EXCEPTION 'Finisher terminal column grants are not exact';
   END IF;
 END;
 $$;

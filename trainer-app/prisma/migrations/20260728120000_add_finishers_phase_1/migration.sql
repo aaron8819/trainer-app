@@ -2131,24 +2131,121 @@ BEGIN
     RAISE EXCEPTION 'Finisher terminal table ownership or RLS state is not exact';
   END IF;
 
-  SELECT pg_catalog.count(*) INTO terminal_mismatch_count
-  FROM pg_catalog.pg_index index_metadata
-  JOIN pg_catalog.pg_class table_class
-    ON table_class.oid = index_metadata.indrelid
-  JOIN pg_catalog.pg_class index_class
-    ON index_class.oid = index_metadata.indexrelid
-  JOIN pg_catalog.pg_namespace namespace
-    ON namespace.oid = table_class.relnamespace
-  WHERE namespace.nspname = 'public'
-    AND table_class.relname IN (
-      'FinisherRoutine', 'FinisherRoutineVersion', 'FinisherRoutineStep',
-      'FinisherRoutineStepAlternative', 'FinisherOffer', 'FinisherOfferItem',
-      'FinisherDecision', 'FinisherExecution', 'FinisherExecutionStep',
-      'FinisherExecutionCommand'
-    )
-    AND index_class.relowner <> owner_role.oid;
+  WITH expected(table_name, column_signature) AS (
+    VALUES
+      ('FinisherRoutine', 'id:text:not-null:<none>|code:text:not-null:<none>|publicationState:"FinisherPublicationState":not-null:''ACTIVE''::"FinisherPublicationState"|retiredAt:timestamp(3) without time zone:nullable:<none>|createdAt:timestamp(3) without time zone:not-null:CURRENT_TIMESTAMP'),
+      ('FinisherRoutineVersion', 'id:text:not-null:<none>|routineId:text:not-null:<none>|version:integer:not-null:<none>|name:text:not-null:<none>|description:text:not-null:<none>|category:"FinisherCategory":not-null:<none>|placement:"WorkoutPhasePlacement":not-null:''POST_WORKOUT''::"WorkoutPhasePlacement"|kind:"WorkoutPhaseKind":not-null:''FINISHER''::"WorkoutPhaseKind"|protocol:"WorkoutPhaseProtocol":not-null:''TIMED_INTERVALS''::"WorkoutPhaseProtocol"|difficulty:"FinisherDifficulty":not-null:<none>|fatigueCost:"FinisherDemand":not-null:<none>|impactLevel:"FinisherDemand":not-null:<none>|preparationSeconds:integer:not-null:10|includesFinalRecovery:boolean:not-null:false|equipmentRequirements:text[]:not-null:ARRAY[]::text[]|bodyRegions:text[]:not-null:ARRAY[]::text[]|limitationTags:text[]:not-null:ARRAY[]::text[]|createdAt:timestamp(3) without time zone:not-null:CURRENT_TIMESTAMP|sealedAt:timestamp(3) without time zone:nullable:<none>'),
+      ('FinisherRoutineStep', 'id:text:not-null:<none>|routineVersionId:text:not-null:<none>|orderIndex:integer:not-null:<none>|movementName:text:not-null:<none>|workSeconds:integer:not-null:<none>|recoverySeconds:integer:not-null:<none>|techniqueCues:text[]:not-null:ARRAY[]::text[]'),
+      ('FinisherRoutineStepAlternative', 'id:text:not-null:<none>|routineStepId:text:not-null:<none>|orderIndex:integer:not-null:<none>|movementName:text:not-null:<none>'),
+      ('FinisherOffer', 'id:text:not-null:<none>|workoutId:text:not-null:<none>|ownerId:text:not-null:<none>|revision:integer:not-null:1|offeredAt:timestamp(3) without time zone:not-null:CURRENT_TIMESTAMP|declinedAt:timestamp(3) without time zone:nullable:<none>|declineDecisionId:text:nullable:<none>|recommendedRoutineVersionId:text:nullable:<none>|recommendationReason:text:nullable:<none>|recommendationUnavailableReason:text:nullable:<none>|recommendationContext:jsonb:not-null:<none>|itemCount:integer:not-null:<none>|finalizedAt:timestamp(3) without time zone:nullable:<none>'),
+      ('FinisherOfferItem', 'id:text:not-null:<none>|offerId:text:not-null:<none>|routineVersionId:text:not-null:<none>|position:integer:not-null:<none>|warnings:text[]:not-null:ARRAY[]::text[]'),
+      ('FinisherDecision', 'id:text:not-null:<none>|ownerId:text:not-null:<none>|workoutId:text:not-null:<none>|offerId:text:not-null:<none>|action:"FinisherDecisionAction":not-null:<none>|offerItemId:text:nullable:<none>|routineVersionId:text:nullable:<none>|expectedOfferRevision:integer:not-null:<none>|acknowledgeContraindication:boolean:nullable:<none>|requestFingerprint:text:not-null:<none>|createdAt:timestamp(3) without time zone:not-null:CURRENT_TIMESTAMP'),
+      ('FinisherExecution', 'id:text:not-null:<none>|workoutId:text:not-null:<none>|ownerId:text:not-null:<none>|offerId:text:not-null:<none>|offerItemId:text:not-null:<none>|offerRevisionAtSelection:integer:not-null:<none>|routineVersionId:text:not-null:<none>|state:"FinisherExecutionState":not-null:''SELECTED''::"FinisherExecutionState"|selectedAt:timestamp(3) without time zone:not-null:CURRENT_TIMESTAMP|finalizedAt:timestamp(3) without time zone:nullable:<none>|startedAt:timestamp(3) without time zone:nullable:<none>|completedAt:timestamp(3) without time zone:nullable:<none>|endedAt:timestamp(3) without time zone:nullable:<none>|dismissedAt:timestamp(3) without time zone:nullable:<none>|timerSegment:"FinisherTimerSegment":nullable:<none>|currentStepIndex:integer:not-null:0|segmentStartedAt:timestamp(3) without time zone:nullable:<none>|segmentEndsAt:timestamp(3) without time zone:nullable:<none>|pausedAt:timestamp(3) without time zone:nullable:<none>|pausedRemainingMs:integer:nullable:<none>|preparationActiveMs:integer:not-null:0|recoveryActiveMs:integer:not-null:0|preparationPausedMs:integer:not-null:0|workPausedMs:integer:not-null:0|recoveryPausedMs:integer:not-null:0|revision:integer:not-null:1|difficultyFeedback:integer:nullable:<none>'),
+      ('FinisherExecutionStep', 'id:text:not-null:<none>|executionId:text:not-null:<none>|routineStepId:text:not-null:<none>|routineVersionId:text:not-null:<none>|orderIndex:integer:not-null:<none>|performedAlternativeId:text:nullable:<none>|status:"FinisherStepStatus":not-null:''PENDING''::"FinisherStepStatus"|startedAt:timestamp(3) without time zone:nullable:<none>|resolvedAt:timestamp(3) without time zone:nullable:<none>|actualWorkMs:integer:not-null:0|note:text:nullable:<none>'),
+      ('FinisherExecutionCommand', 'id:text:not-null:<none>|workoutId:text:not-null:<none>|ownerId:text:not-null:<none>|executionId:text:not-null:<none>|action:"FinisherExecutionAction":not-null:<none>|requestHash:text:not-null:<none>|expectedRevision:integer:not-null:<none>|resultRevision:integer:not-null:<none>|response:jsonb:nullable:<none>|createdAt:timestamp(3) without time zone:not-null:CURRENT_TIMESTAMP|expiresAt:timestamp(3) without time zone:not-null:<none>|cleanedAt:timestamp(3) without time zone:nullable:<none>')
+  ), actual AS (
+    SELECT table_class.relname AS table_name,
+      pg_catalog.string_agg(
+        attribute.attname || ':' ||
+        pg_catalog.format_type(attribute.atttypid, attribute.atttypmod) || ':' ||
+        CASE WHEN attribute.attnotnull THEN 'not-null' ELSE 'nullable' END || ':' ||
+        COALESCE(
+          pg_catalog.pg_get_expr(default_value.adbin, default_value.adrelid),
+          '<none>'
+        ),
+        '|' ORDER BY attribute.attnum
+      ) AS column_signature
+    FROM pg_catalog.pg_attribute attribute
+    JOIN pg_catalog.pg_class table_class ON table_class.oid = attribute.attrelid
+    JOIN pg_catalog.pg_namespace namespace ON namespace.oid = table_class.relnamespace
+    LEFT JOIN pg_catalog.pg_attrdef default_value
+      ON default_value.adrelid = attribute.attrelid
+      AND default_value.adnum = attribute.attnum
+    WHERE namespace.nspname = 'public'
+      AND table_class.relname IN (SELECT table_name FROM expected)
+      AND attribute.attnum > 0
+      AND NOT attribute.attisdropped
+    GROUP BY table_class.relname
+  ), differences AS (
+    (SELECT * FROM expected EXCEPT SELECT * FROM actual)
+    UNION ALL
+    (SELECT * FROM actual EXCEPT SELECT * FROM expected)
+  )
+  SELECT pg_catalog.count(*) INTO terminal_mismatch_count FROM differences;
   IF terminal_mismatch_count <> 0 THEN
-    RAISE EXCEPTION 'Finisher terminal index ownership is not exact';
+    RAISE EXCEPTION 'Finisher terminal column structure is not exact';
+  END IF;
+
+  WITH expected(index_name) AS (
+    VALUES
+      ('FinisherRoutine_pkey'),
+      ('FinisherRoutine_code_key'),
+      ('FinisherRoutineVersion_pkey'),
+      ('FinisherRoutineVersion_routineId_version_key'),
+      ('FinisherRoutineVersion_category_createdAt_idx'),
+      ('FinisherRoutineStep_pkey'),
+      ('FinisherRoutineStep_routineVersionId_orderIndex_key'),
+      ('FinisherRoutineStep_id_routineVersionId_orderIndex_key'),
+      ('FinisherRoutineStepAlternative_pkey'),
+      ('FinisherRoutineStepAlternative_routineStepId_orderIndex_key'),
+      ('FinisherRoutineStepAlternative_id_routineStepId_key'),
+      ('FinisherOffer_pkey'),
+      ('FinisherOffer_workoutId_key'),
+      ('FinisherOffer_workoutId_ownerId_key'),
+      ('FinisherOffer_declineDecisionId_key'),
+      ('FinisherOffer_id_workoutId_ownerId_key'),
+      ('FinisherOffer_id_recommendedRoutineVersionId_key'),
+      ('FinisherOffer_recommendedRoutineVersionId_idx'),
+      ('FinisherOfferItem_pkey'),
+      ('FinisherOfferItem_offerId_routineVersionId_key'),
+      ('FinisherOfferItem_offerId_position_key'),
+      ('FinisherOfferItem_id_offerId_routineVersionId_key'),
+      ('FinisherOfferItem_routineVersionId_idx'),
+      ('FinisherDecision_pkey'),
+      ('FinisherDecision_offerId_createdAt_idx'),
+      ('FinisherExecution_pkey'),
+      ('FinisherExecution_one_active_per_workout'),
+      ('FinisherExecution_one_started_per_workout'),
+      ('FinisherExecution_workoutId_selectedAt_idx'),
+      ('FinisherExecution_offerId_selectedAt_idx'),
+      ('FinisherExecution_routineVersionId_startedAt_idx'),
+      ('FinisherExecution_state_segmentEndsAt_idx'),
+      ('FinisherExecution_id_workoutId_key'),
+      ('FinisherExecution_id_workoutId_ownerId_key'),
+      ('FinisherExecution_id_routineVersionId_key'),
+      ('FinisherExecutionStep_pkey'),
+      ('FinisherExecutionStep_executionId_routineStepId_key'),
+      ('FinisherExecutionStep_performedAlternativeId_idx'),
+      ('FinisherExecutionCommand_pkey'),
+      ('FinisherExecutionCommand_executionId_createdAt_idx'),
+      ('FinisherExecutionCommand_cleanedAt_expiresAt_id_idx')
+  ), actual AS (
+    SELECT index_class.relname AS index_name,
+      index_class.relowner = owner_role.oid AS owned_by_finisher_owner
+    FROM pg_catalog.pg_index index_metadata
+    JOIN pg_catalog.pg_class table_class
+      ON table_class.oid = index_metadata.indrelid
+    JOIN pg_catalog.pg_class index_class
+      ON index_class.oid = index_metadata.indexrelid
+    JOIN pg_catalog.pg_namespace namespace
+      ON namespace.oid = table_class.relnamespace
+    WHERE namespace.nspname = 'public'
+      AND table_class.relname IN (
+        'FinisherRoutine', 'FinisherRoutineVersion', 'FinisherRoutineStep',
+        'FinisherRoutineStepAlternative', 'FinisherOffer', 'FinisherOfferItem',
+        'FinisherDecision', 'FinisherExecution', 'FinisherExecutionStep',
+        'FinisherExecutionCommand'
+      )
+  ), differences AS (
+    (SELECT index_name FROM expected
+      EXCEPT
+      SELECT index_name FROM actual WHERE owned_by_finisher_owner)
+    UNION ALL
+    (SELECT index_name FROM actual EXCEPT SELECT index_name FROM expected)
+  )
+  SELECT pg_catalog.count(*) INTO terminal_mismatch_count FROM differences;
+  IF terminal_mismatch_count <> 0 THEN
+    RAISE EXCEPTION 'Finisher terminal index inventory or ownership is not exact';
   END IF;
 
   SELECT pg_catalog.count(*) INTO terminal_mismatch_count

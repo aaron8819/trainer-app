@@ -1573,6 +1573,60 @@ try {
     throw new Error("Gate A did not recover after restoring the exact prerequisite.");
   }
 
+  const canonicalFinisherMigration = readFileSync(
+    join(
+      process.cwd(),
+      "prisma",
+      "migrations",
+      targetMigration,
+      "migration.sql",
+    ),
+    "utf8",
+  );
+  const ownerInjectionMarker = "\nSET CONSTRAINTS ALL IMMEDIATE;";
+  const ownerInjectionOffset = canonicalFinisherMigration.indexOf(
+    ownerInjectionMarker,
+  );
+  if (ownerInjectionOffset < 0) {
+    throw new Error("Finisher migration owner-phase verification marker was not found.");
+  }
+  for (const [label, injectedSql, expectedError] of [
+    [
+      "column drift",
+      'ALTER TABLE "FinisherOffer" ADD COLUMN "terminalGuardProbe" TEXT;\n',
+      "Finisher terminal column structure is not exact",
+    ],
+    [
+      "missing index",
+      'DROP INDEX "FinisherRoutine_code_key";\n',
+      "Finisher terminal index inventory or ownership is not exact",
+    ],
+  ] as const) {
+    const beforeTerminalGuardFailure = `${databaseStateFingerprint()}|${principalStateFingerprint()}`;
+    const injectedMigration =
+      canonicalFinisherMigration.slice(0, ownerInjectionOffset) +
+      `\n${injectedSql}` +
+      canonicalFinisherMigration.slice(ownerInjectionOffset);
+    const result = runPsqlAsMigrationAdministrator(injectedMigration);
+    const output = `${result.stdout}\n${result.stderr}`;
+    const afterTerminalGuardFailure = `${databaseStateFingerprint()}|${principalStateFingerprint()}`;
+    if (
+      result.status === 0 ||
+      !output.includes(expectedError) ||
+      beforeTerminalGuardFailure !== afterTerminalGuardFailure ||
+      psql(
+        `SELECT count(*) FROM pg_catalog.pg_class c
+         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = 'public' AND c.relname LIKE 'Finisher%';`,
+        true,
+      ) !== "0"
+    ) {
+      throw new Error(
+        `Migration terminal ${label} guard did not fail and roll back atomically: ${output}`,
+      );
+    }
+  }
+
   applyMigrations(migrations.slice(currentProductionAppliedCount));
   recordMigrations(
     migrations.slice(currentProductionAppliedCount),

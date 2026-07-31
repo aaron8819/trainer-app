@@ -1215,21 +1215,20 @@ describe("migration integrity", () => {
   it("documents role-principal provisioning before Gate A and migration-owned grants after migration", () => {
     const operations = readFileSync(resolve("docs/07_OPERATIONS.md"), "utf8");
     const orderedMarkers = [
-      "1. Merge the reviewed runtime-inert application",
-      "2. Record the actual integrated `master` squash SHA.",
-      "3. Confirm `/api/version` and provider-side alias evidence",
-      "4. Through the separately authorized evidence workflow",
-      "5. Establish and verify the required recovery point.",
-      "6. Activate and verify `TRAINER_WRITE_PAUSE=enabled`",
+      "1. Merge and deploy the reviewed runtime-inert application",
+      "2. Record the actual integrated `master` squash SHA, bind it as",
+      "3. Obtain canonical commit-bound disposable PostgreSQL verification",
+      "4. Establish and verify the required recovery point.",
+      "5. Activate and verify `TRAINER_WRITE_PAUSE=enabled`",
+      "6. Run the immediate live read-only direct-database and migration-status",
       "7. Through the separately authorized database-administrator workflow",
       "8. Verify all three principals exist",
       "9. Run Gate A and the required pre-migration authorization checks.",
-      "10. After separate explicit authorization",
-      "11. Verify the migration-owned object ownership, grants, restrictive",
-      "12. Run the post-migration integrity verification and all required readiness",
-      "13. Only after migration, role/grant verification, post-migration integrity,",
-      "14. Create or promote the application deployment",
-      "15. Under separate authorization, perform bounded authenticated",
+      "10. Only after Gate A reports `migrationAuthorizationReady: true`",
+      "11. Run the authorized production migration once:",
+      "12. Immediately verify the migration-owned object ownership",
+      "13. Resume general writes only through the write-pause resume procedure",
+      "14. Separately authorize Finishers enablement and bounded authenticated",
     ];
     let previousIndex = -1;
     for (const marker of orderedMarkers) {
@@ -1239,6 +1238,9 @@ describe("migration integrity", () => {
     }
     expect(operations).toContain(
       "Do not re-provision migration-owned grants after migration",
+    );
+    expect(operations).toContain(
+      "`migrationAuthorizationReady: false` and stop",
     );
   });
 

@@ -305,7 +305,7 @@ owns the rollout policy and result model. The command:
 
 - hashes the exact checked-out migration SQL bytes with SHA-256, matching how Prisma creates `_prisma_migrations.checksum`, and validates historical rows with Prisma's exact compatibility set: the script as read, `CRLF` converted to `LF`, and `LF` converted to `CRLF`;
 - rejects failed, unresolved rolled-back, unfinished, duplicate, unknown, missing-checksum, skipped, and out-of-prefix ledger states;
-- compares the actual pending suffix with the exact named sequence in repository policy or the reviewed evidence input; it never authorizes from a fixed pending count;
+- compares the actual pending suffix with the exact named sequence in repository policy; caller evidence cannot redefine that sequence and a fixed pending count never authorizes;
 - verifies material definitions owned by every applied migration and requires every object owned by each pending migration to be absent;
 - runs catalog and ledger queries inside a repeatable-read, read-only transaction, rejects mutation-capable statements in its query adapter, and reports `writes: 0`;
 - reports `technicalMigrationReady`, `migrationAuthorizationReady`, and `executionAuthorized` separately.
@@ -482,21 +482,24 @@ closed.
 This runbook documents order only. It does not authorize any merge, deployment,
 environment change, role change, migration, production access, or verification.
 
-1. Merge the reviewed runtime-inert application with
-   `TRAINER_FINISHERS_ROLLOUT` unset or otherwise disabled.
-2. Record the actual integrated `master` squash SHA. Do not substitute the
-   feature-branch head.
-3. Confirm `/api/version` and provider-side alias evidence identify that exact
-   SHA, and confirm the automatic production deployment remains inert: relevant
+1. Merge and deploy the reviewed runtime-inert application with
+   `TRAINER_FINISHERS_ROLLOUT` unset or otherwise disabled. Confirm relevant
    completed, incomplete, history, navigation, and deletion paths load without
    Finisher UI or Finisher-schema access.
-4. Through the separately authorized evidence workflow, set that exact
-   integrated SHA as `requiredApplicationCommit`.
-5. Establish and verify the required recovery point.
-6. Activate and verify `TRAINER_WRITE_PAUSE=enabled`, keep
-   `TRAINER_FINISHERS_ROLLOUT` disabled, and satisfy all immediate preflight
-   requirements. Repeat the immediate read-only direct-database and migration
-   status checks:
+2. Record the actual integrated `master` squash SHA, bind it as
+   `requiredApplicationCommit`, and confirm `/api/version` plus provider-side
+   alias evidence identify that exact SHA. Do not substitute the feature-branch
+   head.
+3. Obtain canonical commit-bound disposable PostgreSQL verification for those
+   exact repository and migration bytes. **Current residual prerequisite:** no
+   repository workflow can yet produce authorization-grade evidence for this
+   step. The local PostgreSQL 16 harness is review evidence only. Implement and
+   separately review the commit-bound disposable verifier before continuing.
+4. Establish and verify the required recovery point.
+5. Activate and verify `TRAINER_WRITE_PAUSE=enabled` while keeping
+   `TRAINER_FINISHERS_ROLLOUT` disabled.
+6. Run the immediate live read-only direct-database and migration-status
+   preflight:
 
    ```powershell
    npm run ops:check-direct-db -- --env-file $rolloutEnv
@@ -507,8 +510,8 @@ environment change, role change, migration, production access, or verification.
    Require exactly 18 checked in, 17 applied, and only
    `20260728120000_add_finishers_phase_1` pending; zero checksum, ledger, order,
    non-principal schema, or data blockers. This immediate preflight is expected
-   to remain fail closed because canonical commit-bound disposable-workflow and
-   live principal verification are unavailable; it must not report
+   to remain fail closed before principal provisioning and because canonical
+   commit-bound disposable-workflow verification is unavailable; it must not report
    `technicalMigrationReady: true` or `migrationAuthorizationReady: true`.
 7. Through the separately authorized database-administrator workflow, provision
    the three required role principals before migration:
@@ -565,10 +568,10 @@ environment change, role change, migration, production access, or verification.
 9. Run Gate A and the required pre-migration authorization checks. Require the
    exact canonical equality
    `requiredApplicationCommit === repositoryHead === productionDeploymentCommit`,
-   `migrationAuthorizationReady: false`, and `executionAuthorized: false`
-   until canonical provider verification and commit-bound disposable-workflow
-   verification are implemented. An operator-authored file cannot satisfy
-   either prerequisite:
+   and `executionAuthorized: false`. Until canonical provider verification and
+   commit-bound disposable-workflow verification are implemented, require
+   `migrationAuthorizationReady: false` and stop. An operator-authored file
+   cannot satisfy either prerequisite:
 
    ```powershell
    $env:TRAINER_APP_RUNTIME_PASSWORD = Read-Host "Runtime role password" -MaskInput
@@ -577,9 +580,12 @@ environment change, role change, migration, production access, or verification.
      --required-application-commit $integratedSha
    Remove-Item Env:TRAINER_APP_RUNTIME_PASSWORD
    ```
-10. After separate explicit authorization for the exact target, recovery point,
-   paused-write boundary, command, and application sequence, run the authorized
-   production migration once:
+10. Only after Gate A reports `migrationAuthorizationReady: true`, obtain
+    separate explicit migration-execution authorization for the exact target,
+    recovery point, paused-write boundary, command, and application sequence.
+    Gate A still reports `executionAuthorized: false`; it never replaces this
+    authorization.
+11. Run the authorized production migration once:
 
    ```powershell
    node --env-file=$rolloutEnv .\node_modules\prisma\build\index.js migrate deploy
@@ -587,7 +593,9 @@ environment change, role change, migration, production access, or verification.
 
    Require exactly that migration once and exit zero. Do not run
    `npm run db:seed`, edit `_prisma_migrations`, or retry blindly.
-11. Verify the migration-owned object ownership, grants, restrictive
+12. Immediately verify the migration-owned object ownership, index and function
+    ownership, exact table/column/type structure, type and object grants,
+    RLS-disabled state, terminal role contract, restrictive
     relationships, schema access, default privileges, triggers, functions, and
     schema drift. Clearly distinguish these migration-created or
     migration-assigned protections from the pre-migration principal
@@ -595,7 +603,7 @@ environment change, role change, migration, production access, or verification.
     and do not rerun principal provisioning as a substitute for repair.
     Migration-owned ownership or grants may be repaired only through a
     separately reviewed recovery procedure.
-12. Run the post-migration integrity verification and all required readiness
+    Then run the post-migration integrity verification and all required readiness
     checks. Gate A is no longer applicable after the target is applied. Require 18
     successful applied migrations, zero pending, the exact ten-table schema and
     curated catalog, correct roles/grants, no schema/data drift, and successful
@@ -604,17 +612,15 @@ environment change, role change, migration, production access, or verification.
     password so the terminal catalog is read through the least-privileged
     runtime connection; require `gateAApplicable: false` and zero integrity
     blockers.
-13. Only after migration, role/grant verification, post-migration integrity,
-    and required
-    post-migration checks succeed, set
-    `TRAINER_FINISHERS_ROLLOUT=enabled`.
-14. Create or promote the application deployment containing that enabled
-    setting. Require the production alias and `/api/version` to prove the exact
+13. Resume general writes only through the write-pause resume procedure after
+    every migration and terminal verification check passes. If any check fails,
+    keep writes paused and follow the abort procedure below.
+14. Separately authorize Finishers enablement and bounded authenticated
+    production verification. Set `TRAINER_FINISHERS_ROLLOUT=enabled`, create or
+    promote the application deployment containing that setting, and require the
+    production alias plus `/api/version` to prove the exact
     `requiredApplicationCommit`; an environment-variable edit does not change
     an already-running deployment.
-15. Under separate authorization, perform bounded authenticated production
-    verification. Resume general writes only through the write-pause resume
-    procedure after every required check passes.
 
 If the migration fails, keep writes paused and Finishers disabled. Confirm the
 explicit transaction left no successful target ledger row, target object, or

@@ -13,10 +13,17 @@ import {
   PENDING_ARCHITECTURE_MANIFEST,
   prismaCompatibleMigrationSqlChecksums,
   type CatalogSnapshot,
+  type CanonicalOperationalVerification,
   type CheckedInMigration,
   type LedgerRow,
+  type LiveFinisherPrincipalVerification,
   type MigrationAuthorizationEvidence,
 } from "./migration-integrity";
+import {
+  FINISHER_PRINCIPAL_CONTRACT,
+  FINISHER_TARGET_MIGRATION,
+  type FinisherPrincipalSnapshot,
+} from "./finisher-principal-contract";
 
 const REPOSITORY_HEAD = "b".repeat(40);
 const FUTURE_INTEGRATED_HEAD = "c".repeat(40);
@@ -67,9 +74,25 @@ function addCompatibleManifestObject(
     });
   }
   if (object.kind === "enum") {
+    const finisherOwned =
+      object.name.startsWith("Finisher") ||
+      object.name.startsWith("WorkoutPhase");
     catalog.enums.push({
       name: object.name,
       values: [...(object.enum?.values ?? [])],
+      ...(finisherOwned
+        ? {
+            owner: "trainer_finisher_owner",
+            privileges: [
+              {
+                grantee: "trainer_app_runtime",
+                grantor: "trainer_finisher_owner",
+                privilege: "USAGE",
+                grantable: false,
+              },
+            ],
+          }
+        : {}),
     });
   }
   if (object.kind === "index") {
@@ -213,6 +236,8 @@ function cleanCatalog(
       ([table, privileges]) => ({
         table,
         owner: "trainer_finisher_owner",
+        rowSecurity: false,
+        forceRowSecurity: false,
         privileges: [
           ...privileges.map((privilege) => ({
             grantee: "trainer_app_runtime",
@@ -270,6 +295,48 @@ function cleanCatalog(
     catalog.roleMemberships = [];
     catalog.defaultPrivileges = [];
   }
+  if (!catalog.roles) {
+    catalog.roles = [
+      {
+        name: "trainer_app_runtime",
+        canLogin: true,
+        inherit: true,
+        superuser: false,
+        createRole: false,
+        createDb: false,
+        replication: false,
+        bypassRls: false,
+        publicSchemaCreate: false,
+      },
+      ...["trainer_finisher_owner", "trainer_finisher_cleanup"].map(
+        (name) => ({
+          name,
+          canLogin: false,
+          inherit: false,
+          superuser: false,
+          createRole: false,
+          createDb: false,
+          replication: false,
+          bypassRls: false,
+          publicSchemaCreate: true,
+        }),
+      ),
+    ];
+    catalog.roleMemberships = [
+      "trainer_app_runtime",
+      "trainer_finisher_owner",
+      "trainer_finisher_cleanup",
+    ].map((role) => ({
+      role,
+      member: "migration_admin",
+      grantor: "postgres",
+      grantorIsBootstrapSuperuser: true,
+      adminOption: true,
+      inheritOption: false,
+      setOption: false,
+    }));
+    catalog.defaultPrivileges = [];
+  }
   return catalog;
 }
 
@@ -278,48 +345,137 @@ function fullEvidence(
 ): MigrationAuthorizationEvidence {
   return {
     repositoryHead: REPOSITORY_HEAD,
-    productionDeploymentCommit: REPOSITORY_HEAD,
     requiredApplicationCommit: REPOSITORY_HEAD,
-    dataPreflight: {
-      valid: true,
-      verifiedAt: VERIFIED_AT,
-      targetFingerprint: TARGET_FINGERPRINT,
+    evaluatedAt: EVALUATED_AT,
+    ...overrides,
+  };
+}
+
+function principalSnapshot(): FinisherPrincipalSnapshot {
+  const administrator = "migration_admin";
+  return {
+    phase: "migration_capable",
+    serverVersionNumber: 160010,
+    administrator: {
+      currentRole: administrator,
+      sessionRole: administrator,
+      canLogin: true,
+      superuser: false,
+      createRole: true,
+      createroleSelfGrant: "",
     },
-    disposablePostgres: {
-      valid: true,
-      verifiedAt: VERIFIED_AT,
-      repositoryHead: REPOSITORY_HEAD,
+    roles: FINISHER_PRINCIPAL_CONTRACT.map((role) => ({
+      name: role.name,
+      canLogin: role.canLogin,
+      inherit: role.inherit,
+      superuser: false,
+      createDb: false,
+      createRole: false,
+      replication: false,
+      bypassRls: false,
+      publicSchemaCreate: role.name !== "trainer_app_runtime",
+      credential:
+        role.name === "trainer_app_runtime"
+          ? ("verified_matching" as const)
+          : ("not_applicable" as const),
+      defaultPrivilegeCount: 0,
+    })),
+    memberships: [
+      ...FINISHER_PRINCIPAL_CONTRACT.map((role) => ({
+        grantedRole: role.name,
+        memberRole: administrator,
+        grantorRole: "postgres",
+        grantorIsBootstrapSuperuser: true,
+        admin: true,
+        inherit: false,
+        set: false,
+      })),
+      ...["trainer_finisher_owner", "trainer_finisher_cleanup"].map(
+        (grantedRole) => ({
+          grantedRole,
+          memberRole: administrator,
+          grantorRole: administrator,
+          grantorIsBootstrapSuperuser: false,
+          admin: false,
+          inherit: false,
+          set: true,
+        }),
+      ),
+    ],
+    finisherObjectCount: 0,
+    finisherObjectCapabilityCount: 0,
+  };
+}
+
+function fullPrincipalVerification(
+  overrides: Partial<LiveFinisherPrincipalVerification> = {},
+  bindingHead = REPOSITORY_HEAD,
+): LiveFinisherPrincipalVerification {
+  return {
+    source: "fresh_live_database_verification",
+    verifiedAt: VERIFIED_AT,
+    repositoryHead: bindingHead,
+    requiredApplicationCommit: bindingHead,
+    targetMigration: FINISHER_TARGET_MIGRATION,
+    targetFingerprint: TARGET_FINGERPRINT,
+    projectFingerprint: "project-fingerprint",
+    database: "postgres",
+    credentialProof: "bounded_runtime_authentication",
+    readOnlyTransaction: true,
+    databaseWrites: 0,
+    snapshot: principalSnapshot(),
+    ...overrides,
+  };
+}
+
+function fullOperationalVerification(
+  overrides: Partial<CanonicalOperationalVerification> = {},
+  bindingHead = REPOSITORY_HEAD,
+): CanonicalOperationalVerification {
+  return {
+    source: "canonical_live_operational_verification",
+    verifiedAt: VERIFIED_AT,
+    repositoryHead: bindingHead,
+    requiredApplicationCommit: bindingHead,
+    targetFingerprint: TARGET_FINGERPRINT,
+    projectFingerprint: "project-fingerprint",
+    database: "postgres",
+    deployment: {
+      verified: true,
+      commit: bindingHead,
+      identity: "deployment-id",
+      source: "vercel_authenticated_read_only",
     },
     recoveryPoint: {
       verified: true,
-      providerProjectIdentity: "supabase:trainer-production",
-      databaseIdentity: "postgres:primary",
-      recoveryTimestamp: VERIFIED_AT,
-      retentionConfirmed: true,
-      recoverabilityConfirmed: true,
-      freshForExecution: true,
-      operatorVerifiedAt: VERIFIED_AT,
+      identity: "recovery-point-id",
+      source: "provider_authenticated_read_only",
     },
-    writeBoundary: {
-      ready: true,
-      mechanism: "production-write-gate",
-      verifiedAt: VERIFIED_AT,
+    writePause: {
+      verified: true,
+      identity: "write-pause-id",
+      source: "provider_authenticated_read_only",
     },
     applicationCompatibilityState: "compatible_with_write_boundary",
-    deploymentVerifiedAt: VERIFIED_AT,
-    evaluatedAt: EVALUATED_AT,
     ...overrides,
   };
 }
 
 function report(overrides: Partial<Parameters<typeof buildMigrationIntegrityReport>[0]> = {}) {
   return buildMigrationIntegrityReport({
-    target: { classification: "remote", fingerprint: TARGET_FINGERPRINT },
+    target: {
+      classification: "disposable",
+      fingerprint: TARGET_FINGERPRINT,
+      projectFingerprint: "project-fingerprint",
+      database: "postgres",
+    },
     checkedIn: checkedIn(),
     ledgerRows: appliedPrefix(),
     catalog: cleanCatalog(),
     writes: 0,
     authorizationEvidence: fullEvidence(),
+    finisherPrincipalLiveVerification: fullPrincipalVerification(),
+    operationalVerification: fullOperationalVerification(),
     ...overrides,
   });
 }
@@ -669,16 +825,26 @@ describe("migration integrity", () => {
     expect(result.technicalMigrationReady).toBe(false);
   });
 
-  it("requires clean data preflight but does not treat it as authorization", () => {
-    const withoutData = report({
-      authorizationEvidence: fullEvidence({ dataPreflight: undefined }),
-    });
-    expect(withoutData.technicalMigrationReady).toBe(false);
-
+  it("derives clean data preflight from the fresh zero-write catalog inspection", () => {
     const technicalOnly = report({
-      authorizationEvidence: fullEvidence({
-        recoveryPoint: undefined,
-        writeBoundary: undefined,
+      operationalVerification: fullOperationalVerification({
+        deployment: {
+          verified: false,
+          commit: "",
+          identity: "unavailable",
+          source: "unavailable",
+        },
+        recoveryPoint: {
+          verified: false,
+          identity: "unavailable",
+          source: "unavailable",
+        },
+        writePause: {
+          verified: false,
+          identity: "unavailable",
+          source: "unavailable",
+        },
+        applicationCompatibilityState: "unverified",
       }),
     });
     expect(technicalOnly.dataPreflightValid).toBe(true);
@@ -686,18 +852,30 @@ describe("migration integrity", () => {
     expect(technicalOnly.migrationAuthorizationReady).toBe(false);
   });
 
-  it("requires recovery-point evidence for authorization readiness", () => {
+  it("requires canonical live recovery-point verification", () => {
     const result = report({
-      authorizationEvidence: fullEvidence({ recoveryPoint: undefined }),
+      operationalVerification: fullOperationalVerification({
+        recoveryPoint: {
+          verified: false,
+          identity: "unavailable",
+          source: "unavailable",
+        },
+      }),
     });
     expect(result.technicalMigrationReady).toBe(true);
     expect(result.recoveryPointVerified).toBe(false);
     expect(result.migrationAuthorizationReady).toBe(false);
   });
 
-  it("requires the write boundary for authorization readiness", () => {
+  it("requires canonical live write-pause verification", () => {
     const result = report({
-      authorizationEvidence: fullEvidence({ writeBoundary: undefined }),
+      operationalVerification: fullOperationalVerification({
+        writePause: {
+          verified: false,
+          identity: "unavailable",
+          source: "unavailable",
+        },
+      }),
     });
     expect(result.technicalMigrationReady).toBe(true);
     expect(result.writeBoundaryReady).toBe(false);
@@ -708,14 +886,16 @@ describe("migration integrity", () => {
     const result = report({
       authorizationEvidence: fullEvidence({
         repositoryHead: FUTURE_INTEGRATED_HEAD,
-        productionDeploymentCommit: FUTURE_INTEGRATED_HEAD,
         requiredApplicationCommit: FUTURE_INTEGRATED_HEAD,
-        disposablePostgres: {
-          valid: true,
-          verifiedAt: VERIFIED_AT,
-          repositoryHead: FUTURE_INTEGRATED_HEAD,
-        },
       }),
+      finisherPrincipalLiveVerification: fullPrincipalVerification(
+        {},
+        FUTURE_INTEGRATED_HEAD,
+      ),
+      operationalVerification: fullOperationalVerification(
+        {},
+        FUTURE_INTEGRATED_HEAD,
+      ),
     });
     expect(result.evidence).toMatchObject({
       repositoryHeadIdentified: true,
@@ -736,7 +916,6 @@ describe("migration integrity", () => {
     const result = report({
       authorizationEvidence: fullEvidence({
         requiredApplicationCommit: FUTURE_INTEGRATED_HEAD,
-        productionDeploymentCommit: FUTURE_INTEGRATED_HEAD,
       }),
     });
     expect(result.evidence.requiredApplicationCommitMatchesRepositoryHead).toBe(
@@ -752,8 +931,13 @@ describe("migration integrity", () => {
 
   it("rejects requiredApplicationCommit when it differs from productionDeploymentCommit", () => {
     const result = report({
-      authorizationEvidence: fullEvidence({
-        productionDeploymentCommit: FUTURE_INTEGRATED_HEAD,
+      operationalVerification: fullOperationalVerification({
+        deployment: {
+          verified: true,
+          commit: FUTURE_INTEGRATED_HEAD,
+          identity: "deployment-id",
+          source: "vercel_authenticated_read_only",
+        },
       }),
     });
     expect(
@@ -772,12 +956,11 @@ describe("migration integrity", () => {
       authorizationEvidence: fullEvidence({
         repositoryHead: FUTURE_INTEGRATED_HEAD,
         requiredApplicationCommit: FUTURE_INTEGRATED_HEAD,
-        disposablePostgres: {
-          valid: true,
-          verifiedAt: VERIFIED_AT,
-          repositoryHead: FUTURE_INTEGRATED_HEAD,
-        },
       }),
+      finisherPrincipalLiveVerification: fullPrincipalVerification(
+        {},
+        FUTURE_INTEGRATED_HEAD,
+      ),
     });
     expect(result.evidence.repositoryHeadMatchesProductionDeployment).toBe(
       false,
@@ -805,8 +988,13 @@ describe("migration integrity", () => {
 
   it("rejects the old base deployment after a different integrated commit is authorized", () => {
     const result = report({
-      authorizationEvidence: fullEvidence({
-        productionDeploymentCommit: OLD_BASE_HEAD,
+      operationalVerification: fullOperationalVerification({
+        deployment: {
+          verified: true,
+          commit: OLD_BASE_HEAD,
+          identity: "old-deployment-id",
+          source: "vercel_authenticated_read_only",
+        },
       }),
     });
     expect(result.evidence.productionDeploymentCommitIdentified).toBe(true);
@@ -828,33 +1016,37 @@ describe("migration integrity", () => {
     ["uppercase", "B".repeat(40)],
     ["padded", ` ${REPOSITORY_HEAD} `],
     ["overlong", "b".repeat(41)],
-  ])("rejects a %s commit value in every authorization field", (_label, value) => {
-    for (const field of [
-      "repositoryHead",
-      "productionDeploymentCommit",
-      "requiredApplicationCommit",
-    ] as const) {
-      const evidence = fullEvidence({ [field]: value });
-      if (field === "repositoryHead") {
-        evidence.disposablePostgres = {
-          valid: true,
-          verifiedAt: VERIFIED_AT,
-          repositoryHead: value,
-        };
-      }
-      const result = report({ authorizationEvidence: evidence });
-      expect(result.technicalMigrationReady).toBe(true);
-      expect(result.migrationAuthorizationReady).toBe(false);
-      expect(result.executionAuthorized).toBe(false);
-      expect(result.writes).toBe(0);
-    }
+  ])("rejects a %s commit value in live commit bindings", (_label, value) => {
+    const evidence = fullEvidence({
+      repositoryHead: value,
+      requiredApplicationCommit: value,
+    });
+    const result = report({ authorizationEvidence: evidence });
+    expect(result.technicalMigrationReady).toBe(true);
+    expect(result.migrationAuthorizationReady).toBe(false);
+    expect(result.executionAuthorized).toBe(false);
+    expect(result.writes).toBe(0);
   });
 
   it("models the captured production shape without granting execution", () => {
     const result = report({
-      authorizationEvidence: fullEvidence({
-        recoveryPoint: undefined,
-        writeBoundary: undefined,
+      target: {
+        classification: "remote",
+        fingerprint: TARGET_FINGERPRINT,
+        projectFingerprint: "project-fingerprint",
+        database: "postgres",
+      },
+      operationalVerification: fullOperationalVerification({
+        recoveryPoint: {
+          verified: false,
+          identity: "unavailable",
+          source: "unavailable",
+        },
+        writePause: {
+          verified: false,
+          identity: "unavailable",
+          source: "unavailable",
+        },
       }),
     });
     expect(result).toMatchObject({
@@ -865,10 +1057,13 @@ describe("migration integrity", () => {
       pendingMigrations: [MIGRATION_AUTHORIZATION_POLICY.targetMigration],
       schemaPreflightValid: true,
       dataPreflightValid: true,
-      technicalMigrationReady: true,
+      technicalMigrationReady: false,
       migrationAuthorizationReady: false,
       executionAuthorized: false,
     });
+    expect(result.blockingReasons).toContain(
+      "disposable_postgres_verification_missing",
+    );
   });
 
   it("can become authorization-ready with complete evidence but never execution-authorized in preparation mode", () => {
@@ -876,6 +1071,76 @@ describe("migration integrity", () => {
     expect(result.technicalMigrationReady).toBe(true);
     expect(result.migrationAuthorizationReady).toBe(true);
     expect(result.executionAuthorized).toBe(false);
+  });
+
+  it("requires fresh live Finisher principal verification before pre-migration Gate A", () => {
+    const result = report({ finisherPrincipalLiveVerification: undefined });
+    expect(result.technicalMigrationReady).toBe(true);
+    expect(result.principalPrerequisites).toMatchObject({
+      verified: false,
+      reasons: ["missing_live_verification"],
+    });
+    expect(result.blockingReasons).toContain(
+      "finisher_principal_live_missing_live_verification",
+    );
+    expect(result.migrationAuthorizationReady).toBe(false);
+  });
+
+  it("rejects stale and write-reporting live Finisher principal results", () => {
+    const stale = report({
+      finisherPrincipalLiveVerification: fullPrincipalVerification({
+        verifiedAt: "2026-07-26T16:00:00.000Z",
+      }),
+    });
+    expect(stale.blockingReasons).toContain(
+      "finisher_principal_live_stale_or_invalid_timestamp",
+    );
+
+    const writes = {
+      ...fullPrincipalVerification(),
+      databaseWrites: 1,
+    } as unknown as LiveFinisherPrincipalVerification;
+    const writeReporting = report({
+      finisherPrincipalLiveVerification: writes,
+    });
+    expect(writeReporting.blockingReasons).toContain(
+      "finisher_principal_live_writes_reported",
+    );
+  });
+
+  it("never lets a caller-authored audit record replace live database results", () => {
+    const result = report({
+      finisherPrincipalLiveVerification: undefined,
+      finisherPrincipalAuditRecord: {
+        schema: "trainer-finisher-principal-audit-record",
+        version: 2,
+        verifier: "ops:finisher-principals",
+        authority: "sanitized_audit_record_only",
+        binding: {
+          repositoryHead: REPOSITORY_HEAD,
+          requiredApplicationCommit: REPOSITORY_HEAD,
+          targetMigration: FINISHER_TARGET_MIGRATION,
+          environment: "production",
+          targetClassification: "remote",
+          targetFingerprint: TARGET_FINGERPRINT,
+          projectFingerprint: "project-fingerprint",
+          database: "postgres",
+        },
+        operation: "verify",
+        startedAt: VERIFIED_AT,
+        completedAt: VERIFIED_AT,
+        readOnlyTransaction: true,
+        databaseWrites: 0,
+        createdPrincipals: [],
+        credentialConfigured: false,
+        liveState: principalSnapshot(),
+      },
+    });
+    expect(result.principalPrerequisites).toMatchObject({
+      verified: false,
+      auditRecordAuthority: "sanitized_audit_record_only",
+      auditRecordUsedForAuthorization: false,
+    });
   });
 
   it("requires the operator to identify the exact post-migration application commit", () => {
@@ -950,21 +1215,20 @@ describe("migration integrity", () => {
   it("documents role-principal provisioning before Gate A and migration-owned grants after migration", () => {
     const operations = readFileSync(resolve("docs/07_OPERATIONS.md"), "utf8");
     const orderedMarkers = [
-      "1. Merge the reviewed runtime-inert application",
-      "2. Record the actual integrated `master` squash SHA.",
-      "3. Confirm `/api/version` and provider-side alias evidence",
-      "4. Through the separately authorized evidence workflow",
-      "5. Establish and verify the required recovery point.",
-      "6. Activate and verify `TRAINER_WRITE_PAUSE=enabled`",
+      "1. Merge and deploy the reviewed runtime-inert application",
+      "2. Record the actual integrated `master` squash SHA, bind it as",
+      "3. Obtain canonical commit-bound disposable PostgreSQL verification",
+      "4. Establish and verify the required recovery point.",
+      "5. Activate and verify `TRAINER_WRITE_PAUSE=enabled`",
+      "6. Run the immediate live read-only direct-database and migration-status",
       "7. Through the separately authorized database-administrator workflow",
       "8. Verify all three principals exist",
       "9. Run Gate A and the required pre-migration authorization checks.",
-      "10. After separate explicit authorization",
-      "11. Verify the migration-owned object ownership, grants, restrictive",
-      "12. Rerun Gate A and all required post-migration readiness checks.",
-      "13. Only after migration, role/grant verification, Gate A, and required",
-      "14. Create or promote the application deployment",
-      "15. Under separate authorization, perform bounded authenticated",
+      "10. Only after Gate A reports `migrationAuthorizationReady: true`",
+      "11. Run the authorized production migration once:",
+      "12. Immediately verify the migration-owned object ownership",
+      "13. Resume general writes only through the write-pause resume procedure",
+      "14. Separately authorize Finishers enablement and bounded authenticated",
     ];
     let previousIndex = -1;
     for (const marker of orderedMarkers) {
@@ -975,6 +1239,71 @@ describe("migration integrity", () => {
     expect(operations).toContain(
       "Do not re-provision migration-owned grants after migration",
     );
+    expect(operations).toContain(
+      "`migrationAuthorizationReady: false` and stop",
+    );
+  });
+
+  it.each([
+    "canLogin",
+    "inherit",
+    "superuser",
+    "createRole",
+    "createDb",
+    "replication",
+    "bypassRls",
+    "publicSchemaCreate",
+  ] as const)(
+    "fails pre-migration Gate A when a prerequisite principal has incorrect %s",
+    (attribute) => {
+      const catalog = cleanCatalog();
+      const role = catalog.roles!.find(
+        (candidate) => candidate.name === "trainer_app_runtime",
+      )!;
+      role[attribute] = !role[attribute];
+      const result = report({ catalog });
+      expect(result.chain.gateAApplicable).toBe(true);
+      expect(catalog.tables).not.toContain("FinisherExecutionCommand");
+      expect(result.schemaPreflightValid).toBe(false);
+      expect(result.migrationAuthorizationReady).toBe(false);
+    },
+  );
+
+  it.each([
+    [
+      "a missing principal",
+      (catalog: CatalogSnapshot) => {
+        catalog.roles = catalog.roles!.filter(
+          (role) => role.name !== "trainer_finisher_owner",
+        );
+      },
+    ],
+  ] as const)("fails pre-migration Gate A for %s", (_label, mutate) => {
+    const catalog = cleanCatalog();
+    mutate(catalog);
+    const result = report({ catalog });
+    expect(catalog.tables).not.toContain("FinisherExecutionCommand");
+    expect(result.schemaPreflightValid).toBe(false);
+    expect(result.migrationAuthorizationReady).toBe(false);
+  });
+
+  it("fails pre-migration Gate A for wrong or unexpected live memberships", () => {
+    const live = fullPrincipalVerification();
+    live.snapshot.memberships.push({
+      grantedRole: "trainer_finisher_owner",
+      memberRole: "unexpected",
+      grantorRole: "migration_admin",
+      grantorIsBootstrapSuperuser: false,
+      admin: false,
+      inherit: false,
+      set: true,
+    });
+    const result = report({ finisherPrincipalLiveVerification: live });
+    expect(result.principalPrerequisites.verified).toBe(false);
+    expect(result.blockingReasons).toContain(
+      "finisher_principal_live_contract_membership_mismatch",
+    );
+    expect(result.migrationAuthorizationReady).toBe(false);
   });
 
   it.each([
@@ -1291,6 +1620,35 @@ describe("migration integrity", () => {
 
   it.each([
     [
+      "row-level security is unexpectedly enabled",
+      (catalog: CatalogSnapshot) => {
+        catalog.tableSecurity!.find(
+          (table) => table.table === "FinisherExecution",
+        )!.rowSecurity = true;
+      },
+    ],
+    [
+      "enum ownership changes",
+      (catalog: CatalogSnapshot) => {
+        catalog.enums.find(
+          (enumeration) => enumeration.name === "FinisherExecutionState",
+        )!.owner = "trainer_app_runtime";
+      },
+    ],
+    [
+      "PUBLIC receives enum usage",
+      (catalog: CatalogSnapshot) => {
+        catalog.enums.find(
+          (enumeration) => enumeration.name === "FinisherExecutionState",
+        )!.privileges!.push({
+          grantee: "PUBLIC",
+          grantor: "trainer_finisher_owner",
+          privilege: "USAGE",
+          grantable: false,
+        });
+      },
+    ],
+    [
       "cleanup function owner changes",
       (catalog: CatalogSnapshot) => {
         catalog.functions.find(
@@ -1331,7 +1689,10 @@ describe("migration integrity", () => {
           role: "trainer_finisher_cleanup",
           member: "trainer_app_runtime",
           grantor: "trainer",
+          grantorIsBootstrapSuperuser: false,
           adminOption: false,
+          inheritOption: false,
+          setOption: false,
         });
       },
     ],

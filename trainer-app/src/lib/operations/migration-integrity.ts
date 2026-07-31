@@ -5,6 +5,12 @@ import {
   FINISHER_ROUTINE_SEEDS,
   stableFinisherCatalogId,
 } from "../../../prisma/finisher-routine-seed-data";
+import {
+  FINISHER_TARGET_MIGRATION,
+  principalSnapshotContractReasons,
+  type FinisherPrincipalAuditRecord,
+  type FinisherPrincipalSnapshot,
+} from "./finisher-principal-contract";
 
 export const EXPECTED_MIGRATION_CHAIN = [
   "20260222_baseline",
@@ -43,41 +49,52 @@ export type ApplicationCompatibilityState =
   | "incompatible"
   | "unverified";
 
-export type VerificationEvidence = {
-  valid: boolean;
-  verifiedAt: string;
-  repositoryHead?: string;
-  targetFingerprint?: string;
-};
-
-export type RecoveryPointEvidence = {
-  verified: boolean;
-  providerProjectIdentity: string;
-  databaseIdentity: string;
-  recoveryTimestamp: string;
-  retentionConfirmed: boolean;
-  recoverabilityConfirmed: boolean;
-  freshForExecution: boolean;
-  operatorVerifiedAt: string;
-};
-
-export type WriteBoundaryEvidence = {
-  ready: boolean;
-  mechanism: "production-write-gate";
-  verifiedAt: string;
-};
-
 export type MigrationAuthorizationEvidence = {
   repositoryHead: string;
-  productionDeploymentCommit: string;
   requiredApplicationCommit?: string;
-  dataPreflight?: VerificationEvidence;
-  disposablePostgres?: VerificationEvidence;
-  recoveryPoint?: RecoveryPointEvidence;
-  writeBoundary?: WriteBoundaryEvidence;
-  applicationCompatibilityState?: ApplicationCompatibilityState;
-  deploymentVerifiedAt?: string;
   evaluatedAt?: string;
+};
+
+export type LiveFinisherPrincipalVerification = {
+  source: "fresh_live_database_verification";
+  verifiedAt: string;
+  repositoryHead: string;
+  requiredApplicationCommit: string;
+  targetMigration: typeof FINISHER_TARGET_MIGRATION;
+  targetFingerprint: string;
+  projectFingerprint?: string;
+  database: string;
+  credentialProof: "bounded_runtime_authentication" | "unavailable";
+  readOnlyTransaction: true;
+  databaseWrites: 0;
+  snapshot: FinisherPrincipalSnapshot;
+};
+
+export type CanonicalOperationalVerification = {
+  source: "canonical_live_operational_verification";
+  verifiedAt: string;
+  repositoryHead: string;
+  requiredApplicationCommit: string;
+  targetFingerprint: string;
+  projectFingerprint?: string;
+  database: string;
+  deployment: {
+    verified: boolean;
+    commit: string;
+    identity: string;
+    source: "vercel_authenticated_read_only" | "disposable_not_applicable" | "unavailable";
+  };
+  recoveryPoint: {
+    verified: boolean;
+    identity: string;
+    source: "provider_authenticated_read_only" | "disposable_not_applicable" | "unavailable";
+  };
+  writePause: {
+    verified: boolean;
+    identity: string;
+    source: "provider_authenticated_read_only" | "disposable_not_applicable" | "unavailable";
+  };
+  applicationCompatibilityState: ApplicationCompatibilityState;
 };
 
 export type LedgerRow = {
@@ -98,7 +115,12 @@ export type ColumnFact = {
   default: string | null;
 };
 
-export type EnumFact = { name: string; values: string[] };
+export type EnumFact = {
+  name: string;
+  values: string[];
+  owner?: string;
+  privileges?: PrivilegeFact[];
+};
 export type IndexFact = {
   table: string;
   name: string;
@@ -162,6 +184,8 @@ export type TableSecurityFact = {
   table: string;
   owner: string;
   privileges: PrivilegeFact[];
+  rowSecurity?: boolean;
+  forceRowSecurity?: boolean;
 };
 export type ColumnPrivilegeFact = PrivilegeFact & {
   table: string;
@@ -182,7 +206,10 @@ export type RoleMembershipFact = {
   role: string;
   member: string;
   grantor: string;
+  grantorIsBootstrapSuperuser: boolean;
   adminOption: boolean;
+  inheritOption: boolean;
+  setOption: boolean;
 };
 export type DefaultPrivilegeFact = PrivilegeFact & {
   owner: string;
@@ -2021,11 +2048,17 @@ function finisherSecurityIssues(
   snapshot: CatalogSnapshot,
   expectedTables: Set<string>,
   expectedFunctions: Set<string>,
+  requireTerminalMemberships: boolean,
 ): string[] {
-  if (![...expectedTables].every((table) => snapshot.tables.includes(table))) {
-    return [];
-  }
+  const finisherObjectsPresent = [...expectedTables].every((table) =>
+    snapshot.tables.includes(table),
+  );
   const issues: string[] = [];
+  const expectedEnums = new Set(
+    FINISHER_SCHEMA_EXPECTATIONS.filter((item) => item.kind === "enum").map(
+      (item) => item.name,
+    ),
+  );
   const expectedTableGrants: Record<string, string[]> = {
     FinisherRoutine: [`${FINISHER_RUNTIME_ROLE}:SELECT:plain`],
     FinisherRoutineVersion: [`${FINISHER_RUNTIME_ROLE}:SELECT:plain`],
@@ -2061,7 +2094,7 @@ function finisherSecurityIssues(
     ],
   };
 
-  for (const table of expectedTables) {
+  for (const table of finisherObjectsPresent ? expectedTables : []) {
     const security = snapshot.tableSecurity?.find(
       (item) => item.table === table,
     );
@@ -2072,6 +2105,11 @@ function finisherSecurityIssues(
     if (security.owner !== FINISHER_OWNER_ROLE) {
       issues.push(`table-owner:${table}:${security.owner}`);
     }
+    if (security.rowSecurity !== false || security.forceRowSecurity !== false) {
+      issues.push(
+        `table-rls:${table}:${String(security.rowSecurity)}:${String(security.forceRowSecurity)}`,
+      );
+    }
     const actual = privilegeKeys(security.privileges, FINISHER_OWNER_ROLE);
     const expected = [...(expectedTableGrants[table] ?? [])].sort();
     if (canonicalJson(actual) !== canonicalJson(expected)) {
@@ -2079,25 +2117,46 @@ function finisherSecurityIssues(
     }
   }
 
-  const protectedColumnGrants = (snapshot.columnPrivileges ?? [])
-    .filter((item) => expectedTables.has(item.table))
-    .map(
-      (item) =>
-        `${item.table}.${item.column}:${item.grantee}:${item.privilege}:${
-          item.grantable ? "grantable" : "plain"
-        }`,
-    )
-    .sort();
-  const expectedColumnGrants = [
-    `FinisherExecutionCommand.cleanedAt:${FINISHER_CLEANUP_ROLE}:UPDATE:plain`,
-    `FinisherExecutionCommand.response:${FINISHER_CLEANUP_ROLE}:UPDATE:plain`,
-  ].sort();
-  if (
-    canonicalJson(protectedColumnGrants) !== canonicalJson(expectedColumnGrants)
-  ) {
-    issues.push(
-      `column-privileges:${protectedColumnGrants.join(",") || "missing"}`,
-    );
+  if (finisherObjectsPresent) {
+    const protectedColumnGrants = (snapshot.columnPrivileges ?? [])
+      .filter((item) => expectedTables.has(item.table))
+      .map(
+        (item) =>
+          `${item.table}.${item.column}:${item.grantee}:${item.privilege}:${
+            item.grantable ? "grantable" : "plain"
+          }`,
+      )
+      .sort();
+    const expectedColumnGrants = [
+      `FinisherExecutionCommand.cleanedAt:${FINISHER_CLEANUP_ROLE}:UPDATE:plain`,
+      `FinisherExecutionCommand.response:${FINISHER_CLEANUP_ROLE}:UPDATE:plain`,
+    ].sort();
+    if (
+      canonicalJson(protectedColumnGrants) !==
+      canonicalJson(expectedColumnGrants)
+    ) {
+      issues.push(
+        `column-privileges:${protectedColumnGrants.join(",") || "missing"}`,
+      );
+    }
+  }
+
+  if (finisherObjectsPresent) {
+    for (const enumName of expectedEnums) {
+      const enumFact = snapshot.enums.find((item) => item.name === enumName);
+      if (!enumFact || enumFact.owner == null || enumFact.privileges == null) {
+        issues.push(`enum-security:${enumName}:unverifiable`);
+        continue;
+      }
+      if (enumFact.owner !== FINISHER_OWNER_ROLE) {
+        issues.push(`enum-owner:${enumName}:${enumFact.owner}`);
+      }
+      const actual = privilegeKeys(enumFact.privileges, FINISHER_OWNER_ROLE);
+      const expected = [`${FINISHER_RUNTIME_ROLE}:USAGE:plain`];
+      if (canonicalJson(actual) !== canonicalJson(expected)) {
+        issues.push(`enum-privileges:${enumName}:${actual.join(",")}`);
+      }
+    }
   }
 
   for (const fn of snapshot.functions) {
@@ -2160,7 +2219,7 @@ function finisherSecurityIssues(
       createDb: false,
       replication: false,
       bypassRls: false,
-      publicSchemaCreate: false,
+      publicSchemaCreate: !requireTerminalMemberships,
     },
     [FINISHER_CLEANUP_ROLE]: {
       canLogin: false,
@@ -2170,7 +2229,7 @@ function finisherSecurityIssues(
       createDb: false,
       replication: false,
       bypassRls: false,
-      publicSchemaCreate: false,
+      publicSchemaCreate: !requireTerminalMemberships,
     },
   };
   for (const [name, expected] of Object.entries(expectedRoleAttributes)) {
@@ -2195,11 +2254,36 @@ function finisherSecurityIssues(
   }
 
   const protectedRoles = new Set(Object.keys(expectedRoleAttributes));
-  for (const membership of snapshot.roleMemberships ?? []) {
-    if (
+  const protectedMemberships = (snapshot.roleMemberships ?? []).filter(
+    (membership) =>
       protectedRoles.has(membership.role) ||
-      protectedRoles.has(membership.member)
-    ) {
+      protectedRoles.has(membership.member),
+  );
+  const expectedAutomaticRoles = [...protectedRoles].sort();
+  const observedAutomaticRoles = protectedMemberships
+    .map((membership) => membership.role)
+    .sort();
+  const administratorMembers = new Set(
+    protectedMemberships.map((membership) => membership.member),
+  );
+  if (
+    requireTerminalMemberships &&
+    (
+    canonicalJson(observedAutomaticRoles) !==
+      canonicalJson(expectedAutomaticRoles) ||
+    administratorMembers.size !== 1)
+  ) {
+    issues.push("role-membership:terminal-automatic-set");
+  }
+  for (const membership of requireTerminalMemberships ? protectedMemberships : []) {
+    const exactAutomaticMembership =
+      protectedRoles.has(membership.role) &&
+      !protectedRoles.has(membership.member) &&
+      membership.grantorIsBootstrapSuperuser &&
+      membership.adminOption &&
+      !membership.inheritOption &&
+      !membership.setOption;
+    if (!exactAutomaticMembership) {
       issues.push(
         `role-membership:${membership.member}->${membership.role}`,
       );
@@ -2251,7 +2335,10 @@ function finisherSecurityIssues(
   return issues.sort();
 }
 
-function unexpectedFinisherOwnedObjects(snapshot: CatalogSnapshot): string[] {
+function unexpectedFinisherOwnedObjects(
+  snapshot: CatalogSnapshot,
+  requireTerminalMemberships: boolean,
+): string[] {
   const expectedTables = new Set(Object.keys(FINISHER_TABLE_COLUMNS));
   const expectedColumns = new Set(
     FINISHER_SCHEMA_EXPECTATIONS.filter((item) => item.kind === "column").map(
@@ -2349,7 +2436,12 @@ function unexpectedFinisherOwnedObjects(snapshot: CatalogSnapshot): string[] {
     if (!expectedRows.has(key)) unexpected.push(key);
   }
   unexpected.push(
-    ...finisherSecurityIssues(snapshot, expectedTables, expectedFunctions),
+    ...finisherSecurityIssues(
+      snapshot,
+      expectedTables,
+      expectedFunctions,
+      requireTerminalMemberships,
+    ),
   );
   return unexpected.sort();
 }
@@ -2531,12 +2623,20 @@ function expectedPendingSequenceValid(
 }
 
 export function buildMigrationIntegrityReport(input: {
-  target: { classification: "local" | "disposable" | "remote"; fingerprint: string };
+  target: {
+    classification: "local" | "disposable" | "remote";
+    fingerprint: string;
+    projectFingerprint?: string;
+    database?: string;
+  };
   checkedIn: CheckedInMigration[];
   ledgerRows: LedgerRow[];
   catalog: CatalogSnapshot;
   writes?: number;
   authorizationEvidence?: MigrationAuthorizationEvidence;
+  finisherPrincipalLiveVerification?: LiveFinisherPrincipalVerification;
+  finisherPrincipalAuditRecord?: FinisherPrincipalAuditRecord;
+  operationalVerification?: CanonicalOperationalVerification;
 }) {
   const checkedInNames = input.checkedIn.map((migration) => migration.name);
   const checkedInByName = new Map(input.checkedIn.map((migration) => [migration.name, migration]));
@@ -2656,7 +2756,10 @@ export function buildMigrationIntegrityReport(input: {
   const definitionIssues = APPLIED_SCHEMA_EXPECTATIONS.map((expected) => definitionIssue(input.catalog, expected)).filter((issue): issue is string => Boolean(issue));
   incompatible.push(...definitionIssues.filter((issue) => issue.includes(":incompatible")));
   const missingDefinitions = definitionIssues.filter((issue) => issue.endsWith(":missing"));
-  const unexpectedOwnedObjects = unexpectedFinisherOwnedObjects(input.catalog);
+  const unexpectedOwnedObjects = unexpectedFinisherOwnedObjects(
+    input.catalog,
+    appliedNames.has(MIGRATION_AUTHORIZATION_POLICY.targetMigration),
+  );
   const uniquenessAssessments = BASELINE_UNIQUENESS_EXPECTATIONS.map((expected) => assessBaselineUniqueness(input.catalog, expected));
   const uniquenessBlockingDifferences = uniquenessAssessments
     .filter((assessment) => assessment.migrationBlocking)
@@ -2756,7 +2859,10 @@ export function buildMigrationIntegrityReport(input: {
   const writes = input.writes ?? 0;
   const exactChain = JSON.stringify(checkedInNames) === JSON.stringify(EXPECTED_MIGRATION_CHAIN);
   const evidence = input.authorizationEvidence;
-  const evaluatedAt = evidence?.evaluatedAt ?? new Date().toISOString();
+  const evaluatedAt =
+    input.operationalVerification?.verifiedAt ??
+    input.finisherPrincipalLiveVerification?.verifiedAt ??
+    new Date().toISOString();
   const expectedPendingMigrations: string[] = [
     ...MIGRATION_AUTHORIZATION_POLICY.expectedPendingMigrations,
   ];
@@ -2776,8 +2882,8 @@ export function buildMigrationIntegrityReport(input: {
   const schemaClean = blockingDifferences.length === 0;
   const gateAApplicable = pendingNames.length > 0;
   const repositoryHead = evidence?.repositoryHead ?? "";
-  const productionDeploymentCommit =
-    evidence?.productionDeploymentCommit ?? "";
+  const operational = input.operationalVerification;
+  const productionDeploymentCommit = operational?.deployment.commit ?? "";
   const requiredApplicationCommit =
     evidence?.requiredApplicationCommit ?? "";
   const repositoryHeadIdentified = isFullCommitSha(repositoryHead);
@@ -2807,42 +2913,86 @@ export function buildMigrationIntegrityReport(input: {
     exactChain &&
     pendingSequenceConfigured &&
     checkedInNames.includes(MIGRATION_AUTHORIZATION_POLICY.targetMigration);
-  const dataPreflightValid = Boolean(
-    evidence?.dataPreflight?.valid &&
-      evidence.dataPreflight.targetFingerprint === input.target.fingerprint &&
-      isFreshEvidenceTimestamp(
-        evidence.dataPreflight.verifiedAt,
-        evaluatedAt,
-      ),
-  );
-  const disposablePostgresVerified = Boolean(
-    evidence?.disposablePostgres?.valid &&
-      evidence.disposablePostgres.repositoryHead === repositoryHead,
-  );
-  const recovery = evidence?.recoveryPoint;
+  // This migration is additive and does not rewrite pre-existing rows. Its data
+  // preflight is therefore the freshly inspected clean schema/pending state,
+  // never a caller-provided assertion.
+  const dataPreflightValid = schemaClean && writes === 0;
+  // A disposable target is the only environment this command can itself prove
+  // exercised the migration. Remote verification must come from an authenticated
+  // operational seam; audit JSON is deliberately unable to assert this fact.
+  const disposablePostgresVerified = input.target.classification === "disposable";
   const recoveryPointVerified = Boolean(
-    recovery?.verified &&
-      recovery.providerProjectIdentity.trim() &&
-      recovery.databaseIdentity.trim() &&
-      Date.parse(recovery.recoveryTimestamp) <= Date.parse(evaluatedAt) &&
-      recovery.retentionConfirmed &&
-      recovery.recoverabilityConfirmed &&
-      recovery.freshForExecution &&
-      isFreshEvidenceTimestamp(recovery.operatorVerifiedAt, evaluatedAt),
+    operational?.source === "canonical_live_operational_verification" &&
+      operational.recoveryPoint.verified &&
+      operational.recoveryPoint.source !== "unavailable" &&
+      operational.recoveryPoint.identity.trim() &&
+      isFreshEvidenceTimestamp(operational.verifiedAt, evaluatedAt),
   );
   const writeBoundaryReady = Boolean(
-    evidence?.writeBoundary?.ready &&
-      evidence.writeBoundary.mechanism === "production-write-gate" &&
-      isFreshEvidenceTimestamp(
-        evidence.writeBoundary.verifiedAt,
-        evaluatedAt,
-      ),
+    operational?.source === "canonical_live_operational_verification" &&
+      operational.writePause.verified &&
+      operational.writePause.source !== "unavailable" &&
+      operational.writePause.identity.trim() &&
+      isFreshEvidenceTimestamp(operational.verifiedAt, evaluatedAt),
   );
   const applicationCompatibilityState =
-    evidence?.applicationCompatibilityState ?? "unverified";
+    operational?.applicationCompatibilityState ?? "unverified";
   const productionDeploymentVerified =
     applicationCommitBindingVerified &&
-    isFreshEvidenceTimestamp(evidence?.deploymentVerifiedAt, evaluatedAt);
+    operational?.source === "canonical_live_operational_verification" &&
+    operational.deployment.verified &&
+    operational.deployment.source !== "unavailable" &&
+    operational.repositoryHead === repositoryHead &&
+    operational.requiredApplicationCommit === requiredApplicationCommit &&
+    operational.targetFingerprint === input.target.fingerprint &&
+    (input.target.projectFingerprint == null ||
+      operational.projectFingerprint === input.target.projectFingerprint) &&
+    operational.database === input.target.database &&
+    isFreshEvidenceTimestamp(operational.verifiedAt, evaluatedAt);
+  const principalLive = input.finisherPrincipalLiveVerification;
+  const principalReasons: string[] = [];
+  if (!principalLive) {
+    principalReasons.push("missing_live_verification");
+  } else {
+    if (
+      principalLive.source !== "fresh_live_database_verification" ||
+      principalLive.repositoryHead !== repositoryHead ||
+      principalLive.requiredApplicationCommit !== requiredApplicationCommit ||
+      principalLive.targetMigration !== FINISHER_TARGET_MIGRATION
+    ) {
+      principalReasons.push("commit_or_migration_binding_mismatch");
+    }
+    if (
+      principalLive.targetFingerprint !== input.target.fingerprint ||
+      (input.target.projectFingerprint != null &&
+        principalLive.projectFingerprint !== input.target.projectFingerprint) ||
+      principalLive.database !== input.target.database
+    ) {
+      principalReasons.push("target_mismatch");
+    }
+    if (
+      !isFreshEvidenceTimestamp(principalLive.verifiedAt, evaluatedAt)
+    ) {
+      principalReasons.push("stale_or_invalid_timestamp");
+    }
+    if (
+      principalLive.credentialProof !== "bounded_runtime_authentication"
+    ) {
+      principalReasons.push("runtime_credential_not_verified");
+    }
+    if (
+      principalLive.readOnlyTransaction !== true ||
+      principalLive.databaseWrites !== 0
+    ) {
+      principalReasons.push("writes_reported");
+    }
+    principalReasons.push(
+      ...principalSnapshotContractReasons(principalLive.snapshot).map(
+        (reason) => `contract_${reason}`,
+      ),
+    );
+  }
+  const principalVerificationValid = principalReasons.length === 0;
   const migrationOrderValid =
     orderViolations.length === 0 && pendingSequenceConfigured;
   const migrationChecksumsValid = checksumsClean;
@@ -2861,6 +3011,7 @@ export function buildMigrationIntegrityReport(input: {
     writes === 0;
   const migrationAuthorizationReady =
     technicalMigrationReady &&
+    principalVerificationValid &&
     repositoryHeadIdentified &&
     productionDeploymentCommitIdentified &&
     requiredApplicationCommitIdentified &&
@@ -2884,13 +3035,20 @@ export function buildMigrationIntegrityReport(input: {
   if (!gateAApplicable) blockingReasons.push("no_pending_migration");
   if (!exactChain) blockingReasons.push("repository_migration_chain_mismatch");
   if (!migrationTargetIdentified) blockingReasons.push("migration_target_not_identified");
-  if (!exactPending) blockingReasons.push("pending_migration_sequence_mismatch");
+  if (gateAApplicable && !exactPending) blockingReasons.push("pending_migration_sequence_mismatch");
   if (!ledgerClean) blockingReasons.push("migration_ledger_not_clean");
   if (!migrationOrderValid) blockingReasons.push("migration_order_invalid");
   if (!migrationChecksumsValid) blockingReasons.push("migration_checksum_drift");
   if (!schemaPreflightValid) blockingReasons.push("schema_preflight_invalid");
-  if (!dataPreflightValid) blockingReasons.push("data_preflight_invalid_or_stale");
+  if (gateAApplicable && !dataPreflightValid) blockingReasons.push("data_preflight_invalid_or_stale");
   if (!disposablePostgresVerified) blockingReasons.push("disposable_postgres_verification_missing");
+  if (!principalVerificationValid) {
+    blockingReasons.push(
+      ...principalReasons.map(
+        (reason) => `finisher_principal_live_${reason}`,
+      ),
+    );
+  }
   if (writes !== 0) blockingReasons.push("inspection_writes_detected");
   if (!repositoryHeadIdentified) blockingReasons.push("repository_head_not_identified");
   if (!productionDeploymentCommitIdentified) {
@@ -2971,6 +3129,21 @@ export function buildMigrationIntegrityReport(input: {
     blockingReasons,
     warnings,
     target: input.target,
+    principalPrerequisites: {
+      verified: principalVerificationValid,
+      reasons: principalReasons,
+      verifier:
+        principalLive?.source ??
+        "missing",
+      verifiedAt:
+        principalLive?.verifiedAt ?? null,
+      verificationWrites:
+        principalLive?.databaseWrites ?? null,
+      credentialProof: principalLive?.credentialProof ?? null,
+      auditRecordAuthority:
+        input.finisherPrincipalAuditRecord?.authority ?? null,
+      auditRecordUsedForAuthorization: false,
+    },
     chain: {
       checkedIn: checkedInNames.length,
       applied: appliedNames.size,

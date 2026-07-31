@@ -441,11 +441,13 @@ provider-evidence byte identity.
 
 All operational verification timestamps, the disposable completion, recovery
 checkpoint/resource creation, and effective pause establishment must be no more
-than 30 minutes old and not in the future. Required order is: READY production deployment,
-completed exact-head disposable run, authorized recovery action, completed
-recovery resource verification, observed write-pause initiation, active paused
-deployment, runtime pause verification, then Gate A. A later matching migration
-file does not make evidence from another commit reusable.
+than 30 minutes old and not in the future. Required order is: authenticated READY
+production deployment verification, completed authenticated exact-head disposable
+verification, separately authorized recovery creation, completed recovery resource
+verification, separately authorized write-pause initiation and paused exact-commit
+redeployment, effective runtime pause verification, immediate production preflight
+and principal verification, then Gate A. A later matching migration file does not
+make evidence from another commit reusable.
 
 ##### Canonical disposable verification
 

@@ -5,6 +5,10 @@ import {
   FINISHER_ROUTINE_SEEDS,
   stableFinisherCatalogId,
 } from "../../../prisma/finisher-routine-seed-data";
+import {
+  verifyPrincipalEvidenceForGate,
+  type FinisherPrincipalVerificationEvidence,
+} from "./finisher-principal-contract";
 
 export const EXPECTED_MIGRATION_CHAIN = [
   "20260222_baseline",
@@ -2022,9 +2026,9 @@ function finisherSecurityIssues(
   expectedTables: Set<string>,
   expectedFunctions: Set<string>,
 ): string[] {
-  if (![...expectedTables].every((table) => snapshot.tables.includes(table))) {
-    return [];
-  }
+  const finisherObjectsPresent = [...expectedTables].every((table) =>
+    snapshot.tables.includes(table),
+  );
   const issues: string[] = [];
   const expectedTableGrants: Record<string, string[]> = {
     FinisherRoutine: [`${FINISHER_RUNTIME_ROLE}:SELECT:plain`],
@@ -2061,7 +2065,7 @@ function finisherSecurityIssues(
     ],
   };
 
-  for (const table of expectedTables) {
+  for (const table of finisherObjectsPresent ? expectedTables : []) {
     const security = snapshot.tableSecurity?.find(
       (item) => item.table === table,
     );
@@ -2079,25 +2083,28 @@ function finisherSecurityIssues(
     }
   }
 
-  const protectedColumnGrants = (snapshot.columnPrivileges ?? [])
-    .filter((item) => expectedTables.has(item.table))
-    .map(
-      (item) =>
-        `${item.table}.${item.column}:${item.grantee}:${item.privilege}:${
-          item.grantable ? "grantable" : "plain"
-        }`,
-    )
-    .sort();
-  const expectedColumnGrants = [
-    `FinisherExecutionCommand.cleanedAt:${FINISHER_CLEANUP_ROLE}:UPDATE:plain`,
-    `FinisherExecutionCommand.response:${FINISHER_CLEANUP_ROLE}:UPDATE:plain`,
-  ].sort();
-  if (
-    canonicalJson(protectedColumnGrants) !== canonicalJson(expectedColumnGrants)
-  ) {
-    issues.push(
-      `column-privileges:${protectedColumnGrants.join(",") || "missing"}`,
-    );
+  if (finisherObjectsPresent) {
+    const protectedColumnGrants = (snapshot.columnPrivileges ?? [])
+      .filter((item) => expectedTables.has(item.table))
+      .map(
+        (item) =>
+          `${item.table}.${item.column}:${item.grantee}:${item.privilege}:${
+            item.grantable ? "grantable" : "plain"
+          }`,
+      )
+      .sort();
+    const expectedColumnGrants = [
+      `FinisherExecutionCommand.cleanedAt:${FINISHER_CLEANUP_ROLE}:UPDATE:plain`,
+      `FinisherExecutionCommand.response:${FINISHER_CLEANUP_ROLE}:UPDATE:plain`,
+    ].sort();
+    if (
+      canonicalJson(protectedColumnGrants) !==
+      canonicalJson(expectedColumnGrants)
+    ) {
+      issues.push(
+        `column-privileges:${protectedColumnGrants.join(",") || "missing"}`,
+      );
+    }
   }
 
   for (const fn of snapshot.functions) {
@@ -2531,12 +2538,19 @@ function expectedPendingSequenceValid(
 }
 
 export function buildMigrationIntegrityReport(input: {
-  target: { classification: "local" | "disposable" | "remote"; fingerprint: string };
+  target: {
+    classification: "local" | "disposable" | "remote";
+    fingerprint: string;
+    projectFingerprint?: string;
+    database?: string;
+  };
   checkedIn: CheckedInMigration[];
   ledgerRows: LedgerRow[];
   catalog: CatalogSnapshot;
   writes?: number;
   authorizationEvidence?: MigrationAuthorizationEvidence;
+  finisherPrincipalEvidence?: FinisherPrincipalVerificationEvidence;
+  finisherPrincipalEvidenceKey?: string;
 }) {
   const checkedInNames = input.checkedIn.map((migration) => migration.name);
   const checkedInByName = new Map(input.checkedIn.map((migration) => [migration.name, migration]));
@@ -2843,6 +2857,16 @@ export function buildMigrationIntegrityReport(input: {
   const productionDeploymentVerified =
     applicationCommitBindingVerified &&
     isFreshEvidenceTimestamp(evidence?.deploymentVerifiedAt, evaluatedAt);
+  const principalEvidence = verifyPrincipalEvidenceForGate({
+    evidence: input.finisherPrincipalEvidence,
+    signingKey: input.finisherPrincipalEvidenceKey,
+    repositoryHead,
+    requiredApplicationCommit,
+    target: input.target,
+    evaluatedAt,
+    maxAgeMinutes:
+      MIGRATION_AUTHORIZATION_POLICY.operationalEvidenceMaxAgeMinutes,
+  });
   const migrationOrderValid =
     orderViolations.length === 0 && pendingSequenceConfigured;
   const migrationChecksumsValid = checksumsClean;
@@ -2861,6 +2885,7 @@ export function buildMigrationIntegrityReport(input: {
     writes === 0;
   const migrationAuthorizationReady =
     technicalMigrationReady &&
+    principalEvidence.valid &&
     repositoryHeadIdentified &&
     productionDeploymentCommitIdentified &&
     requiredApplicationCommitIdentified &&
@@ -2891,6 +2916,13 @@ export function buildMigrationIntegrityReport(input: {
   if (!schemaPreflightValid) blockingReasons.push("schema_preflight_invalid");
   if (!dataPreflightValid) blockingReasons.push("data_preflight_invalid_or_stale");
   if (!disposablePostgresVerified) blockingReasons.push("disposable_postgres_verification_missing");
+  if (!principalEvidence.valid) {
+    blockingReasons.push(
+      ...principalEvidence.reasons.map(
+        (reason) => `finisher_principal_evidence_${reason}`,
+      ),
+    );
+  }
   if (writes !== 0) blockingReasons.push("inspection_writes_detected");
   if (!repositoryHeadIdentified) blockingReasons.push("repository_head_not_identified");
   if (!productionDeploymentCommitIdentified) {
@@ -2971,6 +3003,17 @@ export function buildMigrationIntegrityReport(input: {
     blockingReasons,
     warnings,
     target: input.target,
+    principalPrerequisites: {
+      verified: principalEvidence.valid,
+      reasons: principalEvidence.reasons,
+      verifier:
+        input.finisherPrincipalEvidence?.verifier ??
+        "missing",
+      verifiedAt:
+        input.finisherPrincipalEvidence?.verifiedAt ?? null,
+      verificationWrites:
+        input.finisherPrincipalEvidence?.databaseWrites ?? null,
+    },
     chain: {
       checkedIn: checkedInNames.length,
       applied: appliedNames.size,

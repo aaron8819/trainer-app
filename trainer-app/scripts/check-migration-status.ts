@@ -8,6 +8,12 @@ import {
   loadCheckedInMigrations,
   type MigrationAuthorizationEvidence,
 } from "@/lib/operations/migration-integrity";
+import {
+  FINISHER_PRINCIPAL_EVIDENCE_KEY_VARIABLE,
+  parsePrincipalVerificationEvidence,
+  projectFingerprint,
+  type FinisherPrincipalVerificationEvidence,
+} from "@/lib/operations/finisher-principal-contract";
 import { inspectMigrationDatabase } from "@/lib/operations/migration-integrity-postgres";
 import {
   classifyRolloutTarget,
@@ -38,6 +44,11 @@ function loadAuthorizationEvidence(
       "Migration authorization evidence cannot define repository migration policy.",
     );
   }
+  if ("finisherPrincipals" in supplied) {
+    throw new Error(
+      "Finisher principal claims must come from --principal-evidence-file.",
+    );
+  }
   const repositoryHead = execFileSync("git", ["rev-parse", "HEAD"], {
     encoding: "utf8",
   }).trim();
@@ -49,13 +60,32 @@ function loadAuthorizationEvidence(
   };
 }
 
+function loadPrincipalEvidence(
+  argv: string[],
+): FinisherPrincipalVerificationEvidence | undefined {
+  const flagIndex = argv.indexOf("--principal-evidence-file");
+  const evidencePath = flagIndex >= 0 ? argv[flagIndex + 1] : undefined;
+  if (!evidencePath) return undefined;
+  try {
+    return parsePrincipalVerificationEvidence(
+      JSON.parse(readFileSync(resolve(evidencePath), "utf8")) as unknown,
+    );
+  } catch {
+    throw new Error("Finisher principal evidence is malformed.");
+  }
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   await runWithRolloutEnvironment(
     {
       argv,
       allowWrite: false,
-      requiredVariables: ["DATABASE_URL", "DIRECT_URL"],
+      requiredVariables: [
+        "DATABASE_URL",
+        "DIRECT_URL",
+        FINISHER_PRINCIPAL_EVIDENCE_KEY_VARIABLE,
+      ],
     },
     async (environment) => {
       const directUrl = process.env.DIRECT_URL;
@@ -73,10 +103,26 @@ async function main(): Promise<void> {
         await client.connect();
         const inspection = await inspectMigrationDatabase(client);
         const authorizationEvidence = loadAuthorizationEvidence(argv);
+        const finisherPrincipalEvidence = loadPrincipalEvidence(argv);
+        const directTarget = new URL(directUrl);
+        const projectReference =
+          /^db\.([a-z0-9]{20})\.supabase\.co$/i.exec(
+            directTarget.hostname,
+          )?.[1] ?? (directTargetClass === "disposable" ? "disposable" : "");
         const report = buildMigrationIntegrityReport({
-          target: { classification: directTargetClass, fingerprint: fingerprint(directUrl) },
+          target: {
+            classification: directTargetClass,
+            fingerprint: fingerprint(directUrl),
+            projectFingerprint: projectReference
+              ? projectFingerprint(projectReference)
+              : undefined,
+            database: directTarget.pathname.replace(/^\//, ""),
+          },
           checkedIn: loadCheckedInMigrations(),
           authorizationEvidence,
+          finisherPrincipalEvidence,
+          finisherPrincipalEvidenceKey:
+            process.env[FINISHER_PRINCIPAL_EVIDENCE_KEY_VARIABLE],
           ...inspection,
         });
         console.log(
@@ -113,6 +159,7 @@ main().catch((error) => {
     message.startsWith("DATABASE_URL and DIRECT_URL") ||
     message.startsWith("Gate A migration integrity") ||
     message.startsWith("Migration authorization evidence") ||
+    message.startsWith("Finisher principal evidence") ||
     message.startsWith("Missing required --env-file")
       ? message
       : "Migration integrity inspection failed. Run ops:check-direct-db for the sanitized connection classification.";

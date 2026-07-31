@@ -19,6 +19,26 @@ const authorizationEvidenceFile = join(
   tmpdir(),
   `${containerName}-authorization-evidence.json`,
 );
+const principalProvisionEvidenceFile = join(
+  tmpdir(),
+  `${containerName}-principal-provision.json`,
+);
+const principalVerificationEvidenceFile = join(
+  tmpdir(),
+  `${containerName}-principal-verification.json`,
+);
+const principalRepeatEvidenceFile = join(
+  tmpdir(),
+  `${containerName}-principal-repeat.json`,
+);
+const principalPartialEvidenceFile = join(
+  tmpdir(),
+  `${containerName}-principal-partial.json`,
+);
+const principalWrongTargetEvidenceFile = join(
+  tmpdir(),
+  `${containerName}-principal-wrong-target.json`,
+);
 const preMigrationCount = 10;
 const currentProductionAppliedCount = 17;
 const targetMigration = "20260728120000_add_finishers_phase_1";
@@ -79,21 +99,6 @@ function psql(sql: string, tuplesOnly = false): string {
   if (tuplesOnly) args.push("-tA");
   const result = requireSuccess(run("docker", args, { input: sql, quiet: true }), "psql");
   return result.stdout.trim();
-}
-
-function provisionFinisherRoles(): void {
-  psql(`
-    CREATE ROLE trainer_app_runtime
-      LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
-      NOREPLICATION NOBYPASSRLS
-      PASSWORD 'trainer-app-runtime';
-    CREATE ROLE trainer_finisher_owner
-      NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
-      NOREPLICATION NOBYPASSRLS;
-    CREATE ROLE trainer_finisher_cleanup
-      NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
-      NOREPLICATION NOBYPASSRLS;
-  `);
 }
 
 function migrationDirectories(): string[] {
@@ -187,7 +192,12 @@ function parseLastJson(stdout: string): Record<string, unknown> {
 function cli(script: string, args: string[]): Record<string, unknown> {
   const evidenceArgs =
     script === "scripts/check-migration-status.ts"
-      ? ["--evidence-file", authorizationEvidenceFile]
+      ? [
+          "--evidence-file",
+          authorizationEvidenceFile,
+          "--principal-evidence-file",
+          principalVerificationEvidenceFile,
+        ]
       : [];
   const result = requireSuccess(
     run(process.execPath, [join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs"), script, "--env-file", envFile, "--confirm-disposable", ...evidenceArgs, ...args], { quiet: true }),
@@ -202,7 +212,12 @@ function cli(script: string, args: string[]): Record<string, unknown> {
 function cliWithExpectedStatus(script: string, args: string[], expectedStatus: number): Record<string, unknown> {
   const evidenceArgs =
     script === "scripts/check-migration-status.ts"
-      ? ["--evidence-file", authorizationEvidenceFile]
+      ? [
+          "--evidence-file",
+          authorizationEvidenceFile,
+          "--principal-evidence-file",
+          principalVerificationEvidenceFile,
+        ]
       : [];
   const result = run(
     process.execPath,
@@ -649,16 +664,259 @@ try {
     "postgres:16-alpine",
   ], { quiet: true }), "docker run");
   waitForPostgres();
-  provisionFinisherRoles();
   const port = requireSuccess(run("docker", ["port", containerName, "5432/tcp"], { quiet: true }), "docker port")
     .stdout.trim().split(":").at(-1);
   if (!port) throw new Error("DISPOSABLE_ROLLOUT_POSTGRES_PORT_NOT_FOUND");
   const disposableUrl = `postgresql://trainer:trainer-rollout@127.0.0.1:${port}/trainer`;
-  writeFileSync(envFile, `DATABASE_URL=${disposableUrl}\nDIRECT_URL=${disposableUrl}\n`);
+  writeFileSync(
+    envFile,
+    `DATABASE_URL=${disposableUrl}\nDIRECT_URL=${disposableUrl}\n` +
+      "TRAINER_FINISHER_PRINCIPAL_EVIDENCE_KEY=disposable-principal-evidence-key-32\n",
+  );
   const repositoryHead = requireSuccess(
     run("git", ["rev-parse", "HEAD"], { quiet: true }),
     "git rev-parse HEAD",
   ).stdout.trim();
+  const principalCommand = join(
+    process.cwd(),
+    "node_modules",
+    "tsx",
+    "dist",
+    "cli.mjs",
+  );
+  const principalCommonArgs = [
+    "scripts/manage-finisher-principals.ts",
+    "--env-file",
+    envFile,
+    "--environment",
+    "disposable",
+    "--expected-project-reference",
+    "disposable",
+    "--expected-database",
+    "trainer",
+    "--required-application-commit",
+    repositoryHead,
+    "--confirm-disposable",
+  ];
+  requireSuccess(
+    run(
+      process.execPath,
+      [
+        principalCommand,
+        ...principalCommonArgs,
+        "--mode",
+        "provision",
+        "--write",
+        "--confirm-principal-provisioning",
+        "trainer-principals:disposable",
+        "--evidence-file",
+        principalProvisionEvidenceFile,
+      ],
+      {
+        quiet: true,
+        env: { TRAINER_APP_RUNTIME_PASSWORD: "trainer-app-runtime" },
+      },
+    ),
+    "canonical principal provisioning",
+  );
+  const cleanProvisionEvidence = JSON.parse(
+    readFileSync(principalProvisionEvidenceFile, "utf8"),
+  ) as Record<string, unknown>;
+  if (
+    cleanProvisionEvidence.databaseWrites !== 4 ||
+    cleanProvisionEvidence.credentialConfigured !== true ||
+    arrayField(cleanProvisionEvidence, "createdPrincipals").length !== 3
+  ) {
+    throw new Error(
+      `Clean principal provisioning was incomplete: ${JSON.stringify(cleanProvisionEvidence)}`,
+    );
+  }
+  psql(`
+    DROP ROLE trainer_finisher_cleanup;
+    DROP ROLE trainer_finisher_owner;
+    DROP ROLE trainer_app_runtime;
+    CREATE ROLE trainer_app_runtime
+      LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+      NOREPLICATION NOBYPASSRLS PASSWORD 'trainer-app-runtime';
+  `);
+  requireSuccess(
+    run(
+      process.execPath,
+      [
+        principalCommand,
+        ...principalCommonArgs,
+        "--mode",
+        "provision",
+        "--write",
+        "--confirm-principal-provisioning",
+        "trainer-principals:disposable",
+        "--evidence-file",
+        principalPartialEvidenceFile,
+      ],
+      {
+        quiet: true,
+        env: { TRAINER_APP_RUNTIME_PASSWORD: "trainer-app-runtime" },
+      },
+    ),
+    "partial principal provisioning",
+  );
+  const partialEvidence = JSON.parse(
+    readFileSync(principalPartialEvidenceFile, "utf8"),
+  ) as Record<string, unknown>;
+  if (
+    partialEvidence.databaseWrites !== 2 ||
+    partialEvidence.credentialConfigured !== false ||
+    arrayField(partialEvidence, "createdPrincipals").length !== 2
+  ) {
+    throw new Error(
+      `Partial principal provisioning was not exact: ${JSON.stringify(partialEvidence)}`,
+    );
+  }
+  requireSuccess(
+    run(
+      process.execPath,
+      [
+        principalCommand,
+        ...principalCommonArgs,
+        "--mode",
+        "provision",
+        "--write",
+        "--confirm-principal-provisioning",
+        "trainer-principals:disposable",
+        "--evidence-file",
+        principalRepeatEvidenceFile,
+      ],
+      {
+        quiet: true,
+        env: { TRAINER_APP_RUNTIME_PASSWORD: "trainer-app-runtime" },
+      },
+    ),
+    "idempotent principal provisioning",
+  );
+  const repeatEvidence = JSON.parse(
+    readFileSync(principalRepeatEvidenceFile, "utf8"),
+  ) as Record<string, unknown>;
+  if (
+    repeatEvidence.databaseWrites !== 0 ||
+    repeatEvidence.credentialConfigured !== false ||
+    arrayField(repeatEvidence, "createdPrincipals").length !== 0
+  ) {
+    throw new Error(
+      `Repeated principal provisioning was not idempotent: ${JSON.stringify(repeatEvidence)}`,
+    );
+  }
+  requireSuccess(
+    run(
+      process.execPath,
+      [
+        principalCommand,
+        ...principalCommonArgs,
+        "--mode",
+        "verify",
+        "--provisioning-evidence-file",
+        principalRepeatEvidenceFile,
+        "--evidence-file",
+        principalVerificationEvidenceFile,
+      ],
+      { quiet: true },
+    ),
+    "read-only principal verification",
+  );
+  const principalVerification = JSON.parse(
+    readFileSync(principalVerificationEvidenceFile, "utf8"),
+  ) as Record<string, unknown>;
+  if (
+    principalVerification.databaseWrites !== 0 ||
+    principalVerification.readOnlyTransaction !== true ||
+    arrayField(principalVerification, "roles").length !== 3
+  ) {
+    throw new Error(
+      `Principal verification evidence was not read-only and complete: ${JSON.stringify(principalVerification)}`,
+    );
+  }
+  const preMigrationFinisherObjects = psql(
+    `SELECT count(*) FROM pg_catalog.pg_class c
+     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = 'public' AND c.relname LIKE 'Finisher%';`,
+    true,
+  );
+  if (preMigrationFinisherObjects !== "0") {
+    throw new Error(
+      "Principal provisioning created migration-owned Finisher schema objects.",
+    );
+  }
+  const preMigrationPrincipalObjectCapabilities = psql(
+    `
+      WITH protected_roles AS (
+        SELECT oid
+        FROM pg_catalog.pg_roles
+        WHERE rolname IN (
+          'trainer_app_runtime',
+          'trainer_finisher_owner',
+          'trainer_finisher_cleanup'
+        )
+      ),
+      capabilities AS (
+        SELECT c.oid
+        FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public'
+          AND c.relowner IN (SELECT oid FROM protected_roles)
+        UNION ALL
+        SELECT p.oid
+        FROM pg_catalog.pg_proc p
+        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'public'
+          AND p.proowner IN (SELECT oid FROM protected_roles)
+        UNION ALL
+        SELECT c.oid
+        FROM pg_catalog.pg_class c
+        CROSS JOIN LATERAL pg_catalog.aclexplode(c.relacl) privilege
+        WHERE privilege.grantee IN (SELECT oid FROM protected_roles)
+        UNION ALL
+        SELECT p.oid
+        FROM pg_catalog.pg_proc p
+        CROSS JOIN LATERAL pg_catalog.aclexplode(p.proacl) privilege
+        WHERE privilege.grantee IN (SELECT oid FROM protected_roles)
+        UNION ALL
+        SELECT n.oid
+        FROM pg_catalog.pg_namespace n
+        CROSS JOIN LATERAL pg_catalog.aclexplode(n.nspacl) privilege
+        WHERE privilege.grantee IN (SELECT oid FROM protected_roles)
+      )
+      SELECT count(*) FROM capabilities;
+    `,
+    true,
+  );
+  if (preMigrationPrincipalObjectCapabilities !== "0") {
+    throw new Error(
+      "Principal provisioning created object ownership or explicit object grants.",
+    );
+  }
+  const wrongTarget = run(
+    process.execPath,
+    [
+      principalCommand,
+      ...principalCommonArgs,
+      "--expected-database=wrong_database",
+      "--mode",
+      "verify",
+      "--provisioning-evidence-file",
+      principalRepeatEvidenceFile,
+      "--evidence-file",
+      principalWrongTargetEvidenceFile,
+    ],
+    { quiet: true },
+  );
+  if (
+    wrongTarget.status === 0 ||
+    `${wrongTarget.stdout}\n${wrongTarget.stderr}`.includes(disposableUrl) ||
+    `${wrongTarget.stdout}\n${wrongTarget.stderr}`.includes(
+      "trainer-app-runtime",
+    )
+  ) {
+    throw new Error("Wrong-target principal verification did not fail safely.");
+  }
   const evidenceTimestamp = new Date().toISOString();
   writeFileSync(
     authorizationEvidenceFile,
@@ -1142,6 +1400,8 @@ try {
       "--confirm-disposable",
       "--evidence-file",
       authorizationEvidenceFile,
+      "--principal-evidence-file",
+      principalVerificationEvidenceFile,
     ],
     { quiet: true },
   );
@@ -2110,6 +2370,16 @@ try {
       reviewDryRunCandidates: numberField(fullReviewDryRun, "legacyDerivedCandidate"),
     },
     writes: 0,
+    principalWorkflow: {
+      cleanCreation: "three_principals_and_runtime_scram_credential",
+      partialCreation: "two_missing_principals_only",
+      idempotentRepeat: "zero_database_writes",
+      verification: "repeatable_read_read_only_zero_writes",
+      evidence: "signed_sanitized_commit_target_and_provision_bound",
+      preMigrationFinisherObjects: 0,
+      preMigrationObjectOwnershipOrGrants: 0,
+      wrongTarget: "rejected_without_secret_output",
+    },
     directEndpointDiagnostic: "successful_direct_connection",
     configuredEnvironmentLeak: false,
     migrationIntegrity: {
@@ -2143,5 +2413,10 @@ try {
 } finally {
   rmSync(envFile, { force: true });
   rmSync(authorizationEvidenceFile, { force: true });
+  rmSync(principalProvisionEvidenceFile, { force: true });
+  rmSync(principalVerificationEvidenceFile, { force: true });
+  rmSync(principalRepeatEvidenceFile, { force: true });
+  rmSync(principalPartialEvidenceFile, { force: true });
+  rmSync(principalWrongTargetEvidenceFile, { force: true });
   spawnSync("docker", ["rm", "-f", containerName], { stdio: "ignore" });
 }

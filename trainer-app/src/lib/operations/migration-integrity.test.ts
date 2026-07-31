@@ -17,6 +17,15 @@ import {
   type LedgerRow,
   type MigrationAuthorizationEvidence,
 } from "./migration-integrity";
+import {
+  FINISHER_PRINCIPAL_EVIDENCE_SCHEMA,
+  FINISHER_PRINCIPAL_EVIDENCE_VERSION,
+  FINISHER_PRINCIPAL_VERIFIER,
+  authorizationContext,
+  evidenceSignature,
+  expectedEvidenceRoles,
+  type FinisherPrincipalVerificationEvidence,
+} from "./finisher-principal-contract";
 
 const REPOSITORY_HEAD = "b".repeat(40);
 const FUTURE_INTEGRATED_HEAD = "c".repeat(40);
@@ -25,6 +34,7 @@ const OLD_BASE_HEAD = "24e9e62f70a5cf66cef21997157f7b79a411a00f";
 const EVALUATED_AT = "2026-07-26T18:00:00.000Z";
 const VERIFIED_AT = "2026-07-26T17:50:00.000Z";
 const TARGET_FINGERPRINT = "5952f3ffb454";
+const PRINCIPAL_EVIDENCE_KEY = "principal-evidence-test-key-32-characters";
 const PENDING_MANIFEST_INDEX = PENDING_ARCHITECTURE_MANIFEST.length - 1;
 
 function checkedIn(): CheckedInMigration[] {
@@ -270,6 +280,36 @@ function cleanCatalog(
     catalog.roleMemberships = [];
     catalog.defaultPrivileges = [];
   }
+  if (!catalog.roles) {
+    catalog.roles = [
+      {
+        name: "trainer_app_runtime",
+        canLogin: true,
+        inherit: true,
+        superuser: false,
+        createRole: false,
+        createDb: false,
+        replication: false,
+        bypassRls: false,
+        publicSchemaCreate: false,
+      },
+      ...["trainer_finisher_owner", "trainer_finisher_cleanup"].map(
+        (name) => ({
+          name,
+          canLogin: false,
+          inherit: false,
+          superuser: false,
+          createRole: false,
+          createDb: false,
+          replication: false,
+          bypassRls: false,
+          publicSchemaCreate: false,
+        }),
+      ),
+    ];
+    catalog.roleMemberships = [];
+    catalog.defaultPrivileges = [];
+  }
   return catalog;
 }
 
@@ -312,6 +352,44 @@ function fullEvidence(
   };
 }
 
+function fullPrincipalEvidence(
+  overrides: Partial<FinisherPrincipalVerificationEvidence> = {},
+  bindingHead = REPOSITORY_HEAD,
+): FinisherPrincipalVerificationEvidence {
+  const unsignedBinding = {
+    repositoryHead: bindingHead,
+    requiredApplicationCommit: bindingHead,
+    targetMigration: "20260728120000_add_finishers_phase_1" as const,
+    environment: "production" as const,
+    targetClassification: "remote" as const,
+    targetFingerprint: TARGET_FINGERPRINT,
+    projectFingerprint: "project-fingerprint",
+    database: "postgres",
+  };
+  const binding = {
+    ...unsignedBinding,
+    authorizationContext: authorizationContext(unsignedBinding),
+  };
+  const unsigned: Omit<FinisherPrincipalVerificationEvidence, "signature"> = {
+    schema: FINISHER_PRINCIPAL_EVIDENCE_SCHEMA,
+    version: FINISHER_PRINCIPAL_EVIDENCE_VERSION,
+    verifier: FINISHER_PRINCIPAL_VERIFIER,
+    binding,
+    provisioningEvidenceHash: "a".repeat(64),
+    provisioningCompletedAt: "2026-07-26T17:48:00.000Z",
+    verificationStartedAt: "2026-07-26T17:49:00.000Z",
+    verifiedAt: VERIFIED_AT,
+    readOnlyTransaction: true as const,
+    databaseWrites: 0 as const,
+    roles: expectedEvidenceRoles(),
+    ...overrides,
+  };
+  return {
+    ...unsigned,
+    signature: evidenceSignature(unsigned, PRINCIPAL_EVIDENCE_KEY),
+  };
+}
+
 function report(overrides: Partial<Parameters<typeof buildMigrationIntegrityReport>[0]> = {}) {
   return buildMigrationIntegrityReport({
     target: { classification: "remote", fingerprint: TARGET_FINGERPRINT },
@@ -320,6 +398,8 @@ function report(overrides: Partial<Parameters<typeof buildMigrationIntegrityRepo
     catalog: cleanCatalog(),
     writes: 0,
     authorizationEvidence: fullEvidence(),
+    finisherPrincipalEvidence: fullPrincipalEvidence(),
+    finisherPrincipalEvidenceKey: PRINCIPAL_EVIDENCE_KEY,
     ...overrides,
   });
 }
@@ -716,6 +796,10 @@ describe("migration integrity", () => {
           repositoryHead: FUTURE_INTEGRATED_HEAD,
         },
       }),
+      finisherPrincipalEvidence: fullPrincipalEvidence(
+        {},
+        FUTURE_INTEGRATED_HEAD,
+      ),
     });
     expect(result.evidence).toMatchObject({
       repositoryHeadIdentified: true,
@@ -878,6 +962,38 @@ describe("migration integrity", () => {
     expect(result.executionAuthorized).toBe(false);
   });
 
+  it("requires canonical Finisher principal evidence before pre-migration Gate A", () => {
+    const result = report({ finisherPrincipalEvidence: undefined });
+    expect(result.technicalMigrationReady).toBe(true);
+    expect(result.principalPrerequisites).toMatchObject({
+      verified: false,
+      reasons: ["missing"],
+    });
+    expect(result.blockingReasons).toContain(
+      "finisher_principal_evidence_missing",
+    );
+    expect(result.migrationAuthorizationReady).toBe(false);
+  });
+
+  it("rejects stale and write-reporting Finisher principal evidence", () => {
+    const stale = report({
+      finisherPrincipalEvidence: fullPrincipalEvidence({
+        verifiedAt: "2026-07-26T16:00:00.000Z",
+      }),
+    });
+    expect(stale.blockingReasons).toContain(
+      "finisher_principal_evidence_stale_or_invalid_timestamp",
+    );
+
+    const writes = fullPrincipalEvidence();
+    (writes as { databaseWrites: number }).databaseWrites = 1;
+    writes.signature = evidenceSignature(writes, PRINCIPAL_EVIDENCE_KEY);
+    const writeReporting = report({ finisherPrincipalEvidence: writes });
+    expect(writeReporting.blockingReasons).toContain(
+      "finisher_principal_evidence_writes_reported",
+    );
+  });
+
   it("requires the operator to identify the exact post-migration application commit", () => {
     const result = report({
       authorizationEvidence: fullEvidence({
@@ -975,6 +1091,71 @@ describe("migration integrity", () => {
     expect(operations).toContain(
       "Do not re-provision migration-owned grants after migration",
     );
+  });
+
+  it.each([
+    "canLogin",
+    "inherit",
+    "superuser",
+    "createRole",
+    "createDb",
+    "replication",
+    "bypassRls",
+    "publicSchemaCreate",
+  ] as const)(
+    "fails pre-migration Gate A when a prerequisite principal has incorrect %s",
+    (attribute) => {
+      const catalog = cleanCatalog();
+      const role = catalog.roles!.find(
+        (candidate) => candidate.name === "trainer_app_runtime",
+      )!;
+      role[attribute] = !role[attribute];
+      const result = report({ catalog });
+      expect(result.chain.gateAApplicable).toBe(true);
+      expect(catalog.tables).not.toContain("FinisherExecutionCommand");
+      expect(result.schemaPreflightValid).toBe(false);
+      expect(result.migrationAuthorizationReady).toBe(false);
+    },
+  );
+
+  it.each([
+    [
+      "a missing principal",
+      (catalog: CatalogSnapshot) => {
+        catalog.roles = catalog.roles!.filter(
+          (role) => role.name !== "trainer_finisher_owner",
+        );
+      },
+    ],
+    [
+      "an incoming membership",
+      (catalog: CatalogSnapshot) => {
+        catalog.roleMemberships!.push({
+          role: "trainer_finisher_owner",
+          member: "unexpected",
+          grantor: "trainer",
+          adminOption: false,
+        });
+      },
+    ],
+    [
+      "an outgoing membership",
+      (catalog: CatalogSnapshot) => {
+        catalog.roleMemberships!.push({
+          role: "unexpected",
+          member: "trainer_finisher_cleanup",
+          grantor: "trainer",
+          adminOption: false,
+        });
+      },
+    ],
+  ] as const)("fails pre-migration Gate A for %s", (_label, mutate) => {
+    const catalog = cleanCatalog();
+    mutate(catalog);
+    const result = report({ catalog });
+    expect(catalog.tables).not.toContain("FinisherExecutionCommand");
+    expect(result.schemaPreflightValid).toBe(false);
+    expect(result.migrationAuthorizationReady).toBe(false);
   });
 
   it.each([

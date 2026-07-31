@@ -1,5 +1,6 @@
 export const TRAINER_WRITE_PAUSE_VARIABLE = "TRAINER_WRITE_PAUSE";
 export const TRAINER_WRITE_PAUSE_ENABLED_VALUE = "enabled";
+export const PRODUCTION_WRITE_STATUS_CONTRACT_VERSION = 1 as const;
 
 export type ProductionWriteOperation =
   | "application_configuration"
@@ -32,6 +33,24 @@ export function productionWriteStatus(
   return environment[TRAINER_WRITE_PAUSE_VARIABLE] === TRAINER_WRITE_PAUSE_ENABLED_VALUE
     ? "PAUSED"
     : "ENABLED";
+}
+
+export function productionWriteRuntimeEvidence(
+  commitSha: string,
+  environment: Record<string, string | undefined> = process.env,
+) {
+  const deploymentEnvironment = environment.VERCEL_ENV;
+  if (deploymentEnvironment !== "production") {
+    throw new Error("Production write status evidence is unavailable outside Vercel production.");
+  }
+  return {
+    schema: "trainer-production-write-status" as const,
+    version: PRODUCTION_WRITE_STATUS_CONTRACT_VERSION,
+    environment: "production" as const,
+    commitSha,
+    status: productionWriteStatus(environment),
+    enforcement: "application_all_classified_write_paths" as const,
+  };
 }
 
 export function assertProductionWriteAllowed(

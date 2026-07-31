@@ -49,6 +49,12 @@ const readOnlyMutationMethodAllowlist = new Set([
 
 const operationalWriteRoots = [join(appRoot, "scripts"), join(appRoot, "prisma")];
 const operationalSupportAllowlist = new Set(["scripts/audit-cli-support.ts"]);
+const intentionallyBlockedWriteScripts = new Map([
+  [
+    "scripts/manage-finisher-principals.ts",
+    "PRODUCTION_PRINCIPAL_PROVISIONING_BLOCKED",
+  ],
+]);
 const implicitWriteScripts = ["scripts/backfill-immutable-seed-revisions.ts"];
 
 function filesUnder(root: string): string[] {
@@ -126,6 +132,13 @@ for (const path of operationalWriteRoots.flatMap(filesUnder).filter((path) => pa
     continue;
   }
   operationalWriteScripts.push(relativePath);
+  const requiredFailClosedMarker = intentionallyBlockedWriteScripts.get(relativePath);
+  if (requiredFailClosedMarker) {
+    if (!source.includes(requiredFailClosedMarker)) {
+      failures.push(`Intentionally blocked write script lost its fail-closed marker: ${relativePath}`);
+    }
+    continue;
+  }
   if (
     !source.includes("runWithRolloutEnvironment") &&
     !source.includes("loadAuditEnv") &&

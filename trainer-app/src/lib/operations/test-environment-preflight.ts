@@ -467,8 +467,12 @@ function parseSummaryLine(line: string): {
 }
 
 export function parseVitestSummary(output: string): VitestSummaryCounts | null {
+  const sanitizedOutput = output.replace(
+    /\u001B\[[0-?]*[ -/]*[@-~]/g,
+    ""
+  );
   try {
-    const json = JSON.parse(output) as {
+    const json = JSON.parse(sanitizedOutput) as {
       numTotalTests?: unknown;
       numPassedTests?: unknown;
       numFailedTests?: unknown;
@@ -511,7 +515,7 @@ export function parseVitestSummary(output: string): VitestSummaryCounts | null {
   } catch {
     // Human-readable Vitest output is parsed below for local runs.
   }
-  const lines = output.split(/\r?\n/);
+  const lines = sanitizedOutput.split(/\r?\n/);
   const fileLine = [...lines].reverse().find((line) => /\bTest Files\b/.test(line));
   const testLine = [...lines].reverse().find((line) => /^\s*Tests\s+/.test(line));
   if (!fileLine || !testLine) return null;

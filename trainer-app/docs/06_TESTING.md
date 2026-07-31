@@ -23,6 +23,18 @@ Sources of truth:
 - `trainer-app/scripts/check-doc-runtime-contracts.ts`
 
 ## Commands
+
+- `npm run test:provider-verification`: credential-free unit and contract
+  coverage for strict provider evidence, authenticated Vercel/Supabase/GitHub
+  fixtures, exact-head disposable artifacts, operational ordering, freshness,
+  replay resistance, failure classification, secret sanitization, and the
+  dynamic runtime write-status endpoint. Fixtures inject all provider responses;
+  this command never reads credentials or contacts a hosted service.
+- `.github/workflows/finisher-disposable-verification.yml`: manual master-only
+  canonical PostgreSQL 16 producer. Workflow syntax and generator contract may
+  be validated locally, but only the authenticated exact-head Actions run and
+  its unique artifact can supply authorization evidence. Do not dispatch it as
+  part of ordinary PR validation.
 - `npm run test:db:multi-plan -- --confirm-disposable`: provisions an isolated PostgreSQL 16 container; applies the full prior migration chain; verifies the active-plan foundation plus plan-management metadata migration, ambiguity rollback, deterministic name backfill, target schema objects, and the old-app handoff ordering risk; then runs partial-unique, READY-only selection, in-progress-workout blocking, finalization-without-selection, optimistic rename/archive, history preservation, and concurrent compare-and-swap coverage. It is database-mutating and must only run with the exact disposable-target confirmation.
 - Focused credential-free plan-management coverage: `npm run test -- src/lib/api/plan-management.test.ts src/lib/validation.plan-management.test.ts src/lib/api/active-plan-context.test.ts src/app/api/plans/[id]/activate/route.test.ts src/components/plans/PlanManagementClient.test.tsx src/components/navigation/AppNavigation.test.tsx src/lib/api/workout-mutation.test.ts src/lib/workout-workflow.test.ts src/lib/ui/workout-list-items.test.ts`.
 - Focused Strength coverage: `npm run test -- src/lib/plan-types.test.ts src/lib/engine/strength-plan-policy.test.ts src/lib/engine/strength-session-timing.test.ts src/lib/engine/prescription.correctness.test.ts src/lib/engine/periodization.correctness.test.ts src/lib/engine/apply-loads.correctness.test.ts src/lib/api/plan-management.test.ts src/lib/api/active-plan-context.test.ts src/lib/api/mesocycle-lifecycle.test.ts src/lib/api/template-session/context-loader.test.ts src/lib/api/template-session.test.ts src/lib/validation.plan-management.test.ts src/components/plans/PlanManagementClient.test.tsx src/components/HistoryClient.test.tsx`. This protects deterministic policy output, controlled limitation canonicalization/fail-closed behavior, the full duration/frequency/experience/emphasis/equipment matrix, shared planner/runtime timing and five-minute rounding boundaries, immutable executable seed normalization, exact review set counts, plan-type generation and terminal dispatch, lower-rep/longer-rest prescriptions, conservative shared progression, selected-plan enforcement, review/finalization, and Hypertrophy compatibility.

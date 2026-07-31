@@ -24,6 +24,17 @@ import {
   FINISHER_TARGET_MIGRATION,
   type FinisherPrincipalSnapshot,
 } from "./finisher-principal-contract";
+import {
+  FINISHER_DISPOSABLE_WORKFLOW,
+  FINISHER_MIGRATION_GIT_BLOB,
+  FINISHER_MIGRATION_PATH,
+  FINISHER_PROVIDER_CONTRACT_VERSION,
+  FINISHER_PROVIDER_EVIDENCE_SCHEMA,
+  FINISHER_PROVIDER_EVIDENCE_VERSION,
+  FINISHER_PROVIDER_TOOL_VERSION,
+  migrationInventorySha256,
+  type ProviderVerificationExpectation,
+} from "./finisher-provider-verification";
 
 const REPOSITORY_HEAD = "b".repeat(40);
 const FUTURE_INTEGRATED_HEAD = "c".repeat(40);
@@ -429,42 +440,173 @@ function fullPrincipalVerification(
 }
 
 function fullOperationalVerification(
-  overrides: Partial<CanonicalOperationalVerification> = {},
+  overrides: Record<string, unknown> = {},
   bindingHead = REPOSITORY_HEAD,
 ): CanonicalOperationalVerification {
+  const inventory = [...EXPECTED_MIGRATION_CHAIN];
+  const migrationSha256 = "1".repeat(64);
   return {
-    source: "canonical_live_operational_verification",
-    verifiedAt: VERIFIED_AT,
-    repositoryHead: bindingHead,
+    schema: FINISHER_PROVIDER_EVIDENCE_SCHEMA,
+    version: FINISHER_PROVIDER_EVIDENCE_VERSION,
+    contractVersion: FINISHER_PROVIDER_CONTRACT_VERSION,
+    toolVersion: FINISHER_PROVIDER_TOOL_VERSION,
+    authority: "canonical_live_provider_verification",
     requiredApplicationCommit: bindingHead,
-    targetFingerprint: TARGET_FINGERPRINT,
-    projectFingerprint: "project-fingerprint",
-    database: "postgres",
-    deployment: {
-      verified: true,
-      commit: bindingHead,
-      identity: "deployment-id",
-      source: "vercel_authenticated_read_only",
+    migration: {
+      path: FINISHER_MIGRATION_PATH,
+      sha256: migrationSha256,
+      gitBlob: FINISHER_MIGRATION_GIT_BLOB,
+      inventorySha256: migrationInventorySha256(inventory),
+      inventory,
     },
-    recoveryPoint: {
-      verified: true,
-      identity: "recovery-point-id",
-      source: "provider_authenticated_read_only",
-    },
-    writePause: {
-      verified: true,
-      identity: "write-pause-id",
-      source: "provider_authenticated_read_only",
+    target: {
+      environment: "production",
+      githubOwner: "aaron8819",
+      githubRepository: "trainer-app",
+      vercelTeamId: "team_trainer",
+      vercelTeamSlug: "trainer-team",
+      vercelProjectId: "prj_trainer",
+      vercelProjectName: "trainer-app",
+      productionAlias: "trainer.example.com",
+      supabaseOrganizationId: "org_trainer",
+      supabaseProjectRef: "a".repeat(20),
+      database: "postgres",
     },
     applicationCompatibilityState: "compatible_with_write_boundary",
+    deployment: {
+      provider: "vercel",
+      authenticated: true,
+      account: "trainer-operator",
+      teamId: "team_trainer",
+      teamSlug: "trainer-team",
+      projectId: "prj_trainer",
+      projectName: "trainer-app",
+      environment: "production",
+      alias: "trainer.example.com",
+      deploymentId: "dpl_trainer",
+      state: "READY",
+      sourceProvider: "github",
+      sourceRepository: "aaron8819/trainer-app",
+      sourceBranch: "master",
+      sourceCommit: bindingHead,
+      createdAt: "2026-07-26T17:30:00.000Z",
+      readyAt: "2026-07-26T17:31:00.000Z",
+      aliasObservedAt: "2026-07-26T17:31:30.000Z",
+      verifiedAt: "2026-07-26T17:31:30.000Z",
+      provenance: "vercel_authenticated_read_only_rest",
+    },
+    disposable: {
+      schema: "trainer-finisher-disposable-verification",
+      version: 1,
+      contractVersion: FINISHER_PROVIDER_CONTRACT_VERSION,
+      toolVersion: FINISHER_PROVIDER_TOOL_VERSION,
+      authority: "github_actions_exact_head_artifact",
+      repository: "aaron8819/trainer-app",
+      workflow: FINISHER_DISPOSABLE_WORKFLOW,
+      workflowRunId: "123",
+      workflowRunAttempt: 1,
+      commitSha: bindingHead,
+      ref: "refs/heads/master",
+      event: "workflow_dispatch",
+      environment: "disposable",
+      postgresMajor: 16,
+      sourceClean: true,
+      migration: {
+        path: FINISHER_MIGRATION_PATH,
+        sha256: migrationSha256,
+        gitBlob: FINISHER_MIGRATION_GIT_BLOB,
+        inventorySha256: migrationInventorySha256(inventory),
+        inventory,
+      },
+      preMigrationState: {
+        checkedIn: inventory.length,
+        applied: inventory.length - 1,
+        pending: [FINISHER_TARGET_MIGRATION],
+      },
+      terminalState: {
+        migrationApplied: true,
+        exactSchemaVerified: true,
+        exactCatalogVerified: true,
+        restrictedAdministratorWorkflowVerified: true,
+        principalTerminalStateVerified: true,
+        productionWritePathCoverageVerified: true,
+        databaseWritesOutsideDisposable: 0,
+      },
+      startedAt: "2026-07-26T17:32:00.000Z",
+      completedAt: "2026-07-26T17:35:00.000Z",
+      authenticated: true,
+      artifactId: "456",
+      artifactDigest: "2".repeat(64),
+      verifiedAt: "2026-07-26T17:35:30.000Z",
+      provenance: "github_authenticated_actions_artifact",
+    },
+    recoveryPoint: {
+      provider: "supabase",
+      authenticated: true,
+      organizationId: "org_trainer",
+      projectRef: "a".repeat(20),
+      database: "postgres",
+      creationCapability: "provider_operation",
+      creationAuthorizedAt: "2026-07-26T17:36:00.000Z",
+      operationId: "backup-operation-1",
+      resourceId: "backup-1",
+      state: "COMPLETED",
+      recoveryRequirement: "fresh_completed_physical_backup",
+      checkpointAt: "2026-07-26T17:36:00.000Z",
+      providerCreatedAt: "2026-07-26T17:37:00.000Z",
+      verifiedAt: "2026-07-26T17:40:00.000Z",
+      verified: true,
+      provenance: "supabase_authenticated_management_api",
+      limitation: null,
+    },
+    writePause: {
+      provider: "vercel_application",
+      authenticatedProvider: true,
+      teamId: "team_trainer",
+      projectId: "prj_trainer",
+      environment: "production",
+      deploymentId: "dpl_trainer_paused",
+      commitSha: bindingHead,
+      enforcement: "application_all_classified_write_paths",
+      initiationCapability: "provider_operation",
+      initiationAuthorizedAt: "2026-07-26T17:41:00.000Z",
+      initiationOperationId: "dpl_trainer_paused",
+      initiationObservedAt: "2026-07-26T17:41:30.000Z",
+      establishedAt: "2026-07-26T17:42:00.000Z",
+      runtimeStatus: "PAUSED",
+      runtimeContractVersion: 1,
+      mutationCoverageVerified: true,
+      bypassPaths: [],
+      verifiedAt: "2026-07-26T17:45:00.000Z",
+      verified: true,
+      provenance: "vercel_authenticated_deployment_plus_runtime_read_only",
+    },
+    verifiedAt: VERIFIED_AT,
+    failureDetails: [],
     ...overrides,
+  } as CanonicalOperationalVerification;
+}
+
+function providerExpectation(
+  bindingHead = REPOSITORY_HEAD,
+): ProviderVerificationExpectation {
+  const operational = fullOperationalVerification({}, bindingHead);
+  return {
+    evaluatedAt: EVALUATED_AT,
+    repositoryHead: bindingHead,
+    requiredApplicationCommit: bindingHead,
+    migrationPath: FINISHER_MIGRATION_PATH,
+    migrationGitBlob: FINISHER_MIGRATION_GIT_BLOB,
+    migrationSha256: operational.migration.sha256,
+    migrationInventorySha256: operational.migration.inventorySha256,
+    target: operational.target,
   };
 }
 
 function report(overrides: Partial<Parameters<typeof buildMigrationIntegrityReport>[0]> = {}) {
   return buildMigrationIntegrityReport({
     target: {
-      classification: "disposable",
+      classification: "remote",
       fingerprint: TARGET_FINGERPRINT,
       projectFingerprint: "project-fingerprint",
       database: "postgres",
@@ -476,6 +618,7 @@ function report(overrides: Partial<Parameters<typeof buildMigrationIntegrityRepo
     authorizationEvidence: fullEvidence(),
     finisherPrincipalLiveVerification: fullPrincipalVerification(),
     operationalVerification: fullOperationalVerification(),
+    providerVerificationExpectation: providerExpectation(),
     ...overrides,
   });
 }
@@ -826,25 +969,22 @@ describe("migration integrity", () => {
   });
 
   it("derives clean data preflight from the fresh zero-write catalog inspection", () => {
+    const operational = fullOperationalVerification();
     const technicalOnly = report({
       operationalVerification: fullOperationalVerification({
-        deployment: {
-          verified: false,
-          commit: "",
-          identity: "unavailable",
-          source: "unavailable",
-        },
         recoveryPoint: {
+          ...operational.recoveryPoint,
           verified: false,
-          identity: "unavailable",
-          source: "unavailable",
+          creationCapability: "unavailable_no_authoritative_creation_api",
+          creationAuthorizedAt: null,
+          operationId: null,
+          resourceId: null,
+          state: "UNAVAILABLE",
+          recoveryRequirement: "unproven",
+          checkpointAt: null,
+          providerCreatedAt: null,
+          limitation: "No authoritative creation API.",
         },
-        writePause: {
-          verified: false,
-          identity: "unavailable",
-          source: "unavailable",
-        },
-        applicationCompatibilityState: "unverified",
       }),
     });
     expect(technicalOnly.dataPreflightValid).toBe(true);
@@ -853,12 +993,21 @@ describe("migration integrity", () => {
   });
 
   it("requires canonical live recovery-point verification", () => {
+    const operational = fullOperationalVerification();
     const result = report({
       operationalVerification: fullOperationalVerification({
         recoveryPoint: {
+          ...operational.recoveryPoint,
           verified: false,
-          identity: "unavailable",
-          source: "unavailable",
+          creationCapability: "unavailable_no_authoritative_creation_api",
+          creationAuthorizedAt: null,
+          operationId: null,
+          resourceId: null,
+          state: "UNAVAILABLE",
+          recoveryRequirement: "unproven",
+          checkpointAt: null,
+          providerCreatedAt: null,
+          limitation: "No authoritative creation API.",
         },
       }),
     });
@@ -869,17 +1018,31 @@ describe("migration integrity", () => {
 
   it("requires canonical live write-pause verification", () => {
     const result = report({
+      operationalVerification: undefined,
+      providerVerificationExpectation: undefined,
+    });
+    expect(result.technicalMigrationReady).toBe(false);
+    expect(result.writeBoundaryReady).toBe(false);
+    expect(result.migrationAuthorizationReady).toBe(false);
+  });
+
+  it("keeps Gate A closed when pause enforcement is effective but initiation is unavailable", () => {
+    const operational = fullOperationalVerification();
+    const result = report({
       operationalVerification: fullOperationalVerification({
         writePause: {
-          verified: false,
-          identity: "unavailable",
-          source: "unavailable",
+          ...operational.writePause,
+          initiationCapability:
+            "unavailable_requires_authorized_environment_update_and_redeployment",
+          initiationAuthorizedAt: null,
+          initiationOperationId: null,
         },
       }),
     });
     expect(result.technicalMigrationReady).toBe(true);
     expect(result.writeBoundaryReady).toBe(false);
     expect(result.migrationAuthorizationReady).toBe(false);
+    expect(result.executionAuthorized).toBe(false);
   });
 
   it("authorizes any future integrated commit when all three trusted values match exactly", () => {
@@ -894,6 +1057,9 @@ describe("migration integrity", () => {
       ),
       operationalVerification: fullOperationalVerification(
         {},
+        FUTURE_INTEGRATED_HEAD,
+      ),
+      providerVerificationExpectation: providerExpectation(
         FUTURE_INTEGRATED_HEAD,
       ),
     });
@@ -930,13 +1096,12 @@ describe("migration integrity", () => {
   });
 
   it("rejects requiredApplicationCommit when it differs from productionDeploymentCommit", () => {
+    const operational = fullOperationalVerification();
     const result = report({
       operationalVerification: fullOperationalVerification({
         deployment: {
-          verified: true,
-          commit: FUTURE_INTEGRATED_HEAD,
-          identity: "deployment-id",
-          source: "vercel_authenticated_read_only",
+          ...operational.deployment,
+          sourceCommit: FUTURE_INTEGRATED_HEAD,
         },
       }),
     });
@@ -987,13 +1152,13 @@ describe("migration integrity", () => {
   });
 
   it("rejects the old base deployment after a different integrated commit is authorized", () => {
+    const operational = fullOperationalVerification();
     const result = report({
       operationalVerification: fullOperationalVerification({
         deployment: {
-          verified: true,
-          commit: OLD_BASE_HEAD,
-          identity: "old-deployment-id",
-          source: "vercel_authenticated_read_only",
+          ...operational.deployment,
+          deploymentId: "dpl_old",
+          sourceCommit: OLD_BASE_HEAD,
         },
       }),
     });
@@ -1029,6 +1194,7 @@ describe("migration integrity", () => {
   });
 
   it("models the captured production shape without granting execution", () => {
+    const operational = fullOperationalVerification();
     const result = report({
       target: {
         classification: "remote",
@@ -1038,14 +1204,17 @@ describe("migration integrity", () => {
       },
       operationalVerification: fullOperationalVerification({
         recoveryPoint: {
+          ...operational.recoveryPoint,
           verified: false,
-          identity: "unavailable",
-          source: "unavailable",
-        },
-        writePause: {
-          verified: false,
-          identity: "unavailable",
-          source: "unavailable",
+          creationCapability: "unavailable_no_authoritative_creation_api",
+          creationAuthorizedAt: null,
+          operationId: null,
+          resourceId: null,
+          state: "UNAVAILABLE",
+          recoveryRequirement: "unproven",
+          checkpointAt: null,
+          providerCreatedAt: null,
+          limitation: "No authoritative creation API.",
         },
       }),
     });
@@ -1057,12 +1226,12 @@ describe("migration integrity", () => {
       pendingMigrations: [MIGRATION_AUTHORIZATION_POLICY.targetMigration],
       schemaPreflightValid: true,
       dataPreflightValid: true,
-      technicalMigrationReady: false,
+      technicalMigrationReady: true,
       migrationAuthorizationReady: false,
       executionAuthorized: false,
     });
     expect(result.blockingReasons).toContain(
-      "disposable_postgres_verification_missing",
+      "provider_recovery_point_creation_capability_unavailable",
     );
   });
 

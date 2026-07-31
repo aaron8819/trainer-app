@@ -318,8 +318,12 @@ prerequisite-role checks.
 `migrationAuthorizationReady` additionally requires fresh live principal
 verification, canonical provider verification of the recovery point,
 production deployment and write pause, application compatibility, and exact
-migration and application commits. The current command has no authenticated
-provider adapter for those hosted facts, so remote Gate A remains fail closed.
+migration and application commits. The provider verifier authenticates and
+binds those hosted facts to exact provider identities and the required commit.
+Remote Gate A remains fail closed until all live evidence is complete; the
+current Supabase management API can inventory backups but cannot prove an
+on-demand recovery-point creation operation, so that prerequisite requires the
+documented manual bridge.
 `executionAuthorized` is always `false` in this preparation command. A clean
 data preflight never grants operational or execution authorization.
 
@@ -397,6 +401,204 @@ node --env-file=$rolloutEnv .\node_modules\prisma\build\index.js migrate deploy
 Do not run it during preflight. A backup being available, a reachable direct endpoint, a clean migration status, an approved write pause, and an approved deployment plan are all required first.
 
 ### Authorization evidence contract
+
+#### Canonical provider-verification boundary
+
+`src/lib/operations/finisher-provider-verification.ts` owns the strict version 1
+authorization contract. `src/lib/operations/finisher-provider-adapters.ts` owns
+authenticated provider reads. Gate A accepts that in-memory result only from
+`ops:migration-status --verify-providers`; it has no provider-evidence file
+option. Unknown fields, unknown versions, duplicate artifacts, stale evidence,
+wrong targets, cross-commit reuse, cross-environment reuse, and evidence created
+out of order fail closed.
+
+Every successful result binds all of the following:
+
+- authenticated GitHub owner/repository and exact default-branch commit;
+- authenticated Vercel account/team/project, exact linked GitHub owner/repository
+  and `master` production branch, production alias, active production deployment
+  ID, READY state, Git source repository/ref/commit, creation time, and readiness
+  time;
+- exact repository-relative migration path, Git blob, SHA-256 of the Git blob
+  bytes, and ordered migration-inventory digest;
+- authenticated Supabase organization/project identity, the exact `postgres`
+  database bound independently by the direct target, and recovery resource state;
+- the production runtime write-status response from the independently verified
+  paused exact-commit Vercel deployment, plus the repository-verified complete
+  mutation-path inventory;
+- schema, contract, and tool versions, provider resource IDs, provider-observed
+  timestamps, verification timestamps, provenance, and sanitized failures.
+
+The reviewed Git blob remains
+`55985a32851d9de042b43db3880b5cb857373313`. Its canonical Git LF bytes at the
+integrated base hash to
+`491bd022e0f5478cf80f805c64b0cf46c03d301ae4c34779c09f9f111823eb43`.
+The task-supplied SHA-256
+`01f2fd87b63dfb622b8ccbede86236e4db6f35f9317ebcda331f786b13b9a114`
+does not identify that blob and is rejected as stale. A Windows CRLF checkout
+may have a Prisma-compatible ledger checksum, but it is not the canonical
+provider-evidence byte identity.
+
+All operational verification timestamps, the disposable completion, recovery
+checkpoint/resource creation, and effective pause establishment must be no more
+than 30 minutes old and not in the future. Required order is: authenticated READY
+production deployment verification, completed authenticated exact-head disposable
+verification, separately authorized recovery creation, completed recovery resource
+verification, separately authorized write-pause initiation and paused exact-commit
+redeployment, effective runtime pause verification, immediate production preflight
+and principal verification, then Gate A. A later matching migration file does not
+make evidence from another commit reusable.
+
+##### Canonical disposable verification
+
+The only authorization-grade disposable producer is the manually dispatched
+`Finisher canonical disposable verification` GitHub Actions workflow on
+`refs/heads/master`. It checks out the exact workflow SHA, refuses dirty or
+ambiguous source state, runs the real PostgreSQL 16 rollout harness and
+restricted-administrator principal lifecycle, verifies the 17-applied/one-pending
+pre-state and exact terminal state, hashes the migration from the checked-out
+Git object, and uploads exactly one seven-day
+`finisher-disposable-evidence` artifact. Official workflow dependencies are
+pinned to immutable commit SHAs, and the authenticated consumer rejects missing,
+expired, duplicate, stale-attempt, malformed, nested, or oversized artifacts.
+
+After the tooling PR is merged, and only for the exact integrated commit under
+review, an operator may dispatch and inspect it:
+
+```powershell
+gh workflow run finisher-disposable-verification.yml --ref master
+gh run list --workflow finisher-disposable-verification.yml --branch master
+```
+
+Do not dispatch a PR head, tag, preview branch, rejected PR #28 head, or historic
+master commit. The authenticated verifier requires the selected run and the
+current remote default branch to equal the exact required commit. Local
+`npm run test:db:rollout-tooling -- --confirm-disposable` remains review
+coverage and cannot author authorization evidence.
+
+##### Authenticated read-only provider verification
+
+Required process-scoped credentials are names and scopes, never values:
+
+- existing authenticated `gh` session with repository and Actions read access;
+- `VERCEL_TOKEN` with read access to the configured team, project, alias, and
+  deployment;
+- `SUPABASE_ACCESS_TOKEN` with project read and `backups_read` access to the
+  exact project.
+
+Set and remove tokens through the operator-controlled secure process. Never put
+them in an environment file, command argument, evidence file, shell history, or
+committed configuration. Run the provider verifier independently before Gate A:
+
+```powershell
+npm run ops:verify-finisher-providers -- `
+  --repository-head $integratedSha `
+  --required-application-commit $integratedSha `
+  --disposable-run-id $disposableRunId `
+  --expected-supabase-organization-id $supabaseOrganizationId `
+  --expected-supabase-project-ref $projectReference `
+  --expected-database postgres
+```
+
+The command uses only authenticated GET requests plus the public no-store
+runtime write-status GET. It distinguishes missing credentials, rejected
+authentication, insufficient authorization, rate limiting, network failures,
+missing resources, identity mismatches, non-ready deployment, wrong commit,
+missing source binding, stale alias, malformed response, and unavailable
+capability. It never reports
+headers, tokens, credential-bearing URLs, or raw provider response bodies.
+
+Provider-backed Gate A uses the same live collector rather than importing the
+preceding command's output:
+
+```powershell
+npm run ops:migration-status -- --env-file $rolloutEnv `
+  --required-application-commit $integratedSha `
+  --verify-providers `
+  --disposable-run-id $disposableRunId `
+  --expected-project-reference $projectReference `
+  --expected-supabase-organization-id $supabaseOrganizationId `
+  --expected-database postgres
+```
+
+##### Recovery-point capability
+
+The Supabase Management API currently supports authenticated backup inventory
+and restore operations, but it does not expose an authoritative on-demand
+recovery-point creation operation. The repository can therefore verify project
+identity and observe completed backup resources, but it cannot prove that a new
+resource was created by the required authorized action. The creation boundary
+is unavailable and performs no mutation even with the full confirmation:
+
+```powershell
+npm run ops:request-finisher-recovery-point -- `
+  --required-application-commit $integratedSha `
+  --expected-provider-account-id $supabaseOrganizationId `
+  --expected-project-reference $projectReference `
+  --expected-database postgres `
+  --authorize-provider-mutation `
+  --confirm-provider-operation "trainer-recovery-point:$projectReference:$integratedSha"
+```
+
+The approved narrow bridge is an independently authorized provider-console or
+provider-support operation followed by a future repository adapter capable of
+authenticating its operation ID, resource ID, exact project/database, completed
+state, timestamps, freshness, retention, and recoverability. Screenshots,
+operator-entered `created`/`verified` JSON, request acceptance, and backup-list
+presence do not satisfy the version 1 contract. Until that adapter exists,
+`migrationAuthorizationReady` remains false.
+
+##### Write-pause initiation and verification
+
+Supabase has no database-level write-only pause that preserves the required read
+paths. Trainer therefore retains the application-level
+`TRAINER_WRITE_PAUSE=enabled` boundary. The initiation command is an unavailable
+fail-closed guard because safe activation requires two separately authorized
+Vercel mutations—an exact Production environment update and an exact-commit
+production redeployment—not one atomic provider operation:
+
+```powershell
+npm run ops:initiate-finisher-write-pause -- `
+  --required-application-commit $integratedSha `
+  --expected-provider-account-id $vercelTeamId `
+  --expected-project-reference $vercelProjectId `
+  --expected-database postgres `
+  --authorize-provider-mutation `
+  --confirm-provider-operation "trainer-write-pause:$vercelProjectId:$integratedSha"
+```
+
+Use the existing separately authorized Vercel console procedure for activation.
+Read-only verification then combines authenticated active-alias deployment data
+with `GET /api/operations/write-status` from that alias. The endpoint is
+dynamic, no-store, returns no environment value, and reports only contract
+version, exact commit, production classification, enforcement class, and
+effective `PAUSED`/`ENABLED` state. Configuration intent without an active
+exact-commit paused deployment fails. The static ownership guard must also pass;
+one unclassified application or operational write path blocks authorization.
+The initial compatible production deployment and the later paused exact-commit
+redeployment are distinct provider resources and must have distinct independently
+verified timestamps; the paused deployment cannot be backdated to the initial
+deployment. The current adapter reports effective runtime state but records pause
+initiation capability as unavailable, with no authorization timestamp or operation
+ID. Therefore even an already-paused response cannot make
+`migrationAuthorizationReady` true until a reviewed adapter can authenticate the
+separately authorized Vercel environment update and paused redeployment.
+
+If any provider operation is partially completed, do not retry blindly. Keep
+Finishers disabled, preserve the provider operation/resource ID, rerun only the
+read-only verifier, and leave writes in their current safe state. If pause
+activation completed but recovery verification did not, keep writes paused. If
+recovery exists but pause activation failed, do not provision principals. Write
+restoration remains the separate resume procedure below and requires a verified
+exact-commit deployment reporting `ENABLED` plus the post-migration terminal
+checks. The read-only `verifyProductionWriteRestoration()` adapter proves only
+that exact provider/application state and deliberately returns
+`authorizesRestoration: false`; it cannot replace the terminal checks or the
+separate resume authorization.
+
+Completing this tooling PR does not authorize a recovery operation, environment
+change, deployment, principal change, migration, write restoration, Finisher
+enablement, or production smoke test.
 
 The optional migration audit-input file is operator-controlled and may contain
 only an empty JSON object; any supplied fact is rejected. Principal-audit files
@@ -491,10 +693,9 @@ environment change, role change, migration, production access, or verification.
    alias evidence identify that exact SHA. Do not substitute the feature-branch
    head.
 3. Obtain canonical commit-bound disposable PostgreSQL verification for those
-   exact repository and migration bytes. **Current residual prerequisite:** no
-   repository workflow can yet produce authorization-grade evidence for this
-   step. The local PostgreSQL 16 harness is review evidence only. Implement and
-   separately review the commit-bound disposable verifier before continuing.
+   exact repository and migration bytes. Dispatch the reviewed master-only
+   workflow after this tooling is merged and retain its exact run ID. The local
+   PostgreSQL 16 harness remains review evidence only.
 4. Establish and verify the required recovery point.
 5. Activate and verify `TRAINER_WRITE_PAUSE=enabled` while keeping
    `TRAINER_FINISHERS_ROLLOUT` disabled.
@@ -540,12 +741,12 @@ environment change, role change, migration, production access, or verification.
    project-bound confirmation. It rejects poolers, loopback/disposable
    classification, ambiguous hosts, a runtime/principal connection, missing
    write pause, and every incomplete authorization combination before writes.
-   **Current residual prerequisite:** the repository does not yet have a
-   canonical authenticated provider adapter for the recovery point and active
-   write pause. Production provisioning therefore fails closed before database
-   connection even when the confirmation flags are present. Do not substitute
-   caller JSON, manual screenshots, or an ad hoc SQL session. Implement and
-   separately review that provider verification seam before using this step.
+   **Current residual prerequisite:** authenticated recovery inventory is
+   implemented, but Supabase exposes no authoritative on-demand creation
+   operation. Production provisioning therefore remains fail closed until the
+   documented manual/provider bridge can be promoted through a reviewed
+   machine-verifiable adapter. Do not substitute caller JSON, screenshots, or
+   an ad hoc SQL session.
 8. Verify all three principals exist, have only the prerequisite attributes and
    capabilities needed by the migration, and have no prohibited memberships.
    The migration must remain responsible for transferring object ownership and
@@ -568,8 +769,8 @@ environment change, role change, migration, production access, or verification.
 9. Run Gate A and the required pre-migration authorization checks. Require the
    exact canonical equality
    `requiredApplicationCommit === repositoryHead === productionDeploymentCommit`,
-   and `executionAuthorized: false`. Until canonical provider verification and
-   commit-bound disposable-workflow verification are implemented, require
+   and `executionAuthorized: false`. Until the exact-head workflow has run and
+   recovery-point creation is machine-verifiable, require
    `migrationAuthorizationReady: false` and stop. An operator-authored file
    cannot satisfy either prerequisite:
 

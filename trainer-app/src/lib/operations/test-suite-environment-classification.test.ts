@@ -105,8 +105,8 @@ describe("test-suite environment manifest", () => {
       manifest: currentManifest,
       discoveredTestFiles,
     });
-    expect(discoveredTestFiles).toHaveLength(329);
-    expect(selection.credentialFree).toHaveLength(291);
+    expect(discoveredTestFiles).toHaveLength(333);
+    expect(selection.credentialFree).toHaveLength(295);
     expect(selection.importOnlyPlaceholder).toHaveLength(34);
     expect(selection.databaseRequired).toHaveLength(4);
     for (const entry of selection.databaseRequired) {
@@ -349,6 +349,18 @@ describe("credential-free and placeholder failure boundaries", () => {
     expect(parseVitestSummary(output)).toEqual({
       files: { total: 3, passed: 1, failed: 1, skipped: 1 },
       tests: { total: 4, passed: 2, failed: 1, skipped: 1 },
+    });
+  });
+
+  it("parses colorized Vitest summary counts", () => {
+    const escape = "\u001B[";
+    const output = [
+      `${escape}2m Test Files ${escape}22m ${escape}32m295 passed${escape}39m (295)`,
+      `${escape}2m      Tests ${escape}22m ${escape}32m2909 passed${escape}39m | 1 skipped (2910)`,
+    ].join("\n");
+    expect(parseVitestSummary(output)).toEqual({
+      files: { total: 295, passed: 295, failed: 0, skipped: 0 },
+      tests: { total: 2910, passed: 2909, failed: 0, skipped: 1 },
     });
   });
 

@@ -316,14 +316,13 @@ migration-specific data preflight, and current disposable PostgreSQL target
 verification are all valid. No Finisher table must exist for the separate live
 prerequisite-role checks.
 `migrationAuthorizationReady` additionally requires fresh live principal
-verification, canonical provider verification of the recovery point,
+verification, canonical provider verification of Supabase PITR coverage,
 production deployment and write pause, application compatibility, and exact
 migration and application commits. The provider verifier authenticates and
 binds those hosted facts to exact provider identities and the required commit.
-Remote Gate A remains fail closed until all live evidence is complete; the
-current Supabase management API can inventory backups but cannot prove an
-on-demand recovery-point creation operation, so that prerequisite requires the
-documented manual bridge.
+Remote Gate A remains fail closed until all live evidence is complete. Recovery
+coverage comes from an authenticated Supabase backup-inventory GET for the exact
+production project, never from a caller-authored checkpoint claim.
 `executionAuthorized` is always `false` in this preparation command. A clean
 data preflight never grants operational or execution authorization.
 
@@ -404,7 +403,7 @@ Do not run it during preflight. A backup being available, a reachable direct end
 
 #### Canonical provider-verification boundary
 
-`src/lib/operations/finisher-provider-verification.ts` owns the strict version 1
+`src/lib/operations/finisher-provider-verification.ts` owns the strict version 2
 authorization contract. `src/lib/operations/finisher-provider-adapters.ts` owns
 authenticated provider reads. Gate A accepts that in-memory result only from
 `ops:migration-status --verify-providers`; it has no provider-evidence file
@@ -422,11 +421,12 @@ Every successful result binds all of the following:
 - exact repository-relative migration path, Git blob, SHA-256 of the Git blob
   bytes, and ordered migration-inventory digest;
 - authenticated Supabase organization/project identity, the exact `postgres`
-  database bound independently by the direct target, and recovery resource state;
+  database bound independently by the direct target, PITR enabled state, and the
+  provider-reported earliest/latest recovery window;
 - the production runtime write-status response from the independently verified
   paused exact-commit Vercel deployment, plus the repository-verified complete
   mutation-path inventory;
-- schema, contract, and tool versions, provider resource IDs, provider-observed
+- schema, contract, and tool versions, provider-observed
   timestamps, verification timestamps, provenance, and sanitized failures.
 
 The reviewed Git blob remains
@@ -439,15 +439,19 @@ does not identify that blob and is rejected as stale. A Windows CRLF checkout
 may have a Prisma-compatible ledger checksum, but it is not the canonical
 provider-evidence byte identity.
 
-All operational verification timestamps, the disposable completion, recovery
-checkpoint/resource creation, and effective pause establishment must be no more
-than 30 minutes old and not in the future. Required order is: authenticated READY
-production deployment verification, completed authenticated exact-head disposable
-verification, separately authorized recovery creation, completed recovery resource
+All operational verification timestamps, disposable completion, and effective
+pause establishment must be no more than 30 minutes old and not in the future.
+Supabase PITR boundaries are recovery-window limits rather than event freshness
+timestamps. The window must contain the trusted pause-establishment time and
+leave at least 30 minutes of retention margin behind that time, matching the
+maximum lifetime of Gate A evidence. If the rollout exceeds that lifetime, rerun
+the read-only provider verifier. Required order is: authenticated READY production
+deployment verification, completed authenticated exact-head disposable
 verification, separately authorized write-pause initiation and paused exact-commit
-redeployment, effective runtime pause verification, immediate production preflight
-and principal verification, then Gate A. A later matching migration file does not
-make evidence from another commit reusable.
+redeployment, effective runtime pause verification, authenticated PITR-window
+verification, immediate production preflight and principal verification, then
+Gate A. A later matching migration file does not make evidence from another
+commit reusable.
 
 ##### Canonical disposable verification
 
@@ -521,32 +525,33 @@ npm run ops:migration-status -- --env-file $rolloutEnv `
   --expected-database postgres
 ```
 
-##### Recovery-point capability
+##### Supabase PITR recovery coverage
 
-The Supabase Management API currently supports authenticated backup inventory
-and restore operations, but it does not expose an authoritative on-demand
-recovery-point creation operation. The repository can therefore verify project
-identity and observe completed backup resources, but it cannot prove that a new
-resource was created by the required authorized action. The creation boundary
-is unavailable and performs no mutation even with the full confirmation:
+For this additive Finisher migration, recovery coverage is the actual Supabase
+PITR capability for the authenticated production project; no rollout-specific
+checkpoint object or identifier is required. The adapter independently reads
+`GET /v1/projects/{ref}` and
+`GET /v1/projects/{ref}/database/backups`, requires the expected organization,
+project, and `postgres` database, requires both `pitr_enabled` and
+`walg_enabled`, and verifies the provider-reported earliest/latest recovery
+window contains the trusted write-pause establishment time. That selected time
+must retain at least 30 minutes of coverage so it remains usable for the full
+Gate A evidence lifetime.
 
-```powershell
-npm run ops:request-finisher-recovery-point -- `
-  --required-application-commit $integratedSha `
-  --expected-provider-account-id $supabaseOrganizationId `
-  --expected-project-reference $projectReference `
-  --expected-database postgres `
-  --authorize-provider-mutation `
-  --confirm-provider-operation "trainer-recovery-point:$projectReference:$integratedSha"
-```
+Supabase documents PITR restoration as
+`POST /v1/projects/{ref}/database/backups/restore-pitr` with
+`recovery_time_target_unix`. It restores the entire project database to the
+selected timestamp. The project is inaccessible during restoration; downtime
+depends on database size and WAL volume. Writes after the selected timestamp are
+lost. Database restore does not restore deleted Supabase Storage objects, and
+custom-role credentials may require separate reset handling.
 
-The approved narrow bridge is an independently authorized provider-console or
-provider-support operation followed by a future repository adapter capable of
-authenticating its operation ID, resource ID, exact project/database, completed
-state, timestamps, freshness, retention, and recoverability. Screenshots,
-operator-entered `created`/`verified` JSON, request acceptance, and backup-list
-presence do not satisfy the version 1 contract. Until that adapter exists,
-`migrationAuthorizationReady` remains false.
+If `pitr_enabled` is false, completed physical or daily backups are not accepted
+as PITR. The verifier reports the exact age in seconds of the latest completed
+daily backup and the implication that restoring it loses all later writes, then
+fails closed. It never decides that this loss is acceptable. Screenshots,
+operator-entered timestamps, JSON, checkpoint IDs, and narrative claims cannot
+establish recovery coverage.
 
 ##### Write-pause initiation and verification
 
@@ -612,7 +617,7 @@ Gate A resolves repository HEAD, database identity, migration state,
 principal state, credential equality, and its evaluation time from live seams.
 It rejects every caller field, including fields that attempt to supply data
 preflight, disposable execution, the expected pending sequence, principal
-verification, deployment commit, required commit, recovery point, write pause,
+verification, deployment commit, required commit, PITR state or timestamps, write pause,
 or deployment timestamp.
 
 ```json
@@ -668,7 +673,11 @@ valid SHA, or any mismatch fails closed before migration authorization. Do not
 derive all three values from one caller-supplied field or copy a claimed
 deployment SHA without the independent deployment checks.
 
-Acceptable recovery evidence is either a provider PITR point with confirmed retention/recoverability or a repository-created logical backup that passes `Inspect-TrainerBackup.ps1`. A logical archive whose manifest still says `restoreStatus: not_tested` is evidence of a structurally inspectable dump, not proof of a tested restore; the operator must record that limitation. Backup creation is a separate production read/export action and is not part of Gate A preparation.
+For this Finisher rollout, Gate A recovery evidence is authenticated provider
+PITR with a qualifying recovery window. A repository-created logical archive
+that passes `Inspect-TrainerBackup.ps1` remains optional supplemental evidence;
+it cannot replace PITR or make Gate A ready. Backup creation is a separate
+production read/export action and is not part of Gate A preparation.
 
 The repository-authoritative write boundary is `TRAINER_WRITE_PAUSE=enabled`. It blocks classified HTTP mutations and guarded remote operational writes, leaves documented read paths and dry-run diagnostics available, and requires a deployment of the same compatible commit before its state changes. Enable, verification, failure, and resume behavior is defined once in “Production write pause for database rollout” below.
 
@@ -700,9 +709,12 @@ environment change, role change, migration, production access, or verification.
    exact repository and migration bytes. Dispatch the reviewed master-only
    workflow after this tooling is merged and retain its exact run ID. The local
    PostgreSQL 16 harness remains review evidence only.
-4. Establish and verify the required recovery point.
-5. Activate and verify `TRAINER_WRITE_PAUSE=enabled` while keeping
+4. Activate and verify `TRAINER_WRITE_PAUSE=enabled` while keeping
    `TRAINER_FINISHERS_ROLLOUT` disabled.
+5. Run authenticated Supabase PITR verification for the exact production
+   organization, project, and `postgres` database. Require the provider window
+   to cover the trusted pause-establishment timestamp with at least 30 minutes
+   of remaining retention margin.
 6. Run the immediate live read-only direct-database and migration-status
    preflight:
 
@@ -724,7 +736,7 @@ environment change, role change, migration, production access, or verification.
    `trainer_finisher_cleanup`. This prerequisite creates only the principals
    with their reviewed role attributes; it does not create Finisher objects,
    assign migration-owned object ownership, or grant Finisher table/function
-   privileges. Recovery-point and write-pause evidence must already be verified
+   privileges. PITR and write-pause evidence must already be verified
    before this hosted role write. The canonical production command is:
 
    ```powershell
@@ -745,12 +757,9 @@ environment change, role change, migration, production access, or verification.
    project-bound confirmation. It rejects poolers, loopback/disposable
    classification, ambiguous hosts, a runtime/principal connection, missing
    write pause, and every incomplete authorization combination before writes.
-   **Current residual prerequisite:** authenticated recovery inventory is
-   implemented, but Supabase exposes no authoritative on-demand creation
-   operation. Production provisioning therefore remains fail closed until the
-   documented manual/provider bridge can be promoted through a reviewed
-   machine-verifiable adapter. Do not substitute caller JSON, screenshots, or
-   an ad hoc SQL session.
+   Production provisioning remains fail closed unless authenticated PITR and
+   write-pause verification both pass. Do not substitute caller JSON,
+   screenshots, or an ad hoc SQL session.
 8. Verify all three principals exist, have only the prerequisite attributes and
    capabilities needed by the migration, and have no prohibited memberships.
    The migration must remain responsible for transferring object ownership and
@@ -774,7 +783,7 @@ environment change, role change, migration, production access, or verification.
    exact canonical equality
    `requiredApplicationCommit === repositoryHead === productionDeploymentCommit`,
    and `executionAuthorized: false`. Until the exact-head workflow has run and
-   recovery-point creation is machine-verifiable, require
+   authenticated PITR coverage has been verified, require
    `migrationAuthorizationReady: false` and stop. An operator-authored file
    cannot satisfy either prerequisite:
 
@@ -787,7 +796,7 @@ environment change, role change, migration, production access, or verification.
    ```
 10. Only after Gate A reports `migrationAuthorizationReady: true`, obtain
     separate explicit migration-execution authorization for the exact target,
-    recovery point, paused-write boundary, command, and application sequence.
+    pre-migration recovery timestamp, paused-write boundary, command, and application sequence.
     Gate A still reports `executionAuthorized: false`; it never replaces this
     authorization.
 11. Run the authorized production migration once:

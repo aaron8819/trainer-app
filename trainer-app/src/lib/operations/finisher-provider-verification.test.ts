@@ -110,24 +110,33 @@ function evidence(): FinisherProviderVerification {
       verifiedAt: "2026-07-31T17:38:30.000Z",
       provenance: "github_authenticated_actions_artifact",
     },
-    recoveryPoint: {
+    recovery: {
       provider: "supabase",
       authenticated: true,
       organizationId: "org_trainer",
       projectRef: "p".repeat(20),
       database: "postgres",
-      creationCapability: "provider_operation",
-      creationAuthorizedAt: "2026-07-31T17:39:00.000Z",
-      operationId: "op_backup",
-      resourceId: "backup_1",
-      state: "COMPLETED",
-      recoveryRequirement: "fresh_completed_physical_backup",
-      checkpointAt: "2026-07-31T17:39:00.000Z",
-      providerCreatedAt: "2026-07-31T17:40:00.000Z",
-      verifiedAt: "2026-07-31T17:45:00.000Z",
+      pitrEnabled: true,
+      walgEnabled: true,
+      earliestRecoveryAt: "2026-07-31T17:00:00.000Z",
+      latestRecoveryAt: "2026-07-31T17:50:00.000Z",
+      requiredRecoveryAt: "2026-07-31T17:47:00.000Z",
+      retentionMarginMinutes: 47,
+      minimumRolloutCoverageMinutes: 30,
+      coversRequiredRecoveryAt: true,
+      coversRollout: true,
+      latestDailyBackupAt: null,
+      dailyBackupAgeSeconds: null,
+      dailyBackupImplication: null,
+      restoreOperation:
+        "POST /v1/projects/{ref}/database/backups/restore-pitr",
+      restoreTimestampParameter: "recovery_time_target_unix",
+      restoreScope: "entire_project_database",
+      restoreDowntime: "project_inaccessible_during_restore",
+      postRestoreWriteLoss: "writes_after_selected_timestamp_are_lost",
+      verifiedAt: "2026-07-31T17:51:00.000Z",
       verified: true,
       provenance: "supabase_authenticated_management_api",
-      limitation: null,
     },
     writePause: {
       provider: "vercel_application",
@@ -230,34 +239,61 @@ describe("Finisher provider verification contract", () => {
     );
   });
 
-  it("rejects a stale recovery resource even when it was read recently", () => {
+  it("rejects a PITR window that does not cover the paused pre-migration time", () => {
     const value = evidence();
-    value.recoveryPoint.providerCreatedAt = "2026-07-31T16:00:00.000Z";
+    value.recovery.latestRecoveryAt = "2026-07-31T17:46:59.000Z";
+    value.recovery.coversRequiredRecoveryAt = false;
+    value.recovery.coversRollout = false;
+    value.recovery.verified = false;
     expect(assessFinisherProviderVerification(value, expectation()).reasons).toContain(
-      "provider_evidence_expired_or_future",
+      "provider_pitr_window_missing_required_time",
     );
   });
 
-  it("rejects request acceptance without a completed recovery resource", () => {
+  it("does not allow caller-authored claims to establish PITR coverage", () => {
+    const value = {
+      ...evidence(),
+      recovery: {
+        ...evidence().recovery,
+        pitrEnabled: false,
+        coversRequiredRecoveryAt: false,
+        coversRollout: false,
+        verified: false,
+      },
+      claimedPitrEnabled: true,
+      claimedRecoveryTimestamp: "2026-07-31T17:47:00.000Z",
+    };
+    expect(assessFinisherProviderVerification(value, expectation()).reasons).toEqual([
+      "provider_evidence_schema_invalid",
+    ]);
+  });
+
+  it("rejects PITR coverage that can expire during the rollout", () => {
     const value = evidence();
-    value.recoveryPoint.state = "PENDING";
-    value.recoveryPoint.verified = false;
-    expect(assessFinisherProviderVerification(value, expectation()).reasons).toEqual(
-      expect.arrayContaining([
-        "provider_recovery_point_incomplete",
-        "provider_recovery_point_unverified",
-      ]),
+    value.recovery.earliestRecoveryAt = "2026-07-31T17:30:00.000Z";
+    value.recovery.retentionMarginMinutes = 17;
+    value.recovery.coversRollout = false;
+    value.recovery.verified = false;
+    expect(assessFinisherProviderVerification(value, expectation()).reasons).toContain(
+      "provider_pitr_window_expires_during_rollout",
     );
   });
 
-  it("rejects unsupported recovery-point creation capability", () => {
+  it("rejects daily backup inventory presented as PITR coverage", () => {
     const value = evidence();
-    value.recoveryPoint.creationCapability = "unavailable_no_authoritative_creation_api";
-    value.recoveryPoint.creationAuthorizedAt = null;
-    value.recoveryPoint.operationId = null;
-    value.recoveryPoint.verified = false;
+    value.recovery.pitrEnabled = false;
+    value.recovery.earliestRecoveryAt = null;
+    value.recovery.latestRecoveryAt = null;
+    value.recovery.retentionMarginMinutes = null;
+    value.recovery.coversRequiredRecoveryAt = false;
+    value.recovery.coversRollout = false;
+    value.recovery.latestDailyBackupAt = "2026-07-31T12:00:00.000Z";
+    value.recovery.dailyBackupAgeSeconds = 21_060;
+    value.recovery.dailyBackupImplication =
+      "restore_to_daily_snapshot_with_post_snapshot_write_loss";
+    value.recovery.verified = false;
     expect(assessFinisherProviderVerification(value, expectation()).reasons).toContain(
-      "provider_recovery_point_creation_capability_unavailable",
+      "provider_pitr_disabled",
     );
   });
 
@@ -285,7 +321,7 @@ describe("Finisher provider verification contract", () => {
 
   it("rejects evidence produced before the corresponding action and out of order", () => {
     const value = evidence();
-    value.recoveryPoint.creationAuthorizedAt = "2026-07-31T17:20:00.000Z";
+    value.recovery.verifiedAt = "2026-07-31T17:35:00.000Z";
     expect(assessFinisherProviderVerification(value, expectation()).reasons).toContain(
       "provider_evidence_operational_order_invalid",
     );
@@ -293,7 +329,7 @@ describe("Finisher provider verification contract", () => {
 
   it("rejects wrong provider database identity", () => {
     const value = evidence();
-    (value.recoveryPoint as { database: string }).database = "other";
+    (value.recovery as { database: string }).database = "other";
     expect(assessFinisherProviderVerification(value, expectation()).reasons).toContain(
       "provider_evidence_schema_invalid",
     );

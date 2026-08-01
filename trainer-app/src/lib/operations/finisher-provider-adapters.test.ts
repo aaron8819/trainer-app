@@ -479,33 +479,57 @@ describe("GitHub exact-head disposable adapter", () => {
 });
 
 describe("Supabase recovery capability adapter", () => {
-  it("authenticates exact project backup inventory but fails closed on creation capability", async () => {
-    const fetcher = async (url: string) =>
+  const requiredRecoveryAt = "2026-07-31T17:47:00.000Z";
+  const unix = (value: string) => Date.parse(value) / 1_000;
+  const inventory = (overrides: Record<string, unknown> = {}) => ({
+    region: "us-east-1",
+    walg_enabled: true,
+    pitr_enabled: true,
+    backups: [],
+    physical_backup_data: {
+      earliest_physical_backup_date_unix: unix("2026-07-31T17:00:00.000Z"),
+      latest_physical_backup_date_unix: unix("2026-07-31T17:50:00.000Z"),
+    },
+    ...overrides,
+  });
+  const fetcher = (backupInventory: Record<string, unknown>) =>
+    async (url: string) =>
       new URL(url).pathname.endsWith("/database/backups")
-        ? json({ backups: [{ id: 42, status: "COMPLETED", inserted_at: "2026-07-31T17:40:00.000Z" }] })
+        ? json(backupInventory)
         : json({ ref: "p".repeat(20), organization_id: "org_trainer" });
+
+  it("accepts authenticated PITR coverage for the exact production project", async () => {
     await expect(inspectSupabaseRecoveryCapability({
       organizationId: "org_trainer",
       projectRef: "p".repeat(20),
       database: "postgres",
+      requiredRecoveryAt,
       token: "token",
-      fetcher,
+      fetcher: fetcher(inventory()),
       now: () => NOW,
     })).resolves.toMatchObject({
-      resourceId: "42",
-      state: "COMPLETED",
-      creationCapability: "unavailable_no_authoritative_creation_api",
-      verified: false,
+      pitrEnabled: true,
+      earliestRecoveryAt: "2026-07-31T17:00:00.000Z",
+      latestRecoveryAt: "2026-07-31T17:50:00.000Z",
+      requiredRecoveryAt,
+      retentionMarginMinutes: 47,
+      coversRequiredRecoveryAt: true,
+      coversRollout: true,
+      verified: true,
     });
   });
 
-  it("rejects a backup attached to the wrong project/account", async () => {
+  it.each([
+    ["project", "q".repeat(20), "org_trainer"],
+    ["organization", "p".repeat(20), "org_other"],
+  ])("rejects provider identity from the wrong %s", async (_label, ref, organizationId) => {
     await expect(inspectSupabaseRecoveryCapability({
       organizationId: "org_trainer",
       projectRef: "p".repeat(20),
       database: "postgres",
+      requiredRecoveryAt,
       token: "token",
-      fetcher: async () => json({ ref: "q".repeat(20), organization_id: "org_other" }),
+      fetcher: async () => json({ ref, organization_id: organizationId }),
     })).rejects.toMatchObject({ code: "wrong_identity" });
   });
 
@@ -515,6 +539,7 @@ describe("Supabase recovery capability adapter", () => {
       organizationId: "org_trainer",
       projectRef: "p".repeat(20),
       database: "other",
+      requiredRecoveryAt,
       token: "token",
       fetcher: async () => {
         requests += 1;
@@ -522,6 +547,165 @@ describe("Supabase recovery capability adapter", () => {
       },
     })).rejects.toMatchObject({ code: "wrong_identity" });
     expect(requests).toBe(0);
+  });
+
+  it("reports daily-backup age and fails closed when PITR is disabled", async () => {
+    await expect(inspectSupabaseRecoveryCapability({
+      organizationId: "org_trainer",
+      projectRef: "p".repeat(20),
+      database: "postgres",
+      requiredRecoveryAt,
+      token: "token",
+      fetcher: fetcher(inventory({
+        pitr_enabled: false,
+        backups: [{
+          id: 42,
+          is_physical_backup: true,
+          status: "COMPLETED",
+          inserted_at: "2026-07-31T12:00:00.000Z",
+        }],
+      })),
+      now: () => NOW,
+    })).resolves.toMatchObject({
+      pitrEnabled: false,
+      walgEnabled: true,
+      coversRequiredRecoveryAt: false,
+      coversRollout: false,
+      latestDailyBackupAt: "2026-07-31T12:00:00.000Z",
+      dailyBackupAgeSeconds: 21_600,
+      dailyBackupImplication:
+        "restore_to_daily_snapshot_with_post_snapshot_write_loss",
+      verified: false,
+    });
+  });
+
+  it("does not treat a physical daily backup as PITR", async () => {
+    const result = await inspectSupabaseRecoveryCapability({
+      organizationId: "org_trainer",
+      projectRef: "p".repeat(20),
+      database: "postgres",
+      requiredRecoveryAt,
+      token: "token",
+      fetcher: fetcher(inventory({
+        pitr_enabled: false,
+        backups: [{
+          id: 42,
+          is_physical_backup: true,
+          status: "COMPLETED",
+          inserted_at: "2026-07-31T17:40:00.000Z",
+        }],
+      })),
+      now: () => NOW,
+    });
+    expect(result).toMatchObject({ pitrEnabled: false, verified: false });
+  });
+
+  it("fails closed when the PITR window misses the required time", async () => {
+    const result = await inspectSupabaseRecoveryCapability({
+      organizationId: "org_trainer",
+      projectRef: "p".repeat(20),
+      database: "postgres",
+      requiredRecoveryAt,
+      token: "token",
+      fetcher: fetcher(inventory({
+        physical_backup_data: {
+          earliest_physical_backup_date_unix: unix("2026-07-31T17:00:00.000Z"),
+          latest_physical_backup_date_unix: unix("2026-07-31T17:46:59.000Z"),
+        },
+      })),
+      now: () => NOW,
+    });
+    expect(result).toMatchObject({
+      coversRequiredRecoveryAt: false,
+      coversRollout: false,
+      verified: false,
+    });
+  });
+
+  it("fails closed when coverage can expire before Gate A evidence", async () => {
+    const result = await inspectSupabaseRecoveryCapability({
+      organizationId: "org_trainer",
+      projectRef: "p".repeat(20),
+      database: "postgres",
+      requiredRecoveryAt,
+      token: "token",
+      fetcher: fetcher(inventory({
+        physical_backup_data: {
+          earliest_physical_backup_date_unix: unix("2026-07-31T17:30:00.000Z"),
+          latest_physical_backup_date_unix: unix("2026-07-31T17:50:00.000Z"),
+        },
+      })),
+      now: () => NOW,
+    });
+    expect(result).toMatchObject({
+      retentionMarginMinutes: 17,
+      coversRequiredRecoveryAt: true,
+      coversRollout: false,
+      verified: false,
+    });
+  });
+
+  it("fails closed when the required pre-migration time has expired", async () => {
+    const result = await inspectSupabaseRecoveryCapability({
+      organizationId: "org_trainer",
+      projectRef: "p".repeat(20),
+      database: "postgres",
+      requiredRecoveryAt,
+      token: "token",
+      fetcher: fetcher(inventory({
+        physical_backup_data: {
+          earliest_physical_backup_date_unix: unix("2026-07-31T17:48:00.000Z"),
+          latest_physical_backup_date_unix: unix("2026-07-31T17:50:00.000Z"),
+        },
+      })),
+      now: () => NOW,
+    });
+    expect(result).toMatchObject({
+      retentionMarginMinutes: 0,
+      coversRequiredRecoveryAt: false,
+      coversRollout: false,
+      verified: false,
+    });
+  });
+
+  it.each([
+    [undefined, 200, "credentials_unavailable"],
+    ["token", 401, "authentication_failed"],
+    ["token", 403, "authorization_failed"],
+    ["token", 500, "network_failure"],
+  ] as const)("fails closed for provider access failure %#", async (token, status, code) => {
+    await expect(inspectSupabaseRecoveryCapability({
+      organizationId: "org_trainer",
+      projectRef: "p".repeat(20),
+      database: "postgres",
+      requiredRecoveryAt,
+      token,
+      fetcher: async () => json({}, status),
+    })).rejects.toMatchObject({ code });
+  });
+
+  it("fails closed on a provider network failure", async () => {
+    await expect(inspectSupabaseRecoveryCapability({
+      organizationId: "org_trainer",
+      projectRef: "p".repeat(20),
+      database: "postgres",
+      requiredRecoveryAt,
+      token: "token",
+      fetcher: async () => {
+        throw new Error("offline");
+      },
+    })).rejects.toMatchObject({ code: "network_failure" });
+  });
+
+  it("rejects malformed provider recovery data", async () => {
+    await expect(inspectSupabaseRecoveryCapability({
+      organizationId: "org_trainer",
+      projectRef: "p".repeat(20),
+      database: "postgres",
+      requiredRecoveryAt,
+      token: "token",
+      fetcher: fetcher(inventory({ pitr_enabled: "yes" })),
+    })).rejects.toMatchObject({ code: "malformed_provider_response" });
   });
 });
 

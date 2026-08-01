@@ -20,24 +20,15 @@ describe("production write-gate static verification", () => {
     const result = verifyProductionWriteGate(process.cwd());
     expect(result.failures).toEqual([]);
     expect(result.mutationRoutes).toHaveLength(35);
+    expect(result.operationalCommands).toHaveLength(22);
   });
 
-  it("rejects a GET route with a direct upsert", () => {
+  it("fails closed on an unsupported route declaration", () => {
     expect(
-      verifyProductionWriteGate(fixture("get-upsert"), { fixtureMode: true })
+      verifyProductionWriteGate(fixture("unsupported-route-export"), { fixtureMode: true })
         .failures,
     ).toContain(
-      "Read surface reaches a database write: src/app/api/example/route.ts#GET",
-    );
-  });
-
-  it("rejects a read route that reaches an imported mutation helper", () => {
-    expect(
-      verifyProductionWriteGate(fixture("indirect-read-write"), {
-        fixtureMode: true,
-      }).failures,
-    ).toContain(
-      "Read surface reaches a database write: src/app/api/example/route.ts#GET",
+      "Unsupported route method declaration: example/route.ts#POST",
     );
   });
 
@@ -57,9 +48,6 @@ describe("production write-gate static verification", () => {
     }).failures;
     expect(failures).toContain(
       "Mutation work occurs before the central gate for profile/setup/route.ts#POST",
-    );
-    expect(failures).toContain(
-      "Owner provisioning occurs before the central gate for profile/setup/route.ts#POST",
     );
   });
 

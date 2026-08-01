@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertProductionWriteAllowed,
   ProductionWritePausedError,
+  productionWritePauseOperationId,
   productionWriteRuntimeEvidence,
   productionWriteStatus,
 } from "./production-write-gate";
@@ -40,7 +41,7 @@ describe("production write gate", () => {
         VERCEL_ENV: "production",
         VERCEL_GIT_COMMIT_SHA: "a".repeat(40),
         VERCEL_DEPLOYMENT_ID: "dpl_paused",
-        TRAINER_WRITE_PAUSE_OPERATION_ID: "pause-operation-1",
+        VERCEL_PROJECT_ID: "prj_trainer",
         TRAINER_WRITE_PAUSE: "enabled",
       }),
     ).toEqual({
@@ -49,11 +50,27 @@ describe("production write gate", () => {
       environment: "production",
       commitSha: "a".repeat(40),
       deploymentId: "dpl_paused",
-      pauseOperationId: "pause-operation-1",
+      pauseOperationId: `trainer-write-pause:prj_trainer:production:${"a".repeat(40)}:dpl_paused`,
       status: "PAUSED",
       enforcement: "application_all_classified_write_paths",
       enforcementContractVersion: 2,
     });
+  });
+
+  it("gives each project, commit, and deployment a distinct pause identity", () => {
+    const base = {
+      projectId: "prj_trainer",
+      environment: "production" as const,
+      commitSha: "a".repeat(40),
+      deploymentId: "dpl_one",
+    };
+    const identities = [
+      productionWritePauseOperationId(base),
+      productionWritePauseOperationId({ ...base, projectId: "prj_other" }),
+      productionWritePauseOperationId({ ...base, commitSha: "b".repeat(40) }),
+      productionWritePauseOperationId({ ...base, deploymentId: "dpl_two" }),
+    ];
+    expect(new Set(identities).size).toBe(identities.length);
   });
 
   it("rejects a commit that does not match the deployment", () => {
@@ -62,7 +79,7 @@ describe("production write gate", () => {
         VERCEL_ENV: "production",
         VERCEL_GIT_COMMIT_SHA: "a".repeat(40),
         VERCEL_DEPLOYMENT_ID: "dpl_paused",
-        TRAINER_WRITE_PAUSE_OPERATION_ID: "pause-operation-1",
+        VERCEL_PROJECT_ID: "prj_trainer",
         TRAINER_WRITE_PAUSE: "enabled",
       }),
     ).toThrow("commit binding");

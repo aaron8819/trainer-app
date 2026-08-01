@@ -10,17 +10,18 @@ assertOperationalProductionWriteAllowed({
   operation: "operational_administration",
 });
 
-const prismaExecutable = join(
+const prismaEntrypoint = join(
   process.cwd(),
   "node_modules",
-  ".bin",
-  process.platform === "win32" ? "prisma.cmd" : "prisma",
+  "prisma",
+  "build",
+  "index.js",
 );
 const prismaArgs = argv.filter(
   (argument) =>
     argument !== "--confirm-remote-write" && argument !== "--confirm-disposable",
 );
-const result = spawnSync(prismaExecutable, ["studio", ...prismaArgs], {
+const result = spawnSync(process.execPath, [prismaEntrypoint, "studio", ...prismaArgs], {
   env: process.env,
   stdio: "inherit",
   windowsHide: true,

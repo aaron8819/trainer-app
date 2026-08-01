@@ -7,9 +7,10 @@
 - Classified mutation handlers call the central production write gate before request parsing or
   Prisma access, then use `provisionOwnerForMutation(operation)`. The provisioning seam repeats
   the same gate before any database access so indirect callers cannot bypass the pause.
-- The static write-boundary verifier inventories every route method and registered
-  production-capable command, traces local/imported helper calls, and rejects read-to-write call
-  paths or mutation work that can precede its gate.
+- The static write-boundary verifier inventories every route method and registry-classified
+  production-capable database command. It requires a directly dominating route gate, protects
+  the explicit read-only owner lookup/provisioning split, and rejects mutation work that can
+  precede the gate. It does not claim to be a general TypeScript call-graph analyzer.
 
 ## `GET|POST /api/workouts/[id]/finisher`
 

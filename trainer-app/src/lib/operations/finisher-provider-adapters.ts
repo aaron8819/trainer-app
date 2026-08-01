@@ -16,6 +16,7 @@ import {
   FINISHER_PROVIDER_EVIDENCE_VERSION,
   FINISHER_PROVIDER_TOOL_VERSION,
 } from "./finisher-provider-verification";
+import { productionWritePauseOperationId } from "./production-write-gate";
 
 const MAX_DISPOSABLE_ARTIFACT_BYTES = 64 * 1024;
 
@@ -519,7 +520,12 @@ async function readProductionWriteStatus(input: {
     body.commitSha !== input.deployment.sourceCommit ||
     body.deploymentId !== input.deployment.deploymentId ||
     body.pauseOperationId !==
-      `trainer-write-pause:${input.deployment.projectId}:${input.deployment.sourceCommit}` ||
+      productionWritePauseOperationId({
+        projectId: input.deployment.projectId,
+        environment: "production",
+        commitSha: input.deployment.sourceCommit,
+        deploymentId: input.deployment.deploymentId,
+      }) ||
     body.status !== input.expectedStatus ||
     body.enforcement !== "application_all_classified_write_paths" ||
     body.enforcementContractVersion !== 2

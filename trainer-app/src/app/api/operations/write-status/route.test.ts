@@ -13,8 +13,8 @@ describe("GET /api/operations/write-status", () => {
     process.env.VERCEL_ENV = "production";
     process.env.VERCEL_GIT_COMMIT_SHA = "a".repeat(40);
     process.env.VERCEL_DEPLOYMENT_ID = "dpl_paused";
+    process.env.VERCEL_PROJECT_ID = "prj_trainer";
     process.env.TRAINER_WRITE_PAUSE = "enabled";
-    process.env.TRAINER_WRITE_PAUSE_OPERATION_ID = "pause-operation-1";
     const { GET } = await import("./route");
     const response = await GET();
     expect(response.status).toBe(200);
@@ -25,7 +25,7 @@ describe("GET /api/operations/write-status", () => {
       environment: "production",
       commitSha: "a".repeat(40),
       deploymentId: "dpl_paused",
-      pauseOperationId: "pause-operation-1",
+      pauseOperationId: `trainer-write-pause:prj_trainer:production:${"a".repeat(40)}:dpl_paused`,
       status: "PAUSED",
       enforcement: "application_all_classified_write_paths",
       enforcementContractVersion: 2,
@@ -43,16 +43,12 @@ describe("GET /api/operations/write-status", () => {
 
   it.each([
     ["deployment", { VERCEL_DEPLOYMENT_ID: "" }, "deployment binding"],
-    [
-      "pause operation",
-      { TRAINER_WRITE_PAUSE_OPERATION_ID: "" },
-      "pause-operation binding",
-    ],
+    ["project", { VERCEL_PROJECT_ID: "" }, "project binding"],
   ])("refuses missing %s evidence", async (_label, override, message) => {
     process.env.VERCEL_ENV = "production";
     process.env.VERCEL_GIT_COMMIT_SHA = "a".repeat(40);
     process.env.VERCEL_DEPLOYMENT_ID = "dpl_paused";
-    process.env.TRAINER_WRITE_PAUSE_OPERATION_ID = "pause-operation-1";
+    process.env.VERCEL_PROJECT_ID = "prj_trainer";
     Object.assign(process.env, override);
     const { GET } = await import("./route");
     await expect(GET()).rejects.toThrow(message);

@@ -413,14 +413,15 @@ script:
 npm run verify:production-write-gate
 ```
 
-The guard inventories every exported route method and traces local/imported helper call graphs.
-It rejects any read method or page that can reach a Prisma mutation, requires every classified
-mutation to gate before request parsing, Prisma access, or owner provisioning, keeps the two
-read-only POST previews explicit, rejects direct production-environment checks outside the owner
-module, and checks every registered production-capable command against the target-aware command
-registry. Its isolated fixture suite proves direct and indirect GET writes, an unguarded seed
-command, pre-gate parsing/provisioning, and stale evidence-contract versions are rejected. It is
-included in `npm run verify`.
+The guard inventories every exported route method, fails closed on unsupported route-export
+syntax, and requires every classified mutation to use a directly dominating gate before request
+parsing, Prisma access, or owner provisioning. It keeps the two read-only POST previews explicit,
+protects the non-provisioning owner lookup boundary, rejects direct production-environment checks
+outside the owner module, and derives production-capable database commands from the canonical
+command registry before checking their target-aware entrypoints. It intentionally does not claim
+general TypeScript call-graph soundness. Its isolated fixture suite proves unsupported route
+syntax, an unguarded seed command, pre-gate parsing/provisioning, and stale evidence-contract
+versions are rejected. It is included in `npm run verify`.
 
 Focused behavior coverage lives in:
 

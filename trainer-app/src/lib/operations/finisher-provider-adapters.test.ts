@@ -29,7 +29,7 @@ const expected = {
   productionAlias: "trainer.example.com",
 };
 const PAUSE_OPERATION_ID =
-  `trainer-write-pause:${expected.projectId}:${COMMIT}`;
+  `trainer-write-pause:${expected.projectId}:production:${COMMIT}:dpl_current`;
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

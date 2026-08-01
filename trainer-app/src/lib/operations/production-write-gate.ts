@@ -1,7 +1,5 @@
 export const TRAINER_WRITE_PAUSE_VARIABLE = "TRAINER_WRITE_PAUSE";
 export const TRAINER_WRITE_PAUSE_ENABLED_VALUE = "enabled";
-export const TRAINER_WRITE_PAUSE_OPERATION_ID_VARIABLE =
-  "TRAINER_WRITE_PAUSE_OPERATION_ID";
 export const PRODUCTION_WRITE_STATUS_CONTRACT_VERSION = 2 as const;
 export const PRODUCTION_WRITE_ENFORCEMENT_CONTRACT_VERSION = 2 as const;
 export const PRODUCTION_WRITE_ENFORCEMENT_COVERAGE =
@@ -46,6 +44,21 @@ export function productionWriteStatus(
     : "ENABLED";
 }
 
+export function productionWritePauseOperationId(input: {
+  projectId: string;
+  environment: "production";
+  commitSha: string;
+  deploymentId: string;
+}): string {
+  return [
+    "trainer-write-pause",
+    input.projectId,
+    input.environment,
+    input.commitSha,
+    input.deploymentId,
+  ].join(":");
+}
+
 export function productionWriteRuntimeEvidence(
   commitSha: string,
   environment: Record<string, string | undefined> = process.env,
@@ -62,10 +75,9 @@ export function productionWriteRuntimeEvidence(
   if (!deploymentId) {
     throw new Error("Production write status deployment binding is unavailable.");
   }
-  const pauseOperationId =
-    environment[TRAINER_WRITE_PAUSE_OPERATION_ID_VARIABLE]?.trim();
-  if (!pauseOperationId) {
-    throw new Error("Production write status pause-operation binding is unavailable.");
+  const projectId = environment.VERCEL_PROJECT_ID?.trim();
+  if (!projectId) {
+    throw new Error("Production write status project binding is unavailable.");
   }
   return {
     schema: "trainer-production-write-status" as const,
@@ -73,7 +85,12 @@ export function productionWriteRuntimeEvidence(
     environment: "production" as const,
     commitSha: deploymentCommit,
     deploymentId,
-    pauseOperationId,
+    pauseOperationId: productionWritePauseOperationId({
+      projectId,
+      environment: "production",
+      commitSha: deploymentCommit,
+      deploymentId,
+    }),
     status: productionWriteStatus(environment),
     enforcement: PRODUCTION_WRITE_ENFORCEMENT_COVERAGE,
     enforcementContractVersion: PRODUCTION_WRITE_ENFORCEMENT_CONTRACT_VERSION,

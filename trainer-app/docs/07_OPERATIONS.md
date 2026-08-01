@@ -567,6 +567,10 @@ npm run ops:initiate-finisher-write-pause -- `
   --confirm-provider-operation "trainer-write-pause:$vercelProjectId:$integratedSha"
 ```
 
+That confirmation string authorizes the bounded provider request; it is not runtime pause
+evidence. Runtime evidence derives a distinct deployment-bound identity from trusted Vercel
+system metadata.
+
 Use the existing separately authorized Vercel console procedure for activation.
 Read-only verification then combines authenticated active-alias deployment data
 with `GET /api/operations/write-status` from that alias. The endpoint is
@@ -1104,15 +1108,14 @@ The command exits zero for either status and never prints environment values or 
 
 ## Activation procedure
 
-1. Set `TRAINER_WRITE_PAUSE=enabled` and
-   `TRAINER_WRITE_PAUSE_OPERATION_ID=trainer-write-pause:<vercel-project-id>:<commit-sha>` in the
-   Vercel Production environment variables.
+1. Set `TRAINER_WRITE_PAUSE=enabled` in the Vercel Production environment variables.
 2. Redeploy the currently verified production commit so the environment change reaches a new
    deployment. Changing a Vercel environment variable does not alter an already-running
    deployment.
 3. Verify the runtime evidence endpoint reports exact contract version 2, `production`, the
    expected deployed commit SHA, the authenticated deployment ID, the matching pause-operation
-   ID `trainer-write-pause:<vercel-project-id>:<commit-sha>`, `PAUSED`,
+   ID `trainer-write-pause:<vercel-project-id>:production:<commit-sha>:<deployment-id>` derived
+   from trusted Vercel system metadata, `PAUSED`,
    `application_all_classified_write_paths`, and enforcement-contract version 2.
 4. Export/download the production variables into the operator-controlled `.env.production`
    file through the established secure process; do not commit or edit that file in the repo.

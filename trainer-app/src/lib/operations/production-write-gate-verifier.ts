@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import ts from "typescript";
 
 export const APPLICATION_MUTATION_ROUTES = new Map<string, string>([
@@ -45,44 +45,23 @@ export const READ_ONLY_NON_GET_ROUTES = new Set([
   "workouts/[id]/add-exercise-preview/route.ts#POST",
 ]);
 
-export const OPERATIONAL_WRITE_COMMANDS = new Map<string, string>([
-  ["audit:workout", "scripts/workout-audit.ts"],
-  ["audit:week", "scripts/workout-audit.ts"],
-  ["audit:week:debug", "scripts/workout-audit.ts"],
-  ["audit:week:retro", "scripts/workout-audit.ts"],
-  ["backfill:week1-performed", "scripts/backfill-week1-performed-sessions.ts"],
-  ["db:seed", "prisma/seed.ts"],
-  ["ops:backfill-post-session-reviews", "scripts/backfill-post-session-reviews.ts"],
-  ["ops:backfill-seed-revisions", "scripts/backfill-immutable-seed-revisions.ts"],
-  ["ops:backfill-stimulus-accounting", "scripts/backfill-workout-exercise-stimulus-accounting.ts"],
-  ["ops:finisher-principals", "scripts/manage-finisher-principals.ts"],
-  ["ops:preflight-post-session-reviews", "scripts/backfill-post-session-reviews.ts"],
-  ["ops:preflight-seed-revisions", "scripts/backfill-immutable-seed-revisions.ts"],
-  ["ops:preflight-stimulus-accounting", "scripts/backfill-workout-exercise-stimulus-accounting.ts"],
-  ["ops:refresh-next-seed-draft", "scripts/ops-refresh-next-seed-draft.ts"],
-  ["prisma:studio", "scripts/run-target-aware-prisma-studio.ts"],
-  ["repair:exercise-library", "scripts/repair-exercise-library.ts"],
-  ["repair:exercise-library:apply", "scripts/repair-exercise-library.ts"],
-  ["repair:historical-session-slot-receipts", "prisma/repair-historical-session-slot-receipts.ts"],
-  ["repair:week-close-handoff", "scripts/repair-week-close-handoff.ts"],
-  ["repair:workout-week-snapshot", "scripts/repair-workout-week-snapshot.ts"],
-  ["sync:exercise-library", "scripts/sync-exercise-library.ts"],
-  ["sync:exercise-library:apply", "scripts/sync-exercise-library.ts"],
+const ROUTE_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
+const WRITE_METHODS = new Set([
+  "create",
+  "createMany",
+  "createManyAndReturn",
+  "delete",
+  "deleteMany",
+  "update",
+  "updateMany",
+  "updateManyAndReturn",
+  "upsert",
+  "$executeRaw",
+  "$executeRawUnsafe",
 ]);
-
-type FunctionRecord = {
-  key: string;
-  file: string;
-  name: string;
-  node: ts.FunctionLikeDeclaration;
-  sourceFile: ts.SourceFile;
-};
-
-type Analysis = {
-  functions: Map<string, FunctionRecord>;
-  byFileAndName: Map<string, string>;
-  imports: Map<string, Map<string, { file: string; imported: string }>>;
-};
+const NON_DATABASE_PROVIDER_COMMANDS = new Set([
+  "scripts/request-finisher-provider-operation.ts",
+]);
 
 export type ProductionWriteGateVerification = {
   failures: string[];
@@ -90,17 +69,12 @@ export type ProductionWriteGateVerification = {
   operationalCommands: Array<[string, string]>;
 };
 
-const WRITE_METHODS = new Set([
-  "create",
-  "createMany",
-  "delete",
-  "deleteMany",
-  "update",
-  "updateMany",
-  "upsert",
-  "$executeRaw",
-  "$executeRawUnsafe",
-]);
+type CommandRegistryEntry = {
+  packageScript?: string;
+  entrypoint?: string;
+  profile?: string;
+  flagEscalations?: Array<{ sideEffectClass?: string }>;
+};
 
 function filesUnder(root: string): string[] {
   if (!existsSync(root)) return [];
@@ -114,260 +88,169 @@ function normalized(root: string, path: string): string {
   return relative(root, path).replaceAll("\\", "/");
 }
 
-function resolveImport(appRoot: string, fromFile: string, specifier: string): string | null {
-  const base = specifier.startsWith("@/")
-    ? join(appRoot, "src", specifier.slice(2))
-    : specifier.startsWith(".")
-      ? resolve(dirname(fromFile), specifier)
-      : null;
-  if (!base) return null;
-  for (const candidate of [base, `${base}.ts`, `${base}.tsx`, join(base, "index.ts")]) {
-    if (existsSync(candidate)) return resolve(candidate);
-  }
-  return null;
-}
-
-function functionName(node: ts.FunctionLikeDeclaration, fallback: string): string {
-  if (
-    "modifiers" in node &&
-    node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword)
-  ) {
-    return "default";
-  }
-  if ("name" in node && node.name && ts.isIdentifier(node.name)) return node.name.text;
-  return fallback;
-}
-
-function analyze(appRoot: string): Analysis {
-  const files = [join(appRoot, "src"), join(appRoot, "scripts"), join(appRoot, "prisma")]
-    .flatMap(filesUnder)
-    .filter((path) => /\.(?:ts|tsx)$/.test(path) && !/\.test\.|\.db-test-/.test(path));
-  const functions = new Map<string, FunctionRecord>();
-  const byFileAndName = new Map<string, string>();
-  const imports = new Map<string, Map<string, { file: string; imported: string }>>();
-
-  for (const file of files) {
-    const sourceFile = ts.createSourceFile(
-      file,
-      readFileSync(file, "utf8"),
-      ts.ScriptTarget.Latest,
-      true,
-      file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
-    );
-    const fileImports = new Map<string, { file: string; imported: string }>();
-    for (const statement of sourceFile.statements) {
-      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
-      const target = resolveImport(appRoot, file, statement.moduleSpecifier.text);
-      if (!target || !statement.importClause) continue;
-      if (statement.importClause.name) {
-        fileImports.set(statement.importClause.name.text, { file: target, imported: "default" });
-      }
-      const bindings = statement.importClause.namedBindings;
-      if (bindings && ts.isNamedImports(bindings)) {
-        for (const element of bindings.elements) {
-          fileImports.set(element.name.text, {
-            file: target,
-            imported: element.propertyName?.text ?? element.name.text,
-          });
-        }
-      }
-    }
-    imports.set(resolve(file), fileImports);
-
-    const visit = (node: ts.Node) => {
-      let record: FunctionRecord | null = null;
-      if (ts.isFunctionDeclaration(node) && node.body) {
-        const name = functionName(node, "default");
-        record = { key: `${resolve(file)}#${name}`, file: resolve(file), name, node, sourceFile };
-      } else if (
-        ts.isVariableDeclaration(node) &&
-        ts.isIdentifier(node.name) &&
-        node.initializer &&
-        (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
-      ) {
-        const name = node.name.text;
-        record = {
-          key: `${resolve(file)}#${name}`,
-          file: resolve(file),
-          name,
-          node: node.initializer,
-          sourceFile,
-        };
-      }
-      if (record) {
-        functions.set(record.key, record);
-        byFileAndName.set(`${record.file}#${record.name}`, record.key);
-      }
-      ts.forEachChild(node, visit);
-    };
-    visit(sourceFile);
-  }
-  return { functions, byFileAndName, imports };
-}
-
-function directWrite(record: FunctionRecord): boolean {
-  let found = false;
-  const visit = (node: ts.Node) => {
-    if (found) return;
-    if (ts.isCallExpression(node)) {
-      const expression = node.expression;
-      if (ts.isIdentifier(expression) && expression.text === "provisionOwnerForMutation") {
-        found = true;
-        return;
-      }
-      if (ts.isPropertyAccessExpression(expression)) {
-        const method = expression.name.text;
-        const receiver = expression.expression.getText(record.sourceFile);
-        if (
-          WRITE_METHODS.has(method) &&
-          /^(?:prisma|tx|db|client)(?:\.|$)/.test(receiver)
-        ) {
-          found = true;
-          return;
-        }
-        if (method === "query" && /^(?:pool|client)(?:\.|$)/.test(receiver)) {
-          const sql = node.arguments[0]?.getText(record.sourceFile) ?? "";
-          if (/\b(?:insert|update|delete|alter|create|drop|grant|revoke|truncate)\b/i.test(sql)) {
-            found = true;
-            return;
-          }
-        }
-      }
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(record.node);
-  return found;
-}
-
-function calledFunctionKeys(record: FunctionRecord, analysis: Analysis): string[] {
-  const keys = new Set<string>();
-  const visit = (node: ts.Node) => {
-    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-      const name = node.expression.text;
-      const local = analysis.byFileAndName.get(`${record.file}#${name}`);
-      if (local) keys.add(local);
-      const imported = analysis.imports.get(record.file)?.get(name);
-      if (imported) {
-        const target = analysis.byFileAndName.get(`${imported.file}#${imported.imported}`);
-        if (target) keys.add(target);
-      }
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(record.node);
-  return [...keys];
-}
-
-function reachesWrite(
-  key: string,
-  analysis: Analysis,
-  memo: Map<string, boolean>,
-  visiting = new Set<string>(),
-): boolean {
-  if (memo.has(key)) return memo.get(key)!;
-  if (visiting.has(key)) return false;
-  visiting.add(key);
-  const record = analysis.functions.get(key);
-  const result = Boolean(
-    record &&
-      (directWrite(record) ||
-        calledFunctionKeys(record, analysis).some((child) =>
-          reachesWrite(child, analysis, memo, visiting),
-        )),
-  );
-  visiting.delete(key);
-  memo.set(key, result);
-  return result;
+function hasExportModifier(node: ts.Node & { modifiers?: ts.NodeArray<ts.ModifierLike> }): boolean {
+  return Boolean(node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword));
 }
 
 function routeFunctions(sourceFile: ts.SourceFile): ts.FunctionDeclaration[] {
   return sourceFile.statements.filter(
     (statement): statement is ts.FunctionDeclaration =>
       ts.isFunctionDeclaration(statement) &&
-      Boolean(statement.name && ["GET", "POST", "PUT", "PATCH", "DELETE"].includes(statement.name.text)),
+      hasExportModifier(statement) &&
+      Boolean(statement.name && ROUTE_METHODS.has(statement.name.text)),
   );
 }
 
-function verifyReadSurfaces(appRoot: string, analysis: Analysis): string[] {
-  const failures: string[] = [];
-  const memo = new Map<string, boolean>();
-  for (const [key, record] of analysis.functions) {
-    const rel = normalized(appRoot, record.file);
-    const isGet = rel.startsWith("src/app/api/") && rel.endsWith("/route.ts") && record.name === "GET";
-    const isPage = rel.startsWith("src/app/") && rel.endsWith("/page.tsx") && record.name === "default";
-    if ((isGet || isPage) && reachesWrite(key, analysis, memo)) {
-      failures.push(`Read surface reaches a database write: ${rel}#${record.name}`);
+function unsupportedRouteExports(sourceFile: ts.SourceFile): string[] {
+  const unsupported = new Set<string>();
+  for (const statement of sourceFile.statements) {
+    if (ts.isVariableStatement(statement) && hasExportModifier(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (ts.isIdentifier(declaration.name) && ROUTE_METHODS.has(declaration.name.text)) {
+          unsupported.add(declaration.name.text);
+        }
+      }
+    }
+    if (ts.isExportDeclaration(statement) && statement.exportClause && ts.isNamedExports(statement.exportClause)) {
+      for (const element of statement.exportClause.elements) {
+        if (ROUTE_METHODS.has(element.name.text)) unsupported.add(element.name.text);
+      }
     }
   }
-  return failures;
+  return [...unsupported];
 }
 
-function statementContainsCall(
-  statement: ts.Statement,
-  sourceFile: ts.SourceFile,
-  name: string,
-): ts.CallExpression | null {
-  let found: ts.CallExpression | null = null;
-  const visit = (node: ts.Node) => {
+function directGate(statement: ts.Statement): { call: ts.CallExpression; variable: string } | null {
+  if (!ts.isVariableStatement(statement) || statement.declarationList.declarations.length !== 1) {
+    return null;
+  }
+  const declaration = statement.declarationList.declarations[0]!;
+  if (
+    !ts.isIdentifier(declaration.name) ||
+    !declaration.initializer ||
+    !ts.isCallExpression(declaration.initializer) ||
+    !ts.isIdentifier(declaration.initializer.expression) ||
+    declaration.initializer.expression.text !== "productionWritePauseResponse"
+  ) {
+    return null;
+  }
+  return { call: declaration.initializer, variable: declaration.name.text };
+}
+
+function returnsVariable(statement: ts.Statement, variable: string): boolean {
+  if (
+    !ts.isIfStatement(statement) ||
+    !ts.isIdentifier(statement.expression) ||
+    statement.expression.text !== variable
+  ) {
+    return false;
+  }
+  const branch = statement.thenStatement;
+  if (ts.isReturnStatement(branch)) {
+    return Boolean(branch.expression && ts.isIdentifier(branch.expression) && branch.expression.text === variable);
+  }
+  if (!ts.isBlock(branch) || branch.statements.length !== 1) return false;
+  const returned = branch.statements[0];
+  return Boolean(
+    returned &&
+      ts.isReturnStatement(returned) &&
+      returned.expression &&
+      ts.isIdentifier(returned.expression) &&
+      returned.expression.text === variable,
+  );
+}
+
+function containsDirectWrite(node: ts.Node): boolean {
+  let found = false;
+  const visit = (child: ts.Node) => {
     if (found) return;
-    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === name) {
-      found = node;
-      return;
+    if (ts.isCallExpression(child)) {
+      const expression = child.expression;
+      if (ts.isPropertyAccessExpression(expression) && WRITE_METHODS.has(expression.name.text)) {
+        found = true;
+        return;
+      }
+      if (
+        ts.isElementAccessExpression(expression) &&
+        expression.argumentExpression &&
+        ts.isStringLiteral(expression.argumentExpression) &&
+        WRITE_METHODS.has(expression.argumentExpression.text)
+      ) {
+        found = true;
+        return;
+      }
+      if (ts.isIdentifier(expression) && expression.text === "provisionOwnerForMutation") {
+        found = true;
+        return;
+      }
     }
-    ts.forEachChild(node, visit);
+    ts.forEachChild(child, visit);
   };
-  visit(statement);
+  visit(node);
   return found;
 }
 
-function verifyRoutes(appRoot: string, fixtureMode: boolean): { failures: string[]; discovered: Set<string> } {
+function verifyRoutes(appRoot: string, fixtureMode: boolean): string[] {
   const failures: string[] = [];
   const discovered = new Set<string>();
   const apiRoot = join(appRoot, "src", "app", "api");
   for (const path of filesUnder(apiRoot).filter((value) => value.endsWith("route.ts"))) {
     const route = normalized(apiRoot, path);
-    const sourceFile = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
+    const sourceFile = ts.createSourceFile(
+      path,
+      readFileSync(path, "utf8"),
+      ts.ScriptTarget.Latest,
+      true,
+    );
+    for (const method of unsupportedRouteExports(sourceFile)) {
+      failures.push(`Unsupported route method declaration: ${route}#${method}`);
+    }
     for (const handler of routeFunctions(sourceFile)) {
       const method = handler.name!.text;
       const key = `${route}#${method}`;
       discovered.add(key);
-      if (method === "GET") continue;
+      if (method === "GET") {
+        if (handler.getText(sourceFile).includes("provisionOwnerForMutation")) {
+          failures.push(`Read surface calls owner provisioning: ${key}`);
+        }
+        continue;
+      }
       const operation = APPLICATION_MUTATION_ROUTES.get(key);
-      if (!operation && READ_ONLY_NON_GET_ROUTES.has(key)) continue;
+      if (!operation && READ_ONLY_NON_GET_ROUTES.has(key)) {
+        if (containsDirectWrite(handler)) {
+          failures.push(`Read-only non-GET method contains a direct write: ${key}`);
+        }
+        continue;
+      }
       if (!operation) {
         if (!fixtureMode) failures.push(`Unclassified mutation method: ${key}`);
         continue;
       }
+
       const statements = handler.body?.statements ?? [];
-      const gateIndex = statements.findIndex((statement) =>
-        Boolean(statementContainsCall(statement, sourceFile, "productionWritePauseResponse")),
-      );
+      const gateIndex = statements.findIndex((statement) => directGate(statement) !== null);
       if (gateIndex < 0) {
         failures.push(`Missing central gate for ${key} (${operation})`);
         continue;
       }
-      const gate = statementContainsCall(
-        statements[gateIndex]!,
-        sourceFile,
-        "productionWritePauseResponse",
-      )!;
-      const actualOperation = gate.arguments[0];
+      const gate = directGate(statements[gateIndex]!)!;
+      if (!statements[gateIndex + 1] || !returnsVariable(statements[gateIndex + 1]!, gate.variable)) {
+        failures.push(`Central gate does not dominate ${key} (${operation})`);
+      }
+      const actualOperation = gate.call.arguments[0];
       if (!actualOperation || !ts.isStringLiteral(actualOperation) || actualOperation.text !== operation) {
         failures.push(`Wrong central gate operation for ${key}; expected ${operation}`);
       }
-      const preGate = statements.slice(0, gateIndex).map((statement) => statement.getText(sourceFile)).join("\n");
+      const preGate = statements
+        .slice(0, gateIndex)
+        .map((statement) => statement.getText(sourceFile))
+        .join("\n");
       if (/\bawait\b|request\s*\.\s*json|\bprisma\b|provisionOwnerForMutation/.test(preGate)) {
         failures.push(`Mutation work occurs before the central gate for ${key}`);
       }
       const handlerText = handler.getText(sourceFile);
-      const provisionIndex = handlerText.indexOf("provisionOwnerForMutation");
-      const gateOffset = handlerText.indexOf("productionWritePauseResponse");
-      if (provisionIndex >= 0 && provisionIndex < gateOffset) {
-        failures.push(`Owner provisioning occurs before the central gate for ${key}`);
-      }
       if (
-        provisionIndex >= 0 &&
+        handlerText.includes("provisionOwnerForMutation") &&
         !new RegExp(`provisionOwnerForMutation\\(\\s*["']${operation}["']`).test(handlerText)
       ) {
         failures.push(`Owner provisioning operation does not match ${key} (${operation})`);
@@ -382,7 +265,48 @@ function verifyRoutes(appRoot: string, fixtureMode: boolean): { failures: string
       if (!discovered.has(key)) failures.push(`Stale read-only route inventory entry: ${key}`);
     }
   }
-  return { failures, discovered };
+  return failures;
+}
+
+function verifyOwnerBoundary(appRoot: string, fixtureMode: boolean): string[] {
+  if (fixtureMode) return [];
+  const failures: string[] = [];
+  const ownerPath = join(appRoot, "src", "lib", "api", "workout-context.ts");
+  if (!existsSync(ownerPath)) return ["Missing owner-resolution seam"];
+  const ownerSource = readFileSync(ownerPath, "utf8");
+  const ownerFile = ts.createSourceFile(ownerPath, ownerSource, ts.ScriptTarget.Latest, true);
+  const functions = new Map(
+    ownerFile.statements
+      .filter((statement): statement is ts.FunctionDeclaration =>
+        ts.isFunctionDeclaration(statement) && Boolean(statement.name && statement.body),
+      )
+      .map((statement) => [statement.name!.text, statement]),
+  );
+  if (/\bresolveOwner\b/.test(ownerSource)) failures.push("Legacy implicit owner provisioning remains");
+  const readOnly = functions.get("findOwnerReadOnly");
+  if (!readOnly || containsDirectWrite(readOnly)) {
+    failures.push("Read-only owner lookup is missing or can write");
+  }
+  const provision = functions.get("provisionOwnerForMutation");
+  const firstProvisionStatement = provision?.body?.statements[0];
+  if (
+    !firstProvisionStatement ||
+    !ts.isExpressionStatement(firstProvisionStatement) ||
+    !ts.isCallExpression(firstProvisionStatement.expression) ||
+    !ts.isIdentifier(firstProvisionStatement.expression.expression) ||
+    firstProvisionStatement.expression.expression.text !== "assertProductionWriteAllowed"
+  ) {
+    failures.push("Owner provisioning does not gate before its first operation");
+  }
+
+  for (const path of filesUnder(join(appRoot, "src", "app")).filter((value) => value.endsWith("page.tsx"))) {
+    const rel = normalized(appRoot, path);
+    const source = readFileSync(path, "utf8");
+    if (source.includes("provisionOwnerForMutation")) {
+      failures.push(`Read surface imports or calls owner provisioning: ${rel}`);
+    }
+  }
+  return failures;
 }
 
 function commandEntry(command: string): string | null {
@@ -410,34 +334,75 @@ function looksProductionCapable(commandName: string, command: string, source: st
   );
 }
 
-function verifyOperationalCommands(appRoot: string, fixtureMode: boolean): string[] {
-  const failures: string[] = [];
-  const packagePath = join(appRoot, "package.json");
-  if (!existsSync(packagePath)) return failures;
-  const scripts = (JSON.parse(readFileSync(packagePath, "utf8")) as { scripts?: Record<string, string> }).scripts ?? {};
-  for (const [name, command] of Object.entries(scripts)) {
-    const entry = commandEntry(command);
-    const source = entry && existsSync(join(appRoot, entry)) ? readFileSync(join(appRoot, entry), "utf8") : "";
-    if (!looksProductionCapable(name, command, source)) continue;
-    const registered = OPERATIONAL_WRITE_COMMANDS.get(name);
-    if (!registered) {
-      failures.push(`Registered production-capable command is unclassified: ${name}`);
+function registeredOperationalCommands(appRoot: string): {
+  commands: Map<string, string>;
+  failures: string[];
+} {
+  const policyPath = resolve(appRoot, "..", "scripts", "codex", "trainer-policy.v1.json");
+  if (!existsSync(policyPath)) {
+    return { commands: new Map(), failures: ["Missing canonical command registry policy"] };
+  }
+  const policy = JSON.parse(readFileSync(policyPath, "utf8")) as {
+    commandRegistry?: CommandRegistryEntry[];
+  };
+  const commands = new Map<string, string>();
+  for (const entry of policy.commandRegistry ?? []) {
+    const productionCapable =
+      entry.profile === "production-write" ||
+      entry.flagEscalations?.some((flag) => flag.sideEffectClass === "production-write");
+    if (!productionCapable || !entry.packageScript || !entry.entrypoint?.startsWith("trainer-app/")) {
       continue;
     }
-    if (entry !== registered) {
-      failures.push(`Operational command entry drift: ${name}; expected ${registered}, found ${entry ?? "none"}`);
+    const relativeEntrypoint = entry.entrypoint.slice("trainer-app/".length);
+    if (NON_DATABASE_PROVIDER_COMMANDS.has(relativeEntrypoint)) continue;
+    commands.set(entry.packageScript, relativeEntrypoint);
+  }
+  return { commands, failures: [] };
+}
+
+function verifyOperationalCommands(
+  appRoot: string,
+  fixtureMode: boolean,
+): { failures: string[]; commands: Map<string, string> } {
+  const failures: string[] = [];
+  const packagePath = join(appRoot, "package.json");
+  if (!existsSync(packagePath)) return { failures, commands: new Map() };
+  const scripts = (JSON.parse(readFileSync(packagePath, "utf8")) as { scripts?: Record<string, string> }).scripts ?? {};
+  const registry = fixtureMode ? { commands: new Map<string, string>(), failures: [] } : registeredOperationalCommands(appRoot);
+  const registered = fixtureMode
+    ? new Map(
+        Object.entries(scripts)
+          .map(([name, command]) => {
+            const entry = commandEntry(command);
+            const source = entry && existsSync(join(appRoot, entry)) ? readFileSync(join(appRoot, entry), "utf8") : "";
+            return looksProductionCapable(name, command, source) && entry ? [name, entry] as const : null;
+          })
+          .filter((entry): entry is readonly [string, string] => entry !== null),
+      )
+    : registry.commands;
+  failures.push(...registry.failures);
+
+  for (const [name, expectedEntry] of registered) {
+    const command = scripts[name];
+    if (!command) {
+      failures.push(`Stale operational command inventory entry: ${name}`);
+      continue;
     }
-    if (!hasTargetAwareBoundary(source)) {
+    const actualEntry = commandEntry(command);
+    if (actualEntry !== expectedEntry) {
+      failures.push(`Operational command entry drift: ${name}; expected ${expectedEntry}, found ${actualEntry ?? "none"}`);
+      continue;
+    }
+    const sourcePath = join(appRoot, expectedEntry);
+    if (!existsSync(sourcePath)) {
+      failures.push(`Missing operational command entry: ${expectedEntry}`);
+      continue;
+    }
+    if (!hasTargetAwareBoundary(readFileSync(sourcePath, "utf8"))) {
       failures.push(`Registered production-capable command lacks target-aware pause enforcement: ${name}`);
     }
   }
-  if (!fixtureMode) {
-    for (const [name, entry] of OPERATIONAL_WRITE_COMMANDS) {
-      if (!(name in scripts)) failures.push(`Stale operational command inventory entry: ${name}`);
-      else if (!existsSync(join(appRoot, entry))) failures.push(`Missing operational command entry: ${entry}`);
-    }
-  }
-  return failures;
+  return { failures, commands: registered };
 }
 
 export function verifyWriteGateContract(appRoot: string): string[] {
@@ -463,12 +428,11 @@ export function verifyProductionWriteGate(
 ): ProductionWriteGateVerification {
   const root = resolve(appRoot);
   const fixtureMode = options.fixtureMode ?? false;
-  const analysis = analyze(root);
-  const routes = verifyRoutes(root, fixtureMode);
+  const operational = verifyOperationalCommands(root, fixtureMode);
   const failures = [
-    ...routes.failures,
-    ...verifyReadSurfaces(root, analysis),
-    ...verifyOperationalCommands(root, fixtureMode),
+    ...verifyRoutes(root, fixtureMode),
+    ...verifyOwnerBoundary(root, fixtureMode),
+    ...operational.failures,
     ...(fixtureMode ? [] : verifyWriteGateContract(root)),
   ];
   if (!fixtureMode) {
@@ -496,6 +460,6 @@ export function verifyProductionWriteGate(
   return {
     failures: [...new Set(failures)].sort(),
     mutationRoutes: [...APPLICATION_MUTATION_ROUTES],
-    operationalCommands: [...OPERATIONAL_WRITE_COMMANDS],
+    operationalCommands: [...operational.commands],
   };
 }

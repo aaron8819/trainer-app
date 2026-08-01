@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import { loadExerciseHistory } from "@/lib/api/exercise-history";
 
 export async function GET(
@@ -10,7 +10,7 @@ export async function GET(
   const { searchParams } = new URL(request.url);
   const limit = parseInt(searchParams.get("limit") ?? "3", 10);
 
-  const user = await resolveOwner();
+  const user = await findOwnerReadOnly();
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }

@@ -22,7 +22,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("@/lib/db/prisma", () => ({ prisma: mocks.prisma }));
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: vi.fn(async () => ({ id: "user-1" })),
+  findOwnerReadOnly: vi.fn(async () => ({ id: "user-1" })),
 }));
 
 import { GET } from "./route";

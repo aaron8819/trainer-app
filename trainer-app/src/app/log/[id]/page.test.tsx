@@ -18,7 +18,7 @@ vi.mock("next/link", () => ({
 }));
 
 const mocks = vi.hoisted(() => ({
-  resolveOwner: vi.fn(),
+  findOwnerReadOnly: vi.fn(),
   workoutFindFirst: vi.fn(),
   preSessionReadinessSnapshotFindFirst: vi.fn(),
   loadLogWorkoutExecutionGuidance: vi.fn(),
@@ -28,7 +28,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: (...args: unknown[]) => mocks.resolveOwner(...args),
+  findOwnerReadOnly: (...args: unknown[]) => mocks.findOwnerReadOnly(...args),
 }));
 
 vi.mock("@/lib/db/prisma", () => ({
@@ -72,7 +72,7 @@ describe("LogWorkoutPage", () => {
   beforeEach(() => {
     document.body.replaceChildren();
     vi.clearAllMocks();
-    mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+    mocks.findOwnerReadOnly.mockResolvedValue({ id: "user-1" });
     mocks.preSessionReadinessSnapshotFindFirst.mockResolvedValue(null);
     mocks.loadLogWorkoutExecutionGuidance.mockResolvedValue({
       byExerciseId: {},

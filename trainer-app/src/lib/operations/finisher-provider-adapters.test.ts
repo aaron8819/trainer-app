@@ -28,6 +28,8 @@ const expected = {
   projectName: "trainer-app",
   productionAlias: "trainer.example.com",
 };
+const PAUSE_OPERATION_ID =
+  `trainer-write-pause:${expected.projectId}:production:${COMMIT}:dpl_current`;
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -524,17 +526,34 @@ describe("Supabase recovery capability adapter", () => {
 });
 
 describe("production write-pause verifier", () => {
+  function runtimeStatusBody() {
+    return {
+      schema: "trainer-production-write-status",
+      version: 2,
+      environment: "production",
+      commitSha: COMMIT,
+      deploymentId: "dpl_current",
+      pauseOperationId: PAUSE_OPERATION_ID,
+      status: "PAUSED",
+      enforcement: "application_all_classified_write_paths",
+      enforcementContractVersion: 2,
+    };
+  }
+
   it("combines authenticated deployment identity with effective runtime enforcement", async () => {
     await expect(verifyProductionWritePause({
       deployment: deployment(),
       now: () => NOW,
       fetcher: async () => json({
         schema: "trainer-production-write-status",
-        version: 1,
+        version: 2,
         environment: "production",
         commitSha: COMMIT,
+        deploymentId: "dpl_current",
+        pauseOperationId: PAUSE_OPERATION_ID,
         status: "PAUSED",
         enforcement: "application_all_classified_write_paths",
+        enforcementContractVersion: 2,
       }),
     })).resolves.toMatchObject({
       verified: true,
@@ -546,16 +565,46 @@ describe("production write-pause verifier", () => {
     });
   });
 
+  it.each([
+    ["deployment", (body: ReturnType<typeof runtimeStatusBody>) => {
+      body.deploymentId = "dpl_wrong";
+    }],
+    ["environment", (body: ReturnType<typeof runtimeStatusBody>) => {
+      body.environment = "preview";
+    }],
+    ["commit", (body: ReturnType<typeof runtimeStatusBody>) => {
+      body.commitSha = "b".repeat(40);
+    }],
+    ["pause operation", (body: ReturnType<typeof runtimeStatusBody>) => {
+      body.pauseOperationId = "pause-wrong";
+    }],
+    ["enforcement version", (body: ReturnType<typeof runtimeStatusBody>) => {
+      body.enforcementContractVersion = 1;
+    }],
+  ])("rejects wrong runtime %s evidence", async (_label, mutate) => {
+    const body = runtimeStatusBody();
+    mutate(body);
+    await expect(
+      verifyProductionWritePause({
+        deployment: deployment(),
+        fetcher: async () => json(body),
+      }),
+    ).rejects.toMatchObject({ code: "not_ready" });
+  });
+
   it("rejects configuration intent when runtime enforcement is not active", async () => {
     await expect(verifyProductionWritePause({
       deployment: deployment(),
       fetcher: async () => json({
         schema: "trainer-production-write-status",
-        version: 1,
+        version: 2,
         environment: "production",
         commitSha: COMMIT,
+        deploymentId: "dpl_current",
+        pauseOperationId: PAUSE_OPERATION_ID,
         status: "ENABLED",
         enforcement: "application_all_classified_write_paths",
+        enforcementContractVersion: 2,
       }),
     })).rejects.toMatchObject({ code: "not_ready" });
   });
@@ -566,11 +615,14 @@ describe("production write-pause verifier", () => {
       now: () => NOW,
       fetcher: async () => json({
         schema: "trainer-production-write-status",
-        version: 1,
+        version: 2,
         environment: "production",
         commitSha: COMMIT,
+        deploymentId: "dpl_current",
+        pauseOperationId: PAUSE_OPERATION_ID,
         status: "ENABLED",
         enforcement: "application_all_classified_write_paths",
+        enforcementContractVersion: 2,
       }),
     })).resolves.toMatchObject({
       runtimeStatus: "ENABLED",

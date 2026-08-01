@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { loadTemplateDetail } from "@/lib/api/templates";
 import { loadExerciseLibrary } from "@/lib/api/exercise-library";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import { TemplateForm } from "@/components/templates/TemplateForm";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +10,8 @@ type Params = Promise<{ id: string }>;
 
 export default async function EditTemplatePage({ params }: { params: Params }) {
   const { id } = await params;
-  const owner = await resolveOwner();
+  const owner = await findOwnerReadOnly();
+  if (!owner) notFound();
   const template = await loadTemplateDetail(id, owner.id);
 
   if (!template) {

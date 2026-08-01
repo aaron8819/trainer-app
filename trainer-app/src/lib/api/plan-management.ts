@@ -22,7 +22,7 @@ import {
   isSupportedPlanType,
   SUPPORTED_PLAN_TYPES,
 } from "@/lib/plan-types";
-import { resolveOwner } from "./workout-context";
+import { findOwnerReadOnly } from "./workout-context";
 import { getUiAuditFixtureForServer } from "@/lib/ui-audit-fixtures/server";
 import { createInitialAcceptedSeedRevisionInTransaction } from "./mesocycle-seed-revision";
 import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
@@ -220,7 +220,8 @@ export async function loadConfiguredPlanManagementData(): Promise<PlanManagement
   const fixture = await getUiAuditFixtureForServer();
   if (fixture?.plans) return fixture.plans;
 
-  const owner = await resolveOwner();
+  const owner = await findOwnerReadOnly();
+  if (!owner) throw new PlanManagementError("PLAN_OWNER_NOT_READY");
   return loadPlanManagementData(owner.id);
 }
 
@@ -436,7 +437,8 @@ export async function loadConfiguredPlanReview(
   const fixtureReview = fixture?.planReviews?.[planId];
   if (fixtureReview) return fixtureReview;
 
-  const owner = await resolveOwner();
+  const owner = await findOwnerReadOnly();
+  if (!owner) throw new PlanManagementError("PLAN_OWNER_NOT_READY");
   return loadPlanReview(owner.id, planId);
 }
 

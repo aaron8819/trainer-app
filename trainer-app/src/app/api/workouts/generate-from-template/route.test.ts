@@ -8,7 +8,7 @@ afterEach(() => {
 });
 
 const mocks = vi.hoisted(() => {
-  const resolveOwner = vi.fn();
+  const provisionOwnerForMutation = vi.fn();
   const loadActiveMesocycle = vi.fn();
   const loadPendingMesocycleHandoff = vi.fn();
   const loadNextWorkoutContext = vi.fn();
@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => {
   const applyAutoregulation = vi.fn();
 
   return {
-    resolveOwner,
+    provisionOwnerForMutation,
     loadActiveMesocycle,
     loadPendingMesocycleHandoff,
     loadNextWorkoutContext,
@@ -28,7 +28,7 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: (...args: unknown[]) => mocks.resolveOwner(...args),
+  provisionOwnerForMutation: (...args: unknown[]) => mocks.provisionOwnerForMutation(...args),
 }));
 
 vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
@@ -59,7 +59,7 @@ describe("POST /api/workouts/generate-from-template", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     delete process.env.TRAINER_WRITE_PAUSE;
-    mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+    mocks.provisionOwnerForMutation.mockResolvedValue({ id: "user-1" });
     mocks.loadActiveMesocycle.mockResolvedValue({
       id: "meso-1",
       state: "ACTIVE_ACCUMULATION",
@@ -105,7 +105,7 @@ describe("POST /api/workouts/generate-from-template", () => {
     expect(response.status).toBe(503);
     expect(response.headers.get("Retry-After")).toBe("60");
     await expect(response.json()).resolves.toMatchObject({ code: "PRODUCTION_WRITE_PAUSED" });
-    expect(mocks.resolveOwner).not.toHaveBeenCalled();
+    expect(mocks.provisionOwnerForMutation).not.toHaveBeenCalled();
     expect(mocks.generateSessionFromTemplate).not.toHaveBeenCalled();
   });
 

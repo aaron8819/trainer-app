@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
-  const resolveOwner = vi.fn();
+  const provisionOwnerForMutation = vi.fn();
   const mesocycleFindFirst = vi.fn();
   const transaction = vi.fn();
   const updateMesocycleHandoffDraftInTransaction = vi.fn();
 
   return {
-    resolveOwner,
+    provisionOwnerForMutation,
     mesocycleFindFirst,
     transaction,
     updateMesocycleHandoffDraftInTransaction,
@@ -21,7 +21,7 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: (...args: unknown[]) => mocks.resolveOwner(...args),
+  provisionOwnerForMutation: (...args: unknown[]) => mocks.provisionOwnerForMutation(...args),
 }));
 
 vi.mock("@/lib/db/prisma", () => ({
@@ -38,7 +38,7 @@ import { PATCH } from "./route";
 describe("PATCH /api/mesocycles/[id]/draft", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+    mocks.provisionOwnerForMutation.mockResolvedValue({ id: "user-1" });
     mocks.transaction.mockImplementation((callback: (tx: unknown) => Promise<unknown>) =>
       callback({})
     );

@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { loadCompletedWorkoutReviewReadModel } from "@/lib/api/completed-workout-review";
 import { generateWorkoutExplanation } from "@/lib/api/explainability";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import { PostSessionReviewCard } from "@/components/post-workout/PostSessionReviewCard";
 import { FinisherExperience } from "@/components/finishers/FinisherExperience";
 import { SessionContextCard } from "@/components/explainability";
@@ -96,7 +97,8 @@ export default async function WorkoutDetailPage({
     );
   }
 
-  const owner = await resolveOwner();
+  const owner = await findOwnerReadOnly();
+  if (!owner) notFound();
   const workout = await prisma.workout.findFirst({
     where: { id: resolvedParams.id, userId: owner.id },
     include: {

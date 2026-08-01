@@ -182,8 +182,9 @@ export async function runAuditPreflight(input: {
             ownerEmail: ownerEmail ?? undefined,
           })
         : await (async () => {
-            const { resolveOwner } = await import("@/lib/api/workout-context");
-            const owner = await resolveOwner();
+            const { findOwnerReadOnly } = await import("@/lib/api/workout-context");
+            const owner = await findOwnerReadOnly();
+            if (!owner) throw new Error("AUDIT_OWNER_NOT_FOUND");
             preflight.ownerSource =
               typeof process.env.OWNER_EMAIL === "string" && process.env.OWNER_EMAIL.trim().length > 0
                 ? "env-default"

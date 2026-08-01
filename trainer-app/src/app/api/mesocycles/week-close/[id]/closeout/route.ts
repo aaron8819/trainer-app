@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 
 import { createCloseoutSessionForWeek } from "@/lib/api/mesocycle-week-close";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { provisionOwnerForMutation } from "@/lib/api/workout-context";
 import { prisma } from "@/lib/db/prisma";
 
 async function createCloseoutForRequest(input: {
@@ -55,7 +55,7 @@ export async function POST(
   );
   if (paused) return paused;
 
-  const user = await resolveOwner();
+  const user = await provisionOwnerForMutation("mesocycle_lifecycle");
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }

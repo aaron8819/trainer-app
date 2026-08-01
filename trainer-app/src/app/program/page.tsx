@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { redirect } from "next/navigation";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import { loadPendingMesocycleHandoff } from "@/lib/api/mesocycle-handoff";
 import {
   loadProgramPageData,
@@ -168,7 +169,8 @@ function resolveTrainNextHref(slot: ProgramCurrentWeekPlanRow): string {
 }
 
 export default async function ProgramPage() {
-  const user = await resolveOwner();
+  const user = await findOwnerReadOnly();
+  if (!user) redirect("/onboarding");
   const pendingHandoff = await loadPendingMesocycleHandoff(user.id);
 
   if (pendingHandoff) {

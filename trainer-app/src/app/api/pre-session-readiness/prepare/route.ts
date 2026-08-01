@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { preparePreSessionReadinessSnapshot } from "@/lib/api/pre-session-readiness-producer";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { provisionOwnerForMutation } from "@/lib/api/workout-context";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 
 export async function POST() {
@@ -10,7 +10,7 @@ export async function POST() {
   );
   if (paused) return paused;
 
-  const owner = await resolveOwner();
+  const owner = await provisionOwnerForMutation("readiness_preparation");
   if (!owner) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }

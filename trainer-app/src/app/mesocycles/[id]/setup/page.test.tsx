@@ -18,7 +18,7 @@ vi.mock("next/link", () => ({
 }));
 
 const mocks = vi.hoisted(() => ({
-  resolveOwner: vi.fn(),
+  findOwnerReadOnly: vi.fn(),
   loadMesocycleSetupFromPrisma: vi.fn(),
   loadMesocyclePreAcceptancePresentation: vi.fn(),
   notFound: vi.fn(),
@@ -29,7 +29,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: (...args: unknown[]) => mocks.resolveOwner(...args),
+  findOwnerReadOnly: (...args: unknown[]) => mocks.findOwnerReadOnly(...args),
 }));
 
 vi.mock("@/lib/api/mesocycle-setup", () => ({
@@ -49,7 +49,7 @@ vi.mock("@/components/MesocycleSetupEditor", () => ({
 
 describe("MesocycleSetupPage", () => {
   beforeEach(() => {
-    mocks.resolveOwner.mockResolvedValue({ id: "user-1", email: "owner@local" });
+    mocks.findOwnerReadOnly.mockResolvedValue({ id: "user-1", email: "owner@local" });
     mocks.loadMesocyclePreAcceptancePresentation.mockResolvedValue({
       decision: "rejected",
       findings: [],

@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
-import { resolveOwner } from "@/lib/api/workout-context";
+import {
+  findOwnerReadOnly,
+  provisionOwnerForMutation,
+} from "@/lib/api/workout-context";
 import { loadTemplates, createTemplate } from "@/lib/api/templates";
 import { createTemplateSchema } from "@/lib/validation";
 
 export async function GET() {
-  const user = await resolveOwner();
+  const user = await findOwnerReadOnly();
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
@@ -25,7 +28,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const user = await resolveOwner();
+  const user = await provisionOwnerForMutation("application_configuration");
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }

@@ -6,14 +6,18 @@ import {
   deleteTemplate,
 } from "@/lib/api/templates";
 import { updateTemplateSchema } from "@/lib/validation";
-import { resolveOwner } from "@/lib/api/workout-context";
+import {
+  findOwnerReadOnly,
+  provisionOwnerForMutation,
+} from "@/lib/api/workout-context";
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const owner = await resolveOwner();
+  const owner = await findOwnerReadOnly();
+  if (!owner) return NextResponse.json({ error: "Template not found" }, { status: 404 });
 
   const template = await loadTemplateDetail(id, owner.id);
   if (!template) {
@@ -31,7 +35,7 @@ export async function PUT(
   if (paused) return paused;
 
   const { id } = await params;
-  const owner = await resolveOwner();
+  const owner = await provisionOwnerForMutation("application_configuration");
   const body = await request.json().catch(() => ({}));
   const parsed = updateTemplateSchema.safeParse(body);
 
@@ -55,7 +59,7 @@ export async function DELETE(
   if (paused) return paused;
 
   const { id } = await params;
-  const owner = await resolveOwner();
+  const owner = await provisionOwnerForMutation("application_configuration");
 
   const deleted = await deleteTemplate(id, owner.id);
   if (!deleted) {

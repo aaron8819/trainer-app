@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { notFound } from "next/navigation";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import LogWorkoutClient from "@/components/LogWorkoutClient";
 import type {
   LogExerciseInput,
@@ -209,7 +210,8 @@ export default async function LogWorkoutPage({
     );
   }
 
-  const owner = await resolveOwner();
+  const owner = await findOwnerReadOnly();
+  if (!owner) notFound();
   const workout = await prisma.workout.findFirst({
     where: { id: resolvedParams.id, userId: owner.id },
     include: {

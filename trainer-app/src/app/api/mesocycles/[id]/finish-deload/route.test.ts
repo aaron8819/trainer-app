@@ -1,17 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
-  const resolveOwner = vi.fn();
+  const provisionOwnerForMutation = vi.fn();
   const finishDeloadEarly = vi.fn();
 
   return {
-    resolveOwner,
+    provisionOwnerForMutation,
     finishDeloadEarly,
   };
 });
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: (...args: unknown[]) => mocks.resolveOwner(...args),
+  provisionOwnerForMutation: (...args: unknown[]) => mocks.provisionOwnerForMutation(...args),
 }));
 
 vi.mock("@/lib/api/mesocycle-lifecycle", async (importOriginal) => {
@@ -28,11 +28,11 @@ import { POST } from "./route";
 describe("POST /api/mesocycles/[id]/finish-deload", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+    mocks.provisionOwnerForMutation.mockResolvedValue({ id: "user-1" });
   });
 
   it("requires an owner", async () => {
-    mocks.resolveOwner.mockResolvedValue(null);
+    mocks.provisionOwnerForMutation.mockResolvedValue(null);
 
     const response = await POST(
       new Request("http://localhost/api/mesocycles/meso-1/finish-deload", {

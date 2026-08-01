@@ -1,6 +1,6 @@
 import ProfileForm from "../onboarding/ProfileForm";
 import UserPreferencesForm from "@/components/UserPreferencesForm";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import { loadSettingsPageData } from "@/lib/api/settings-page";
 import { PRIMARY_GOAL_OPTIONS, SECONDARY_GOAL_OPTIONS } from "@/lib/profile-goal-options";
 
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function SettingsPage() {
-  const user = await resolveOwner();
+  const user = await findOwnerReadOnly();
   const data = await loadSettingsPageData(user);
 
   const primaryGoalOptions = PRIMARY_GOAL_OPTIONS;

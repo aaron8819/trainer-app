@@ -654,7 +654,7 @@ async function closePrismaIfAvailable(): Promise<void> {
 
 async function main(argv = process.argv.slice(2)): Promise<number> {
   const args = parseOpsRefreshNextSeedDraftArgs(argv);
-  const env = loadAuditEnv(argv, { allowWrite: true });
+  const env = loadAuditEnv(argv, { allowWrite: true, writeRequested: true });
   console.log(
     `[ops:preflight] env_file=${env.envFilePath ?? "none"} env_loaded=${boolWord(
       env.envLoaded,

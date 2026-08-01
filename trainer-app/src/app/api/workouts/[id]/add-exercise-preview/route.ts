@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import { resolveRuntimeAddedExercisePreviews } from "@/lib/api/runtime-added-exercise-preview";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +25,8 @@ export async function POST(
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const owner = await resolveOwner();
+  const owner = await findOwnerReadOnly();
+  if (!owner) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
   try {
     const previews = await resolveRuntimeAddedExercisePreviews({

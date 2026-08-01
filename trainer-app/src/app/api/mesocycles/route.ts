@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 
 export async function GET() {
-  const owner = await resolveOwner();
+  const owner = await findOwnerReadOnly();
+  if (!owner) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
   const mesocycles = await prisma.mesocycle.findMany({
     where: { macroCycle: { userId: owner.id } },

@@ -8,17 +8,17 @@ afterEach(() => {
 });
 
 const mocks = vi.hoisted(() => {
-  const resolveOwner = vi.fn();
+  const provisionOwnerForMutation = vi.fn();
   const preparePreSessionReadinessSnapshot = vi.fn();
 
   return {
-    resolveOwner,
+    provisionOwnerForMutation,
     preparePreSessionReadinessSnapshot,
   };
 });
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: (...args: unknown[]) => mocks.resolveOwner(...args),
+  provisionOwnerForMutation: (...args: unknown[]) => mocks.provisionOwnerForMutation(...args),
 }));
 
 vi.mock("@/lib/api/pre-session-readiness-producer", () => ({
@@ -32,7 +32,7 @@ describe("POST /api/pre-session-readiness/prepare", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     delete process.env.TRAINER_WRITE_PAUSE;
-    mocks.resolveOwner.mockResolvedValue({
+    mocks.provisionOwnerForMutation.mockResolvedValue({
       id: "user-1",
       email: "owner@local",
     });
@@ -53,7 +53,7 @@ describe("POST /api/pre-session-readiness/prepare", () => {
     expect(response.status).toBe(503);
     expect(response.headers.get("Retry-After")).toBe("60");
     await expect(response.json()).resolves.toMatchObject({ code: "PRODUCTION_WRITE_PAUSED" });
-    expect(mocks.resolveOwner).not.toHaveBeenCalled();
+    expect(mocks.provisionOwnerForMutation).not.toHaveBeenCalled();
     expect(mocks.preparePreSessionReadinessSnapshot).not.toHaveBeenCalled();
   });
 

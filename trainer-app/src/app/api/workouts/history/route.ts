@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import { workoutHistoryQuerySchema, WORKOUT_STATUS_VALUES } from "@/lib/validation";
 import { type WorkoutStatus, type WorkoutSessionIntent, type Prisma } from "@prisma/client";
 import {
@@ -43,7 +43,8 @@ export async function GET(request: Request) {
     }
   }
 
-  const owner = await resolveOwner();
+  const owner = await findOwnerReadOnly();
+  if (!owner) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
   // Build the scheduledDate filter — shared between pagination and count queries,
   // plus an additional cursor constraint only for the paginated query.

@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { z } from "zod";
-import { resolveOwner } from "@/lib/api/workout-context";
+import {
+  findOwnerReadOnly,
+  provisionOwnerForMutation,
+} from "@/lib/api/workout-context";
 import {
   DEFAULT_SWAP_SUGGESTION_LIMIT,
   applyRuntimeExerciseSwap,
@@ -64,7 +67,8 @@ export async function GET(
     );
   }
 
-  const owner = await resolveOwner();
+  const owner = await findOwnerReadOnly();
+  if (!owner) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
   try {
     const candidates = await resolveRuntimeExerciseSwapCandidates({
@@ -105,7 +109,7 @@ export async function POST(
     );
   }
 
-  const owner = await resolveOwner();
+  const owner = await provisionOwnerForMutation("workout_structural_edit");
 
   try {
     const result = await applyRuntimeExerciseSwap({

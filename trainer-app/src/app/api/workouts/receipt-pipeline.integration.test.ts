@@ -8,7 +8,7 @@ const state = vi.hoisted(() => ({
 }));
 
 const mocks = vi.hoisted(() => {
-  const resolveOwner = vi.fn();
+  const provisionOwnerForMutation = vi.fn();
   const loadActiveMesocycle = vi.fn();
   const loadNextWorkoutContext = vi.fn();
   const loadRequestedAdvancingSlotSnapshot = vi.fn();
@@ -107,7 +107,7 @@ const mocks = vi.hoisted(() => {
   };
 
   return {
-    resolveOwner,
+    provisionOwnerForMutation,
     loadActiveMesocycle,
     loadNextWorkoutContext,
     loadRequestedAdvancingSlotSnapshot,
@@ -145,7 +145,7 @@ vi.mock("@/lib/db/prisma", () => ({
 }));
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: (...args: unknown[]) => mocks.resolveOwner(...args),
+  provisionOwnerForMutation: (...args: unknown[]) => mocks.provisionOwnerForMutation(...args),
   mapExercises: vi.fn().mockReturnValue([
     {
       id: "ex1",
@@ -286,7 +286,7 @@ describe("canonical session decision receipt pipeline", () => {
       },
     });
 
-    mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+    mocks.provisionOwnerForMutation.mockResolvedValue({ id: "user-1" });
     mocks.userFindUnique.mockResolvedValue({
       id: "user-1",
       email: "user@example.com",

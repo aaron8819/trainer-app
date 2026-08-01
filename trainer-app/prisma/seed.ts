@@ -20,6 +20,13 @@ import {
   stableFinisherCatalogId,
 } from "./finisher-routine-seed-data";
 import { MUSCLE_SEED_ROWS } from "./muscle-seed-data";
+import { assertOperationalProductionWriteAllowed } from "@/lib/operations/rollout-environment";
+
+assertOperationalProductionWriteAllowed({
+  argv: process.argv.slice(2),
+  writeRequested: true,
+  operation: "operational_seed",
+});
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {

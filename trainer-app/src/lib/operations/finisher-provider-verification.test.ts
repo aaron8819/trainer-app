@@ -135,16 +135,18 @@ function evidence(): FinisherProviderVerification {
       teamId: "team_trainer",
       projectId: "prj_trainer",
       environment: "production",
-      deploymentId: "dpl_paused",
+      deploymentId: "dpl_current",
       commitSha: COMMIT,
+      pauseOperationId: `trainer-write-pause:prj_trainer:production:${COMMIT}:dpl_current`,
       enforcement: "application_all_classified_write_paths",
       initiationCapability: "provider_operation",
       initiationAuthorizedAt: "2026-07-31T17:46:00.000Z",
-      initiationOperationId: "dpl_paused",
+      initiationOperationId: `trainer-write-pause:prj_trainer:production:${COMMIT}:dpl_current`,
       initiationObservedAt: "2026-07-31T17:46:30.000Z",
       establishedAt: "2026-07-31T17:47:00.000Z",
       runtimeStatus: "PAUSED",
-      runtimeContractVersion: 1,
+      runtimeContractVersion: 2,
+      enforcementContractVersion: 2,
       mutationCoverageVerified: true,
       bypassPaths: [],
       verifiedAt: "2026-07-31T17:50:00.000Z",
@@ -270,6 +272,14 @@ describe("Finisher provider verification contract", () => {
         "provider_write_pause_initiation_capability_unavailable",
         "provider_write_pause_initiation_unverified",
       ]),
+    );
+  });
+
+  it("rejects runtime pause evidence bound to a different pause operation", () => {
+    const value = evidence();
+    value.writePause.pauseOperationId = "trainer-write-pause:prj_trainer:wrong";
+    expect(assessFinisherProviderVerification(value, expectation()).reasons).toContain(
+      "provider_evidence_pause_operation_mismatch",
     );
   });
 

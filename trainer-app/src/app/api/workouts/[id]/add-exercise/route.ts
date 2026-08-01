@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { provisionOwnerForMutation } from "@/lib/api/workout-context";
 import { buildRuntimeAddedExercisePreview } from "@/lib/api/runtime-added-exercise-preview";
 import { reconcileRuntimeEditSelectionMetadata } from "@/lib/api/runtime-edit-reconciliation";
 import {
@@ -217,7 +217,7 @@ export async function POST(
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const owner = await resolveOwner();
+  const owner = await provisionOwnerForMutation("workout_structural_edit");
   const workoutId = resolvedParams.id;
 
   // Verify workout belongs to owner

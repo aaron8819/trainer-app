@@ -1,4 +1,5 @@
-import { resolveOwner } from "@/lib/api/workout-context";
+import { redirect } from "next/navigation";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import HistoryClient from "@/components/HistoryClient";
 import { SurfaceGuideCard } from "@/components/SurfaceGuideCard";
 import { loadHistoryPageData } from "@/lib/api/history-page";
@@ -8,7 +9,8 @@ export const revalidate = 0;
 export const runtime = "nodejs";
 
 export default async function HistoryPage() {
-  const owner = await resolveOwner();
+  const owner = await findOwnerReadOnly();
+  if (!owner) redirect("/onboarding");
   const data = await loadHistoryPageData(owner.id);
 
   return (

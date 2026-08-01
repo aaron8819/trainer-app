@@ -160,6 +160,7 @@ const writePauseSchema = z
     environment: z.literal("production"),
     deploymentId: nonEmpty,
     commitSha: fullSha,
+    pauseOperationId: nonEmpty,
     enforcement: z.literal("application_all_classified_write_paths"),
     initiationCapability: z.enum([
       "provider_operation",
@@ -170,7 +171,8 @@ const writePauseSchema = z
     initiationObservedAt: timestamp,
     establishedAt: timestamp,
     runtimeStatus: z.literal("PAUSED"),
-    runtimeContractVersion: z.literal(1),
+    runtimeContractVersion: z.literal(2),
+    enforcementContractVersion: z.literal(2),
     mutationCoverageVerified: z.literal(true),
     bypassPaths: z.array(nonEmpty).max(0),
     verifiedAt: timestamp,
@@ -289,6 +291,13 @@ export function assessFinisherProviderVerification(
     evidence.writePause.commitSha !== expected.requiredApplicationCommit
   ) {
     reasons.push("provider_evidence_cross_commit_replay");
+  }
+  if (
+    evidence.writePause.deploymentId !== evidence.deployment.deploymentId ||
+    (evidence.writePause.initiationOperationId !== null &&
+      evidence.writePause.initiationOperationId !== evidence.writePause.pauseOperationId)
+  ) {
+    reasons.push("provider_evidence_pause_operation_mismatch");
   }
   if (
     evidence.disposable.migration.sha256 !== evidence.migration.sha256 ||

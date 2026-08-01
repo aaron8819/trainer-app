@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { z } from "zod";
-import { resolveOwner } from "@/lib/api/workout-context";
+import {
+  findOwnerReadOnly,
+  provisionOwnerForMutation,
+} from "@/lib/api/workout-context";
 import { loadProgramDashboardData, applyCycleAnchor } from "@/lib/api/program";
 import { loadPendingMesocycleHandoff } from "@/lib/api/mesocycle-handoff";
 import { FinishMesocycleEarlyBlockedWorkoutError } from "@/lib/api/mesocycle-lifecycle";
@@ -10,7 +13,8 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  const user = await resolveOwner();
+  const user = await findOwnerReadOnly();
+  if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
   const pendingHandoff = await loadPendingMesocycleHandoff(user.id);
   if (pendingHandoff) {
     return NextResponse.json(
@@ -35,7 +39,7 @@ export async function PATCH(request: NextRequest) {
   const paused = productionWritePauseResponse("mesocycle_lifecycle", "/api/program");
   if (paused) return paused;
 
-  const user = await resolveOwner();
+  const user = await provisionOwnerForMutation("mesocycle_lifecycle");
   const pendingHandoff = await loadPendingMesocycleHandoff(user.id);
   if (pendingHandoff) {
     return NextResponse.json(

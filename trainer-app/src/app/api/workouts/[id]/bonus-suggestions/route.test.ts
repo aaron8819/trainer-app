@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
-  const resolveOwner = vi.fn();
+  const findOwnerReadOnly = vi.fn();
   const getBonusSuggestions = vi.fn();
   const getCloseoutSuggestions = vi.fn();
   const workoutFindFirst = vi.fn();
   const isCloseoutSession = vi.fn();
 
   return {
-    resolveOwner,
+    findOwnerReadOnly,
     getBonusSuggestions,
     getCloseoutSuggestions,
     workoutFindFirst,
@@ -26,7 +26,7 @@ vi.mock("@/lib/db/prisma", () => ({
 }));
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: (...args: unknown[]) => mocks.resolveOwner(...args),
+  findOwnerReadOnly: (...args: unknown[]) => mocks.findOwnerReadOnly(...args),
 }));
 
 vi.mock("@/lib/api/bonus-suggestions", () => ({
@@ -46,7 +46,7 @@ import { GET } from "./route";
 describe("GET /api/workouts/[id]/bonus-suggestions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+    mocks.findOwnerReadOnly.mockResolvedValue({ id: "user-1" });
     mocks.isCloseoutSession.mockReturnValue(false);
   });
 

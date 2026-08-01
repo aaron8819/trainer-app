@@ -48,7 +48,7 @@ vi.mock("@/lib/db/prisma", () => ({
 }));
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: vi.fn(async () => ({ id: "user-1" })),
+  provisionOwnerForMutation: vi.fn(async () => ({ id: "user-1" })),
 }));
 
 import { POST } from "./route";

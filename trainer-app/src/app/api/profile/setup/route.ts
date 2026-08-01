@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { prisma } from "@/lib/db/prisma";
 import { profileSetupSchema } from "@/lib/validation";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { provisionOwnerForMutation } from "@/lib/api/workout-context";
 import { loadWeeklyProgramInputs } from "@/lib/api/weekly-program";
 import { analyzeWeeklyProgram } from "@/lib/engine/weekly-program-analysis";
 
@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request", details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const user = await resolveOwner();
+  const user = await provisionOwnerForMutation("application_configuration");
 
   await prisma.$transaction(async (tx) => {
     const heightIn = parsed.data.heightIn ?? null;

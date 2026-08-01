@@ -1,15 +1,17 @@
 import { prisma } from "@/lib/db/prisma";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import OnboardingFlow from "./OnboardingFlow";
 
 export const dynamic = "force-dynamic";
 
 export default async function OnboardingPage() {
-  const user = await resolveOwner();
-  const [goals, constraints] = await Promise.all([
-    prisma.goals.findUnique({ where: { userId: user.id } }),
-    prisma.constraints.findUnique({ where: { userId: user.id } }),
-  ]);
+  const user = await findOwnerReadOnly();
+  const [goals, constraints] = user
+    ? await Promise.all([
+        prisma.goals.findUnique({ where: { userId: user.id } }),
+        prisma.constraints.findUnique({ where: { userId: user.id } }),
+      ])
+    : [null, null];
 
   const initialValues = {
     primaryGoal: goals?.primaryGoal ?? "HYPERTROPHY",

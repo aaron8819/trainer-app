@@ -3,7 +3,7 @@ import { productionWritePauseResponse } from "@/lib/operations/production-write-
 import { prisma } from "@/lib/db/prisma";
 import { generateMacroSchema } from "@/lib/validation";
 import { generateMacroCycle } from "@/lib/engine";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { provisionOwnerForMutation } from "@/lib/api/workout-context";
 import { Prisma } from "@prisma/client";
 import { selectSoleCreatedPlanInTransaction } from "@/lib/api/active-plan-context";
 
@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
   const paused = productionWritePauseResponse("mesocycle_acceptance", "/api/periodization/macro");
   if (paused) return paused;
 
-  const user = await resolveOwner();
+  const user = await provisionOwnerForMutation("mesocycle_acceptance");
 
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });

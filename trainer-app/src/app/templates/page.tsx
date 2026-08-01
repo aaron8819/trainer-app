@@ -1,11 +1,11 @@
-import { resolveOwner } from "@/lib/api/workout-context";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import { loadTemplatesWithScores } from "@/lib/api/templates";
 import { TemplateListShell } from "@/components/templates/TemplateListShell";
 
 export const dynamic = "force-dynamic";
 
 export default async function TemplatesPage() {
-  const user = await resolveOwner();
+  const user = await findOwnerReadOnly();
   if (!user) {
     return (
       <main className="min-h-screen bg-white page-shell">

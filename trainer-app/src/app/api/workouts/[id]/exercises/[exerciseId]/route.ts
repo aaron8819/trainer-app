@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { provisionOwnerForMutation } from "@/lib/api/workout-context";
 import {
   isRuntimeExerciseRemoveError,
   removeRuntimeAddedWorkoutExercise,
@@ -46,7 +46,7 @@ export async function DELETE(
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const owner = await resolveOwner();
+  const owner = await provisionOwnerForMutation("workout_structural_edit");
 
   try {
     const result = await removeRuntimeAddedWorkoutExercise({

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import {
   buildMesocycleReviewPlainEnglishSummary,
   loadMesocycleReviewFromPrisma,
@@ -105,7 +105,8 @@ function formatHandoffDisplayCopy(value: string): string {
 
 export default async function MesocycleReviewPage({ params }: { params: Params }) {
   const { id } = await params;
-  const owner = await resolveOwner();
+  const owner = await findOwnerReadOnly();
+  if (!owner) notFound();
   const review = await loadMesocycleReviewFromPrisma({ userId: owner.id, mesocycleId: id });
 
   if (!review) {

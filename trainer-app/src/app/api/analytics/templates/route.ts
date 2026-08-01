@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import {
   buildAllTimeAnalyticsWindow,
   countAnalyticsWorkoutStatuses,
@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     return NextResponse.json(fixture.analytics.templates);
   }
 
-  const user = await resolveOwner();
+  const user = await findOwnerReadOnly();
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }

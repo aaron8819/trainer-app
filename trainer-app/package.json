@@ -30,7 +30,7 @@
         "test:slow": "vitest run --passWithNoTests \"src/**/*.slow.test.ts\"",
         "test:fast": "vitest run src/lib/engine/selection-v2/ src/lib/engine/explainability/ src/lib/api/template-session.test.ts",
         "prisma:generate": "prisma generate",
-        "prisma:studio": "prisma studio",
+        "prisma:studio": "tsx scripts/run-target-aware-prisma-studio.ts",
     "db:seed": "tsx prisma/seed.ts",
     "generate:finisher-catalog": "tsx scripts/generate-finisher-catalog-sql.ts",
         "postinstall": "prisma generate",

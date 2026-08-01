@@ -3,13 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const originalWritePause = process.env.TRAINER_WRITE_PAUSE;
 
 const mocks = vi.hoisted(() => ({
-  resolveOwner: vi.fn(),
+  provisionOwnerForMutation: vi.fn(),
   loadPlanActivationTarget: vi.fn(),
   selectActivePlan: vi.fn(),
 }));
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: (...args: unknown[]) => mocks.resolveOwner(...args),
+  provisionOwnerForMutation: (...args: unknown[]) => mocks.provisionOwnerForMutation(...args),
 }));
 vi.mock("@/lib/api/plan-management", () => ({
   PlanManagementError: class PlanManagementError extends Error {},
@@ -67,7 +67,7 @@ describe("POST /api/plans/[id]/activate", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     delete process.env.TRAINER_WRITE_PAUSE;
-    mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+    mocks.provisionOwnerForMutation.mockResolvedValue({ id: "user-1" });
   });
 
   afterEach(() => {
@@ -87,7 +87,7 @@ describe("POST /api/plans/[id]/activate", () => {
     );
 
     expect(response.status).toBe(503);
-    expect(mocks.resolveOwner).not.toHaveBeenCalled();
+    expect(mocks.provisionOwnerForMutation).not.toHaveBeenCalled();
     expect(mocks.loadPlanActivationTarget).not.toHaveBeenCalled();
   });
 

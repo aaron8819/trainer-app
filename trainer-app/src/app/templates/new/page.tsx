@@ -1,11 +1,11 @@
 import { loadExerciseLibrary } from "@/lib/api/exercise-library";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import { TemplateForm } from "@/components/templates/TemplateForm";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewTemplatePage() {
-  const user = await resolveOwner();
+  const user = await findOwnerReadOnly();
   const exercises = await loadExerciseLibrary(user?.id);
 
   return (

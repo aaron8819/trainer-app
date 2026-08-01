@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { prisma } from "@/lib/db/prisma";
 import { saveWorkoutSchema } from "@/lib/validation";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { provisionOwnerForMutation } from "@/lib/api/workout-context";
 import { WorkoutStatus, Prisma } from "@prisma/client";
 import {
   extractSessionDecisionReceipt,
@@ -78,7 +78,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const user = await resolveOwner();
+  const user = await provisionOwnerForMutation("workout_save");
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import { loadWeeklyMuscleOutcomeFromPrisma } from "@/lib/api/muscle-outcome-review";
 import { getUiAuditFixtureFromHeaders } from "@/lib/ui-audit-fixtures/server";
 
@@ -9,7 +9,8 @@ export async function GET(request: Request) {
     return NextResponse.json(fixture.analytics.muscleOutcomes);
   }
 
-  const owner = await resolveOwner();
+  const owner = await findOwnerReadOnly();
+  if (!owner) return NextResponse.json({ error: "User not found" }, { status: 404 });
   if (!owner) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }

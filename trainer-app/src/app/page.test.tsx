@@ -18,12 +18,12 @@ vi.mock("next/link", () => ({
 }));
 
 const mocks = vi.hoisted(() => ({
-  resolveOwner: vi.fn(),
+  findOwnerReadOnly: vi.fn(),
   loadHomePageData: vi.fn(),
 }));
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: (...args: unknown[]) => mocks.resolveOwner(...args),
+  findOwnerReadOnly: (...args: unknown[]) => mocks.findOwnerReadOnly(...args),
 }));
 
 vi.mock("@/lib/api/home-page", () => ({
@@ -109,7 +109,7 @@ vi.mock("@/components/RecentWorkouts", () => ({
 
 describe("Home page", () => {
   beforeEach(() => {
-    mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+    mocks.findOwnerReadOnly.mockResolvedValue({ id: "user-1" });
     mocks.loadHomePageData.mockResolvedValue({
       pendingHandoff: null,
       programData: {

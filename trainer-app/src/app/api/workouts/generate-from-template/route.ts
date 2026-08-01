@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { generateFromTemplateSchema } from "@/lib/validation";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { provisionOwnerForMutation } from "@/lib/api/workout-context";
 import { generateDeloadSessionFromTemplate, generateSessionFromTemplate } from "@/lib/api/template-session";
 import { applyAutoregulation } from "@/lib/api/autoregulation";
 import { loadActiveMesocycle } from "@/lib/api/mesocycle-lifecycle";
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const user = await resolveOwner();
+  const user = await provisionOwnerForMutation("workout_materialization");
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }

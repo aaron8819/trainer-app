@@ -1,6 +1,7 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { generateWorkoutExplanation } from "@/lib/api/explainability";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import { WorkoutExplanation } from "@/components/WorkoutExplanation";
 import { prisma } from "@/lib/db/prisma";
 import { parseExplainabilitySelectionMetadata } from "@/lib/ui/explainability";
@@ -30,7 +31,8 @@ export default async function WorkoutAuditPage({
     );
   }
 
-  const owner = await resolveOwner();
+  const owner = await findOwnerReadOnly();
+  if (!owner) notFound();
   const workout = await prisma.workout.findFirst({
     where: { id: resolvedParams.id, userId: owner.id },
     select: {

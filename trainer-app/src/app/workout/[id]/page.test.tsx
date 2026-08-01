@@ -11,7 +11,7 @@ vi.mock("next/link", () => ({
 }));
 
 const mocks = vi.hoisted(() => ({
-  resolveOwner: vi.fn(),
+  findOwnerReadOnly: vi.fn(),
   loadCompletedWorkoutReviewReadModel: vi.fn(),
   generateWorkoutExplanation: vi.fn(),
   workoutFindFirst: vi.fn(),
@@ -20,7 +20,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: (...args: unknown[]) => mocks.resolveOwner(...args),
+  findOwnerReadOnly: (...args: unknown[]) => mocks.findOwnerReadOnly(...args),
 }));
 
 vi.mock("@/lib/api/completed-workout-review", () => ({
@@ -54,7 +54,7 @@ vi.mock("@/components/finishers/FinisherExperience", () => ({
 
 describe("WorkoutDetailPage", { timeout: 15000 }, () => {
   beforeEach(() => {
-    mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+    mocks.findOwnerReadOnly.mockResolvedValue({ id: "user-1" });
     mocks.loadCompletedWorkoutReviewReadModel.mockResolvedValue({
       postSessionReview: null,
     });

@@ -50,6 +50,10 @@ import {
   getRelationshipMusclesFromSnapshot,
   resolveHistoricalStimulusAccounting,
 } from "@/lib/stimulus-accounting/snapshot";
+import {
+  assertProductionWriteAllowed,
+  type ProductionWriteOperation,
+} from "@/lib/operations/production-write-gate";
 
 type ExerciseWithMuscles = Exercise & {
   exerciseMuscles?: { role: string; muscle: { name: string } }[];
@@ -62,7 +66,12 @@ type WorkoutWithRelations = Workout & {
   })[];
 };
 
-export async function resolveOwner() {
+export async function provisionOwnerForMutation(
+  operation: ProductionWriteOperation,
+) {
+  // This must remain before the first Prisma access in this provisioning path.
+  assertProductionWriteAllowed(operation);
+
   const runtimeMode = process.env.RUNTIME_MODE?.trim().toLowerCase() ?? "single_user_local";
   const configuredOwnerEmail = process.env.OWNER_EMAIL?.trim().toLowerCase();
   const singleUserEmail = configuredOwnerEmail ?? "owner@local";
@@ -97,7 +106,7 @@ export async function resolveOwner() {
     }
   }
 
-  throw new Error("resolveOwner retry loop exhausted");
+  throw new Error("provisionOwnerForMutation retry loop exhausted");
 }
 
 export async function findOwnerReadOnly() {

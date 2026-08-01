@@ -3,7 +3,7 @@
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import { WorkoutStatus } from "@prisma/client";
 import { detectStalls, suggestIntervention } from "@/lib/engine";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
@@ -13,7 +13,8 @@ import type {
 
 export async function GET() {
   // Get user from database (matches existing codebase pattern)
-  const user = await resolveOwner();
+  const user = await findOwnerReadOnly();
+  if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
   const userId = user.id;
 
   // 1. Load recent workout history (last 12 weeks, ~36 sessions)

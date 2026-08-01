@@ -413,21 +413,27 @@ script:
 npm run verify:production-write-gate
 ```
 
-The guard inventories every exported `POST`, `PUT`, `PATCH`, and `DELETE` handler, requires a
-central gate for classified mutations, keeps the two read-only POST previews explicit, rejects
-direct production environment checks outside the owner module, and verifies rollout write
-scripts use target-aware tooling. It is included in `npm run verify`.
+The guard inventories every exported route method, fails closed on unsupported route-export
+syntax, and requires every classified mutation to use a directly dominating gate before request
+parsing, Prisma access, or owner provisioning. It keeps the two read-only POST previews explicit,
+protects the non-provisioning owner lookup boundary, rejects direct production-environment checks
+outside the owner module, and derives production-capable database commands from the canonical
+command registry before checking their target-aware entrypoints. It intentionally does not claim
+general TypeScript call-graph soundness. Its isolated fixture suite proves unsupported route
+syntax, an unguarded seed command, pre-gate parsing/provisioning, and stale evidence-contract
+versions are rejected. It is included in `npm run verify`.
 
 Focused behavior coverage lives in:
 
 - `src/lib/operations/production-write-gate.test.ts`
 - `src/lib/operations/production-write-gate-http.test.ts`
 - `src/lib/operations/production-write-status-command.test.ts`
+- `src/lib/operations/production-write-gate-verifier.test.ts`
 - `src/lib/operations/rollout-environment.test.ts`
 - representative mesocycle acceptance, workout materialization/save/structural edit, set logging,
   readiness preparation, and readiness submission route tests
 
-Paused route tests must assert the stable 503 contract and zero calls to owner resolution,
+Paused route tests must assert the stable 503 contract and zero calls to owner provisioning,
 Prisma, workout revision CAS/transactions, and the relevant receipt/readiness/snapshot producer.
 Existing route success tests prove the missing/disabled pause preserves response and revision
 behavior.

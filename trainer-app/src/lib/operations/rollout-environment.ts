@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import dotenv from "dotenv";
-import { assertProductionWriteAllowed } from "./production-write-gate";
+import {
+  assertProductionWriteAllowed,
+  TRAINER_WRITE_PAUSE_ENABLED_VALUE,
+  TRAINER_WRITE_PAUSE_VARIABLE,
+  type ProductionWriteOperation,
+} from "./production-write-gate";
 
 export type RolloutTargetClass = "local" | "disposable" | "remote";
 
@@ -83,8 +88,6 @@ export function loadRolloutEnvironment(
   }
 
   const environment = options.environment ?? process.env;
-  for (const [key, value] of Object.entries(parsed)) environment[key] = value;
-
   const connectionString = parsed.DATABASE_URL!;
 
   const writeEnabled = options.argv.includes("--write");
@@ -102,8 +105,11 @@ export function loadRolloutEnvironment(
     throw new Error("Remote --write requires --confirm-remote-write before any database connection.");
   }
   if (writeEnabled && targetClass === "remote") {
+    assertRemoteWritePauseContract(parsed);
     assertProductionWriteAllowed("operational_backfill", parsed);
   }
+
+  for (const [key, value] of Object.entries(parsed)) environment[key] = value;
 
   return { envFile, targetClass, writeEnabled, remoteWriteConfirmed };
 }
@@ -122,7 +128,7 @@ export function sanitizedRolloutEnvironment(
 export function assertOperationalProductionWriteAllowed(options: {
   argv: string[];
   writeRequested: boolean;
-  operation?: "operational_backfill";
+  operation?: Extract<ProductionWriteOperation, `operational_${string}`>;
   environment?: Record<string, string | undefined>;
 }): void {
   if (!options.writeRequested) return;
@@ -139,7 +145,19 @@ export function assertOperationalProductionWriteAllowed(options: {
   if (!options.argv.includes("--confirm-remote-write")) {
     throw new Error("Remote write requires --confirm-remote-write before any database connection.");
   }
+  assertRemoteWritePauseContract(environment);
   assertProductionWriteAllowed(options.operation ?? "operational_backfill", environment);
+}
+
+function assertRemoteWritePauseContract(
+  environment: Record<string, string | undefined>,
+): void {
+  const value = environment[TRAINER_WRITE_PAUSE_VARIABLE];
+  if (value !== TRAINER_WRITE_PAUSE_ENABLED_VALUE && value !== "disabled") {
+    throw new Error(
+      "Remote write pause state is unverified; require explicit TRAINER_WRITE_PAUSE=enabled or disabled.",
+    );
+  }
 }
 
 export async function runWithRolloutEnvironment<T>(

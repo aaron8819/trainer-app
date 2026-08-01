@@ -94,7 +94,11 @@ describe("rollout environment ownership", () => {
   it("reaches the operation gate for an acknowledged remote write", async () => {
     const { cwd, path } = fixture(
       "acknowledged",
-      "DATABASE_URL=postgresql://trainer:secret@db.example.test:5432/trainer\n",
+      [
+        "DATABASE_URL=postgresql://trainer:secret@db.example.test:5432/trainer",
+        "TRAINER_WRITE_PAUSE=disabled",
+        "",
+      ].join("\n"),
     );
     const operation = vi.fn(async () => "reached");
     await expect(
@@ -139,7 +143,7 @@ describe("rollout environment ownership", () => {
     expect(operation).not.toHaveBeenCalled();
   });
 
-  it("treats a missing pause value in the explicit remote file as enabled", async () => {
+  it("fails closed when the explicit remote file does not verify pause state", async () => {
     const { cwd, path } = fixture(
       "remote-missing-pause",
       "DATABASE_URL=postgresql://trainer:secret@db.example.test:5432/trainer\n",
@@ -156,8 +160,8 @@ describe("rollout environment ownership", () => {
         },
         operation,
       ),
-    ).resolves.toBe("reached");
-    expect(operation).toHaveBeenCalledOnce();
+    ).rejects.toThrow("Remote write pause state is unverified");
+    expect(operation).not.toHaveBeenCalled();
   });
 
   it.each([

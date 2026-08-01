@@ -262,6 +262,7 @@ try {
             teams = '/v2/teams'
             team = '/v2/teams/{teamId}'
             project = '/v9/projects/{projectId}'
+            'project-environment' = '/v9/projects/{projectId}/env'
             'project-domains' = '/v9/projects/{projectId}/domains'
             alias = '/v4/aliases/{productionAlias}'
             deployment = '/v13/deployments/{deploymentId}'

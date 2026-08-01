@@ -53,6 +53,7 @@ function evidence(): FinisherProviderVerification {
       provider: "vercel",
       authenticated: true,
       account: "operator",
+      accountId: "user_operator",
       teamId: "team_trainer",
       teamSlug: "trainer-team",
       projectId: "prj_trainer",
@@ -60,15 +61,19 @@ function evidence(): FinisherProviderVerification {
       environment: "production",
       alias: "trainer.example.com",
       deploymentId: "dpl_current",
+      creatorId: "user_operator",
+      writePauseAuthorizationId: "env_write_pause",
+      writePauseAuthorizedBy: "user_operator",
+      writePauseAuthorizedAt: "2026-07-31T17:46:00.000Z",
       state: "READY",
       sourceProvider: "github",
       sourceRepository: "aaron8819/trainer-app",
       sourceBranch: "master",
       sourceCommit: COMMIT,
-      createdAt: "2026-07-31T17:30:00.000Z",
-      readyAt: "2026-07-31T17:31:00.000Z",
-      aliasObservedAt: "2026-07-31T17:31:30.000Z",
-      verifiedAt: "2026-07-31T17:31:30.000Z",
+      createdAt: "2026-07-31T17:46:30.000Z",
+      readyAt: "2026-07-31T17:47:00.000Z",
+      aliasObservedAt: "2026-07-31T17:48:00.000Z",
+      verifiedAt: "2026-07-31T17:48:00.000Z",
       provenance: "vercel_authenticated_read_only_rest",
     },
     disposable: {
@@ -107,7 +112,7 @@ function evidence(): FinisherProviderVerification {
       authenticated: true,
       artifactId: "200",
       artifactDigest: "c".repeat(64),
-      verifiedAt: "2026-07-31T17:38:30.000Z",
+      verifiedAt: "2026-07-31T17:48:30.000Z",
       provenance: "github_authenticated_actions_artifact",
     },
     recovery: {
@@ -149,10 +154,12 @@ function evidence(): FinisherProviderVerification {
       pauseOperationId: `trainer-write-pause:prj_trainer:production:${COMMIT}:dpl_current`,
       enforcement: "application_all_classified_write_paths",
       initiationCapability: "provider_operation",
+      initiationAuthorizationId: "env_write_pause",
+      initiationAuthorizedBy: "user_operator",
       initiationAuthorizedAt: "2026-07-31T17:46:00.000Z",
-      initiationOperationId: `trainer-write-pause:prj_trainer:production:${COMMIT}:dpl_current`,
-      initiationObservedAt: "2026-07-31T17:46:30.000Z",
-      establishedAt: "2026-07-31T17:47:00.000Z",
+      initiationOperationId: "dpl_current",
+      initiationObservedAt: "2026-07-31T17:49:00.000Z",
+      establishedAt: "2026-07-31T17:50:00.000Z",
       runtimeStatus: "PAUSED",
       runtimeContractVersion: 2,
       enforcementContractVersion: 2,
@@ -160,7 +167,7 @@ function evidence(): FinisherProviderVerification {
       bypassPaths: [],
       verifiedAt: "2026-07-31T17:50:00.000Z",
       verified: true,
-      provenance: "vercel_authenticated_deployment_plus_runtime_read_only",
+      provenance: "vercel_authenticated_configuration_deployment_and_runtime",
     },
     verifiedAt: "2026-07-31T17:55:00.000Z",
     failureDetails: [],
@@ -281,7 +288,7 @@ describe("Finisher provider verification contract", () => {
 
   it("rejects PITR evidence targeting deployment readiness instead of pause verification", () => {
     const value = evidence();
-    value.recovery.requiredRecoveryAt = value.writePause.establishedAt;
+    value.recovery.requiredRecoveryAt = value.deployment.readyAt;
     expect(assessFinisherProviderVerification(value, expectation()).reasons).toContain(
       "provider_evidence_recovery_pause_mismatch",
     );
@@ -305,17 +312,33 @@ describe("Finisher provider verification contract", () => {
     );
   });
 
-  it("rejects effective pause evidence when initiation capability is unavailable", () => {
+  it.each([
+    ["authorization ID", "initiationAuthorizationId", undefined],
+    ["provider operation ID", "initiationOperationId", undefined],
+    ["malformed provider operation ID", "initiationOperationId", "pause-operation"],
+  ] as const)("rejects missing or malformed %s", (_label, key, replacement) => {
+    const value = structuredClone(evidence()) as unknown as Record<string, unknown>;
+    const writePause = value.writePause as Record<string, unknown>;
+    if (replacement === undefined) delete writePause[key];
+    else writePause[key] = replacement;
+    expect(assessFinisherProviderVerification(value, expectation()).reasons).toEqual([
+      "provider_evidence_schema_invalid",
+    ]);
+  });
+
+  it("rejects a provider operation targeting another project", () => {
     const value = evidence();
-    value.writePause.initiationCapability =
-      "unavailable_requires_authorized_environment_update_and_redeployment";
-    value.writePause.initiationAuthorizedAt = null;
-    value.writePause.initiationOperationId = null;
-    expect(assessFinisherProviderVerification(value, expectation()).reasons).toEqual(
-      expect.arrayContaining([
-        "provider_write_pause_initiation_capability_unavailable",
-        "provider_write_pause_initiation_unverified",
-      ]),
+    value.writePause.projectId = "prj_other";
+    expect(assessFinisherProviderVerification(value, expectation()).reasons).toContain(
+      "provider_evidence_internal_target_conflict",
+    );
+  });
+
+  it("rejects a provider operation that does not identify the effective deployment", () => {
+    const value = evidence();
+    value.writePause.initiationOperationId = "dpl_other";
+    expect(assessFinisherProviderVerification(value, expectation()).reasons).toContain(
+      "provider_evidence_pause_operation_mismatch",
     );
   });
 
@@ -324,6 +347,14 @@ describe("Finisher provider verification contract", () => {
     value.writePause.pauseOperationId = "trainer-write-pause:prj_trainer:wrong";
     expect(assessFinisherProviderVerification(value, expectation()).reasons).toContain(
       "provider_evidence_pause_operation_mismatch",
+    );
+  });
+
+  it("requires the pause-establishment timestamp to be the effective runtime verification time", () => {
+    const value = evidence();
+    value.writePause.establishedAt = value.deployment.readyAt;
+    expect(assessFinisherProviderVerification(value, expectation()).reasons).toContain(
+      "provider_write_pause_establishment_timestamp_mismatch",
     );
   });
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  initiateVercelProductionWritePause,
   inspectSupabaseRecoveryCapability,
   ProviderVerificationError,
   verifyGitHubDisposableEvidence,
@@ -47,10 +48,16 @@ function vercelFetcher(options: {
   target?: string;
   aliasDeploymentId?: string;
   deploymentId?: string;
+  createdAt?: string;
+  creatorId?: string;
+  environmentTarget?: string;
+  postDeploymentId?: string;
 } = {}) {
-  return async (url: string) => {
+  return async (url: string, init?: RequestInit) => {
     const path = new URL(url).pathname;
-    if (path === "/v2/user") return json({ user: { username: "operator" } });
+    if (path === "/v2/user") {
+      return json({ user: { id: "user_operator", username: "operator" } });
+    }
     if (path === "/v2/teams") return json({ teams: [{ id: expected.teamId }] });
     if (path === `/v2/teams/${expected.teamId}`) {
       return json({ id: expected.teamId, slug: expected.teamSlug });
@@ -79,6 +86,53 @@ function vercelFetcher(options: {
         deploymentId: options.aliasDeploymentId ?? "dpl_current",
       });
     }
+    if (path === `/v9/projects/${expected.projectId}/env`) {
+      return json({
+        envs: [{
+          id: "env_write_pause",
+          key: "TRAINER_WRITE_PAUSE",
+          type: "encrypted",
+          target: [options.environmentTarget ?? "production"],
+          gitBranch: null,
+          updatedAt: Date.parse("2026-07-31T17:46:00.000Z"),
+          lastUpdatedBy: options.creatorId ?? "user_operator",
+        }],
+        pagination: { next: null },
+      });
+    }
+    if (path === `/v9/projects/${expected.projectId}/env/env_write_pause`) {
+      return json({
+        id: "env_write_pause",
+        key: "TRAINER_WRITE_PAUSE",
+        type: "encrypted",
+        target: [options.environmentTarget ?? "production"],
+        gitBranch: null,
+        updatedAt: Date.parse("2026-07-31T17:46:00.000Z"),
+        lastUpdatedBy: options.creatorId ?? "user_operator",
+      });
+    }
+    if (path === "/v13/deployments" && init?.method === "POST") {
+      return json({
+        id: options.postDeploymentId ?? "dpl_initiated",
+        projectId: expected.projectId,
+        name: expected.projectName,
+        target: options.target ?? "production",
+        gitSource: {
+          type: "github",
+          repoId: 123,
+          ref: options.sourceBranch ?? "master",
+          sha: options.commit ?? COMMIT,
+        },
+        creator: { uid: options.creatorId ?? "user_operator" },
+        createdAt: Date.parse(options.createdAt ?? "2026-07-31T17:46:30.000Z"),
+        meta: {
+          trainerWritePauseAuthorizationId: "env_write_pause",
+          trainerWritePauseAuthorizedBy: "user_operator",
+          trainerWritePauseAuthorizedAt: "2026-07-31T17:46:00.000Z",
+          trainerWritePauseContractVersion: "2",
+        },
+      }, 201);
+    }
     if (path.startsWith("/v13/deployments/")) {
       return json({
         id: options.deploymentId ?? "dpl_current",
@@ -86,8 +140,9 @@ function vercelFetcher(options: {
         name: expected.projectName,
         target: options.target ?? "production",
         readyState: "READY",
-        createdAt: Date.parse("2026-07-31T17:30:00.000Z"),
-        ready: Date.parse("2026-07-31T17:31:00.000Z"),
+        creator: { uid: options.creatorId ?? "user_operator" },
+        createdAt: Date.parse(options.createdAt ?? "2026-07-31T17:46:30.000Z"),
+        ready: Date.parse("2026-07-31T17:47:00.000Z"),
         ...(options.missingSource
           ? {}
           : {
@@ -98,7 +153,13 @@ function vercelFetcher(options: {
                 sha: options.commit ?? COMMIT,
               },
             }),
-        meta: { githubCommitSha: options.commit ?? COMMIT },
+        meta: {
+          githubCommitSha: options.commit ?? COMMIT,
+          trainerWritePauseAuthorizationId: "env_write_pause",
+          trainerWritePauseAuthorizedBy: options.creatorId ?? "user_operator",
+          trainerWritePauseAuthorizedAt: "2026-07-31T17:46:00.000Z",
+          trainerWritePauseContractVersion: "2",
+        },
       });
     }
     return json({}, 404);
@@ -110,6 +171,7 @@ function deployment(): FinisherProviderVerification["deployment"] {
     provider: "vercel",
     authenticated: true,
     account: "operator",
+    accountId: "user_operator",
     teamId: expected.teamId,
     teamSlug: expected.teamSlug,
     projectId: expected.projectId,
@@ -117,13 +179,17 @@ function deployment(): FinisherProviderVerification["deployment"] {
     environment: "production",
     alias: expected.productionAlias,
     deploymentId: "dpl_current",
+    creatorId: "user_operator",
+    writePauseAuthorizationId: "env_write_pause",
+    writePauseAuthorizedBy: "user_operator",
+    writePauseAuthorizedAt: "2026-07-31T17:46:00.000Z",
     state: "READY",
     sourceProvider: "github",
     sourceRepository: "aaron8819/trainer-app",
     sourceBranch: "master",
     sourceCommit: COMMIT,
-    createdAt: "2026-07-31T17:30:00.000Z",
-    readyAt: "2026-07-31T17:31:00.000Z",
+    createdAt: "2026-07-31T17:46:30.000Z",
+    readyAt: "2026-07-31T17:47:00.000Z",
     aliasObservedAt: NOW,
     verifiedAt: NOW,
     provenance: "vercel_authenticated_read_only_rest",
@@ -709,6 +775,85 @@ describe("Supabase recovery capability adapter", () => {
   });
 });
 
+describe("canonical Vercel write-pause initiation", () => {
+  it("turns exact authorization into authenticated configuration and deployment operations", async () => {
+    const requests: Array<{ url: URL; init?: RequestInit }> = [];
+    const base = vercelFetcher();
+    const result = await initiateVercelProductionWritePause({
+      expectedCommit: COMMIT,
+      expected,
+      token: "token",
+      now: () => NOW,
+      fetcher: async (url, init) => {
+        requests.push({ url: new URL(url), init });
+        return base(url, init);
+      },
+    });
+
+    expect(result).toEqual({
+      provider: "vercel",
+      authenticated: true,
+      teamId: expected.teamId,
+      projectId: expected.projectId,
+      environment: "production",
+      commitSha: COMMIT,
+      initiationAuthorizationId: "env_write_pause",
+      initiationAuthorizedBy: "user_operator",
+      initiationAuthorizedAt: "2026-07-31T17:46:00.000Z",
+      initiationOperationId: "dpl_initiated",
+      initiatedAt: "2026-07-31T17:46:30.000Z",
+      mutationAttempted: true,
+      provenance: "vercel_authenticated_mutation_responses",
+    });
+    const patchRequest = requests.find(({ init }) => init?.method === "PATCH");
+    expect(patchRequest?.url.pathname).toBe(
+      `/v9/projects/${expected.projectId}/env/env_write_pause`,
+    );
+    expect(JSON.parse(String(patchRequest?.init?.body))).toEqual({
+      key: "TRAINER_WRITE_PAUSE",
+      value: "enabled",
+      type: "encrypted",
+      target: ["production"],
+    });
+    const deploymentRequest = requests.find(({ init }) => init?.method === "POST");
+    expect(deploymentRequest?.url.pathname).toBe("/v13/deployments");
+    expect(deploymentRequest?.url.searchParams.get("teamId")).toBe(expected.teamId);
+    expect(deploymentRequest?.url.searchParams.get("forceNew")).toBe("1");
+    expect(JSON.parse(String(deploymentRequest?.init?.body))).toMatchObject({
+      project: expected.projectId,
+      target: "production",
+      gitSource: { type: "github", repoId: "123", ref: "master", sha: COMMIT },
+      meta: {
+        trainerWritePauseAuthorizationId: "env_write_pause",
+        trainerWritePauseAuthorizedBy: "user_operator",
+        trainerWritePauseAuthorizedAt: "2026-07-31T17:46:00.000Z",
+        trainerWritePauseContractVersion: "2",
+      },
+    });
+  });
+
+  it.each([
+    ["synthetic operation ID", { postDeploymentId: "pause-operation" }, "malformed_provider_response"],
+    ["wrong environment", { target: "preview" }, "wrong_identity"],
+    ["future deployment", { createdAt: "2026-07-31T17:45:59.000Z" }, "wrong_identity"],
+  ] as const)("rejects %s and restores the configuration intent", async (_label, options, code) => {
+    const patchedValues: string[] = [];
+    const base = vercelFetcher(options);
+    await expect(initiateVercelProductionWritePause({
+      expectedCommit: COMMIT,
+      expected,
+      token: "token",
+      fetcher: async (url, init) => {
+        if (init?.method === "PATCH") {
+          patchedValues.push(JSON.parse(String(init.body)).value);
+        }
+        return base(url, init);
+      },
+    })).rejects.toMatchObject({ code });
+    expect(patchedValues).toEqual(["enabled", "disabled"]);
+  });
+});
+
 describe("production write-pause verifier", () => {
   function runtimeStatusBody() {
     return {
@@ -724,28 +869,44 @@ describe("production write-pause verifier", () => {
     };
   }
 
+  function writePauseFetcher(
+    body: ReturnType<typeof runtimeStatusBody>,
+    configuration: Record<string, unknown> = {},
+  ) {
+    return async (url: string) =>
+      new URL(url).host === "api.vercel.com"
+        ? json({
+            envs: [{
+              id: "env_write_pause",
+              key: "TRAINER_WRITE_PAUSE",
+              type: "encrypted",
+              target: ["production"],
+              gitBranch: null,
+              updatedAt: Date.parse("2026-07-31T17:46:00.000Z"),
+              lastUpdatedBy: "user_operator",
+              ...configuration,
+            }],
+            pagination: { next: null },
+          })
+        : json(body);
+  }
+
   it("combines authenticated deployment identity with effective runtime enforcement", async () => {
     await expect(verifyProductionWritePause({
       deployment: deployment(),
+      token: "token",
       now: () => NOW,
-      fetcher: async () => json({
-        schema: "trainer-production-write-status",
-        version: 2,
-        environment: "production",
-        commitSha: COMMIT,
-        deploymentId: "dpl_current",
-        pauseOperationId: PAUSE_OPERATION_ID,
-        status: "PAUSED",
-        enforcement: "application_all_classified_write_paths",
-        enforcementContractVersion: 2,
-      }),
+      fetcher: writePauseFetcher(runtimeStatusBody()),
     })).resolves.toMatchObject({
       verified: true,
       bypassPaths: [],
-      initiationCapability:
-        "unavailable_requires_authorized_environment_update_and_redeployment",
-      initiationAuthorizedAt: null,
-      initiationOperationId: null,
+      initiationCapability: "provider_operation",
+      initiationAuthorizationId: "env_write_pause",
+      initiationAuthorizedBy: "user_operator",
+      initiationAuthorizedAt: "2026-07-31T17:46:00.000Z",
+      initiationOperationId: "dpl_current",
+      establishedAt: NOW,
+      verifiedAt: NOW,
     });
   });
 
@@ -771,7 +932,8 @@ describe("production write-pause verifier", () => {
     await expect(
       verifyProductionWritePause({
         deployment: deployment(),
-        fetcher: async () => json(body),
+        token: "token",
+        fetcher: writePauseFetcher(body),
       }),
     ).rejects.toMatchObject({ code: "not_ready" });
   });
@@ -779,18 +941,25 @@ describe("production write-pause verifier", () => {
   it("rejects configuration intent when runtime enforcement is not active", async () => {
     await expect(verifyProductionWritePause({
       deployment: deployment(),
-      fetcher: async () => json({
-        schema: "trainer-production-write-status",
-        version: 2,
-        environment: "production",
-        commitSha: COMMIT,
-        deploymentId: "dpl_current",
-        pauseOperationId: PAUSE_OPERATION_ID,
+      token: "token",
+      fetcher: writePauseFetcher({
+        ...runtimeStatusBody(),
         status: "ENABLED",
-        enforcement: "application_all_classified_write_paths",
-        enforcementContractVersion: 2,
       }),
     })).rejects.toMatchObject({ code: "not_ready" });
+  });
+
+  it.each([
+    ["missing authorization ID", { id: "" }, "malformed_provider_response"],
+    ["wrong environment", { target: ["preview"] }, "wrong_identity"],
+    ["different author", { lastUpdatedBy: "user_other" }, "wrong_identity"],
+    ["stale authorization", { updatedAt: Date.parse("2026-07-31T17:00:00.000Z") }, "wrong_identity"],
+  ])("rejects %s", async (_label, configuration, code) => {
+    await expect(verifyProductionWritePause({
+      deployment: deployment(),
+      token: "token",
+      fetcher: writePauseFetcher(runtimeStatusBody(), configuration),
+    })).rejects.toMatchObject({ code });
   });
 
   it("verifies later restoration without authorizing it", async () => {

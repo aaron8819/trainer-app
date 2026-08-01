@@ -477,6 +477,7 @@ function fullOperationalVerification(
       provider: "vercel",
       authenticated: true,
       account: "trainer-operator",
+      accountId: "user_trainer_operator",
       teamId: "team_trainer",
       teamSlug: "trainer-team",
       projectId: "prj_trainer",
@@ -484,15 +485,19 @@ function fullOperationalVerification(
       environment: "production",
       alias: "trainer.example.com",
       deploymentId: "dpl_trainer",
+      creatorId: "user_trainer_operator",
+      writePauseAuthorizationId: "env_write_pause",
+      writePauseAuthorizedBy: "user_trainer_operator",
+      writePauseAuthorizedAt: "2026-07-26T17:41:00.000Z",
       state: "READY",
       sourceProvider: "github",
       sourceRepository: "aaron8819/trainer-app",
       sourceBranch: "master",
       sourceCommit: bindingHead,
-      createdAt: "2026-07-26T17:30:00.000Z",
-      readyAt: "2026-07-26T17:31:00.000Z",
-      aliasObservedAt: "2026-07-26T17:31:30.000Z",
-      verifiedAt: "2026-07-26T17:31:30.000Z",
+      createdAt: "2026-07-26T17:41:30.000Z",
+      readyAt: "2026-07-26T17:42:00.000Z",
+      aliasObservedAt: "2026-07-26T17:42:30.000Z",
+      verifiedAt: "2026-07-26T17:42:30.000Z",
       provenance: "vercel_authenticated_read_only_rest",
     },
     disposable: {
@@ -537,7 +542,7 @@ function fullOperationalVerification(
       authenticated: true,
       artifactId: "456",
       artifactDigest: "2".repeat(64),
-      verifiedAt: "2026-07-26T17:35:30.000Z",
+      verifiedAt: "2026-07-26T17:43:00.000Z",
       provenance: "github_authenticated_actions_artifact",
     },
     recovery: {
@@ -579,10 +584,12 @@ function fullOperationalVerification(
       pauseOperationId: `trainer-write-pause:prj_trainer:production:${bindingHead}:dpl_trainer`,
       enforcement: "application_all_classified_write_paths",
       initiationCapability: "provider_operation",
+      initiationAuthorizationId: "env_write_pause",
+      initiationAuthorizedBy: "user_trainer_operator",
       initiationAuthorizedAt: "2026-07-26T17:41:00.000Z",
-      initiationOperationId: `trainer-write-pause:prj_trainer:production:${bindingHead}:dpl_trainer`,
-      initiationObservedAt: "2026-07-26T17:41:30.000Z",
-      establishedAt: "2026-07-26T17:42:00.000Z",
+      initiationOperationId: "dpl_trainer",
+      initiationObservedAt: "2026-07-26T17:44:00.000Z",
+      establishedAt: "2026-07-26T17:45:00.000Z",
       runtimeStatus: "PAUSED",
       runtimeContractVersion: 2,
       enforcementContractVersion: 2,
@@ -590,7 +597,7 @@ function fullOperationalVerification(
       bypassPaths: [],
       verifiedAt: "2026-07-26T17:45:00.000Z",
       verified: true,
-      provenance: "vercel_authenticated_deployment_plus_runtime_read_only",
+      provenance: "vercel_authenticated_configuration_deployment_and_runtime",
     },
     verifiedAt: VERIFIED_AT,
     failureDetails: [],
@@ -1027,7 +1034,7 @@ describe("migration integrity", () => {
       operationalVerification: fullOperationalVerification({
         recovery: {
           ...operational.recovery,
-          requiredRecoveryAt: operational.writePause.establishedAt,
+          requiredRecoveryAt: operational.deployment.readyAt,
         },
       }),
     });
@@ -1058,7 +1065,7 @@ describe("migration integrity", () => {
         },
       }),
     });
-    expect(result.technicalMigrationReady).toBe(true);
+    expect(result.technicalMigrationReady).toBe(false);
     expect(result.writeBoundaryReady).toBe(false);
     expect(result.migrationAuthorizationReady).toBe(false);
     expect(result.executionAuthorized).toBe(false);
@@ -1403,7 +1410,7 @@ describe("migration integrity", () => {
       "1. Merge and deploy the reviewed runtime-inert application",
       "2. Record the actual integrated `master` squash SHA, bind it as",
       "3. Obtain canonical commit-bound disposable PostgreSQL verification",
-      "4. Activate and verify `TRAINER_WRITE_PAUSE=enabled`",
+      "4. With separate authorization for the exact Vercel mutations",
       "5. Run authenticated Supabase PITR verification",
       "6. Run the immediate live read-only direct-database and migration-status",
       "7. Through the separately authorized database-administrator workflow",
@@ -1426,6 +1433,10 @@ describe("migration integrity", () => {
     );
     expect(operations).toContain(
       "`migrationAuthorizationReady: false` and stop",
+    );
+    expect(operations).toContain("npm run ops:initiate-finisher-write-pause");
+    expect(operations).toContain(
+      "The trusted pause-establishment timestamp is exactly when",
     );
   });
 

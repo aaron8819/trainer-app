@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { productionWritePauseOperationId } from "./production-write-gate";
 
 export const FINISHER_PROVIDER_EVIDENCE_SCHEMA =
   "trainer-finisher-provider-verification" as const;
-export const FINISHER_PROVIDER_EVIDENCE_VERSION = 2 as const;
-export const FINISHER_PROVIDER_CONTRACT_VERSION = 1 as const;
-export const FINISHER_PROVIDER_TOOL_VERSION = "2.0.0" as const;
+export const FINISHER_PROVIDER_EVIDENCE_VERSION = 3 as const;
+export const FINISHER_PROVIDER_CONTRACT_VERSION = 2 as const;
+export const FINISHER_PROVIDER_TOOL_VERSION = "3.0.0" as const;
 export const FINISHER_MIGRATION_PATH =
   "trainer-app/prisma/migrations/20260728120000_add_finishers_phase_1/migration.sql" as const;
 export const FINISHER_MIGRATION_GIT_BLOB =
@@ -23,6 +24,7 @@ const fullSha = z.string().regex(/^[0-9a-f]{40}$/);
 const sha256 = z.string().regex(/^[0-9a-f]{64}$/);
 const nonEmpty = z.string().trim().min(1).max(512);
 const timestamp = z.string().datetime({ offset: true });
+const vercelDeploymentId = z.string().regex(/^dpl_[A-Za-z0-9]+$/);
 
 const migrationIdentitySchema = z
   .object({
@@ -55,13 +57,18 @@ const deploymentSchema = z
     provider: z.literal("vercel"),
     authenticated: z.literal(true),
     account: nonEmpty,
+    accountId: nonEmpty,
     teamId: nonEmpty,
     teamSlug: nonEmpty,
     projectId: nonEmpty,
     projectName: nonEmpty,
     environment: z.literal("production"),
     alias: nonEmpty,
-    deploymentId: nonEmpty,
+    deploymentId: vercelDeploymentId,
+    creatorId: nonEmpty,
+    writePauseAuthorizationId: nonEmpty,
+    writePauseAuthorizedBy: nonEmpty,
+    writePauseAuthorizedAt: timestamp,
     state: z.literal("READY"),
     sourceProvider: z.literal("github"),
     sourceRepository: nonEmpty,
@@ -169,16 +176,15 @@ const writePauseSchema = z
     teamId: nonEmpty,
     projectId: nonEmpty,
     environment: z.literal("production"),
-    deploymentId: nonEmpty,
+    deploymentId: vercelDeploymentId,
     commitSha: fullSha,
     pauseOperationId: nonEmpty,
     enforcement: z.literal("application_all_classified_write_paths"),
-    initiationCapability: z.enum([
-      "provider_operation",
-      "unavailable_requires_authorized_environment_update_and_redeployment",
-    ]),
-    initiationAuthorizedAt: timestamp.nullable(),
-    initiationOperationId: nonEmpty.nullable(),
+    initiationCapability: z.literal("provider_operation"),
+    initiationAuthorizationId: nonEmpty,
+    initiationAuthorizedBy: nonEmpty,
+    initiationAuthorizedAt: timestamp,
+    initiationOperationId: vercelDeploymentId,
     initiationObservedAt: timestamp,
     establishedAt: timestamp,
     runtimeStatus: z.literal("PAUSED"),
@@ -188,7 +194,9 @@ const writePauseSchema = z
     bypassPaths: z.array(nonEmpty).max(0),
     verifiedAt: timestamp,
     verified: z.literal(true),
-    provenance: z.literal("vercel_authenticated_deployment_plus_runtime_read_only"),
+    provenance: z.literal(
+      "vercel_authenticated_configuration_deployment_and_runtime",
+    ),
   })
   .strict();
 
@@ -305,8 +313,21 @@ export function assessFinisherProviderVerification(
   }
   if (
     evidence.writePause.deploymentId !== evidence.deployment.deploymentId ||
-    (evidence.writePause.initiationOperationId !== null &&
-      evidence.writePause.initiationOperationId !== evidence.writePause.pauseOperationId)
+    evidence.writePause.initiationOperationId !== evidence.deployment.deploymentId ||
+    evidence.writePause.initiationAuthorizationId !==
+      evidence.deployment.writePauseAuthorizationId ||
+    evidence.writePause.initiationAuthorizedBy !== evidence.deployment.creatorId ||
+    evidence.writePause.initiationAuthorizedBy !==
+      evidence.deployment.writePauseAuthorizedBy ||
+    evidence.writePause.initiationAuthorizedAt !==
+      evidence.deployment.writePauseAuthorizedAt ||
+    evidence.writePause.pauseOperationId !==
+      productionWritePauseOperationId({
+        projectId: evidence.deployment.projectId,
+        environment: "production",
+        commitSha: evidence.deployment.sourceCommit,
+        deploymentId: evidence.deployment.deploymentId,
+      })
   ) {
     reasons.push("provider_evidence_pause_operation_mismatch");
   }
@@ -349,17 +370,11 @@ export function assessFinisherProviderVerification(
   if (!evidence.recovery.verified) {
     reasons.push("provider_pitr_coverage_unverified");
   }
-  if (evidence.recovery.requiredRecoveryAt !== evidence.writePause.verifiedAt) {
+  if (evidence.recovery.requiredRecoveryAt !== evidence.writePause.establishedAt) {
     reasons.push("provider_evidence_recovery_pause_mismatch");
   }
-  if (evidence.writePause.initiationCapability !== "provider_operation") {
-    reasons.push("provider_write_pause_initiation_capability_unavailable");
-  }
-  if (
-    evidence.writePause.initiationAuthorizedAt === null ||
-    evidence.writePause.initiationOperationId === null
-  ) {
-    reasons.push("provider_write_pause_initiation_unverified");
+  if (evidence.writePause.establishedAt !== evidence.writePause.verifiedAt) {
+    reasons.push("provider_write_pause_establishment_timestamp_mismatch");
   }
   for (const observedAt of [
     evidence.deployment.createdAt,
@@ -375,7 +390,7 @@ export function assessFinisherProviderVerification(
     evidence.writePause.verifiedAt,
     evidence.recovery.verifiedAt,
     evidence.verifiedAt,
-  ].filter((value): value is string => value !== null)) {
+  ]) {
     if (!fresh(observedAt, expected.evaluatedAt)) {
       reasons.push("provider_evidence_expired_or_future");
       break;
@@ -383,9 +398,11 @@ export function assessFinisherProviderVerification(
   }
   if (
     !ordered(
-      evidence.deployment.readyAt,
       evidence.disposable.completedAt,
       evidence.writePause.initiationAuthorizedAt,
+      evidence.deployment.createdAt,
+      evidence.deployment.readyAt,
+      evidence.deployment.aliasObservedAt,
       evidence.writePause.initiationObservedAt,
       evidence.writePause.establishedAt,
       evidence.writePause.verifiedAt,

@@ -405,7 +405,7 @@ Do not run it during preflight. A backup being available, a reachable direct end
 
 `src/lib/operations/finisher-provider-verification.ts` owns the strict version 2
 authorization contract. `src/lib/operations/finisher-provider-adapters.ts` owns
-authenticated provider reads. Gate A accepts that in-memory result only from
+authenticated provider reads and the bounded Vercel pause initiation. Gate A accepts that in-memory result only from
 `ops:migration-status --verify-providers`; it has no provider-evidence file
 option. Unknown fields, unknown versions, duplicate artifacts, stale evidence,
 wrong targets, cross-commit reuse, cross-environment reuse, and evidence created
@@ -416,8 +416,11 @@ Every successful result binds all of the following:
 - authenticated GitHub owner/repository and exact default-branch commit;
 - authenticated Vercel account/team/project, exact linked GitHub owner/repository
   and `master` production branch, production alias, active production deployment
-  ID, READY state, Git source repository/ref/commit, creation time, and readiness
-  time;
+  ID, creator, READY state, Git source repository/ref/commit, creation time, and
+  readiness time;
+- the authenticated Vercel Production `TRAINER_WRITE_PAUSE` configuration record
+  ID, updating principal, provider update time, and its bounded correlation to the
+  exact active deployment operation ID;
 - exact repository-relative migration path, Git blob, SHA-256 of the Git blob
   bytes, and ordered migration-inventory digest;
 - authenticated Supabase organization/project identity, the exact `postgres`
@@ -445,10 +448,10 @@ Supabase PITR boundaries are recovery-window limits rather than event freshness
 timestamps. The window must contain the trusted runtime pause-verification time and
 leave at least 30 minutes of retention margin behind that time, matching the
 maximum lifetime of Gate A evidence. If the rollout exceeds that lifetime, rerun
-the read-only provider verifier. Required order is: authenticated READY production
-deployment verification, completed authenticated exact-head disposable
-verification, separately authorized write-pause initiation and paused exact-commit
-redeployment, effective runtime pause verification, authenticated PITR-window
+the read-only provider verifier. Required order is: completed authenticated
+exact-head disposable verification, separately authorized write-pause initiation,
+the resulting exact-commit Production deployment, authenticated configuration and
+active-deployment verification, effective runtime pause verification, authenticated PITR-window
 verification, immediate production preflight and principal verification, then
 Gate A. A later matching migration file does not make evidence from another
 commit reusable.
@@ -485,8 +488,10 @@ coverage and cannot author authorization evidence.
 Required process-scoped credentials are names and scopes, never values:
 
 - existing authenticated `gh` session with repository and Actions read access;
-- `VERCEL_TOKEN` with read access to the configured team, project, alias, and
-  deployment;
+- `VERCEL_TOKEN` with read access to the configured team, project, Production
+  environment metadata, alias, and deployment. The pause-initiation command
+  separately requires environment-variable write and Production deployment-create
+  access for that exact project;
 - `SUPABASE_ACCESS_TOKEN` with project read and `backups_read` access to the
   exact project.
 
@@ -504,7 +509,8 @@ npm run ops:verify-finisher-providers -- `
   --expected-database postgres
 ```
 
-The command uses only authenticated GET requests plus the public no-store
+The command uses only authenticated GET requests for Vercel deployment and
+Production environment metadata, GitHub, and Supabase, plus the public no-store
 runtime write-status GET. It distinguishes missing credentials, rejected
 authentication, insufficient authorization, rate limiting, network failures,
 missing resources, identity mismatches, non-ready deployment, wrong commit,
@@ -557,10 +563,10 @@ establish recovery coverage.
 
 Supabase has no database-level write-only pause that preserves the required read
 paths. Trainer therefore retains the application-level
-`TRAINER_WRITE_PAUSE=enabled` boundary. The initiation command is an unavailable
-fail-closed guard because safe activation requires two separately authorized
-Vercel mutations—an exact Production environment update and an exact-commit
-production redeployment—not one atomic provider operation:
+`TRAINER_WRITE_PAUSE=enabled` boundary. The canonical initiation command performs
+the two bounded, separately authorized Vercel mutations required to activate it:
+an exact Production environment update followed immediately by a force-new
+Production deployment from the exact reviewed commit:
 
 ```powershell
 npm run ops:initiate-finisher-write-pause -- `
@@ -569,33 +575,43 @@ npm run ops:initiate-finisher-write-pause -- `
   --expected-project-reference $vercelProjectId `
   --expected-database postgres `
   --authorize-provider-mutation `
-  --confirm-provider-operation "trainer-write-pause:$vercelProjectId:$integratedSha"
+  --confirm-provider-operation "trainer-write-pause:$vercelTeamId:$vercelProjectId:production:postgres:$integratedSha:55985a32851d9de042b43db3880b5cb857373313"
 ```
 
-That confirmation string authorizes the bounded provider request; it is not runtime pause
-evidence. Runtime evidence derives a distinct deployment-bound identity from trusted Vercel
-system metadata.
+That confirmation string authorizes only the exact bounded provider request; it
+is not evidence and is never accepted by Gate A. Before mutating, the command
+authenticates the token, committed team/project/Git binding, existing single
+Production-only `TRAINER_WRITE_PAUSE` record, exact repository HEAD, and reviewed
+migration blob. The successful PATCH response supplies the real authorization
+record ID, updating principal, and provider update time. The successful deployment
+response supplies the real provider operation ID and exact commit binding. No
+caller-authored ID, timestamp, JSON, header, or narrative value is accepted.
 
-Use the existing separately authorized Vercel console procedure for activation.
-Read-only verification then combines authenticated active-alias deployment data
-with `GET /api/operations/write-status` from that alias. The endpoint is
+Read-only verification independently rereads that Production configuration
+metadata and the active-alias deployment. It requires the same provider principal
+to have updated the configuration and created the deployment, requires the
+deployment to follow the update within the bounded initiation window, and then
+queries `GET /api/operations/write-status` from that alias. The endpoint is
 dynamic, no-store, returns no environment value, and reports only contract
 version, exact commit, production classification, enforcement class, and
 effective `PAUSED`/`ENABLED` state. Configuration intent without an active
 exact-commit paused deployment fails. The static ownership guard must also pass;
 one unclassified application or operational write path blocks authorization.
-The initial compatible production deployment and the later paused exact-commit
-redeployment are distinct provider resources and must have distinct independently
-verified timestamps; the paused deployment cannot be backdated to the initial
-deployment. The current adapter reports effective runtime state but records pause
-initiation capability as unavailable, with no authorization timestamp or operation
-ID. Therefore even an already-paused response cannot make
-`migrationAuthorizationReady` true until a reviewed adapter can authenticate the
-separately authorized Vercel environment update and paused redeployment.
+The runtime pause-binding ID remains a deployment-bound application identity, not
+a provider operation ID. Gate A uses the authenticated Vercel deployment ID as the
+provider operation ID. The trusted pause-establishment timestamp is exactly when
+the independently queried runtime first verifies `PAUSED`; deployment readiness is
+not a pause timestamp. That same effective-pause timestamp is the required PITR
+restore target.
 
-If any provider operation is partially completed, do not retry blindly. Keep
-Finishers disabled, preserve the provider operation/resource ID, rerun only the
-read-only verifier, and leave writes in their current safe state. If pause
+If deployment creation fails after the environment update returns, the command
+attempts to restore the Production configuration intent to `disabled` and still
+fails closed. Because a deployment request may have succeeded despite an ambiguous
+network result, do not retry blindly: keep Finishers disabled and rerun only the
+read-only verifier. If it reports `PAUSED` and no database mutation occurred, use
+the existing resume procedure to set `disabled`, redeploy the same exact commit,
+and independently require `ENABLED`. If it reports `ENABLED`, confirm the
+Production configuration is disabled before any later deployment. If pause
 activation completed but recovery verification did not, keep writes paused. If
 recovery exists but pause activation failed, do not provision principals. Write
 restoration remains the separate resume procedure below and requires a verified
@@ -709,8 +725,10 @@ environment change, role change, migration, production access, or verification.
    exact repository and migration bytes. Dispatch the reviewed master-only
    workflow after this tooling is merged and retain its exact run ID. The local
    PostgreSQL 16 harness remains review evidence only.
-4. Activate and verify `TRAINER_WRITE_PAUSE=enabled` while keeping
-   `TRAINER_FINISHERS_ROLLOUT` disabled.
+4. With separate authorization for the exact Vercel mutations, run the canonical
+   pause-initiation command above. Then run the read-only provider verifier and
+   require authenticated configuration/deployment correlation plus runtime v2
+   `PAUSED`, while keeping `TRAINER_FINISHERS_ROLLOUT` disabled.
 5. Run authenticated Supabase PITR verification for the exact production
    organization, project, and `postgres` database. Require the provider window
    to cover the trusted runtime pause-verification timestamp with at least 30 minutes

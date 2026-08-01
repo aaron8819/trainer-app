@@ -20,6 +20,14 @@ import {
 import { productionWritePauseOperationId } from "./production-write-gate";
 
 const MAX_DISPOSABLE_ARTIFACT_BYTES = 64 * 1024;
+const MAX_WRITE_PAUSE_INITIATION_TO_DEPLOYMENT_MS = 10 * 60 * 1_000;
+const WRITE_PAUSE_VARIABLE = "TRAINER_WRITE_PAUSE";
+const WRITE_PAUSE_AUTHORIZATION_METADATA = {
+  id: "trainerWritePauseAuthorizationId",
+  actor: "trainerWritePauseAuthorizedBy",
+  timestamp: "trainerWritePauseAuthorizedAt",
+  contract: "trainerWritePauseContractVersion",
+} as const;
 
 export type ProviderFailureCode =
   | "credentials_unavailable"
@@ -110,19 +118,24 @@ async function providerJson(input: {
   url: URL;
   token: string | undefined;
   fetcher: JsonFetcher;
+  method?: "GET" | "PATCH" | "POST";
+  body?: Record<string, unknown>;
+  expectedStatuses?: number[];
 }): Promise<Record<string, unknown>> {
   if (!input.token) throw new ProviderVerificationError("credentials_unavailable");
   let response: Response;
   try {
     response = await input.fetcher(input.url.toString(), {
-      method: "GET",
+      method: input.method ?? "GET",
       redirect: "error",
       cache: "no-store",
       signal: AbortSignal.timeout(10_000),
       headers: {
         Accept: "application/json",
         Authorization: `Bearer ${input.token}`,
+        ...(input.body ? { "Content-Type": "application/json" } : {}),
       },
+      ...(input.body ? { body: JSON.stringify(input.body) } : {}),
     });
   } catch {
     throw new ProviderVerificationError("network_failure");
@@ -132,7 +145,9 @@ async function providerJson(input: {
   if (response.status === 404) throw new ProviderVerificationError("resource_missing");
   if (response.status === 429) throw new ProviderVerificationError("rate_limited");
   if (response.status >= 500) throw new ProviderVerificationError("network_failure");
-  if (response.status !== 200) throw new ProviderVerificationError("malformed_provider_response");
+  if (!(input.expectedStatuses ?? [200]).includes(response.status)) {
+    throw new ProviderVerificationError("malformed_provider_response");
+  }
   try {
     return object(await response.json());
   } catch (error) {
@@ -147,29 +162,39 @@ function vercelUrl(path: string, query: Record<string, string> = {}): URL {
   return url;
 }
 
-export async function verifyVercelProductionDeployment(input: {
-  expectedCommit: string;
-  expected: {
-    githubOwner: string;
-    githubRepository: string;
-    teamId: string;
-    teamSlug: string;
-    projectId: string;
-    projectName: string;
-    productionAlias: string;
-  };
+export type VercelProductionExpectation = {
+  githubOwner: string;
+  githubRepository: string;
+  teamId: string;
+  teamSlug: string;
+  projectId: string;
+  projectName: string;
+  productionAlias: string;
+};
+
+type AuthenticatedVercelProject = {
+  account: string;
+  accountId: string;
+  linkedRepositoryId: string;
+  productionDeploymentId: string;
+};
+
+async function verifyVercelProjectIdentity(input: {
+  expected: VercelProductionExpectation;
   token?: string;
-  fetcher?: JsonFetcher;
-  now?: () => string;
-}): Promise<FinisherProviderVerification["deployment"]> {
-  const fetcher = input.fetcher ?? fetch;
-  const request = (url: URL) => providerJson({ url, token: input.token, fetcher });
+  fetcher: JsonFetcher;
+}): Promise<AuthenticatedVercelProject> {
+  const request = (url: URL) =>
+    providerJson({ url, token: input.token, fetcher: input.fetcher });
   const userResponse = await request(vercelUrl("/v2/user"));
   const user = object(userResponse.user ?? userResponse);
   const account = string(user.username ?? user.name);
+  const accountId = string(user.id ?? user.uid);
   const teamsResponse = await request(vercelUrl("/v2/teams", { limit: "100" }));
   const teams = teamsResponse.teams;
-  if (!Array.isArray(teams)) throw new ProviderVerificationError("malformed_provider_response");
+  if (!Array.isArray(teams)) {
+    throw new ProviderVerificationError("malformed_provider_response");
+  }
   const teamMatches = teams.filter((item) => object(item).id === input.expected.teamId);
   if (teamMatches.length !== 1) throw new ProviderVerificationError("wrong_identity");
   const team = await request(vercelUrl(`/v2/teams/${input.expected.teamId}`));
@@ -193,19 +218,38 @@ export async function verifyVercelProductionDeployment(input: {
   }
   const projectLink = object(project.link);
   const linkedRepositoryId = sourceIdentifier(projectLink.repoId);
-  const linkedOwner = sourceString(projectLink.org);
-  const linkedRepository = sourceString(projectLink.repo);
-  const linkedProductionBranch = sourceString(projectLink.productionBranch);
   if (
     projectLink.type !== "github" ||
-    linkedOwner !== input.expected.githubOwner ||
-    linkedRepository !== input.expected.githubRepository ||
-    linkedProductionBranch !== "master"
+    sourceString(projectLink.org) !== input.expected.githubOwner ||
+    sourceString(projectLink.repo) !== input.expected.githubRepository ||
+    sourceString(projectLink.productionBranch) !== "master"
   ) {
     throw new ProviderVerificationError("wrong_identity");
   }
   const targets = object(project.targets);
   const productionTarget = object(targets.production);
+  return {
+    account,
+    accountId,
+    linkedRepositoryId,
+    productionDeploymentId: string(productionTarget.id),
+  };
+}
+
+export async function verifyVercelProductionDeployment(input: {
+  expectedCommit: string;
+  expected: VercelProductionExpectation;
+  token?: string;
+  fetcher?: JsonFetcher;
+  now?: () => string;
+}): Promise<FinisherProviderVerification["deployment"]> {
+  const fetcher = input.fetcher ?? fetch;
+  const request = (url: URL) => providerJson({ url, token: input.token, fetcher });
+  const identity = await verifyVercelProjectIdentity({
+    expected: input.expected,
+    token: input.token,
+    fetcher,
+  });
   const alias = await request(
     vercelUrl(`/v4/aliases/${input.expected.productionAlias}`, {
       projectId: input.expected.projectId,
@@ -216,7 +260,7 @@ export async function verifyVercelProductionDeployment(input: {
     throw new ProviderVerificationError("wrong_identity");
   }
   const deploymentId = string(alias.deploymentId);
-  if (productionTarget.id !== deploymentId) {
+  if (identity.productionDeploymentId !== deploymentId) {
     throw new ProviderVerificationError("stale_alias");
   }
   const deployment = await request(
@@ -240,25 +284,40 @@ export async function verifyVercelProductionDeployment(input: {
     throw new ProviderVerificationError("source_binding_unavailable");
   }
   const gitSource = object(deployment.gitSource);
+  const creator = object(deployment.creator);
+  const creatorId = string(creator.uid ?? creator.id);
   const sourceCommit = sourceString(gitSource.sha).toLowerCase();
   const sourceProvider = sourceString(gitSource.type);
   const sourceBranch = sourceString(gitSource.ref);
   if (
     sourceProvider !== "github" ||
-    sourceIdentifier(gitSource.repoId) !== linkedRepositoryId ||
+    sourceIdentifier(gitSource.repoId) !== identity.linkedRepositoryId ||
     sourceBranch !== "master"
   ) {
     throw new ProviderVerificationError("wrong_identity");
   }
   const meta = object(deployment.meta);
   const metadataCommit = sourceString(meta.githubCommitSha).toLowerCase();
+  const writePauseAuthorizationId = sourceString(
+    meta[WRITE_PAUSE_AUTHORIZATION_METADATA.id],
+  );
+  const writePauseAuthorizedBy = sourceString(
+    meta[WRITE_PAUSE_AUTHORIZATION_METADATA.actor],
+  );
+  const writePauseAuthorizedAt = timestamp(
+    meta[WRITE_PAUSE_AUTHORIZATION_METADATA.timestamp],
+  );
   if (sourceCommit !== input.expectedCommit || metadataCommit !== sourceCommit) {
     throw new ProviderVerificationError("wrong_commit");
+  }
+  if (meta[WRITE_PAUSE_AUTHORIZATION_METADATA.contract] !== "2") {
+    throw new ProviderVerificationError("source_binding_unavailable");
   }
   return {
     provider: "vercel",
     authenticated: true,
-    account,
+    account: identity.account,
+    accountId: identity.accountId,
     teamId: input.expected.teamId,
     teamSlug: input.expected.teamSlug,
     projectId: input.expected.projectId,
@@ -266,6 +325,10 @@ export async function verifyVercelProductionDeployment(input: {
     environment: "production",
     alias: input.expected.productionAlias,
     deploymentId,
+    creatorId,
+    writePauseAuthorizationId,
+    writePauseAuthorizedBy,
+    writePauseAuthorizedAt,
     state: "READY",
     sourceProvider: "github",
     sourceRepository: `${input.expected.githubOwner}/${input.expected.githubRepository}`,
@@ -550,6 +613,259 @@ export async function inspectSupabaseRecoveryCapability(input: {
   };
 }
 
+type VercelWritePauseConfiguration = {
+  id: string;
+  type: "plain" | "encrypted" | "sensitive";
+  authorizedBy: string;
+  authorizedAt: string;
+  observedAt: string;
+};
+
+function parseVercelWritePauseConfiguration(
+  value: unknown,
+  observedAt: string,
+): VercelWritePauseConfiguration {
+  const configuration = object(value);
+  const targets = configuration.target;
+  if (
+    configuration.key !== WRITE_PAUSE_VARIABLE ||
+    !Array.isArray(targets) ||
+    targets.length !== 1 ||
+    targets[0] !== "production" ||
+    (configuration.gitBranch !== null && configuration.gitBranch !== undefined) ||
+    (Array.isArray(configuration.customEnvironmentIds) &&
+      configuration.customEnvironmentIds.length > 0) ||
+    !["plain", "encrypted", "sensitive"].includes(String(configuration.type))
+  ) {
+    throw new ProviderVerificationError("wrong_identity");
+  }
+  return {
+    id: string(configuration.id),
+    type: configuration.type as VercelWritePauseConfiguration["type"],
+    authorizedBy: string(configuration.lastUpdatedBy),
+    authorizedAt: timestamp(configuration.updatedAt),
+    observedAt,
+  };
+}
+
+async function readVercelWritePauseConfiguration(input: {
+  teamId: string;
+  projectId: string;
+  token?: string;
+  fetcher: JsonFetcher;
+  now: () => string;
+}): Promise<VercelWritePauseConfiguration> {
+  const response = await providerJson({
+    url: vercelUrl(`/v9/projects/${input.projectId}/env`, {
+      teamId: input.teamId,
+      limit: "100",
+    }),
+    token: input.token,
+    fetcher: input.fetcher,
+  });
+  const envs = response.envs;
+  if (!Array.isArray(envs)) {
+    throw new ProviderVerificationError("malformed_provider_response");
+  }
+  const pagination = response.pagination;
+  if (pagination !== undefined && pagination !== null) {
+    const next = object(pagination).next;
+    if (next !== undefined && next !== null) {
+      throw new ProviderVerificationError("capability_unavailable");
+    }
+  }
+  const matches = envs.filter(
+    (entry) => object(entry).key === WRITE_PAUSE_VARIABLE,
+  );
+  if (matches.length === 0) throw new ProviderVerificationError("resource_missing");
+  if (matches.length !== 1) throw new ProviderVerificationError("wrong_identity");
+  return parseVercelWritePauseConfiguration(matches[0], input.now());
+}
+
+async function updateVercelWritePauseConfiguration(input: {
+  teamId: string;
+  projectId: string;
+  accountId: string;
+  configuration: VercelWritePauseConfiguration;
+  value: "enabled" | "disabled";
+  token?: string;
+  fetcher: JsonFetcher;
+  now: () => string;
+}): Promise<VercelWritePauseConfiguration> {
+  const response = await providerJson({
+    url: vercelUrl(
+      `/v9/projects/${input.projectId}/env/${input.configuration.id}`,
+      { teamId: input.teamId },
+    ),
+    token: input.token,
+    fetcher: input.fetcher,
+    method: "PATCH",
+    body: {
+      key: WRITE_PAUSE_VARIABLE,
+      value: input.value,
+      type: input.configuration.type,
+      target: ["production"],
+    },
+  });
+  const updated = parseVercelWritePauseConfiguration(response, input.now());
+  if (
+    updated.id !== input.configuration.id ||
+    updated.authorizedBy !== input.accountId ||
+    Date.parse(updated.authorizedAt) < Date.parse(input.configuration.authorizedAt)
+  ) {
+    throw new ProviderVerificationError("wrong_identity");
+  }
+  return updated;
+}
+
+function withinInitiationWindow(authorizedAt: string, deploymentCreatedAt: string): boolean {
+  const authorized = Date.parse(authorizedAt);
+  const created = Date.parse(deploymentCreatedAt);
+  return (
+    Number.isFinite(authorized) &&
+    Number.isFinite(created) &&
+    created >= authorized &&
+    created - authorized <= MAX_WRITE_PAUSE_INITIATION_TO_DEPLOYMENT_MS
+  );
+}
+
+export type VercelWritePauseInitiation = {
+  provider: "vercel";
+  authenticated: true;
+  teamId: string;
+  projectId: string;
+  environment: "production";
+  commitSha: string;
+  initiationAuthorizationId: string;
+  initiationAuthorizedBy: string;
+  initiationAuthorizedAt: string;
+  initiationOperationId: string;
+  initiatedAt: string;
+  mutationAttempted: true;
+  provenance: "vercel_authenticated_mutation_responses";
+};
+
+export async function initiateVercelProductionWritePause(input: {
+  expectedCommit: string;
+  expected: VercelProductionExpectation;
+  token?: string;
+  fetcher?: JsonFetcher;
+  now?: () => string;
+}): Promise<VercelWritePauseInitiation> {
+  const fetcher = input.fetcher ?? fetch;
+  const now = input.now ?? (() => new Date().toISOString());
+  const identity = await verifyVercelProjectIdentity({
+    expected: input.expected,
+    token: input.token,
+    fetcher,
+  });
+  const existing = await readVercelWritePauseConfiguration({
+    teamId: input.expected.teamId,
+    projectId: input.expected.projectId,
+    token: input.token,
+    fetcher,
+    now,
+  });
+  const authorized = await updateVercelWritePauseConfiguration({
+    teamId: input.expected.teamId,
+    projectId: input.expected.projectId,
+    accountId: identity.accountId,
+    configuration: existing,
+    value: "enabled",
+    token: input.token,
+    fetcher,
+    now,
+  });
+
+  try {
+    const response = await providerJson({
+      url: vercelUrl("/v13/deployments", {
+        teamId: input.expected.teamId,
+        forceNew: "1",
+      }),
+      token: input.token,
+      fetcher,
+      method: "POST",
+      expectedStatuses: [200, 201],
+      body: {
+        name: input.expected.projectName,
+        project: input.expected.projectId,
+        target: "production",
+        gitSource: {
+          type: "github",
+          repoId: identity.linkedRepositoryId,
+          ref: "master",
+          sha: input.expectedCommit,
+        },
+        meta: {
+          [WRITE_PAUSE_AUTHORIZATION_METADATA.id]: authorized.id,
+          [WRITE_PAUSE_AUTHORIZATION_METADATA.actor]: authorized.authorizedBy,
+          [WRITE_PAUSE_AUTHORIZATION_METADATA.timestamp]: authorized.authorizedAt,
+          [WRITE_PAUSE_AUTHORIZATION_METADATA.contract]: "2",
+        },
+      },
+    });
+    const deploymentId = string(response.id ?? response.uid);
+    if (!/^dpl_[A-Za-z0-9]+$/.test(deploymentId)) {
+      throw new ProviderVerificationError("malformed_provider_response");
+    }
+    const gitSource = object(response.gitSource);
+    const creator = object(response.creator);
+    const meta = object(response.meta);
+    const creatorId = string(creator.uid ?? creator.id);
+    const createdAt = timestamp(response.createdAt ?? response.created);
+    if (
+      response.projectId !== input.expected.projectId ||
+      response.name !== input.expected.projectName ||
+      response.target !== "production" ||
+      gitSource.type !== "github" ||
+      sourceIdentifier(gitSource.repoId) !== identity.linkedRepositoryId ||
+      sourceString(gitSource.ref) !== "master" ||
+      sourceString(gitSource.sha).toLowerCase() !== input.expectedCommit ||
+      creatorId !== identity.accountId ||
+      meta[WRITE_PAUSE_AUTHORIZATION_METADATA.id] !== authorized.id ||
+      meta[WRITE_PAUSE_AUTHORIZATION_METADATA.actor] !== authorized.authorizedBy ||
+      timestamp(meta[WRITE_PAUSE_AUTHORIZATION_METADATA.timestamp]) !==
+        authorized.authorizedAt ||
+      meta[WRITE_PAUSE_AUTHORIZATION_METADATA.contract] !== "2" ||
+      !withinInitiationWindow(authorized.authorizedAt, createdAt)
+    ) {
+      throw new ProviderVerificationError("wrong_identity");
+    }
+    return {
+      provider: "vercel",
+      authenticated: true,
+      teamId: input.expected.teamId,
+      projectId: input.expected.projectId,
+      environment: "production",
+      commitSha: input.expectedCommit,
+      initiationAuthorizationId: authorized.id,
+      initiationAuthorizedBy: authorized.authorizedBy,
+      initiationAuthorizedAt: authorized.authorizedAt,
+      initiationOperationId: deploymentId,
+      initiatedAt: createdAt,
+      mutationAttempted: true,
+      provenance: "vercel_authenticated_mutation_responses",
+    };
+  } catch (error) {
+    try {
+      await updateVercelWritePauseConfiguration({
+        teamId: input.expected.teamId,
+        projectId: input.expected.projectId,
+        accountId: identity.accountId,
+        configuration: authorized,
+        value: "disabled",
+        token: input.token,
+        fetcher,
+        now,
+      });
+    } catch {
+      throw new ProviderVerificationError("capability_unavailable");
+    }
+    throw error;
+  }
+}
+
 async function readProductionWriteStatus(input: {
   deployment: FinisherProviderVerification["deployment"];
   expectedStatus: "PAUSED" | "ENABLED";
@@ -622,11 +938,35 @@ async function readProductionWriteStatus(input: {
 
 export async function verifyProductionWritePause(input: {
   deployment: FinisherProviderVerification["deployment"];
+  token?: string;
   fetcher?: JsonFetcher;
   now?: () => string;
 }): Promise<FinisherProviderVerification["writePause"]> {
+  const fetcher = input.fetcher ?? fetch;
+  const now = input.now ?? (() => new Date().toISOString());
+  const initiation = await readVercelWritePauseConfiguration({
+    teamId: input.deployment.teamId,
+    projectId: input.deployment.projectId,
+    token: input.token,
+    fetcher,
+    now,
+  });
+  if (
+    initiation.authorizedBy !== input.deployment.creatorId ||
+    initiation.id !== input.deployment.writePauseAuthorizationId ||
+    initiation.authorizedBy !== input.deployment.writePauseAuthorizedBy ||
+    initiation.authorizedAt !== input.deployment.writePauseAuthorizedAt ||
+    !withinInitiationWindow(
+      initiation.authorizedAt,
+      input.deployment.createdAt,
+    )
+  ) {
+    throw new ProviderVerificationError("wrong_identity");
+  }
   const { pauseOperationId, verifiedAt } = await readProductionWriteStatus({
-    ...input,
+    deployment: input.deployment,
+    fetcher,
+    now,
     expectedStatus: "PAUSED",
   });
   return {
@@ -639,12 +979,13 @@ export async function verifyProductionWritePause(input: {
     commitSha: input.deployment.sourceCommit,
     pauseOperationId,
     enforcement: "application_all_classified_write_paths",
-    initiationCapability:
-      "unavailable_requires_authorized_environment_update_and_redeployment",
-    initiationAuthorizedAt: null,
-    initiationOperationId: null,
-    initiationObservedAt: input.deployment.createdAt,
-    establishedAt: input.deployment.readyAt,
+    initiationCapability: "provider_operation",
+    initiationAuthorizationId: initiation.id,
+    initiationAuthorizedBy: initiation.authorizedBy,
+    initiationAuthorizedAt: initiation.authorizedAt,
+    initiationOperationId: input.deployment.deploymentId,
+    initiationObservedAt: initiation.observedAt,
+    establishedAt: verifiedAt,
     runtimeStatus: "PAUSED",
     runtimeContractVersion: 2,
     enforcementContractVersion: 2,
@@ -652,7 +993,7 @@ export async function verifyProductionWritePause(input: {
     bypassPaths: [],
     verifiedAt,
     verified: true,
-    provenance: "vercel_authenticated_deployment_plus_runtime_read_only",
+    provenance: "vercel_authenticated_configuration_deployment_and_runtime",
   };
 }
 
@@ -729,12 +1070,17 @@ export async function collectFinisherProviderVerification(input: {
     client: input.githubClient ?? createGhDisposableClient(),
     now,
   });
-  const writePause = await verifyProductionWritePause({ deployment, fetcher, now });
+  const writePause = await verifyProductionWritePause({
+    deployment,
+    token: input.vercelToken,
+    fetcher,
+    now,
+  });
   const recovery = await inspectSupabaseRecoveryCapability({
     organizationId: input.target.supabaseOrganizationId,
     projectRef: input.target.supabaseProjectRef,
     database: input.target.database,
-    requiredRecoveryAt: writePause.verifiedAt,
+    requiredRecoveryAt: writePause.establishedAt,
     token: input.supabaseToken,
     fetcher,
     now,

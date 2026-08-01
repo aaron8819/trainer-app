@@ -2943,8 +2943,14 @@ export function buildMigrationIntegrityReport(input: {
     providerBindingValid &&
       providerEvidence?.writePause.verified &&
       providerEvidence.writePause.initiationCapability === "provider_operation" &&
+      providerEvidence.writePause.initiationAuthorizationId &&
+      providerEvidence.writePause.initiationAuthorizedBy ===
+        providerEvidence.deployment.creatorId &&
       providerEvidence.writePause.initiationAuthorizedAt &&
-      providerEvidence.writePause.initiationOperationId &&
+      providerEvidence.writePause.initiationOperationId ===
+        providerEvidence.deployment.deploymentId &&
+      providerEvidence.writePause.establishedAt ===
+        providerEvidence.writePause.verifiedAt &&
       providerEvidence.writePause.runtimeStatus === "PAUSED" &&
       providerEvidence.writePause.mutationCoverageVerified &&
       providerEvidence.writePause.bypassPaths.length === 0,

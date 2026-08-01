@@ -439,10 +439,10 @@ does not identify that blob and is rejected as stale. A Windows CRLF checkout
 may have a Prisma-compatible ledger checksum, but it is not the canonical
 provider-evidence byte identity.
 
-All operational verification timestamps, disposable completion, and effective
-pause establishment must be no more than 30 minutes old and not in the future.
+All operational verification timestamps, disposable completion, and runtime
+pause verification must be no more than 30 minutes old and not in the future.
 Supabase PITR boundaries are recovery-window limits rather than event freshness
-timestamps. The window must contain the trusted pause-establishment time and
+timestamps. The window must contain the trusted runtime pause-verification time and
 leave at least 30 minutes of retention margin behind that time, matching the
 maximum lifetime of Gate A evidence. If the rollout exceeds that lifetime, rerun
 the read-only provider verifier. Required order is: authenticated READY production
@@ -534,7 +534,7 @@ checkpoint object or identifier is required. The adapter independently reads
 `GET /v1/projects/{ref}/database/backups`, requires the expected organization,
 project, and `postgres` database, requires both `pitr_enabled` and
 `walg_enabled`, and verifies the provider-reported earliest/latest recovery
-window contains the trusted write-pause establishment time. That selected time
+window contains the trusted runtime write-pause verification time. That selected time
 must retain at least 30 minutes of coverage so it remains usable for the full
 Gate A evidence lifetime.
 
@@ -713,7 +713,7 @@ environment change, role change, migration, production access, or verification.
    `TRAINER_FINISHERS_ROLLOUT` disabled.
 5. Run authenticated Supabase PITR verification for the exact production
    organization, project, and `postgres` database. Require the provider window
-   to cover the trusted pause-establishment timestamp with at least 30 minutes
+   to cover the trusted runtime pause-verification timestamp with at least 30 minutes
    of remaining retention margin.
 6. Run the immediate live read-only direct-database and migration-status
    preflight:

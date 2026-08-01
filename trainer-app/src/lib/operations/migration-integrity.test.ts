@@ -549,9 +549,9 @@ function fullOperationalVerification(
       pitrEnabled: true,
       walgEnabled: true,
       earliestRecoveryAt: "2026-07-26T16:00:00.000Z",
-      latestRecoveryAt: "2026-07-26T17:44:00.000Z",
-      requiredRecoveryAt: "2026-07-26T17:42:00.000Z",
-      retentionMarginMinutes: 102,
+      latestRecoveryAt: "2026-07-26T17:46:00.000Z",
+      requiredRecoveryAt: "2026-07-26T17:45:00.000Z",
+      retentionMarginMinutes: 105,
       minimumRolloutCoverageMinutes: 30,
       coversRequiredRecoveryAt: true,
       coversRollout: true,
@@ -1017,6 +1017,20 @@ describe("migration integrity", () => {
       }),
     });
     expect(result.technicalMigrationReady).toBe(true);
+    expect(result.pitrRecoveryVerified).toBe(false);
+    expect(result.migrationAuthorizationReady).toBe(false);
+  });
+
+  it("keeps Gate A closed when PITR targets deployment readiness instead of pause verification", () => {
+    const operational = fullOperationalVerification();
+    const result = report({
+      operationalVerification: fullOperationalVerification({
+        recovery: {
+          ...operational.recovery,
+          requiredRecoveryAt: operational.writePause.establishedAt,
+        },
+      }),
+    });
     expect(result.pitrRecoveryVerified).toBe(false);
     expect(result.migrationAuthorizationReady).toBe(false);
   });

@@ -349,6 +349,9 @@ export function assessFinisherProviderVerification(
   if (!evidence.recovery.verified) {
     reasons.push("provider_pitr_coverage_unverified");
   }
+  if (evidence.recovery.requiredRecoveryAt !== evidence.writePause.verifiedAt) {
+    reasons.push("provider_evidence_recovery_pause_mismatch");
+  }
   if (evidence.writePause.initiationCapability !== "provider_operation") {
     reasons.push("provider_write_pause_initiation_capability_unavailable");
   }

@@ -120,8 +120,8 @@ function evidence(): FinisherProviderVerification {
       walgEnabled: true,
       earliestRecoveryAt: "2026-07-31T17:00:00.000Z",
       latestRecoveryAt: "2026-07-31T17:50:00.000Z",
-      requiredRecoveryAt: "2026-07-31T17:47:00.000Z",
-      retentionMarginMinutes: 47,
+      requiredRecoveryAt: "2026-07-31T17:50:00.000Z",
+      retentionMarginMinutes: 50,
       minimumRolloutCoverageMinutes: 30,
       coversRequiredRecoveryAt: true,
       coversRollout: true,
@@ -276,6 +276,14 @@ describe("Finisher provider verification contract", () => {
     value.recovery.verified = false;
     expect(assessFinisherProviderVerification(value, expectation()).reasons).toContain(
       "provider_pitr_window_expires_during_rollout",
+    );
+  });
+
+  it("rejects PITR evidence targeting deployment readiness instead of pause verification", () => {
+    const value = evidence();
+    value.recovery.requiredRecoveryAt = value.writePause.establishedAt;
+    expect(assessFinisherProviderVerification(value, expectation()).reasons).toContain(
+      "provider_evidence_recovery_pause_mismatch",
     );
   });
 

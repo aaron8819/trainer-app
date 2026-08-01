@@ -734,7 +734,7 @@ export async function collectFinisherProviderVerification(input: {
     organizationId: input.target.supabaseOrganizationId,
     projectRef: input.target.supabaseProjectRef,
     database: input.target.database,
-    requiredRecoveryAt: writePause.establishedAt,
+    requiredRecoveryAt: writePause.verifiedAt,
     token: input.supabaseToken,
     fetcher,
     now,

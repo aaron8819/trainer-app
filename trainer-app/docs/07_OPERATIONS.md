@@ -11,8 +11,8 @@ setting with a `NEXT_PUBLIC_` prefix. Disabled application paths do not query
 the Finisher schema, and changing the setting requires a new deployment.
 
 `20260728120000_add_finishers_phase_1` is additive and does not rewrite workout
-history. Apply it only through the reviewed migration workflow while production
-writes are paused. Run the normal Prisma generation, contract, migration
+history. Apply it only through the reviewed, separately authorized conventional migration workflow.
+Run the normal Prisma generation, contract, migration
 integrity/drift, and deployment readiness checks before release. Curated routine
 version 1 rows are installed inside the same atomic migration with deterministic
 routine/version/step identities. Production must not run the broad general
@@ -26,11 +26,6 @@ sealed definition.
 `npm run generate:finisher-catalog` verifies that the migration's generated SQL
 matches the canonical catalog. Later definition changes must create a new
 version and must never update an existing version.
-Because this migration exists only on the unmerged feature branch and has never
-been applied to a shared or production database, review corrections update this
-single migration in place. An additive follow-up migration would falsely imply
-that the reviewed, never-deployed defect was an accepted production schema.
-
 Finisher command receipt cleanup is application-initiated and opportunistic, but
 the database owns the only permitted mutation. After
 each successful or exactly replayed existing-execution command, the service
@@ -136,7 +131,13 @@ Sources of truth:
 - `trainer-app/prisma/seed.ts`
 - `trainer-app/package.json`
 
+
+
 ## Production architecture rollout authorization
+
+This section remains the general policy for other production schema changes. The Finisher
+migration uses the narrower procedure below; its specific exception does not weaken these controls
+for any other migration or production operation.
 
 Migration authorization is blocked until every external prerequisite below is supplied and reviewed. Repository tooling may inventory and diagnose the target, but it does not authorize migration deployment, application deployment, traffic changes, or backfill writes.
 
@@ -289,72 +290,20 @@ For a production migration:
 
 No backup or inspection result grants migration authorization. Database backups do not contain Supabase Storage objects.
 
+
 ### Direct migration endpoint
 
-`npm run ops:check-direct-db -- --env-file $rolloutEnv` resolves DNS, opens a short TCP connection, and performs the PostgreSQL/TLS/authentication handshake without running SQL. It reports a redacted host fingerprint and distinguishes DNS, timeout, network rejection, TLS, authentication, database rejection, and success. Pooler connectivity is not sufficient evidence for Prisma migration deployment, and the transaction pooler must not replace `DIRECT_URL`.
+`DATABASE_URL` is the application/runtime connection and `DIRECT_URL` is the direct PostgreSQL
+connection used for migration inspection and execution. Both must come from the same explicitly
+named operator-controlled environment file and resolve to the same target classification. The
+read-only status command connects through `DIRECT_URL`, starts repeatable-read read-only
+transactions, and reports sanitized target fingerprints rather than connection details.
 
-After the direct check succeeds, `npm run ops:migration-status -- --env-file
-$rolloutEnv --principal-audit-file
-<sanitized-principal-audit-record> --required-application-commit <full-sha>`
-performs the read-only Gate A migration-integrity verification through
-`DIRECT_URL`. Counts and caller-authored evidence are insufficient. The command
-always re-reads the principal catalog and proves the runtime credential with a
-bounded read-only login. A principal audit record is optional explanatory
-output and is never authorization input. `src/lib/operations/migration-integrity.ts`
-owns the rollout policy and result model. The command:
-
-- hashes the exact checked-out migration SQL bytes with SHA-256, matching how Prisma creates `_prisma_migrations.checksum`, and validates historical rows with Prisma's exact compatibility set: the script as read, `CRLF` converted to `LF`, and `LF` converted to `CRLF`;
-- rejects failed, unresolved rolled-back, unfinished, duplicate, unknown, missing-checksum, skipped, and out-of-prefix ledger states;
-- compares the actual pending suffix with the exact named sequence in repository policy; caller evidence cannot redefine that sequence and a fixed pending count never authorizes;
-- verifies material definitions owned by every applied migration and requires every object owned by each pending migration to be absent;
-- runs catalog and ledger queries inside a repeatable-read, read-only transaction, rejects mutation-capable statements in its query adapter, and reports `writes: 0`;
-- reports `technicalMigrationReady`, `migrationAuthorizationReady`, and `executionAuthorized` separately.
-
-`technicalMigrationReady` means the repository chain, exact pending sequence,
-ledger, Prisma-compatible checksums, applied and pending schema state,
-migration-specific data preflight, and current disposable PostgreSQL target
-verification are all valid. No Finisher table must exist for the separate live
-prerequisite-role checks.
-`migrationAuthorizationReady` additionally requires fresh live principal
-verification, canonical provider verification of Supabase PITR coverage,
-production deployment and write pause, application compatibility, and exact
-migration and application commits. The provider verifier authenticates and
-binds those hosted facts to exact provider identities and the required commit.
-Remote Gate A remains fail closed until all live evidence is complete. Recovery
-coverage comes from an authenticated Supabase backup-inventory GET for the exact
-production project, never from a caller-authored checkpoint claim.
-`executionAuthorized` is always `false` in this preparation command. A clean
-data preflight never grants operational or execution authorization.
-
-Ledger classification follows Prisma row state, not step count:
-
-- A row is successfully applied when `finished_at` is populated, `rolled_back_at` is null, the checksum and required identity fields are present, the step count is a non-negative integer, and `logs` contains no failure evidence. `applied_steps_count = 0` is valid for a row created by Prisma's supported `migrate resolve --applied`; it is not independently incomplete.
-- Applied mode is operator context only: positive-step rows are `executed`; zero-step rows with a matching checksum and verified schema effects are `resolved_applied`; another internally valid success is `unknown_successful`. Every clean successful mode counts as applied before prefix/order calculation.
-- A missing `finished_at`, missing required field, negative/non-integer step count, or contradictory finished-and-rolled-back state is incomplete. Non-empty Prisma failure logs classify an unrolled row as failed.
-- A rolled-back row without a clean replacement remains rolled back and blocks. One clean successful replacement may coexist with rolled-back history. Multiple successful rows, or a successful row mixed with unresolved failed/incomplete rows, are ambiguous duplicates and block.
-- Repeating `prisma migrate resolve --applied <migration>` for an already successful row is not a repair; Prisma returns `P3008`. Do not repeat it and do not edit `_prisma_migrations`.
-
-Baseline uniqueness has two separate results. Semantic equivalence requires the same table, unique enforcement, ordered columns, predicate, PostgreSQL null semantics, and a valid/ready enforcing index. Catalog representation equivalence additionally requires the same object kind and constraint/index ownership linkage. Missing uniqueness, a non-unique replacement, changed column order or predicate, incompatible null semantics, invalid enforcement, a conflicting same-name object, unverifiable enforcement, or a representation required by a pending migration blocks Gate A. Finisher expectations additionally require exact enabled trigger metadata; all material columns, constraints, indexes, owners, and grants; restrictive delete/update actions and the execution/version, step/version/order, and alternative/prescribed-step bindings with supporting uniqueness; and independently authored semantic clauses for irreversible `startedAt`, valid execution transitions, permanent performed uniqueness, the exact completed/partial/skipped/never-started-dismissed/performed-dismissed parent-child outcome matrix, deferred validation from both mutation paths, nonempty contiguous finalized offers, exact recommendation membership, finalized item immutability, and complete selection/decline decision identity including expected offer revision. These corrected semantic clauses are not read from the migration SQL. Gate A also checks protected-role attributes, memberships, schema-create access, default privileges, trigger/function dependencies and static references to Finisher relations/functions, the cleanup function's fixed search path and security-definer state, no caller-controlled setting, and both command cleanup consistency checks. Neutral names do not exempt a helper: any function referencing or triggering on a Finisher object is inventoried as a possible access or mutation path.
-
-`ExerciseAlias_alias_key` and `WorkoutTemplateExercise_templateId_orderIndex_key` are the two reviewed baseline representation differences. The baseline SQL creates standalone unique indexes; production may store identically named unique constraints backed by identically named unique indexes. Native PostgreSQL constraint-to-index linkage proves the same enforcement, and the pending multi-plan migration does not depend on those objects being standalone indexes. Therefore each is reported as semantic-equivalent, catalog-representation-different, and a non-blocking diagnostic warning. This narrow policy does not make other constraint/index differences harmless, and no production schema or ledger repair is required for these two objects or for the two valid resolved rows.
-
-Any partial pending-migration object, drift in the complete Finisher table,
-column, enum, key, index, constraint, trigger/function, relationship, or exact
-curated-row manifest, or other migration-blocking schema difference blocks
-Gate A. The current Finisher rollout policy expects 18 checked in, 17 clean
-successful applied, and exactly `20260728120000_add_finishers_phase_1` pending.
-That sequence is fixed repository policy, not operator evidence: an evidence
-file containing `expectedPendingMigrations` is rejected rather than trusted.
-On the current disposable PostgreSQL target, clean schema/data inspection yields
-`technicalMigrationReady: true`. A remote target remains false until a canonical,
-commit-bound disposable-workflow verifier exists; caller JSON cannot fill that
-gap. It remains
-`migrationAuthorizationReady: false` until fresh recovery, deployment,
-compatibility, write-boundary, and exact post-migration application-commit
-evidence is supplied, and remains `executionAuthorized: false` in every
-preparation run.
-
-The command never deploys migrations, creates temporary objects, modifies the Prisma ledger, executes DDL, repairs schema state, or authorizes execution. A fully migrated 18-applied/0-pending target is reported as clean with `gateAApplicable: false`, `migrationAuthorizationReady: false`, and `executionAuthorized: false` because nothing remains for Gate A to authorize. It still exits nonzero if that fully applied schema has checksum, order, schema, or data drift.
+Migration execution is a separate operation. Use the normal trusted direct Supabase/PostgreSQL
+administrator path required by the SQL; never execute this migration through the application
+runtime role. `npm run ops:migration-status` performs no DDL, ledger mutation, repair, deployment,
+environment mutation, or execution authorization. The Finisher-specific retained safeguards and
+command are defined in the procedure below.
 
 ### Gate A readiness integrity
 
@@ -399,472 +348,94 @@ node --env-file=$rolloutEnv .\node_modules\prisma\build\index.js migrate deploy
 
 Do not run it during preflight. A backup being available, a reachable direct endpoint, a clean migration status, an approved write pause, and an approved deployment plan are all required first.
 
-### Authorization evidence contract
 
-#### Canonical provider-verification boundary
+## Finisher migration readiness and rollout
 
-`src/lib/operations/finisher-provider-verification.ts` owns the strict version 2
-authorization contract. `src/lib/operations/finisher-provider-adapters.ts` owns
-authenticated provider reads. Gate A accepts that in-memory result only from
-`ops:migration-status --verify-providers`; it has no provider-evidence file
-option. Unknown fields, unknown versions, duplicate artifacts, stale evidence,
-wrong targets, cross-commit reuse, cross-environment reuse, and evidence created
-out of order fail closed.
+The Finisher migration uses a conventional, separately authorized migration procedure. The
+readiness command is read-only and never executes or authorizes the migration.
 
-Every successful result binds all of the following:
+Reviewed identity:
 
-- authenticated GitHub owner/repository and exact default-branch commit;
-- authenticated Vercel account/team/project, exact linked GitHub owner/repository
-  and `master` production branch, production alias, active production deployment
-  ID, READY state, Git source repository/ref/commit, creation time, and readiness
-  time;
-- exact repository-relative migration path, Git blob, SHA-256 of the Git blob
-  bytes, and ordered migration-inventory digest;
-- authenticated Supabase organization/project identity, the exact `postgres`
-  database bound independently by the direct target, PITR enabled state, and the
-  provider-reported earliest/latest recovery window;
-- the production runtime write-status response from the independently verified
-  paused exact-commit Vercel deployment, plus the repository-verified complete
-  mutation-path inventory;
-- schema, contract, and tool versions, provider-observed
-  timestamps, verification timestamps, provenance, and sanitized failures.
+- production application commit: `014b6dce5f1872b1b4d66af508a03e23f6a540e0`;
+- migration: `20260728120000_add_finishers_phase_1`;
+- Git blob: `55985a32851d9de042b43db3880b5cb857373313`;
+- SHA-256 of the Git blob bytes:
+  `491bd022e0f5478cf80f805c64b0cf46c03d301ae4c34779c09f9f111823eb43`.
 
-The reviewed Git blob remains
-`55985a32851d9de042b43db3880b5cb857373313`. Its canonical Git LF bytes at the
-integrated base hash to
-`491bd022e0f5478cf80f805c64b0cf46c03d301ae4c34779c09f9f111823eb43`.
-The task-supplied SHA-256
-`01f2fd87b63dfb622b8ccbede86236e4db6f35f9317ebcda331f786b13b9a114`
-does not identify that blob and is rejected as stale. A Windows CRLF checkout
-may have a Prisma-compatible ledger checksum, but it is not the canonical
-provider-evidence byte identity.
+The migration is backward-compatible with the deployed application while Finishers remain
+disabled. It creates twelve enum types, ten Finisher tables, indexes, foreign keys, functions,
+triggers, grants, and four curated routine definitions inside one explicit transaction. It does
+not alter or rewrite an existing application row, column, constraint, or trigger. Its only DDL on
+an existing application table is a non-concurrent unique index on `Workout(id, userId)`.
+PostgreSQL scans `Workout` and blocks concurrent writes to that table while the index is built.
+Since `id` is already the primary key, duplicate data cannot invalidate this index. The migration
+also changes only its prerequisite Finisher-role memberships/schema privileges to their intended
+terminal least-privilege state. It performs no existing-data backfill or transformation.
 
-All operational verification timestamps, disposable completion, and runtime
-pause verification must be no more than 30 minutes old and not in the future.
-Supabase PITR boundaries are recovery-window limits rather than event freshness
-timestamps. The window must contain the trusted runtime pause-verification time and
-leave at least 30 minutes of retention margin behind that time, matching the
-maximum lifetime of Gate A evidence. If the rollout exceeds that lifetime, rerun
-the read-only provider verifier. Required order is: authenticated READY production
-deployment verification, completed authenticated exact-head disposable
-verification, separately authorized write-pause initiation and paused exact-commit
-redeployment, effective runtime pause verification, authenticated PITR-window
-verification, immediate production preflight and principal verification, then
-Gate A. A later matching migration file does not make evidence from another
-commit reusable.
+Ordinary application reads and writes remain schema-compatible before, during, and after the
+migration. During the index build, writes touching `Workout` may wait on PostgreSQL's DDL lock;
+they cannot create inconsistent Finisher data. Disabled Finisher pages and API routes do not
+query the new tables. A separate application write pause, Vercel pause deployment, or environment
+mutation provides no material additional safety and is not required for this migration.
 
-##### Canonical disposable verification
+### Read-only readiness
 
-The only authorization-grade disposable producer is the manually dispatched
-`Finisher canonical disposable verification` GitHub Actions workflow on
-`refs/heads/master`. It checks out the exact workflow SHA, refuses dirty or
-ambiguous source state, runs the real PostgreSQL 16 rollout harness and
-restricted-administrator principal lifecycle, verifies the 17-applied/one-pending
-pre-state and exact terminal state, hashes the migration from the checked-out
-Git object, and uploads exactly one seven-day
-`finisher-disposable-evidence` artifact. Official workflow dependencies are
-pinned to immutable commit SHAs, and the authenticated consumer rejects missing,
-expired, duplicate, stale-attempt, malformed, nested, or oversized artifacts.
-
-After the tooling PR is merged, and only for the exact integrated commit under
-review, an operator may dispatch and inspect it:
+Immediately before execution, use the explicitly owned production environment file with:
 
 ```powershell
-gh workflow run finisher-disposable-verification.yml --ref master
-gh run list --workflow finisher-disposable-verification.yml --branch master
+npm run ops:migration-status -- `
+  --env-file <operator-controlled-production-env> `
+  --confirm-disposable-verification-passed `
+  --confirm-backup-pitr-available `
+  --confirm-finishers-disabled
 ```
 
-Do not dispatch a PR head, tag, preview branch, rejected PR #28 head, or historic
-master commit. The authenticated verifier requires the selected run and the
-current remote default branch to equal the exact required commit. Local
-`npm run test:db:rollout-tooling -- --confirm-disposable` remains review
-coverage and cannot author authorization evidence.
+The confirmation flags record operator confirmations; they do not contact or reproduce provider
+state. Before supplying them, inspect the authenticated canonical PostgreSQL 16 disposable
+workflow result, authenticated Supabase backup/PITR status, and effective production Finisher
+runtime state through the normal trusted interfaces. Require a current recovery option, not
+correlation to a rollout or write-pause timestamp.
 
-##### Authenticated read-only provider verification
+Readiness requires exactly 17 clean applied migrations and only the reviewed Finisher migration
+pending; exact migration bytes; clean migration history, ordering, checksums, schema, and catalog;
+canonical disposable application/integrity success; current backup/PITR availability; Finishers
+disabled; and zero inspection writes. It returns `migrationReady: true` only when all checks pass
+and always returns `executionAuthorized: false`. Missing confirmations fail closed. Readiness and
+migration execution are separate operator decisions.
 
-Required process-scoped credentials are names and scopes, never values:
+The SQL requires the already-reviewed `trainer_app_runtime`, `trainer_finisher_owner`, and
+`trainer_finisher_cleanup` roles and executor attributes checked at transaction start. The
+read-only catalog preflight verifies those prerequisites. If they are missing or incompatible,
+stop; do not mutate principals as part of readiness.
 
-- existing authenticated `gh` session with repository and Actions read access;
-- `VERCEL_TOKEN` with read access to the configured team, project, alias, and
-  deployment;
-- `SUPABASE_ACCESS_TOKEN` with project read and `backups_read` access to the
-  exact project.
+### Linear production procedure
 
-Set and remove tokens through the operator-controlled secure process. Never put
-them in an environment file, command argument, evidence file, shell history, or
-committed configuration. Run the provider verifier independently before Gate A:
+1. Verify production still runs commit `014b6dce5f1872b1b4d66af508a03e23f6a540e0` and verify
+   the migration Git blob and SHA-256 above.
+2. Confirm the canonical PostgreSQL 16 disposable workflow applied the exact migration and passed
+   its schema, catalog, atomicity, and application-integrity checks.
+3. Through the authenticated Supabase interface, confirm a current backup/PITR recovery option is
+   available for the production database.
+4. Confirm `TRAINER_FINISHERS_ROLLOUT` is not exact `enabled` in the effective production
+   deployment and the Finisher endpoint remains unavailable.
+5. Run the immediate read-only readiness command above. Require `migrationReady: true`,
+   `executionAuthorized: false`, one exact pending migration, and `writes: 0`.
+6. Obtain separate explicit authorization, then execute the exact migration once through the
+   normal trusted Supabase/PostgreSQL migration path. Do not automatically retry after timeout,
+   disconnect, or any ambiguous result.
+7. If the result is ambiguous, inspect read-only migration history and expected Finisher schema.
+   Retry only when both are reconciled and prove the migration was not applied.
+8. Run `npm run ops:migration-status -- --env-file <operator-controlled-production-env>
+   --post-migration`; require 18 clean applied migrations, zero pending, exact schema/catalog,
+   checksum/order integrity, and zero writes. Then check application health, ordinary read/write
+   compatibility, drift, and runtime error telemetry.
+9. Leave Finishers disabled.
+10. Enable Finishers only through a separate, later reviewed and authorized release step.
 
-```powershell
-npm run ops:verify-finisher-providers -- `
-  --repository-head $integratedSha `
-  --required-application-commit $integratedSha `
-  --disposable-run-id $disposableRunId `
-  --expected-supabase-organization-id $supabaseOrganizationId `
-  --expected-supabase-project-ref $projectReference `
-  --expected-database postgres
-```
+The migration has no object-by-object rollback automation. Its explicit transaction is the
+failure boundary. If execution fails or is ambiguous, reconcile the ledger and schema first.
 
-The command uses only authenticated GET requests plus the public no-store
-runtime write-status GET. It distinguishes missing credentials, rejected
-authentication, insufficient authorization, rate limiting, network failures,
-missing resources, identity mismatches, non-ready deployment, wrong commit,
-missing source binding, stale alias, malformed response, and unavailable
-capability. It never reports
-headers, tokens, credential-bearing URLs, or raw provider response bodies.
 
-Provider-backed Gate A uses the same live collector rather than importing the
-preceding command's output:
-
-```powershell
-npm run ops:migration-status -- --env-file $rolloutEnv `
-  --required-application-commit $integratedSha `
-  --verify-providers `
-  --disposable-run-id $disposableRunId `
-  --expected-project-reference $projectReference `
-  --expected-supabase-organization-id $supabaseOrganizationId `
-  --expected-database postgres
-```
-
-##### Supabase PITR recovery coverage
-
-For this additive Finisher migration, recovery coverage is the actual Supabase
-PITR capability for the authenticated production project; no rollout-specific
-checkpoint object or identifier is required. The adapter independently reads
-`GET /v1/projects/{ref}` and
-`GET /v1/projects/{ref}/database/backups`, requires the expected organization,
-project, and `postgres` database, requires both `pitr_enabled` and
-`walg_enabled`, and verifies the provider-reported earliest/latest recovery
-window contains the trusted runtime write-pause verification time. That selected time
-must retain at least 30 minutes of coverage so it remains usable for the full
-Gate A evidence lifetime.
-
-Supabase documents PITR restoration as
-`POST /v1/projects/{ref}/database/backups/restore-pitr` with
-`recovery_time_target_unix`. It restores the entire project database to the
-selected timestamp. The project is inaccessible during restoration; downtime
-depends on database size and WAL volume. Writes after the selected timestamp are
-lost. Database restore does not restore deleted Supabase Storage objects, and
-custom-role credentials may require separate reset handling.
-
-If `pitr_enabled` is false, completed physical or daily backups are not accepted
-as PITR. The verifier reports the exact age in seconds of the latest completed
-daily backup and the implication that restoring it loses all later writes, then
-fails closed. It never decides that this loss is acceptable. Screenshots,
-operator-entered timestamps, JSON, checkpoint IDs, and narrative claims cannot
-establish recovery coverage.
-
-##### Write-pause initiation and verification
-
-Supabase has no database-level write-only pause that preserves the required read
-paths. Trainer therefore retains the application-level
-`TRAINER_WRITE_PAUSE=enabled` boundary. The initiation command is an unavailable
-fail-closed guard because safe activation requires two separately authorized
-Vercel mutations—an exact Production environment update and an exact-commit
-production redeployment—not one atomic provider operation:
-
-```powershell
-npm run ops:initiate-finisher-write-pause -- `
-  --required-application-commit $integratedSha `
-  --expected-provider-account-id $vercelTeamId `
-  --expected-project-reference $vercelProjectId `
-  --expected-database postgres `
-  --authorize-provider-mutation `
-  --confirm-provider-operation "trainer-write-pause:$vercelProjectId:$integratedSha"
-```
-
-That confirmation string authorizes the bounded provider request; it is not runtime pause
-evidence. Runtime evidence derives a distinct deployment-bound identity from trusted Vercel
-system metadata.
-
-Use the existing separately authorized Vercel console procedure for activation.
-Read-only verification then combines authenticated active-alias deployment data
-with `GET /api/operations/write-status` from that alias. The endpoint is
-dynamic, no-store, returns no environment value, and reports only contract
-version, exact commit, production classification, enforcement class, and
-effective `PAUSED`/`ENABLED` state. Configuration intent without an active
-exact-commit paused deployment fails. The static ownership guard must also pass;
-one unclassified application or operational write path blocks authorization.
-The initial compatible production deployment and the later paused exact-commit
-redeployment are distinct provider resources and must have distinct independently
-verified timestamps; the paused deployment cannot be backdated to the initial
-deployment. The current adapter reports effective runtime state but records pause
-initiation capability as unavailable, with no authorization timestamp or operation
-ID. Therefore even an already-paused response cannot make
-`migrationAuthorizationReady` true until a reviewed adapter can authenticate the
-separately authorized Vercel environment update and paused redeployment.
-
-If any provider operation is partially completed, do not retry blindly. Keep
-Finishers disabled, preserve the provider operation/resource ID, rerun only the
-read-only verifier, and leave writes in their current safe state. If pause
-activation completed but recovery verification did not, keep writes paused. If
-recovery exists but pause activation failed, do not provision principals. Write
-restoration remains the separate resume procedure below and requires a verified
-exact-commit deployment reporting `ENABLED` plus the post-migration terminal
-checks. The read-only `verifyProductionWriteRestoration()` adapter proves only
-that exact provider/application state and deliberately returns
-`authorizesRestoration: false`; it cannot replace the terminal checks or the
-separate resume authorization.
-
-Completing this tooling PR does not authorize a recovery operation, environment
-change, deployment, principal change, migration, write restoration, Finisher
-enablement, or production smoke test.
-
-The optional migration audit-input file is operator-controlled and may contain
-only an empty JSON object; any supplied fact is rejected. Principal-audit files
-contain sanitized observations only—never URLs, credentials, tokens, passwords,
-password hashes, or environment values. They are audit records, not authority.
-Gate A resolves repository HEAD, database identity, migration state,
-principal state, credential equality, and its evaluation time from live seams.
-It rejects every caller field, including fields that attempt to supply data
-preflight, disposable execution, the expected pending sequence, principal
-verification, deployment commit, required commit, PITR state or timestamps, write pause,
-or deployment timestamp.
-
-```json
-{}
-```
-
-The principal command writes a second sanitized audit record using exclusive
-creation (`wx`). It contains only:
-
-- schema/version and canonical verifier identity;
-- repository HEAD, required application commit, target migration, environment
-  classification, sanitized target/project fingerprints, and database name;
-- the observed lifecycle phase, administrator properties, exact role
-  attributes, membership option bits and bootstrap grantor classification,
-  schema-create state, credential-verification result, default privileges, and
-  pre-migration object/capability counts;
-- `authority: sanitized_audit_record_only`, `readOnlyTransaction`, and the exact
-  write count.
-
-`TRAINER_APP_RUNTIME_PASSWORD` is process-scoped and must not appear in the
-named environment file. Exact credential equality is proven by opening a
-bounded connection as `trainer_app_runtime`, starting a repeatable-read
-read-only transaction, and checking the connected database, role, and
-`transaction_read_only=on`. Existing roles are never accepted merely because a
-password was supplied, and provisioning never rotates an existing credential.
-
-PostgreSQL 16 automatically gives a non-superuser `CREATEROLE` creator an
-ADMIN membership whose grantor is the bootstrap superuser and whose INHERIT and
-SET options are false. The prerequisite phase retains those three unavoidable
-rows and adds only two temporary administrator-granted memberships with SET
-true for the owner and cleanup roles, plus temporary CREATE on `public` for
-those two roles. The migration removes only those temporary rows and schema
-capabilities. Terminal verification requires the exact three unavoidable
-creator-admin rows and rejects every broader membership or default privilege.
-
-All commit identities use the canonical full Git SHA: exactly 40 lowercase
-hexadecimal characters with no whitespace. Gate A requires exact equality among
-all three independently obtained values:
-
-- `requiredApplicationCommit` is passed through the dedicated command-line
-  argument after the integrated squash SHA exists; the command requires exact
-  equality with repository HEAD.
-- `repositoryHead` is resolved by `ops:migration-status` from
-  `git rev-parse HEAD`; a value supplied in the evidence file cannot override
-  it.
-- `productionDeploymentCommit` must come from an authenticated provider adapter
-  plus the independently checked `/api/version` response; caller JSON cannot
-  supply it.
-
-The authorized integrated SHA is therefore data supplied after merge, not a
-source-code allowlist. A feature-branch guess, the old base commit, an arbitrary
-valid SHA, or any mismatch fails closed before migration authorization. Do not
-derive all three values from one caller-supplied field or copy a claimed
-deployment SHA without the independent deployment checks.
-
-For this Finisher rollout, Gate A recovery evidence is authenticated provider
-PITR with a qualifying recovery window. A repository-created logical archive
-that passes `Inspect-TrainerBackup.ps1` remains optional supplemental evidence;
-it cannot replace PITR or make Gate A ready. Backup creation is a separate
-production read/export action and is not part of Gate A preparation.
-
-The repository-authoritative write boundary is `TRAINER_WRITE_PAUSE=enabled`. It blocks classified HTTP mutations and guarded remote operational writes, leaves documented read paths and dry-run diagnostics available, and requires a deployment of the same compatible commit before its state changes. Enable, verification, failure, and resume behavior is defined once in “Production write pause for database rollout” below.
-
-### Finisher application sequencing verdict
-
-The reviewed sequence is runtime-inert application, then migration, then
-explicitly enabled application. Merging the application is safe before the
-migration only because `TRAINER_FINISHERS_ROLLOUT` fails closed and every
-application entry point avoids the Finisher schema while disabled. The exact
-integrated `master` squash SHA is not known until merge and must be recorded as
-`requiredApplicationCommit`; Gate A must not inherit a prior rollout's target.
-Ancestors, descendants, feature-branch heads, and arbitrary revisions fail
-closed.
-
-### Bounded Finisher production migration runbook
-
-This runbook documents order only. It does not authorize any merge, deployment,
-environment change, role change, migration, production access, or verification.
-
-1. Merge and deploy the reviewed runtime-inert application with
-   `TRAINER_FINISHERS_ROLLOUT` unset or otherwise disabled. Confirm relevant
-   completed, incomplete, history, navigation, and deletion paths load without
-   Finisher UI or Finisher-schema access.
-2. Record the actual integrated `master` squash SHA, bind it as
-   `requiredApplicationCommit`, and confirm `/api/version` plus provider-side
-   alias evidence identify that exact SHA. Do not substitute the feature-branch
-   head.
-3. Obtain canonical commit-bound disposable PostgreSQL verification for those
-   exact repository and migration bytes. Dispatch the reviewed master-only
-   workflow after this tooling is merged and retain its exact run ID. The local
-   PostgreSQL 16 harness remains review evidence only.
-4. Activate and verify `TRAINER_WRITE_PAUSE=enabled` while keeping
-   `TRAINER_FINISHERS_ROLLOUT` disabled.
-5. Run authenticated Supabase PITR verification for the exact production
-   organization, project, and `postgres` database. Require the provider window
-   to cover the trusted runtime pause-verification timestamp with at least 30 minutes
-   of remaining retention margin.
-6. Run the immediate live read-only direct-database and migration-status
-   preflight:
-
-   ```powershell
-   npm run ops:check-direct-db -- --env-file $rolloutEnv
-   npm run ops:migration-status -- --env-file $rolloutEnv `
-     --required-application-commit $integratedSha
-   ```
-
-   Require exactly 18 checked in, 17 applied, and only
-   `20260728120000_add_finishers_phase_1` pending; zero checksum, ledger, order,
-   non-principal schema, or data blockers. This immediate preflight is expected
-   to remain fail closed before principal provisioning and because canonical
-   commit-bound disposable-workflow verification is unavailable; it must not report
-   `technicalMigrationReady: true` or `migrationAuthorizationReady: true`.
-7. Through the separately authorized database-administrator workflow, provision
-   the three required role principals before migration:
-   `trainer_app_runtime`, `trainer_finisher_owner`, and
-   `trainer_finisher_cleanup`. This prerequisite creates only the principals
-   with their reviewed role attributes; it does not create Finisher objects,
-   assign migration-owned object ownership, or grant Finisher table/function
-   privileges. PITR and write-pause evidence must already be verified
-   before this hosted role write. The canonical production command is:
-
-   ```powershell
-   $env:TRAINER_APP_RUNTIME_PASSWORD = Read-Host "Runtime role password" -MaskInput
-   npm run ops:finisher-principals -- --mode provision --environment production `
-     --env-file $rolloutEnv --expected-project-reference $projectReference `
-     --expected-database postgres --required-application-commit $integratedSha `
-     --write --confirm-remote-write `
-     --confirm-principal-provisioning "trainer-principals:$projectReference" `
-     --evidence-file $principalProvisionAudit
-   Remove-Item Env:TRAINER_APP_RUNTIME_PASSWORD
-   ```
-
-   `DIRECT_URL` comes only from the named environment file. The runtime password
-   is process-scoped and the command rejects it if it is stored in that file.
-   Production mode accepts only the exact direct
-   `db.<project-reference>.supabase.co` host, the exact expected database, and a
-   project-bound confirmation. It rejects poolers, loopback/disposable
-   classification, ambiguous hosts, a runtime/principal connection, missing
-   write pause, and every incomplete authorization combination before writes.
-   Production provisioning remains fail closed unless authenticated PITR and
-   write-pause verification both pass. Do not substitute caller JSON,
-   screenshots, or an ad hoc SQL session.
-8. Verify all three principals exist, have only the prerequisite attributes and
-   capabilities needed by the migration, and have no prohibited memberships.
-   The migration must remain responsible for transferring object ownership and
-   installing the reviewed grants and protections. Run the distinct
-   verification-only command:
-
-   ```powershell
-   $env:TRAINER_APP_RUNTIME_PASSWORD = Read-Host "Runtime role password" -MaskInput
-   npm run ops:finisher-principals -- --mode verify --environment production `
-     --env-file $rolloutEnv --expected-project-reference $projectReference `
-     --expected-database postgres --required-application-commit $integratedSha `
-     --evidence-file $principalVerificationAudit
-   Remove-Item Env:TRAINER_APP_RUNTIME_PASSWORD
-   ```
-
-   Verification rejects every write/provisioning flag, uses a repeatable-read
-   read-only transaction, reports `databaseWrites: 0`, and creates only the
-   local sanitized audit file. Existing-runtime password mismatch fails without
-   rotating the credential.
-9. Run Gate A and the required pre-migration authorization checks. Require the
-   exact canonical equality
-   `requiredApplicationCommit === repositoryHead === productionDeploymentCommit`,
-   and `executionAuthorized: false`. Until the exact-head workflow has run and
-   authenticated PITR coverage has been verified, require
-   `migrationAuthorizationReady: false` and stop. An operator-authored file
-   cannot satisfy either prerequisite:
-
-   ```powershell
-   $env:TRAINER_APP_RUNTIME_PASSWORD = Read-Host "Runtime role password" -MaskInput
-   npm run ops:migration-status -- --env-file $rolloutEnv `
-     --principal-audit-file $principalVerificationAudit `
-     --required-application-commit $integratedSha
-   Remove-Item Env:TRAINER_APP_RUNTIME_PASSWORD
-   ```
-10. Only after Gate A reports `migrationAuthorizationReady: true`, obtain
-    separate explicit migration-execution authorization for the exact target,
-    pre-migration recovery timestamp, paused-write boundary, command, and application sequence.
-    Gate A still reports `executionAuthorized: false`; it never replaces this
-    authorization.
-11. Run the authorized production migration once:
-
-   ```powershell
-   node --env-file=$rolloutEnv .\node_modules\prisma\build\index.js migrate deploy
-   ```
-
-   Require exactly that migration once and exit zero. Do not run
-   `npm run db:seed`, edit `_prisma_migrations`, or retry blindly.
-12. Immediately verify the migration-owned object ownership, exact index
-    inventory and definitions, function ownership/signatures, exact
-    table/column/type structure, type and object grants,
-    RLS-disabled state, terminal role contract, restrictive
-    relationships, schema access, default privileges, triggers, functions, and
-    schema drift. Clearly distinguish these migration-created or
-    migration-assigned protections from the pre-migration principal
-    provisioning. Do not re-provision migration-owned grants after migration
-    and do not rerun principal provisioning as a substitute for repair.
-    Migration-owned ownership or grants may be repaired only through a
-    separately reviewed recovery procedure.
-    Then run the post-migration integrity verification and all required readiness
-    checks. Gate A is no longer applicable after the target is applied. Require 18
-    successful applied migrations, zero pending, the exact ten-table schema and
-    curated catalog, correct roles/grants, no schema/data drift, and successful
-    targeted integrity checks. Keep the write pause and Finisher rollout
-    disabled. Run `ops:migration-status` again with the process-scoped runtime
-    password so the terminal catalog is read through the least-privileged
-    runtime connection; require `gateAApplicable: false` and zero integrity
-    blockers.
-13. Resume general writes only through the write-pause resume procedure after
-    every migration and terminal verification check passes. If any check fails,
-    keep writes paused and follow the abort procedure below.
-14. Separately authorize Finishers enablement and bounded authenticated
-    production verification. Set `TRAINER_FINISHERS_ROLLOUT=enabled`, create or
-    promote the application deployment containing that setting, and require the
-    production alias plus `/api/version` to prove the exact
-    `requiredApplicationCommit`; an environment-variable edit does not change
-    an already-running deployment.
-
-If the migration fails, keep writes paused and Finishers disabled. Confirm the
-explicit transaction left no successful target ledger row, target object, or
-curated row, then use the reviewed roll-forward or recovery path. Do not perform
-object-by-object rollback.
-
-The Finisher flag can be disabled after rollout without reverting the migration
-or deleting, rewriting, or hiding persisted history from the database. A
-disabled application simply stops exposing and querying Finishers. An
-application rollback after migration is permitted only to a version proven
-compatible with the migrated schema. Never enable the flag before the
-migration, role provisioning, Gate A, and required post-migration checks
-succeed.
-
-### Disposable rollout-tooling gate
-
-`npm run test:db:rollout-tooling -- --confirm-disposable` uses PostgreSQL 16,
-traces the real principal provision -> live credential proof -> Gate A flow,
-proves clean/partial/idempotent provisioning, proves provisioning creates
-no Finisher schema objects, advances to the current 17/1 shape, and then applies
-and verifies the fully migrated 18/0 state with the post-migration
-ownership/grant checks still distinct. It also injects missing and unexpected
-tables, column presence/nullability/identity drift, missing and structurally drifted
-indexes, and owning-relation drift before the terminal migration block; every
-case must fail at its intended terminal check and leave no Finisher object or
-temporary capability after transaction rollback. `npm run test:db:multi-plan
--- --confirm-disposable` separately proves the earlier multi-plan migration
-chain and compatibility. Both create and remove their containers and never read
-a configured production environment.
 
 ## Pre-session readiness snapshot rollout
 
@@ -924,18 +495,7 @@ Migration hygiene:
 - `npm run audit:workout -- --env-file .env.local --mode future-week --user-id <user-id> --intent pull`: explicit-intent future-week artifact through the same canonical mode
 - `npm run audit:mesocycle-explain:compare -- --before <artifact.json> --after <artifact.json>`: DB-free compare of two existing `mesocycle-explain` artifacts, with linked V2 debug indexes/shards or legacy sidecars auto-read when present
 - `npm run audit:workout -- --env-file .env.local --mode v2-accepted-seed-prepare-compare --owner owner@local [--mesocycle-id <handoff-mesocycle-id>]`: read-only V2 accepted-seed preparation compare for a pending handoff candidate. If `--mesocycle-id` is omitted, the CLI resolves the latest `AWAITING_HANDOFF` mesocycle for the owner. The mode writes only the audit artifact, reports `consumedByProduction=false`, reports `v2ProductionWriteEligible=true` only when the V2 preview and all production gates are satisfied, keeps `transactionStatus=no_write`, and does not change accept route behavior or seed/runtime/receipt state.
-- `npm run ops:refresh-next-seed-draft -- --origin http://localhost:<TRAINER_PORT> --owner owner@local --source-mesocycle-id <source-mesocycle-id>`: guarded operator loop for refreshing the pending next-seed draft through the existing `POST /api/mesocycles/[id]/refresh-next-seed-draft` route, then pairing `next-mesocycle-handoff-dry-run` and `next-mesocycle-acceptance-gate` with `--no-artifact --operator-debug`. The script requires an explicit origin and does not assume port 3000. Because there is no dedicated app identity endpoint, it verifies the safest current signal, the home page text `Personal AI Trainer`, before calling the route; if that signal is absent, it fails before refresh. The script uses read-only Prisma checks for owner/source state and before/after counts, fails unless the source is `AWAITING_HANDOFF` and the visible draft source is `v2_materialized_seed` (or `--allow-non-v2-draft-source` is explicitly supplied), never calls the accept route, and exits nonzero for rejected or not-runnable acceptance-gate decisions.
-- `npm run audit:workout -- --env-file .env.local --mode next-mesocycle-handoff-dry-run --owner owner@local --source-mesocycle-id <source-mesocycle-id> --no-artifact --operator-debug`: read-only rehearsal of the real next-mesocycle handoff preparation path. It calls `prepareMesocycleHandoffAcceptance()` only for `AWAITING_HANDOFF` sources, stops before `acceptPreparedMesocycleHandoffInTransaction()`, prints `writes=no`, and does not create successors, workouts, logs, sessions, or seed/runtime behavior changes. When a refreshed `nextSeedDraftJson.acceptedSeedDraft.source = "v2_materialized_seed"` exists, that persisted draft is candidate truth; legacy prepared projection is labeled compatibility/diagnostic evidence only and must not be used as silent fallback.
-- `npm run audit:workout -- --env-file .env.local --mode replace-empty-successor-from-accepted-seed-draft --owner owner@local --source-mesocycle-id <completed-source-mesocycle-id> --mesocycle-id <active-empty-successor-id> --replace-empty-successor-from-accepted-seed-draft --dry-run`: fail-closed recovery dry-run for an accept-path mismatch where the completed source has a persisted V2 `nextSeedDraftJson.acceptedSeedDraft.slotPlanSeedJson` and the active successor has no workouts/logs/session state. The candidate source is exactly the persisted draft seed, not fresh V2 generation or legacy projection. Apply requires the same command with `--write --confirm-accepted-seed-draft-successor-recovery` after reviewing a `safe_to_accept_upgrade` dry-run.
-- `npm run audit:workout -- --env-file .env.local --mode projected-week-volume`: canonical full current-week projected volume artifact for the app-default owner
-- `npm run audit:workout -- --env-file .env.local --mode current-week-audit --owner owner@local`: pre-execution current-week guidance artifact that reuses `projected-week-volume` output and adds audit-only `currentWeekAudit`, `interventionHints`, and `sessionRisks`
-- `npm run audit:workout -- --env-file .env.local --mode deload --user-id <user-id> --intent pull`: explicit deload preview artifact
-- `npm run audit:workout -- --env-file .env.local --mode progression-anchor --user-id <user-id> --exercise-id <exercise-id> --workout-id <workout-id>`: single-exercise progression trace artifact
-- `npm run audit:split-sanity -- --env-file .env.local --owner owner@local --debug`: run bundled split sanity audit for `push,pull,legs` and write one compact summary artifact under `artifacts/audits/split-sanity/`
-- `npm run audit:sequencing`: emit the dedicated order-sensitivity matrix under `artifacts/audits/sequencing/`
-- `npm run audit:accounting -- --selection-mode MANUAL --status COMPLETED --advances-split false --optional-gap-fill true`: emit the focused accounting semantics audit under `artifacts/audits/accounting/`
-- `npm run audit:week-close-handoff -- --env-file .env.local --owner owner@local --target-week 3`: inspect the final-advancing-session -> week-close -> optional-gap-fill handoff for one real user/week and flag `historical_mixed_contract_state` when a strict gap-fill workout exists without a persisted week-close owner
-- `npm run repair:week-close-handoff -- --env-file .env.local --owner owner@local --target-week 3`: dry-run targeted week-close ownership reconciliation for one user/week
+- `npm run ops:refresh-next-seed-draft -- --origin http://localhost:<TRAINER_PORT> --owner owner@local --source-mesocycle-id <source-mesocycle-id>`: guarded operator loop for…1013 tokens truncated…ff -- --env-file .env.local --owner owner@local --target-week 3`: dry-run targeted week-close ownership reconciliation for one user/week
 - `npm run repair:week-close-handoff -- --env-file .env.local --owner owner@local --target-week 3 --apply`: apply the targeted reconciliation using canonical week-close persistence/resolution helpers
 - `npm run repair:historical-session-slot-receipts -- --workout-id <workout-id>`: dry-run bounded historical repair for pre-fix completed advancing workouts missing `selectionMetadata.sessionDecisionReceipt.sessionSlot`
 - `npm run repair:historical-session-slot-receipts -- --workout-id <workout-id> --apply`: apply the canonical receipt-slot repair for uniquely proven rows only
@@ -1076,6 +636,9 @@ Backfilled rows are permanently `legacy_derived`; they do not represent what an 
 
 The schema has no immutable exercise rename or active/inactive history, so the report labels those historical capabilities unsupported instead of claiming exact reconstruction. Backfilled rows are `legacy_derived`, never `exact`.
 # Production write pause for database rollout
+
+This generic control remains available for migrations that need it. It is explicitly not required
+for `20260728120000_add_finishers_phase_1`; use the Finisher procedure above.
 
 This control is a short full-write pause, not a full read outage. Users may view existing pages,
 history, reviews, explanations, and weekly-volume data, but must not begin or continue workouts

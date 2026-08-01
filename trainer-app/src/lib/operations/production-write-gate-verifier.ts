@@ -59,10 +59,6 @@ const WRITE_METHODS = new Set([
   "$executeRaw",
   "$executeRawUnsafe",
 ]);
-const NON_DATABASE_PROVIDER_COMMANDS = new Set([
-  "scripts/request-finisher-provider-operation.ts",
-]);
-
 export type ProductionWriteGateVerification = {
   failures: string[];
   mutationRoutes: Array<[string, string]>;
@@ -354,7 +350,6 @@ function registeredOperationalCommands(appRoot: string): {
       continue;
     }
     const relativeEntrypoint = entry.entrypoint.slice("trainer-app/".length);
-    if (NON_DATABASE_PROVIDER_COMMANDS.has(relativeEntrypoint)) continue;
     commands.set(entry.packageScript, relativeEntrypoint);
   }
   return { commands, failures: [] };

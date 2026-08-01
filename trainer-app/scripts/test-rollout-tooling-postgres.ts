@@ -781,7 +781,6 @@ try {
     "cli.mjs",
   );
   const principalCommonArgs = [
-    "scripts/manage-finisher-principals.ts",
     "--env-file",
     envFile,
     "--environment",

@@ -24,12 +24,10 @@ Sources of truth:
 
 ## Commands
 
-- `npm run test:provider-verification`: credential-free unit and contract
-  coverage for strict provider evidence, authenticated Vercel/Supabase/GitHub
-  fixtures, exact-head disposable artifacts, operational ordering, freshness,
-  replay resistance, failure classification, secret sanitization, and the
-  dynamic runtime write-status endpoint. Fixtures inject all provider responses;
-  this command never reads credentials or contacts a hosted service.
+- `npm run test:finisher-migration-readiness`: credential-free focused coverage
+  for the exact reviewed commit/blob/SHA-256 identity, disposable verification,
+  backup/PITR and disabled-feature confirmations, immediate preflight, read-only
+  behavior, separate execution authorization, and ambiguous-result reconciliation.
 - `.github/workflows/finisher-disposable-verification.yml`: manual master-only
   canonical PostgreSQL 16 producer. Workflow syntax and generator contract may
   be validated locally, but only the authenticated exact-head Actions run and
@@ -110,7 +108,7 @@ Sources of truth:
   historical-evidence alias for the same consolidated disposable harness.
 - `npm run test:db:readiness-snapshots -- --confirm-disposable`: starts an isolated Docker PostgreSQL 16 container, applies all checked-in migrations without reading `.env.local`, verifies legacy-unknown migration behavior, partial unique enforcement, identical concurrent activation, conflicting payload rejection, forced replacement rollback, stale-evidence rejection, and owner isolation, then removes the container. Package scripts never supply disposable confirmation: the operator must type it for every mutating invocation, and aliases or wrappers must not embed it. Strict argument and inherited-target validation complete before `pg` or any other database-dependent module loads and before Docker work begins.
 - `npm run test:db:rollout-tooling -- --confirm-disposable`: runs rollout-tooling integration coverage against a harness-created disposable PostgreSQL target. Its effective argument list must be exactly `["--confirm-disposable"]`; additional, duplicate, positional, misspelled, embedded, or malformed arguments are rejected before Docker or database-dependent loading.
-  Its Finisher Gate A cases verify exact table/function ownership, complete
+  Its Finisher integrity cases verify exact table/function ownership, complete
   grants, protected role attributes and PostgreSQL 16 membership option bits,
   exact existing-runtime credential authentication, prerequisite and terminal
   lifecycle states, wrong-password non-rotation, transaction rollback after an

@@ -74,7 +74,7 @@
     }
   },
   "verification": {
-    "commandOrder": ["database-backup-tests", "codex-tooling-tests", "codex-registry-validator", "npm-test-environment-classification", "npm-test-inventory-credential-free", "test-provider-verification", "git-diff-check", "test-fast", "verify-contracts", "verify-completed-review", "verify-version", "test-audit-matrix", "verify", "prisma-generate", "test-migration-integrity", "verify-finisher-schema-drift", "audit-future-week"],
+    "commandOrder": ["database-backup-tests", "codex-tooling-tests", "codex-registry-validator", "npm-test-environment-classification", "npm-test-inventory-credential-free", "test-finisher-migration-readiness", "git-diff-check", "test-fast", "verify-contracts", "verify-completed-review", "verify-version", "test-audit-matrix", "verify", "prisma-generate", "test-migration-integrity", "verify-finisher-schema-drift", "audit-future-week"],
     "pathRules": [
       {
         "name": "database-backup-tooling",
@@ -132,24 +132,18 @@
         "release": ["verify"]
       },
       {
-        "name": "finisher-provider-verification",
+        "name": "finisher-migration-readiness",
         "patterns": [
           ".github/workflows/finisher-disposable-verification.yml",
           "trainer-app/scripts/generate-finisher-disposable-evidence.ts",
-          "trainer-app/scripts/verify-finisher-providers.ts",
-          "trainer-app/scripts/request-finisher-provider-operation.ts",
-          "trainer-app/scripts/manage-finisher-principals.ts",
           "trainer-app/scripts/check-migration-status.ts",
-          "trainer-app/scripts/check-production-write-gate.ts",
           "trainer-app/scripts/test-rollout-tooling-postgres.ts",
-          "trainer-app/src/lib/operations/finisher-provider-*.ts",
           "trainer-app/src/lib/operations/finisher-disposable-*.ts",
+          "trainer-app/src/lib/operations/finisher-migration-readiness*.ts",
           "trainer-app/src/lib/operations/migration-integrity.ts",
-          "trainer-app/src/lib/operations/migration-integrity.test.ts",
-          "trainer-app/src/lib/operations/production-write-gate.ts",
-          "trainer-app/src/app/api/operations/write-status/**"
+          "trainer-app/src/lib/operations/migration-integrity.test.ts"
         ],
-        "implementation": ["test-provider-verification", "codex-registry-validator", "git-diff-check"],
+        "implementation": ["test-finisher-migration-readiness", "codex-registry-validator", "git-diff-check"],
         "release": ["test-migration-integrity"]
       },
       {
@@ -404,8 +398,8 @@
       "requiresPowerShell": false,
       "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "verify:version"] }
     },
-    "test-provider-verification": {
-      "command": "npm run test:provider-verification",
+    "test-finisher-migration-readiness": {
+      "command": "npm run test:finisher-migration-readiness",
       "defaultSideEffectClass": "local-test",
       "accessesNetwork": false,
       "accessesDatabase": false,
@@ -422,7 +416,7 @@
       "requiresNode": true,
       "requiresNpm": true,
       "requiresPowerShell": false,
-      "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "test:provider-verification"] }
+      "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "test:finisher-migration-readiness"] }
     },
     "verify": {
       "command": "npm run verify",
@@ -788,7 +782,7 @@
     { "id": "npm-test-finisher-principals", "packageScript": "test:finisher-principals", "command": "vitest run src/lib/operations/finisher-principal-contract.test.ts src/lib/operations/finisher-principal-postgres.test.ts", "sourceLocation": "trainer-app/package.json#scripts.test:finisher-principals", "entrypoint": null, "profile": "read-only", "flagEscalations": [], "notes": "Pure principal contract, evidence, sanitization, and read-only adapter tests." },
     { "id": "npm-test-readiness-integrity", "packageScript": "test:readiness-integrity", "command": "vitest run src/lib/operations/readiness-integrity.test.ts src/lib/operations/readiness-integrity-postgres.test.ts src/lib/operations/readiness-integrity-cli.test.ts", "sourceLocation": "trainer-app/package.json#scripts.test:readiness-integrity", "entrypoint": null, "profile": "disposable-database-write", "flagEscalations": [], "notes": "Includes PostgreSQL-backed tests that write only to an explicit disposable target." },
     { "id": "test-migration-integrity", "packageScript": "test:migration-integrity", "command": "vitest run src/lib/operations/migration-integrity.test.ts src/lib/operations/migration-integrity-postgres.test.ts", "sourceLocation": "trainer-app/package.json#scripts.test:migration-integrity", "entrypoint": null, "profile": "disposable-database-write", "flagEscalations": [], "notes": "Includes migration-integrity tests against disposable database fixtures." },
-    { "id": "test-provider-verification", "packageScript": "test:provider-verification", "command": "vitest run src/lib/operations/finisher-provider-verification.test.ts src/lib/operations/finisher-provider-adapters.test.ts src/lib/operations/finisher-disposable-evidence.test.ts src/lib/operations/migration-integrity.test.ts src/app/api/operations/write-status/route.test.ts", "sourceLocation": "trainer-app/package.json#scripts.test:provider-verification", "entrypoint": null, "profile": "read-only", "flagEscalations": [], "notes": "Runs credential-free provider evidence, exact-head artifact, sanitized failure, Gate A authorization, and runtime write-pause contract fixtures." },
+    { "id": "test-finisher-migration-readiness", "packageScript": "test:finisher-migration-readiness", "command": "vitest run src/lib/operations/finisher-migration-readiness.test.ts src/lib/operations/migration-integrity.test.ts src/lib/operations/migration-integrity-postgres.test.ts", "sourceLocation": "trainer-app/package.json#scripts.test:finisher-migration-readiness", "entrypoint": null, "profile": "read-only", "flagEscalations": [], "notes": "Runs credential-free exact migration identity, proportionate readiness, read-only preflight, post-migration integrity, and ambiguous-result reconciliation coverage." },
     { "id": "verify-finisher-schema-drift", "packageScript": "verify:finisher-schema-drift", "command": "tsx scripts/check-finisher-schema-drift.ts", "sourceLocation": "trainer-app/package.json#scripts.verify:finisher-schema-drift", "entrypoint": "trainer-app/scripts/check-finisher-schema-drift.ts", "profile": "database-read", "flagEscalations": [], "notes": "Read-only Prisma diff against an explicitly supplied fully migrated disposable PostgreSQL database; fails closed on destructive protected Finisher relationship drift." },
     { "id": "npm-test-watch", "packageScript": "test:watch", "command": "vitest --watch", "sourceLocation": "trainer-app/package.json#scripts.test:watch", "entrypoint": null, "profile": "disposable-database-write", "flagEscalations": [], "notes": "Long-running raw watch process that can collect mutation-capable DB files; their in-file target and confirmation guard remains mandatory." },
     { "id": "npm-test-slow", "packageScript": "test:slow", "command": "vitest run --passWithNoTests \"src/**/*.slow.test.ts\"", "sourceLocation": "trainer-app/package.json#scripts.test:slow", "entrypoint": null, "profile": "read-only", "flagEscalations": [], "notes": "Local slow-test selection." },
@@ -809,10 +803,7 @@
     { "id": "npm-ops-preflight-multi-plan", "packageScript": "ops:preflight-multi-plan", "command": "tsx scripts/check-multi-plan-integrity.ts", "sourceLocation": "trainer-app/package.json#scripts.ops:preflight-multi-plan", "entrypoint": "trainer-app/scripts/check-multi-plan-integrity.ts", "profile": "database-read", "flagEscalations": [], "notes": "Read-only multi-plan migration preflight against an explicitly named DATABASE_URL/DIRECT_URL target. It reports a sanitized fingerprint plus identifier-level integrity findings and may optionally inspect local historical audit artifacts; it has no remediation or write mode." },
     { "id": "npm-ops-check-direct-db", "packageScript": "ops:check-direct-db", "command": "tsx scripts/check-direct-db.ts", "sourceLocation": "trainer-app/package.json#scripts.ops:check-direct-db", "entrypoint": "trainer-app/scripts/check-direct-db.ts", "profile": "database-read", "flagEscalations": [], "notes": "Naming trap: preflight performs DNS/TCP/TLS/authentication against the explicit database endpoint but runs no SQL." },
     { "id": "npm-ops-migration-status", "packageScript": "ops:migration-status", "command": "tsx scripts/check-migration-status.ts", "sourceLocation": "trainer-app/package.json#scripts.ops:migration-status", "entrypoint": "trainer-app/scripts/check-migration-status.ts", "profile": "database-read", "flagEscalations": [], "notes": "Read-only migration ledger, canonical checksum, catalog, and authorization-evidence verification; preparation mode never authorizes execution or deploys." },
-    { "id": "npm-ops-verify-finisher-providers", "packageScript": "ops:verify-finisher-providers", "command": "tsx scripts/verify-finisher-providers.ts", "sourceLocation": "trainer-app/package.json#scripts.ops:verify-finisher-providers", "entrypoint": "trainer-app/scripts/verify-finisher-providers.ts", "profile": "network-read-only", "flagEscalations": [], "notes": "Performs explicit authenticated GET-only Vercel, GitHub Actions artifact, Supabase backup-inventory, and production runtime write-status verification. Caller-authored success files are rejected." },
     { "id": "npm-ops-generate-finisher-disposable-evidence", "packageScript": "ops:generate-finisher-disposable-evidence", "command": "tsx scripts/generate-finisher-disposable-evidence.ts", "sourceLocation": "trainer-app/package.json#scripts.ops:generate-finisher-disposable-evidence", "entrypoint": "trainer-app/scripts/generate-finisher-disposable-evidence.ts", "profile": "disposable-database-write", "flagEscalations": [], "notes": "GitHub Actions master workflow_dispatch only; runs the PostgreSQL 16 disposable rollout harness and writes one exact-head evidence artifact." },
-    { "id": "npm-ops-initiate-finisher-write-pause", "packageScript": "ops:initiate-finisher-write-pause", "command": "tsx scripts/request-finisher-provider-operation.ts --operation write-pause", "sourceLocation": "trainer-app/package.json#scripts.ops:initiate-finisher-write-pause", "entrypoint": "trainer-app/scripts/request-finisher-provider-operation.ts", "profile": "production-write", "flagEscalations": [], "notes": "Unavailable fail-closed boundary. Requires exact separately authorized identity/confirmation and performs no mutation because the application pause requires an environment update plus exact-commit redeployment." },
-    { "id": "npm-ops-finisher-principals", "packageScript": "ops:finisher-principals", "command": "tsx scripts/manage-finisher-principals.ts", "sourceLocation": "trainer-app/package.json#scripts.ops:finisher-principals", "entrypoint": "trainer-app/scripts/manage-finisher-principals.ts", "profile": "database-read-artifact", "flagEscalations": [{ "flag": "--write", "sideEffectClass": "production-write", "authorizationRequirement": "Exact production environment, project, database, commit, canonically verified PITR coverage and write pause, --confirm-remote-write, and project-bound principal-provisioning confirmation." }], "notes": "Verification performs fresh read-only catalog and bounded runtime-credential checks and emits a sanitized non-authoritative audit record. Provisioning creates or safely completes only the three Finisher prerequisite principals; it never creates schema objects or migration-owned grants. Production provisioning remains fail closed until PITR and write-pause verification pass." },
     { "id": "npm-ops-audit-readiness-integrity", "packageScript": "ops:audit-readiness-integrity", "command": "tsx scripts/audit-readiness-integrity.ts", "sourceLocation": "trainer-app/package.json#scripts.ops:audit-readiness-integrity", "entrypoint": "trainer-app/scripts/audit-readiness-integrity.ts", "profile": "database-read", "flagEscalations": [], "notes": "Read-only database integrity audit with explicit target ownership." },
     { "id": "npm-ops-write-status", "packageScript": "ops:write-status", "command": "tsx scripts/production-write-status.ts", "sourceLocation": "trainer-app/package.json#scripts.ops:write-status", "entrypoint": "trainer-app/scripts/production-write-status.ts", "profile": "read-only", "flagEscalations": [], "notes": "Reads a named local environment file and reports only enabled/paused status; no database access." },
     { "id": "npm-ops-investigate-invalid-seed", "packageScript": "ops:investigate-invalid-seed", "command": "tsx scripts/investigate-invalid-seed.ts", "sourceLocation": "trainer-app/package.json#scripts.ops:investigate-invalid-seed", "entrypoint": "trainer-app/scripts/investigate-invalid-seed.ts", "profile": "database-read", "flagEscalations": [], "notes": "Read-only invalid-seed investigation against an explicitly named target." },

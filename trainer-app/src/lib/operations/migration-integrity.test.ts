@@ -1397,23 +1397,19 @@ describe("migration integrity", () => {
     expect(result.migrationAuthorizationReady).toBe(false);
   });
 
-  it("documents role-principal provisioning before Gate A and migration-owned grants after migration", () => {
+  it("documents the conventional Finisher migration procedure in order", () => {
     const operations = readFileSync(resolve("docs/07_OPERATIONS.md"), "utf8");
     const orderedMarkers = [
-      "1. Merge and deploy the reviewed runtime-inert application",
-      "2. Record the actual integrated `master` squash SHA, bind it as",
-      "3. Obtain canonical commit-bound disposable PostgreSQL verification",
-      "4. Activate and verify `TRAINER_WRITE_PAUSE=enabled`",
-      "5. Run authenticated Supabase PITR verification",
-      "6. Run the immediate live read-only direct-database and migration-status",
-      "7. Through the separately authorized database-administrator workflow",
-      "8. Verify all three principals exist",
-      "9. Run Gate A and the required pre-migration authorization checks.",
-      "10. Only after Gate A reports `migrationAuthorizationReady: true`",
-      "11. Run the authorized production migration once:",
-      "12. Immediately verify the migration-owned object ownership",
-      "13. Resume general writes only through the write-pause resume procedure",
-      "14. Separately authorize Finishers enablement and bounded authenticated",
+      "1. Verify production still runs commit",
+      "2. Confirm the canonical PostgreSQL 16 disposable workflow",
+      "3. Through the authenticated Supabase interface",
+      "4. Confirm `TRAINER_FINISHERS_ROLLOUT`",
+      "5. Run the immediate read-only readiness command",
+      "6. Obtain separate explicit authorization",
+      "7. If the result is ambiguous",
+      "8. Run `npm run ops:migration-status",
+      "9. Leave Finishers disabled.",
+      "10. Enable Finishers only through a separate",
     ];
     let previousIndex = -1;
     for (const marker of orderedMarkers) {
@@ -1421,12 +1417,9 @@ describe("migration integrity", () => {
       expect(markerIndex, marker).toBeGreaterThan(previousIndex);
       previousIndex = markerIndex;
     }
-    expect(operations).toContain(
-      "Do not re-provision migration-owned grants after migration",
-    );
-    expect(operations).toContain(
-      "`migrationAuthorizationReady: false` and stop",
-    );
+    expect(operations).toContain("always returns `executionAuthorized: false`");
+    expect(operations).toContain("Retry only when both are reconciled");
+    expect(operations).toContain("provides no material additional safety");
   });
 
   it.each([

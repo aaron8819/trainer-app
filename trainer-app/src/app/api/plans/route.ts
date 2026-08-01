@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { resolveOwner } from "@/lib/api/workout-context";
+import {
+  findOwnerReadOnly,
+  provisionOwnerForMutation,
+} from "@/lib/api/workout-context";
 import {
   createPlan,
   loadPlanManagementData,
@@ -9,7 +12,8 @@ import { productionWritePauseResponse } from "@/lib/operations/production-write-
 import { createPlanSchema } from "@/lib/validation";
 
 export async function GET() {
-  const owner = await resolveOwner();
+  const owner = await findOwnerReadOnly();
+  if (!owner) return NextResponse.json({ error: "User not found" }, { status: 404 });
   return NextResponse.json(await loadPlanManagementData(owner.id));
 }
 
@@ -33,7 +37,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const owner = await resolveOwner();
+  const owner = await provisionOwnerForMutation("mesocycle_acceptance");
   try {
     const plan = await createPlan({
       userId: owner.id,

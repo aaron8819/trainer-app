@@ -6,7 +6,7 @@ import {
 } from "@/lib/api/active-plan-context";
 import { loadPlanActivationTarget } from "@/lib/api/plan-management";
 import { planManagementErrorResponse } from "@/lib/api/plan-management-http";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { provisionOwnerForMutation } from "@/lib/api/workout-context";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { activatePlanSchema } from "@/lib/validation";
 
@@ -32,7 +32,10 @@ export async function POST(
     );
   }
 
-  const [{ id }, owner] = await Promise.all([context.params, resolveOwner()]);
+  const [{ id }, owner] = await Promise.all([
+    context.params,
+    provisionOwnerForMutation("mesocycle_acceptance"),
+  ]);
   try {
     const target = await loadPlanActivationTarget(owner.id, id);
     if (target.status === "NOT_FOUND") {

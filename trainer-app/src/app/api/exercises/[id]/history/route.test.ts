@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  resolveOwner: vi.fn(),
+  findOwnerReadOnly: vi.fn(),
   loadExerciseHistory: vi.fn(),
 }));
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: mocks.resolveOwner,
+  findOwnerReadOnly: mocks.findOwnerReadOnly,
 }));
 
 vi.mock("@/lib/api/exercise-history", () => ({
@@ -18,7 +18,7 @@ import { GET } from "./route";
 describe("GET /api/exercises/[id]/history", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+    mocks.findOwnerReadOnly.mockResolvedValue({ id: "user-1" });
     mocks.loadExerciseHistory.mockResolvedValue({ lastExposure: null });
   });
 
@@ -33,7 +33,7 @@ describe("GET /api/exercises/[id]/history", () => {
   });
 
   it("does not query history when no owner is available", async () => {
-    mocks.resolveOwner.mockResolvedValue(null);
+    mocks.findOwnerReadOnly.mockResolvedValue(null);
 
     const response = await GET(
       new Request("http://localhost/api/exercises/bench/history"),

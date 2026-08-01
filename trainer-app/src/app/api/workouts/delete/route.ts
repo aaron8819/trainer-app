@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { deleteWorkoutSchema } from "@/lib/validation";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { provisionOwnerForMutation } from "@/lib/api/workout-context";
 import { isWorkoutMutationError } from "@/lib/api/workout-mutation";
 import {
   deleteOwnedWorkout,
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const owner = await resolveOwner();
+  const owner = await provisionOwnerForMutation("workout_structural_edit");
   try {
     const mutation = await deleteOwnedWorkout({
       workoutId: parsed.data.workoutId,

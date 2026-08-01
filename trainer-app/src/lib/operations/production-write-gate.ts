@@ -1,6 +1,11 @@
 export const TRAINER_WRITE_PAUSE_VARIABLE = "TRAINER_WRITE_PAUSE";
 export const TRAINER_WRITE_PAUSE_ENABLED_VALUE = "enabled";
-export const PRODUCTION_WRITE_STATUS_CONTRACT_VERSION = 1 as const;
+export const TRAINER_WRITE_PAUSE_OPERATION_ID_VARIABLE =
+  "TRAINER_WRITE_PAUSE_OPERATION_ID";
+export const PRODUCTION_WRITE_STATUS_CONTRACT_VERSION = 2 as const;
+export const PRODUCTION_WRITE_ENFORCEMENT_CONTRACT_VERSION = 2 as const;
+export const PRODUCTION_WRITE_ENFORCEMENT_COVERAGE =
+  "application_all_classified_write_paths" as const;
 
 export type ProductionWriteOperation =
   | "application_configuration"
@@ -14,7 +19,13 @@ export type ProductionWriteOperation =
   | "set_logging"
   | "readiness_preparation"
   | "readiness_submission"
-  | "operational_backfill";
+  | "operational_backfill"
+  | "operational_seed"
+  | "operational_cleanup"
+  | "operational_administration"
+  | "operational_lifecycle"
+  | "operational_principal"
+  | "operational_migration";
 
 export type ProductionWriteStatus = "PAUSED" | "ENABLED";
 
@@ -43,13 +54,29 @@ export function productionWriteRuntimeEvidence(
   if (deploymentEnvironment !== "production") {
     throw new Error("Production write status evidence is unavailable outside Vercel production.");
   }
+  const deploymentCommit = environment.VERCEL_GIT_COMMIT_SHA?.trim().toLowerCase();
+  if (!deploymentCommit || deploymentCommit !== commitSha.trim().toLowerCase()) {
+    throw new Error("Production write status commit binding is unavailable.");
+  }
+  const deploymentId = environment.VERCEL_DEPLOYMENT_ID?.trim();
+  if (!deploymentId) {
+    throw new Error("Production write status deployment binding is unavailable.");
+  }
+  const pauseOperationId =
+    environment[TRAINER_WRITE_PAUSE_OPERATION_ID_VARIABLE]?.trim();
+  if (!pauseOperationId) {
+    throw new Error("Production write status pause-operation binding is unavailable.");
+  }
   return {
     schema: "trainer-production-write-status" as const,
     version: PRODUCTION_WRITE_STATUS_CONTRACT_VERSION,
     environment: "production" as const,
-    commitSha,
+    commitSha: deploymentCommit,
+    deploymentId,
+    pauseOperationId,
     status: productionWriteStatus(environment),
-    enforcement: "application_all_classified_write_paths" as const,
+    enforcement: PRODUCTION_WRITE_ENFORCEMENT_COVERAGE,
+    enforcementContractVersion: PRODUCTION_WRITE_ENFORCEMENT_CONTRACT_VERSION,
   };
 }
 

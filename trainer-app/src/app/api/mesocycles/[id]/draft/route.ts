@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { prisma } from "@/lib/db/prisma";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { provisionOwnerForMutation } from "@/lib/api/workout-context";
 import { nextCycleSeedDraftUpdateSchema } from "@/lib/validation";
 import { updateMesocycleHandoffDraftInTransaction } from "@/lib/api/mesocycle-handoff";
 
@@ -12,7 +12,7 @@ export async function PATCH(
   const paused = productionWritePauseResponse("mesocycle_reseed", "/api/mesocycles/[id]/draft");
   if (paused) return paused;
 
-  const owner = await resolveOwner();
+  const owner = await provisionOwnerForMutation("mesocycle_reseed");
   if (!owner) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }

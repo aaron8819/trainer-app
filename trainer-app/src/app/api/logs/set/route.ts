@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { setLogSchema } from "@/lib/validation";
 import { prisma } from "@/lib/db/prisma";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { provisionOwnerForMutation } from "@/lib/api/workout-context";
 import { reconcileRuntimeEditSelectionMetadata } from "@/lib/api/runtime-edit-reconciliation";
 import { z } from "zod";
 import { Prisma, WorkoutStatus } from "@prisma/client";
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const owner = await resolveOwner();
+  const owner = await provisionOwnerForMutation("set_logging");
   const mutationTarget = parsed.data.workoutSetId
     ? await prisma.workoutSet.findFirst({
         where: {
@@ -408,7 +408,7 @@ export async function DELETE(request: Request) {
     );
   }
 
-  const owner = await resolveOwner();
+  const owner = await provisionOwnerForMutation("set_logging");
   const mutationTarget = await prisma.workoutSet.findFirst({
     where: {
       id: parsed.data.workoutSetId,

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 
 import { dismissCloseoutSession } from "@/lib/api/mesocycle-week-close";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { provisionOwnerForMutation } from "@/lib/api/workout-context";
 import { prisma } from "@/lib/db/prisma";
 import { isWorkoutMutationError } from "@/lib/api/workout-mutation";
 import { z } from "zod";
@@ -46,7 +46,7 @@ export async function POST(
   );
   if (paused) return paused;
 
-  const user = await resolveOwner();
+  const user = await provisionOwnerForMutation("workout_structural_edit");
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }

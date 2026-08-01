@@ -55,7 +55,7 @@ describe("Phase 1 Finisher isolation", () => {
       "utf8",
     );
     const gateInventory = readFileSync(
-      "scripts/check-production-write-gate.ts",
+      "src/lib/operations/production-write-gate-verifier.ts",
       "utf8",
     );
     const getOfferBody = service.slice(
@@ -66,7 +66,7 @@ describe("Phase 1 Finisher isolation", () => {
     expect(getOfferBody).not.toMatch(
       /persistElapsedProjectionInTransaction|\.create\(|\.update\(|\.updateMany\(|\.delete\(|\.deleteMany\(/,
     );
-    expect(route).toContain('resolveContext(params, "read")');
+    expect(route).toContain("resolveReadContext(params)");
     expect(route).toContain('case "sync"');
     expect(route.indexOf("productionWritePauseResponse")).toBeLessThan(
       route.indexOf("finisherActionSchema.safeParse"),
@@ -96,7 +96,7 @@ describe("Phase 1 Finisher isolation", () => {
     );
 
     expect(route.indexOf("finisherRolloutUnavailableResponse")).toBeLessThan(
-      route.indexOf('resolveContext(params, "read")'),
+      route.indexOf("resolveReadContext(params)"),
     );
     expect(route.indexOf("finisherRolloutUnavailableResponse")).toBeLessThan(
       route.indexOf("finisherActionSchema.safeParse"),

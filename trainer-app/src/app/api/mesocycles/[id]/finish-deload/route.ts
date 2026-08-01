@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { provisionOwnerForMutation } from "@/lib/api/workout-context";
 import {
   FinishDeloadEarlyBlockedWorkoutError,
   finishDeloadEarly,
@@ -21,7 +21,7 @@ export async function POST(
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const owner = await resolveOwner();
+  const owner = await provisionOwnerForMutation("mesocycle_lifecycle");
   if (!owner) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }

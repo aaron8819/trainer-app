@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { provisionOwnerForMutation } from "@/lib/api/workout-context";
 import { acceptMesocycleHandoff } from "@/lib/api/mesocycle-handoff";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { acceptNextCycleSchema } from "@/lib/validation";
@@ -15,7 +15,7 @@ export async function POST(
   );
   if (paused) return paused;
 
-  const owner = await resolveOwner();
+  const owner = await provisionOwnerForMutation("mesocycle_acceptance");
   if (!owner) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }

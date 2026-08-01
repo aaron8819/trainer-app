@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import { loadMesocycleSetupPreviewFromPrisma } from "@/lib/api/mesocycle-setup";
 import { nextCycleSeedDraftUpdateSchema } from "@/lib/validation";
 
@@ -8,7 +8,7 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> }
 ) {
-  const owner = await resolveOwner();
+  const owner = await findOwnerReadOnly();
   if (!owner) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }

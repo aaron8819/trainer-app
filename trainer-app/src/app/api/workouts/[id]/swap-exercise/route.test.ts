@@ -6,7 +6,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: vi.fn(async () => ({ id: "user-1" })),
+  findOwnerReadOnly: vi.fn(async () => ({ id: "user-1" })),
+  provisionOwnerForMutation: vi.fn(async () => ({ id: "user-1" })),
 }));
 
 vi.mock("@/lib/api/runtime-exercise-swap-service", () => ({

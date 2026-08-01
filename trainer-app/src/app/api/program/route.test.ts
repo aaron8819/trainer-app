@@ -2,13 +2,13 @@ import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
-  const resolveOwner = vi.fn();
+  const provisionOwnerForMutation = vi.fn();
   const loadPendingMesocycleHandoff = vi.fn();
   const loadProgramDashboardData = vi.fn();
   const applyCycleAnchor = vi.fn();
 
   return {
-    resolveOwner,
+    provisionOwnerForMutation,
     loadPendingMesocycleHandoff,
     loadProgramDashboardData,
     applyCycleAnchor,
@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: (...args: unknown[]) => mocks.resolveOwner(...args),
+  provisionOwnerForMutation: (...args: unknown[]) => mocks.provisionOwnerForMutation(...args),
 }));
 
 vi.mock("@/lib/api/mesocycle-handoff", () => ({
@@ -45,7 +45,7 @@ import { FinishMesocycleEarlyBlockedWorkoutError } from "@/lib/api/mesocycle-lif
 describe("PATCH /api/program", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+    mocks.provisionOwnerForMutation.mockResolvedValue({ id: "user-1" });
     mocks.loadPendingMesocycleHandoff.mockResolvedValue(null);
   });
 

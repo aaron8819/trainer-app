@@ -2,12 +2,12 @@ import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  resolveOwner: vi.fn(),
+  findOwnerReadOnly: vi.fn(),
   loadCompletedWorkoutReviewReadModel: vi.fn(),
 }));
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: (...args: unknown[]) => mocks.resolveOwner(...args),
+  findOwnerReadOnly: (...args: unknown[]) => mocks.findOwnerReadOnly(...args),
 }));
 
 vi.mock("@/lib/api/completed-workout-review", () => ({
@@ -20,7 +20,7 @@ import { GET } from "./route";
 describe("GET /api/workouts/[id]/post-session-review", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+    mocks.findOwnerReadOnly.mockResolvedValue({ id: "user-1" });
     mocks.loadCompletedWorkoutReviewReadModel.mockResolvedValue({
       postSessionReview: null,
     });

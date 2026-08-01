@@ -6,7 +6,7 @@ import { readinessSignalSchema } from "@/lib/validation";
 import { computePerformanceSignals } from "@/lib/api/readiness";
 import { computeFatigueScore } from "@/lib/engine";
 import { prisma } from "@/lib/db/prisma";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { provisionOwnerForMutation } from "@/lib/api/workout-context";
 import type { ReadinessSignal } from "@/lib/engine/readiness/types";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
   const { subjective } = parsed.data;
 
   // Get user from database (matches existing codebase pattern)
-  const user = await resolveOwner();
+  const user = await provisionOwnerForMutation("readiness_submission");
   const userId = user.id;
 
   // 2. Compute performance signals from recent workout history

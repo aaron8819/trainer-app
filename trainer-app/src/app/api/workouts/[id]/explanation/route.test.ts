@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  resolveOwner: vi.fn(),
+  findOwnerReadOnly: vi.fn(),
   generateWorkoutExplanation: vi.fn(),
 }));
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: (...args: unknown[]) => mocks.resolveOwner(...args),
+  findOwnerReadOnly: (...args: unknown[]) => mocks.findOwnerReadOnly(...args),
 }));
 
 vi.mock("@/lib/api/explainability", () => ({
@@ -19,7 +19,7 @@ import { GET } from "./route";
 describe("GET /api/workouts/[id]/explanation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.resolveOwner.mockResolvedValue({ id: "owner-1" });
+    mocks.findOwnerReadOnly.mockResolvedValue({ id: "owner-1" });
   });
 
   it("returns the existing explanation output for an owner-scoped workout", async () => {

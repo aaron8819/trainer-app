@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertProductionWriteAllowed,
   ProductionWritePausedError,
+  productionWriteRuntimeEvidence,
   productionWriteStatus,
 } from "./production-write-gate";
 
@@ -31,5 +32,39 @@ describe("production write gate", () => {
       });
       expect(JSON.stringify(error)).not.toContain("enabled");
     }
+  });
+
+  it("binds paused evidence to commit, deployment, environment, operation, and enforcement", () => {
+    expect(
+      productionWriteRuntimeEvidence("a".repeat(40), {
+        VERCEL_ENV: "production",
+        VERCEL_GIT_COMMIT_SHA: "a".repeat(40),
+        VERCEL_DEPLOYMENT_ID: "dpl_paused",
+        TRAINER_WRITE_PAUSE_OPERATION_ID: "pause-operation-1",
+        TRAINER_WRITE_PAUSE: "enabled",
+      }),
+    ).toEqual({
+      schema: "trainer-production-write-status",
+      version: 2,
+      environment: "production",
+      commitSha: "a".repeat(40),
+      deploymentId: "dpl_paused",
+      pauseOperationId: "pause-operation-1",
+      status: "PAUSED",
+      enforcement: "application_all_classified_write_paths",
+      enforcementContractVersion: 2,
+    });
+  });
+
+  it("rejects a commit that does not match the deployment", () => {
+    expect(() =>
+      productionWriteRuntimeEvidence("b".repeat(40), {
+        VERCEL_ENV: "production",
+        VERCEL_GIT_COMMIT_SHA: "a".repeat(40),
+        VERCEL_DEPLOYMENT_ID: "dpl_paused",
+        TRAINER_WRITE_PAUSE_OPERATION_ID: "pause-operation-1",
+        TRAINER_WRITE_PAUSE: "enabled",
+      }),
+    ).toThrow("commit binding");
   });
 });

@@ -20,7 +20,7 @@ const mocks = vi.hoisted(() => {
   const txWorkoutExerciseFindFirst = vi.fn();
   const txWorkoutExerciseCreate = vi.fn();
   const txWorkoutExerciseFindMany = vi.fn();
-  const resolveOwner = vi.fn(async () => ({ id: "user-1" }));
+  const provisionOwnerForMutation = vi.fn(async () => ({ id: "user-1" }));
 
   const tx = {
     workout: {
@@ -69,7 +69,7 @@ const mocks = vi.hoisted(() => {
     txWorkoutExerciseFindFirst,
     txWorkoutExerciseCreate,
     txWorkoutExerciseFindMany,
-    resolveOwner,
+    provisionOwnerForMutation,
   };
 });
 
@@ -78,7 +78,7 @@ vi.mock("@/lib/db/prisma", () => ({
 }));
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: () => mocks.resolveOwner(),
+  provisionOwnerForMutation: () => mocks.provisionOwnerForMutation(),
 }));
 
 import { POST } from "./route";
@@ -99,7 +99,7 @@ describe("production write pause", () => {
     expect(response.status).toBe(503);
     expect(response.headers.get("Retry-After")).toBe("60");
     await expect(response.json()).resolves.toMatchObject({ code: "PRODUCTION_WRITE_PAUSED" });
-    expect(mocks.resolveOwner).not.toHaveBeenCalled();
+    expect(mocks.provisionOwnerForMutation).not.toHaveBeenCalled();
     expect(mocks.workoutFindFirst).not.toHaveBeenCalled();
     expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
   });

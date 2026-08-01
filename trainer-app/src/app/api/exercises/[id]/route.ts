@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { loadExerciseDetail } from "@/lib/api/exercise-library";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 
 export async function GET(
   _request: Request,
@@ -8,7 +8,7 @@ export async function GET(
 ) {
   const { id } = await params;
 
-  const user = await resolveOwner();
+  const user = await findOwnerReadOnly();
 
   const detail = await loadExerciseDetail(id, user?.id);
   if (!detail) {

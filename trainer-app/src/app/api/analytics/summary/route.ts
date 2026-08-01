@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { analyticsSummarySchema } from "@/lib/validation";
 import { prisma } from "@/lib/db/prisma";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import { buildDateRangeAnalyticsWindow } from "@/lib/api/analytics-semantics";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import { WORKOUT_SELECTION_MODE_VALUES } from "@/lib/validation";
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
 
   const dateFrom = parsed.data.dateFrom ? new Date(parsed.data.dateFrom) : undefined;
   const dateTo = parsed.data.dateTo ? new Date(parsed.data.dateTo) : undefined;
-  const owner = await resolveOwner();
+  const owner = await findOwnerReadOnly();
   if (!owner) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }

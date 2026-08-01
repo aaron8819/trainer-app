@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { redirect } from "next/navigation";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import { DashboardGenerateSection } from "@/components/DashboardGenerateSection";
 import RecentWorkouts from "@/components/RecentWorkouts";
 import { ProgramStatusCard } from "@/components/ProgramStatusCard";
@@ -47,7 +48,8 @@ function getActiveWeekStatusClass(status: string): string {
 }
 
 export default async function Home() {
-  const owner = await resolveOwner();
+  const owner = await findOwnerReadOnly();
+  if (!owner) redirect("/onboarding");
   const homePage = await loadHomePageData(owner.id);
 
   function formatActivityDate(value: string | null | undefined) {

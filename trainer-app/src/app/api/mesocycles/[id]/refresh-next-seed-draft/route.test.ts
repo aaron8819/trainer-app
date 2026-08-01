@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
-  const resolveOwner = vi.fn();
+  const provisionOwnerForMutation = vi.fn();
   const mesocycleFindFirst = vi.fn();
   const refreshMesocycleHandoffNextSeedDraftFromV2 = vi.fn();
 
   return {
-    resolveOwner,
+    provisionOwnerForMutation,
     mesocycleFindFirst,
     refreshMesocycleHandoffNextSeedDraftFromV2,
     prisma: {
@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: (...args: unknown[]) => mocks.resolveOwner(...args),
+  provisionOwnerForMutation: (...args: unknown[]) => mocks.provisionOwnerForMutation(...args),
 }));
 
 vi.mock("@/lib/db/prisma", () => ({
@@ -49,7 +49,7 @@ function buildRefreshRequest(body: unknown = {
 describe("POST /api/mesocycles/[id]/refresh-next-seed-draft", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+    mocks.provisionOwnerForMutation.mockResolvedValue({ id: "user-1" });
     mocks.mesocycleFindFirst.mockResolvedValue({
       id: "meso-1",
       state: "AWAITING_HANDOFF",
@@ -108,7 +108,7 @@ describe("POST /api/mesocycles/[id]/refresh-next-seed-draft", () => {
   });
 
   it("requires owner resolution", async () => {
-    mocks.resolveOwner.mockResolvedValue(null);
+    mocks.provisionOwnerForMutation.mockResolvedValue(null);
 
     const response = await POST(
       buildRefreshRequest(),

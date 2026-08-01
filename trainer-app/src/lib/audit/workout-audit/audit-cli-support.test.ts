@@ -4,11 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const mocks = vi.hoisted(() => ({
-  resolveOwner: vi.fn(),
+  findOwnerReadOnly: vi.fn(),
 }));
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: (...args: unknown[]) => mocks.resolveOwner(...args),
+  findOwnerReadOnly: (...args: unknown[]) => mocks.findOwnerReadOnly(...args),
 }));
 
 import {
@@ -127,7 +127,7 @@ describe("audit-cli-support", () => {
 
   it("falls back to the app default owner from OWNER_EMAIL when no flags are provided", async () => {
     process.env.OWNER_EMAIL = "app-owner@test.local";
-    mocks.resolveOwner.mockResolvedValue({
+    mocks.findOwnerReadOnly.mockResolvedValue({
       id: "user-2",
       email: "app-owner@test.local",
     });
@@ -140,14 +140,14 @@ describe("audit-cli-support", () => {
     });
 
     expect(resolveIdentity).not.toHaveBeenCalled();
-    expect(mocks.resolveOwner).toHaveBeenCalledTimes(1);
+    expect(mocks.findOwnerReadOnly).toHaveBeenCalledTimes(1);
     expect(preflight.ownerEmail).toBe("app-owner@test.local");
     expect(preflight.resolvedUserId).toBe("user-2");
     expect(preflight.ownerSource).toBe("env-default");
   });
 
   it("falls back to owner@local app default semantics when OWNER_EMAIL is absent", async () => {
-    mocks.resolveOwner.mockResolvedValue({
+    mocks.findOwnerReadOnly.mockResolvedValue({
       id: "user-3",
       email: "owner@local",
     });

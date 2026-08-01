@@ -472,7 +472,7 @@ async function readProductionWriteStatus(input: {
   expectedStatus: "PAUSED" | "ENABLED";
   fetcher?: JsonFetcher;
   now?: () => string;
-}): Promise<{ verifiedAt: string }> {
+}): Promise<{ verifiedAt: string; pauseOperationId: string }> {
   const fetcher = input.fetcher ?? fetch;
   const url = new URL(
     "/api/operations/write-status",
@@ -500,8 +500,11 @@ async function readProductionWriteStatus(input: {
   }
   const exactKeys = [
     "commitSha",
+    "deploymentId",
     "enforcement",
+    "enforcementContractVersion",
     "environment",
+    "pauseOperationId",
     "schema",
     "status",
     "version",
@@ -511,15 +514,22 @@ async function readProductionWriteStatus(input: {
   }
   if (
     body.schema !== "trainer-production-write-status" ||
-    body.version !== 1 ||
+    body.version !== 2 ||
     body.environment !== "production" ||
     body.commitSha !== input.deployment.sourceCommit ||
+    body.deploymentId !== input.deployment.deploymentId ||
+    body.pauseOperationId !==
+      `trainer-write-pause:${input.deployment.projectId}:${input.deployment.sourceCommit}` ||
     body.status !== input.expectedStatus ||
-    body.enforcement !== "application_all_classified_write_paths"
+    body.enforcement !== "application_all_classified_write_paths" ||
+    body.enforcementContractVersion !== 2
   ) {
     throw new ProviderVerificationError("not_ready");
   }
-  return { verifiedAt: input.now?.() ?? new Date().toISOString() };
+  return {
+    verifiedAt: input.now?.() ?? new Date().toISOString(),
+    pauseOperationId: body.pauseOperationId,
+  };
 }
 
 export async function verifyProductionWritePause(input: {
@@ -527,7 +537,7 @@ export async function verifyProductionWritePause(input: {
   fetcher?: JsonFetcher;
   now?: () => string;
 }): Promise<FinisherProviderVerification["writePause"]> {
-  const { verifiedAt } = await readProductionWriteStatus({
+  const { pauseOperationId, verifiedAt } = await readProductionWriteStatus({
     ...input,
     expectedStatus: "PAUSED",
   });
@@ -539,6 +549,7 @@ export async function verifyProductionWritePause(input: {
     environment: "production",
     deploymentId: input.deployment.deploymentId,
     commitSha: input.deployment.sourceCommit,
+    pauseOperationId,
     enforcement: "application_all_classified_write_paths",
     initiationCapability:
       "unavailable_requires_authorized_environment_update_and_redeployment",
@@ -547,7 +558,8 @@ export async function verifyProductionWritePause(input: {
     initiationObservedAt: input.deployment.createdAt,
     establishedAt: input.deployment.readyAt,
     runtimeStatus: "PAUSED",
-    runtimeContractVersion: 1,
+    runtimeContractVersion: 2,
+    enforcementContractVersion: 2,
     mutationCoverageVerified: true,
     bypassPaths: [],
     verifiedAt,

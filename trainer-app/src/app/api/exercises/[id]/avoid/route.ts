@@ -3,7 +3,7 @@ import { productionWritePauseResponse } from "@/lib/operations/production-write-
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { toggleAvoidSchema } from "@/lib/validation";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { provisionOwnerForMutation } from "@/lib/api/workout-context";
 import {
   computeExercisePreferenceToggle,
   isSerializationConflict,
@@ -27,7 +27,7 @@ export async function POST(
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const user = await resolveOwner();
+  const user = await provisionOwnerForMutation("application_configuration");
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   createPlan: vi.fn(),
   loadPlanManagementData: vi.fn(),
-  resolveOwner: vi.fn(),
+  provisionOwnerForMutation: vi.fn(),
 }));
 
 vi.mock("@/lib/api/plan-management", () => ({
@@ -11,7 +11,7 @@ vi.mock("@/lib/api/plan-management", () => ({
   loadPlanManagementData: mocks.loadPlanManagementData,
 }));
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: mocks.resolveOwner,
+  provisionOwnerForMutation: mocks.provisionOwnerForMutation,
 }));
 vi.mock("@/lib/db/prisma", () => ({ prisma: {} }));
 vi.mock("@/lib/operations/production-write-gate-http", () => ({
@@ -53,7 +53,7 @@ describe("POST /api/plans", () => {
     await expect(response.json()).resolves.toMatchObject({
       code: "PLAN_VALIDATION_FAILED",
     });
-    expect(mocks.resolveOwner).not.toHaveBeenCalled();
+    expect(mocks.provisionOwnerForMutation).not.toHaveBeenCalled();
     expect(mocks.createPlan).not.toHaveBeenCalled();
   });
 });

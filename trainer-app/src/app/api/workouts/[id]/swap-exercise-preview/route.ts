@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import {
   isRuntimeExerciseSwapError,
   resolveRuntimeExerciseSwapPreview,
@@ -37,7 +37,8 @@ export async function GET(
     );
   }
 
-  const owner = await resolveOwner();
+  const owner = await findOwnerReadOnly();
+  if (!owner) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
   try {
     const exercise = await resolveRuntimeExerciseSwapPreview({

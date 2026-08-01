@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import { loadMesocycleSetupFromPrisma } from "@/lib/api/mesocycle-setup";
 import { loadMesocyclePreAcceptancePresentation } from "@/lib/api/mesocycle-pre-acceptance-presentation";
 import { MesocycleSetupEditor } from "@/components/MesocycleSetupEditor";
@@ -13,7 +13,8 @@ type Params = Promise<{ id: string }>;
 
 export default async function MesocycleSetupPage({ params }: { params: Params }) {
   const { id } = await params;
-  const owner = await resolveOwner();
+  const owner = await findOwnerReadOnly();
+  if (!owner) notFound();
   const [setup, preAcceptance] = await Promise.all([
     loadMesocycleSetupFromPrisma({ userId: owner.id, mesocycleId: id }),
     loadMesocyclePreAcceptancePresentation({

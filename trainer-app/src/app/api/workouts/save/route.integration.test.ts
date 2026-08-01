@@ -28,7 +28,7 @@ const mocks = vi.hoisted(() => {
   const resolveWeekCloseOnOptionalGapFillCompletion = vi.fn();
   const dismissPendingWeekClose = vi.fn();
   const createPostSessionReviewSnapshotInTransaction = vi.fn();
-  const resolveOwner = vi.fn(async () => ({ id: "user-1" }));
+  const provisionOwnerForMutation = vi.fn(async () => ({ id: "user-1" }));
 
   const tx = {
     workout: {
@@ -92,7 +92,7 @@ const mocks = vi.hoisted(() => {
     resolveWeekCloseOnOptionalGapFillCompletion,
     dismissPendingWeekClose,
     createPostSessionReviewSnapshotInTransaction,
-    resolveOwner,
+    provisionOwnerForMutation,
   };
 });
 
@@ -101,7 +101,7 @@ vi.mock("@/lib/db/prisma", () => ({
 }));
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: () => mocks.resolveOwner(),
+  provisionOwnerForMutation: () => mocks.provisionOwnerForMutation(),
 }));
 
 vi.mock("@/lib/api/post-session-review-snapshot", () => ({
@@ -175,7 +175,7 @@ describe("production write pause", () => {
     expect(response.status).toBe(503);
     expect(response.headers.get("Retry-After")).toBe("60");
     await expect(response.json()).resolves.toMatchObject({ code: "PRODUCTION_WRITE_PAUSED" });
-    expect(mocks.resolveOwner).not.toHaveBeenCalled();
+    expect(mocks.provisionOwnerForMutation).not.toHaveBeenCalled();
     expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
     expect(mocks.workoutUpdateMany).not.toHaveBeenCalled();
     expect(mocks.createPostSessionReviewSnapshotInTransaction).not.toHaveBeenCalled();

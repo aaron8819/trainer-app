@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { finalizePlan } from "@/lib/api/plan-management";
 import { planManagementErrorResponse } from "@/lib/api/plan-management-http";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { provisionOwnerForMutation } from "@/lib/api/workout-context";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { planMutationSchema } from "@/lib/validation";
 
@@ -24,7 +24,10 @@ export async function POST(
     );
   }
 
-  const [{ id }, owner] = await Promise.all([context.params, resolveOwner()]);
+  const [{ id }, owner] = await Promise.all([
+    context.params,
+    provisionOwnerForMutation("mesocycle_acceptance"),
+  ]);
   try {
     const plan = await finalizePlan({
       userId: owner.id,

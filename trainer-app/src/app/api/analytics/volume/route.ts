@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import { computeWeeklyMuscleVolume, getVolumeLandmarks } from "@/lib/api/analytics";
 import { buildRollingIsoWeeksAnalyticsWindow } from "@/lib/api/analytics-semantics";
 import { getUiAuditFixtureFromHeaders } from "@/lib/ui-audit-fixtures/server";
@@ -15,7 +15,7 @@ export async function GET(request: Request) {
     return NextResponse.json(volumeFixture);
   }
 
-  const user = await resolveOwner();
+  const user = await findOwnerReadOnly();
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }

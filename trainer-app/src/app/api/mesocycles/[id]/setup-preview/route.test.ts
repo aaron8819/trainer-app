@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
-  const resolveOwner = vi.fn();
+  const findOwnerReadOnly = vi.fn();
   const mesocycleFindFirst = vi.fn();
   const loadMesocycleSetupPreviewFromPrisma = vi.fn();
 
   return {
-    resolveOwner,
+    findOwnerReadOnly,
     mesocycleFindFirst,
     loadMesocycleSetupPreviewFromPrisma,
     prisma: {
@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: (...args: unknown[]) => mocks.resolveOwner(...args),
+  findOwnerReadOnly: (...args: unknown[]) => mocks.findOwnerReadOnly(...args),
 }));
 
 vi.mock("@/lib/db/prisma", () => ({
@@ -35,11 +35,26 @@ import { POST } from "./route";
 describe("POST /api/mesocycles/[id]/setup-preview", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+    mocks.findOwnerReadOnly.mockResolvedValue({ id: "user-1" });
     mocks.mesocycleFindFirst.mockResolvedValue({
       id: "meso-1",
       state: "AWAITING_HANDOFF",
     });
+  });
+
+  it("does not provision when the owner is missing", async () => {
+    mocks.findOwnerReadOnly.mockResolvedValue(null);
+
+    const response = await POST(
+      new Request("http://localhost/api/mesocycles/meso-1/setup-preview", {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: "meso-1" }) },
+    );
+
+    expect(response.status).toBe(404);
+    expect(mocks.mesocycleFindFirst).not.toHaveBeenCalled();
+    expect(mocks.loadMesocycleSetupPreviewFromPrisma).not.toHaveBeenCalled();
   });
 
   it("returns the canonical server preview for a valid draft", async () => {

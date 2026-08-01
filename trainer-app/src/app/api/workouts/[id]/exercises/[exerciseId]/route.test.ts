@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  resolveOwner: vi.fn(),
+  provisionOwnerForMutation: vi.fn(),
   removeRuntimeAddedWorkoutExercise: vi.fn(),
 }));
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: mocks.resolveOwner,
+  provisionOwnerForMutation: mocks.provisionOwnerForMutation,
 }));
 
 vi.mock("@/lib/api/runtime-exercise-remove-service", async () => {
@@ -26,7 +26,7 @@ import { DELETE } from "./route";
 describe("DELETE /api/workouts/[id]/exercises/[exerciseId]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+    mocks.provisionOwnerForMutation.mockResolvedValue({ id: "user-1" });
     mocks.removeRuntimeAddedWorkoutExercise.mockResolvedValue({
       removedWorkoutExerciseId: "we-added",
       revision: 2,

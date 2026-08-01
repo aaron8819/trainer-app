@@ -3,7 +3,7 @@ import { productionWritePauseResponse } from "@/lib/operations/production-write-
 import { prisma } from "@/lib/db/prisma";
 import { addExerciseToTemplateSchema } from "@/lib/validation";
 import { loadTemplateDetail } from "@/lib/api/templates";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { provisionOwnerForMutation } from "@/lib/api/workout-context";
 
 export async function POST(
   request: Request,
@@ -16,7 +16,7 @@ export async function POST(
   if (paused) return paused;
 
   const { id: templateId } = await params;
-  const owner = await resolveOwner();
+  const owner = await provisionOwnerForMutation("application_configuration");
   const body = await request.json().catch(() => ({}));
   const parsed = addExerciseToTemplateSchema.safeParse(body);
 

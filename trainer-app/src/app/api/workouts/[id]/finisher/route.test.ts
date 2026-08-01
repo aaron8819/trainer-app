@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => {
   }
   return {
     FinisherServiceError: MockFinisherServiceError,
-    resolveOwner: vi.fn(),
+    provisionOwnerForMutation: vi.fn(),
     findOwnerReadOnly: vi.fn(),
     finisherRolloutUnavailableResponse: vi.fn(),
     productionWritePauseResponse: vi.fn(),
@@ -32,7 +32,7 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: mocks.resolveOwner,
+  provisionOwnerForMutation: mocks.provisionOwnerForMutation,
   findOwnerReadOnly: mocks.findOwnerReadOnly,
 }));
 
@@ -81,7 +81,7 @@ const offer = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.resolveOwner.mockResolvedValue({ id: "owner-1" });
+  mocks.provisionOwnerForMutation.mockResolvedValue({ id: "owner-1" });
   mocks.findOwnerReadOnly.mockResolvedValue({ id: "owner-1" });
   mocks.finisherRolloutUnavailableResponse.mockReturnValue(null);
   mocks.productionWritePauseResponse.mockReturnValue(null);
@@ -194,7 +194,7 @@ describe("/api/workouts/[id]/finisher", () => {
         error: "Finishers are not enabled",
         code: "FINISHERS_NOT_ENABLED",
       });
-      expect(mocks.resolveOwner).not.toHaveBeenCalled();
+      expect(mocks.provisionOwnerForMutation).not.toHaveBeenCalled();
       expect(mocks.findOwnerReadOnly).not.toHaveBeenCalled();
       expect(mocks.productionWritePauseResponse).not.toHaveBeenCalled();
       for (const service of [
@@ -246,7 +246,7 @@ describe("/api/workouts/[id]/finisher", () => {
       workoutId: "workout-1",
     });
     expect(mocks.findOwnerReadOnly).toHaveBeenCalledTimes(1);
-    expect(mocks.resolveOwner).not.toHaveBeenCalled();
+    expect(mocks.provisionOwnerForMutation).not.toHaveBeenCalled();
     expect(mocks.productionWritePauseResponse).not.toHaveBeenCalled();
   });
 
@@ -388,7 +388,7 @@ describe("/api/workouts/[id]/finisher", () => {
     );
 
     expect(response.status).toBe(503);
-    expect(mocks.resolveOwner).not.toHaveBeenCalled();
+    expect(mocks.provisionOwnerForMutation).not.toHaveBeenCalled();
     expect(mocks.syncFinisher).not.toHaveBeenCalled();
   });
 

@@ -12,14 +12,14 @@ const mocks = vi.hoisted(() => {
   return {
     FinisherServiceError: MockFinisherServiceError,
     findOwnerReadOnly: vi.fn(),
-    resolveOwner: vi.fn(),
+    provisionOwnerForMutation: vi.fn(),
     getFinisherOffer: vi.fn(),
     syncFinisher: vi.fn(),
   };
 });
 vi.mock("@/lib/api/workout-context", () => ({
   findOwnerReadOnly: mocks.findOwnerReadOnly,
-  resolveOwner: mocks.resolveOwner,
+  provisionOwnerForMutation: mocks.provisionOwnerForMutation,
 }));
 
 vi.mock("@/lib/api/finisher-service", () => ({
@@ -92,7 +92,7 @@ describe("Finisher route during the production write pause", () => {
       },
     });
     expect(mocks.getFinisherOffer).toHaveBeenCalledTimes(1);
-    expect(mocks.resolveOwner).not.toHaveBeenCalled();
+    expect(mocks.provisionOwnerForMutation).not.toHaveBeenCalled();
     expect(mocks.syncFinisher).not.toHaveBeenCalled();
   });
 
@@ -118,7 +118,7 @@ describe("Finisher route during the production write pause", () => {
       code: "FINISHERS_NOT_ENABLED",
     });
     expect(mocks.findOwnerReadOnly).not.toHaveBeenCalled();
-    expect(mocks.resolveOwner).not.toHaveBeenCalled();
+    expect(mocks.provisionOwnerForMutation).not.toHaveBeenCalled();
     expect(mocks.getFinisherOffer).not.toHaveBeenCalled();
     expect(mocks.syncFinisher).not.toHaveBeenCalled();
   });
@@ -137,7 +137,7 @@ describe("Finisher route during the production write pause", () => {
     expect(await response.json()).toMatchObject({
       code: "PRODUCTION_WRITE_PAUSED",
     });
-    expect(mocks.resolveOwner).not.toHaveBeenCalled();
+    expect(mocks.provisionOwnerForMutation).not.toHaveBeenCalled();
     expect(mocks.syncFinisher).not.toHaveBeenCalled();
   });
 });

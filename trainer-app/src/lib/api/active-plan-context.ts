@@ -7,7 +7,7 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { isSupportedPlanType } from "@/lib/plan-types";
-import { resolveOwner } from "./workout-context";
+import { findOwnerReadOnly } from "./workout-context";
 
 const activeMesocycleInclude = {
   macroCycle: true,
@@ -301,7 +301,10 @@ export async function resolveActivePlanContext(
 }
 
 export async function resolveConfiguredActivePlanContext(): Promise<ActivePlanContextResult> {
-  const owner = await resolveOwner();
+  const owner = await findOwnerReadOnly();
+  if (!owner) {
+    throw new Error("ACTIVE_PLAN_OWNER_NOT_READY");
+  }
   return resolveActivePlanContext(owner.id);
 }
 

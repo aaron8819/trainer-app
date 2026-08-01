@@ -22,8 +22,8 @@ function parseInteger(value: string | boolean | undefined): number | undefined {
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const args = parseArgs(argv);
-  const env = loadAuditEnv(argv, { allowWrite: true });
   const apply = parseBooleanFlag(args.apply);
+  const env = loadAuditEnv(argv, { allowWrite: true, writeRequested: apply });
 
   const [
     { resolveWorkoutAuditIdentity },

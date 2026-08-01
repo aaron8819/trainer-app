@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import { getBonusSuggestions } from "@/lib/api/bonus-suggestions";
 import { getCloseoutSuggestions } from "@/lib/api/closeout-suggestions";
 import { isCloseoutSession } from "@/lib/session-semantics/closeout-classifier";
@@ -17,7 +17,8 @@ export async function GET(
     return NextResponse.json({ error: "Missing workout id" }, { status: 400 });
   }
 
-  const owner = await resolveOwner();
+  const owner = await findOwnerReadOnly();
+  if (!owner) return NextResponse.json({ error: "User not found" }, { status: 404 });
   const workout = await prisma.workout.findFirst({
     where: {
       id: resolvedParams.id,

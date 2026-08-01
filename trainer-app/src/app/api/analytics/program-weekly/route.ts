@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { resolveOwner } from "@/lib/api/workout-context";
+import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import { loadWeeklyProgramInputs } from "@/lib/api/weekly-program";
 import { analyzeWeeklyProgram } from "@/lib/engine/weekly-program-analysis";
 
@@ -16,7 +16,7 @@ function parseTemplateIds(searchParams: URLSearchParams): string[] | undefined {
 }
 
 export async function GET(request: Request) {
-  const user = await resolveOwner();
+  const user = await findOwnerReadOnly();
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }

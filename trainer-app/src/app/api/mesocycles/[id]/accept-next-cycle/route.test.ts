@@ -8,12 +8,12 @@ afterEach(() => {
 });
 
 const mocks = vi.hoisted(() => {
-  const resolveOwner = vi.fn();
+  const provisionOwnerForMutation = vi.fn();
   const mesocycleFindFirst = vi.fn();
   const acceptMesocycleHandoff = vi.fn();
 
   return {
-    resolveOwner,
+    provisionOwnerForMutation,
     mesocycleFindFirst,
     acceptMesocycleHandoff,
     prisma: {
@@ -25,7 +25,7 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: (...args: unknown[]) => mocks.resolveOwner(...args),
+  provisionOwnerForMutation: (...args: unknown[]) => mocks.provisionOwnerForMutation(...args),
 }));
 
 vi.mock("@/lib/db/prisma", () => ({
@@ -42,7 +42,7 @@ describe("POST /api/mesocycles/[id]/accept-next-cycle", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     delete process.env.TRAINER_WRITE_PAUSE;
-    mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+    mocks.provisionOwnerForMutation.mockResolvedValue({ id: "user-1" });
   });
 
   it("returns 503 before owner resolution or mesocycle acceptance when writes are paused", async () => {
@@ -55,7 +55,7 @@ describe("POST /api/mesocycles/[id]/accept-next-cycle", () => {
     expect(response.status).toBe(503);
     expect(response.headers.get("Retry-After")).toBe("60");
     await expect(response.json()).resolves.toMatchObject({ code: "PRODUCTION_WRITE_PAUSED" });
-    expect(mocks.resolveOwner).not.toHaveBeenCalled();
+    expect(mocks.provisionOwnerForMutation).not.toHaveBeenCalled();
     expect(mocks.mesocycleFindFirst).not.toHaveBeenCalled();
     expect(mocks.acceptMesocycleHandoff).not.toHaveBeenCalled();
   });

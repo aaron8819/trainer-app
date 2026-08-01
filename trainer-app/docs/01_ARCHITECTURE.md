@@ -51,7 +51,9 @@ This doc covers:
 - Persistence and runtime identity model
 
 Invariants:
-- Runtime identity is owner-scoped via `resolveOwner()`.
+- Runtime identity is owner-scoped. Read surfaces use `findOwnerReadOnly()` and never provision;
+  classified mutations use `provisionOwnerForMutation(operation)` only after their route-level
+  write gate.
 - App routes and API routes are the only external app surface.
 - Engine logic is pure/domain-focused under `src/lib/engine`; DB access lives in API/orchestration.
 - Mesocycle lifecycle ownership is split across lifecycle math/state, handoff, review, setup, and slot-runtime seams under `src/lib/api`.
@@ -73,9 +75,13 @@ Sources of truth:
 6. Data layer: Prisma models and migrations under `prisma/` and client setup in `src/lib/db/prisma.ts`.
 
 ## Single-user local-first behavior
-- `resolveOwner()` upserts a deterministic owner user, using `OWNER_EMAIL` or fallback `owner@local`.
-- `RUNTIME_MODE` defaults to `single_user_local`; current behavior is owner-scoped upsert for runtime data access.
-- All major pages and API flows resolve the owner before loading/writing data.
+- `OWNER_EMAIL`, or fallback `owner@local`, identifies the deterministic owner.
+- `findOwnerReadOnly()` performs only a lookup. Pages and read handlers return an explicit
+  missing-owner state, redirect, or `404`; a read must never provision the owner.
+- `provisionOwnerForMutation(operation)` is the sole runtime owner-provisioning seam. It checks
+  the central production write pause before any Prisma access and is used only by classified
+  mutation handlers after the matching route-level gate.
+- `RUNTIME_MODE` defaults to `single_user_local`; identity remains owner-scoped in every mode.
 
 ## App surface
 - UI pages are defined in `src/app/**/page.tsx` (dashboard, onboarding, workout/log detail, analytics, templates, library, settings, program, mesocycle review/setup).
@@ -83,7 +89,9 @@ Sources of truth:
 
 ## Data and control flow (high level)
 1. UI calls API routes.
-2. API routes validate input, resolve owner, and call orchestration helpers in `src/lib/api`.
+2. Read routes look up the owner without mutation. Mutation routes check the production write
+   gate before parsing input or accessing Prisma, then provision the owner and call orchestration
+   helpers in `src/lib/api`.
 3. Orchestration loads context from Prisma and invokes engine functions.
 4. Engine returns deterministic plan/rationale outputs.
 5. API persists workout/log changes and returns response payloads.

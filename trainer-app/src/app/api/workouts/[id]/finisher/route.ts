@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { findOwnerReadOnly, resolveOwner } from "@/lib/api/workout-context";
+import {
+  findOwnerReadOnly,
+  provisionOwnerForMutation,
+} from "@/lib/api/workout-context";
 import {
   createFinisherOffer,
   declineFinisherOffer,
@@ -33,19 +36,24 @@ function errorResponse(error: unknown) {
   throw error;
 }
 
-async function resolveContext(
-  params: Promise<{ id: string }>,
-  mode: "read" | "write",
-) {
+async function resolveReadContext(params: Promise<{ id: string }>) {
   const resolvedParams = await params;
   if (!resolvedParams?.id) {
     throw new FinisherServiceError("MISSING_WORKOUT_ID", 400);
   }
-  const owner =
-    mode === "read" ? await findOwnerReadOnly() : await resolveOwner();
+  const owner = await findOwnerReadOnly();
   if (!owner) {
     throw new FinisherServiceError("WORKOUT_NOT_FOUND", 404);
   }
+  return { workoutId: resolvedParams.id, userId: owner.id };
+}
+
+async function resolveWriteContext(params: Promise<{ id: string }>) {
+  const resolvedParams = await params;
+  if (!resolvedParams?.id) {
+    throw new FinisherServiceError("MISSING_WORKOUT_ID", 400);
+  }
+  const owner = await provisionOwnerForMutation("finisher_execution");
   return { workoutId: resolvedParams.id, userId: owner.id };
 }
 
@@ -57,7 +65,7 @@ export async function GET(
   if (unavailable) return unavailable;
 
   try {
-    const context = await resolveContext(params, "read");
+    const context = await resolveReadContext(params);
     return NextResponse.json(await getFinisherOffer(context));
   } catch (error) {
     return errorResponse(error);
@@ -87,7 +95,7 @@ export async function POST(
   }
 
   try {
-    const context = await resolveContext(params, "write");
+    const context = await resolveWriteContext(params);
     const action = parsed.data;
     switch (action.action) {
       case "offer":

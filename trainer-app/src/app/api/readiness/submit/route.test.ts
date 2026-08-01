@@ -8,13 +8,13 @@ afterEach(() => {
 });
 
 const mocks = vi.hoisted(() => {
-  const resolveOwner = vi.fn();
+  const provisionOwnerForMutation = vi.fn();
   const computePerformanceSignals = vi.fn();
   const computeFatigueScore = vi.fn();
   const readinessSignalCreate = vi.fn();
 
   return {
-    resolveOwner,
+    provisionOwnerForMutation,
     computePerformanceSignals,
     computeFatigueScore,
     readinessSignalCreate,
@@ -27,7 +27,7 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: (...args: unknown[]) => mocks.resolveOwner(...args),
+  provisionOwnerForMutation: (...args: unknown[]) => mocks.provisionOwnerForMutation(...args),
 }));
 
 vi.mock("@/lib/api/readiness", () => ({
@@ -48,7 +48,7 @@ describe("POST /api/readiness/submit", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     delete process.env.TRAINER_WRITE_PAUSE;
-    mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+    mocks.provisionOwnerForMutation.mockResolvedValue({ id: "user-1" });
     mocks.computePerformanceSignals.mockResolvedValue({
       rpeDeviation: 0.25,
       stallCount: 1,
@@ -76,7 +76,7 @@ describe("POST /api/readiness/submit", () => {
     expect(response.status).toBe(503);
     expect(response.headers.get("Retry-After")).toBe("60");
     await expect(response.json()).resolves.toMatchObject({ code: "PRODUCTION_WRITE_PAUSED" });
-    expect(mocks.resolveOwner).not.toHaveBeenCalled();
+    expect(mocks.provisionOwnerForMutation).not.toHaveBeenCalled();
     expect(mocks.computePerformanceSignals).not.toHaveBeenCalled();
     expect(mocks.readinessSignalCreate).not.toHaveBeenCalled();
   });

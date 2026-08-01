@@ -1074,10 +1074,16 @@ backup, and smoke-test evidence is complete.
 
 - Server-only variable: `TRAINER_WRITE_PAUSE` (never prefix it with `NEXT_PUBLIC_`).
 - Exact paused value: `enabled`.
-- Missing, empty, `disabled`, `false`, `1`, and every other value mean writes are enabled.
+- In the application runtime, only exact `enabled` pauses writes; all other values preserve the
+  ordinary enabled state. Production-capable operational commands are stricter: a remote write
+  requires an explicitly loaded value of exact `enabled` or exact `disabled`, and missing or
+  ambiguous pause evidence fails closed before database-dependent loading.
 - The app gate applies to all classified HTTP mutations.
+- Read pages and handlers use non-provisioning owner lookup; owner provisioning is itself gated as
+  a mutation and cannot run during the pause.
 - Rollout tooling applies the pause to remote writes only. Local/disposable writes and remote dry
-  runs remain available.
+  runs remain available. Every registered production-capable seed, studio, backfill, repair,
+  lifecycle, principal, administration, and migration command must use the target-aware boundary.
 - The gate is process environment state. It is not stored in the database and does not connect to
   the database to determine status.
 
@@ -1098,11 +1104,16 @@ The command exits zero for either status and never prints environment values or 
 
 ## Activation procedure
 
-1. Set `TRAINER_WRITE_PAUSE=enabled` in the Vercel Production environment variables.
+1. Set `TRAINER_WRITE_PAUSE=enabled` and
+   `TRAINER_WRITE_PAUSE_OPERATION_ID=trainer-write-pause:<vercel-project-id>:<commit-sha>` in the
+   Vercel Production environment variables.
 2. Redeploy the currently verified production commit so the environment change reaches a new
    deployment. Changing a Vercel environment variable does not alter an already-running
    deployment.
-3. Verify the deployed commit SHA is still the expected release commit.
+3. Verify the runtime evidence endpoint reports exact contract version 2, `production`, the
+   expected deployed commit SHA, the authenticated deployment ID, the matching pause-operation
+   ID `trainer-write-pause:<vercel-project-id>:<commit-sha>`, `PAUSED`,
+   `application_all_classified_write_paths`, and enforcement-contract version 2.
 4. Export/download the production variables into the operator-controlled `.env.production`
    file through the established secure process; do not commit or edit that file in the repo.
 5. Run `npm run ops:write-status -- --env-file .env.production` and require `PAUSED`.
@@ -1120,8 +1131,9 @@ Do not begin migrations unless all eight steps pass.
 - Keep users out of active workout execution for the entire write-pause window.
 - Read-only audit modes, migration status, direct endpoint diagnostics, exposure-retirement
   audit, backfill inventory/dry-run modes, and health checks remain available.
-- Remote rollout commands using `--write` and `--confirm-remote-write` fail with
-  `PRODUCTION_WRITE_PAUSED` before their callback imports Prisma or creates a pool.
+- Remote production-capable commands fail closed when pause state is missing or ambiguous, and
+  commands using `--write`, `--apply`, or equivalent write intent fail with
+  `PRODUCTION_WRITE_PAUSED` when paused, before their callback imports Prisma or creates a pool.
 - Mutating workout-audit recovery/reseed modes use the same target classification and require
   `--confirm-remote-write` for remote targets.
 - Repository repair/sync tools with explicit `--write`, `--apply`, or `--execute` modes use the
@@ -1134,10 +1146,11 @@ Do not begin migrations unless all eight steps pass.
 Do not resume until all migrations are applied, the new application deployment is verified,
 the migration-provisioned Finisher catalog is exact, and post-deployment smoke tests pass.
 
-1. Remove `TRAINER_WRITE_PAUSE` or set it to a value other than exact `enabled` in Vercel
-   Production.
+1. Set `TRAINER_WRITE_PAUSE=disabled` in Vercel Production. Do not remove it: operational remote
+   writes require an explicit verified state.
 2. Redeploy the verified production commit.
-3. Verify the deployed commit SHA.
+3. Verify the runtime evidence remains bound to the authenticated deployment, exact commit,
+   production environment, pause-operation ID, and current enforcement-contract versions.
 4. Refresh the operator-controlled environment file, then run
    `npm run ops:write-status -- --env-file .env.production`; require `ENABLED`.
 5. Execute one controlled mutation smoke test.

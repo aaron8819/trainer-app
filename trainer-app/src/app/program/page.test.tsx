@@ -29,7 +29,7 @@ vi.mock("next/link", () => ({
 }));
 
 const mocks = vi.hoisted(() => ({
-  resolveOwner: vi.fn(),
+  findOwnerReadOnly: vi.fn(),
   loadPendingMesocycleHandoff: vi.fn(),
   loadProgramPageData: vi.fn(),
 }));
@@ -150,7 +150,7 @@ const compactVolumeRows: VolumeRow[] = [
 ];
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: (...args: unknown[]) => mocks.resolveOwner(...args),
+  findOwnerReadOnly: (...args: unknown[]) => mocks.findOwnerReadOnly(...args),
 }));
 
 vi.mock("@/lib/api/mesocycle-handoff", () => ({
@@ -207,7 +207,7 @@ vi.mock("@/components/OptionalWeekCompletion", () => ({
 
 describe("ProgramPage", () => {
   beforeEach(() => {
-    mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+    mocks.findOwnerReadOnly.mockResolvedValue({ id: "user-1" });
     mocks.loadPendingMesocycleHandoff.mockResolvedValue(null);
     mocks.loadProgramPageData.mockResolvedValue({
       overview: {

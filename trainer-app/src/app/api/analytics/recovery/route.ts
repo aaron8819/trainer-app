@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { resolveOwner, mapExercises, mapHistory } from "@/lib/api/workout-context";
+import { findOwnerReadOnly, mapExercises, mapHistory } from "@/lib/api/workout-context";
 import { buildMuscleRecoveryMap } from "@/lib/engine/sra";
 import { WorkoutStatus } from "@prisma/client";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     return NextResponse.json(fixture.analytics.recovery);
   }
 
-  const user = await resolveOwner();
+  const user = await findOwnerReadOnly();
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }

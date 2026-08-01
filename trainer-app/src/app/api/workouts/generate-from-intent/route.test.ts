@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 
 const mocks = vi.hoisted(() => {
-  const resolveOwner = vi.fn();
+  const provisionOwnerForMutation = vi.fn();
   const loadActiveMesocycle = vi.fn();
   const loadPendingMesocycleHandoff = vi.fn();
   const loadNextWorkoutContext = vi.fn();
@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => {
   const applyAutoregulation = vi.fn();
 
   return {
-    resolveOwner,
+    provisionOwnerForMutation,
     loadActiveMesocycle,
     loadPendingMesocycleHandoff,
     loadNextWorkoutContext,
@@ -26,7 +26,7 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: (...args: unknown[]) => mocks.resolveOwner(...args),
+  provisionOwnerForMutation: (...args: unknown[]) => mocks.provisionOwnerForMutation(...args),
 }));
 
 vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
@@ -62,7 +62,7 @@ import { POST } from "./route";
 describe("POST /api/workouts/generate-from-intent deload gate", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+    mocks.provisionOwnerForMutation.mockResolvedValue({ id: "user-1" });
     mocks.loadPendingMesocycleHandoff.mockResolvedValue(null);
     mocks.loadActiveMesocycle.mockResolvedValue({
       id: "meso-1",
@@ -113,7 +113,7 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
       }),
     );
     expect(response.status).toBe(400);
-    expect(mocks.resolveOwner).not.toHaveBeenCalled();
+    expect(mocks.provisionOwnerForMutation).not.toHaveBeenCalled();
   });
 
   it("captures readiness-adjusted full truth before applying Short today", () => {

@@ -3,9 +3,9 @@ import { z } from "zod";
 
 export const FINISHER_PROVIDER_EVIDENCE_SCHEMA =
   "trainer-finisher-provider-verification" as const;
-export const FINISHER_PROVIDER_EVIDENCE_VERSION = 1 as const;
+export const FINISHER_PROVIDER_EVIDENCE_VERSION = 2 as const;
 export const FINISHER_PROVIDER_CONTRACT_VERSION = 1 as const;
-export const FINISHER_PROVIDER_TOOL_VERSION = "1.0.0" as const;
+export const FINISHER_PROVIDER_TOOL_VERSION = "2.0.0" as const;
 export const FINISHER_MIGRATION_PATH =
   "trainer-app/prisma/migrations/20260728120000_add_finishers_phase_1/migration.sql" as const;
 export const FINISHER_MIGRATION_GIT_BLOB =
@@ -16,6 +16,8 @@ export const FINISHER_DISPOSABLE_WORKFLOW =
 export const FINISHER_DISPOSABLE_ARTIFACT =
   "finisher-disposable-evidence" as const;
 export const PROVIDER_EVIDENCE_MAX_AGE_MINUTES = 30;
+export const FINISHER_PITR_ROLLOUT_COVERAGE_MINUTES =
+  PROVIDER_EVIDENCE_MAX_AGE_MINUTES;
 
 const fullSha = z.string().regex(/^[0-9a-f]{40}$/);
 const sha256 = z.string().regex(/^[0-9a-f]{64}$/);
@@ -122,32 +124,41 @@ const disposableSchema = disposableEvidenceSchema.extend({
   provenance: z.literal("github_authenticated_actions_artifact"),
 }).strict();
 
-const recoveryPointSchema = z
+const recoverySchema = z
   .object({
     provider: z.literal("supabase"),
     authenticated: z.literal(true),
     organizationId: nonEmpty,
     projectRef: z.string().regex(/^[a-z0-9]{20}$/),
     database: z.literal(FINISHER_PRODUCTION_DATABASE),
-    creationCapability: z.enum([
-      "provider_operation",
-      "unavailable_no_authoritative_creation_api",
-    ]),
-    creationAuthorizedAt: timestamp.nullable(),
-    operationId: nonEmpty.nullable(),
-    resourceId: nonEmpty.nullable(),
-    state: z.enum(["COMPLETED", "PENDING", "FAILED", "UNAVAILABLE"]),
-    recoveryRequirement: z.enum([
-      "fresh_completed_physical_backup",
-      "pitr_window_covers_checkpoint",
-      "unproven",
-    ]),
-    checkpointAt: timestamp.nullable(),
-    providerCreatedAt: timestamp.nullable(),
+    pitrEnabled: z.boolean(),
+    walgEnabled: z.boolean(),
+    earliestRecoveryAt: timestamp.nullable(),
+    latestRecoveryAt: timestamp.nullable(),
+    requiredRecoveryAt: timestamp,
+    retentionMarginMinutes: z.number().int().nonnegative().nullable(),
+    minimumRolloutCoverageMinutes: z.literal(
+      FINISHER_PITR_ROLLOUT_COVERAGE_MINUTES,
+    ),
+    coversRequiredRecoveryAt: z.boolean(),
+    coversRollout: z.boolean(),
+    latestDailyBackupAt: timestamp.nullable(),
+    dailyBackupAgeSeconds: z.number().int().nonnegative().nullable(),
+    dailyBackupImplication: z
+      .literal("restore_to_daily_snapshot_with_post_snapshot_write_loss")
+      .nullable(),
+    restoreOperation: z.literal(
+      "POST /v1/projects/{ref}/database/backups/restore-pitr",
+    ),
+    restoreTimestampParameter: z.literal("recovery_time_target_unix"),
+    restoreScope: z.literal("entire_project_database"),
+    restoreDowntime: z.literal("project_inaccessible_during_restore"),
+    postRestoreWriteLoss: z.literal(
+      "writes_after_selected_timestamp_are_lost",
+    ),
     verifiedAt: timestamp,
     verified: z.boolean(),
     provenance: z.literal("supabase_authenticated_management_api"),
-    limitation: z.string().max(512).nullable(),
   })
   .strict();
 
@@ -194,7 +205,7 @@ export const finisherProviderVerificationSchema = z
     applicationCompatibilityState: z.literal("compatible_with_write_boundary"),
     deployment: deploymentSchema,
     disposable: disposableSchema,
-    recoveryPoint: recoveryPointSchema,
+    recovery: recoverySchema,
     writePause: writePauseSchema,
     verifiedAt: timestamp,
     failureDetails: z.array(z.string().max(512)),
@@ -317,25 +328,29 @@ export function assessFinisherProviderVerification(
     evidence.deployment.sourceBranch !== "master" ||
     evidence.writePause.teamId !== evidence.target.vercelTeamId ||
     evidence.writePause.projectId !== evidence.target.vercelProjectId ||
-    evidence.recoveryPoint.organizationId !== evidence.target.supabaseOrganizationId ||
-    evidence.recoveryPoint.projectRef !== evidence.target.supabaseProjectRef ||
-    evidence.recoveryPoint.database !== evidence.target.database
+    evidence.recovery.organizationId !== evidence.target.supabaseOrganizationId ||
+    evidence.recovery.projectRef !== evidence.target.supabaseProjectRef ||
+    evidence.recovery.database !== evidence.target.database
   ) {
     reasons.push("provider_evidence_internal_target_conflict");
   }
-  if (!evidence.recoveryPoint.verified) {
-    reasons.push("provider_recovery_point_unverified");
+  if (!evidence.recovery.pitrEnabled) {
+    reasons.push("provider_pitr_disabled");
   }
-  if (evidence.recoveryPoint.creationCapability !== "provider_operation") {
-    reasons.push("provider_recovery_point_creation_capability_unavailable");
+  if (!evidence.recovery.walgEnabled) {
+    reasons.push("provider_pitr_walg_unavailable");
   }
-  if (
-    evidence.recoveryPoint.operationId === null ||
-    evidence.recoveryPoint.resourceId === null ||
-    evidence.recoveryPoint.state !== "COMPLETED" ||
-    evidence.recoveryPoint.recoveryRequirement === "unproven"
-  ) {
-    reasons.push("provider_recovery_point_incomplete");
+  if (!evidence.recovery.coversRequiredRecoveryAt) {
+    reasons.push("provider_pitr_window_missing_required_time");
+  }
+  if (!evidence.recovery.coversRollout) {
+    reasons.push("provider_pitr_window_expires_during_rollout");
+  }
+  if (!evidence.recovery.verified) {
+    reasons.push("provider_pitr_coverage_unverified");
+  }
+  if (evidence.recovery.requiredRecoveryAt !== evidence.writePause.verifiedAt) {
+    reasons.push("provider_evidence_recovery_pause_mismatch");
   }
   if (evidence.writePause.initiationCapability !== "provider_operation") {
     reasons.push("provider_write_pause_initiation_capability_unavailable");
@@ -354,14 +369,11 @@ export function assessFinisherProviderVerification(
     evidence.disposable.startedAt,
     evidence.disposable.completedAt,
     evidence.disposable.verifiedAt,
-    evidence.recoveryPoint.creationAuthorizedAt,
-    evidence.recoveryPoint.providerCreatedAt,
-    evidence.recoveryPoint.checkpointAt,
-    evidence.recoveryPoint.verifiedAt,
     evidence.writePause.initiationAuthorizedAt,
     evidence.writePause.initiationObservedAt,
     evidence.writePause.establishedAt,
     evidence.writePause.verifiedAt,
+    evidence.recovery.verifiedAt,
     evidence.verifiedAt,
   ].filter((value): value is string => value !== null)) {
     if (!fresh(observedAt, expected.evaluatedAt)) {
@@ -373,13 +385,11 @@ export function assessFinisherProviderVerification(
     !ordered(
       evidence.deployment.readyAt,
       evidence.disposable.completedAt,
-      evidence.recoveryPoint.creationAuthorizedAt,
-      evidence.recoveryPoint.providerCreatedAt,
-      evidence.recoveryPoint.verifiedAt,
       evidence.writePause.initiationAuthorizedAt,
       evidence.writePause.initiationObservedAt,
       evidence.writePause.establishedAt,
       evidence.writePause.verifiedAt,
+      evidence.recovery.verifiedAt,
       evidence.verifiedAt,
     )
   ) {
@@ -389,8 +399,8 @@ export function assessFinisherProviderVerification(
     !ordered(
       evidence.deployment.verifiedAt,
       evidence.disposable.verifiedAt,
-      evidence.recoveryPoint.verifiedAt,
       evidence.writePause.verifiedAt,
+      evidence.recovery.verifiedAt,
       evidence.verifiedAt,
     )
   ) {

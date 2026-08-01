@@ -47,7 +47,6 @@
         "ops:migration-status": "tsx scripts/check-migration-status.ts",
         "ops:verify-finisher-providers": "tsx scripts/verify-finisher-providers.ts",
         "ops:generate-finisher-disposable-evidence": "tsx scripts/generate-finisher-disposable-evidence.ts",
-        "ops:request-finisher-recovery-point": "tsx scripts/request-finisher-provider-operation.ts --operation recovery-point",
         "ops:initiate-finisher-write-pause": "tsx scripts/request-finisher-provider-operation.ts --operation write-pause",
         "ops:finisher-principals": "tsx scripts/manage-finisher-principals.ts",
         "ops:preflight-multi-plan": "tsx scripts/check-multi-plan-integrity.ts",

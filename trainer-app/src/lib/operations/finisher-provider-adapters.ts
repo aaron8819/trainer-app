@@ -7,6 +7,7 @@ import {
   disposableEvidenceSchema,
   FINISHER_DISPOSABLE_ARTIFACT,
   FINISHER_DISPOSABLE_WORKFLOW,
+  FINISHER_PITR_ROLLOUT_COVERAGE_MINUTES,
   FINISHER_PRODUCTION_DATABASE,
   type FinisherProviderVerification,
 } from "./finisher-provider-verification";
@@ -59,6 +60,24 @@ function string(value: unknown): string {
     throw new ProviderVerificationError("malformed_provider_response");
   }
   return value;
+}
+
+function boolean(value: unknown): boolean {
+  if (typeof value !== "boolean") {
+    throw new ProviderVerificationError("malformed_provider_response");
+  }
+  return value;
+}
+
+function unixTimestamp(value: unknown): string {
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < 0
+  ) {
+    throw new ProviderVerificationError("malformed_provider_response");
+  }
+  return new Date(value * 1_000).toISOString();
 }
 
 function sourceString(value: unknown): string {
@@ -411,10 +430,11 @@ export async function inspectSupabaseRecoveryCapability(input: {
   organizationId: string;
   projectRef: string;
   database: string;
+  requiredRecoveryAt: string;
   token?: string;
   fetcher?: JsonFetcher;
   now?: () => string;
-}): Promise<FinisherProviderVerification["recoveryPoint"]> {
+}): Promise<FinisherProviderVerification["recovery"]> {
   if (input.database !== FINISHER_PRODUCTION_DATABASE) {
     throw new ProviderVerificationError("wrong_identity");
   }
@@ -435,36 +455,98 @@ export async function inspectSupabaseRecoveryCapability(input: {
   const backupInventory = await request(
     `/v1/projects/${input.projectRef}/database/backups`,
   );
+  const pitrEnabled = boolean(backupInventory.pitr_enabled);
+  const walgEnabled = boolean(backupInventory.walg_enabled);
   const backups = backupInventory.backups;
   if (!Array.isArray(backups)) {
     throw new ProviderVerificationError("malformed_provider_response");
   }
+  const physicalBackupData = object(backupInventory.physical_backup_data);
   const completed = backups
     .map((entry) => object(entry))
-    .filter((entry) => entry.status === "COMPLETED" && entry.id != null)
+    .filter((entry) => entry.status === "COMPLETED")
     .sort((left, right) =>
       Date.parse(string(right.inserted_at)) - Date.parse(string(left.inserted_at)),
     );
-  const latest = completed[0];
+  const latestDailyBackupAt = completed[0]
+    ? timestamp(completed[0].inserted_at)
+    : null;
+  const verifiedAt = input.now?.() ?? new Date().toISOString();
+  const verifiedAtMs = Date.parse(verifiedAt);
+  const requiredRecoveryAtMs = Date.parse(input.requiredRecoveryAt);
+  if (!Number.isFinite(verifiedAtMs) || !Number.isFinite(requiredRecoveryAtMs)) {
+    throw new ProviderVerificationError("malformed_provider_response");
+  }
+  const dailyBackupAgeSeconds = latestDailyBackupAt
+    ? Math.floor((verifiedAtMs - Date.parse(latestDailyBackupAt)) / 1_000)
+    : null;
+  if (dailyBackupAgeSeconds !== null && dailyBackupAgeSeconds < 0) {
+    throw new ProviderVerificationError("malformed_provider_response");
+  }
+  const earliestRecoveryAt = pitrEnabled
+    ? unixTimestamp(physicalBackupData.earliest_physical_backup_date_unix)
+    : null;
+  const latestRecoveryAt = pitrEnabled
+    ? unixTimestamp(physicalBackupData.latest_physical_backup_date_unix)
+    : null;
+  const earliestRecoveryAtMs = earliestRecoveryAt
+    ? Date.parse(earliestRecoveryAt)
+    : null;
+  const latestRecoveryAtMs = latestRecoveryAt
+    ? Date.parse(latestRecoveryAt)
+    : null;
+  const coversRequiredRecoveryAt = Boolean(
+    earliestRecoveryAtMs !== null &&
+      latestRecoveryAtMs !== null &&
+      earliestRecoveryAtMs <= requiredRecoveryAtMs &&
+      requiredRecoveryAtMs <= latestRecoveryAtMs,
+  );
+  const retentionMarginMinutes = earliestRecoveryAtMs === null
+    ? null
+    : Math.max(
+        0,
+        Math.floor((requiredRecoveryAtMs - earliestRecoveryAtMs) / 60_000),
+      );
+  const coversRollout = Boolean(
+    coversRequiredRecoveryAt &&
+      retentionMarginMinutes !== null &&
+      retentionMarginMinutes >= FINISHER_PITR_ROLLOUT_COVERAGE_MINUTES,
+  );
   return {
     provider: "supabase",
     authenticated: true,
     organizationId: input.organizationId,
     projectRef: input.projectRef,
     database: FINISHER_PRODUCTION_DATABASE,
-    creationCapability: "unavailable_no_authoritative_creation_api",
-    creationAuthorizedAt: null,
-    operationId: null,
-    resourceId: latest ? string(String(latest.id)) : null,
-    state: latest ? "COMPLETED" : "UNAVAILABLE",
-    recoveryRequirement: "unproven",
-    checkpointAt: null,
-    providerCreatedAt: latest ? timestamp(latest.inserted_at) : null,
-    verifiedAt: input.now?.() ?? new Date().toISOString(),
-    verified: false,
+    pitrEnabled,
+    walgEnabled,
+    earliestRecoveryAt,
+    latestRecoveryAt,
+    requiredRecoveryAt: new Date(requiredRecoveryAtMs).toISOString(),
+    retentionMarginMinutes,
+    minimumRolloutCoverageMinutes:
+      FINISHER_PITR_ROLLOUT_COVERAGE_MINUTES,
+    coversRequiredRecoveryAt,
+    coversRollout,
+    latestDailyBackupAt: pitrEnabled ? null : latestDailyBackupAt,
+    dailyBackupAgeSeconds: pitrEnabled ? null : dailyBackupAgeSeconds,
+    dailyBackupImplication:
+      !pitrEnabled && latestDailyBackupAt
+        ? "restore_to_daily_snapshot_with_post_snapshot_write_loss"
+        : null,
+    restoreOperation:
+      "POST /v1/projects/{ref}/database/backups/restore-pitr",
+    restoreTimestampParameter: "recovery_time_target_unix",
+    restoreScope: "entire_project_database",
+    restoreDowntime: "project_inaccessible_during_restore",
+    postRestoreWriteLoss: "writes_after_selected_timestamp_are_lost",
+    verifiedAt,
+    verified:
+      pitrEnabled &&
+      walgEnabled &&
+      coversRequiredRecoveryAt &&
+      coversRollout,
     provenance: "supabase_authenticated_management_api",
-    limitation:
-      "Supabase exposes authenticated backup inventory and restore operations, but no authoritative on-demand recovery-point creation operation.",
   };
 }
 
@@ -647,15 +729,27 @@ export async function collectFinisherProviderVerification(input: {
     client: input.githubClient ?? createGhDisposableClient(),
     now,
   });
-  const recoveryPoint = await inspectSupabaseRecoveryCapability({
+  const writePause = await verifyProductionWritePause({ deployment, fetcher, now });
+  const recovery = await inspectSupabaseRecoveryCapability({
     organizationId: input.target.supabaseOrganizationId,
     projectRef: input.target.supabaseProjectRef,
     database: input.target.database,
+    requiredRecoveryAt: writePause.verifiedAt,
     token: input.supabaseToken,
     fetcher,
     now,
   });
-  const writePause = await verifyProductionWritePause({ deployment, fetcher, now });
+  const failureDetails = recovery.verified
+    ? []
+    : !recovery.pitrEnabled
+      ? [
+          recovery.dailyBackupAgeSeconds === null
+            ? "PITR is disabled and no completed daily backup was reported."
+            : `PITR is disabled; the latest daily backup is ${recovery.dailyBackupAgeSeconds} seconds old and restoring it would lose later writes.`,
+        ]
+      : [
+          "The authenticated Supabase PITR window does not cover the paused pre-migration time for the full rollout evidence lifetime.",
+        ];
   return {
     schema: FINISHER_PROVIDER_EVIDENCE_SCHEMA,
     version: FINISHER_PROVIDER_EVIDENCE_VERSION,
@@ -668,9 +762,9 @@ export async function collectFinisherProviderVerification(input: {
     applicationCompatibilityState: "compatible_with_write_boundary",
     deployment,
     disposable,
-    recoveryPoint,
+    recovery,
     writePause,
     verifiedAt: now(),
-    failureDetails: recoveryPoint.limitation ? [recoveryPoint.limitation] : [],
+    failureDetails,
   };
 }

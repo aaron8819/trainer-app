@@ -46,7 +46,7 @@ bounded read-only login to the independently resolved target. Generated JSON is
 a sanitized audit record, never an authorization token or attestation.
 
 Production provisioning currently fails closed until canonical provider-backed
-recovery-point and write-pause verification is available to this command. The
+PITR coverage and write-pause verification is available to this command. The
 command never accepts operator-authored JSON as a replacement for those facts.`;
 
 function readArgument(argv: string[], name: string): string | undefined {
@@ -246,7 +246,7 @@ function validateProvisionAuthorization(options: {
       );
     }
     throw new Error(
-      "PRODUCTION_PRINCIPAL_PROVISIONING_BLOCKED: canonical provider verification for the recovery point and active write pause is unavailable; fail closed without connecting.",
+      "PRODUCTION_PRINCIPAL_PROVISIONING_BLOCKED: canonical provider verification for PITR coverage and the active write pause is unavailable; fail closed without connecting.",
     );
   }
   if (options.argv.includes("--confirm-remote-write")) {

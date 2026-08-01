@@ -2876,9 +2876,11 @@ export function buildMigrationIntegrityReport(input: {
     providerEvidence &&
       providerAssessment?.reasons.every(
         (reason) =>
-          reason === "provider_recovery_point_unverified" ||
-          reason === "provider_recovery_point_creation_capability_unavailable" ||
-          reason === "provider_recovery_point_incomplete" ||
+          reason === "provider_pitr_disabled" ||
+          reason === "provider_pitr_walg_unavailable" ||
+          reason === "provider_pitr_window_missing_required_time" ||
+          reason === "provider_pitr_window_expires_during_rollout" ||
+          reason === "provider_pitr_coverage_unverified" ||
           reason === "provider_write_pause_initiation_capability_unavailable" ||
           reason === "provider_write_pause_initiation_unverified" ||
           reason === "provider_evidence_operational_order_invalid",
@@ -2929,13 +2931,13 @@ export function buildMigrationIntegrityReport(input: {
       providerEvidence.disposable.terminalState.principalTerminalStateVerified &&
       providerEvidence.disposable.terminalState.productionWritePathCoverageVerified,
   );
-  const recoveryPointVerified = Boolean(
+  const pitrRecoveryVerified = Boolean(
     providerBindingValid &&
-      providerEvidence?.recoveryPoint.verified &&
-      providerEvidence.recoveryPoint.creationCapability === "provider_operation" &&
-      providerEvidence.recoveryPoint.state === "COMPLETED" &&
-      providerEvidence.recoveryPoint.operationId &&
-      providerEvidence.recoveryPoint.resourceId,
+      providerEvidence?.recovery.verified &&
+      providerEvidence.recovery.pitrEnabled &&
+      providerEvidence.recovery.walgEnabled &&
+      providerEvidence.recovery.coversRequiredRecoveryAt &&
+      providerEvidence.recovery.coversRollout,
   );
   const writeBoundaryReady = Boolean(
     providerBindingValid &&
@@ -3025,7 +3027,7 @@ export function buildMigrationIntegrityReport(input: {
     requiredApplicationCommitIdentified &&
     applicationCommitBindingVerified &&
     migrationTargetIdentified &&
-    recoveryPointVerified &&
+    pitrRecoveryVerified &&
     writeBoundaryReady &&
     productionDeploymentVerified &&
     providerAssessment?.valid === true &&
@@ -3093,7 +3095,9 @@ export function buildMigrationIntegrityReport(input: {
     blockingReasons.push("repository_head_production_deployment_mismatch");
   }
   if (!productionDeploymentVerified) blockingReasons.push("production_deployment_evidence_invalid_or_stale");
-  if (!recoveryPointVerified) blockingReasons.push("recovery_point_unverified_or_stale");
+  if (!pitrRecoveryVerified) {
+    blockingReasons.push("pitr_recovery_unverified_or_stale");
+  }
   if (!writeBoundaryReady) blockingReasons.push("write_boundary_not_ready_or_stale");
   if (applicationCompatibilityState !== "compatible_with_write_boundary") {
     blockingReasons.push("application_compatibility_unverified");
@@ -3134,7 +3138,7 @@ export function buildMigrationIntegrityReport(input: {
     migrationChecksumsValid,
     schemaPreflightValid,
     dataPreflightValid,
-    recoveryPointVerified,
+    pitrRecoveryVerified,
     writeBoundaryReady,
     applicationCompatibilityState,
     technicalMigrationReady,

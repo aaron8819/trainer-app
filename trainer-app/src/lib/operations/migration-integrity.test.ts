@@ -540,24 +540,33 @@ function fullOperationalVerification(
       verifiedAt: "2026-07-26T17:35:30.000Z",
       provenance: "github_authenticated_actions_artifact",
     },
-    recoveryPoint: {
+    recovery: {
       provider: "supabase",
       authenticated: true,
       organizationId: "org_trainer",
       projectRef: "a".repeat(20),
       database: "postgres",
-      creationCapability: "provider_operation",
-      creationAuthorizedAt: "2026-07-26T17:36:00.000Z",
-      operationId: "backup-operation-1",
-      resourceId: "backup-1",
-      state: "COMPLETED",
-      recoveryRequirement: "fresh_completed_physical_backup",
-      checkpointAt: "2026-07-26T17:36:00.000Z",
-      providerCreatedAt: "2026-07-26T17:37:00.000Z",
-      verifiedAt: "2026-07-26T17:40:00.000Z",
+      pitrEnabled: true,
+      walgEnabled: true,
+      earliestRecoveryAt: "2026-07-26T16:00:00.000Z",
+      latestRecoveryAt: "2026-07-26T17:46:00.000Z",
+      requiredRecoveryAt: "2026-07-26T17:45:00.000Z",
+      retentionMarginMinutes: 105,
+      minimumRolloutCoverageMinutes: 30,
+      coversRequiredRecoveryAt: true,
+      coversRollout: true,
+      latestDailyBackupAt: null,
+      dailyBackupAgeSeconds: null,
+      dailyBackupImplication: null,
+      restoreOperation:
+        "POST /v1/projects/{ref}/database/backups/restore-pitr",
+      restoreTimestampParameter: "recovery_time_target_unix",
+      restoreScope: "entire_project_database",
+      restoreDowntime: "project_inaccessible_during_restore",
+      postRestoreWriteLoss: "writes_after_selected_timestamp_are_lost",
+      verifiedAt: "2026-07-26T17:46:00.000Z",
       verified: true,
       provenance: "supabase_authenticated_management_api",
-      limitation: null,
     },
     writePause: {
       provider: "vercel_application",
@@ -974,18 +983,15 @@ describe("migration integrity", () => {
     const operational = fullOperationalVerification();
     const technicalOnly = report({
       operationalVerification: fullOperationalVerification({
-        recoveryPoint: {
-          ...operational.recoveryPoint,
+        recovery: {
+          ...operational.recovery,
           verified: false,
-          creationCapability: "unavailable_no_authoritative_creation_api",
-          creationAuthorizedAt: null,
-          operationId: null,
-          resourceId: null,
-          state: "UNAVAILABLE",
-          recoveryRequirement: "unproven",
-          checkpointAt: null,
-          providerCreatedAt: null,
-          limitation: "No authoritative creation API.",
+          pitrEnabled: false,
+          earliestRecoveryAt: null,
+          latestRecoveryAt: null,
+          retentionMarginMinutes: null,
+          coversRequiredRecoveryAt: false,
+          coversRollout: false,
         },
       }),
     });
@@ -994,27 +1000,38 @@ describe("migration integrity", () => {
     expect(technicalOnly.migrationAuthorizationReady).toBe(false);
   });
 
-  it("requires canonical live recovery-point verification", () => {
+  it("requires canonical live PITR verification", () => {
     const operational = fullOperationalVerification();
     const result = report({
       operationalVerification: fullOperationalVerification({
-        recoveryPoint: {
-          ...operational.recoveryPoint,
+        recovery: {
+          ...operational.recovery,
           verified: false,
-          creationCapability: "unavailable_no_authoritative_creation_api",
-          creationAuthorizedAt: null,
-          operationId: null,
-          resourceId: null,
-          state: "UNAVAILABLE",
-          recoveryRequirement: "unproven",
-          checkpointAt: null,
-          providerCreatedAt: null,
-          limitation: "No authoritative creation API.",
+          pitrEnabled: false,
+          earliestRecoveryAt: null,
+          latestRecoveryAt: null,
+          retentionMarginMinutes: null,
+          coversRequiredRecoveryAt: false,
+          coversRollout: false,
         },
       }),
     });
     expect(result.technicalMigrationReady).toBe(true);
-    expect(result.recoveryPointVerified).toBe(false);
+    expect(result.pitrRecoveryVerified).toBe(false);
+    expect(result.migrationAuthorizationReady).toBe(false);
+  });
+
+  it("keeps Gate A closed when PITR targets deployment readiness instead of pause verification", () => {
+    const operational = fullOperationalVerification();
+    const result = report({
+      operationalVerification: fullOperationalVerification({
+        recovery: {
+          ...operational.recovery,
+          requiredRecoveryAt: operational.writePause.establishedAt,
+        },
+      }),
+    });
+    expect(result.pitrRecoveryVerified).toBe(false);
     expect(result.migrationAuthorizationReady).toBe(false);
   });
 
@@ -1205,18 +1222,15 @@ describe("migration integrity", () => {
         database: "postgres",
       },
       operationalVerification: fullOperationalVerification({
-        recoveryPoint: {
-          ...operational.recoveryPoint,
+        recovery: {
+          ...operational.recovery,
           verified: false,
-          creationCapability: "unavailable_no_authoritative_creation_api",
-          creationAuthorizedAt: null,
-          operationId: null,
-          resourceId: null,
-          state: "UNAVAILABLE",
-          recoveryRequirement: "unproven",
-          checkpointAt: null,
-          providerCreatedAt: null,
-          limitation: "No authoritative creation API.",
+          pitrEnabled: false,
+          earliestRecoveryAt: null,
+          latestRecoveryAt: null,
+          retentionMarginMinutes: null,
+          coversRequiredRecoveryAt: false,
+          coversRollout: false,
         },
       }),
     });
@@ -1233,7 +1247,7 @@ describe("migration integrity", () => {
       executionAuthorized: false,
     });
     expect(result.blockingReasons).toContain(
-      "provider_recovery_point_creation_capability_unavailable",
+      "provider_pitr_disabled",
     );
   });
 
@@ -1389,8 +1403,8 @@ describe("migration integrity", () => {
       "1. Merge and deploy the reviewed runtime-inert application",
       "2. Record the actual integrated `master` squash SHA, bind it as",
       "3. Obtain canonical commit-bound disposable PostgreSQL verification",
-      "4. Establish and verify the required recovery point.",
-      "5. Activate and verify `TRAINER_WRITE_PAUSE=enabled`",
+      "4. Activate and verify `TRAINER_WRITE_PAUSE=enabled`",
+      "5. Run authenticated Supabase PITR verification",
       "6. Run the immediate live read-only direct-database and migration-status",
       "7. Through the separately authorized database-administrator workflow",
       "8. Verify all three principals exist",

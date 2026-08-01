@@ -8,8 +8,6 @@ import {
   FINISHER_PRODUCTION_DATABASE,
 } from "@/lib/operations/finisher-provider-verification";
 
-type Operation = "recovery-point" | "write-pause";
-
 function readArgument(argv: string[], name: string): string | undefined {
   const inline = argv.find((argument) => argument.startsWith(`${name}=`));
   if (inline) return inline.slice(name.length + 1) || undefined;
@@ -44,9 +42,9 @@ for (let index = 0; index < argv.length; index += 1) {
   seen.add(key);
   if (valueArguments.has(key) && !argument.includes("=")) index += 1;
 }
-const operation = required(argv, "--operation") as Operation;
-if (operation !== "recovery-point" && operation !== "write-pause") {
-  throw new Error("--operation must be recovery-point or write-pause.");
+const operation = required(argv, "--operation");
+if (operation !== "write-pause") {
+  throw new Error("--operation must be write-pause.");
 }
 const commit = required(argv, "--required-application-commit").toLowerCase();
 if (!/^[0-9a-f]{40}$/.test(commit)) {
@@ -77,22 +75,17 @@ if (database !== FINISHER_PRODUCTION_DATABASE) {
     `The expected database must be the explicit production database ${FINISHER_PRODUCTION_DATABASE}.`,
   );
 }
-if (operation === "recovery-point" && !/^[a-z0-9]{20}$/.test(project)) {
-  throw new Error("Recovery-point scope requires one exact Supabase project reference.");
-}
-if (operation === "write-pause") {
-  const contract = JSON.parse(
-    readFileSync(
-      resolve(process.cwd(), "..", "scripts", "codex", "trainer-remote.v1.json"),
-      "utf8",
-    ),
-  ) as { vercel?: { teamId?: string; projectId?: string } };
-  if (
-    contract.vercel?.teamId !== account ||
-    contract.vercel.projectId !== project
-  ) {
-    throw new Error("Write-pause scope does not match the committed Vercel team and project.");
-  }
+const contract = JSON.parse(
+  readFileSync(
+    resolve(process.cwd(), "..", "scripts", "codex", "trainer-remote.v1.json"),
+    "utf8",
+  ),
+) as { vercel?: { teamId?: string; projectId?: string } };
+if (
+  contract.vercel?.teamId !== account ||
+  contract.vercel.projectId !== project
+) {
+  throw new Error("Write-pause scope does not match the committed Vercel team and project.");
 }
 const confirmation = required(argv, "--confirm-provider-operation");
 const expectedConfirmation = `trainer-${operation}:${project}:${commit}`;
@@ -101,9 +94,7 @@ if (!argv.includes("--authorize-provider-mutation") || confirmation !== expected
 }
 
 const limitation =
-  operation === "recovery-point"
-    ? "Supabase exposes authenticated backup inventory and restore operations but no authoritative on-demand recovery-point creation operation."
-    : "Trainer has no provider-native write-only pause operation; application pause activation requires an authorized Vercel environment update and an exact-commit production redeployment.";
+  "Trainer has no provider-native write-only pause operation; application pause activation requires an authorized Vercel environment update and an exact-commit production redeployment.";
 console.error(JSON.stringify({
   schema: "trainer-finisher-provider-operation-capability",
   version: 1,

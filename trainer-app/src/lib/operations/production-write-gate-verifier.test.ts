@@ -20,7 +20,7 @@ describe("production write-gate static verification", () => {
     const result = verifyProductionWriteGate(process.cwd());
     expect(result.failures).toEqual([]);
     expect(result.mutationRoutes).toHaveLength(35);
-    expect(result.operationalCommands).toHaveLength(22);
+    expect(result.operationalCommands).toHaveLength(21);
   });
 
   it("fails closed on an unsupported route declaration", () => {

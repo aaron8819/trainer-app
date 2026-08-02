@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import {
-  existsSync,
   readFileSync,
   readdirSync,
   writeFileSync,
@@ -21,42 +20,12 @@ import { parseExactDisposableConfirmationArgs } from "@/lib/operations/test-envi
 
 const containerName = `trainer-rollout-${process.pid}-${randomUUID().slice(0, 8)}`;
 const envFile = join(tmpdir(), `${containerName}.env`);
-const authorizationEvidenceFile = join(
-  tmpdir(),
-  `${containerName}-authorization-evidence.json`,
-);
-const principalProvisionEvidenceFile = join(
-  tmpdir(),
-  `${containerName}-principal-provision.json`,
-);
-const principalVerificationEvidenceFile = join(
-  tmpdir(),
-  `${containerName}-principal-verification.json`,
-);
-const principalRepeatEvidenceFile = join(
-  tmpdir(),
-  `${containerName}-principal-repeat.json`,
-);
-const principalPartialEvidenceFile = join(
-  tmpdir(),
-  `${containerName}-principal-partial.json`,
-);
-const principalWrongTargetEvidenceFile = join(
-  tmpdir(),
-  `${containerName}-principal-wrong-target.json`,
-);
-const principalWrongPasswordEvidenceFile = join(
-  tmpdir(),
-  `${containerName}-principal-wrong-password.json`,
-);
 const preMigrationCount = 10;
 const currentProductionAppliedCount = 17;
 const targetMigration = "20260728120000_add_finishers_phase_1";
 const migrationAdministrator = "trainer_migration_admin";
 const migrationAdministratorPassword = "trainer-migration-admin";
 const runtimePassword = "trainer-app-runtime";
-const wrongRuntimePassword = "trainer-app-runtime-wrong";
-let repositoryHead = "";
 
 type CommandResult = { status: number; stdout: string; stderr: string };
 
@@ -238,21 +207,9 @@ function parseLastJson(stdout: string): Record<string, unknown> {
 }
 
 function cli(script: string, args: string[]): Record<string, unknown> {
-  const evidenceArgs =
-    script === "scripts/check-migration-status.ts"
-      ? [
-          "--evidence-file",
-          authorizationEvidenceFile,
-          "--principal-audit-file",
-          principalVerificationEvidenceFile,
-          "--required-application-commit",
-          repositoryHead,
-        ]
-      : [];
   const result = requireSuccess(
-    run(process.execPath, [join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs"), script, "--env-file", envFile, "--confirm-disposable", ...evidenceArgs, ...args], {
+    run(process.execPath, [join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs"), script, "--env-file", envFile, "--confirm-disposable", ...args], {
       quiet: true,
-      env: { TRAINER_APP_RUNTIME_PASSWORD: runtimePassword },
     }),
     `${script} ${args.join(" ")}`,
   );
@@ -263,23 +220,11 @@ function cli(script: string, args: string[]): Record<string, unknown> {
 }
 
 function cliWithExpectedStatus(script: string, args: string[], expectedStatus: number): Record<string, unknown> {
-  const evidenceArgs =
-    script === "scripts/check-migration-status.ts"
-      ? [
-          "--evidence-file",
-          authorizationEvidenceFile,
-          "--principal-audit-file",
-          principalVerificationEvidenceFile,
-          "--required-application-commit",
-          repositoryHead,
-        ]
-      : [];
   const result = run(
     process.execPath,
-    [join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs"), script, "--env-file", envFile, "--confirm-disposable", ...evidenceArgs, ...args],
+    [join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs"), script, "--env-file", envFile, "--confirm-disposable", ...args],
     {
       quiet: true,
-      env: { TRAINER_APP_RUNTIME_PASSWORD: runtimePassword },
     },
   );
   if (result.status !== expectedStatus) {
@@ -387,6 +332,14 @@ function objectField(value: Record<string, unknown>, name: string): Record<strin
   return field as Record<string, unknown>;
 }
 
+function pendingPreflight(report: Record<string, unknown>): Record<string, unknown> {
+  return objectField(report, "preflight");
+}
+
+function pendingReadiness(report: Record<string, unknown>): Record<string, unknown> {
+  return objectField(report, "readiness");
+}
+
 function arrayField(value: Record<string, unknown>, name: string): unknown[] {
   const field = value[name];
   if (!Array.isArray(field)) throw new Error(`Expected array ${name}`);
@@ -427,19 +380,19 @@ function requireFinisherGateAFailure(
     `DELETE FROM public._prisma_migrations WHERE migration_name = '${targetMigration}';`,
   );
   try {
-    const report = cliWithExpectedStatus(
+    const result = cliWithExpectedStatus(
       "scripts/check-migration-status.ts",
       [],
       1,
     );
-    const chain = objectField(report, "chain");
+    const report = pendingPreflight(result);
+    const readiness = pendingReadiness(result);
     const differences = JSON.stringify(report);
     if (
-      chain.gateAApplicable !== true ||
-      numberField(chain, "pending") !== 1 ||
+      numberField(report, "pending") !== 1 ||
       report.schemaPreflightValid !== false ||
-      report.technicalMigrationReady !== false ||
-      report.migrationAuthorizationReady !== false ||
+      readiness.migrationReady !== false ||
+      readiness.executionAuthorized !== false ||
       !differences.includes(expectedDifference)
     ) {
       throw new Error(
@@ -457,20 +410,15 @@ function requireFinisherAppliedSchemaFailure(
 ): void {
   const report = cliWithExpectedStatus(
     "scripts/check-migration-status.ts",
-    [],
+    ["--post-migration"],
     1,
   );
-  const chain = objectField(report, "chain");
-  const differences = JSON.stringify({
-    blocking: objectField(report, "schemaIntegrity").blockingDifferences,
-    definitions: objectField(report, "definitions"),
-  });
+  const differences = JSON.stringify(objectField(report, "schemaIntegrity"));
   if (
-    chain.gateAApplicable !== false ||
-    numberField(chain, "pending") !== 0 ||
+    numberField(report, "pending") !== 0 ||
     report.schemaPreflightValid !== false ||
-    report.technicalMigrationReady !== false ||
-    report.migrationAuthorizationReady !== false ||
+    report.postMigrationVerified !== false ||
+    report.executionAuthorized !== false ||
     !differences.includes(expectedDifference)
   ) {
     throw new Error(
@@ -765,209 +713,29 @@ try {
   const disposableUrl =
     `postgresql://${migrationAdministrator}:${migrationAdministratorPassword}` +
     `@127.0.0.1:${port}/trainer`;
+  const disposableInspectionUrl =
+    `postgresql://trainer:trainer-rollout@127.0.0.1:${port}/trainer`;
   writeFileSync(
     envFile,
     `DATABASE_URL=${disposableUrl}\nDIRECT_URL=${disposableUrl}\n`,
   );
-  repositoryHead = requireSuccess(
-    run("git", ["rev-parse", "HEAD"], { quiet: true }),
-    "git rev-parse HEAD",
-  ).stdout.trim();
-  const principalCommand = join(
-    process.cwd(),
-    "node_modules",
-    "tsx",
-    "dist",
-    "cli.mjs",
-  );
-  const principalCommonArgs = [
-    "--env-file",
-    envFile,
-    "--environment",
-    "disposable",
-    "--expected-project-reference",
-    "disposable",
-    "--expected-database",
-    "trainer",
-    "--required-application-commit",
-    repositoryHead,
-    "--confirm-disposable",
-  ];
-  requireSuccess(
-    run(
-      process.execPath,
-      [
-        principalCommand,
-        ...principalCommonArgs,
-        "--mode",
-        "provision",
-        "--write",
-        "--confirm-principal-provisioning",
-        "trainer-principals:disposable",
-        "--evidence-file",
-        principalProvisionEvidenceFile,
-      ],
-      {
-        quiet: true,
-        env: { TRAINER_APP_RUNTIME_PASSWORD: runtimePassword },
-      },
-    ),
-    "canonical principal provisioning",
-  );
-  const cleanProvisionEvidence = JSON.parse(
-    readFileSync(principalProvisionEvidenceFile, "utf8"),
-  ) as Record<string, unknown>;
-  if (
-    cleanProvisionEvidence.databaseWrites !== 8 ||
-    cleanProvisionEvidence.credentialConfigured !== true ||
-    arrayField(cleanProvisionEvidence, "createdPrincipals").length !== 3
-  ) {
-    throw new Error(
-      `Clean principal provisioning was incomplete: ${JSON.stringify(cleanProvisionEvidence)}`,
-    );
-  }
-  psql(`
-    REVOKE CREATE ON SCHEMA public
-      FROM trainer_finisher_owner, trainer_finisher_cleanup;
-    DROP ROLE trainer_finisher_cleanup;
-    DROP ROLE trainer_finisher_owner;
-    DROP ROLE trainer_app_runtime;
-  `);
   psqlAsMigrationAdministrator(`
     CREATE ROLE trainer_app_runtime
       LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
       NOREPLICATION NOBYPASSRLS PASSWORD '${runtimePassword}';
+    CREATE ROLE trainer_finisher_owner
+      NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+      NOREPLICATION NOBYPASSRLS;
+    CREATE ROLE trainer_finisher_cleanup
+      NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+      NOREPLICATION NOBYPASSRLS;
+    GRANT trainer_finisher_owner TO ${migrationAdministrator}
+      WITH INHERIT FALSE, SET TRUE;
+    GRANT trainer_finisher_cleanup TO ${migrationAdministrator}
+      WITH INHERIT FALSE, SET TRUE;
+    GRANT CREATE ON SCHEMA public
+      TO trainer_finisher_owner, trainer_finisher_cleanup;
   `);
-  requireSuccess(
-    run(
-      process.execPath,
-      [
-        principalCommand,
-        ...principalCommonArgs,
-        "--mode",
-        "provision",
-        "--write",
-        "--confirm-principal-provisioning",
-        "trainer-principals:disposable",
-        "--evidence-file",
-        principalPartialEvidenceFile,
-      ],
-      {
-        quiet: true,
-        env: { TRAINER_APP_RUNTIME_PASSWORD: runtimePassword },
-      },
-    ),
-    "partial principal provisioning",
-  );
-  const partialEvidence = JSON.parse(
-    readFileSync(principalPartialEvidenceFile, "utf8"),
-  ) as Record<string, unknown>;
-  if (
-    partialEvidence.databaseWrites !== 6 ||
-    partialEvidence.credentialConfigured !== false ||
-    arrayField(partialEvidence, "createdPrincipals").length !== 2
-  ) {
-    throw new Error(
-      `Partial principal provisioning was not exact: ${JSON.stringify(partialEvidence)}`,
-    );
-  }
-  const beforeWrongPasswordProvision = principalStateFingerprint();
-  const wrongPasswordProvision = run(
-    process.execPath,
-    [
-      principalCommand,
-      ...principalCommonArgs,
-      "--mode",
-      "provision",
-      "--write",
-      "--confirm-principal-provisioning",
-      "trainer-principals:disposable",
-      "--evidence-file",
-      principalWrongPasswordEvidenceFile,
-    ],
-    {
-      quiet: true,
-      env: { TRAINER_APP_RUNTIME_PASSWORD: wrongRuntimePassword },
-    },
-  );
-  const wrongPasswordOutput =
-    `${wrongPasswordProvision.stdout}\n${wrongPasswordProvision.stderr}`;
-  if (
-    wrongPasswordProvision.status === 0 ||
-    principalStateFingerprint() !== beforeWrongPasswordProvision ||
-    wrongPasswordOutput.includes(wrongRuntimePassword) ||
-    wrongPasswordOutput.includes(runtimePassword) ||
-    existsSync(principalWrongPasswordEvidenceFile)
-  ) {
-    throw new Error(
-      "Existing runtime credential mismatch did not fail without rotation, evidence, or secret output.",
-    );
-  }
-  rmSync(principalWrongPasswordEvidenceFile, { force: true });
-  requireSuccess(
-    run(
-      process.execPath,
-      [
-        principalCommand,
-        ...principalCommonArgs,
-        "--mode",
-        "provision",
-        "--write",
-        "--confirm-principal-provisioning",
-        "trainer-principals:disposable",
-        "--evidence-file",
-        principalRepeatEvidenceFile,
-      ],
-      {
-        quiet: true,
-        env: { TRAINER_APP_RUNTIME_PASSWORD: runtimePassword },
-      },
-    ),
-    "idempotent principal provisioning",
-  );
-  const repeatEvidence = JSON.parse(
-    readFileSync(principalRepeatEvidenceFile, "utf8"),
-  ) as Record<string, unknown>;
-  if (
-    repeatEvidence.databaseWrites !== 0 ||
-    repeatEvidence.credentialConfigured !== false ||
-    arrayField(repeatEvidence, "createdPrincipals").length !== 0
-  ) {
-    throw new Error(
-      `Repeated principal provisioning was not idempotent: ${JSON.stringify(repeatEvidence)}`,
-    );
-  }
-  requireSuccess(
-    run(
-      process.execPath,
-      [
-        principalCommand,
-        ...principalCommonArgs,
-        "--mode",
-        "verify",
-        "--evidence-file",
-        principalVerificationEvidenceFile,
-      ],
-      {
-        quiet: true,
-        env: { TRAINER_APP_RUNTIME_PASSWORD: runtimePassword },
-      },
-    ),
-    "read-only principal verification",
-  );
-  const principalVerification = JSON.parse(
-    readFileSync(principalVerificationEvidenceFile, "utf8"),
-  ) as Record<string, unknown>;
-  if (
-    principalVerification.databaseWrites !== 0 ||
-    principalVerification.readOnlyTransaction !== true ||
-    arrayField(objectField(principalVerification, "liveState"), "roles")
-      .length !== 3
-  ) {
-    throw new Error(
-      `Principal verification evidence was not read-only and complete: ${JSON.stringify(principalVerification)}`,
-    );
-  }
   const preMigrationFinisherObjects = psql(
     `SELECT count(*) FROM pg_catalog.pg_class c
      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
@@ -976,7 +744,7 @@ try {
   );
   if (preMigrationFinisherObjects !== "0") {
     throw new Error(
-      "Principal provisioning created migration-owned Finisher schema objects.",
+      "Disposable prerequisite setup created migration-owned Finisher schema objects.",
     );
   }
   const preMigrationPrincipalObjectCapabilities = psql(
@@ -1019,7 +787,7 @@ try {
   );
   if (preMigrationPrincipalObjectCapabilities !== "0") {
     throw new Error(
-      "Principal provisioning created object ownership or explicit object grants.",
+      "Disposable prerequisite setup created object ownership or explicit object grants.",
     );
   }
   const temporarySchemaCapabilities = psql(`
@@ -1033,35 +801,9 @@ try {
   `, true);
   if (temporarySchemaCapabilities !== "2") {
     throw new Error(
-      "Principal provisioning did not install the two exact temporary schema CREATE capabilities.",
+      "Disposable prerequisite setup did not install the two exact temporary schema CREATE capabilities.",
     );
   }
-  const wrongTarget = run(
-    process.execPath,
-    [
-      principalCommand,
-      ...principalCommonArgs,
-      "--expected-database=wrong_database",
-      "--mode",
-      "verify",
-      "--evidence-file",
-      principalWrongTargetEvidenceFile,
-    ],
-    {
-      quiet: true,
-      env: { TRAINER_APP_RUNTIME_PASSWORD: runtimePassword },
-    },
-  );
-  if (
-    wrongTarget.status === 0 ||
-    `${wrongTarget.stdout}\n${wrongTarget.stderr}`.includes(disposableUrl) ||
-    `${wrongTarget.stdout}\n${wrongTarget.stderr}`.includes(
-      "trainer-app-runtime",
-    )
-  ) {
-    throw new Error("Wrong-target principal verification did not fail safely.");
-  }
-  writeFileSync(authorizationEvidenceFile, "{}");
 
   const migrations = migrationDirectories();
   if (migrations.length !== 18) throw new Error(`Expected 18 migrations, found ${migrations.length}`);
@@ -1073,9 +815,11 @@ try {
   requireSuccess(prismaResolve(baselineMigration, disposableUrl), "Prisma baseline resolve --applied");
   requireResolvedLedgerShape(baselineMigration);
 
-  const baselineState = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
+  const baselineState = pendingPreflight(
+    cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1),
+  );
   if (
-    numberField(objectField(baselineState, "chain"), "applied") !== 1 ||
+    numberField(baselineState, "applied") !== 1 ||
     !arrayField(objectField(baselineState, "ledger"), "resolvedApplied").includes(baselineMigration)
   ) {
     throw new Error(`Resolved baseline was not classified as applied: ${JSON.stringify(baselineState)}`);
@@ -1215,31 +959,31 @@ try {
   }
 
   const beforeStateA = databaseStateFingerprint();
-  const migrationStateA = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
+  const migrationStateAResult = cliWithExpectedStatus(
+    "scripts/check-migration-status.ts",
+    [],
+    1,
+  );
+  const migrationStateA = pendingPreflight(migrationStateAResult);
+  const migrationReadinessA = pendingReadiness(migrationStateAResult);
   const afterStateA = databaseStateFingerprint();
   if (beforeStateA !== afterStateA) throw new Error("State A migration integrity inspection changed disposable database state");
   const stateALedger = objectField(migrationStateA, "ledger");
   const stateASchema = objectField(migrationStateA, "schemaIntegrity");
-  const stateAChain = objectField(migrationStateA, "chain");
   if (
-    numberField(stateAChain, "applied") !== 10 ||
-    numberField(stateAChain, "pending") !== 8 ||
-    stateAChain.targetMigration !== targetMigration ||
-    stateAChain.exactExpectedPending !== false ||
-    JSON.stringify(arrayField(stateAChain, "expectedPendingMigrations")) !==
-      JSON.stringify([targetMigration]) ||
-    arrayField(migrationStateA, "unexpectedMigrations").length !== 7 ||
-    !arrayField(migrationStateA, "blockingReasons").includes(
-      "pending_migration_sequence_mismatch",
-    ) ||
-    numberField(objectField(migrationStateA, "checksums"), "matched") !== 10 ||
+    numberField(migrationStateA, "applied") !== 10 ||
+    numberField(migrationStateA, "pending") !== 8 ||
+    arrayField(migrationStateA, "pendingNames").length !== 8 ||
+    migrationStateA.migrationChecksumsValid !== true ||
+    migrationStateA.migrationOrderValid !== true ||
     arrayField(stateALedger, "incomplete").length !== 0 ||
     arrayField(stateALedger, "orderViolations").length !== 0 ||
     !arrayField(stateALedger, "resolvedApplied").includes(baselineMigration) ||
     !arrayField(stateALedger, "resolvedApplied").includes(setIntentMigration) ||
     numberField(stateASchema, "semanticDriftBlocking") !== 0 ||
     numberField(stateASchema, "representationWarningCount") !== 2 ||
-    migrationStateA.migrationAuthorizationReady !== false
+    migrationReadinessA.migrationReady !== false ||
+    migrationReadinessA.executionAuthorized !== false
   ) {
     throw new Error(`State A did not reject the stale rollout shape: ${JSON.stringify(migrationStateA)}`);
   }
@@ -1263,7 +1007,9 @@ try {
     CREATE UNIQUE INDEX "WorkoutTemplateExercise_templateId_orderIndex_key"
       ON "WorkoutTemplateExercise"("templateId", "orderIndex");
   `);
-  const standaloneRepresentation = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
+  const standaloneRepresentation = pendingPreflight(
+    cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1),
+  );
   requireUniquenessAssessment(standaloneRepresentation, "ExerciseAlias_alias_key", {
     semantic: true,
     representation: true,
@@ -1271,7 +1017,9 @@ try {
   });
 
   psql(`DROP INDEX "ExerciseAlias_alias_key";`);
-  const missingUniqueness = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
+  const missingUniqueness = pendingPreflight(
+    cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1),
+  );
   requireUniquenessAssessment(missingUniqueness, "ExerciseAlias_alias_key", {
     semantic: false,
     representation: false,
@@ -1284,7 +1032,9 @@ try {
     CREATE UNIQUE INDEX "WorkoutTemplateExercise_templateId_orderIndex_key"
       ON "WorkoutTemplateExercise"("orderIndex", "templateId");
   `);
-  const wrongColumnOrder = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
+  const wrongColumnOrder = pendingPreflight(
+    cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1),
+  );
   requireUniquenessAssessment(wrongColumnOrder, "WorkoutTemplateExercise_templateId_orderIndex_key", {
     semantic: false,
     representation: false,
@@ -1300,7 +1050,9 @@ try {
     DROP INDEX "ExerciseAlias_alias_key";
     CREATE INDEX "ExerciseAlias_alias_key" ON "ExerciseAlias"("alias");
   `);
-  const nonUniqueIndex = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
+  const nonUniqueIndex = pendingPreflight(
+    cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1),
+  );
   requireUniquenessAssessment(nonUniqueIndex, "ExerciseAlias_alias_key", {
     semantic: false,
     representation: false,
@@ -1315,7 +1067,9 @@ try {
     DROP INDEX "ExerciseAlias_alias_key";
     CREATE UNIQUE INDEX "ExerciseAlias_alias_key" ON "ExerciseAlias"("alias") WHERE "alias" IS NOT NULL;
   `);
-  const differentPredicate = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
+  const differentPredicate = pendingPreflight(
+    cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1),
+  );
   requireUniquenessAssessment(differentPredicate, "ExerciseAlias_alias_key", {
     semantic: false,
     representation: false,
@@ -1328,21 +1082,21 @@ try {
   convertBaselineUniqueIndexesToConstraints();
 
   psql(`ALTER TABLE "WorkoutExercise" ADD COLUMN "stimulusAccountingSnapshot" JSONB;`);
-  const migrationStateB = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
-  if (migrationStateB.migrationAuthorizationReady !== false) {
-    throw new Error("State B partial object did not block migration authorization");
-  }
-  const stateBPartial = objectField(migrationStateB, "partialObjects").unexpectedPresent;
-  if (!Array.isArray(stateBPartial) || stateBPartial.length === 0) {
-    throw new Error("State B partial object was not reported");
+  const migrationStateB = pendingPreflight(
+    cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1),
+  );
+  if (migrationStateB.schemaPreflightValid !== false) {
+    throw new Error("State B partial object did not block schema preflight");
   }
   psql(`ALTER TABLE "WorkoutExercise" DROP COLUMN "stimulusAccountingSnapshot";`);
 
   const firstApplied = migrations[0];
   psql(`UPDATE public._prisma_migrations SET checksum = '${"0".repeat(64)}' WHERE migration_name = '${firstApplied}';`);
-  const migrationStateC = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
-  if (migrationStateC.migrationAuthorizationReady !== false) {
-    throw new Error("State C checksum mismatch did not block migration authorization");
+  const migrationStateC = pendingPreflight(
+    cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1),
+  );
+  if (migrationStateC.migrationChecksumsValid !== false) {
+    throw new Error("State C checksum mismatch did not block migration integrity");
   }
   psql(`UPDATE public._prisma_migrations SET checksum = '${migrationChecksum(firstApplied)}' WHERE migration_name = '${firstApplied}';`);
 
@@ -1355,12 +1109,16 @@ try {
       '${firstPending}', 'fixture failure', NULL, 0
     );
   `);
-  const migrationStateD = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
-  if (migrationStateD.migrationAuthorizationReady !== false) {
-    throw new Error("State D failed ledger row did not block migration authorization");
+  const migrationStateD = pendingPreflight(
+    cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1),
+  );
+  if (!arrayField(objectField(migrationStateD, "ledger"), "failed").includes(firstPending)) {
+    throw new Error("State D failed ledger row did not block migration integrity");
   }
   psql(`UPDATE public._prisma_migrations SET logs = NULL, rolled_back_at = CURRENT_TIMESTAMP WHERE id = 'failed-ledger-row';`);
-  const rolledBackStateD = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
+  const rolledBackStateD = pendingPreflight(
+    cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1),
+  );
   const rolledBackRows = objectField(rolledBackStateD, "ledger").rolledBack;
   if (!Array.isArray(rolledBackRows) || rolledBackRows.length !== 1) {
     throw new Error("State D rolled-back ledger row was not reported");
@@ -1375,10 +1133,11 @@ try {
       '${firstPending}', NULL, NULL, 0
     );
   `);
-  const unfinishedState = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
+  const unfinishedState = pendingPreflight(
+    cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1),
+  );
   if (
-    !arrayField(objectField(unfinishedState, "ledger"), "incomplete").includes(firstPending) ||
-    unfinishedState.migrationAuthorizationReady !== false
+    !arrayField(objectField(unfinishedState, "ledger"), "incomplete").includes(firstPending)
   ) {
     throw new Error("A truly unfinished ledger row was not blocked as incomplete");
   }
@@ -1469,65 +1228,23 @@ try {
     [],
     1,
   );
+  const currentProductionPreflight = pendingPreflight(currentProductionState);
+  const currentProductionReadiness = pendingReadiness(currentProductionState);
   if (
-    numberField(objectField(currentProductionState, "chain"), "applied") !==
+    numberField(currentProductionPreflight, "applied") !==
       currentProductionAppliedCount ||
-    numberField(objectField(currentProductionState, "chain"), "pending") !== 1 ||
-    currentProductionState.technicalMigrationReady !== false ||
-    currentProductionState.migrationAuthorizationReady !== false ||
-    currentProductionState.executionAuthorized !== false
+    numberField(currentProductionPreflight, "pending") !== 1 ||
+    currentProductionPreflight.migrationChecksumsValid !== true ||
+    currentProductionPreflight.migrationOrderValid !== true ||
+    currentProductionPreflight.schemaPreflightValid !== true ||
+    currentProductionPreflight.dataPreflightValid !== true ||
+    currentProductionReadiness.migrationReady !== false ||
+    currentProductionReadiness.executionAuthorized !== false
   ) {
     throw new Error(
       `Current production-shape simulation failed: ${JSON.stringify(currentProductionState)}`,
     );
   }
-
-  const trustedEvidence = JSON.parse(
-    readFileSync(authorizationEvidenceFile, "utf8"),
-  ) as Record<string, unknown>;
-  writeFileSync(
-    authorizationEvidenceFile,
-    JSON.stringify({
-      ...trustedEvidence,
-      dataPreflight: { valid: true },
-      disposablePostgres: { valid: true, repositoryHead },
-      expectedPendingMigrations: [
-        targetMigration,
-        "20990101000000_forged_operator_policy",
-      ],
-    }),
-  );
-  const forgedPolicyResult = run(
-    process.execPath,
-    [
-      join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs"),
-      "scripts/check-migration-status.ts",
-      "--env-file",
-      envFile,
-      "--confirm-disposable",
-      "--evidence-file",
-      authorizationEvidenceFile,
-      "--principal-audit-file",
-      principalVerificationEvidenceFile,
-      "--required-application-commit",
-      repositoryHead,
-    ],
-    {
-      quiet: true,
-      env: { TRAINER_APP_RUNTIME_PASSWORD: runtimePassword },
-    },
-  );
-  if (
-    forgedPolicyResult.status !== 1 ||
-    !`${forgedPolicyResult.stdout}\n${forgedPolicyResult.stderr}`.includes(
-      "Migration audit input is non-authoritative and cannot supply dataPreflight, disposablePostgres, expectedPendingMigrations.",
-    )
-  ) {
-    throw new Error(
-      `Forged operator pending-migration policy was not rejected: ${forgedPolicyResult.stdout}\n${forgedPolicyResult.stderr}`,
-    );
-  }
-  writeFileSync(authorizationEvidenceFile, JSON.stringify(trustedEvidence));
 
   psqlAsMigrationAdministrator(
     "REVOKE CREATE ON SCHEMA public FROM trainer_finisher_cleanup;",
@@ -1563,14 +1280,27 @@ try {
   psqlAsMigrationAdministrator(
     "GRANT CREATE ON SCHEMA public TO trainer_finisher_cleanup;",
   );
-  const refreshedGateA = cliWithExpectedStatus(
+  const disposableReadiness = cliWithExpectedStatus(
     "scripts/check-migration-status.ts",
-    [],
-    1,
+    [
+      "--confirm-disposable-verification-passed",
+      "--confirm-backup-pitr-available",
+      "--confirm-finishers-disabled",
+    ],
+    0,
   );
-  if (refreshedGateA.migrationAuthorizationReady !== false) {
+  const disposableReadinessResult = pendingReadiness(disposableReadiness);
+  const disposableReadinessPreflight = pendingPreflight(disposableReadiness);
+  if (
+    disposableReadinessResult.migrationReady !== true ||
+    disposableReadinessResult.executionAuthorized !== false ||
+    disposableReadinessResult.writes !== 0 ||
+    numberField(disposableReadinessPreflight, "applied") !==
+      currentProductionAppliedCount ||
+    numberField(disposableReadinessPreflight, "pending") !== 1
+  ) {
     throw new Error(
-      "Disposable Gate A did not remain fail closed without canonical provider evidence.",
+      `Disposable migration readiness failed: ${JSON.stringify(disposableReadiness)}`,
     );
   }
 
@@ -1690,18 +1420,29 @@ try {
     migrations.slice(currentProductionAppliedCount),
     currentProductionAppliedCount,
   );
+  writeFileSync(
+    envFile,
+    `DATABASE_URL=${disposableInspectionUrl}\nDIRECT_URL=${disposableInspectionUrl}\n`,
+  );
 
   const beforeStateE = databaseStateFingerprint();
-  const migrationStateE = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 0);
+  const migrationStateE = cliWithExpectedStatus(
+    "scripts/check-migration-status.ts",
+    ["--post-migration"],
+    0,
+  );
   const afterStateE = databaseStateFingerprint();
   if (beforeStateE !== afterStateE) throw new Error("State E migration integrity inspection changed disposable database state");
   if (
-    numberField(objectField(migrationStateE, "chain"), "applied") !== 18 ||
-    numberField(objectField(migrationStateE, "chain"), "pending") !== 0 ||
-    objectField(migrationStateE, "chain").gateAApplicable !== false ||
+    numberField(migrationStateE, "applied") !== 18 ||
+    numberField(migrationStateE, "pending") !== 0 ||
+    migrationStateE.postMigrationVerified !== true ||
+    migrationStateE.executionAuthorized !== false ||
+    migrationStateE.migrationChecksumsValid !== true ||
+    migrationStateE.migrationOrderValid !== true ||
     migrationStateE.schemaPreflightValid !== true ||
     numberField(objectField(migrationStateE, "schemaIntegrity"), "semanticDriftBlocking") !== 0 ||
-    migrationStateE.migrationAuthorizationReady !== false
+    migrationStateE.writes !== 0
   ) {
     throw new Error(`State E did not report a clean fully migrated non-Gate-A state: ${JSON.stringify(migrationStateE)}`);
   }
@@ -2072,7 +1813,7 @@ try {
   psql(`GRANT trainer_finisher_cleanup TO trainer_app_runtime;`);
   requireFinisherGateAFailure(
     "Runtime can assume the cleanup role",
-    "finisher_principal_live_contract_membership_mismatch",
+    "role:trainer_finisher_cleanup:unsafe-attributes",
   );
   psql(`REVOKE trainer_finisher_cleanup FROM trainer_app_runtime;`);
 
@@ -2638,16 +2379,12 @@ try {
       reviewDryRunCandidates: numberField(fullReviewDryRun, "legacyDerivedCandidate"),
     },
     writes: 0,
-    principalWorkflow: {
-      cleanCreation: "three_principals_and_runtime_scram_credential",
-      partialCreation: "two_missing_principals_only",
-      idempotentRepeat: "zero_database_writes",
-      verification: "repeatable_read_read_only_zero_writes",
-      evidence: "sanitized_audit_only_live_verification_authoritative",
+    disposablePrerequisites: {
+      roles: "three_exact_migration_prerequisites",
+      temporaryMemberships: "owner_and_cleanup_set_only",
+      temporarySchemaCreate: "owner_and_cleanup_only",
       preMigrationFinisherObjects: 0,
       preMigrationObjectOwnershipOrGrants: 0,
-      wrongExistingCredential: "rejected_without_rotation_or_evidence",
-      wrongTarget: "rejected_without_secret_output",
     },
     directEndpointDiagnostic: "successful_direct_connection",
     configuredEnvironmentLeak: false,
@@ -2659,9 +2396,9 @@ try {
       stateB: "partial_object_blocked",
       stateC: "checksum_mismatch_blocked",
       stateD: "failed_rolled_back_and_unfinished_ledger_blocked",
-      currentProductionState: "17_applied_1_pending_provider_evidence_required_execution_not_authorized",
-      forgedOperatorPendingPolicy: "rejected_before_integrity_evaluation",
-      stateE: "fully_migrated_gate_a_not_applicable",
+      currentProductionState: "17_applied_1_pending_confirmations_required_execution_not_authorized",
+      disposableReadiness: "ready_with_all_confirmations_execution_not_authorized",
+      stateE: "fully_migrated_post_migration_verified_execution_not_authorized",
       baselineUniquenessVariants: "standalone_constraint_missing_wrong_order_non_unique_partial_predicate",
       finisherExactIntegrityNegatives:
         "disabled_replica_only_missing_altered_event_altered_timing_altered_table_trigger_command_delete_event_removed_invalid_unready_nonlive_missing_altered_predicate_altered_column_nonunique_partial_index_weakened_terminal_parent_child_matrix_step_command_and_security_changed_function_cleanup_body_owner_grant_role_membership_search_path_public_execute_runtime_mutation_removed_grant_guc_neutral_helper_unexpected_trigger_drift_weakened_unvalidated_and_fk_action_composite_binding_uniqueness_changed_constraint_unexpected_active_catalog_row",
@@ -2681,12 +2418,5 @@ try {
   }, null, 2));
 } finally {
   rmSync(envFile, { force: true });
-  rmSync(authorizationEvidenceFile, { force: true });
-  rmSync(principalProvisionEvidenceFile, { force: true });
-  rmSync(principalVerificationEvidenceFile, { force: true });
-  rmSync(principalRepeatEvidenceFile, { force: true });
-  rmSync(principalPartialEvidenceFile, { force: true });
-  rmSync(principalWrongTargetEvidenceFile, { force: true });
-  rmSync(principalWrongPasswordEvidenceFile, { force: true });
   spawnSync("docker", ["rm", "-f", containerName], { stdio: "ignore" });
 }

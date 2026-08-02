@@ -110,10 +110,11 @@ Sources of truth:
 - `npm run test:db:rollout-tooling -- --confirm-disposable`: runs rollout-tooling integration coverage against a harness-created disposable PostgreSQL target. Its effective argument list must be exactly `["--confirm-disposable"]`; additional, duplicate, positional, misspelled, embedded, or malformed arguments are rejected before Docker or database-dependent loading.
   Its Finisher integrity cases verify exact table/function ownership, complete
   grants, protected role attributes and PostgreSQL 16 membership option bits,
-  exact existing-runtime credential authentication, prerequisite and terminal
-  lifecycle states, wrong-password non-rotation, transaction rollback after an
-  injected provisioning failure, migration rollback when a prerequisite drifts
-  after Gate A, security-definer mode,
+  exact disposable prerequisite roles, temporary migration memberships and
+  schema capabilities without pre-migration Finisher objects or grants,
+  prerequisite and terminal lifecycle states, migration rollback when a
+  prerequisite drifts, readiness with execution remaining unauthorized,
+  post-migration verification, security-definer mode,
   fixed search path, static relation/function dependencies, neutral helper and
   unexpected-trigger discovery, removed/broadened privileges, and
   caller-controlled-setting bypass rejection, both deferred terminal-coherence

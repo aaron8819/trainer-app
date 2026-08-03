@@ -122,24 +122,6 @@ function psql(
   return requireSuccess(result, `psql ${database}`);
 }
 
-function provisionFinisherRoles(): void {
-  psql(
-    "trainer",
-    `
-      CREATE ROLE trainer_app_runtime
-        LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
-        NOREPLICATION NOBYPASSRLS
-        PASSWORD 'trainer-app-runtime';
-      CREATE ROLE trainer_finisher_owner
-        NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
-        NOREPLICATION NOBYPASSRLS;
-      CREATE ROLE trainer_finisher_cleanup
-        NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
-        NOREPLICATION NOBYPASSRLS;
-    `,
-  );
-}
-
 function migrationNames(): string[] {
   return readdirSync(join(process.cwd(), "prisma", "migrations"), {
     withFileTypes: true,
@@ -230,7 +212,6 @@ try {
     true,
   );
   waitForPostgres();
-  provisionFinisherRoles();
   const port = run(
     "docker",
     ["port", containerName, "5432/tcp"],

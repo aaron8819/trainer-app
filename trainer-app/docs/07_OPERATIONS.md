@@ -26,61 +26,18 @@ sealed definition.
 `npm run generate:finisher-catalog` verifies that the migration's generated SQL
 matches the canonical catalog. Later definition changes must create a new
 version and must never update an existing version.
-Finisher command receipt cleanup is application-initiated and opportunistic, but
-the database owns the only permitted mutation. After
-each successful or exactly replayed existing-execution command, the service
-invokes the security-definer cleanup function for one global oldest-first,
-`SKIP LOCKED` batch of at most 100 database-expired receipts. Public execute is
-revoked. `trainer_finisher_owner` and `trainer_finisher_cleanup` are fixed
-`NOLOGIN NOINHERIT` roles with no elevated attributes. The former owns all ten
-Finisher tables and protection functions; the latter owns only the cleanup
-function and has command-table `SELECT` plus column-level `UPDATE` on
-`response` and `cleanedAt`. `trainer_app_runtime` is the ordinary
-`LOGIN INHERIT` role with no elevated attributes or protected-role membership.
-It receives explicit least-privilege Finisher table grants and `EXECUTE` on
-the canonical cleanup function plus the read-only terminal-outcome validator
-invoked by deferred trigger wrappers, but no command-table update/delete
-privilege or execute access to any Finisher mutator.
-Default privileges do not grant any protected capability. The command trigger permits only the exact `response -> NULL` and
-`cleanedAt` transition made by that function; it rejects premature cleanup,
-restoration, mixed-field updates, every permanent-field update, and every row
-delete. Cleanup never deletes command IDs, executions, or execution steps.
-Logical `expiresAt`
-enforcement is synchronous and does not depend on cleanup success or cadence,
-and cleanup failure does not replace an already-committed command response.
-The function fixes `search_path` to `pg_catalog, pg_temp`, accepts only the
-bounded batch size, uses database time, and does not trust a custom GUC.
-
-These roles are a migration prerequisite, not created by the application
-migration. Their exact prerequisite contract is:
-
-- `trainer_app_runtime`: `LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
-  NOREPLICATION NOBYPASSRLS`; no `CREATE` on `public`; no incoming or outgoing
-  role membership; no default privilege involving the role; and one SCRAM-SHA-256
-  credential with no password hash exposed in evidence. The clear credential is
-  read only from the process-scoped `TRAINER_APP_RUNTIME_PASSWORD`. The
-  operator supplies it with a masked prompt immediately before provisioning
-  and removes it immediately afterward. The command derives the SCRAM verifier
-  locally and never prints or writes the clear credential.
-- `trainer_finisher_owner`: `NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB
-  NOCREATEROLE NOREPLICATION NOBYPASSRLS`; no credential, `public` schema-create
-  privilege, incoming or outgoing membership, or default privilege.
-- `trainer_finisher_cleanup`: the same prerequisite attributes and prohibitions
-  as `trainer_finisher_owner`.
-
-A separately authorized database administrator must provision those exact
-attributes before migration. Missing principals and an otherwise safe runtime
-principal missing its credential are the only permitted reconciliation cases.
-Any unexpected attribute, credential, schema-create capability, membership, or
-default privilege fails closed and is not silently repaired. The migration
-connection must remain the reviewed privileged
-direct connection capable of transferring ownership and grants; application
-`DATABASE_URL` must use `trainer_app_runtime`. Never run Prisma migration or
-seed commands through the runtime connection, and never give the runtime role
-membership in either non-login role. No role provisioning is authorized by
-this document alone. Principal provisioning never creates schema objects,
-transfers ownership, or grants Finisher object privileges; those operations
-belong exclusively to the migration.
+Finisher command receipt cleanup is application-initiated and opportunistic.
+After each successful or exactly replayed existing-execution command, the
+service invokes the invoker-security cleanup function for one global
+oldest-first, `SKIP LOCKED` batch of at most 100 database-expired receipts.
+The migration follows the same conventional database identity, ownership, and
+default privilege model as the rest of this application; it does not create or
+require custom Finisher roles. `PUBLIC` execute is revoked. The command trigger
+permits only the exact expired `response -> NULL` and `cleanedAt` transition;
+it rejects premature cleanup, restoration, mixed-field updates, permanent-field
+updates, and deletion. Cleanup never deletes command IDs, executions, or steps.
+Logical `expiresAt` enforcement is synchronous and does not depend on cleanup
+success or cadence.
 
 ## Codex remote identity and GitHub status
 
@@ -106,7 +63,7 @@ This is public endpoint evidence. It does not authenticate to Vercel, prove prov
 
 ## Disposable workout-mutation database tests
 
-`npm run test:db:workout-mutations -- --confirm-disposable` starts an isolated PostgreSQL 16 container, injects a failure after partial Finisher migration work and proves the explicit transaction leaves no target objects, applies checked-in migrations to a fresh empty database without the general seed, reruns `migrate deploy` to prove the permitted provisioning path is safe, verifies the exact curated catalog and immutable definitions, regenerates the matching client, runs the protected Finisher Prisma relationship-drift check, proves deferred terminal parent/child coherence and permanent command-tombstone enforcement through Prisma, direct SQL, bulk, insert, delete, expiry, cleanup, race, and ABA paths, runs the remaining lifecycle/CAS/rollback tests, and always removes the container. It sets its own `DATABASE_URL`/`TEST_DATABASE_URL` and does not read `.env.local` or mutate a configured database.
+`npm run test:db:workout-mutations -- --confirm-disposable` starts an isolated PostgreSQL 17 container, applies the prior migration chain, preserves representative existing `User` and `Workout` rows, and then applies the exact checked-in Finisher migration. It proves rollback after an injected mid-migration failure, rejects a partial/conflicting pre-existing Finisher schema with a clear error, verifies a second `migrate deploy` is safe, confirms no custom Finisher roles exist, verifies the curated catalog and immutable definitions, regenerates the matching client, runs the protected Finisher Prisma relationship-drift check, proves deferred terminal parent/child coherence and permanent command-tombstone enforcement through Prisma, direct SQL, bulk, insert, delete, expiry, cleanup, race, and ABA paths, runs the remaining lifecycle/CAS/rollback tests, and always removes the container. It sets its own `DATABASE_URL`/`TEST_DATABASE_URL` and does not read `.env.local` or mutate a configured database.
 
 Owner: Aaron
 Last reviewed: 2026-03-16
@@ -300,10 +257,8 @@ read-only status command connects through `DIRECT_URL`, starts repeatable-read r
 transactions, and reports sanitized target fingerprints rather than connection details.
 
 Migration execution is a separate operation. Use the normal trusted direct Supabase/PostgreSQL
-administrator path required by the SQL; never execute this migration through the application
-runtime role. `npm run ops:migration-status` performs no DDL, ledger mutation, repair, deployment,
-environment mutation, or execution authorization. The Finisher-specific retained safeguards and
-command are defined in the procedure below.
+migration path. `npm run ops:migration-status` performs no DDL, ledger mutation, repair,
+deployment, environment mutation, or execution authorization.
 
 ### Gate A readiness integrity
 
@@ -319,7 +274,7 @@ Pre-migration rows do not contain enough persisted evidence to prove exact post-
 
 All catalog, ledger, and stage-appropriate data reads execute inside one `REPEATABLE READ READ ONLY` transaction. The adapter rejects mutation-capable SQL, rereads and hashes normalized catalog/ledger/data evidence inside the transaction, reports the pre/post fingerprints and `transactionReadOnly`, redacts credentials and connection details, and always reports `writes: 0`. Read-only use remains allowed while `TRAINER_WRITE_PAUSE=enabled`.
 
-For a readiness-snapshot architecture rollout, inventory may proceed only when the migration report has `technicalMigrationReady=true` and this report has `readinessIntegrityReady=true`; operational authorization is evaluated separately. For the current multi-plan migration, `ops:preflight-multi-plan` supplies the migration-specific data result instead. A partial schema, corrupt exact evidence, stale references, duplicate reconstructable active legacy targets, invalid legacy contracts, or unclassifiable legacy targets blocks readiness authorization. The command performs no repair.
+For a readiness-snapshot architecture rollout, inventory may proceed only when the migration report has `migrationIntegrityValid=true` and this report has `readinessIntegrityReady=true`; operational authorization is evaluated separately. For the current multi-plan migration, `ops:preflight-multi-plan` supplies the migration-specific data result instead. A partial schema, corrupt exact evidence, stale references, duplicate reconstructable active legacy targets, invalid legacy contracts, or unclassifiable legacy targets blocks readiness authorization. The command performs no repair.
 
 The existing workout audit mode remains available for its normal post-migration coaching and current-session diagnostic purpose:
 
@@ -338,7 +293,7 @@ npm run test:db:rollout-tooling
 npm run verify:finisher-schema-drift
 ```
 
-The PostgreSQL 16 rollout test uses the installed Prisma CLI to create zero-step resolved baseline and set-intent rows, requires repeat resolution to return `P3008` without changing schema or ledger fingerprints, rejects the stale 10/8 rollout shape, and proves the current 17/1 shape can become authorization-ready with simulated evidence while execution remains unauthorized. It also exercises standalone indexes, constraint-backed indexes, missing uniqueness, wrong column order, non-unique/invalid/unready/non-live indexes, changed predicates, columns and foreign-key actions, removed/cascading composite Finisher bindings, removed supporting uniqueness, missing/disabled/replica-only/retargeted triggers, removal or non-deferred timing of either terminal-coherence path, completed/partial/skipped/dismissal matrix weakening, command-delete event removal, weakened terminal/step/command functions, premature or identity-changing cleanup definitions, changed function owners, unexpected execute or table grants, protected-role membership, weakened security mode/search path, removed canonical grants, GUC reintroduction, neutrally named static-SQL helpers, unexpected trigger mutation paths, unvalidated/weakened checks, unexpected Finisher-owned objects and catalog rows, partial pending objects, checksum mismatch, failed/incomplete/rolled-back ledger rows, and the fully migrated 18/0 state. Its readiness states cover the legacy pre-architecture schema and the fully migrated chain. It does not load a configured rollout environment or connect to production.
+The generic rollout-tooling test uses an isolated PostgreSQL database to verify clean pending and fully applied chains plus checksum, ordering, ledger, schema, and uniqueness drift. The PostgreSQL 17 workout-mutation harness is the canonical Finisher database test: it applies the prior chain, preserves representative existing data, proves atomic rollback and conflicting-schema rejection, applies the exact final migration, verifies ordinary database identity with no custom Finisher roles, and runs the complete application integrity suite. Neither harness loads a configured rollout environment or connects to production.
 
 The exact repository-owned deploy command, once migration authorization is granted, is:
 
@@ -349,91 +304,28 @@ node --env-file=$rolloutEnv .\node_modules\prisma\build\index.js migrate deploy
 Do not run it during preflight. A backup being available, a reachable direct endpoint, a clean migration status, an approved write pause, and an approved deployment plan are all required first.
 
 
-## Finisher migration readiness and rollout
+## Finisher migration rollout
 
-The Finisher migration uses a conventional, separately authorized migration procedure. The
-readiness command is read-only and never executes or authorizes the migration.
+`20260728120000_add_finishers_phase_1` is a conventional additive migration for this personal
+application. It creates twelve enum types, ten Finisher tables, indexes, foreign keys, functions,
+triggers, and four curated routine definitions inside one explicit transaction. It preserves
+existing application rows and does not require custom roles, principal provisioning, bespoke
+grants, a dedicated write pause, or a Finisher-specific evidence artifact. It uses the same
+database identity and migration mechanism as the rest of the schema.
 
-Reviewed identity:
+The migration fails early with a clear error if any conflicting partial Finisher schema already
+exists. Its explicit transaction is the failure boundary; do not attempt object-by-object cleanup
+or automatic retry after an ambiguous result. Reconcile the migration ledger and schema first.
 
-- production application commit: `014b6dce5f1872b1b4d66af508a03e23f6a540e0`;
-- migration: `20260728120000_add_finishers_phase_1`;
-- Git blob: `55985a32851d9de042b43db3880b5cb857373313`;
-- SHA-256 of the Git blob bytes:
-  `491bd022e0f5478cf80f805c64b0cf46c03d301ae4c34779c09f9f111823eb43`.
+Before a reviewed rollout, run the normal repository verification and the PostgreSQL 17
+disposable workout-mutation harness. The read-only `ops:migration-status` command may be used to
+confirm that the checked-in chain, checksums, ledger, and schema are consistent, but it never
+authorizes or executes a migration. Then apply the checked-in migration once through the normal
+trusted Supabase/PostgreSQL migration path and verify the ledger and application health.
 
-The migration is backward-compatible with the deployed application while Finishers remain
-disabled. It creates twelve enum types, ten Finisher tables, indexes, foreign keys, functions,
-triggers, grants, and four curated routine definitions inside one explicit transaction. It does
-not alter or rewrite an existing application row, column, constraint, or trigger. Its only DDL on
-an existing application table is a non-concurrent unique index on `Workout(id, userId)`.
-PostgreSQL scans `Workout` and blocks concurrent writes to that table while the index is built.
-Since `id` is already the primary key, duplicate data cannot invalidate this index. The migration
-also changes only its prerequisite Finisher-role memberships/schema privileges to their intended
-terminal least-privilege state. It performs no existing-data backfill or transformation.
-
-Ordinary application reads and writes remain schema-compatible before, during, and after the
-migration. During the index build, writes touching `Workout` may wait on PostgreSQL's DDL lock;
-they cannot create inconsistent Finisher data. Disabled Finisher pages and API routes do not
-query the new tables. A separate application write pause, Vercel pause deployment, or environment
-mutation provides no material additional safety and is not required for this migration.
-
-### Read-only readiness
-
-Immediately before execution, use the explicitly owned production environment file with:
-
-```powershell
-npm run ops:migration-status -- `
-  --env-file <operator-controlled-production-env> `
-  --confirm-disposable-verification-passed `
-  --confirm-backup-pitr-available `
-  --confirm-finishers-disabled
-```
-
-The confirmation flags record operator confirmations; they do not contact or reproduce provider
-state. Before supplying them, inspect the authenticated canonical PostgreSQL 16 disposable
-workflow result, authenticated Supabase backup/PITR status, and effective production Finisher
-runtime state through the normal trusted interfaces. Require a current recovery option, not
-correlation to a rollout or write-pause timestamp.
-
-Readiness requires exactly 17 clean applied migrations and only the reviewed Finisher migration
-pending; exact migration bytes; clean migration history, ordering, checksums, schema, and catalog;
-canonical disposable application/integrity success; current backup/PITR availability; Finishers
-disabled; and zero inspection writes. It returns `migrationReady: true` only when all checks pass
-and always returns `executionAuthorized: false`. Missing confirmations fail closed. Readiness and
-migration execution are separate operator decisions.
-
-The SQL requires the already-reviewed `trainer_app_runtime`, `trainer_finisher_owner`, and
-`trainer_finisher_cleanup` roles and executor attributes checked at transaction start. The
-read-only catalog preflight verifies those prerequisites. If they are missing or incompatible,
-stop; do not mutate principals as part of readiness.
-
-### Linear production procedure
-
-1. Verify production still runs commit `014b6dce5f1872b1b4d66af508a03e23f6a540e0` and verify
-   the migration Git blob and SHA-256 above.
-2. Confirm the canonical PostgreSQL 16 disposable workflow applied the exact migration and passed
-   its schema, catalog, atomicity, and application-integrity checks.
-3. Through the authenticated Supabase interface, confirm a current backup/PITR recovery option is
-   available for the production database.
-4. Confirm `TRAINER_FINISHERS_ROLLOUT` is not exact `enabled` in the effective production
-   deployment and the Finisher endpoint remains unavailable.
-5. Run the immediate read-only readiness command above. Require `migrationReady: true`,
-   `executionAuthorized: false`, one exact pending migration, and `writes: 0`.
-6. Obtain separate explicit authorization, then execute the exact migration once through the
-   normal trusted Supabase/PostgreSQL migration path. Do not automatically retry after timeout,
-   disconnect, or any ambiguous result.
-7. If the result is ambiguous, inspect read-only migration history and expected Finisher schema.
-   Retry only when both are reconciled and prove the migration was not applied.
-8. Run `npm run ops:migration-status -- --env-file <operator-controlled-production-env>
-   --post-migration`; require 18 clean applied migrations, zero pending, exact schema/catalog,
-   checksum/order integrity, and zero writes. Then check application health, ordinary read/write
-   compatibility, drift, and runtime error telemetry.
-9. Leave Finishers disabled.
-10. Enable Finishers only through a separate, later reviewed and authorized release step.
-
-The migration has no object-by-object rollback automation. Its explicit transaction is the
-failure boundary. If execution fails or is ambiguous, reconcile the ledger and schema first.
+Leave `TRAINER_FINISHERS_ROLLOUT` unset or non-`enabled` during the database rollout. Finishers
+become available only when that server-only variable is exactly `enabled`; enabling it is a
+separate application deployment decision.
 
 
 

@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import {
+  cpSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
 import { join } from "node:path";
 import {
   parseExactDisposableConfirmationArgs,
@@ -10,9 +15,15 @@ import {
 
 const containerName = `trainer-workout-occ-${process.pid}-${randomUUID().slice(0, 8)}`;
 
-function run(executable: string, args: string[], env = process.env, quiet = false): string {
+function run(
+  executable: string,
+  args: string[],
+  env = process.env,
+  quiet = false,
+  cwd = process.cwd(),
+): string {
   const result = spawnSync(executable, args, {
-    cwd: process.cwd(),
+    cwd,
     env,
     encoding: "utf8",
     stdio: quiet ? "pipe" : "inherit",
@@ -70,53 +81,68 @@ function psql(sql: string, database = "trainer"): void {
     { input: sql, encoding: "utf8", stdio: ["pipe", "inherit", "inherit"] },
   );
   if (result.status !== 0) {
-    throw new Error(`DISPOSABLE_FINISHER_ROLE_SQL_FAILED:${result.status}`);
+    throw new Error(`DISPOSABLE_FINISHER_SQL_FAILED:${result.status}`);
   }
 }
 
-function provisionFinisherRoles(): void {
-  psql(`
-    CREATE ROLE trainer_app_runtime
-      LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
-      NOREPLICATION NOBYPASSRLS
-      PASSWORD 'trainer-app-runtime';
-    CREATE ROLE trainer_finisher_owner
-      NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
-      NOREPLICATION NOBYPASSRLS;
-    CREATE ROLE trainer_finisher_cleanup
-      NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
-      NOREPLICATION NOBYPASSRLS;
-  `);
+function psqlValue(sql: string, database = "trainer"): string {
+  return run(
+    "docker",
+    [
+      "exec",
+      "-i",
+      containerName,
+      "psql",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-U",
+      "trainer",
+      "-d",
+      database,
+      "-tAc",
+      sql,
+    ],
+    process.env,
+    true,
+  );
 }
 
-function grantDisposableRuntimeApplicationAccess(): void {
-  psql(`
-    GRANT USAGE ON SCHEMA public TO trainer_app_runtime;
-    DO $$
-    DECLARE
-      relation_name TEXT;
-    BEGIN
-      FOR relation_name IN
-        SELECT c.relname
-        FROM pg_catalog.pg_class c
-        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = 'public'
-          AND c.relkind IN ('r', 'p')
-          AND c.relname NOT LIKE 'Finisher%'
-      LOOP
-        EXECUTE format(
-          'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.%I TO trainer_app_runtime',
-          relation_name
-        );
-      END LOOP;
-    END;
-    $$;
-    GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public
-    TO trainer_app_runtime;
-  `);
+function applyPreFinisherMigrations(env: NodeJS.ProcessEnv): void {
+  const temporaryRoot = mkdtempSync(
+    join(process.cwd(), ".trainer-pre-finisher-"),
+  );
+  const temporaryPrisma = join(temporaryRoot, "prisma");
+  try {
+    cpSync(join(process.cwd(), "prisma"), temporaryPrisma, { recursive: true });
+    cpSync(
+      join(process.cwd(), "prisma.config.ts"),
+      join(temporaryRoot, "prisma.config.ts"),
+    );
+    rmSync(
+      join(
+        temporaryPrisma,
+        "migrations",
+        "20260728120000_add_finishers_phase_1",
+      ),
+      { recursive: true },
+    );
+    run(
+      process.execPath,
+      [
+        join(process.cwd(), "node_modules/prisma/build/index.js"),
+        "migrate",
+        "deploy",
+      ],
+      env,
+      false,
+      temporaryRoot,
+    );
+  } finally {
+    rmSync(temporaryRoot, { recursive: true, force: true });
+  }
 }
 
-function verifyAtomicFinisherMigrationFailure(): void {
+function clonePreFinisherDatabase(database: string): void {
   run("docker", [
     "exec",
     "-i",
@@ -124,8 +150,14 @@ function verifyAtomicFinisherMigrationFailure(): void {
     "createdb",
     "-U",
     "trainer",
-    "finisher_failure_probe",
+    "--template",
+    "trainer",
+    database,
   ]);
+}
+
+function verifyAtomicFinisherMigrationFailure(): void {
+  clonePreFinisherDatabase("finisher_failure_probe");
   const migration = readFileSync(
     join(
       process.cwd(),
@@ -197,6 +229,61 @@ function verifyAtomicFinisherMigrationFailure(): void {
   }
   console.log(
     "Injected Finisher migration failure rolled back all target objects and catalog rows."
+  );
+}
+
+function verifyConflictingFinisherSchemaRejected(): void {
+  clonePreFinisherDatabase("finisher_conflict_probe");
+  psql(
+    'CREATE TABLE "FinisherPartialConflict" ("id" INTEGER PRIMARY KEY);',
+    "finisher_conflict_probe",
+  );
+  const migration = readFileSync(
+    join(
+      process.cwd(),
+      "prisma/migrations/20260728120000_add_finishers_phase_1/migration.sql",
+    ),
+    "utf8",
+  );
+  const failed = spawnSync(
+    "docker",
+    [
+      "exec",
+      "-i",
+      containerName,
+      "psql",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-U",
+      "trainer",
+      "-d",
+      "finisher_conflict_probe",
+    ],
+    { input: migration, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] },
+  );
+  const output = `${failed.stdout ?? ""}\n${failed.stderr ?? ""}`;
+  if (
+    failed.status === 0 ||
+    !output.includes("Finisher schema objects already exist")
+  ) {
+    throw new Error("CONFLICTING_FINISHER_SCHEMA_WAS_NOT_REJECTED");
+  }
+  if (
+    psqlValue(
+      `SELECT
+         to_regclass('"FinisherPartialConflict"') IS NOT NULL
+         AND to_regclass('"FinisherRoutine"') IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM pg_catalog.pg_type
+           WHERE typname = 'FinisherCategory'
+         )`,
+      "finisher_conflict_probe",
+    ) !== "t"
+  ) {
+    throw new Error("CONFLICTING_FINISHER_SCHEMA_FAILURE_WAS_NOT_ATOMIC");
+  }
+  console.log(
+    "Conflicting partial Finisher schema failed clearly without applying target objects.",
   );
 }
 
@@ -373,17 +460,14 @@ try {
     "-e", "POSTGRES_PASSWORD=trainer-workout-occ",
     "-e", "POSTGRES_DB=trainer",
     "-p", "127.0.0.1::5432",
-    "postgres:16-alpine",
+    "postgres:17-alpine",
   ]);
   waitForPostgres();
-  provisionFinisherRoles();
-  verifyAtomicFinisherMigrationFailure();
   const port = run("docker", ["port", containerName, "5432/tcp"], process.env, true)
     .split(":")
     .at(-1);
   if (!port) throw new Error("DISPOSABLE_POSTGRES_PORT_NOT_FOUND");
   const databaseUrl = `postgresql://trainer:trainer-workout-occ@127.0.0.1:${port}/trainer`;
-  const runtimeDatabaseUrl = `postgresql://trainer_app_runtime:trainer-app-runtime@127.0.0.1:${port}/trainer`;
   const migrationEnv = {
     ...sanitizeDatabaseTargetEnvironment(process.env),
     DATABASE_URL: databaseUrl,
@@ -398,9 +482,62 @@ try {
   if (!targetValidation.valid) {
     throw new Error(`DISPOSABLE_DATABASE_TARGET_INVALID:${targetValidation.reasons.join("|")}`);
   }
+  applyPreFinisherMigrations(migrationEnv);
+  psql(`
+    INSERT INTO "User" ("id", "email", "createdAt")
+    VALUES (
+      '00000000-0000-4000-8000-000000000001',
+      'pre-finisher@example.test',
+      TIMESTAMP '2026-07-27 12:00:00'
+    );
+    INSERT INTO "Workout" ("id", "userId", "scheduledDate")
+    VALUES (
+      '00000000-0000-4000-8000-000000000002',
+      '00000000-0000-4000-8000-000000000001',
+      TIMESTAMP '2026-07-27 13:00:00'
+    );
+  `);
+  verifyAtomicFinisherMigrationFailure();
+  verifyConflictingFinisherSchemaRejected();
   run(process.execPath, [join(process.cwd(), "node_modules/prisma/build/index.js"), "migrate", "deploy"], migrationEnv);
   run(process.execPath, [join(process.cwd(), "node_modules/prisma/build/index.js"), "migrate", "deploy"], migrationEnv);
-  grantDisposableRuntimeApplicationAccess();
+  const postMigrationFacts = psqlValue(`
+    SELECT concat_ws(
+      '|',
+      current_setting('server_version_num')::integer / 10000,
+      current_user,
+      (
+        SELECT count(*) FROM pg_catalog.pg_roles
+        WHERE rolname IN (
+          'trainer_app_runtime',
+          'trainer_finisher_owner',
+          'trainer_finisher_cleanup'
+        )
+      ),
+      (
+        SELECT count(*) FROM "User"
+        WHERE "id" = '00000000-0000-4000-8000-000000000001'
+          AND "email" = 'pre-finisher@example.test'
+      ),
+      (
+        SELECT count(*) FROM "Workout"
+        WHERE "id" = '00000000-0000-4000-8000-000000000002'
+          AND "userId" = '00000000-0000-4000-8000-000000000001'
+      ),
+      (
+        SELECT count(*) FROM "_prisma_migrations"
+        WHERE migration_name = '20260728120000_add_finishers_phase_1'
+          AND finished_at IS NOT NULL
+          AND rolled_back_at IS NULL
+      )
+    )
+  `);
+  if (postMigrationFacts !== "17|trainer|0|1|1|1") {
+    throw new Error(`FINISHER_POST_MIGRATION_FACTS_INVALID:${postMigrationFacts}`);
+  }
+  console.log(
+    "PostgreSQL 17 applied the final migration once, preserved representative data, recorded history, and used the normal application identity without custom roles.",
+  );
   run(process.execPath, [
     join(process.cwd(), "node_modules/prisma/build/index.js"),
     "generate",
@@ -411,7 +548,7 @@ try {
   ], migrationEnv);
   const testEnv = {
     ...migrationEnv,
-    DATABASE_URL: runtimeDatabaseUrl,
+    DATABASE_URL: databaseUrl,
     TEST_DATABASE_URL: databaseUrl,
   };
   run(process.execPath, [

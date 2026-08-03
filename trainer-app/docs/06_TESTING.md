@@ -24,15 +24,6 @@ Sources of truth:
 
 ## Commands
 
-- `npm run test:finisher-migration-readiness`: credential-free focused coverage
-  for the exact reviewed commit/blob/SHA-256 identity, disposable verification,
-  backup/PITR and disabled-feature confirmations, immediate preflight, read-only
-  behavior, separate execution authorization, and ambiguous-result reconciliation.
-- `.github/workflows/finisher-disposable-verification.yml`: manual master-only
-  canonical PostgreSQL 16 producer. Workflow syntax and generator contract may
-  be validated locally, but only the authenticated exact-head Actions run and
-  its unique artifact can supply authorization evidence. Do not dispatch it as
-  part of ordinary PR validation.
 - `npm run test:db:multi-plan -- --confirm-disposable`: provisions an isolated PostgreSQL 16 container; applies the full prior migration chain; verifies the active-plan foundation plus plan-management metadata migration, ambiguity rollback, deterministic name backfill, target schema objects, and the old-app handoff ordering risk; then runs partial-unique, READY-only selection, in-progress-workout blocking, finalization-without-selection, optimistic rename/archive, history preservation, and concurrent compare-and-swap coverage. It is database-mutating and must only run with the exact disposable-target confirmation.
 - Focused credential-free plan-management coverage: `npm run test -- src/lib/api/plan-management.test.ts src/lib/validation.plan-management.test.ts src/lib/api/active-plan-context.test.ts src/app/api/plans/[id]/activate/route.test.ts src/components/plans/PlanManagementClient.test.tsx src/components/navigation/AppNavigation.test.tsx src/lib/api/workout-mutation.test.ts src/lib/workout-workflow.test.ts src/lib/ui/workout-list-items.test.ts`.
 - Focused Strength coverage: `npm run test -- src/lib/plan-types.test.ts src/lib/engine/strength-plan-policy.test.ts src/lib/engine/strength-session-timing.test.ts src/lib/engine/prescription.correctness.test.ts src/lib/engine/periodization.correctness.test.ts src/lib/engine/apply-loads.correctness.test.ts src/lib/api/plan-management.test.ts src/lib/api/active-plan-context.test.ts src/lib/api/mesocycle-lifecycle.test.ts src/lib/api/template-session/context-loader.test.ts src/lib/api/template-session.test.ts src/lib/validation.plan-management.test.ts src/components/plans/PlanManagementClient.test.tsx src/components/HistoryClient.test.tsx`. This protects deterministic policy output, controlled limitation canonicalization/fail-closed behavior, the full duration/frequency/experience/emphasis/equipment matrix, shared planner/runtime timing and five-minute rounding boundaries, immutable executable seed normalization, exact review set counts, plan-type generation and terminal dispatch, lower-rep/longer-rest prescriptions, conservative shared progression, selected-plan enforcement, review/finalization, and Hypertrophy compatibility.
@@ -71,7 +62,7 @@ Sources of truth:
 - `npm run test:db:workout-mutations -- --confirm-disposable`: explicitly mutating integration
   coverage. Its effective argument list must be exactly `["--confirm-disposable"]`; unknown,
   duplicate, misspelled, positional, conflicting, and embedded variants exit `2` before Docker or
-  database work. The valid command creates its own disposable PostgreSQL 16 target,
+  database work. The valid command creates its own disposable PostgreSQL 17 target,
   strips inherited DB-target variables before supplying the generated target, validates the
   canonical target inventory, applies the checked-in migration chain, and verifies main-save CAS,
   runtime mutation races, exact stimulus snapshot persistence, and immutable review-snapshot
@@ -86,9 +77,8 @@ Sources of truth:
   concurrent direct/Prisma construction, historical owner-transfer and
   parent-deletion protection, a migrated-database-to-Prisma SQL diff that fails
   on destructive protected relationship changes while naming the three
-  supported database-only simple foreign keys, distinct
-  migration/runtime/owner/cleanup roles,
-  runtime impersonation and function-replacement rejection, database-clock
+  supported database-only simple foreign keys, conventional migration and
+  runtime database identity, absence of custom Finisher roles, database-clock
   creation with deliberately skewed application clocks, direct-database rejection of
   post-finalization append/reorder/reassignment/delete, durable
   offer/decline/dismissal history,
@@ -107,19 +97,7 @@ Sources of truth:
 - `npm run test:db:historical-snapshots -- --confirm-disposable`: explicit schema-dependent
   historical-evidence alias for the same consolidated disposable harness.
 - `npm run test:db:readiness-snapshots -- --confirm-disposable`: starts an isolated Docker PostgreSQL 16 container, applies all checked-in migrations without reading `.env.local`, verifies legacy-unknown migration behavior, partial unique enforcement, identical concurrent activation, conflicting payload rejection, forced replacement rollback, stale-evidence rejection, and owner isolation, then removes the container. Package scripts never supply disposable confirmation: the operator must type it for every mutating invocation, and aliases or wrappers must not embed it. Strict argument and inherited-target validation complete before `pg` or any other database-dependent module loads and before Docker work begins.
-- `npm run test:db:rollout-tooling -- --confirm-disposable`: runs rollout-tooling integration coverage against a harness-created disposable PostgreSQL target. Its effective argument list must be exactly `["--confirm-disposable"]`; additional, duplicate, positional, misspelled, embedded, or malformed arguments are rejected before Docker or database-dependent loading.
-  Its Finisher integrity cases verify exact table/function ownership, complete
-  grants, protected role attributes and PostgreSQL 16 membership option bits,
-  exact disposable prerequisite roles, temporary migration memberships and
-  schema capabilities without pre-migration Finisher objects or grants,
-  prerequisite and terminal lifecycle states, migration rollback when a
-  prerequisite drifts, readiness with execution remaining unauthorized,
-  post-migration verification, security-definer mode,
-  fixed search path, static relation/function dependencies, neutral helper and
-  unexpected-trigger discovery, removed/broadened privileges, and
-  caller-controlled-setting bypass rejection, both deferred terminal-coherence
-  trigger paths, the independently authored outcome matrix, restrictive
-  composite historical bindings, and supporting uniqueness.
+- `npm run test:db:rollout-tooling -- --confirm-disposable`: runs generic migration-integrity integration coverage against a harness-created disposable PostgreSQL target. Its effective argument list must be exactly `["--confirm-disposable"]`; additional, duplicate, positional, misspelled, embedded, or malformed arguments are rejected before Docker or database-dependent loading. It verifies clean pending and fully applied migration chains plus ledger, checksum, ordering, schema, and uniqueness drift without loading a configured environment or authorizing execution.
 - `npm run verify:finisher-schema-drift`: read-only Prisma SQL diff from an
   explicitly supplied fully migrated disposable PostgreSQL database to the
   canonical Prisma schema. Its normalized statement-level allowlist accepts and
@@ -310,7 +288,7 @@ enforcement can be claimed.
 - Mutation reconciliation metadata coverage: `src/lib/ui/selection-metadata.test.ts` also asserts canonical `workoutStructureState` persistence, current saved structure summaries, and generated-vs-saved reconciliation retention.
 - Add-exercise mutation coverage: `src/app/api/workouts/[id]/add-exercise/route.test.ts` asserts reconciliation persistence, revision increment, returned log-row capabilities, and duplicate same-exercise guards for unresolved planned work, resolved extra-work confirmation, and already-added rows.
 - Save optimistic-concurrency coverage: `src/app/api/workouts/save/route.integration.test.ts` asserts request/error mapping and that stale saves stop before child/lifecycle mutations. `src/lib/api/save-workout/persistence.db.test.ts` runs against an explicitly supplied disposable PostgreSQL `TEST_DATABASE_URL` and proves successful CAS, stale rejection, same-revision concurrency, child-state isolation, rollback, ownership classification, and revision-1 creation using the real Prisma transaction boundary.
-- Runtime mutation OCC coverage: `src/lib/api/workout-mutation.test.ts` covers claim/classification contracts; focused route/service tests cover command validation and reconciliation; `npm run test:db:workout-mutations` provisions PostgreSQL 16 and proves same-revision structural races, log-versus-structure serialization, rollback, owner isolation, and the main-save CAS boundary. `npm run verify:workout-mutations` guards canonical ownership and rejects local unconditional revision increments.
+- Runtime mutation OCC coverage: `src/lib/api/workout-mutation.test.ts` covers claim/classification contracts; focused route/service tests cover command validation and reconciliation; `npm run test:db:workout-mutations` provisions PostgreSQL 17 and proves same-revision structural races, log-versus-structure serialization, rollback, owner isolation, and the main-save CAS boundary. `npm run verify:workout-mutations` guards canonical ownership and rejects local unconditional revision increments.
 - Persisted mesocycle snapshot normalization coverage: `src/lib/api/workout-mesocycle-snapshot.test.ts` and `src/lib/ui/workout-list-items.test.ts` cover the shared normalized snapshot helper and list-surface summary builder used by history/recent-workout UI.
 - Supplemental list-label coverage: `src/lib/ui/workout-list-items.test.ts`, `src/components/RecentWorkouts.test.tsx`, and `src/components/HistoryClient.test.tsx` assert strict supplemental badge rendering while preserving existing gap-fill labeling.
 - Explainability session-context correctness coverage: `src/lib/engine/explainability/session-context.correctness.test.ts` (readiness availability labels, fallback cycle-source behavior, receipt block-horizon milestones, and cautious fallback when receipt block duration is absent).

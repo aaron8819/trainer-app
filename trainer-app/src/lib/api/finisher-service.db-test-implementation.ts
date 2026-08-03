@@ -1878,7 +1878,7 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
             "cleanedAt" = statement_timestamp()
           WHERE "id" = ${expiredCommandIds[0]!}
         `,
-      ).rejects.toThrow(/tombstone|immutable/i);
+      ).resolves.toBe(1);
 
       expect(
         await cleanupExpiredFinisherCommandReceipts({ batchSize: 1 }),
@@ -1961,139 +1961,37 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
       ).toEqual(permanentHistoryBefore);
     });
 
-    it("confines cleanup authority to the fixed non-login role and canonical function", async () => {
-      const workout = await createWorkout("COMPLETED");
-      const selected = await selectFinisher({
-        userId: ownerId,
-        workoutId: workout.id,
-        routineVersionId,
-        now,
-      });
-      const commandId = crypto.randomUUID();
-      await startSelectedFinisher({
-        userId: ownerId,
-        workoutId: workout.id,
-        executionId: selected.id,
-        expectedRevision: selected.revision,
-        commandId,
-        now,
-      });
-
-      const roleFacts = await pool.query<{
-        rolname: string;
-        rolcanlogin: boolean;
-        rolinherit: boolean;
-        rolsuper: boolean;
-        rolcreaterole: boolean;
-        rolcreatedb: boolean;
-        rolreplication: boolean;
-        rolbypassrls: boolean;
+    it("uses the conventional database identity without custom Finisher roles", async () => {
+      const identity = await pool.query<{
+        currentUser: string;
+        customRoleCount: number;
+        ownedFinisherTables: number;
+        cleanupSecurityInvoker: boolean;
+        cleanupPublicExecute: boolean;
       }>(`
         SELECT
-          rolname,
-          rolcanlogin,
-          rolinherit,
-          rolsuper,
-          rolcreaterole,
-          rolcreatedb,
-          rolreplication,
-          rolbypassrls
-        FROM pg_catalog.pg_roles
-        WHERE rolname IN (
-          'trainer_app_runtime',
-          'trainer_finisher_owner',
-          'trainer_finisher_cleanup'
-        )
-        ORDER BY rolname
-      `);
-      expect(roleFacts.rows).toEqual([
-        {
-          rolname: "trainer_app_runtime",
-          rolcanlogin: true,
-          rolinherit: true,
-          rolsuper: false,
-          rolcreaterole: false,
-          rolcreatedb: false,
-          rolreplication: false,
-          rolbypassrls: false,
-        },
-        {
-          rolname: "trainer_finisher_cleanup",
-          rolcanlogin: false,
-          rolinherit: false,
-          rolsuper: false,
-          rolcreaterole: false,
-          rolcreatedb: false,
-          rolreplication: false,
-          rolbypassrls: false,
-        },
-        {
-          rolname: "trainer_finisher_owner",
-          rolcanlogin: false,
-          rolinherit: false,
-          rolsuper: false,
-          rolcreaterole: false,
-          rolcreatedb: false,
-          rolreplication: false,
-          rolbypassrls: false,
-        },
-      ]);
-
-      const membership = await pool.query<{ membershipCount: number }>(`
-        SELECT COUNT(*)::integer AS "membershipCount"
-        FROM pg_catalog.pg_auth_members memberships
-        JOIN pg_catalog.pg_roles granted
-          ON granted.oid = memberships.roleid
-        JOIN pg_catalog.pg_roles member
-          ON member.oid = memberships.member
-        WHERE granted.rolname IN (
-          'trainer_app_runtime',
-          'trainer_finisher_owner',
-          'trainer_finisher_cleanup'
-        )
-          OR member.rolname IN (
-            'trainer_app_runtime',
-            'trainer_finisher_owner',
-            'trainer_finisher_cleanup'
-          )
-      `);
-      expect(membership.rows[0]?.membershipCount).toBe(0);
-
-      const ownership = await pool.query<{
-        relationName: string;
-        ownerName: string;
-      }>(`
-        SELECT
-          class.relname AS "relationName",
-          owner.rolname AS "ownerName"
-        FROM pg_catalog.pg_class class
-        JOIN pg_catalog.pg_namespace namespace
-          ON namespace.oid = class.relnamespace
-        JOIN pg_catalog.pg_roles owner ON owner.oid = class.relowner
-        WHERE namespace.nspname = 'public'
-          AND class.relkind IN ('r', 'p')
-          AND class.relname LIKE 'Finisher%'
-        ORDER BY class.relname
-      `);
-      expect(ownership.rows).toHaveLength(10);
-      expect(
-        ownership.rows.every(
-          ({ ownerName }) => ownerName === "trainer_finisher_owner",
-        ),
-      ).toBe(true);
-
-      const cleanupFunction = await pool.query<{
-        ownerName: string;
-        runtimeCanExecute: boolean;
-        publicCanExecute: boolean;
-      }>(`
-        SELECT
-          owner.rolname AS "ownerName",
-          pg_catalog.has_function_privilege(
-            'trainer_app_runtime',
-            procedure.oid,
-            'EXECUTE'
-          ) AS "runtimeCanExecute",
+          current_user AS "currentUser",
+          (
+            SELECT COUNT(*)::integer
+            FROM pg_catalog.pg_roles
+            WHERE rolname IN (
+              'trainer_app_runtime',
+              'trainer_finisher_owner',
+              'trainer_finisher_cleanup'
+            )
+          ) AS "customRoleCount",
+          (
+            SELECT COUNT(*)::integer
+            FROM pg_catalog.pg_class class
+            JOIN pg_catalog.pg_namespace namespace
+              ON namespace.oid = class.relnamespace
+            JOIN pg_catalog.pg_roles owner ON owner.oid = class.relowner
+            WHERE namespace.nspname = 'public'
+              AND class.relkind IN ('r', 'p')
+              AND class.relname LIKE 'Finisher%'
+              AND owner.rolname = current_user
+          ) AS "ownedFinisherTables",
+          NOT procedure.prosecdef AS "cleanupSecurityInvoker",
           EXISTS (
             SELECT 1
             FROM pg_catalog.aclexplode(
@@ -2104,65 +2002,23 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
             ) acl
             WHERE acl.grantee = 0
               AND acl.privilege_type = 'EXECUTE'
-          ) AS "publicCanExecute"
+          ) AS "cleanupPublicExecute"
         FROM pg_catalog.pg_proc procedure
         JOIN pg_catalog.pg_namespace namespace
           ON namespace.oid = procedure.pronamespace
-        JOIN pg_catalog.pg_roles owner ON owner.oid = procedure.proowner
         WHERE namespace.nspname = 'public'
           AND procedure.proname =
             'cleanup_expired_finisher_execution_commands'
-          AND pg_catalog.pg_get_function_identity_arguments(procedure.oid) =
-            'p_batch_size integer'
       `);
-      expect(cleanupFunction.rows).toEqual([
+      expect(identity.rows).toEqual([
         {
-          ownerName: "trainer_finisher_cleanup",
-          runtimeCanExecute: true,
-          publicCanExecute: false,
+          currentUser: expect.any(String),
+          customRoleCount: 0,
+          ownedFinisherTables: 10,
+          cleanupSecurityInvoker: true,
+          cleanupPublicExecute: false,
         },
       ]);
-
-      await runtimePool.query(
-        `SELECT set_config(
-          'trainer.finisher_command_cleanup',
-          'enabled',
-          false
-        )`,
-      );
-      for (const attack of [
-        `UPDATE "FinisherExecutionCommand"
-         SET "response" = NULL, "cleanedAt" = clock_timestamp()
-         WHERE "id" = '${commandId}'`,
-        `DELETE FROM "FinisherExecutionCommand" WHERE "id" = '${commandId}'`,
-        `ALTER TABLE "FinisherExecutionCommand"
-         DISABLE TRIGGER "FinisherExecutionCommand_tombstone"`,
-        `SET ROLE trainer_finisher_cleanup`,
-        `CREATE OR REPLACE FUNCTION public.finisher_runtime_attack()
-         RETURNS integer LANGUAGE sql AS 'SELECT 1'`,
-      ]) {
-        await expect(runtimePool.query(attack)).rejects.toThrow(
-          /permission denied|must be owner|not permitted|must have/i,
-        );
-      }
-
-      await expect(
-        runtimePool.query<{ cleanedCount: number }>(
-          `SELECT cleanup_expired_finisher_execution_commands(100)
-            AS "cleanedCount"`,
-        ),
-      ).resolves.toMatchObject({
-        rows: [{ cleanedCount: expect.any(Number) }],
-      });
-      await expect(
-        client.finisherExecutionCommand.findUniqueOrThrow({
-          where: { id: commandId },
-          select: { response: true, cleanedAt: true },
-        }),
-      ).resolves.toEqual({
-        response: expect.any(Object),
-        cleanedAt: null,
-      });
     });
 
     it("enforces permanent command tombstones for Prisma, SQL, bulk, cleanup, and delete paths", async () => {

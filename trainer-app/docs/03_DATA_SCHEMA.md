@@ -118,13 +118,10 @@ Migration `20260728120000_add_finishers_phase_1` adds:
   `cleanedAt`; the compact command tombstone and globally unique ID remain so
   an expired command can never be reused. A database trigger rejects every
   command update or delete except the exact one-way expired payload cleanup.
-  Cleanup runs only through the bounded security-definer function owned by the
-  fixed non-login `trainer_finisher_cleanup` role. `PUBLIC` cannot execute it;
-  only `trainer_app_runtime` receives the safe function interface and has no
-  command-table update/delete privilege or membership in either privileged
-  role. The fixed non-login `trainer_finisher_owner` role owns every Finisher
-  table and protection function. The cleanup role receives only command-table
-  read plus column-level update on `response` and `cleanedAt`; it preserves command/workout/execution/action,
+  Cleanup runs through a bounded invoker-security function under the same
+  conventional database identity used by the rest of the application. `PUBLIC`
+  cannot execute the function. The trigger permits only the cleanup transition
+  on `response` and `cleanedAt`; it preserves command/workout/execution/action,
   request hash, expected/result revisions, and creation/expiration timestamps.
   A cleared response cannot be restored. Retained execution and step history is
   permanent and independent of receipt cleanup.

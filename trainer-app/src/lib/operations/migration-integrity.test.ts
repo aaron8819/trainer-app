@@ -5,6 +5,7 @@ import {
   buildMigrationIntegrityReport,
   checksumMigrationSql,
   EXPECTED_MIGRATION_CHAIN,
+  loadCheckedInMigrations,
   migrationChecksumMatches,
   PENDING_ARCHITECTURE_MANIFEST,
   prismaCompatibleMigrationSqlChecksums,
@@ -178,17 +179,23 @@ function report(
 }
 
 describe("migration integrity", () => {
-  it("accepts the conventional chain with the Finisher migration pending", () => {
+  it("keeps the canonical chain aligned with checked-in migration directories", () => {
+    expect(loadCheckedInMigrations().map((migration) => migration.name)).toEqual(
+      EXPECTED_MIGRATION_CHAIN,
+    );
+  });
+
+  it("accepts the conventional chain with Finisher management pending", () => {
     const result = report();
 
     expect(EXPECTED_MIGRATION_CHAIN.at(-1)).toBe(
-      "20260728120000_add_finishers_phase_1",
+      "20260803120000_add_finisher_management",
     );
     expect(result.chain).toMatchObject({
       checkedIn: EXPECTED_MIGRATION_CHAIN.length,
       applied: EXPECTED_MIGRATION_CHAIN.length - 1,
       pending: 1,
-      pendingNames: ["20260728120000_add_finishers_phase_1"],
+      pendingNames: ["20260803120000_add_finisher_management"],
       exactExpectedChain: true,
     });
     expect(result.migrationIntegrityValid).toBe(true);

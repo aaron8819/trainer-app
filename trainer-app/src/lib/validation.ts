@@ -10,6 +10,8 @@ import {
   STRENGTH_PRESS_PREFERENCE_VALUES,
   STRENGTH_SQUAT_PREFERENCE_VALUES,
 } from "@/lib/engine/strength-plan-policy";
+import { deriveTimedFinisherDurationSeconds } from "@/lib/engine/finisher-domain";
+import { CANONICAL_LIMITATION_TAGS } from "@/lib/engine/limitation-policy";
 
 export const WORKOUT_STATUS_VALUES = ["PLANNED", "IN_PROGRESS", "PARTIAL", "COMPLETED", "SKIPPED"] as const;
 export const WORKOUT_SAVE_ACTION_VALUES = [
@@ -441,6 +443,117 @@ export const activatePlanSchema = z.object({
 });
 
 const finisherCommandIdSchema = z.string().uuid();
+export const FINISHER_BODY_REGION_VALUES = [
+  "core",
+  "shoulders",
+  "hips",
+  "full_body",
+  "legs",
+] as const;
+export const FINISHER_LIBRARY_STATE_VALUES = [
+  "ACTIVE",
+  "ARCHIVED",
+  "DELETED",
+] as const;
+
+const uniqueStrings = (values: readonly string[]) =>
+  new Set(values).size === values.length;
+
+const finisherShortTextSchema = z.string().trim().min(1).max(160);
+export const finisherRoutineDefinitionSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80),
+    description: z.string().trim().min(1).max(500),
+    category: z.enum(["CORE", "CONDITIONING"]),
+    difficulty: z.enum(["EASY", "MODERATE", "CHALLENGING"]),
+    fatigueCost: z.enum(["LOW", "MODERATE", "HIGH"]),
+    impactLevel: z.enum(["LOW", "MODERATE", "HIGH"]),
+    bodyRegions: z
+      .array(z.enum(FINISHER_BODY_REGION_VALUES))
+      .max(FINISHER_BODY_REGION_VALUES.length)
+      .refine(uniqueStrings, "Body regions must be unique"),
+    limitationTags: z
+      .array(z.enum(CANONICAL_LIMITATION_TAGS))
+      .max(CANONICAL_LIMITATION_TAGS.length)
+      .refine(uniqueStrings, "Limitation tags must be unique"),
+    preparationSeconds: z.number().int().min(0).max(60),
+    includesFinalRecovery: z.boolean(),
+    steps: z
+      .array(
+        z
+          .object({
+            movementName: z.string().trim().min(1).max(120),
+            workSeconds: z.number().int().min(1).max(600),
+            recoverySeconds: z.number().int().min(0).max(600),
+            techniqueCues: z
+              .array(finisherShortTextSchema)
+              .max(3)
+              .refine(uniqueStrings, "Technique cues must be unique"),
+            alternatives: z
+              .array(finisherShortTextSchema)
+              .max(3)
+              .refine(uniqueStrings, "Alternatives must be unique"),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(20),
+  })
+  .strict()
+  .superRefine((definition, context) => {
+    const durationSeconds = deriveTimedFinisherDurationSeconds({
+      steps: definition.steps,
+      includesFinalRecovery: definition.includesFinalRecovery,
+    });
+    if (durationSeconds > 30 * 60) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["steps"],
+        message: "Finisher duration cannot exceed 30 minutes",
+      });
+    }
+  });
+
+export type FinisherRoutineDefinition = z.infer<
+  typeof finisherRoutineDefinitionSchema
+>;
+
+export const createFinisherRoutineSchema = z
+  .object({ definition: finisherRoutineDefinitionSchema })
+  .strict();
+export const editFinisherRoutineSchema = z
+  .object({
+    expectedRevision: z.number().int().min(0),
+    definition: finisherRoutineDefinitionSchema,
+  })
+  .strict();
+export const finisherLibraryMutationSchema = z
+  .object({ expectedRevision: z.number().int().min(0) })
+  .strict();
+export const duplicateFinisherRoutineSchema = z
+  .object({ expectedRoutineVersionId: z.string().uuid() })
+  .strict();
+export const reorderFinisherLibrarySchema = z
+  .object({
+    items: z
+      .array(
+        z
+          .object({
+            routineId: z.string().uuid(),
+            expectedRevision: z.number().int().min(0),
+          })
+          .strict(),
+      )
+      .max(200),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      new Set(value.items.map((item) => item.routineId)).size ===
+      value.items.length,
+    { path: ["items"], message: "Routine IDs must be unique" },
+  );
+
 export const FINISHER_EXECUTION_COMMAND_ACTION_VALUES = [
   "start",
   "sync",

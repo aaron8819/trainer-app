@@ -12,6 +12,13 @@ the Finisher schema, and changing the setting requires a new deployment.
 
 `20260728120000_add_finishers_phase_1` is additive and does not rewrite workout
 history. Apply it only through the reviewed, separately authorized conventional migration workflow.
+`20260803120000_add_finisher_management` is the follow-on additive owner/library
+migration. It adds nullable routine ownership and the per-owner overlay, then
+widens finalized offers from positive to nonnegative item counts. It performs
+no catalog backfill, reconciliation, configured-database inspection, or history
+rewrite. Keep the rollout disabled until both migrations are deployed; the old
+application remains compatible because the new column is nullable and existing
+positive offers keep the original invariant.
 Run the normal Prisma generation, contract, migration
 integrity/drift, and deployment readiness checks before release. Curated routine
 version 1 rows are installed inside the same atomic migration with deterministic
@@ -63,7 +70,7 @@ This is public endpoint evidence. It does not authenticate to Vercel, prove prov
 
 ## Disposable workout-mutation database tests
 
-`npm run test:db:workout-mutations -- --confirm-disposable` starts an isolated PostgreSQL 17 container, applies the prior migration chain, preserves representative existing `User` and `Workout` rows, and then applies the exact checked-in Finisher migration. It proves rollback after an injected mid-migration failure, rejects a partial/conflicting pre-existing Finisher schema with a clear error, verifies a second `migrate deploy` is safe, confirms no custom Finisher roles exist, verifies the curated catalog and immutable definitions, regenerates the matching client, runs the protected Finisher Prisma relationship-drift check, proves deferred terminal parent/child coherence and permanent command-tombstone enforcement through Prisma, direct SQL, bulk, insert, delete, expiry, cleanup, race, and ABA paths, runs the remaining lifecycle/CAS/rollback tests, and always removes the container. It sets its own `DATABASE_URL`/`TEST_DATABASE_URL` and does not read `.env.local` or mutate a configured database.
+`npm run test:db:workout-mutations -- --confirm-disposable` starts an isolated PostgreSQL 17 container, applies the prior migration chain, preserves representative existing `User` and `Workout` rows, and then applies both checked-in Finisher migrations. It proves rollback after an injected phase-1 failure, rejects a partial/conflicting pre-existing Finisher schema with a clear error, verifies a second `migrate deploy` is safe, confirms no custom Finisher roles exist, verifies the curated catalog and immutable definitions, management overlay/ownership and zero-item offer contract, regenerates the matching client, runs the protected Finisher Prisma relationship-drift check, proves deferred terminal parent/child coherence and permanent command-tombstone enforcement through Prisma, direct SQL, bulk, insert, delete, expiry, cleanup, race, and ABA paths, runs management owner/CAS/history/empty-library coverage plus the remaining lifecycle/CAS/rollback tests, and always removes the container. It sets its own `DATABASE_URL`/`TEST_DATABASE_URL` and does not read `.env.local` or mutate a configured database.
 
 Owner: Aaron
 Last reviewed: 2026-03-16

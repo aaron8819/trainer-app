@@ -19,8 +19,9 @@ Migration `20260728120000_add_finishers_phase_1` adds:
   used to explain it. Decline identity and time are persisted on the offer.
   The offer stores the historical owner and uses `(workoutId, ownerId)` to
   reference the same `(Workout.id, Workout.userId)` pair.
-  The offer persists the exact positive item count. Deferred validation requires
-  a nonempty item set whose unique positions are exactly `0..itemCount - 1`.
+  The offer persists the exact nonnegative item count. Deferred validation
+  permits zero items only with no recommendation; positive item sets require
+  unique positions exactly `0..itemCount - 1`.
   A composite restrictive foreign key binds a recommendation to a routine
   version among that exact offer's items. Parent-row locking and visibility
   checks serialize construction/finalization against concurrent insertion;
@@ -174,6 +175,33 @@ it permits and reports only those three named drops on
 including additive drift, unrelated destructive drift, restoration of a
 missing protected relationship, supporting-uniqueness changes, and malformed
 or unrecognized SQL.
+
+## Finisher management persistence
+
+Migration `20260803120000_add_finisher_management` adds the owner/library layer
+without rewriting the seeded catalog or any frozen offer/execution history:
+
+- `FinisherRoutine.ownerId` is nullable and identity-immutable. `null` identifies
+  a system routine; a user-created routine is restrictively related to its
+  owner. Definition edits append a sealed `FinisherRoutineVersion` N+1 and
+  never update or delete an earlier version.
+- `FinisherLibraryItem` is the thin `(ownerId, routineId)` overlay. It stores
+  `ACTIVE|ARCHIVED|DELETED`, nullable active position, a positive optimistic
+  revision, and create/update/archive/restore/delete timestamps. State/position
+  consistency and per-owner active-position uniqueness are database-enforced.
+  A trigger keeps `(ownerId, routineId)` immutable and permits a library item to
+  reference only a system routine or a routine owned by that same owner.
+- An absent overlay is meaningful only for an active system routine and means
+  default-active. The first successful management mutation materializes the
+  owner's current logical system library in the same serializable transaction.
+  There is no catalog reconciliation job or competing availability flag.
+- Product deletion is logical overlay state. System routines cannot be deleted;
+  user routines with `SELECTED|IN_PROGRESS` execution rows are blocked. Since
+  routine/version rows remain and history foreign keys are restrictive,
+  completed execution DTOs remain renderable after deletion.
+- The same migration replaces the old positive-offer constraint with the
+  nonnegative/finalized zero-item contract. Existing positive frozen offers
+  retain their exact items, positions, recommendation binding, and versions.
 
 Owner: Aaron  
 Last reviewed: 2026-03-19  

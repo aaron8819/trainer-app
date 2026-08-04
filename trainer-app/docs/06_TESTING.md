@@ -94,6 +94,17 @@ Sources of truth:
   outcomes, plus workout-deletion protection. After the DB suites, it runs the
   ordinary development seed and proves pure numeric step and alternative order
   drift fails without rewriting immutable catalog rows.
+- The same disposable PostgreSQL 17 command applies
+  `20260803120000_add_finisher_management`, runs
+  `src/lib/api/finisher-library-service.db.test.ts`, and covers default-active
+  materialization, personal ordering/picker integration, owner isolation, CAS,
+  immutable N+1/frozen-history behavior, system/active-execution delete guards,
+  displayed-version-bound duplication, database owner-aligned overlay identity,
+  rejected reorder rollback, completed-history rendering after logical deletion,
+  and finalized zero-item offers. It remains unavailable unless the local Docker
+  daemon is running.
+- Focused credential-free Finisher management coverage:
+  `npm run test -- src/lib/validation.finisher-library.test.ts src/app/api/finishers/route.test.ts src/app/settings/page.test.tsx src/components/finishers/FinisherLibraryClient.test.tsx src/components/finishers/FinisherRoutineEditor.test.tsx src/components/finishers/FinisherExperience.test.tsx`.
 - `npm run test:db:historical-snapshots -- --confirm-disposable`: explicit schema-dependent
   historical-evidence alias for the same consolidated disposable harness.
 - `npm run test:db:readiness-snapshots -- --confirm-disposable`: starts an isolated Docker PostgreSQL 16 container, applies all checked-in migrations without reading `.env.local`, verifies legacy-unknown migration behavior, partial unique enforcement, identical concurrent activation, conflicting payload rejection, forced replacement rollback, stale-evidence rejection, and owner isolation, then removes the container. Package scripts never supply disposable confirmation: the operator must type it for every mutating invocation, and aliases or wrappers must not embed it. Strict argument and inherited-target validation complete before `pg` or any other database-dependent module loads and before Docker work begins.

@@ -19,7 +19,7 @@ describe("production write-gate static verification", () => {
   it("covers every classified application mutation before any mutation work", () => {
     const result = verifyProductionWriteGate(process.cwd());
     expect(result.failures).toEqual([]);
-    expect(result.mutationRoutes).toHaveLength(35);
+    expect(result.mutationRoutes).toHaveLength(42);
     expect(result.operationalCommands).toHaveLength(21);
   });
 

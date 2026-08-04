@@ -123,6 +123,14 @@
       "packageScript": "test:db:workout-mutations"
     },
     {
+      "path": "src/lib/api/finisher-library-service.db.test.ts",
+      "environment": "db-required",
+      "owner": "workout-mutations",
+      "reason": "Real PostgreSQL Finisher library materialization, concurrency, owner isolation, ordering, deletion, immutable history, and empty-offer coverage requires the explicitly confirmed disposable harness.",
+      "commandId": "npm-test-db-workout-mutations",
+      "packageScript": "test:db:workout-mutations"
+    },
+    {
       "path": "src/lib/api/slot-plan-seed.contract.test.ts",
       "environment": "import-only-placeholder",
       "owner": "test-environment-preflight",

@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import {
-  deriveTimedFinisherDurationSeconds,
   projectFinisherTimer,
   recommendFinisher,
   resolveFinisherOutcome,
@@ -10,16 +9,15 @@ import {
   type FinisherTimerProjection,
 } from "@/lib/engine/finisher-domain";
 import { resolveCanonicalLimitations } from "@/lib/engine/limitation-policy";
+import {
+  finisherRoutineVersionInclude as routineVersionInclude,
+  toFinisherRoutineDto as toRoutineDto,
+  type FinisherRoutineDto,
+  type FinisherRoutineVersionRow as RoutineVersionRow,
+} from "@/lib/api/finisher-routine-dto";
+import { resolveOwnerScopedActiveFinisherLibrary } from "@/lib/api/finisher-library-service";
 
-const routineVersionInclude = {
-  routine: true,
-  steps: {
-    orderBy: { orderIndex: "asc" as const },
-    include: {
-      alternatives: { orderBy: { orderIndex: "asc" as const } },
-    },
-  },
-} as const;
+export type { FinisherRoutineDto } from "@/lib/api/finisher-routine-dto";
 
 const executionInclude = {
   routineVersion: { include: routineVersionInclude },
@@ -32,9 +30,6 @@ const executionInclude = {
 } as const;
 
 type FinisherTransaction = Prisma.TransactionClient;
-type RoutineVersionRow = Prisma.FinisherRoutineVersionGetPayload<{
-  include: typeof routineVersionInclude;
-}>;
 type ExecutionRow = Prisma.FinisherExecutionGetPayload<{
   include: typeof executionInclude;
 }>;
@@ -110,41 +105,6 @@ function isDecisionRace(error: unknown): boolean {
   );
 }
 
-export type FinisherRoutineDto = {
-  id: string;
-  routineId: string;
-  code: string;
-  version: number;
-  name: string;
-  description: string;
-  category: "CORE" | "CONDITIONING";
-  placement: "POST_WORKOUT";
-  kind: "FINISHER";
-  protocol: "TIMED_INTERVALS";
-  difficulty: "EASY" | "MODERATE" | "CHALLENGING";
-  fatigueCost: "LOW" | "MODERATE" | "HIGH";
-  impactLevel: "LOW" | "MODERATE" | "HIGH";
-  preparationSeconds: number;
-  includesFinalRecovery: boolean;
-  durationSeconds: number;
-  equipmentRequirements: string[];
-  bodyRegions: string[];
-  limitationTags: string[];
-  warnings: string[];
-  steps: Array<{
-    id: string;
-    orderIndex: number;
-    movementName: string;
-    workSeconds: number;
-    recoverySeconds: number;
-    techniqueCues: string[];
-    alternatives: Array<{
-      id: string;
-      movementName: string;
-    }>;
-  }>;
-};
-
 export type FinisherExecutionDto = {
   serverTime: string;
   id: string;
@@ -213,65 +173,6 @@ export class FinisherServiceError extends Error {
 
 function fail(code: string, status: number): never {
   throw new FinisherServiceError(code, status);
-}
-
-function toRoutineDto(
-  row: RoutineVersionRow,
-  activeLimitations: string[],
-  warningsOverride?: string[]
-): FinisherRoutineDto {
-  const resolved = resolveCanonicalLimitations(activeLimitations);
-  const known = new Set<string>(resolved.recognizedTags);
-  const conflicts = row.limitationTags.filter((tag) => known.has(tag));
-  const unknownWarnings = resolved.unrecognizedTexts.map(
-    (text) =>
-      `The active limitation "${text}" could not be matched to a canonical body region. Review this routine and acknowledge the uncertainty before choosing it.`,
-  );
-  return {
-    id: row.id,
-    routineId: row.routineId,
-    code: row.routine.code,
-    version: row.version,
-    name: row.name,
-    description: row.description,
-    category: row.category,
-    placement: row.placement,
-    kind: row.kind,
-    protocol: row.protocol,
-    difficulty: row.difficulty,
-    fatigueCost: row.fatigueCost,
-    impactLevel: row.impactLevel,
-    preparationSeconds: row.preparationSeconds,
-    includesFinalRecovery: row.includesFinalRecovery,
-    durationSeconds: deriveTimedFinisherDurationSeconds({
-      steps: row.steps,
-      includesFinalRecovery: row.includesFinalRecovery,
-    }),
-    equipmentRequirements: row.equipmentRequirements,
-    bodyRegions: row.bodyRegions,
-    limitationTags: row.limitationTags,
-    warnings:
-      warningsOverride ??
-      [
-        ...conflicts.map(
-          (tag) =>
-            `This routine conflicts with your active ${tag.replace("_", " ")} limitation.`,
-        ),
-        ...unknownWarnings,
-      ],
-    steps: row.steps.map((step) => ({
-      id: step.id,
-      orderIndex: step.orderIndex,
-      movementName: step.movementName,
-      workSeconds: step.workSeconds,
-      recoverySeconds: step.recoverySeconds,
-      techniqueCues: step.techniqueCues,
-      alternatives: step.alternatives.map((alternative) => ({
-        id: alternative.id,
-        movementName: alternative.movementName,
-      })),
-    })),
-  };
 }
 
 function toExecutionDto(
@@ -767,18 +668,8 @@ export async function createFinisherOffer(input: {
           input.userId,
           input.workoutId
         );
-        const [routineRows, limitations, recentRows] = await Promise.all([
-          tx.finisherRoutine.findMany({
-            where: { publicationState: "ACTIVE" },
-            orderBy: { code: "asc" },
-            include: {
-              versions: {
-                orderBy: { version: "desc" },
-                take: 1,
-                include: routineVersionInclude,
-              },
-            },
-          }),
+        const [versions, limitations, recentRows] = await Promise.all([
+          resolveOwnerScopedActiveFinisherLibrary(tx, input.userId),
           loadActiveLimitations(tx, input.userId),
           tx.finisherExecution.findMany({
             where: {
@@ -791,7 +682,6 @@ export async function createFinisherOffer(input: {
             select: { routineVersionId: true },
           }),
         ]);
-        const versions = routineRows.flatMap((routine) => routine.versions);
         const lowerBodyDemandingWorkout =
           workout.sessionIntent === "LEGS" ||
           workout.sessionIntent === "LOWER" ||
@@ -836,14 +726,16 @@ export async function createFinisherOffer(input: {
           },
           select: { id: true },
         });
-        await tx.finisherOfferItem.createMany({
-          data: versions.map((version, position) => ({
-            offerId: offer.id,
-            routineVersionId: version.id,
-            position,
-            warnings: toRoutineDto(version, limitations).warnings,
-          })),
-        });
+        if (versions.length > 0) {
+          await tx.finisherOfferItem.createMany({
+            data: versions.map((version, position) => ({
+              offerId: offer.id,
+              routineVersionId: version.id,
+              position,
+              warnings: toRoutineDto(version, limitations).warnings,
+            })),
+          });
+        }
         await tx.finisherOffer.update({
           where: { id: offer.id },
           data: { finalizedAt: now },

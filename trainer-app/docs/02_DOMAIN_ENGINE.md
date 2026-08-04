@@ -39,6 +39,16 @@ Finishers do not contribute inputs to plan progression, workout-slot lifecycle,
 hypertrophy/strength volume, effective sets, exercise exposure, PRs, or future
 load recommendations.
 
+Finisher management is owner-scoped application configuration. The canonical
+active-library resolver in `src/lib/api/finisher-library-service.ts` orders the
+owner's active overlay items and treats an absent overlay for a system routine
+as default-active. `createFinisherOffer()` consumes that one resolver and
+freezes the current latest immutable version of every active routine into the
+new offer. Archiving, restoring, reordering, editing, and product deletion do
+not rewrite an existing offer, selected/in-progress execution, or completed
+history. A fully archived library deliberately produces a finalized zero-item
+offer and does not change the completed workout result.
+
 Owner: Aaron
 Last reviewed: 2026-03-19
 Purpose: Canonical reference for workout-generation domain logic, including selection, progression, periodization, readiness, and explainability.

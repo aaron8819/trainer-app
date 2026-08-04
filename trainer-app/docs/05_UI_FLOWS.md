@@ -63,10 +63,31 @@ zeroed terminal timer cannot remain indefinitely ahead of persisted state. The
 normal post-session review remains the main workout summary whether a Finisher
 is declined, skipped, dismissed, or ended partial.
 
-Phase 1 excludes plan-prescribed or multiple Finishers, user/AI-authored
-routines, lift-style logging, EMOM/AMRAP/rep/distance protocols, Finisher-driven
-progression, main-workout block conversion, pre-workout warm-ups, and mobility
-blocks.
+The execution flow still excludes plan-prescribed or multiple simultaneous
+Finishers, AI-authored routines, lift-style logging,
+EMOM/AMRAP/rep/distance protocols, Finisher-driven progression, main-workout
+block conversion, pre-workout warm-ups, and mobility blocks.
+
+## Finisher management
+
+`/settings` links to `/settings/finishers`. The management page has Active and
+Archived views. Active order is the exact personal order used by every newly
+created workout offer; there is no separate availability toggle. Users can
+create, duplicate, reorder, archive, restore, and delete their routines.
+System routines show Customize, which creates a user-owned copy; they never
+show direct edit or delete actions. Duplicate and Customize bind the request to
+the immutable version displayed on the library card and require refresh if that
+definition advances before the copy is created.
+
+`/settings/finishers/new` and `/settings/finishers/[id]/edit` are mobile-first
+ordered timed-step editors. They expose only the current timed engine fields,
+show a live shared routine preview with the same duration/warning/step display
+meaning used by `FinisherExperience`, and keep equipment hidden. Saving an edit
+creates immutable version N+1; explanatory copy makes clear that frozen offers
+and history retain the prior version. Stale-tab conflicts require reload rather
+than client-side merging (`src/components/finishers/FinisherLibraryClient.tsx`,
+`src/components/finishers/FinisherRoutineEditor.tsx`,
+`src/components/finishers/FinisherRoutinePreview.tsx`).
 
 ## Workout-session revision flow
 

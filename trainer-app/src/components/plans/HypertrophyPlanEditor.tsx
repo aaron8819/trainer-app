@@ -1,0 +1,952 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/Button";
+import {
+  CANONICAL_MOVEMENT_PATTERN_VALUES,
+  type MovementPatternV2,
+} from "@/lib/engine/types";
+import {
+  CANONICAL_MUSCLE_IDS,
+  MUSCLE_POLICY_BY_ID,
+  type CanonicalMuscleId,
+} from "@/lib/engine/muscle-policy";
+import {
+  evaluateHypertrophyPlanHealth,
+  isExerciseAvailableForHypertrophyPlan,
+  isExerciseEligibleForIntent,
+  type AcceptedExerciseIntentV2,
+  type HypertrophyPlanDraftV1,
+  type HypertrophySessionFocus,
+  type HypertrophyUserRole,
+} from "@/lib/engine/hypertrophy-plan-authoring";
+import type { HypertrophyPlanEditorData } from "@/lib/api/hypertrophy-plan-drafts";
+
+type SaveState = "saved" | "saving" | "failed";
+
+const ROLE_LABEL: Record<HypertrophyUserRole, string> = {
+  PRIMARY_LIFT: "Primary lift",
+  SECONDARY_LIFT: "Secondary lift",
+  MUSCLE_ISOLATION: "Muscle isolation",
+  ACCESSORY: "Accessory",
+};
+
+const FOCUS_LABEL: Record<HypertrophySessionFocus, string> = {
+  PUSH: "Push",
+  PULL: "Pull",
+  LEGS: "Legs",
+  UPPER: "Upper body",
+  LOWER: "Lower body",
+  FULL_BODY: "Full body",
+  BODY_PART: "Custom",
+};
+
+function targetLabel(intent: AcceptedExerciseIntentV2): string {
+  return intent.target.kind === "muscle"
+    ? MUSCLE_POLICY_BY_ID[intent.target.muscleId].displayName
+    : intent.target.movementPattern.replaceAll("_", " ");
+}
+
+function defaultIntent(role: HypertrophyUserRole): AcceptedExerciseIntentV2 {
+  if (role === "PRIMARY_LIFT" || role === "SECONDARY_LIFT") {
+    return {
+      userRole: role,
+      target: { kind: "movement_pattern", movementPattern: "horizontal_push" },
+    };
+  }
+  return {
+    userRole: role,
+    target: { kind: "muscle", muscleId: "chest" },
+  };
+}
+
+function replaceAt<T>(values: T[], index: number, value: T): T[] {
+  return values.map((entry, entryIndex) =>
+    entryIndex === index ? value : entry,
+  );
+}
+
+function move<T>(values: T[], from: number, to: number): T[] {
+  if (to < 0 || to >= values.length) return values;
+  const next = [...values];
+  const [entry] = next.splice(from, 1);
+  next.splice(to, 0, entry!);
+  return next;
+}
+
+async function responseBody(response: Response) {
+  return response.json().catch(() => ({})) as Promise<{
+    error?: string;
+    code?: string;
+    revision?: number;
+    draft?: HypertrophyPlanDraftV1;
+  }>;
+}
+
+export function HypertrophyPlanEditor({
+  initialData,
+}: {
+  initialData: HypertrophyPlanEditorData;
+}) {
+  const router = useRouter();
+  const [name, setName] = useState(initialData.name);
+  const [draft, setDraft] = useState(initialData.draft);
+  const [revision, setRevision] = useState(initialData.revision);
+  const [selectedSlotId, setSelectedSlotId] = useState(
+    initialData.draft.sessions[0]!.slotId,
+  );
+  const [saveState, setSaveState] = useState<SaveState>("saved");
+  const [error, setError] = useState<string | null>(null);
+  const [showHealth, setShowHealth] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const [search, setSearch] = useState("");
+  const [searchAllExercises, setSearchAllExercises] = useState(false);
+  const [newIntent, setNewIntent] = useState<AcceptedExerciseIntentV2>(
+    defaultIntent("PRIMARY_LIFT"),
+  );
+  const [newExerciseId, setNewExerciseId] = useState("");
+  const [makingReady, setMakingReady] = useState(false);
+  const lastSavedSignature = useRef(
+    JSON.stringify({ name: initialData.name, draft: initialData.draft }),
+  );
+  const currentSignature = JSON.stringify({ name, draft });
+  const unsaved = currentSignature !== lastSavedSignature.current;
+  const inFlight = useRef(false);
+  const queued = useRef(false);
+  const latest = useRef({ name, draft, revision });
+  latest.current = { name, draft, revision };
+
+  const health = useMemo(
+    () =>
+      evaluateHypertrophyPlanHealth({
+        draft,
+        exercises: initialData.exercises,
+        limitationKeys: initialData.limitationKeys,
+      }),
+    [draft, initialData.exercises, initialData.limitationKeys],
+  );
+  const selectedIndex = Math.max(
+    0,
+    draft.sessions.findIndex((session) => session.slotId === selectedSlotId),
+  );
+  const session = draft.sessions[selectedIndex]!;
+  const duration = health.sessions.find(
+    (entry) => entry.slotId === session.slotId,
+  )?.estimatedMinutes;
+
+  const save = useCallback(async () => {
+    if (inFlight.current) {
+      queued.current = true;
+      return false;
+    }
+    const snapshot = latest.current;
+    const signature = JSON.stringify({
+      name: snapshot.name,
+      draft: snapshot.draft,
+    });
+    if (signature === lastSavedSignature.current) {
+      setSaveState("saved");
+      return true;
+    }
+    inFlight.current = true;
+    setSaveState("saving");
+    setError(null);
+    try {
+      const response = await fetch(`/api/plans/${initialData.planId}/draft`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expectedRevision: snapshot.revision,
+          name: snapshot.name,
+          draft: snapshot.draft,
+        }),
+      });
+      const body = await responseBody(response);
+      if (!response.ok || body.revision == null) {
+        setError(body.error ?? "Could not save the draft.");
+        setSaveState("failed");
+        return false;
+      }
+      setRevision(body.revision);
+      latest.current.revision = body.revision;
+      lastSavedSignature.current = signature;
+      setSaveState("saved");
+      return true;
+    } catch {
+      setError("Could not save the draft.");
+      setSaveState("failed");
+      return false;
+    } finally {
+      inFlight.current = false;
+      if (queued.current) {
+        queued.current = false;
+        window.setTimeout(() => void save(), 0);
+      }
+    }
+  }, [initialData.planId]);
+
+  useEffect(() => {
+    if (!unsaved || saveState === "failed") return;
+    setSaveState("saving");
+    const timer = window.setTimeout(() => void save(), 750);
+    return () => window.clearTimeout(timer);
+  }, [currentSignature, save, saveState, unsaved]);
+
+  useEffect(() => {
+    if (!unsaved) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [unsaved]);
+
+  const updateSession = (
+    updater: (value: HypertrophyPlanDraftV1["sessions"][number]) =>
+      HypertrophyPlanDraftV1["sessions"][number],
+  ) => {
+    setDraft((current) => ({
+      ...current,
+      sessions: replaceAt(
+        current.sessions,
+        selectedIndex,
+        updater(current.sessions[selectedIndex]!),
+      ),
+    }));
+  };
+
+  const eligibleExercises = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return initialData.exercises
+      .filter((exercise) => {
+        const eligibility = {
+          exercise,
+          equipmentProfile: draft.settings.equipmentProfile,
+          limitationKeys: initialData.limitationKeys,
+        };
+        return searchAllExercises
+          ? isExerciseAvailableForHypertrophyPlan(eligibility)
+          : isExerciseEligibleForIntent({ ...eligibility, intent: newIntent });
+      })
+      .filter((exercise) => !query || exercise.name.toLowerCase().includes(query))
+      .sort(
+        (left, right) =>
+          Number(Boolean(right.isFavorite)) - Number(Boolean(left.isFavorite)) ||
+          left.name.localeCompare(right.name),
+      );
+  }, [
+    draft.settings.equipmentProfile,
+    initialData.exercises,
+    initialData.limitationKeys,
+    newIntent,
+    search,
+    searchAllExercises,
+  ]);
+
+  const addSession = () => {
+    if (draft.sessions.length >= 6) return;
+    const slotId = crypto.randomUUID();
+    setDraft((current) => ({
+      ...current,
+      sessions: [
+        ...current.sessions,
+        {
+          slotId,
+          name: `Session ${current.sessions.length + 1}`,
+          focus: "BODY_PART",
+          exercises: [],
+        },
+      ],
+    }));
+    setSelectedSlotId(slotId);
+  };
+
+  const removeSession = () => {
+    if (draft.sessions.length <= 2) return;
+    if (
+      session.exercises.length > 0 &&
+      !window.confirm(
+        `Remove “${session.name}” and its ${session.exercises.length} exercises?`,
+      )
+    ) {
+      return;
+    }
+    const next = draft.sessions.filter((entry) => entry.slotId !== session.slotId);
+    setDraft((current) => ({ ...current, sessions: next }));
+    setSelectedSlotId(next[Math.max(0, selectedIndex - 1)]!.slotId);
+  };
+
+  const addExercise = () => {
+    if (!newExerciseId) return;
+    updateSession((current) => ({
+      ...current,
+      exercises: [
+        ...current.exercises,
+        { exerciseId: newExerciseId, workingSets: 3, intent: newIntent },
+      ],
+    }));
+    setNewExerciseId("");
+    setSearch("");
+    setSearchAllExercises(false);
+    setShowAdd(false);
+  };
+
+  const updateExerciseIntent = (
+    exerciseIndex: number,
+    intent: AcceptedExerciseIntentV2,
+  ) =>
+    updateSession((current) => ({
+      ...current,
+      exercises: replaceAt(current.exercises, exerciseIndex, {
+        ...current.exercises[exerciseIndex]!,
+        intent,
+      }),
+    }));
+
+  const flushSave = async () => {
+    if (!unsaved && saveState === "saved") return true;
+    return save();
+  };
+
+  const makeReady = async () => {
+    if (health.blockers.length > 0) {
+      setShowHealth(true);
+      setError("Resolve the plan blockers before making it ready.");
+      return;
+    }
+    const saved = await flushSave();
+    if (!saved) return;
+    const warningText = health.warnings.length
+      ? ` This plan has ${health.warnings.length} warnings; confirm that you reviewed them.`
+      : "";
+    if (
+      !window.confirm(
+        `Make this plan ready? This freezes the initial block and will not activate it.${warningText}`,
+      )
+    ) {
+      return;
+    }
+    setMakingReady(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/plans/${initialData.planId}/finalize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expectedDraftRevision: latest.current.revision,
+          warningsConfirmed: health.warnings.length > 0,
+        }),
+      });
+      const body = await responseBody(response);
+      if (!response.ok) {
+        setError(body.error ?? "The plan wasn’t made ready. Your draft is unchanged.");
+        return;
+      }
+      lastSavedSignature.current = JSON.stringify({ name, draft });
+      router.push(`/plans/${initialData.planId}/review`);
+      router.refresh();
+    } catch {
+      setError("The plan wasn’t made ready. Your draft is unchanged.");
+    } finally {
+      setMakingReady(false);
+    }
+  };
+
+  const regenerate = async () => {
+    if (
+      !window.confirm(
+        "Replace this draft with a new generated starting plan? Your current sessions, exercises, roles, order, and sets will be replaced.",
+      )
+    ) {
+      return;
+    }
+    if (!(await flushSave())) return;
+    setError(null);
+    const response = await fetch(`/api/plans/${initialData.planId}/regenerate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expectedRevision: latest.current.revision,
+        replaceConfirmed: true,
+      }),
+    });
+    const body = await responseBody(response);
+    if (!response.ok || !body.draft || body.revision == null) {
+      setError(body.error ?? "Generation failed. Your draft is unchanged.");
+      return;
+    }
+    setDraft(body.draft);
+    setRevision(body.revision);
+    latest.current = { name, draft: body.draft, revision: body.revision };
+    lastSavedSignature.current = JSON.stringify({ name, draft: body.draft });
+    setSelectedSlotId(body.draft.sessions[0]!.slotId);
+    setSaveState("saved");
+  };
+
+  return (
+    <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-20 -mx-4 border-b border-slate-200 bg-white/95 px-4 pb-4 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <label className="min-w-0 flex-1 text-sm font-medium text-slate-700">
+            <span className="sr-only">Plan name</span>
+            <input
+              value={name}
+              maxLength={60}
+              onChange={(event) => setName(event.target.value)}
+              className="w-full max-w-xl border-0 bg-transparent p-0 text-xl font-semibold text-slate-950 outline-none focus:ring-0 sm:text-2xl"
+            />
+          </label>
+          <div className="flex items-center gap-3 text-sm">
+            <span
+              className={
+                saveState === "failed" ? "text-rose-700" : "text-slate-600"
+              }
+            >
+              {saveState === "saving"
+                ? "Saving…"
+                : saveState === "failed"
+                  ? "Save failed — Retry"
+                  : "Saved"}
+            </span>
+            {saveState === "failed" ? (
+              <Button size="touch" variant="secondary" onClick={() => void save()}>
+                Retry
+              </Button>
+            ) : null}
+          </div>
+        </div>
+        <div className="mt-3 flex gap-2 overflow-x-auto pb-1 lg:hidden">
+          {draft.sessions.map((entry) => (
+            <button
+              key={entry.slotId}
+              type="button"
+              onClick={() => setSelectedSlotId(entry.slotId)}
+              className={`min-h-11 shrink-0 rounded-full border px-4 text-sm font-medium ${
+                entry.slotId === session.slotId
+                  ? "border-blue-500 bg-blue-50 text-blue-800"
+                  : "border-slate-300 bg-white text-slate-700"
+              }`}
+            >
+              {entry.name}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      {error ? (
+        <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+          {error}
+        </p>
+      ) : null}
+
+      <div className="mt-5 grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)_280px]">
+        <aside className="hidden rounded-2xl border border-slate-200 bg-white p-3 lg:block">
+          <h2 className="px-2 text-sm font-semibold text-slate-900">Sessions</h2>
+          <div className="mt-2 space-y-1">
+            {draft.sessions.map((entry, index) => (
+              <button
+                key={entry.slotId}
+                type="button"
+                onClick={() => setSelectedSlotId(entry.slotId)}
+                className={`w-full rounded-xl px-3 py-2 text-left text-sm ${
+                  entry.slotId === session.slotId
+                    ? "bg-blue-50 font-semibold text-blue-900"
+                    : "text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                {index + 1}. {entry.name}
+              </button>
+            ))}
+          </div>
+          <Button
+            variant="secondary"
+            size="touch"
+            className="mt-3 w-full"
+            onClick={addSession}
+            disabled={draft.sessions.length >= 6}
+          >
+            + Session
+          </Button>
+          {draft.sessions.length >= 6 ? (
+            <p className="mt-2 text-xs text-slate-500">Maximum six sessions.</p>
+          ) : null}
+        </aside>
+
+        <main className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+          <div className="grid gap-3 sm:grid-cols-[1fr_180px_auto]">
+            <label className="text-sm font-medium text-slate-700">
+              Session name
+              <input
+                value={session.name}
+                maxLength={60}
+                onChange={(event) =>
+                  updateSession((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+                className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base"
+              />
+            </label>
+            <label className="text-sm font-medium text-slate-700">
+              Focus
+              <select
+                value={session.focus}
+                onChange={(event) =>
+                  updateSession((current) => ({
+                    ...current,
+                    focus: event.target.value as HypertrophySessionFocus,
+                  }))
+                }
+                className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base"
+              >
+                {Object.entries(FOCUS_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex items-end gap-1">
+              <Button
+                variant="secondary"
+                size="touch"
+                onClick={() => {
+                  const nextIndex = selectedIndex - 1;
+                  if (nextIndex < 0) return;
+                  setDraft((current) => ({
+                    ...current,
+                    sessions: move(current.sessions, selectedIndex, nextIndex),
+                  }));
+                }}
+                disabled={selectedIndex === 0}
+                aria-label="Move session up"
+              >
+                ↑
+              </Button>
+              <Button
+                variant="secondary"
+                size="touch"
+                onClick={() => {
+                  const nextIndex = selectedIndex + 1;
+                  if (nextIndex >= draft.sessions.length) return;
+                  setDraft((current) => ({
+                    ...current,
+                    sessions: move(current.sessions, selectedIndex, nextIndex),
+                  }));
+                }}
+                disabled={selectedIndex === draft.sessions.length - 1}
+                aria-label="Move session down"
+              >
+                ↓
+              </Button>
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
+            <span>
+              {FOCUS_LABEL[session.focus]} · about {duration ?? 0} min
+            </span>
+            <Button
+              variant="ghost"
+              size="touch"
+              onClick={removeSession}
+              disabled={draft.sessions.length <= 2}
+              className="text-rose-700"
+            >
+              Remove session
+            </Button>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            {session.exercises.map((row, exerciseIndex) => {
+              const exercise = initialData.exercises.find(
+                (candidate) => candidate.id === row.exerciseId,
+              );
+              return (
+                <article
+                  key={`${row.exerciseId}-${exerciseIndex}`}
+                  className="rounded-xl border border-slate-200 p-3"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <h3 className="font-semibold text-slate-900">
+                        {exercise?.name ?? "Unavailable exercise"}
+                      </h3>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {ROLE_LABEL[row.intent.userRole]} · {targetLabel(row.intent)}
+                      </p>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="secondary"
+                        size="touch"
+                        aria-label={`Move ${exercise?.name ?? "exercise"} up`}
+                        disabled={exerciseIndex === 0}
+                        onClick={() =>
+                          updateSession((current) => ({
+                            ...current,
+                            exercises: move(
+                              current.exercises,
+                              exerciseIndex,
+                              exerciseIndex - 1,
+                            ),
+                          }))
+                        }
+                      >
+                        ↑
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="touch"
+                        aria-label={`Move ${exercise?.name ?? "exercise"} down`}
+                        disabled={exerciseIndex === session.exercises.length - 1}
+                        onClick={() =>
+                          updateSession((current) => ({
+                            ...current,
+                            exercises: move(
+                              current.exercises,
+                              exerciseIndex,
+                              exerciseIndex + 1,
+                            ),
+                          }))
+                        }
+                      >
+                        ↓
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                    <label className="text-xs font-medium text-slate-600">
+                      Role
+                      <select
+                        value={row.intent.userRole}
+                        onChange={(event) =>
+                          updateExerciseIntent(
+                            exerciseIndex,
+                            defaultIntent(event.target.value as HypertrophyUserRole),
+                          )
+                        }
+                        className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-2 text-sm"
+                      >
+                        {Object.entries(ROLE_LABEL).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <TargetSelect
+                      intent={row.intent}
+                      onChange={(intent) => updateExerciseIntent(exerciseIndex, intent)}
+                    />
+                    <label className="text-xs font-medium text-slate-600">
+                      Working sets
+                      <input
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={row.workingSets}
+                        onChange={(event) =>
+                          updateSession((current) => ({
+                            ...current,
+                            exercises: replaceAt(current.exercises, exerciseIndex, {
+                              ...row,
+                              workingSets: Math.max(
+                                1,
+                                Math.min(10, Number(event.target.value)),
+                              ),
+                            }),
+                          }))
+                        }
+                        className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base"
+                      />
+                    </label>
+                  </div>
+                  <label className="mt-3 block text-xs font-medium text-slate-600">
+                    Swap exercise (keeps role, target, sets, and order)
+                    <select
+                      value={row.exerciseId}
+                      onChange={(event) =>
+                        updateSession((current) => ({
+                          ...current,
+                          exercises: replaceAt(current.exercises, exerciseIndex, {
+                            ...row,
+                            exerciseId: event.target.value,
+                          }),
+                        }))
+                      }
+                      className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm"
+                    >
+                      {initialData.exercises
+                        .filter(
+                          (candidate) =>
+                            candidate.id === row.exerciseId ||
+                            isExerciseEligibleForIntent({
+                              exercise: candidate,
+                              intent: row.intent,
+                              equipmentProfile: draft.settings.equipmentProfile,
+                              limitationKeys: initialData.limitationKeys,
+                            }),
+                        )
+                        .sort(
+                          (left, right) =>
+                            Number(Boolean(right.isFavorite)) -
+                              Number(Boolean(left.isFavorite)) ||
+                            left.name.localeCompare(right.name),
+                        )
+                        .map((candidate) => (
+                          <option key={candidate.id} value={candidate.id}>
+                            {candidate.isFavorite ? "★ " : ""}
+                            {candidate.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <Button
+                    variant="ghost"
+                    size="touch"
+                    className="mt-2 text-rose-700"
+                    onClick={() =>
+                      updateSession((current) => ({
+                        ...current,
+                        exercises: current.exercises.filter(
+                          (_, index) => index !== exerciseIndex,
+                        ),
+                      }))
+                    }
+                  >
+                    Remove
+                  </Button>
+                </article>
+              );
+            })}
+          </div>
+
+          {showAdd ? (
+            <section className="mt-4 rounded-xl border border-blue-200 bg-blue-50/40 p-4">
+              <h3 className="font-semibold text-slate-900">Add exercise</h3>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="text-sm font-medium text-slate-700">
+                  Role
+                  <select
+                    value={newIntent.userRole}
+                    onChange={(event) => {
+                      setNewIntent(
+                        defaultIntent(event.target.value as HypertrophyUserRole),
+                      );
+                      setNewExerciseId("");
+                    }}
+                    className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3"
+                  >
+                    {Object.entries(ROLE_LABEL).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <TargetSelect
+                  intent={newIntent}
+                  onChange={(intent) => {
+                    setNewIntent(intent);
+                    setNewExerciseId("");
+                  }}
+                />
+              </div>
+              <label className="mt-3 block text-sm font-medium text-slate-700">
+                Search eligible exercises
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base"
+                  placeholder="Search"
+                />
+              </label>
+              <label className="mt-3 flex min-h-11 items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={searchAllExercises}
+                  onChange={(event) => {
+                    setSearchAllExercises(event.target.checked);
+                    setNewExerciseId("");
+                  }}
+                />
+                Search all exercises that match equipment and limitations
+              </label>
+              <label className="mt-3 block text-sm font-medium text-slate-700">
+                Exercise
+                <select
+                  value={newExerciseId}
+                  onChange={(event) => setNewExerciseId(event.target.value)}
+                  className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base"
+                >
+                  <option value="">
+                    {eligibleExercises.length
+                      ? "Choose an exercise"
+                      : "No eligible exercises"}
+                  </option>
+                  {eligibleExercises.map((exercise) => (
+                    <option key={exercise.id} value={exercise.id}>
+                      {exercise.isFavorite ? "★ " : ""}
+                      {exercise.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="mt-3 flex gap-2">
+                <Button size="touch" onClick={addExercise} disabled={!newExerciseId}>
+                  Add exercise
+                </Button>
+                <Button variant="secondary" size="touch" onClick={() => setShowAdd(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </section>
+          ) : (
+            <Button className="mt-4 w-full" size="touch" onClick={() => setShowAdd(true)}>
+              + Add exercise
+            </Button>
+          )}
+
+          <div className="mt-4 flex flex-wrap gap-2 lg:hidden">
+            <Button
+              variant="secondary"
+              size="touch"
+              onClick={addSession}
+              disabled={draft.sessions.length >= 6}
+            >
+              + Session
+            </Button>
+            <Button variant="secondary" size="touch" onClick={() => setShowHealth((value) => !value)}>
+              Plan health
+            </Button>
+          </div>
+        </main>
+
+        <aside className={`${showHealth ? "block" : "hidden"} rounded-2xl border border-slate-200 bg-white p-4 lg:block`}>
+          <h2 className="font-semibold text-slate-900">Plan health</h2>
+          <p className="mt-2 text-sm text-slate-600">
+            {health.blockers.length} blockers · {health.warnings.length} warnings
+          </p>
+          {health.blockers.length ? (
+            <div className="mt-3 space-y-2">
+              {health.blockers.map((finding, index) => (
+                <p key={`${finding.code}-${index}`} className="rounded-lg bg-rose-50 p-2 text-xs text-rose-800">
+                  {finding.message}
+                </p>
+              ))}
+            </div>
+          ) : null}
+          {health.warnings.length ? (
+            <div className="mt-3 space-y-2">
+              {health.warnings.map((finding, index) => (
+                <p key={`${finding.code}-${index}`} className="rounded-lg bg-amber-50 p-2 text-xs text-amber-800">
+                  {finding.message}
+                </p>
+              ))}
+            </div>
+          ) : null}
+          <details className="mt-4">
+            <summary className="cursor-pointer text-sm font-semibold text-slate-800">
+              Volume and frequency
+            </summary>
+            <div className="mt-2 space-y-1 text-xs text-slate-600">
+              {health.muscles
+                .filter((muscle) => muscle.effectiveSets > 0)
+                .map((muscle) => (
+                  <p key={muscle.muscleId}>
+                    {MUSCLE_POLICY_BY_ID[muscle.muscleId].displayName}: {muscle.directSets} direct · ~{muscle.effectiveSets} effective · {muscle.frequency}×
+                  </p>
+                ))}
+            </div>
+          </details>
+        </aside>
+      </div>
+
+      <footer className="sticky bottom-0 z-20 -mx-4 mt-5 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2">
+          <Button
+            variant="secondary"
+            size="touch"
+            onClick={() => void regenerate()}
+            disabled={draft.sessions.length !== 4 || makingReady}
+          >
+            Generate a new starting plan
+          </Button>
+          <Button size="touch" onClick={() => void makeReady()} disabled={makingReady || saveState === "saving"}>
+            {makingReady ? "Making ready…" : "Make plan ready"}
+          </Button>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+function TargetSelect({
+  intent,
+  onChange,
+}: {
+  intent: AcceptedExerciseIntentV2;
+  onChange: (intent: AcceptedExerciseIntentV2) => void;
+}) {
+  const showMovement = intent.userRole !== "MUSCLE_ISOLATION";
+  const showMuscle =
+    intent.userRole === "MUSCLE_ISOLATION" || intent.userRole === "ACCESSORY";
+  return (
+    <label className="text-xs font-medium text-slate-600">
+      Target
+      <select
+        value={
+          intent.target.kind === "muscle"
+            ? `muscle:${intent.target.muscleId}`
+            : `movement:${intent.target.movementPattern}`
+        }
+        onChange={(event) => {
+          const [kind, value] = event.target.value.split(":") as [
+            "muscle" | "movement",
+            string,
+          ];
+          onChange({
+            userRole: intent.userRole,
+            target:
+              kind === "muscle"
+                ? { kind: "muscle", muscleId: value as CanonicalMuscleId }
+                : {
+                    kind: "movement_pattern",
+                    movementPattern: value as MovementPatternV2,
+                  },
+          });
+        }}
+        className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-2 text-sm capitalize"
+      >
+        {showMovement
+          ? CANONICAL_MOVEMENT_PATTERN_VALUES.filter((pattern) =>
+              intent.userRole === "PRIMARY_LIFT"
+                ? [
+                    "horizontal_push",
+                    "horizontal_pull",
+                    "vertical_push",
+                    "vertical_pull",
+                    "squat",
+                    "hinge",
+                  ].includes(pattern)
+                : true,
+            ).map((pattern) => (
+              <option key={pattern} value={`movement:${pattern}`}>
+                {pattern.replaceAll("_", " ")}
+              </option>
+            ))
+          : null}
+        {showMuscle
+          ? CANONICAL_MUSCLE_IDS.map((muscleId) => (
+              <option key={muscleId} value={`muscle:${muscleId}`}>
+                {MUSCLE_POLICY_BY_ID[muscleId].displayName}
+              </option>
+            ))
+          : null}
+      </select>
+    </label>
+  );
+}

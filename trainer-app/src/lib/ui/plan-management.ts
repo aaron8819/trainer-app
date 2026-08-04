@@ -2,6 +2,7 @@ import type { StrengthPlanConfiguration } from "@/lib/engine/strength-plan-polic
 import type { SupportedPlanType } from "@/lib/plan-types";
 
 export type PlanLifecycleStatus =
+  | "DRAFT"
   | "PREPARING"
   | "READY"
   | "HANDOFF_PENDING"
@@ -20,6 +21,8 @@ export type PlanSummary = {
   endDate: string;
   durationWeeks: number;
   mesocycleCount: number;
+  sessionsPerWeek?: number | null;
+  editableCopyAvailable?: boolean;
   createdAt: string;
   updatedAt: string;
 };

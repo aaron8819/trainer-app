@@ -532,3 +532,14 @@ Canonical ownership:
 - `POST /api/workouts/save` accepts the same mode only as creation intent. For `short_today`, it reloads current owner/mesocycle/revision evidence, recomputes the exact variant from the full snapshot, validates receipt provenance and both fingerprints, and replaces client-carried reduction evidence with a canonical operation.
 - An exact duplicate creation fingerprint is idempotent. Changed or post-creation Short requests return `409`. Later ordinary runtime edits use existing contracts.
 - Unsupported requests leave the full plan unchanged. No route mutates seeds, future sessions, weekly allocation, planner policy, repair, or readiness activation.
+## Custom hypertrophy plan API (default off)
+
+These contracts are available only when `TRAINER_CUSTOM_HYPERTROPHY_PLANS_ROLLOUT=enabled`; otherwise the existing plan routes keep their legacy behavior and custom-only routes return `503`.
+
+- `POST /api/plans`: custom hypertrophy creation accepts name, 2–6 sessions, equipment, duration, author method, and an optional manual preset. V2 generation requires four sessions. It creates a draft plan only.
+- `PATCH /api/plans/[id]/draft`: atomically saves normalized plan name plus the complete strict draft using `expectedRevision`; stale writes return the existing plan mutation conflict response.
+- `POST /api/plans/[id]/regenerate`: replaces a four-session draft through V2 only when `replaceConfirmed=true` and the expected revision still matches.
+- `POST /api/plans/[id]/finalize`: custom requests supply `expectedDraftRevision` and `warningsConfirmed`. Make-ready validates health inside a serializable transaction, requires warning confirmation when applicable, writes accepted truth/projections, and consumes the draft.
+- `POST /api/plans/[id]/copy`: creates a new draft from a source plan's current version 2 accepted revision. Legacy plans without preserved semantic intent are not copyable through this contract.
+
+Ready and Active custom plans have no in-place edit API. Activation remains the existing separate `/api/plans/[id]/activate` operation and retains the in-progress-workout guard.

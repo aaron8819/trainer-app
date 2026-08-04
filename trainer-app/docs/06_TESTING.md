@@ -652,3 +652,8 @@ command names.
 ## Short-today verification
 
 Focused coverage must exercise manifest authoring for preferred/moderate/minimal capacity, parser compatibility, concrete row hashing, protected roles/exposures, deterministic transformation, readiness-before-reduction ordering, route request strictness, save recomputation/OCC/idempotency, reconciliation suppression, reduced incomplete projection, post-session omission interpretation, closure non-redistribution, UI preview/cancel/lock copy, and source-boundary scans. Normal seed replay tests must continue to prove accepted explanatory metadata is runtime-inert.
+## Custom hypertrophy plan verification
+
+Focused coverage lives in `hypertrophy-plan-authoring.test.ts`, `hypertrophy-plan-drafts.test.ts`, the accepted-revision/parser suites, runtime-swap suites, plan-management/activation suites, and the rollout test. It proves manual/V2 draft convergence, strict minimal intent, health severity, CAS save behavior, atomic draft consumption/rollback, lossless editable copy, projection alignment, version-dispatched hashing, legacy compatibility, role-aware runtime substitution, separate activation, and default-off rollout behavior.
+
+Migration verification must use the repository migration-integrity suite and disposable/local PostgreSQL only. Do not enable the feature in a shared Development, Preview, or Production environment for browser testing; local manual testing requires an explicitly disposable database and a process-local rollout variable.

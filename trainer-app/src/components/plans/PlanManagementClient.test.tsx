@@ -42,6 +42,8 @@ function plan(
     createdAt: "2026-07-27T01:00:00.000Z",
     updatedAt: "2026-07-27T01:00:00.000Z",
     ...input,
+    sessionsPerWeek: input.sessionsPerWeek ?? null,
+    editableCopyAvailable: input.editableCopyAvailable ?? false,
   };
 }
 

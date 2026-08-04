@@ -1,11 +1,13 @@
 import { PlanManagementClient } from "@/components/plans/PlanManagementClient";
 import { loadConfiguredPlanManagementData } from "@/lib/api/plan-management";
+import { isCustomHypertrophyPlanRolloutEnabled } from "@/lib/operations/custom-hypertrophy-plan-rollout";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function PlansPage() {
   const data = await loadConfiguredPlanManagementData();
+  const customHypertrophyEnabled = isCustomHypertrophyPlanRolloutEnabled();
 
   return (
     <main className="min-h-screen bg-white text-slate-900">
@@ -18,7 +20,10 @@ export default async function PlansPage() {
           Create and review hypertrophy or strength plans, then explicitly
           choose which READY plan drives your training.
         </p>
-        <PlanManagementClient initialData={data} />
+        <PlanManagementClient
+          initialData={data}
+          customHypertrophyEnabled={customHypertrophyEnabled}
+        />
       </div>
     </main>
   );

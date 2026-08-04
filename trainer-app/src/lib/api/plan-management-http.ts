@@ -99,6 +99,47 @@ export function planManagementErrorResponse(
         },
         { status: 409 },
       );
+    case "PLAN_GENERATION_FAILED":
+      return NextResponse.json(
+        {
+          error: "We couldn’t build a compatible starting plan. Your settings are unchanged.",
+          code: error.code,
+        },
+        { status: 409 },
+      );
+    case "PLAN_DRAFT_NOT_FOUND":
+      return NextResponse.json(
+        { error: "This plan is no longer editable.", code: error.code },
+        { status: 409 },
+      );
+    case "PLAN_DRAFT_BLOCKED":
+      return NextResponse.json(
+        {
+          error:
+            error.details.firstBlocker ??
+            "Resolve the plan blockers before making it ready.",
+          code: error.code,
+          ...error.details,
+        },
+        { status: 409 },
+      );
+    case "PLAN_WARNING_CONFIRMATION_REQUIRED":
+      return NextResponse.json(
+        {
+          error: "Review and confirm the current warnings before making this plan ready.",
+          code: error.code,
+          ...error.details,
+        },
+        { status: 409 },
+      );
+    case "PLAN_COPY_UNAVAILABLE":
+      return NextResponse.json(
+        {
+          error: "This plan does not contain the accepted intent required for a lossless editable copy.",
+          code: error.code,
+        },
+        { status: 409 },
+      );
     case "PLAN_CREATION_INFEASIBLE":
       return NextResponse.json(
         {

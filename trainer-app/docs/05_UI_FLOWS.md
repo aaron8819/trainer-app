@@ -347,3 +347,10 @@ Route-purpose shorthand:
 The home intent card shows `As planned` and `Short today` before workout creation. Selecting Short requests a fresh server-authored preview with exact removed exercises/set count, retained-protection copy, an estimated duration, and the statement that omitted work will not automatically move. Switching back regenerates the transient full preview. The decision locks when the workout row is created.
 
 Readiness and capacity appear in separate cards. Older/unsupported plans, already streamlined sessions, pain/equipment conflicts, and post-start attempts use specific fail-closed copy without exposing manifest, revision, or hash internals.
+## Custom hypertrophy plan flow (default off)
+
+With the rollout enabled, Plan Management groups Active, Drafts, Ready, and Other plans. Custom hypertrophy creation offers “Build it myself” for 2–6 sessions and “Generate a starting plan with V2” for the supported four-session Upper/Lower start. Both routes open the same responsive editor.
+
+The editor autosaves the complete draft with visible Saving, Saved, and failed/Retry states. It supports session rename/focus/add/remove/reorder and exercise add/select/swap/remove/reorder, role/target edits, and working sets. Exercise swapping preserves role, target, sets, and order. Normal selection ranks favorites when existing preference data is present; “search all” relaxes semantic suitability only, never equipment or confirmed-limitation safety.
+
+Plan health shows blockers separately from advisory warnings. Make-ready requires blockers to be resolved and asks for request-local confirmation when warnings remain. Success returns to the immutable review surface; activation is a separate action. Ready/Active plans expose Create editable copy only when their current accepted revision contains lossless version 2 semantic intent.

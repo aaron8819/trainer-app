@@ -35,6 +35,9 @@ import type {
   PlanSummary,
 } from "@/lib/ui/plan-management";
 import { PlanManagementError } from "./plan-management-errors";
+import { parseHypertrophyPlanDraft } from "@/lib/engine/hypertrophy-plan-authoring";
+import { parseAcceptedHypertrophySeedV2 } from "@/lib/engine/hypertrophy-plan-authoring";
+import { isCustomHypertrophyPlanRolloutEnabled } from "@/lib/operations/custom-hypertrophy-plan-rollout";
 
 export {
   PlanManagementError,
@@ -146,13 +149,33 @@ function toPlanSummary(
     createdAt: Date;
     updatedAt: Date;
     mesocycles: PlanLifecycleRow[];
+    hypertrophyDraft?: { payload: unknown } | null;
+    editableCopyAvailable?: boolean;
   },
   activeMacroCycleId: string | null,
 ): PlanSummary {
   if (!isSupportedPlanType(plan.primaryGoal)) {
     throw new PlanManagementError("PLAN_INVALID");
   }
-  const lifecycle = derivePlanLifecycle(plan.mesocycles);
+  const hasDraft = Boolean(plan.hypertrophyDraft);
+  const lifecycle =
+    hasDraft && plan.mesocycles.length === 0
+      ? {
+          status: "DRAFT" as const,
+          activeMesocycleId: null,
+          reviewMesocycleId: null,
+        }
+      : hasDraft
+        ? {
+            status: "INVALID" as const,
+            activeMesocycleId: null,
+            reviewMesocycleId: plan.mesocycles[0]?.id ?? null,
+          }
+        : derivePlanLifecycle(plan.mesocycles);
+  const draft = plan.hypertrophyDraft
+    ? parseHypertrophyPlanDraft(plan.hypertrophyDraft.payload)
+    : null;
+  const customFieldsIncluded = "hypertrophyDraft" in plan;
   return {
     id: plan.id,
     name: plan.name,
@@ -165,6 +188,18 @@ function toPlanSummary(
     endDate: plan.endDate.toISOString(),
     durationWeeks: plan.durationWeeks,
     mesocycleCount: plan.mesocycles.length,
+    ...(customFieldsIncluded
+      ? {
+          sessionsPerWeek:
+            draft?.sessions.length ??
+            (plan.mesocycles.length === 1
+              ? ((plan.mesocycles[0] as PlanLifecycleRow & {
+                  sessionsPerWeek?: number;
+                }).sessionsPerWeek ?? null)
+              : null),
+          editableCopyAvailable: plan.editableCopyAvailable ?? false,
+        }
+      : {}),
     createdAt: plan.createdAt.toISOString(),
     updatedAt: plan.updatedAt.toISOString(),
   };
@@ -172,6 +207,7 @@ function toPlanSummary(
 
 export async function loadPlanManagementData(
   userId: string,
+  options: { includeCustomDrafts?: boolean } = {},
 ): Promise<PlanManagementData> {
   const owner = await prisma.user.findUnique({
     where: { id: userId },
@@ -192,6 +228,9 @@ export async function loadPlanManagementData(
           durationWeeks: true,
           createdAt: true,
           updatedAt: true,
+          ...(options.includeCustomDrafts
+            ? { hypertrophyDraft: { select: { payload: true } } }
+            : {}),
           mesocycles: {
             orderBy: [{ mesoNumber: "asc" }, { id: "asc" }],
             select: {
@@ -199,6 +238,10 @@ export async function loadPlanManagementData(
               mesoNumber: true,
               state: true,
               isActive: true,
+              sessionsPerWeek: true,
+              currentSeedRevision: {
+                select: { seedPayload: true },
+              },
             },
           },
         },
@@ -210,9 +253,23 @@ export async function loadPlanManagementData(
   }
   return {
     activeMacroCycleId: owner.activeMacroCycleId,
-    plans: owner.macroCycles.map((plan) =>
-      toPlanSummary(plan, owner.activeMacroCycleId),
-    ),
+    plans: owner.macroCycles.map((plan) => {
+      const firstRevision = plan.mesocycles[0]?.currentSeedRevision?.seedPayload;
+      const editableCopyAvailable = Boolean(
+        firstRevision &&
+          typeof firstRevision === "object" &&
+          !Array.isArray(firstRevision) &&
+          (firstRevision as Record<string, unknown>).version === 2 &&
+          (firstRevision as Record<string, unknown>).source ===
+            "custom_hypertrophy_plan_v1",
+      );
+      return toPlanSummary(
+        options.includeCustomDrafts
+          ? { ...plan, editableCopyAvailable }
+          : plan,
+        owner.activeMacroCycleId,
+      );
+    }),
   };
 }
 
@@ -222,7 +279,9 @@ export async function loadConfiguredPlanManagementData(): Promise<PlanManagement
 
   const owner = await findOwnerReadOnly();
   if (!owner) throw new PlanManagementError("PLAN_OWNER_NOT_READY");
-  return loadPlanManagementData(owner.id);
+  return loadPlanManagementData(owner.id, {
+    includeCustomDrafts: isCustomHypertrophyPlanRolloutEnabled(),
+  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -354,11 +413,49 @@ function readStrengthReview(input: {
   return { strengthConfiguration: configuration, weeklyStructure };
 }
 
+function readCustomHypertrophyReview(input: {
+  acceptedSeedPayload: unknown;
+  exerciseNameById: ReadonlyMap<string, string>;
+}): Pick<PlanReview, "strengthConfiguration" | "weeklyStructure"> {
+  let accepted;
+  try {
+    accepted = parseAcceptedHypertrophySeedV2(input.acceptedSeedPayload);
+  } catch {
+    return { strengthConfiguration: null, weeklyStructure: [] };
+  }
+  return {
+    strengthConfiguration: null,
+    weeklyStructure: accepted.slots.map((slot) => {
+      const exercises = slot.exercises.map((exercise) => ({
+        exerciseId: exercise.exerciseId,
+        name:
+          input.exerciseNameById.get(exercise.exerciseId) ??
+          "Unavailable exercise",
+        role: exercise.role,
+        setCount: exercise.setCount,
+      }));
+      return {
+        slotId: slot.slotId,
+        label: slot.name,
+        intent: slot.focus,
+        estimatedMinutes: null,
+        primaryLifts: exercises.filter(
+          (exercise) => exercise.role === "CORE_COMPOUND",
+        ),
+        assistance: exercises.filter(
+          (exercise) => exercise.role === "ACCESSORY",
+        ),
+      };
+    }),
+  };
+}
+
 export async function loadPlanReview(
   userId: string,
   planId: string,
+  options: { includeCustomPlanMetadata?: boolean } = {},
 ): Promise<PlanReview | null> {
-  const [owner, plan] = await Promise.all([
+  const [owner, plan, exerciseRows] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
       select: { activeMacroCycleId: true },
@@ -401,11 +498,27 @@ export async function loadPlanReview(
         },
       },
     }),
+    prisma.exercise.findMany({ select: { id: true, name: true } }),
   ]);
   if (!owner || !plan) return null;
 
-  const summary = toPlanSummary(plan, owner.activeMacroCycleId);
-  const strengthReview =
+  const firstAcceptedSeed =
+    plan.mesocycles[0]?.currentSeedRevision?.seedPayload;
+  const editableCopyAvailable = Boolean(
+    firstAcceptedSeed &&
+      typeof firstAcceptedSeed === "object" &&
+      !Array.isArray(firstAcceptedSeed) &&
+      (firstAcceptedSeed as Record<string, unknown>).version === 2 &&
+      (firstAcceptedSeed as Record<string, unknown>).source ===
+        "custom_hypertrophy_plan_v1",
+  );
+  const summary = toPlanSummary(
+    options.includeCustomPlanMetadata
+      ? { ...plan, hypertrophyDraft: null, editableCopyAvailable }
+      : plan,
+    owner.activeMacroCycleId,
+  );
+  const structureReview =
     summary.primaryGoal === "STRENGTH" && plan.mesocycles[0]
       ? readStrengthReview({
           slotSequenceJson: plan.mesocycles[0].slotSequenceJson,
@@ -413,10 +526,17 @@ export async function loadPlanReview(
           acceptedSeedPayload:
             plan.mesocycles[0].currentSeedRevision?.seedPayload,
         })
-      : { strengthConfiguration: null, weeklyStructure: [] };
+      : summary.primaryGoal === "HYPERTROPHY" && firstAcceptedSeed
+        ? readCustomHypertrophyReview({
+            acceptedSeedPayload: firstAcceptedSeed,
+            exerciseNameById: new Map(
+              exerciseRows.map((exercise) => [exercise.id, exercise.name]),
+            ),
+          })
+        : { strengthConfiguration: null, weeklyStructure: [] };
   return {
     ...summary,
-    ...strengthReview,
+    ...structureReview,
     mesocycles: plan.mesocycles.map((mesocycle) => ({
       id: mesocycle.id,
       mesoNumber: mesocycle.mesoNumber,
@@ -439,7 +559,9 @@ export async function loadConfiguredPlanReview(
 
   const owner = await findOwnerReadOnly();
   if (!owner) throw new PlanManagementError("PLAN_OWNER_NOT_READY");
-  return loadPlanReview(owner.id, planId);
+  return loadPlanReview(owner.id, planId, {
+    includeCustomPlanMetadata: isCustomHypertrophyPlanRolloutEnabled(),
+  });
 }
 
 export async function loadPlanActivationTarget(

@@ -1,5 +1,10 @@
 import type { MovementPatternV2, TrainingAge } from "./types";
 import {
+  EQUIPMENT_PROFILE_VALUES,
+  isEquipmentProfileCompatible,
+  type EquipmentProfile,
+} from "./equipment-profile";
+import {
   estimateStrengthSessionTiming,
   type StrengthTimingExercise,
 } from "./strength-session-timing";
@@ -12,15 +17,8 @@ export const STRENGTH_EMPHASIS_VALUES = [
 ] as const;
 export type StrengthEmphasis = (typeof STRENGTH_EMPHASIS_VALUES)[number];
 
-export const STRENGTH_EQUIPMENT_PROFILE_VALUES = [
-  "FULL_GYM",
-  "BARBELL_HOME",
-  "DUMBBELLS",
-  "MACHINES",
-  "BODYWEIGHT",
-] as const;
-export type StrengthEquipmentProfile =
-  (typeof STRENGTH_EQUIPMENT_PROFILE_VALUES)[number];
+export const STRENGTH_EQUIPMENT_PROFILE_VALUES = EQUIPMENT_PROFILE_VALUES;
+export type StrengthEquipmentProfile = EquipmentProfile;
 
 export const STRENGTH_LIMITATION_KEYS = [
   "low_back",
@@ -160,24 +158,6 @@ type SlotTemplate = {
   label: string;
   intent: StrengthPolicySlot["intent"];
   lanes: Lane[];
-};
-
-const EQUIPMENT_BY_PROFILE: Record<
-  StrengthEquipmentProfile,
-  ReadonlySet<string> | null
-> = {
-  FULL_GYM: null,
-  BARBELL_HOME: new Set([
-    "barbell",
-    "rack",
-    "bench",
-    "dumbbell",
-    "bodyweight",
-    "band",
-  ]),
-  DUMBBELLS: new Set(["dumbbell", "bench", "bodyweight", "band"]),
-  MACHINES: new Set(["machine", "cable", "bodyweight"]),
-  BODYWEIGHT: new Set(["bodyweight", "band"]),
 };
 
 const PREFERRED_LIFT_NAME: Record<
@@ -454,10 +434,6 @@ const SLOT_TEMPLATES: Record<2 | 3 | 4 | 5, SlotTemplate[]> = {
   ],
 };
 
-function normalizedToken(value: string): string {
-  return value.trim().toLowerCase().replace(/[\s-]+/g, "_");
-}
-
 const LIMITATION_WORD_TO_KEY: Readonly<
   Record<string, Exclude<StrengthLimitationKey, "low_back">>
 > = {
@@ -598,9 +574,7 @@ function isEquipmentCompatible(
   exercise: StrengthExerciseCandidate,
   profile: StrengthEquipmentProfile,
 ): boolean {
-  const allowed = EQUIPMENT_BY_PROFILE[profile];
-  if (!allowed) return true;
-  return exercise.equipment.some((item) => allowed.has(normalizedToken(item)));
+  return isEquipmentProfileCompatible(exercise.equipment, profile);
 }
 
 function isLimitationCompatible(

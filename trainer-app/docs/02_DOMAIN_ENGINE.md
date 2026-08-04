@@ -541,3 +541,10 @@ SetLog / logged performance
 - Yield order is acceptance-owned: optional Triceps top-up, Biceps preference, Rear Delt surplus, Calf surplus, Side Delt surplus, Triceps surplus, then Hamstring surplus while preserving hinge and knee-flexion roles.
 - Anchors, required roles, direct floors, protected direct exposures, and a minimum three-exercise session remain protected. A result is meaningful only when it removes a complete exercise or at least three sets.
 - Missing, malformed, stale, legacy, corrected-revision, deload, optional-session, pain/equipment-conflict, or already-created inputs fail closed to the full plan.
+## Custom hypertrophy plan authoring
+
+`src/lib/engine/hypertrophy-plan-authoring.ts` owns the pure custom-plan draft parser, manual preset builder, V2-to-draft adapter, plan-health derivation, accepted-payload compiler, executable projection, and projection-alignment checks. Manual and V2 authoring converge on `HypertrophyPlanDraftV1`; V2 lane, ranking, fallback, fatigue, capacity, and diagnostic policy is discarded after it is translated to the stable `userRole + target` intent.
+
+Make-ready compiles one five-week plan into `AcceptedHypertrophySeedV2`. The accepted revision preserves ordered sessions, display names/focus, ordered exercises, working sets, and minimal semantic intent. `PRIMARY_LIFT` compiles to `CORE_COMPOUND`; every other user role compiles to `ACCESSORY`. Rep ranges, loading, RIR progression, and deload execution remain runtime-owned. `slotSequenceJson` and `slotPlanSeedJson` are compatibility projections derived from the accepted payload and are not independently editable.
+
+Plan health derives direct/effective sets, frequency, coverage, redundancy, equipment/limitation conflicts, and rough duration from the current draft and catalog. Structural, catalog, equipment, and confirmed-limitation failures block acceptance. Coverage, frequency, redundancy, and duration findings are advisory warnings and require only request-local confirmation.

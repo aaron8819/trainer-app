@@ -22,6 +22,7 @@ export const EXPECTED_MIGRATION_CHAIN = [
   "20260727010000_add_plan_management_fields",
   "20260728120000_add_finishers_phase_1",
   "20260803120000_add_finisher_management",
+  "20260804120000_add_custom_hypertrophy_plan_drafts",
 ] as const;
 
 export type LedgerRow = {
@@ -313,6 +314,57 @@ export const PENDING_ARCHITECTURE_MANIFEST: readonly PendingMigrationExpectation
         table: "MacroCycle",
         name: "MacroCycle_name_length_check",
         definitionIncludes: ["char_length", "name", "60"],
+      },
+    ],
+  },
+  {
+    migration: "20260804120000_add_custom_hypertrophy_plan_drafts",
+    effect: "objects",
+    objects: [
+      { kind: "table", name: "HypertrophyPlanDraft" },
+      {
+        kind: "column",
+        table: "MacroCycle",
+        name: "scheduleAnchoredAt",
+        column: {
+          type: "timestamp(3) without time zone",
+          nullable: true,
+          default: "CURRENT_TIMESTAMP",
+        },
+      },
+      ...[
+        ["macroCycleId", "text", false, null],
+        ["payload", "jsonb", false, null],
+        ["revision", "integer", false, "1"],
+        ["createdAt", "timestamp(3) without time zone", false, "CURRENT_TIMESTAMP"],
+        ["updatedAt", "timestamp(3) without time zone", false, null],
+      ].map(([name, type, nullable, defaultValue]) => ({
+        kind: "column" as const,
+        table: "HypertrophyPlanDraft",
+        name: name as string,
+        column: {
+          type: type as string,
+          nullable: nullable as boolean,
+          default: defaultValue as string | null,
+        },
+      })),
+      {
+        kind: "constraint",
+        table: "HypertrophyPlanDraft",
+        name: "HypertrophyPlanDraft_pkey",
+        definitionIncludes: ["PRIMARY KEY", "macroCycleId"],
+      },
+      {
+        kind: "constraint",
+        table: "HypertrophyPlanDraft",
+        name: "HypertrophyPlanDraft_macroCycleId_fkey",
+        definitionIncludes: ["MacroCycle", "ON DELETE CASCADE"],
+      },
+      {
+        kind: "constraint",
+        table: "HypertrophyPlanDraft",
+        name: "HypertrophyPlanDraft_revision_check",
+        definitionIncludes: ["revision", ">= 1"],
       },
     ],
   },

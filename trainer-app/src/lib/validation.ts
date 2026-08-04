@@ -12,6 +12,11 @@ import {
 } from "@/lib/engine/strength-plan-policy";
 import { deriveTimedFinisherDurationSeconds } from "@/lib/engine/finisher-domain";
 import { CANONICAL_LIMITATION_TAGS } from "@/lib/engine/limitation-policy";
+import {
+  HYPERTROPHY_SESSION_DURATION_VALUES,
+  hypertrophyPlanDraftSchema,
+} from "@/lib/engine/hypertrophy-plan-authoring";
+import { EQUIPMENT_PROFILE_VALUES } from "@/lib/engine/equipment-profile";
 
 export const WORKOUT_STATUS_VALUES = ["PLANNED", "IN_PROGRESS", "PARTIAL", "COMPLETED", "SKIPPED"] as const;
 export const WORKOUT_SAVE_ACTION_VALUES = [
@@ -428,6 +433,84 @@ export const createPlanSchema = z.preprocess((value) => {
   }
   return value;
 }, createPlanInputSchema);
+
+const manualHypertrophyPresetSchema = z.enum([
+  "FULL_BODY_2",
+  "FULL_BODY_3",
+  "PPL_3",
+  "UPPER_LOWER_4",
+  "PPL_6",
+  "BLANK",
+]);
+
+const createCustomHypertrophyPlanSchema = z
+  .object({
+    planType: z.literal("HYPERTROPHY"),
+    name: planNameSchema.default("My Hypertrophy Plan"),
+    sessionsPerWeek: z.number().int().min(2).max(6),
+    equipmentProfile: z.enum(EQUIPMENT_PROFILE_VALUES),
+    sessionDurationMinutes: z.union(
+      HYPERTROPHY_SESSION_DURATION_VALUES.map((value) => z.literal(value)) as [
+        z.ZodLiteral<45>,
+        z.ZodLiteral<60>,
+        z.ZodLiteral<75>,
+        z.ZodLiteral<90>,
+      ],
+    ),
+    authorMethod: z.enum(["MANUAL", "V2"]),
+    preset: manualHypertrophyPresetSchema.optional(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.authorMethod === "V2" && value.sessionsPerWeek !== 4) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["sessionsPerWeek"],
+        message: "Generated starting plans require four sessions",
+      });
+    }
+  });
+
+export const createPlanWithCustomHypertrophySchema = z.discriminatedUnion(
+  "planType",
+  [
+    createCustomHypertrophyPlanSchema,
+    z
+      .object({
+        planType: z.literal("STRENGTH"),
+        name: planNameSchema.default("Strength Plan"),
+        startDate: z.coerce.date(),
+        configuration: strengthPlanConfigurationSchema,
+      })
+      .strict(),
+  ],
+);
+
+export const saveHypertrophyPlanDraftSchema = z
+  .object({
+    expectedRevision: z.number().int().min(1),
+    name: planNameSchema,
+    draft: hypertrophyPlanDraftSchema,
+  })
+  .strict();
+
+export const regenerateHypertrophyPlanDraftSchema = z
+  .object({
+    expectedRevision: z.number().int().min(1),
+    replaceConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const makeHypertrophyPlanReadySchema = z
+  .object({
+    expectedDraftRevision: z.number().int().min(1),
+    warningsConfirmed: z.boolean().default(false),
+  })
+  .strict();
+
+export const copyHypertrophyPlanSchema = z
+  .object({ name: planNameSchema })
+  .strict();
 
 export const renamePlanSchema = z.object({
   name: planNameSchema,

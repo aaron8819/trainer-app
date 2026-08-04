@@ -91,6 +91,37 @@ resolution. Unknown active text blocks recommendation and requires explicit
 acknowledgment before manual selection; known routine conflicts require the same
 acknowledgment.
 
+## Finisher library management
+
+`GET|POST /api/finishers`, `POST /api/finishers/reorder`,
+`GET|PATCH|DELETE /api/finishers/[id]`, and the `duplicate`, `archive`, and
+`restore` subroutes expose the owner-scoped management surface. Every method
+first evaluates the server-only Finisher rollout. Mutation methods then call
+the central production write gate as `application_configuration` before body
+parsing or owner provisioning. Routes delegate DB behavior to
+`src/lib/api/finisher-library-service.ts`; foreign and missing routine IDs both
+return `404 FINISHER_ROUTINE_NOT_FOUND`.
+
+Create/edit payloads are strict and expose only name, description, category,
+difficulty, fatigue/impact demand, controlled body regions, canonical
+limitation tags, 0–60 seconds of preparation, final-recovery inclusion, and
+1–20 ordered timed steps. Each step has movement, work/recovery seconds, up to
+three cues, and up to three predefined alternatives. Placement, kind, and
+protocol remain `POST_WORKOUT`, `FINISHER`, and `TIMED_INTERVALS` and equipment
+requirements are not accepted. The shared duration policy rejects definitions
+over 30 minutes.
+
+Edit appends immutable version N+1. Edit/archive/restore/delete require the
+current library `expectedRevision`; stale requests return `409
+FINISHER_LIBRARY_STALE` and are never merged. Reorder submits the complete
+desired active routine ID/revision sequence, which is validated and persisted
+atomically. System edit/delete is blocked; duplication is the Customize path
+and requires the exact displayed `expectedRoutineVersionId`. A newer source
+version returns `409 FINISHER_LIBRARY_STALE`; overlay reorder revisions do not
+invalidate duplication.
+Deletion also returns `409 FINISHER_ROUTINE_DELETE_BLOCKED` for a user routine
+with a selected or in-progress execution.
+
 `POST /api/workouts/delete` rejects a workout with any attached Finisher offer
 or lifecycle history with HTTP `409` and code
 `WORKOUT_FINISHER_HISTORY_CONFLICT`. The

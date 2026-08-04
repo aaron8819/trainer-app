@@ -261,6 +261,12 @@ enum FinisherPublicationState {
   RETIRED
 }
 
+enum FinisherLibraryState {
+  ACTIVE
+  ARCHIVED
+  DELETED
+}
+
 enum FinisherExecutionState {
   SELECTED
   IN_PROGRESS
@@ -321,6 +327,8 @@ model User {
   readinessSignals             ReadinessSignal[]
   integrations                 UserIntegration[]
   preSessionReadinessSnapshots PreSessionReadinessSnapshot[]
+  finisherRoutines             FinisherRoutine[]             @relation("FinisherRoutineOwner")
+  finisherLibraryItems         FinisherLibraryItem[]
 }
 
 model UserPreference {
@@ -531,10 +539,34 @@ model Workout {
 model FinisherRoutine {
   id               String                   @id @default(uuid())
   code             String                   @unique
+  ownerId          String?
+  owner            User?                    @relation("FinisherRoutineOwner", fields: [ownerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   publicationState FinisherPublicationState @default(ACTIVE)
   retiredAt        DateTime?
   createdAt        DateTime                 @default(now())
   versions         FinisherRoutineVersion[]
+  libraryItems     FinisherLibraryItem[]
+
+  @@index([ownerId, publicationState])
+}
+
+model FinisherLibraryItem {
+  ownerId        String
+  owner          User                 @relation(fields: [ownerId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  routineId      String
+  routine        FinisherRoutine      @relation(fields: [routineId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  state          FinisherLibraryState @default(ACTIVE)
+  activePosition Int?
+  revision       Int                  @default(1)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  archivedAt     DateTime?
+  restoredAt     DateTime?
+  deletedAt      DateTime?
+
+  @@id([ownerId, routineId])
+  @@unique([ownerId, activePosition])
+  @@index([ownerId, state, updatedAt])
 }
 
 model FinisherRoutineVersion {
@@ -613,9 +645,9 @@ model FinisherOffer {
   finalizedAt                     DateTime?
   items                           FinisherOfferItem[]
   executions                      FinisherExecution[]
-  decisions                       FinisherDecision[]        @relation("FinisherDecisionOffer")
-  declineDecision                 FinisherDecision?         @relation("FinisherOfferDeclineDecision", fields: [declineDecisionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  recommendedOfferItem            FinisherOfferItem?        @relation("FinisherOfferRecommendation", fields: [id, recommendedRoutineVersionId], references: [offerId, routineVersionId], onDelete: Restrict, onUpdate: Restrict, map: "FinisherOffer_recommended_item_fkey")
+  decisions                       FinisherDecision[]      @relation("FinisherDecisionOffer")
+  declineDecision                 FinisherDecision?       @relation("FinisherOfferDeclineDecision", fields: [declineDecisionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  recommendedOfferItem            FinisherOfferItem?      @relation("FinisherOfferRecommendation", fields: [id, recommendedRoutineVersionId], references: [offerId, routineVersionId], onDelete: Restrict, onUpdate: Restrict, map: "FinisherOffer_recommended_item_fkey")
 
   @@unique([workoutId, ownerId])
   @@unique([id, workoutId, ownerId])
@@ -675,7 +707,7 @@ model FinisherExecution {
   difficultyFeedback       Int?
   stepExecutions           FinisherExecutionStep[]
   commands                 FinisherExecutionCommand[]
-  decision                 FinisherDecision             @relation(fields: [id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "FinisherExecution_decisionId_fkey")
+  decision                 FinisherDecision           @relation(fields: [id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "FinisherExecution_decisionId_fkey")
 
   @@unique([id, workoutId])
   @@unique([id, workoutId, ownerId])
@@ -687,21 +719,21 @@ model FinisherExecution {
 }
 
 model FinisherDecision {
-  id                         String                 @id
-  ownerId                    String
-  workoutId                  String
-  offerId                    String
-  offer                      FinisherOffer          @relation("FinisherDecisionOffer", fields: [offerId, workoutId, ownerId], references: [id, workoutId, ownerId], onDelete: Restrict, onUpdate: Restrict, map: "FinisherDecision_offerId_fkey")
-  action                     FinisherDecisionAction
-  offerItemId                String?
-  routineVersionId           String?
-  offerItem                  FinisherOfferItem?     @relation(fields: [offerItemId, offerId, routineVersionId], references: [id, offerId, routineVersionId], onDelete: Restrict, onUpdate: Restrict, map: "FinisherDecision_offerItem_binding_fkey")
-  expectedOfferRevision      Int
+  id                          String                 @id
+  ownerId                     String
+  workoutId                   String
+  offerId                     String
+  offer                       FinisherOffer          @relation("FinisherDecisionOffer", fields: [offerId, workoutId, ownerId], references: [id, workoutId, ownerId], onDelete: Restrict, onUpdate: Restrict, map: "FinisherDecision_offerId_fkey")
+  action                      FinisherDecisionAction
+  offerItemId                 String?
+  routineVersionId            String?
+  offerItem                   FinisherOfferItem?     @relation(fields: [offerItemId, offerId, routineVersionId], references: [id, offerId, routineVersionId], onDelete: Restrict, onUpdate: Restrict, map: "FinisherDecision_offerItem_binding_fkey")
+  expectedOfferRevision       Int
   acknowledgeContraindication Boolean?
-  requestFingerprint         String
-  createdAt                  DateTime               @default(now())
-  execution                  FinisherExecution?
-  declinedOffer              FinisherOffer?         @relation("FinisherOfferDeclineDecision")
+  requestFingerprint          String
+  createdAt                   DateTime               @default(now())
+  execution                   FinisherExecution?
+  declinedOffer               FinisherOffer?         @relation("FinisherOfferDeclineDecision")
 
   @@index([offerId, createdAt])
 }

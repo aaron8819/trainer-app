@@ -126,6 +126,14 @@ function applyPreFinisherMigrations(env: NodeJS.ProcessEnv): void {
       ),
       { recursive: true },
     );
+    rmSync(
+      join(
+        temporaryPrisma,
+        "migrations",
+        "20260803120000_add_finisher_management",
+      ),
+      { recursive: true },
+    );
     run(
       process.execPath,
       [
@@ -556,6 +564,10 @@ try {
     "src/lib/api/save-workout/persistence.db.test.ts",
     "src/lib/api/finisher-service.db.test.ts",
     "src/lib/api/workout-mutation.db.test.ts",
+  ], testEnv);
+  run(process.execPath, [
+    join(process.cwd(), "node_modules/vitest/vitest.mjs"), "run",
+    "src/lib/api/finisher-library-service.db.test.ts",
   ], testEnv);
   run(process.execPath, [
     join(process.cwd(), "node_modules/vitest/vitest.mjs"), "run",

@@ -132,6 +132,7 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
         const created = await tx.finisherRoutine.create({
         data: {
           code: `finisher-db-${suffix}`,
+          ownerId,
           versions: {
             create: {
               version: 1,
@@ -194,6 +195,7 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
         const created = await tx.finisherRoutine.create({
         data: {
           code: `finisher-preparation-db-${suffix}`,
+          ownerId,
           versions: {
             create: {
               version: 1,
@@ -232,6 +234,7 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
         const created = await tx.finisherRoutine.create({
         data: {
           code: `finisher-shoulder-db-${suffix}`,
+          ownerId,
           versions: {
             create: {
               version: 1,
@@ -266,6 +269,17 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
         return created;
       });
       shoulderRoutineVersionId = shoulderRoutine.versions[0]!.id;
+      await client.finisherLibraryItem.createMany({
+        data: [routine.id, preparationRoutine.id, shoulderRoutine.id].map(
+          (routineId, activePosition) => ({
+            ownerId,
+            routineId,
+            activePosition,
+            createdAt: now,
+            updatedAt: now,
+          }),
+        ),
+      });
     });
 
     afterAll(async () => {
@@ -2014,7 +2028,7 @@ export function registerFinisherServiceDatabaseTests(databaseUrl: string): void 
         {
           currentUser: expect.any(String),
           customRoleCount: 0,
-          ownedFinisherTables: 10,
+          ownedFinisherTables: 11,
           cleanupSecurityInvoker: true,
           cleanupPublicExecute: false,
         },

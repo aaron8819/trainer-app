@@ -21,6 +21,7 @@ export const EXPECTED_MIGRATION_CHAIN = [
   "20260726120000_add_active_macrocycle_foundation",
   "20260727010000_add_plan_management_fields",
   "20260728120000_add_finishers_phase_1",
+  "20260803120000_add_finisher_management",
 ] as const;
 
 export type LedgerRow = {

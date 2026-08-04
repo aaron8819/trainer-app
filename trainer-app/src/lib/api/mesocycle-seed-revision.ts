@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
+import {
+  parseAcceptedHypertrophySeedV2,
+  projectExecutableSeed,
+} from "@/lib/engine/hypertrophy-plan-authoring";
 
 export const SEED_PAYLOAD_HASH_ALGORITHM = "sha256" as const;
 
@@ -107,7 +111,24 @@ export function normalizeAcceptedSeedPayload(seed: unknown): {
   executablePayload: Prisma.InputJsonValue;
   hash: string;
   hashAlgorithm: typeof SEED_PAYLOAD_HASH_ALGORITHM;
+  payloadVersion: 1 | 2;
 } {
+  if (
+    seed &&
+    typeof seed === "object" &&
+    !Array.isArray(seed) &&
+    (seed as Record<string, unknown>).version === 2
+  ) {
+    const canonicalPayload = parseAcceptedHypertrophySeedV2(seed);
+    const executablePayload = projectExecutableSeed(canonicalPayload);
+    return {
+      canonicalPayload: canonicalPayload as unknown as Prisma.InputJsonValue,
+      executablePayload: executablePayload as unknown as Prisma.InputJsonValue,
+      hash: fingerprintCanonicalJson(canonicalPayload),
+      hashAlgorithm: SEED_PAYLOAD_HASH_ALGORITHM,
+      payloadVersion: 2,
+    };
+  }
   const parsed = parseSlotPlanSeedJson(seed);
   const executablePayload = normalizedExecutablePayload(seed);
   const canonicalPayload = {
@@ -124,7 +145,24 @@ export function normalizeAcceptedSeedPayload(seed: unknown): {
       .update(serialized, "utf8")
       .digest("hex"),
     hashAlgorithm: SEED_PAYLOAD_HASH_ALGORITHM,
+    payloadVersion: 1,
   };
+}
+
+function assertCorrectiveTopology(input: {
+  current: unknown;
+  replacement: unknown;
+}): void {
+  const current = parseAcceptedHypertrophySeedV2(input.current);
+  const replacement = parseAcceptedHypertrophySeedV2(input.replacement);
+  if (
+    current.slots.length !== replacement.slots.length ||
+    current.slots.some(
+      (slot, index) => replacement.slots[index]?.slotId !== slot.slotId,
+    )
+  ) {
+    throw new Error("ACCEPTED_SEED_CORRECTION_SLOT_TOPOLOGY_CHANGED");
+  }
 }
 
 export function exactSeedRevisionProvenance(
@@ -234,7 +272,17 @@ export async function createCorrectiveSeedRevisionInTransaction(
     throw new Error("ACCEPTED_SEED_REVISION_CONFLICT");
   }
 
-  const currentHash = normalizeAcceptedSeedPayload(current.seedPayload).hash;
+  const currentNormalized = normalizeAcceptedSeedPayload(current.seedPayload);
+  if (currentNormalized.payloadVersion === 2) {
+    if (normalized.payloadVersion !== 2) {
+      throw new Error("ACCEPTED_SEED_V2_CORRECTION_INTENT_REQUIRED");
+    }
+    assertCorrectiveTopology({
+      current: current.seedPayload,
+      replacement: input.seedPayload,
+    });
+  }
+  const currentHash = currentNormalized.hash;
   if (currentHash === normalized.hash) {
     return { revision: current, created: false };
   }

@@ -18,6 +18,13 @@ const acceptanceMaterializedSeedHelper = path.join(
   "api",
   "mesocycle-handoff-v2-materialized-seed.ts",
 );
+const customHypertrophyDraftService = path.join(
+  process.cwd(),
+  "src",
+  "lib",
+  "api",
+  "hypertrophy-plan-drafts.ts",
+);
 const candidateQualityLabFixtureHelper = path.join(
   process.cwd(),
   "src",
@@ -616,14 +623,21 @@ describe("V2 planner policy module boundary", () => {
     expect(violations).toEqual([]);
   });
 
-  it("does not call the dry-run materializer from production modules", () => {
+  it("allows only the accepted custom-draft seam to call the V2 materializer in production", () => {
     const sourceDir = path.join(process.cwd(), "src");
     const materializationSegment = `${path.sep}engine${path.sep}planning${path.sep}v2${path.sep}materialization${path.sep}`;
+    const acceptedCalls = fs
+      .readFileSync(customHypertrophyDraftService, "utf8")
+      .match(/buildV2ExerciseMaterializationPlan\s*\(/g);
+    expect(acceptedCalls).toHaveLength(1);
     const violations = listSourceTypeScriptFiles(sourceDir).flatMap((file) => {
       if (file.includes(materializationSegment)) {
         return [];
       }
       if (file === liveContextDryRunHarness) {
+        return [];
+      }
+      if (file === customHypertrophyDraftService) {
         return [];
       }
       const text = fs.readFileSync(file, "utf8");

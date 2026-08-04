@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import type { AcceptedHypertrophySeedV2 } from "@/lib/engine/hypertrophy-plan-authoring";
 import {
   canonicalizeJson,
   createCorrectiveSeedRevisionInTransaction,
@@ -24,6 +25,66 @@ function seed(overrides: Record<string, unknown> = {}) {
       },
     ],
     ...overrides,
+  };
+}
+
+function acceptedSeedV2(): AcceptedHypertrophySeedV2 {
+  return {
+    version: 2 as const,
+    source: "custom_hypertrophy_plan_v1" as const,
+    settings: {
+      equipmentProfile: "FULL_GYM" as const,
+      sessionDurationMinutes: 60 as const,
+    },
+    slots: [
+      {
+        slotId: "upper",
+        name: "Upper",
+        focus: "UPPER" as const,
+        exercises: [
+          {
+            exerciseId: "bench",
+            role: "CORE_COMPOUND" as const,
+            setCount: 4,
+            intent: {
+              userRole: "PRIMARY_LIFT" as const,
+              target: {
+                kind: "movement_pattern" as const,
+                movementPattern: "horizontal_push" as const,
+              },
+            },
+          },
+          {
+            exerciseId: "row",
+            role: "ACCESSORY" as const,
+            setCount: 3,
+            intent: {
+              userRole: "SECONDARY_LIFT" as const,
+              target: {
+                kind: "movement_pattern" as const,
+                movementPattern: "horizontal_pull" as const,
+              },
+            },
+          },
+        ],
+      },
+      {
+        slotId: "lower",
+        name: "Lower",
+        focus: "LOWER" as const,
+        exercises: [
+          {
+            exerciseId: "curl",
+            role: "ACCESSORY" as const,
+            setCount: 3,
+            intent: {
+              userRole: "MUSCLE_ISOLATION" as const,
+              target: { kind: "muscle" as const, muscleId: "hamstrings" as const },
+            },
+          },
+        ],
+      },
+    ],
   };
 }
 
@@ -460,5 +521,109 @@ describe("accepted seed normalization and hashing", () => {
       data: { currentSeedRevisionId: "revision-2" },
     });
     expect(original).toEqual(originalBefore);
+  });
+
+  it("hashes the complete strict version 2 payload while ignoring object-key order", () => {
+    const original = acceptedSeedV2();
+    const originalHash = normalizeAcceptedSeedPayload(original).hash;
+    expect(normalizeAcceptedSeedPayload(reverseObjectKeys(original)).hash).toBe(
+      originalHash,
+    );
+
+    const mutations: Array<(value: ReturnType<typeof acceptedSeedV2>) => void> = [
+      (value) => { value.settings.equipmentProfile = "DUMBBELLS"; },
+      (value) => { value.settings.sessionDurationMinutes = 75; },
+      (value) => { value.slots.reverse(); },
+      (value) => { value.slots[0]!.name = "Renamed"; },
+      (value) => { value.slots[0]!.focus = "FULL_BODY"; },
+      (value) => { value.slots[0]!.exercises.reverse(); },
+      (value) => { value.slots[0]!.exercises[0]!.exerciseId = "changed"; },
+      (value) => { value.slots[0]!.exercises[0]!.setCount = 5; },
+      (value) => {
+        value.slots[0]!.exercises[0]!.role = "ACCESSORY";
+        value.slots[0]!.exercises[0]!.intent.userRole = "SECONDARY_LIFT";
+      },
+      (value) => {
+        value.slots[0]!.exercises[0]!.role = "ACCESSORY";
+        value.slots[0]!.exercises[0]!.intent = {
+          userRole: "MUSCLE_ISOLATION",
+          target: { kind: "muscle", muscleId: "chest" },
+        };
+      },
+    ];
+    for (const mutate of mutations) {
+      const changed = structuredClone(original);
+      mutate(changed);
+      expect(normalizeAcceptedSeedPayload(changed).hash).not.toBe(originalHash);
+    }
+  });
+
+  it("keeps equivalent version 1 and version 2 executable projections equal", () => {
+    const version2 = normalizeAcceptedSeedPayload(acceptedSeedV2());
+    const version1 = normalizeAcceptedSeedPayload({
+      version: 1,
+      slots: acceptedSeedV2().slots.map((slot) => ({
+        slotId: slot.slotId,
+        exercises: slot.exercises.map(({ exerciseId, role, setCount }) => ({
+          exerciseId,
+          role,
+          setCount,
+        })),
+      })),
+    });
+    expect(version2.executablePayload).toEqual(version1.executablePayload);
+    expect(version2.hash).not.toBe(version1.hash);
+  });
+
+  it("rejects version 2 correction topology changes and preserves enriched intent", async () => {
+    const originalPayload = acceptedSeedV2();
+    const original = {
+      id: "revision-v2-1",
+      mesocycleId: "meso-v2",
+      revision: 1,
+      seedPayload: originalPayload,
+      payloadHash: normalizeAcceptedSeedPayload(originalPayload).hash,
+      hashAlgorithm: "sha256",
+      provenanceStatus: "exact",
+      creationReason: "acceptance",
+      actorSource: "test",
+      sourceRevisionId: null,
+      activatedAt: new Date(),
+    };
+    const create = vi.fn().mockImplementation(async ({ data }) => ({
+      ...data,
+      id: "revision-v2-2",
+      activatedAt: new Date(),
+    }));
+    const tx = {
+      mesocycle: {
+        findUnique: vi.fn().mockResolvedValue({ currentSeedRevision: original }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      mesocycleSeedRevision: { create },
+    } as never;
+    const corrected = structuredClone(originalPayload);
+    corrected.slots[0]!.exercises[0]!.setCount = 5;
+    const result = await createCorrectiveSeedRevisionInTransaction(tx, {
+      mesocycleId: "meso-v2",
+      expectedCurrentRevisionId: "revision-v2-1",
+      seedPayload: corrected,
+      creationReason: "correction",
+      actorSource: "test",
+    });
+    expect(result.revision.seedPayload).toEqual(corrected);
+    expect(JSON.stringify(result.revision.seedPayload)).toContain("PRIMARY_LIFT");
+
+    const changedTopology = structuredClone(originalPayload);
+    changedTopology.slots.reverse();
+    await expect(
+      createCorrectiveSeedRevisionInTransaction(tx, {
+        mesocycleId: "meso-v2",
+        expectedCurrentRevisionId: "revision-v2-1",
+        seedPayload: changedTopology,
+        creationReason: "correction",
+        actorSource: "test",
+      }),
+    ).rejects.toThrow("ACCEPTED_SEED_CORRECTION_SLOT_TOPOLOGY_CHANGED");
   });
 });

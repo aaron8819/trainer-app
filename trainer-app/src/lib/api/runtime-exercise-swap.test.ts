@@ -1367,4 +1367,125 @@ describe("runtime exercise swap constraints", () => {
       }),
     ).toBeNull();
   });
+
+  it.each([
+    {
+      label: "Primary horizontal pull",
+      current: {
+        ...currentMainLift,
+        id: "primary-row",
+        movementPatterns: ["horizontal_pull"],
+        primaryMuscles: ["lats", "upper back"],
+        sourceLane: {
+          acceptedIntent: {
+            userRole: "PRIMARY_LIFT",
+            target: {
+              kind: "movement_pattern",
+              movementPattern: "horizontal_pull",
+            },
+          },
+        },
+      } satisfies RuntimeExerciseSwapProfile,
+      accepted: {
+        ...chestSupportedDumbbellRow,
+        isMainLiftEligible: true,
+      },
+      rejected: {
+        ...chestSupportedDumbbellRow,
+        id: "vertical-pull",
+        movementPatterns: ["vertical_pull"],
+        isMainLiftEligible: true,
+      },
+    },
+    {
+      label: "Secondary lift",
+      current: {
+        ...currentAccessory,
+        id: "secondary-row",
+        isCompound: true,
+        movementPatterns: ["horizontal_pull"],
+        primaryMuscles: ["lats"],
+        sourceLane: {
+          acceptedIntent: {
+            userRole: "SECONDARY_LIFT",
+            target: {
+              kind: "movement_pattern",
+              movementPattern: "horizontal_pull",
+            },
+          },
+        },
+      } satisfies RuntimeExerciseSwapProfile,
+      accepted: { ...chestSupportedDumbbellRow, fatigueCost: 1 },
+      rejected: {
+        ...chestSupportedDumbbellRow,
+        id: "row-isolation",
+        fatigueCost: 1,
+        isCompound: false,
+      },
+    },
+    {
+      label: "Muscle isolation",
+      current: {
+        ...currentAccessory,
+        sourceLane: {
+          acceptedIntent: {
+            userRole: "MUSCLE_ISOLATION",
+            target: { kind: "muscle", muscleId: "side_delts" },
+          },
+        },
+      } satisfies RuntimeExerciseSwapProfile,
+      accepted: {
+        ...currentAccessory,
+        id: "cable-lateral-raise",
+        name: "Cable Lateral Raise",
+        equipment: ["cable"],
+      },
+      rejected: {
+        ...currentAccessory,
+        id: "cable-curl",
+        name: "Cable Curl",
+        movementPatterns: ["flexion"],
+        primaryMuscles: ["biceps"],
+        equipment: ["cable"],
+      },
+    },
+    {
+      label: "Muscle-targeted accessory",
+      current: {
+        ...currentAccessory,
+        primaryMuscles: ["biceps"],
+        movementPatterns: ["flexion"],
+        sourceLane: {
+          acceptedIntent: {
+            userRole: "ACCESSORY",
+            target: { kind: "muscle", muscleId: "biceps" },
+          },
+        },
+      } satisfies RuntimeExerciseSwapProfile,
+      accepted: {
+        ...currentAccessory,
+        id: "cable-curl",
+        name: "Cable Curl",
+        movementPatterns: ["flexion"],
+        primaryMuscles: ["biceps"],
+        equipment: ["cable"],
+      },
+      rejected: {
+        ...currentAccessory,
+        id: "cable-lateral-raise",
+        name: "Cable Lateral Raise",
+        equipment: ["cable"],
+      },
+    },
+  ])(
+    "preserves $label semantics without planner lane identity",
+    ({ current, accepted, rejected }) => {
+      expect(
+        evaluateRuntimeExerciseSwapEligibility({ current, candidate: accepted }),
+      ).not.toBeNull();
+      expect(
+        evaluateRuntimeExerciseSwapEligibility({ current, candidate: rejected }),
+      ).toBeNull();
+    },
+  );
 });

@@ -1523,7 +1523,7 @@ describe("runtime exercise swap constraints", () => {
     },
   );
 
-  it("uses shipped metadata for constrained low-axial swaps without narrowing generic hinges", () => {
+  it("uses shipped metadata for production-shaped constrained low-axial main-lift swaps", () => {
     const acceptedIntent = {
       userRole: "PRIMARY_LIFT" as const,
       target: {
@@ -1540,11 +1540,13 @@ describe("runtime exercise swap constraints", () => {
 
     const machineSource: RuntimeExerciseSwapProfile = {
       ...machineHipThrust,
-      sourceLane: { acceptedIntent },
+      isMainLift: true,
+      sourceLane: { seedRole: "CORE_COMPOUND", acceptedIntent },
     };
     const cableSource: RuntimeExerciseSwapProfile = {
       ...cablePullThrough,
-      sourceLane: { acceptedIntent },
+      isMainLift: true,
+      sourceLane: { seedRole: "CORE_COMPOUND", acceptedIntent },
     };
 
     expect(
@@ -1560,23 +1562,100 @@ describe("runtime exercise swap constraints", () => {
       }),
     ).not.toBeNull();
     expect(
+      buildRuntimeExerciseSwapCandidates({
+        current: machineSource,
+        candidates: [cablePullThrough],
+        includeCautionTier: true,
+      }),
+    ).toEqual([
+      expect.objectContaining({ exerciseId: cablePullThrough.id }),
+    ]);
+    expect(
+      buildRuntimeExerciseSwapCandidates({
+        current: cableSource,
+        candidates: [machineHipThrust],
+        includeCautionTier: true,
+      }),
+    ).toEqual([
+      expect.objectContaining({ exerciseId: machineHipThrust.id }),
+    ]);
+    expect(
       evaluateRuntimeExerciseSwapEligibility({
         current: machineSource,
         candidate: romanianDeadlift,
       }),
     ).toBeNull();
+
+    const genericPrimaryIntent = {
+      userRole: "PRIMARY_LIFT" as const,
+      target: {
+        kind: "movement_pattern" as const,
+        movementPattern: "hinge" as const,
+      },
+    };
     expect(
       evaluateRuntimeExerciseSwapEligibility({
         current: {
           ...machineHipThrust,
+          isMainLift: true,
           sourceLane: {
-            acceptedIntent: {
-              userRole: "PRIMARY_LIFT",
-              target: { kind: "movement_pattern", movementPattern: "hinge" },
-            },
+            seedRole: "CORE_COMPOUND",
+            acceptedIntent: genericPrimaryIntent,
           },
         },
         candidate: cablePullThrough,
+      }),
+    ).toBeNull();
+    expect(
+      evaluateRuntimeExerciseSwapEligibility({
+        current: {
+          ...cablePullThrough,
+          isMainLift: true,
+          sourceLane: {
+            seedRole: "CORE_COMPOUND",
+            acceptedIntent: genericPrimaryIntent,
+          },
+        },
+        candidate: machineHipThrust,
+      }),
+    ).toBeNull();
+
+    const differentClassSource = {
+      ...machineSource,
+      sourceLane: {
+        seedRole: "CORE_COMPOUND",
+        acceptedIntent: {
+          ...acceptedIntent,
+          requiredExerciseClass: "hinge_compound",
+        },
+      },
+    } as unknown as RuntimeExerciseSwapProfile;
+    expect(
+      evaluateRuntimeExerciseSwapEligibility({
+        current: differentClassSource,
+        candidate: {
+          ...romanianDeadlift,
+          isMainLiftEligible: false,
+        },
+      }),
+    ).toBeNull();
+
+    expect(
+      evaluateRuntimeExerciseSwapEligibility({
+        current: machineSource,
+        candidate: {
+          ...cablePullThrough,
+          isCompound: false,
+        },
+      }),
+    ).toBeNull();
+    expect(
+      evaluateRuntimeExerciseSwapEligibility({
+        current: machineSource,
+        candidate: {
+          ...cablePullThrough,
+          movementPatterns: ["hinge", "isolation"],
+        },
       }),
     ).toBeNull();
   });

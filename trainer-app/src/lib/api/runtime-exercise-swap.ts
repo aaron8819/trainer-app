@@ -973,6 +973,19 @@ function matchesAcceptedSemanticIntent(
   );
 }
 
+function matchesAcceptedMainLiftEligibilityException(
+  current: RuntimeExerciseSwapProfile,
+  candidate: RuntimeExerciseSwapProfile,
+): boolean {
+  const intent = current.sourceLane?.acceptedIntent;
+  return Boolean(
+    intent?.userRole === "PRIMARY_LIFT" &&
+      !requiresMainLiftEligibility(intent) &&
+      intent.requiredExerciseClass &&
+      hasV2ExerciseClass(candidate, intent.requiredExerciseClass),
+  );
+}
+
 export function isSwapEligible(
   sourceExercise: RuntimeExerciseSwapProfile,
   workoutState: RuntimeExerciseSwapWorkoutState,
@@ -1055,10 +1068,16 @@ export function evaluateRuntimeExerciseSwapEligibility(input: {
 
   const fatigueDelta =
     (input.candidate.fatigueCost ?? 3) - (input.current.fatigueCost ?? 3);
+  const acceptedMainLiftEligibilityException =
+    matchesAcceptedMainLiftEligibilityException(
+      input.current,
+      input.candidate,
+    );
 
   if (
     input.current.isMainLift &&
-    (!(input.candidate.isMainLiftEligible ?? false) ||
+    ((!(input.candidate.isMainLiftEligible ?? false) &&
+      !acceptedMainLiftEligibilityException) ||
       candidatePatterns.includes("isolation")) &&
     !isRowAnchorMainLiftSubstituteException({
       current: input.current,

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import exerciseCatalog from "../../../prisma/exercises_comprehensive.json";
 
 import {
   buildRuntimeExerciseSwapCandidates,
@@ -6,6 +7,39 @@ import {
   isSwapEligible,
   type RuntimeExerciseSwapProfile,
 } from "./runtime-exercise-swap";
+
+function shippedRuntimeExercise(name: string): RuntimeExerciseSwapProfile {
+  const exercise = exerciseCatalog.exercises.find(
+    (candidate) => candidate.name === name,
+  );
+  if (!exercise) throw new Error(`Missing shipped exercise: ${name}`);
+  return {
+    id: exercise.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, ""),
+    name: exercise.name,
+    aliases: [],
+    fatigueCost: exercise.fatigueCost,
+    jointStress: exercise.jointStress,
+    isMainLiftEligible: exercise.isMainLiftEligible,
+    isCompound: exercise.isCompound,
+    movementPatterns: exercise.movementPatterns.map((pattern) =>
+      pattern.toLowerCase(),
+    ),
+    primaryMuscles: exercise.primaryMuscles.map((muscle) =>
+      muscle.toLowerCase(),
+    ),
+    secondaryMuscles: exercise.secondaryMuscles.map((muscle) =>
+      muscle.toLowerCase(),
+    ),
+    equipment: exercise.equipment.map((item) => item.toLowerCase()),
+    stimulusByMusclePerSet: Object.fromEntries([
+      ...exercise.primaryMuscles.map((muscle) => [muscle, 1] as const),
+      ...exercise.secondaryMuscles.map((muscle) => [muscle, 0.5] as const),
+    ]),
+  };
+}
 
 const currentAccessory: RuntimeExerciseSwapProfile = {
   id: "db-lateral-raise",
@@ -1489,57 +1523,52 @@ describe("runtime exercise swap constraints", () => {
     },
   );
 
-  it("enforces accepted low-axial class semantics without narrowing generic hinge intent", () => {
-    const current: RuntimeExerciseSwapProfile = {
-      id: "machine-hip-thrust",
-      name: "Machine Hip Thrust",
-      fatigueCost: 2,
-      jointStress: "low",
-      isMainLiftEligible: true,
-      isCompound: true,
-      movementPatterns: ["hinge"],
-      primaryMuscles: ["glutes"],
-      secondaryMuscles: ["hamstrings"],
-      equipment: ["machine"],
-      sourceLane: {
-        acceptedIntent: {
-          userRole: "PRIMARY_LIFT",
-          target: { kind: "movement_pattern", movementPattern: "hinge" },
-          requiredExerciseClass: "low_axial_hip_extension_anchor",
-        },
+  it("uses shipped metadata for constrained low-axial swaps without narrowing generic hinges", () => {
+    const acceptedIntent = {
+      userRole: "PRIMARY_LIFT" as const,
+      target: {
+        kind: "movement_pattern" as const,
+        movementPattern: "hinge" as const,
       },
+      requiredExerciseClass: "low_axial_hip_extension_anchor" as const,
     };
-    const lowAxialCandidate: RuntimeExerciseSwapProfile = {
-      ...current,
-      id: "cable-pull-through",
-      name: "Cable Pull-Through",
-      equipment: ["cable"],
-      sourceLane: undefined,
+    const machineHipThrust = shippedRuntimeExercise("Machine Hip Thrust");
+    const cablePullThrough = shippedRuntimeExercise("Cable Pull-Through");
+    const romanianDeadlift = shippedRuntimeExercise("Romanian Deadlift");
+    expect(machineHipThrust.isMainLiftEligible).toBe(false);
+    expect(cablePullThrough.isMainLiftEligible).toBe(false);
+
+    const machineSource: RuntimeExerciseSwapProfile = {
+      ...machineHipThrust,
+      sourceLane: { acceptedIntent },
     };
-    const romanianDeadlift: RuntimeExerciseSwapProfile = {
-      ...current,
-      id: "romanian-deadlift",
-      name: "Romanian Deadlift",
-      equipment: ["barbell"],
-      sourceLane: undefined,
+    const cableSource: RuntimeExerciseSwapProfile = {
+      ...cablePullThrough,
+      sourceLane: { acceptedIntent },
     };
 
     expect(
       evaluateRuntimeExerciseSwapEligibility({
-        current,
-        candidate: lowAxialCandidate,
+        current: machineSource,
+        candidate: cablePullThrough,
       }),
     ).not.toBeNull();
     expect(
       evaluateRuntimeExerciseSwapEligibility({
-        current,
+        current: cableSource,
+        candidate: machineHipThrust,
+      }),
+    ).not.toBeNull();
+    expect(
+      evaluateRuntimeExerciseSwapEligibility({
+        current: machineSource,
         candidate: romanianDeadlift,
       }),
     ).toBeNull();
     expect(
       evaluateRuntimeExerciseSwapEligibility({
         current: {
-          ...current,
+          ...machineHipThrust,
           sourceLane: {
             acceptedIntent: {
               userRole: "PRIMARY_LIFT",
@@ -1547,8 +1576,8 @@ describe("runtime exercise swap constraints", () => {
             },
           },
         },
-        candidate: romanianDeadlift,
+        candidate: cablePullThrough,
       }),
-    ).not.toBeNull();
+    ).toBeNull();
   });
 });

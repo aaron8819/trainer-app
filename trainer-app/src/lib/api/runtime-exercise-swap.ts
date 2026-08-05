@@ -11,7 +11,10 @@ import type {
   V2MaterializationExercise,
 } from "@/lib/engine/planning/v2/materialization/types";
 import type { V2AcceptedPlannerIntentDto } from "@/lib/engine/planning/v2/accepted-planner-intent-dto";
-import type { AcceptedExerciseIntentV2 } from "@/lib/engine/hypertrophy-plan-authoring";
+import {
+  requiresMainLiftEligibility,
+  type AcceptedExerciseIntentV2,
+} from "@/lib/engine/hypertrophy-plan-authoring";
 import { MUSCLE_POLICY_BY_ID } from "@/lib/engine/muscle-policy";
 
 export type RuntimeExerciseSwapSourceLaneContext = {
@@ -948,7 +951,9 @@ function matchesAcceptedSemanticIntent(
     if (!patterns.includes(intent.target.movementPattern)) return false;
     if (intent.userRole === "PRIMARY_LIFT") {
       return (
-        candidate.isCompound === true && candidate.isMainLiftEligible === true
+        candidate.isCompound === true &&
+        (!requiresMainLiftEligibility(intent) ||
+          candidate.isMainLiftEligible === true)
       );
     }
     if (intent.userRole === "SECONDARY_LIFT") {

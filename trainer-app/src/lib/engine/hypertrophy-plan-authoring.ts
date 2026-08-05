@@ -67,6 +67,15 @@ export type AcceptedExerciseIntentV2 = {
   requiredExerciseClass?: AcceptedExerciseClassConstraint;
 };
 
+export function requiresMainLiftEligibility(
+  intent: AcceptedExerciseIntentV2,
+): boolean {
+  return (
+    intent.userRole === "PRIMARY_LIFT" &&
+    intent.requiredExerciseClass !== "low_axial_hip_extension_anchor"
+  );
+}
+
 export type HypertrophyPlanDraftV1 = {
   version: 1;
   settings: {
@@ -760,7 +769,10 @@ function exerciseMatchesIntent(
     );
     if (!patternMatches) return false;
     if (intent.userRole === "PRIMARY_LIFT") {
-      return exercise.isCompound && exercise.isMainLiftEligible;
+      return (
+        exercise.isCompound &&
+        (!requiresMainLiftEligibility(intent) || exercise.isMainLiftEligible)
+      );
     }
     if (intent.userRole === "SECONDARY_LIFT") return exercise.isCompound;
     return true;

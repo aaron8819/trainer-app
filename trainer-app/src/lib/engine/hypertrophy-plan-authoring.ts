@@ -9,13 +9,20 @@ import {
 import {
   CANONICAL_MOVEMENT_PATTERN_VALUES,
   LEGACY_MOVEMENT_PATTERN_ALIAS_VALUES,
+  type EquipmentType,
   type MovementPatternV2,
 } from "./types";
 import {
   EQUIPMENT_PROFILE_VALUES,
+  equipmentForProfile,
   isEquipmentProfileCompatible,
   type EquipmentProfile,
 } from "./equipment-profile";
+import { matchV2ExerciseClasses } from "./planning/v2/materialization/taxonomy";
+import type {
+  V2ExerciseClassId,
+  V2MaterializationExercise,
+} from "./planning/v2/materialization/types";
 import type {
   V2ExerciseMaterializationPlan,
   V2PlannerMesocyclePolicy,
@@ -46,11 +53,18 @@ export const HYPERTROPHY_SESSION_DURATION_VALUES = [45, 60, 75, 90] as const;
 export type HypertrophySessionDuration =
   (typeof HYPERTROPHY_SESSION_DURATION_VALUES)[number];
 
+export const ACCEPTED_EXERCISE_CLASS_CONSTRAINT_VALUES = [
+  "low_axial_hip_extension_anchor",
+] as const satisfies readonly V2ExerciseClassId[];
+export type AcceptedExerciseClassConstraint =
+  (typeof ACCEPTED_EXERCISE_CLASS_CONSTRAINT_VALUES)[number];
+
 export type AcceptedExerciseIntentV2 = {
   userRole: HypertrophyUserRole;
   target:
     | { kind: "movement_pattern"; movementPattern: MovementPatternV2 }
     | { kind: "muscle"; muscleId: CanonicalMuscleId };
+  requiredExerciseClass?: AcceptedExerciseClassConstraint;
 };
 
 export type HypertrophyPlanDraftV1 = {
@@ -132,6 +146,9 @@ const acceptedExerciseIntentSchema = z
       movementTargetSchema,
       muscleTargetSchema,
     ]),
+    requiredExerciseClass: z
+      .enum(ACCEPTED_EXERCISE_CLASS_CONSTRAINT_VALUES)
+      .optional(),
   })
   .strict()
   .superRefine((intent, context) => {
@@ -154,6 +171,19 @@ const acceptedExerciseIntentSchema = z
         code: z.ZodIssueCode.custom,
         path: ["target"],
         message: "MUSCLE_ISOLATION requires a muscle target",
+      });
+    }
+    if (
+      intent.requiredExerciseClass &&
+      (intent.userRole !== "PRIMARY_LIFT" ||
+        intent.target.kind !== "movement_pattern" ||
+        intent.target.movementPattern !== "hinge")
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["requiredExerciseClass"],
+        message:
+          "The low-axial exercise-class constraint requires a primary hinge target",
       });
     }
   });
@@ -521,10 +551,22 @@ function movementForLane(
   return MOVEMENT_BY_LANE[lane.laneId] ?? null;
 }
 
+function requiredExerciseClassForLane(
+  lane: V2PlannerMesocyclePolicy["exerciseSelectionPlan"]["weeks"][number]["slots"][number]["lanes"][number],
+): AcceptedExerciseClassConstraint | undefined {
+  const intent = lane.laneSelectionIntent;
+  return lane.role === "anchor" &&
+    intent?.requiredMovementPattern === "low_axial_hip_extension" &&
+    intent.allowedExerciseClasses.includes("low_axial_hip_extension_anchor")
+    ? "low_axial_hip_extension_anchor"
+    : undefined;
+}
+
 function intentForV2Lane(
   lane: V2PlannerMesocyclePolicy["exerciseSelectionPlan"]["weeks"][number]["slots"][number]["lanes"][number],
 ): AcceptedExerciseIntentV2 {
   const movementPattern = movementForLane(lane);
+  const requiredExerciseClass = requiredExerciseClassForLane(lane);
   if (lane.role === "anchor") {
     if (!movementPattern) {
       throw new Error(`CUSTOM_PLAN_V2_ANCHOR_TARGET_MISSING:${lane.laneId}`);
@@ -532,6 +574,7 @@ function intentForV2Lane(
     return {
       userRole: "PRIMARY_LIFT",
       target: { kind: "movement_pattern", movementPattern },
+      ...(requiredExerciseClass ? { requiredExerciseClass } : {}),
     };
   }
   if (lane.role === "support" && movementPattern) {
@@ -600,6 +643,7 @@ export function adaptV2MaterializedPlanToDraft(input: {
 export type HypertrophyAuthoringExercise = {
   id: string;
   name: string;
+  aliases?: string[];
   movementPatterns: MovementPatternV2[];
   primaryMuscleIds: CanonicalMuscleId[];
   secondaryMuscleIds: CanonicalMuscleId[];
@@ -611,6 +655,77 @@ export type HypertrophyAuthoringExercise = {
   timePerSetSec: number;
   isFavorite?: boolean;
 };
+
+const CUSTOM_HYPERTROPHY_ADDITIONAL_EQUIPMENT: Partial<
+  Record<EquipmentProfile, readonly EquipmentType[]>
+> = {
+  BARBELL_HOME: ["ez_bar", "trap_bar"],
+  MACHINES: ["band"],
+};
+
+export function equipmentForCustomHypertrophyProfile(
+  profile: EquipmentProfile,
+): readonly EquipmentType[] | null {
+  const equipment = equipmentForProfile(profile);
+  if (!equipment) return null;
+  return [
+    ...new Set([
+      ...equipment,
+      ...(CUSTOM_HYPERTROPHY_ADDITIONAL_EQUIPMENT[profile] ?? []),
+    ]),
+  ];
+}
+
+function isCustomHypertrophyEquipmentCompatible(
+  requiredEquipment: readonly string[],
+  profile: EquipmentProfile,
+): boolean {
+  if (isEquipmentProfileCompatible(requiredEquipment, profile)) return true;
+  const additional = new Set(
+    CUSTOM_HYPERTROPHY_ADDITIONAL_EQUIPMENT[profile] ?? [],
+  );
+  return requiredEquipment.some((item) =>
+    additional.has(item.trim().toLowerCase() as EquipmentType),
+  );
+}
+
+function toExerciseClassInput(
+  exercise: HypertrophyAuthoringExercise,
+): V2MaterializationExercise {
+  return {
+    exerciseId: exercise.id,
+    name: exercise.name,
+    aliases: exercise.aliases ?? [],
+    movementPatterns: exercise.movementPatterns,
+    primaryMuscles: exercise.primaryMuscleIds.map(
+      (muscleId) => MUSCLE_POLICY_BY_ID[muscleId].displayName,
+    ),
+    secondaryMuscles: exercise.secondaryMuscleIds.map(
+      (muscleId) => MUSCLE_POLICY_BY_ID[muscleId].displayName,
+    ),
+    equipment: exercise.equipment,
+    isCompound: exercise.isCompound,
+    isMainLiftEligible: exercise.isMainLiftEligible,
+    stimulusByMusclePerSet: Object.fromEntries(
+      CANONICAL_MUSCLE_IDS.flatMap((muscleId) => {
+        const stimulus = exercise.stimulusByMuscleId[muscleId];
+        return stimulus == null
+          ? []
+          : [[MUSCLE_POLICY_BY_ID[muscleId].displayName, stimulus] as const];
+      }),
+    ),
+  };
+}
+
+function exerciseMatchesRequiredClass(
+  exercise: HypertrophyAuthoringExercise,
+  intent: AcceptedExerciseIntentV2,
+): boolean {
+  if (!intent.requiredExerciseClass) return true;
+  return matchV2ExerciseClasses(toExerciseClassInput(exercise)).some(
+    (match) => match.classId === intent.requiredExerciseClass,
+  );
+}
 
 export type HypertrophyPlanHealth = {
   blockers: Array<{
@@ -638,6 +753,7 @@ function exerciseMatchesIntent(
   exercise: HypertrophyAuthoringExercise,
   intent: AcceptedExerciseIntentV2,
 ): boolean {
+  if (!exerciseMatchesRequiredClass(exercise, intent)) return false;
   if (intent.target.kind === "movement_pattern") {
     const patternMatches = exercise.movementPatterns.includes(
       intent.target.movementPattern,
@@ -674,7 +790,7 @@ export function isExerciseAvailableForHypertrophyPlan(input: {
   limitationKeys: readonly string[];
 }): boolean {
   return (
-    isEquipmentProfileCompatible(
+    isCustomHypertrophyEquipmentCompatible(
       input.exercise.equipment,
       input.equipmentProfile,
     ) &&
@@ -730,7 +846,7 @@ export function evaluateHypertrophyPlanHealth(input: {
       }
       seenExercises.add(row.exerciseId);
       if (
-        !isEquipmentProfileCompatible(
+        !isCustomHypertrophyEquipmentCompatible(
           exercise.equipment,
           draft.settings.equipmentProfile,
         )
@@ -754,7 +870,14 @@ export function evaluateHypertrophyPlanHealth(input: {
           exerciseId: row.exerciseId,
         });
       }
-      if (!exerciseMatchesIntent(exercise, row.intent)) {
+      if (!exerciseMatchesRequiredClass(exercise, row.intent)) {
+        blockers.push({
+          code: "REQUIRED_EXERCISE_CLASS_MISMATCH",
+          message: `${exercise.name} does not satisfy the required low-axial exercise class.`,
+          slotId: session.slotId,
+          exerciseId: row.exerciseId,
+        });
+      } else if (!exerciseMatchesIntent(exercise, row.intent)) {
         warnings.push({
           code: "ROLE_TARGET_MISMATCH",
           message: `${exercise.name} is an unusual fit for its role and target.`,

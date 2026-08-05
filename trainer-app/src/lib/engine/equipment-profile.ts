@@ -22,11 +22,9 @@ const EQUIPMENT_BY_PROFILE: Record<
     "dumbbell",
     "bodyweight",
     "band",
-    "ez_bar",
-    "trap_bar",
   ]),
   DUMBBELLS: new Set(["dumbbell", "bench", "bodyweight", "band"]),
-  MACHINES: new Set(["machine", "cable", "bodyweight", "band"]),
+  MACHINES: new Set(["machine", "cable", "bodyweight"]),
   BODYWEIGHT: new Set(["bodyweight", "band"]),
 };
 

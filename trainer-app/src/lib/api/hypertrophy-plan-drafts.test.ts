@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { HypertrophyPlanDraftV1 } from "@/lib/engine/hypertrophy-plan-authoring";
 
 const mocks = vi.hoisted(() => {
   const state = {
@@ -68,7 +69,7 @@ import {
   saveHypertrophyPlanDraft,
 } from "./hypertrophy-plan-drafts";
 
-function draft() {
+function draft(): HypertrophyPlanDraftV1 {
   return {
     version: 1 as const,
     settings: {
@@ -113,6 +114,20 @@ function draft() {
   };
 }
 
+function lowAxialDraft() {
+  const value = structuredClone(draft());
+  value.sessions[1]!.exercises[0] = {
+    exerciseId: "hip-thrust",
+    workingSets: 3,
+    intent: {
+      userRole: "PRIMARY_LIFT",
+      target: { kind: "movement_pattern", movementPattern: "hinge" },
+      requiredExerciseClass: "low_axial_hip_extension_anchor",
+    },
+  };
+  return value;
+}
+
 const exerciseRows = [
   {
     id: "bench",
@@ -143,6 +158,25 @@ const exerciseRows = [
     exerciseMuscles: [
       {
         role: "PRIMARY",
+        muscle: { id: "hamstrings", name: "Hamstrings" },
+      },
+    ],
+  },
+  {
+    id: "hip-thrust",
+    name: "Machine Hip Thrust",
+    movementPatterns: ["HINGE"],
+    contraindications: {},
+    isCompound: true,
+    isMainLiftEligible: true,
+    fatigueCost: 2,
+    timePerSetSec: 120,
+    aliases: [],
+    exerciseEquipment: [{ equipment: { type: "MACHINE" } }],
+    exerciseMuscles: [
+      { role: "PRIMARY", muscle: { id: "glutes", name: "Glutes" } },
+      {
+        role: "SECONDARY",
         muscle: { id: "hamstrings", name: "Hamstrings" },
       },
     ],
@@ -188,6 +222,33 @@ describe("custom hypertrophy draft persistence", () => {
       }),
     ).rejects.toMatchObject({ code: "PLAN_MUTATION_CONFLICT" });
     expect(mocks.tx.macroCycle.update).not.toHaveBeenCalled();
+  });
+
+  it("preserves the low-axial semantic through draft validation and autosave", async () => {
+    const constrainedDraft = lowAxialDraft();
+    mocks.tx.hypertrophyPlanDraft.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.hypertrophyPlanDraft.findUniqueOrThrow.mockResolvedValue({
+      revision: 4,
+      updatedAt: new Date("2026-08-05T12:00:00.000Z"),
+    });
+
+    await expect(
+      saveHypertrophyPlanDraft({
+        userId: "user-1",
+        planId: "plan-1",
+        expectedRevision: 3,
+        name: "Low axial plan",
+        draft: constrainedDraft,
+      }),
+    ).resolves.toEqual({
+      revision: 4,
+      updatedAt: "2026-08-05T12:00:00.000Z",
+    });
+    expect(mocks.tx.hypertrophyPlanDraft.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ payload: constrainedDraft }),
+      }),
+    );
   });
 
   it("atomically creates one accepted five-week plan and consumes its draft", async () => {
@@ -240,6 +301,41 @@ describe("custom hypertrophy draft persistence", () => {
     });
   });
 
+  it("preserves the low-axial semantic through make-ready acceptance", async () => {
+    const constrainedDraft = lowAxialDraft();
+    mocks.state.draft = { payload: constrainedDraft, revision: 3 };
+    mocks.tx.macroCycle.findFirst.mockResolvedValue({
+      id: "plan-1",
+      trainingAge: "INTERMEDIATE",
+      hypertrophyDraft: mocks.state.draft,
+      mesocycles: [],
+    });
+
+    await makeHypertrophyPlanReady({
+      userId: "user-1",
+      planId: "plan-1",
+      expectedDraftRevision: 3,
+      warningsConfirmed: true,
+    });
+
+    expect(mocks.state.revisions[0]).toMatchObject({
+      seedPayload: {
+        slots: [
+          expect.anything(),
+          {
+            exercises: [
+              {
+                intent: {
+                  requiredExerciseClass: "low_axial_hip_extension_anchor",
+                },
+              },
+            ],
+          },
+        ],
+      },
+    });
+  });
+
   it("rolls back accepted writes and preserves the exact draft after a delete CAS miss", async () => {
     const before = structuredClone(mocks.state.draft);
     mocks.tx.hypertrophyPlanDraft.deleteMany.mockResolvedValue({ count: 0 });
@@ -258,11 +354,12 @@ describe("custom hypertrophy draft persistence", () => {
   });
 
   it("reconstructs editable-copy intent only from the accepted revision", async () => {
+    const copiedDraft = lowAxialDraft();
     const accepted = {
       version: 2,
       source: "custom_hypertrophy_plan_v1",
-      settings: draft().settings,
-      slots: draft().sessions.map((session) => ({
+      settings: copiedDraft.settings,
+      slots: copiedDraft.sessions.map((session) => ({
         slotId: session.slotId,
         name: session.name,
         focus: session.focus,
@@ -288,9 +385,13 @@ describe("custom hypertrophy draft persistence", () => {
       name: "Editable copy",
     });
     const createInput = mocks.prisma.macroCycle.create.mock.calls[0]![0];
-    expect(createInput.data.hypertrophyDraft.create.payload).toEqual(draft());
+    expect(createInput.data.hypertrophyDraft.create.payload).toEqual(copiedDraft);
     expect(createInput.data.hypertrophyDraft.create.payload.sessions[0].exercises[0].intent)
-      .toEqual(draft().sessions[0]!.exercises[0]!.intent);
+      .toEqual(copiedDraft.sessions[0]!.exercises[0]!.intent);
+    expect(
+      createInput.data.hypertrophyDraft.create.payload.sessions[1].exercises[0]
+        .intent.requiredExerciseClass,
+    ).toBe("low_axial_hip_extension_anchor");
     expect(createInput.data).not.toHaveProperty("mesocycles");
   });
 });

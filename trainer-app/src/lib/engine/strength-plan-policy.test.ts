@@ -237,6 +237,64 @@ describe("strength plan policy", () => {
     expect(chosen.has("deadlift")).toBe(false);
   });
 
+  it("preserves the legacy BARBELL_HOME trap-bar substitution", () => {
+    const policy = buildStrengthPlanPolicy({
+      configuration: {
+        ...baseConfiguration,
+        equipmentProfile: "BARBELL_HOME",
+        preferredLifts: {
+          ...baseConfiguration.preferredLifts,
+          hinge: "TRAP_BAR_DEADLIFT",
+        },
+      },
+      trainingAge: "intermediate",
+      limitations: [],
+      exercises: [
+        ...catalog,
+        exercise("trap-bar-deadlift", "Trap Bar Deadlift", "hinge", [
+          "Trap_Bar",
+        ]),
+      ],
+    });
+
+    expect(policy.resolvedPrimaryLifts.hinge).toBe("Conventional Deadlift");
+    expect(policy.substitutions).toContain(
+      "Trap Bar Deadlift → Conventional Deadlift",
+    );
+  });
+
+  it("preserves legacy MACHINES rejection of band-only candidates", () => {
+    const policy = buildStrengthPlanPolicy({
+      configuration: {
+        ...baseConfiguration,
+        equipmentProfile: "MACHINES",
+        preferredLifts: {
+          ...baseConfiguration.preferredLifts,
+          press: "MACHINE_PRESS",
+        },
+      },
+      trainingAge: "intermediate",
+      limitations: [],
+      exercises: [
+        ...catalog.filter((candidate) => candidate.id !== "machine-press"),
+        exercise(
+          "band-machine-press",
+          "Machine Chest Press",
+          "horizontal_push",
+          ["Band"],
+        ),
+      ],
+    });
+
+    expect(policy.resolvedPrimaryLifts.press).toBe("Push-Up");
+    expect(policy.substitutions).toContain("Machine Chest Press → Push-Up");
+    expect(
+      policy.slots
+        .flatMap((slot) => slot.exercises)
+        .some((entry) => entry.exerciseId === "band-machine-press"),
+    ).toBe(false);
+  });
+
   it("uses lower volume for short sessions and preserves required primary work", () => {
     const policy = buildStrengthPlanPolicy({
       configuration: {

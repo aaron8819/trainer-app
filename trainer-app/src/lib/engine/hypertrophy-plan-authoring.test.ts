@@ -6,7 +6,9 @@ import {
   buildAcceptedCompatibilityProjections,
   buildManualHypertrophyDraft,
   compileAcceptedHypertrophySeed,
+  equipmentForCustomHypertrophyProfile,
   evaluateHypertrophyPlanHealth,
+  isExerciseAvailableForHypertrophyPlan,
   isExerciseEligibleForIntent,
   parseAcceptedHypertrophySeedV2,
   parseHypertrophyPlanDraft,
@@ -153,6 +155,34 @@ const catalog: HypertrophyAuthoringExercise[] = [
   },
 ];
 
+const lowAxialHipThrust: HypertrophyAuthoringExercise = {
+  id: "hip-thrust",
+  name: "Machine Hip Thrust",
+  movementPatterns: ["hinge"],
+  primaryMuscleIds: ["glutes"],
+  secondaryMuscleIds: ["hamstrings"],
+  stimulusByMuscleId: { glutes: 1, hamstrings: 0.5 },
+  equipment: ["machine"],
+  contraindicationKeys: [],
+  isCompound: true,
+  isMainLiftEligible: true,
+  timePerSetSec: 120,
+};
+
+const romanianDeadlift: HypertrophyAuthoringExercise = {
+  id: "rdl",
+  name: "Romanian Deadlift",
+  movementPatterns: ["hinge"],
+  primaryMuscleIds: ["hamstrings", "glutes"],
+  secondaryMuscleIds: ["lower_back"],
+  stimulusByMuscleId: { hamstrings: 1, glutes: 1, lower_back: 0.5 },
+  equipment: ["barbell"],
+  contraindicationKeys: [],
+  isCompound: true,
+  isMainLiftEligible: true,
+  timePerSetSec: 150,
+};
+
 describe("custom hypertrophy authoring contracts", () => {
   it("normalizes manual and V2 authoring into the same minimal draft contract", () => {
     const manual = buildManualHypertrophyDraft({
@@ -193,9 +223,28 @@ describe("custom hypertrophy authoring contracts", () => {
     expect(JSON.stringify(generated)).not.toMatch(
       /laneId|ranking|fallback|fatigue|capacity|diagnostic/i,
     );
-    for (const exercise of generated.sessions.flatMap((slot) => slot.exercises)) {
+    const generatedExercises = generated.sessions.flatMap(
+      (slot) => slot.exercises,
+    );
+    const lowAxial = generatedExercises.find(
+      (exercise) => exercise.exerciseId === "exercise-hinge_anchor",
+    );
+    expect(lowAxial?.intent).toEqual({
+      userRole: "PRIMARY_LIFT",
+      target: { kind: "movement_pattern", movementPattern: "hinge" },
+      requiredExerciseClass: "low_axial_hip_extension_anchor",
+    });
+    for (const exercise of generatedExercises.filter(
+      (candidate) => candidate !== lowAxial,
+    )) {
       expect(Object.keys(exercise.intent).sort()).toEqual(["target", "userRole"]);
     }
+    expect(
+      compileAcceptedHypertrophySeed(generated).slots
+        .flatMap((slot) => slot.exercises)
+        .find((exercise) => exercise.exerciseId === "exercise-hinge_anchor")
+        ?.intent,
+    ).toEqual(lowAxial?.intent);
   });
 
   it("compiles all four user roles deterministically and rejects policy leakage", () => {
@@ -221,6 +270,29 @@ describe("custom hypertrophy authoring contracts", () => {
                   exerciseIndex
                     ? exercise
                     : { ...exercise, laneId: "chest_anchor" },
+                ),
+              },
+        ),
+      }),
+    ).toThrow();
+    expect(() =>
+      parseAcceptedHypertrophySeedV2({
+        ...accepted,
+        slots: accepted.slots.map((slot, index) =>
+          index
+            ? slot
+            : {
+                ...slot,
+                exercises: slot.exercises.map((exercise, exerciseIndex) =>
+                  exerciseIndex
+                    ? exercise
+                    : {
+                        ...exercise,
+                        intent: {
+                          ...exercise.intent,
+                          requiredExerciseClass: "hinge_compound",
+                        },
+                      },
                 ),
               },
         ),
@@ -270,6 +342,83 @@ describe("custom hypertrophy authoring contracts", () => {
         limitationKeys: ["knee"],
       }),
     ).toBe(false);
+  });
+
+  it("enforces the bounded low-axial class in picker and plan health without narrowing manual hinges", () => {
+    const constrainedIntent = {
+      userRole: "PRIMARY_LIFT" as const,
+      target: { kind: "movement_pattern" as const, movementPattern: "hinge" as const },
+      requiredExerciseClass: "low_axial_hip_extension_anchor" as const,
+    };
+    expect(
+      isExerciseEligibleForIntent({
+        exercise: lowAxialHipThrust,
+        intent: constrainedIntent,
+        equipmentProfile: "FULL_GYM",
+        limitationKeys: [],
+      }),
+    ).toBe(true);
+    expect(
+      isExerciseEligibleForIntent({
+        exercise: romanianDeadlift,
+        intent: constrainedIntent,
+        equipmentProfile: "FULL_GYM",
+        limitationKeys: [],
+      }),
+    ).toBe(false);
+    expect(
+      isExerciseEligibleForIntent({
+        exercise: romanianDeadlift,
+        intent: {
+          userRole: "PRIMARY_LIFT",
+          target: { kind: "movement_pattern", movementPattern: "hinge" },
+        },
+        equipmentProfile: "FULL_GYM",
+        limitationKeys: [],
+      }),
+    ).toBe(true);
+
+    const invalid = draft();
+    invalid.sessions[1]!.exercises[0] = {
+      exerciseId: romanianDeadlift.id,
+      workingSets: 3,
+      intent: constrainedIntent,
+    };
+    expect(
+      evaluateHypertrophyPlanHealth({
+        draft: invalid,
+        exercises: [...catalog, lowAxialHipThrust, romanianDeadlift],
+        limitationKeys: [],
+      }).blockers,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "REQUIRED_EXERCISE_CLASS_MISMATCH",
+          exerciseId: romanianDeadlift.id,
+        }),
+      ]),
+    );
+  });
+
+  it("keeps custom-only equipment additions out of the shared legacy profile", () => {
+    expect(equipmentForCustomHypertrophyProfile("BARBELL_HOME")).toEqual(
+      expect.arrayContaining(["ez_bar", "trap_bar"]),
+    );
+    expect(equipmentForCustomHypertrophyProfile("MACHINES")).toContain("band");
+    expect(
+      isExerciseAvailableForHypertrophyPlan({
+        exercise: { ...romanianDeadlift, equipment: ["trap_bar"] },
+        equipmentProfile: "BARBELL_HOME",
+        limitationKeys: [],
+      }),
+    ).toBe(true);
+    expect(
+      isExerciseAvailableForHypertrophyPlan({
+        exercise: { ...lowAxialHipThrust, equipment: ["band"] },
+        equipmentProfile: "MACHINES",
+        limitationKeys: [],
+      }),
+    ).toBe(true);
   });
 
   it("derives aligned compatibility projections and rejects every material drift class", () => {

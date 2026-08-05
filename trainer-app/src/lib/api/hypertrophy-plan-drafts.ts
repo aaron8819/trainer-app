@@ -16,6 +16,7 @@ import {
   buildAcceptedCompatibilityProjections,
   buildManualHypertrophyDraft,
   compileAcceptedHypertrophySeed,
+  equipmentForCustomHypertrophyProfile,
   evaluateHypertrophyPlanHealth,
   parseAcceptedHypertrophySeedV2,
   parseHypertrophyPlanDraft,
@@ -29,7 +30,6 @@ import {
   buildV2PlannerMesocyclePolicy,
   DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
 } from "@/lib/engine/planning/v2";
-import { equipmentForProfile } from "@/lib/engine/equipment-profile";
 import { resolveCanonicalLimitations } from "@/lib/engine/limitation-policy";
 import { CANONICAL_MUSCLE_IDS, getMusclePolicyByDisplayName } from "@/lib/engine/muscle-policy";
 import { normalizeLiveInventoryForV2Materialization } from "./v2-materialization-live-inventory";
@@ -102,6 +102,7 @@ function toAuthoringExercise(
   return {
     id: row.id,
     name: row.name,
+    aliases: row.aliases.map((entry) => entry.alias),
     movementPatterns: row.movementPatterns.map((value) => value.toLowerCase()) as HypertrophyAuthoringExercise["movementPatterns"],
     primaryMuscleIds,
     secondaryMuscleIds,
@@ -144,7 +145,7 @@ async function generateV2Draft(input: {
   ]);
   const policy = buildV2PlannerMesocyclePolicy();
   const inventory = normalizeLiveInventoryForV2Materialization(rows);
-  const availableEquipment = equipmentForProfile(
+  const availableEquipment = equipmentForCustomHypertrophyProfile(
     input.settings.equipmentProfile,
   );
   const painConflictExerciseIds = rows

@@ -937,6 +937,12 @@ function matchesAcceptedSemanticIntent(
 ): boolean {
   const intent = current.sourceLane?.acceptedIntent;
   if (!intent) return true;
+  if (
+    intent.requiredExerciseClass &&
+    !hasV2ExerciseClass(candidate, intent.requiredExerciseClass)
+  ) {
+    return false;
+  }
   if (intent.target.kind === "movement_pattern") {
     const patterns = normalizeList(candidate.movementPatterns);
     if (!patterns.includes(intent.target.movementPattern)) return false;

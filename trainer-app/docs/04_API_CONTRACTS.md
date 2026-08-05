@@ -540,6 +540,6 @@ These contracts are available only when `TRAINER_CUSTOM_HYPERTROPHY_PLANS_ROLLOU
 - `PATCH /api/plans/[id]/draft`: atomically saves normalized plan name plus the complete strict draft using `expectedRevision`; stale writes return the existing plan mutation conflict response.
 - `POST /api/plans/[id]/regenerate`: replaces a four-session draft through V2 only when `replaceConfirmed=true` and the expected revision still matches.
 - `POST /api/plans/[id]/finalize`: custom requests supply `expectedDraftRevision` and `warningsConfirmed`. Make-ready validates health inside a serializable transaction, requires warning confirmation when applicable, writes accepted truth/projections, and consumes the draft.
-- `POST /api/plans/[id]/copy`: creates a new draft from a source plan's current version 2 accepted revision. Legacy plans without preserved semantic intent are not copyable through this contract.
+- `POST /api/plans/[id]/copy`: creates a new draft from a source plan's current version 2 accepted revision, including any bounded accepted `requiredExerciseClass` semantic. It never infers that constraint from exercise identity. Legacy plans without preserved semantic intent are not copyable through this contract.
 
 Ready and Active custom plans have no in-place edit API. Activation remains the existing separate `/api/plans/[id]/activate` operation and retains the in-progress-workout guard.

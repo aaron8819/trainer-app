@@ -1488,4 +1488,67 @@ describe("runtime exercise swap constraints", () => {
       ).toBeNull();
     },
   );
+
+  it("enforces accepted low-axial class semantics without narrowing generic hinge intent", () => {
+    const current: RuntimeExerciseSwapProfile = {
+      id: "machine-hip-thrust",
+      name: "Machine Hip Thrust",
+      fatigueCost: 2,
+      jointStress: "low",
+      isMainLiftEligible: true,
+      isCompound: true,
+      movementPatterns: ["hinge"],
+      primaryMuscles: ["glutes"],
+      secondaryMuscles: ["hamstrings"],
+      equipment: ["machine"],
+      sourceLane: {
+        acceptedIntent: {
+          userRole: "PRIMARY_LIFT",
+          target: { kind: "movement_pattern", movementPattern: "hinge" },
+          requiredExerciseClass: "low_axial_hip_extension_anchor",
+        },
+      },
+    };
+    const lowAxialCandidate: RuntimeExerciseSwapProfile = {
+      ...current,
+      id: "cable-pull-through",
+      name: "Cable Pull-Through",
+      equipment: ["cable"],
+      sourceLane: undefined,
+    };
+    const romanianDeadlift: RuntimeExerciseSwapProfile = {
+      ...current,
+      id: "romanian-deadlift",
+      name: "Romanian Deadlift",
+      equipment: ["barbell"],
+      sourceLane: undefined,
+    };
+
+    expect(
+      evaluateRuntimeExerciseSwapEligibility({
+        current,
+        candidate: lowAxialCandidate,
+      }),
+    ).not.toBeNull();
+    expect(
+      evaluateRuntimeExerciseSwapEligibility({
+        current,
+        candidate: romanianDeadlift,
+      }),
+    ).toBeNull();
+    expect(
+      evaluateRuntimeExerciseSwapEligibility({
+        current: {
+          ...current,
+          sourceLane: {
+            acceptedIntent: {
+              userRole: "PRIMARY_LIFT",
+              target: { kind: "movement_pattern", movementPattern: "hinge" },
+            },
+          },
+        },
+        candidate: romanianDeadlift,
+      }),
+    ).not.toBeNull();
+  });
 });

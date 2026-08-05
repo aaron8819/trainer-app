@@ -10,6 +10,7 @@ import {
   normalizeAcceptedSeedPayload,
   promoteLegacySeedRevisionToExactInTransaction,
 } from "./mesocycle-seed-revision";
+import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
 
 function seed(overrides: Record<string, unknown> = {}) {
   return {
@@ -556,6 +557,26 @@ describe("accepted seed normalization and hashing", () => {
       mutate(changed);
       expect(normalizeAcceptedSeedPayload(changed).hash).not.toBe(originalHash);
     }
+  });
+
+  it("includes the bounded accepted exercise-class semantic in the version 2 hash", () => {
+    const unconstrained = acceptedSeedV2();
+    unconstrained.slots[0]!.exercises[0]!.intent.target = {
+      kind: "movement_pattern",
+      movementPattern: "hinge",
+    };
+    const constrained = structuredClone(unconstrained);
+    constrained.slots[0]!.exercises[0]!.intent.requiredExerciseClass =
+      "low_axial_hip_extension_anchor";
+
+    const normalized = normalizeAcceptedSeedPayload(constrained);
+    expect(normalized.hash).not.toBe(
+      normalizeAcceptedSeedPayload(unconstrained).hash,
+    );
+    expect(
+      parseSlotPlanSeedJson(normalized.canonicalPayload)?.slots[0]?.exercises[0]
+        ?.intent?.requiredExerciseClass,
+    ).toBe("low_axial_hip_extension_anchor");
   });
 
   it("keeps equivalent version 1 and version 2 executable projections equal", () => {

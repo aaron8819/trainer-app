@@ -12,7 +12,7 @@ import type {
 } from "@/lib/engine/planning/v2/materialization/types";
 import type { V2AcceptedPlannerIntentDto } from "@/lib/engine/planning/v2/accepted-planner-intent-dto";
 import {
-  requiresMainLiftEligibility,
+  evaluateHypertrophySemanticIntent,
   type AcceptedExerciseIntentV2,
 } from "@/lib/engine/hypertrophy-plan-authoring";
 import { MUSCLE_POLICY_BY_ID } from "@/lib/engine/muscle-policy";
@@ -782,7 +782,7 @@ function isEquivalentVerticalPullBodyweightException(input: {
   );
 }
 
-function isRowAnchorMainLiftSubstituteException(input: {
+function isLegacyRowAnchorMainLiftSubstituteException(input: {
   current: RuntimeExerciseSwapProfile;
   candidate: RuntimeExerciseSwapProfile;
   currentPatterns: string[];
@@ -934,58 +934,6 @@ export function resolveRuntimeExerciseSwapSourceLaneContext(input: {
   };
 }
 
-function matchesAcceptedSemanticIntent(
-  current: RuntimeExerciseSwapProfile,
-  candidate: RuntimeExerciseSwapProfile,
-): boolean {
-  const intent = current.sourceLane?.acceptedIntent;
-  if (!intent) return true;
-  if (
-    intent.requiredExerciseClass &&
-    !hasV2ExerciseClass(candidate, intent.requiredExerciseClass)
-  ) {
-    return false;
-  }
-  if (intent.target.kind === "movement_pattern") {
-    const patterns = normalizeList(candidate.movementPatterns);
-    if (!patterns.includes(intent.target.movementPattern)) return false;
-    if (intent.userRole === "PRIMARY_LIFT") {
-      return (
-        candidate.isCompound === true &&
-        (!requiresMainLiftEligibility(intent) ||
-          candidate.isMainLiftEligible === true)
-      );
-    }
-    if (intent.userRole === "SECONDARY_LIFT") {
-      return candidate.isCompound === true;
-    }
-    return true;
-  }
-  const displayName =
-    MUSCLE_POLICY_BY_ID[intent.target.muscleId].displayName.toLowerCase();
-  return (
-    normalizeList(candidate.primaryMuscles).includes(displayName) ||
-    normalizeList(candidate.secondaryMuscles).includes(displayName) ||
-    Object.entries(candidate.stimulusByMusclePerSet ?? {}).some(
-      ([muscle, stimulus]) =>
-        muscle.trim().toLowerCase() === displayName && stimulus > 0,
-    )
-  );
-}
-
-function matchesAcceptedMainLiftEligibilityException(
-  current: RuntimeExerciseSwapProfile,
-  candidate: RuntimeExerciseSwapProfile,
-): boolean {
-  const intent = current.sourceLane?.acceptedIntent;
-  return Boolean(
-    intent?.userRole === "PRIMARY_LIFT" &&
-      !requiresMainLiftEligibility(intent) &&
-      intent.requiredExerciseClass &&
-      hasV2ExerciseClass(candidate, intent.requiredExerciseClass),
-  );
-}
-
 export function isSwapEligible(
   sourceExercise: RuntimeExerciseSwapProfile,
   workoutState: RuntimeExerciseSwapWorkoutState,
@@ -1028,7 +976,14 @@ export function evaluateRuntimeExerciseSwapEligibility(input: {
     return null;
   }
 
-  if (!matchesAcceptedSemanticIntent(input.current, input.candidate)) {
+  const acceptedIntent = input.current.sourceLane?.acceptedIntent;
+  if (
+    acceptedIntent &&
+    !evaluateHypertrophySemanticIntent({
+      exercise: toV2MaterializationExercise(input.candidate),
+      intent: acceptedIntent,
+    }).eligible
+  ) {
     return null;
   }
 
@@ -1068,18 +1023,12 @@ export function evaluateRuntimeExerciseSwapEligibility(input: {
 
   const fatigueDelta =
     (input.candidate.fatigueCost ?? 3) - (input.current.fatigueCost ?? 3);
-  const acceptedMainLiftEligibilityException =
-    matchesAcceptedMainLiftEligibilityException(
-      input.current,
-      input.candidate,
-    );
-
   if (
+    !acceptedIntent &&
     input.current.isMainLift &&
-    ((!(input.candidate.isMainLiftEligible ?? false) &&
-      !acceptedMainLiftEligibilityException) ||
+    ((!(input.candidate.isMainLiftEligible ?? false)) ||
       candidatePatterns.includes("isolation")) &&
-    !isRowAnchorMainLiftSubstituteException({
+    !isLegacyRowAnchorMainLiftSubstituteException({
       current: input.current,
       candidate: input.candidate,
       currentPatterns,
@@ -1128,9 +1077,10 @@ export function evaluateRuntimeExerciseSwapEligibility(input: {
   const equipmentDemandDelta =
     candidateEquipmentDemand - currentEquipmentDemand;
   const equipmentDemandStayedAtOrBelowOriginal = equipmentDemandDelta <= 0;
-  const roleMatch =
-    Boolean(input.current.isMainLift) ===
-    Boolean(input.candidate.isMainLiftEligible);
+  const roleMatch = acceptedIntent
+    ? true
+    : Boolean(input.current.isMainLift) ===
+      Boolean(input.candidate.isMainLiftEligible);
   const historyMatch = Boolean(input.candidate.hasRecentHistory);
 
   return {
@@ -1164,7 +1114,14 @@ function evaluateRuntimeExerciseSwapCautionEligibility(input: {
     return null;
   }
 
-  if (!matchesAcceptedSemanticIntent(input.current, input.candidate)) {
+  const acceptedIntent = input.current.sourceLane?.acceptedIntent;
+  if (
+    acceptedIntent &&
+    !evaluateHypertrophySemanticIntent({
+      exercise: toV2MaterializationExercise(input.candidate),
+      intent: acceptedIntent,
+    }).eligible
+  ) {
     return null;
   }
 
@@ -1245,9 +1202,10 @@ function evaluateRuntimeExerciseSwapCautionEligibility(input: {
   const equipmentDemandDelta =
     candidateEquipmentDemand - currentEquipmentDemand;
   const equipmentDemandStayedAtOrBelowOriginal = equipmentDemandDelta <= 0;
-  const roleMatch =
-    Boolean(input.current.isMainLift) ===
-    Boolean(input.candidate.isMainLiftEligible);
+  const roleMatch = acceptedIntent
+    ? true
+    : Boolean(input.current.isMainLift) ===
+      Boolean(input.candidate.isMainLiftEligible);
   const historyMatch = Boolean(input.candidate.hasRecentHistory);
 
   return {

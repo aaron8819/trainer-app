@@ -240,6 +240,7 @@ function mapSourceSwapProfile(context: SwapContext): RuntimeExerciseSwapProfile 
       seedRole: seedExercise?.role,
       weekInMeso: receipt?.cycleContext.weekInMeso,
       acceptedPlannerIntent: seed?.acceptedPlannerIntent,
+      acceptedIntent: seedExercise?.intent,
     }),
   };
 }

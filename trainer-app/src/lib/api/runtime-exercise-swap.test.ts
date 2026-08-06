@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import exerciseCatalog from "../../../prisma/exercises_comprehensive.json";
 
 import {
   buildRuntimeExerciseSwapCandidates,
@@ -6,6 +7,39 @@ import {
   isSwapEligible,
   type RuntimeExerciseSwapProfile,
 } from "./runtime-exercise-swap";
+
+function shippedRuntimeExercise(name: string): RuntimeExerciseSwapProfile {
+  const exercise = exerciseCatalog.exercises.find(
+    (candidate) => candidate.name === name,
+  );
+  if (!exercise) throw new Error(`Missing shipped exercise: ${name}`);
+  return {
+    id: exercise.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, ""),
+    name: exercise.name,
+    aliases: [],
+    fatigueCost: exercise.fatigueCost,
+    jointStress: exercise.jointStress,
+    isMainLiftEligible: exercise.isMainLiftEligible,
+    isCompound: exercise.isCompound,
+    movementPatterns: exercise.movementPatterns.map((pattern) =>
+      pattern.toLowerCase(),
+    ),
+    primaryMuscles: exercise.primaryMuscles.map((muscle) =>
+      muscle.toLowerCase(),
+    ),
+    secondaryMuscles: exercise.secondaryMuscles.map((muscle) =>
+      muscle.toLowerCase(),
+    ),
+    equipment: exercise.equipment.map((item) => item.toLowerCase()),
+    stimulusByMusclePerSet: Object.fromEntries([
+      ...exercise.primaryMuscles.map((muscle) => [muscle, 1] as const),
+      ...exercise.secondaryMuscles.map((muscle) => [muscle, 0.5] as const),
+    ]),
+  };
+}
 
 const currentAccessory: RuntimeExerciseSwapProfile = {
   id: "db-lateral-raise",
@@ -1363,6 +1397,264 @@ describe("runtime exercise swap constraints", () => {
           movementPatterns: ["vertical_push"],
           primaryMuscles: ["front delts", "side delts"],
           equipment: ["dumbbell"],
+        },
+      }),
+    ).toBeNull();
+  });
+
+  it.each([
+    {
+      label: "Primary horizontal pull",
+      current: {
+        ...currentMainLift,
+        id: "primary-row",
+        movementPatterns: ["horizontal_pull"],
+        primaryMuscles: ["lats", "upper back"],
+        sourceLane: {
+          acceptedIntent: {
+            userRole: "PRIMARY_LIFT",
+            target: {
+              kind: "movement_pattern",
+              movementPattern: "horizontal_pull",
+            },
+          },
+        },
+      } satisfies RuntimeExerciseSwapProfile,
+      accepted: {
+        ...chestSupportedDumbbellRow,
+        isMainLiftEligible: true,
+      },
+      rejected: {
+        ...chestSupportedDumbbellRow,
+        id: "vertical-pull",
+        movementPatterns: ["vertical_pull"],
+        isMainLiftEligible: true,
+      },
+    },
+    {
+      label: "Secondary lift",
+      current: {
+        ...currentAccessory,
+        id: "secondary-row",
+        isCompound: true,
+        movementPatterns: ["horizontal_pull"],
+        primaryMuscles: ["lats"],
+        sourceLane: {
+          acceptedIntent: {
+            userRole: "SECONDARY_LIFT",
+            target: {
+              kind: "movement_pattern",
+              movementPattern: "horizontal_pull",
+            },
+          },
+        },
+      } satisfies RuntimeExerciseSwapProfile,
+      accepted: { ...chestSupportedDumbbellRow, fatigueCost: 1 },
+      rejected: {
+        ...chestSupportedDumbbellRow,
+        id: "row-isolation",
+        fatigueCost: 1,
+        isCompound: false,
+      },
+    },
+    {
+      label: "Muscle isolation",
+      current: {
+        ...currentAccessory,
+        sourceLane: {
+          acceptedIntent: {
+            userRole: "MUSCLE_ISOLATION",
+            target: { kind: "muscle", muscleId: "side_delts" },
+          },
+        },
+      } satisfies RuntimeExerciseSwapProfile,
+      accepted: {
+        ...currentAccessory,
+        id: "cable-lateral-raise",
+        name: "Cable Lateral Raise",
+        equipment: ["cable"],
+      },
+      rejected: {
+        ...currentAccessory,
+        id: "cable-curl",
+        name: "Cable Curl",
+        movementPatterns: ["flexion"],
+        primaryMuscles: ["biceps"],
+        equipment: ["cable"],
+      },
+    },
+    {
+      label: "Muscle-targeted accessory",
+      current: {
+        ...currentAccessory,
+        primaryMuscles: ["biceps"],
+        movementPatterns: ["flexion"],
+        sourceLane: {
+          acceptedIntent: {
+            userRole: "ACCESSORY",
+            target: { kind: "muscle", muscleId: "biceps" },
+          },
+        },
+      } satisfies RuntimeExerciseSwapProfile,
+      accepted: {
+        ...currentAccessory,
+        id: "cable-curl",
+        name: "Cable Curl",
+        movementPatterns: ["flexion"],
+        primaryMuscles: ["biceps"],
+        equipment: ["cable"],
+      },
+      rejected: {
+        ...currentAccessory,
+        id: "cable-lateral-raise",
+        name: "Cable Lateral Raise",
+        equipment: ["cable"],
+      },
+    },
+  ])(
+    "preserves $label semantics without planner lane identity",
+    ({ current, accepted, rejected }) => {
+      expect(
+        evaluateRuntimeExerciseSwapEligibility({ current, candidate: accepted }),
+      ).not.toBeNull();
+      expect(
+        evaluateRuntimeExerciseSwapEligibility({ current, candidate: rejected }),
+      ).toBeNull();
+    },
+  );
+
+  it("uses shipped metadata for production-shaped constrained low-axial main-lift swaps", () => {
+    const acceptedIntent = {
+      userRole: "PRIMARY_LIFT" as const,
+      target: {
+        kind: "movement_pattern" as const,
+        movementPattern: "hinge" as const,
+      },
+      requiredExerciseClass: "low_axial_hip_extension_anchor" as const,
+    };
+    const machineHipThrust = shippedRuntimeExercise("Machine Hip Thrust");
+    const cablePullThrough = shippedRuntimeExercise("Cable Pull-Through");
+    const romanianDeadlift = shippedRuntimeExercise("Romanian Deadlift");
+    expect(machineHipThrust.isMainLiftEligible).toBe(false);
+    expect(cablePullThrough.isMainLiftEligible).toBe(false);
+
+    const machineSource: RuntimeExerciseSwapProfile = {
+      ...machineHipThrust,
+      isMainLift: true,
+      sourceLane: { seedRole: "CORE_COMPOUND", acceptedIntent },
+    };
+    const cableSource: RuntimeExerciseSwapProfile = {
+      ...cablePullThrough,
+      isMainLift: true,
+      sourceLane: { seedRole: "CORE_COMPOUND", acceptedIntent },
+    };
+
+    expect(
+      evaluateRuntimeExerciseSwapEligibility({
+        current: machineSource,
+        candidate: cablePullThrough,
+      }),
+    ).not.toBeNull();
+    expect(
+      evaluateRuntimeExerciseSwapEligibility({
+        current: cableSource,
+        candidate: machineHipThrust,
+      }),
+    ).not.toBeNull();
+    expect(
+      buildRuntimeExerciseSwapCandidates({
+        current: machineSource,
+        candidates: [cablePullThrough],
+        includeCautionTier: true,
+      }),
+    ).toEqual([
+      expect.objectContaining({ exerciseId: cablePullThrough.id }),
+    ]);
+    expect(
+      buildRuntimeExerciseSwapCandidates({
+        current: cableSource,
+        candidates: [machineHipThrust],
+        includeCautionTier: true,
+      }),
+    ).toEqual([
+      expect.objectContaining({ exerciseId: machineHipThrust.id }),
+    ]);
+    expect(
+      evaluateRuntimeExerciseSwapEligibility({
+        current: machineSource,
+        candidate: romanianDeadlift,
+      }),
+    ).toBeNull();
+
+    const genericPrimaryIntent = {
+      userRole: "PRIMARY_LIFT" as const,
+      target: {
+        kind: "movement_pattern" as const,
+        movementPattern: "hinge" as const,
+      },
+    };
+    expect(
+      evaluateRuntimeExerciseSwapEligibility({
+        current: {
+          ...machineHipThrust,
+          isMainLift: true,
+          sourceLane: {
+            seedRole: "CORE_COMPOUND",
+            acceptedIntent: genericPrimaryIntent,
+          },
+        },
+        candidate: cablePullThrough,
+      }),
+    ).toBeNull();
+    expect(
+      evaluateRuntimeExerciseSwapEligibility({
+        current: {
+          ...cablePullThrough,
+          isMainLift: true,
+          sourceLane: {
+            seedRole: "CORE_COMPOUND",
+            acceptedIntent: genericPrimaryIntent,
+          },
+        },
+        candidate: machineHipThrust,
+      }),
+    ).toBeNull();
+
+    const differentClassSource = {
+      ...machineSource,
+      sourceLane: {
+        seedRole: "CORE_COMPOUND",
+        acceptedIntent: {
+          ...acceptedIntent,
+          requiredExerciseClass: "hinge_compound",
+        },
+      },
+    } as unknown as RuntimeExerciseSwapProfile;
+    expect(
+      evaluateRuntimeExerciseSwapEligibility({
+        current: differentClassSource,
+        candidate: {
+          ...romanianDeadlift,
+          isMainLiftEligible: false,
+        },
+      }),
+    ).toBeNull();
+
+    expect(
+      evaluateRuntimeExerciseSwapEligibility({
+        current: machineSource,
+        candidate: {
+          ...cablePullThrough,
+          isCompound: false,
+        },
+      }),
+    ).toBeNull();
+    expect(
+      evaluateRuntimeExerciseSwapEligibility({
+        current: machineSource,
+        candidate: {
+          ...cablePullThrough,
+          movementPatterns: ["hinge", "isolation"],
         },
       }),
     ).toBeNull();

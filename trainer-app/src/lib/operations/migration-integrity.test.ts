@@ -185,17 +185,17 @@ describe("migration integrity", () => {
     );
   });
 
-  it("accepts the conventional chain with Finisher management pending", () => {
+  it("accepts the conventional chain with custom hypertrophy drafts pending", () => {
     const result = report();
 
     expect(EXPECTED_MIGRATION_CHAIN.at(-1)).toBe(
-      "20260803120000_add_finisher_management",
+      "20260804120000_add_custom_hypertrophy_plan_drafts",
     );
     expect(result.chain).toMatchObject({
       checkedIn: EXPECTED_MIGRATION_CHAIN.length,
       applied: EXPECTED_MIGRATION_CHAIN.length - 1,
       pending: 1,
-      pendingNames: ["20260803120000_add_finisher_management"],
+      pendingNames: ["20260804120000_add_custom_hypertrophy_plan_drafts"],
       exactExpectedChain: true,
     });
     expect(result.migrationIntegrityValid).toBe(true);

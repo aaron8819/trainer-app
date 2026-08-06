@@ -11,6 +11,11 @@ import type {
   V2MaterializationExercise,
 } from "@/lib/engine/planning/v2/materialization/types";
 import type { V2AcceptedPlannerIntentDto } from "@/lib/engine/planning/v2/accepted-planner-intent-dto";
+import {
+  requiresMainLiftEligibility,
+  type AcceptedExerciseIntentV2,
+} from "@/lib/engine/hypertrophy-plan-authoring";
+import { MUSCLE_POLICY_BY_ID } from "@/lib/engine/muscle-policy";
 
 export type RuntimeExerciseSwapSourceLaneContext = {
   slotId?: string;
@@ -21,6 +26,7 @@ export type RuntimeExerciseSwapSourceLaneContext = {
   primaryMuscles?: string[] | null;
   acceptableExerciseClasses?: string[] | null;
   preferredExerciseClasses?: string[] | null;
+  acceptedIntent?: AcceptedExerciseIntentV2;
 };
 
 export type RuntimeExerciseSwapProfile = {
@@ -856,11 +862,27 @@ export function resolveRuntimeExerciseSwapSourceLaneContext(input: {
   seedRole?: RuntimeExerciseSwapSourceLaneContext["seedRole"];
   weekInMeso?: number | null;
   acceptedPlannerIntent?: V2AcceptedPlannerIntentDto | null;
+  acceptedIntent?: AcceptedExerciseIntentV2 | null;
 }): RuntimeExerciseSwapSourceLaneContext | undefined {
   const base: RuntimeExerciseSwapSourceLaneContext = {
     ...(input.slotId ? { slotId: input.slotId } : {}),
     ...(input.seedRole ? { seedRole: input.seedRole } : {}),
+    ...(input.acceptedIntent ? { acceptedIntent: input.acceptedIntent } : {}),
   };
+  if (input.acceptedIntent) {
+    const target = input.acceptedIntent.target;
+    return {
+      ...base,
+      laneRole: input.acceptedIntent.userRole,
+      ...(target.kind === "muscle"
+        ? {
+            primaryMuscles: [
+              MUSCLE_POLICY_BY_ID[target.muscleId].displayName.toLowerCase(),
+            ],
+          }
+        : {}),
+    };
+  }
   const acceptedPlannerIntent = input.acceptedPlannerIntent;
   if (!acceptedPlannerIntent || !input.slotId) {
     return Object.keys(base).length > 0 ? base : undefined;
@@ -912,6 +934,58 @@ export function resolveRuntimeExerciseSwapSourceLaneContext(input: {
   };
 }
 
+function matchesAcceptedSemanticIntent(
+  current: RuntimeExerciseSwapProfile,
+  candidate: RuntimeExerciseSwapProfile,
+): boolean {
+  const intent = current.sourceLane?.acceptedIntent;
+  if (!intent) return true;
+  if (
+    intent.requiredExerciseClass &&
+    !hasV2ExerciseClass(candidate, intent.requiredExerciseClass)
+  ) {
+    return false;
+  }
+  if (intent.target.kind === "movement_pattern") {
+    const patterns = normalizeList(candidate.movementPatterns);
+    if (!patterns.includes(intent.target.movementPattern)) return false;
+    if (intent.userRole === "PRIMARY_LIFT") {
+      return (
+        candidate.isCompound === true &&
+        (!requiresMainLiftEligibility(intent) ||
+          candidate.isMainLiftEligible === true)
+      );
+    }
+    if (intent.userRole === "SECONDARY_LIFT") {
+      return candidate.isCompound === true;
+    }
+    return true;
+  }
+  const displayName =
+    MUSCLE_POLICY_BY_ID[intent.target.muscleId].displayName.toLowerCase();
+  return (
+    normalizeList(candidate.primaryMuscles).includes(displayName) ||
+    normalizeList(candidate.secondaryMuscles).includes(displayName) ||
+    Object.entries(candidate.stimulusByMusclePerSet ?? {}).some(
+      ([muscle, stimulus]) =>
+        muscle.trim().toLowerCase() === displayName && stimulus > 0,
+    )
+  );
+}
+
+function matchesAcceptedMainLiftEligibilityException(
+  current: RuntimeExerciseSwapProfile,
+  candidate: RuntimeExerciseSwapProfile,
+): boolean {
+  const intent = current.sourceLane?.acceptedIntent;
+  return Boolean(
+    intent?.userRole === "PRIMARY_LIFT" &&
+      !requiresMainLiftEligibility(intent) &&
+      intent.requiredExerciseClass &&
+      hasV2ExerciseClass(candidate, intent.requiredExerciseClass),
+  );
+}
+
 export function isSwapEligible(
   sourceExercise: RuntimeExerciseSwapProfile,
   workoutState: RuntimeExerciseSwapWorkoutState,
@@ -954,6 +1028,10 @@ export function evaluateRuntimeExerciseSwapEligibility(input: {
     return null;
   }
 
+  if (!matchesAcceptedSemanticIntent(input.current, input.candidate)) {
+    return null;
+  }
+
   if (
     !hasSufficientExerciseMetadata(input.current) ||
     !hasSufficientExerciseMetadata(input.candidate)
@@ -990,10 +1068,16 @@ export function evaluateRuntimeExerciseSwapEligibility(input: {
 
   const fatigueDelta =
     (input.candidate.fatigueCost ?? 3) - (input.current.fatigueCost ?? 3);
+  const acceptedMainLiftEligibilityException =
+    matchesAcceptedMainLiftEligibilityException(
+      input.current,
+      input.candidate,
+    );
 
   if (
     input.current.isMainLift &&
-    (!(input.candidate.isMainLiftEligible ?? false) ||
+    ((!(input.candidate.isMainLiftEligible ?? false) &&
+      !acceptedMainLiftEligibilityException) ||
       candidatePatterns.includes("isolation")) &&
     !isRowAnchorMainLiftSubstituteException({
       current: input.current,
@@ -1077,6 +1161,10 @@ function evaluateRuntimeExerciseSwapCautionEligibility(input: {
   candidate: RuntimeExerciseSwapProfile;
 }): RuntimeExerciseSwapEligibility | null {
   if (input.current.id === input.candidate.id) {
+    return null;
+  }
+
+  if (!matchesAcceptedSemanticIntent(input.current, input.candidate)) {
     return null;
   }
 

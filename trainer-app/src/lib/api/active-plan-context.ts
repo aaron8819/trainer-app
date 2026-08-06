@@ -461,6 +461,8 @@ export async function selectActivePlanInTransaction(
       userId: true,
       archivedAt: true,
       primaryGoal: true,
+      durationWeeks: true,
+      scheduleAnchoredAt: true,
     },
   });
   if (
@@ -542,6 +544,28 @@ export async function selectActivePlanInTransaction(
   });
   if (inProgressWorkout) {
     throw new ActiveWorkoutInProgressError(inProgressWorkout.id);
+  }
+
+  if (targetMacroCycle.scheduleAnchoredAt === null) {
+    const startDate = new Date();
+    startDate.setUTCHours(0, 0, 0, 0);
+    const endDate = new Date(
+      startDate.getTime() +
+        targetMacroCycle.durationWeeks * 7 * 24 * 60 * 60 * 1000,
+    );
+    const anchored = await tx.macroCycle.updateMany({
+      where: {
+        id: targetMacroCycle.id,
+        userId: input.userId,
+        scheduleAnchoredAt: null,
+      },
+      data: { startDate, endDate, scheduleAnchoredAt: new Date() },
+    });
+    if (anchored.count !== 1) {
+      throw new ActivePlanSelectionConflictError(
+        input.expectedActiveMacroCycleId,
+      );
+    }
   }
 
   return {

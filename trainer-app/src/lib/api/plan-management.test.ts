@@ -199,6 +199,34 @@ describe("plan management persistence policy", () => {
     });
   });
 
+  it("keeps the legacy plan-summary response unchanged when custom drafts are excluded", async () => {
+    const timestamp = new Date("2026-08-04T00:00:00.000Z");
+    mocks.userFindUnique.mockResolvedValue({
+      activeMacroCycleId: null,
+      macroCycles: [
+        {
+          id: "legacy-plan",
+          name: "Legacy plan",
+          primaryGoal: "HYPERTROPHY",
+          startDate: timestamp,
+          endDate: new Date("2026-09-08T00:00:00.000Z"),
+          durationWeeks: 5,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          mesocycles: [
+            mesocycle("legacy-meso", MesocycleState.ACTIVE_ACCUMULATION, true),
+          ],
+        },
+      ],
+    });
+
+    const result = await loadPlanManagementData("user-1");
+    expect(result.plans[0]).not.toHaveProperty("sessionsPerWeek");
+    expect(result.plans[0]).not.toHaveProperty("editableCopyAvailable");
+    const select = mocks.userFindUnique.mock.calls[0]![0].select.macroCycles.select;
+    expect(select).not.toHaveProperty("hypertrophyDraft");
+  });
+
   it("creates a deterministic strength draft without changing the active pointer", async () => {
     const startDate = new Date("2026-08-03T00:00:00.000Z");
     const endDate = new Date("2026-09-07T00:00:00.000Z");

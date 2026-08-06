@@ -33,12 +33,13 @@ export function PlanReviewView({
         <div className="mt-5 flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Generated {planType.toLowerCase()} plan
+              {plan.editableCopyAvailable ? "Accepted" : "Generated"} {planType.toLowerCase()} plan
             </p>
             <h1 className="page-title mt-2">{plan.name}</h1>
             <p className="mt-2 text-sm text-slate-600">
-              Review the generated mesocycles before finalizing. Finalization
-              makes the plan READY without changing your active plan.
+              {plan.editableCopyAvailable
+                ? "This accepted plan is immutable. Activate it separately, or create an editable copy from Plan Management."
+                : "Review the generated mesocycles before finalizing. Finalization makes the plan READY without changing your active plan."}
             </p>
           </div>
           <StatusBadge tone={plan.status === "READY" ? "positive" : "warning"}>
@@ -76,18 +77,17 @@ export function PlanReviewView({
           </dl>
         </section>
 
-        {plan.primaryGoal === "STRENGTH" &&
-        plan.weeklyStructure.length > 0 ? (
+        {plan.weeklyStructure.length > 0 ? (
           <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
                 <h2 className="font-semibold text-slate-900">
-                  Weekly strength structure
+                  Weekly {plan.primaryGoal === "STRENGTH" ? "strength " : ""}structure
                 </h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  Primary lifts stay stable so performance can progress. Focused
-                  assistance supports balance and resilience without
-                  bodybuilding-level volume.
+                  {plan.primaryGoal === "STRENGTH"
+                    ? "Primary lifts stay stable so performance can progress. Focused assistance supports balance and resilience."
+                    : "This is the immutable ordered composition used by the initial block."}
                 </p>
               </div>
               {plan.strengthConfiguration ? (
@@ -165,11 +165,13 @@ export function PlanReviewView({
                 </article>
               ))}
             </div>
-            <p className="mt-4 text-xs text-slate-500">
-              Main work uses lower rep ranges and longer rests. Loads start from
-              relevant history when available and otherwise use conservative
-              calibration; no 1RM is assumed.
-            </p>
+            {plan.primaryGoal === "STRENGTH" ? (
+              <p className="mt-4 text-xs text-slate-500">
+                Main work uses lower rep ranges and longer rests. Loads start from
+                relevant history when available and otherwise use conservative
+                calibration; no 1RM is assumed.
+              </p>
+            ) : null}
           </section>
         ) : null}
 
@@ -203,12 +205,13 @@ export function PlanReviewView({
         </div>
 
         <section className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 p-4 sm:p-5">
-          <h2 className="font-semibold text-slate-900">Ready to finalize?</h2>
+          <h2 className="font-semibold text-slate-900">
+            {plan.status === "PREPARING" ? "Ready to finalize?" : "Plan ready"}
+          </h2>
           <p className="mt-2 text-sm text-slate-700">
-            This locks in the generated plan’s readiness state and accepts its
-            executable session structure when required. It does not activate
-            the plan or rewrite existing workouts, receipts, logs, or
-            historical records.
+            {plan.status === "PREPARING"
+              ? "This locks in the generated plan’s readiness state and accepts its executable session structure when required. It does not activate the plan."
+              : "Making a plan ready does not activate it. Return to Plan Management to activate it or create an editable copy."}
           </p>
           <div className="mt-4">
             {plan.status === "PREPARING" ? (

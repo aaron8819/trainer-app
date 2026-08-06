@@ -1,0 +1,652 @@
+import { describe, expect, it } from "vitest";
+import exerciseCatalog from "../../../prisma/exercises_comprehensive.json";
+import { getMusclePolicyByDisplayName } from "./muscle-policy";
+import {
+  buildV2ExerciseMaterializationPlan,
+  buildV2PlannerMesocyclePolicy,
+  DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+} from "./planning/v2";
+import type { V2MaterializationExercise } from "./planning/v2/materialization/types";
+import {
+  adaptV2MaterializedPlanToDraft,
+  assertAcceptedCompatibilityAlignment,
+  buildAcceptedCompatibilityProjections,
+  buildManualHypertrophyDraft,
+  compileAcceptedHypertrophySeed,
+  equipmentForCustomHypertrophyProfile,
+  evaluateHypertrophyPlanHealth,
+  isExerciseAvailableForHypertrophyPlan,
+  isExerciseEligibleForIntent,
+  parseAcceptedHypertrophySeedV2,
+  parseHypertrophyPlanDraft,
+  projectExecutableSeed,
+  type AcceptedHypertrophySeedV2,
+  type HypertrophyAuthoringExercise,
+  type HypertrophyPlanDraftV1,
+} from "./hypertrophy-plan-authoring";
+
+const settings = {
+  equipmentProfile: "FULL_GYM" as const,
+  sessionDurationMinutes: 60 as const,
+};
+
+type ShippedCatalogExercise = (typeof exerciseCatalog.exercises)[number];
+
+function shippedCatalogExercise(name: string): ShippedCatalogExercise {
+  const exercise = exerciseCatalog.exercises.find(
+    (candidate) => candidate.name === name,
+  );
+  if (!exercise) throw new Error(`Missing shipped exercise: ${name}`);
+  return exercise;
+}
+
+function shippedExerciseId(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function toMaterializationExercise(
+  exercise: ShippedCatalogExercise,
+): V2MaterializationExercise {
+  return {
+    exerciseId: shippedExerciseId(exercise.name),
+    name: exercise.name,
+    aliases: [],
+    movementPatterns: exercise.movementPatterns.map((pattern) =>
+      pattern.toLowerCase(),
+    ),
+    primaryMuscles: exercise.primaryMuscles,
+    secondaryMuscles: exercise.secondaryMuscles,
+    equipment: exercise.equipment.map((item) => item.toLowerCase()),
+    isCompound: exercise.isCompound,
+    isMainLiftEligible: exercise.isMainLiftEligible,
+    fatigueCost: exercise.fatigueCost,
+    stimulusByMusclePerSet: Object.fromEntries([
+      ...exercise.primaryMuscles.map((muscle) => [muscle, 1] as const),
+      ...exercise.secondaryMuscles.map((muscle) => [muscle, 0.5] as const),
+    ]),
+  };
+}
+
+function toAuthoringExercise(
+  exercise: ShippedCatalogExercise,
+): HypertrophyAuthoringExercise {
+  const primaryMuscleIds = exercise.primaryMuscles.flatMap((muscle) => {
+    const id = getMusclePolicyByDisplayName(muscle)?.id;
+    return id ? [id] : [];
+  });
+  const secondaryMuscleIds = exercise.secondaryMuscles.flatMap((muscle) => {
+    const id = getMusclePolicyByDisplayName(muscle)?.id;
+    return id ? [id] : [];
+  });
+  return {
+    id: shippedExerciseId(exercise.name),
+    name: exercise.name,
+    aliases: [],
+    movementPatterns: exercise.movementPatterns.map((pattern) =>
+      pattern.toLowerCase(),
+    ) as HypertrophyAuthoringExercise["movementPatterns"],
+    primaryMuscleIds,
+    secondaryMuscleIds,
+    stimulusByMuscleId: Object.fromEntries([
+      ...primaryMuscleIds.map((muscleId) => [muscleId, 1] as const),
+      ...secondaryMuscleIds.map((muscleId) => [muscleId, 0.5] as const),
+    ]),
+    equipment: exercise.equipment.map((item) => item.toLowerCase()),
+    contraindicationKeys: Object.entries(
+      exercise.contraindications ?? {},
+    ).flatMap(([key, enabled]) => (enabled === true ? [key] : [])),
+    isCompound: exercise.isCompound,
+    isMainLiftEligible: exercise.isMainLiftEligible,
+    timePerSetSec: exercise.timePerSetSec,
+  };
+}
+
+type MutableProjections = {
+  slotSequenceJson: {
+    slots: Array<{ slotId: string; intent: string; label: string }>;
+  };
+  slotPlanSeedJson: {
+    slots: Array<{
+      slotId: string;
+      exercises: Array<{
+        exerciseId: string;
+        role: "CORE_COMPOUND" | "ACCESSORY";
+        setCount: number;
+      }>;
+    }>;
+  };
+};
+
+function draft(): HypertrophyPlanDraftV1 {
+  return {
+    version: 1,
+    settings,
+    sessions: [
+      {
+        slotId: "upper",
+        name: "Upper",
+        focus: "UPPER",
+        exercises: [
+          {
+            exerciseId: "bench",
+            workingSets: 4,
+            intent: {
+              userRole: "PRIMARY_LIFT",
+              target: {
+                kind: "movement_pattern",
+                movementPattern: "horizontal_push",
+              },
+            },
+          },
+          {
+            exerciseId: "row",
+            workingSets: 3,
+            intent: {
+              userRole: "SECONDARY_LIFT",
+              target: {
+                kind: "movement_pattern",
+                movementPattern: "horizontal_pull",
+              },
+            },
+          },
+        ],
+      },
+      {
+        slotId: "lower",
+        name: "Lower",
+        focus: "LOWER",
+        exercises: [
+          {
+            exerciseId: "extension",
+            workingSets: 3,
+            intent: {
+              userRole: "MUSCLE_ISOLATION",
+              target: { kind: "muscle", muscleId: "quads" },
+            },
+          },
+          {
+            exerciseId: "curl",
+            workingSets: 3,
+            intent: {
+              userRole: "ACCESSORY",
+              target: { kind: "muscle", muscleId: "hamstrings" },
+            },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+const catalog: HypertrophyAuthoringExercise[] = [
+  {
+    id: "bench",
+    name: "Bench Press",
+    movementPatterns: ["horizontal_push"],
+    primaryMuscleIds: ["chest"],
+    secondaryMuscleIds: ["triceps"],
+    stimulusByMuscleId: { chest: 1, triceps: 0.5 },
+    equipment: ["barbell", "bench"],
+    contraindicationKeys: [],
+    isCompound: true,
+    isMainLiftEligible: true,
+    timePerSetSec: 180,
+  },
+  {
+    id: "row",
+    name: "Cable Row",
+    movementPatterns: ["horizontal_pull"],
+    primaryMuscleIds: ["lats", "upper_back"],
+    secondaryMuscleIds: ["biceps"],
+    stimulusByMuscleId: { lats: 1, upper_back: 1, biceps: 0.5 },
+    equipment: ["cable"],
+    contraindicationKeys: [],
+    isCompound: true,
+    isMainLiftEligible: false,
+    timePerSetSec: 150,
+  },
+  {
+    id: "extension",
+    name: "Leg Extension",
+    movementPatterns: ["extension"],
+    primaryMuscleIds: ["quads"],
+    secondaryMuscleIds: [],
+    stimulusByMuscleId: { quads: 1 },
+    equipment: ["machine"],
+    contraindicationKeys: ["knee"],
+    isCompound: false,
+    isMainLiftEligible: false,
+    timePerSetSec: 90,
+  },
+  {
+    id: "curl",
+    name: "Leg Curl",
+    movementPatterns: ["flexion"],
+    primaryMuscleIds: ["hamstrings"],
+    secondaryMuscleIds: [],
+    stimulusByMuscleId: { hamstrings: 1 },
+    equipment: ["machine"],
+    contraindicationKeys: [],
+    isCompound: false,
+    isMainLiftEligible: false,
+    timePerSetSec: 90,
+  },
+];
+
+const lowAxialHipThrust: HypertrophyAuthoringExercise = {
+  id: "hip-thrust",
+  name: "Machine Hip Thrust",
+  movementPatterns: ["hinge"],
+  primaryMuscleIds: ["glutes"],
+  secondaryMuscleIds: ["hamstrings"],
+  stimulusByMuscleId: { glutes: 1, hamstrings: 0.5 },
+  equipment: ["machine"],
+  contraindicationKeys: [],
+  isCompound: true,
+  isMainLiftEligible: false,
+  timePerSetSec: 120,
+};
+
+const romanianDeadlift: HypertrophyAuthoringExercise = {
+  id: "rdl",
+  name: "Romanian Deadlift",
+  movementPatterns: ["hinge"],
+  primaryMuscleIds: ["hamstrings", "glutes"],
+  secondaryMuscleIds: ["lower_back"],
+  stimulusByMuscleId: { hamstrings: 1, glutes: 1, lower_back: 0.5 },
+  equipment: ["barbell"],
+  contraindicationKeys: [],
+  isCompound: true,
+  isMainLiftEligible: true,
+  timePerSetSec: 150,
+};
+
+describe("custom hypertrophy authoring contracts", () => {
+  it("normalizes manual and V2 authoring into the same minimal draft contract", () => {
+    const manual = buildManualHypertrophyDraft({
+      settings,
+      sessionsPerWeek: 4,
+      preset: "UPPER_LOWER_4",
+      createSlotId: (() => {
+        let index = 0;
+        return () => `manual-${++index}`;
+      })(),
+    });
+    const policy = buildV2PlannerMesocyclePolicy();
+    const slots = policy.exerciseSelectionPlan.weeks[0]!.slots;
+    const generated = adaptV2MaterializedPlanToDraft({
+      settings,
+      plannerPolicy: policy,
+      materializedPlan: {
+        version: 1,
+        source: "v2_exercise_materialization",
+        dryRunOnly: true,
+        status: "materialized",
+        slots: slots.map((slot) => ({
+          slotId: slot.slotId,
+          exercises: slot.lanes.map((lane) => ({
+            exerciseId: `exercise-${lane.laneId}`,
+            role: lane.role === "anchor" ? "CORE_COMPOUND" : "ACCESSORY",
+            setCount: 3,
+            laneIds: [lane.laneId],
+          })),
+        })),
+        blockers: [],
+        omissions: [],
+      },
+    });
+
+    expect(parseHypertrophyPlanDraft(manual)).toEqual(manual);
+    expect(parseHypertrophyPlanDraft(generated)).toEqual(generated);
+    expect(JSON.stringify(generated)).not.toMatch(
+      /laneId|ranking|fallback|fatigue|capacity|diagnostic/i,
+    );
+    const generatedExercises = generated.sessions.flatMap(
+      (slot) => slot.exercises,
+    );
+    const lowAxial = generatedExercises.find(
+      (exercise) => exercise.exerciseId === "exercise-hinge_anchor",
+    );
+    expect(lowAxial?.intent).toEqual({
+      userRole: "PRIMARY_LIFT",
+      target: { kind: "movement_pattern", movementPattern: "hinge" },
+      requiredExerciseClass: "low_axial_hip_extension_anchor",
+    });
+    for (const exercise of generatedExercises.filter(
+      (candidate) => candidate !== lowAxial,
+    )) {
+      expect(Object.keys(exercise.intent).sort()).toEqual(["target", "userRole"]);
+    }
+    expect(
+      compileAcceptedHypertrophySeed(generated).slots
+        .flatMap((slot) => slot.exercises)
+        .find((exercise) => exercise.exerciseId === "exercise-hinge_anchor")
+        ?.intent,
+    ).toEqual(lowAxial?.intent);
+  });
+
+  it("compiles all four user roles deterministically and rejects policy leakage", () => {
+    const accepted = compileAcceptedHypertrophySeed(draft());
+    expect(
+      accepted.slots.flatMap((slot) => slot.exercises.map((row) => row.role)),
+    ).toEqual(["CORE_COMPOUND", "ACCESSORY", "ACCESSORY", "ACCESSORY"]);
+
+    const leaked = structuredClone(accepted) as AcceptedHypertrophySeedV2 & {
+      rankingPolicy: string;
+    };
+    leaked.rankingPolicy = "planner-owned";
+    expect(() => parseAcceptedHypertrophySeedV2(leaked)).toThrow();
+    expect(() =>
+      parseAcceptedHypertrophySeedV2({
+        ...accepted,
+        slots: accepted.slots.map((slot, index) =>
+          index
+            ? slot
+            : {
+                ...slot,
+                exercises: slot.exercises.map((exercise, exerciseIndex) =>
+                  exerciseIndex
+                    ? exercise
+                    : { ...exercise, laneId: "chest_anchor" },
+                ),
+              },
+        ),
+      }),
+    ).toThrow();
+    expect(() =>
+      parseAcceptedHypertrophySeedV2({
+        ...accepted,
+        slots: accepted.slots.map((slot, index) =>
+          index
+            ? slot
+            : {
+                ...slot,
+                exercises: slot.exercises.map((exercise, exerciseIndex) =>
+                  exerciseIndex
+                    ? exercise
+                    : {
+                        ...exercise,
+                        intent: {
+                          ...exercise.intent,
+                          requiredExerciseClass: "hinge_compound",
+                        },
+                      },
+                ),
+              },
+        ),
+      }),
+    ).toThrow();
+  });
+
+  it("separates hard execution blockers from advisory plan-health findings", () => {
+    const health = evaluateHypertrophyPlanHealth({
+      draft: draft(),
+      exercises: catalog,
+      limitationKeys: ["knee"],
+    });
+    expect(health.blockers.map((finding) => finding.code)).toContain(
+      "LIMITATION_CONFLICT",
+    );
+    expect(health.warnings.map((finding) => finding.code)).toContain(
+      "MISSING_COVERAGE",
+    );
+    expect(health.warnings.map((finding) => finding.code)).not.toContain(
+      "LIMITATION_CONFLICT",
+    );
+  });
+
+  it("derives role-and-target eligibility from catalog, equipment, and limitations", () => {
+    expect(
+      isExerciseEligibleForIntent({
+        exercise: catalog[0]!,
+        intent: draft().sessions[0]!.exercises[0]!.intent,
+        equipmentProfile: "FULL_GYM",
+        limitationKeys: [],
+      }),
+    ).toBe(true);
+    expect(
+      isExerciseEligibleForIntent({
+        exercise: catalog[1]!,
+        intent: draft().sessions[0]!.exercises[0]!.intent,
+        equipmentProfile: "FULL_GYM",
+        limitationKeys: [],
+      }),
+    ).toBe(false);
+    expect(
+      isExerciseEligibleForIntent({
+        exercise: catalog[2]!,
+        intent: draft().sessions[1]!.exercises[0]!.intent,
+        equipmentProfile: "FULL_GYM",
+        limitationKeys: ["knee"],
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps shipped-catalog low-axial candidates consistent across V2 materialization, picker, and health", () => {
+    const constrainedIntent = {
+      userRole: "PRIMARY_LIFT" as const,
+      target: { kind: "movement_pattern" as const, movementPattern: "hinge" as const },
+      requiredExerciseClass: "low_axial_hip_extension_anchor" as const,
+    };
+    const policy = buildV2PlannerMesocyclePolicy();
+    const shippedAuthoringCatalog = exerciseCatalog.exercises.map(
+      toAuthoringExercise,
+    );
+    const materializedPlan = buildV2ExerciseMaterializationPlan({
+      exerciseSelectionPlan: policy.exerciseSelectionPlan,
+      inventory: exerciseCatalog.exercises.map(toMaterializationExercise),
+      taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+      constraints: {
+        avoidExerciseIds: [],
+        favoriteExerciseIds: [],
+        painConflictExerciseIds: [],
+        availableEquipment: [
+          ...(equipmentForCustomHypertrophyProfile("MACHINES") ?? []),
+        ],
+      },
+    });
+    expect(materializedPlan.status).toBe("materialized");
+    if (materializedPlan.status !== "materialized") {
+      throw new Error("Expected shipped MACHINES catalog to materialize");
+    }
+    const generated = adaptV2MaterializedPlanToDraft({
+      settings: {
+        equipmentProfile: "MACHINES",
+        sessionDurationMinutes: 60,
+      },
+      plannerPolicy: policy,
+      materializedPlan,
+    });
+    const constrainedRow = generated.sessions
+      .flatMap((session) => session.exercises)
+      .find(
+        (exercise) =>
+          exercise.intent.requiredExerciseClass ===
+          "low_axial_hip_extension_anchor",
+      );
+    expect(constrainedRow).toBeDefined();
+
+    const cablePullThrough = toAuthoringExercise(
+      shippedCatalogExercise("Cable Pull-Through"),
+    );
+    const machineHipThrust = toAuthoringExercise(
+      shippedCatalogExercise("Machine Hip Thrust"),
+    );
+    const shippedRomanianDeadlift = toAuthoringExercise(
+      shippedCatalogExercise("Romanian Deadlift"),
+    );
+    expect(constrainedRow?.exerciseId).toBe(cablePullThrough.id);
+    expect(cablePullThrough.isMainLiftEligible).toBe(false);
+    expect(machineHipThrust.isMainLiftEligible).toBe(false);
+
+    const eligibleMachineCandidates = [cablePullThrough, machineHipThrust].filter(
+      (exercise) =>
+        isExerciseEligibleForIntent({
+          exercise,
+          intent: constrainedIntent,
+          equipmentProfile: "MACHINES",
+          limitationKeys: [],
+        }),
+    );
+    expect(eligibleMachineCandidates.map((exercise) => exercise.name)).toEqual([
+      "Cable Pull-Through",
+      "Machine Hip Thrust",
+    ]);
+    expect(
+      eligibleMachineCandidates.some(
+        (exercise) => exercise.id !== constrainedRow?.exerciseId,
+      ),
+    ).toBe(true);
+
+    for (const exercise of eligibleMachineCandidates) {
+      const candidateDraft = structuredClone(generated);
+      const candidateRow = candidateDraft.sessions
+        .flatMap((session) => session.exercises)
+        .find(
+          (row) =>
+            row.intent.requiredExerciseClass ===
+            "low_axial_hip_extension_anchor",
+        );
+      if (!candidateRow) throw new Error("Missing constrained draft row");
+      candidateRow.exerciseId = exercise.id;
+      const health = evaluateHypertrophyPlanHealth({
+        draft: candidateDraft,
+        exercises: shippedAuthoringCatalog,
+        limitationKeys: [],
+      });
+      expect(
+        health.blockers.filter((finding) => finding.exerciseId === exercise.id),
+      ).toEqual([]);
+      expect(
+        health.warnings.filter(
+          (finding) =>
+            finding.exerciseId === exercise.id &&
+            finding.code === "ROLE_TARGET_MISMATCH",
+        ),
+      ).toEqual([]);
+    }
+
+    expect(
+      isExerciseEligibleForIntent({
+        exercise: shippedRomanianDeadlift,
+        intent: constrainedIntent,
+        equipmentProfile: "FULL_GYM",
+        limitationKeys: [],
+      }),
+    ).toBe(false);
+    expect(
+      isExerciseEligibleForIntent({
+        exercise: machineHipThrust,
+        intent: {
+          userRole: "PRIMARY_LIFT",
+          target: { kind: "movement_pattern", movementPattern: "hinge" },
+        },
+        equipmentProfile: "FULL_GYM",
+        limitationKeys: [],
+      }),
+    ).toBe(false);
+    expect(
+      isExerciseEligibleForIntent({
+        exercise: shippedRomanianDeadlift,
+        intent: {
+          userRole: "PRIMARY_LIFT",
+          target: { kind: "movement_pattern", movementPattern: "hinge" },
+        },
+        equipmentProfile: "FULL_GYM",
+        limitationKeys: [],
+      }),
+    ).toBe(true);
+
+    const invalid = structuredClone(generated);
+    invalid.settings.equipmentProfile = "FULL_GYM";
+    const invalidRow = invalid.sessions
+      .flatMap((session) => session.exercises)
+      .find(
+        (exercise) =>
+          exercise.intent.requiredExerciseClass ===
+          "low_axial_hip_extension_anchor",
+      );
+    if (!invalidRow) throw new Error("Missing constrained draft row");
+    invalidRow.exerciseId = shippedRomanianDeadlift.id;
+    expect(
+      evaluateHypertrophyPlanHealth({
+        draft: invalid,
+        exercises: shippedAuthoringCatalog,
+        limitationKeys: [],
+      }).blockers,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "REQUIRED_EXERCISE_CLASS_MISMATCH",
+          exerciseId: shippedRomanianDeadlift.id,
+        }),
+      ]),
+    );
+  });
+
+  it("keeps custom-only equipment additions out of the shared legacy profile", () => {
+    expect(equipmentForCustomHypertrophyProfile("BARBELL_HOME")).toEqual(
+      expect.arrayContaining(["ez_bar", "trap_bar"]),
+    );
+    expect(equipmentForCustomHypertrophyProfile("MACHINES")).toContain("band");
+    expect(
+      isExerciseAvailableForHypertrophyPlan({
+        exercise: { ...romanianDeadlift, equipment: ["trap_bar"] },
+        equipmentProfile: "BARBELL_HOME",
+        limitationKeys: [],
+      }),
+    ).toBe(true);
+    expect(
+      isExerciseAvailableForHypertrophyPlan({
+        exercise: { ...lowAxialHipThrust, equipment: ["band"] },
+        equipmentProfile: "MACHINES",
+        limitationKeys: [],
+      }),
+    ).toBe(true);
+  });
+
+  it("derives aligned compatibility projections and rejects every material drift class", () => {
+    const acceptedSeed = compileAcceptedHypertrophySeed(draft());
+    const projections = buildAcceptedCompatibilityProjections(acceptedSeed);
+    expect(() =>
+      assertAcceptedCompatibilityAlignment({ acceptedSeed, ...projections }),
+    ).not.toThrow();
+
+    const mutations: Array<(value: MutableProjections) => void> = [
+      (value) => { value.slotSequenceJson.slots.reverse(); },
+      (value) => { value.slotSequenceJson.slots[0]!.intent = "PULL"; },
+      (value) => { value.slotSequenceJson.slots[0]!.label = "Changed"; },
+      (value) => { value.slotPlanSeedJson.slots[0]!.exercises.reverse(); },
+      (value) =>
+        (value.slotPlanSeedJson.slots[0]!.exercises[0]!.exerciseId = "changed"),
+      (value) =>
+        (value.slotPlanSeedJson.slots[0]!.exercises[0]!.role = "ACCESSORY"),
+      (value) =>
+        (value.slotPlanSeedJson.slots[0]!.exercises[0]!.setCount = 9),
+      (value) => { value.slotPlanSeedJson.slots.pop(); },
+      (value) =>
+        (value.slotPlanSeedJson.slots.push({
+          slotId: "extra",
+          exercises: [],
+        })),
+    ];
+    for (const mutate of mutations) {
+      const changed = structuredClone(projections) as unknown as MutableProjections;
+      mutate(changed);
+      expect(() =>
+        assertAcceptedCompatibilityAlignment({
+          acceptedSeed,
+          ...changed,
+        }),
+      ).toThrow(/CUSTOM_PLAN_COMPATIBILITY/);
+    }
+    const projectionView = projections as unknown as MutableProjections;
+    expect(projectExecutableSeed(acceptedSeed)).toEqual({
+      version: 1,
+      slots: projectionView.slotPlanSeedJson.slots,
+    });
+  });
+});

@@ -654,3 +654,8 @@ If deployment fails after successful migration:
 
 The write pause does not authorize migrations, deployment, database repair, backfills, seed
 changes, or environment mutation. Those remain separate operator decisions.
+## Custom hypertrophy rollout
+
+`TRAINER_CUSTOM_HYPERTROPHY_PLANS_ROLLOUT` is server-owned and default-off. Only the exact value `enabled` exposes custom draft reads/writes and UI; no environment should receive that value as part of the implementation or migration deployment. Apply `20260804120000_add_custom_hypertrophy_plan_drafts` through the normal reviewed migration process before any later manual rollout. The additive migration does not create drafts, accepted revisions, or schedule changes for existing plans.
+
+Rollback before enablement is application-only: leave the variable absent. After draft data exists, do not drop the table or column without a separately reviewed data-retention plan. No seed, backfill, repair, acceptance, or production configuration mutation is part of this feature delivery.

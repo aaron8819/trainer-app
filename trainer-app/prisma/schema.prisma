@@ -947,12 +947,13 @@ model WorkoutTemplateExercise {
 }
 
 model MacroCycle {
-  id            String    @id @default(uuid())
-  userId        String
-  user          User      @relation("OwnedMacroCycles", fields: [userId], references: [id], onDelete: Cascade)
-  activeForUser User?     @relation("ActiveMacroCycle")
-  name          String    @default("Hypertrophy Plan") @db.VarChar(60)
-  archivedAt    DateTime?
+  id                 String    @id @default(uuid())
+  userId             String
+  user               User      @relation("OwnedMacroCycles", fields: [userId], references: [id], onDelete: Cascade)
+  activeForUser      User?     @relation("ActiveMacroCycle")
+  name               String    @default("Hypertrophy Plan") @db.VarChar(60)
+  archivedAt         DateTime?
+  scheduleAnchoredAt DateTime? @default(now())
 
   startDate     DateTime
   endDate       DateTime
@@ -961,13 +962,23 @@ model MacroCycle {
   trainingAge TrainingAge
   primaryGoal PrimaryGoal
 
-  mesocycles Mesocycle[]
+  mesocycles       Mesocycle[]
+  hypertrophyDraft HypertrophyPlanDraft?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([userId, startDate])
   @@index([userId, archivedAt, updatedAt])
+}
+
+model HypertrophyPlanDraft {
+  macroCycleId String     @id
+  macroCycle   MacroCycle @relation(fields: [macroCycleId], references: [id], onDelete: Cascade)
+  payload      Json
+  revision     Int        @default(1)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 }
 
 model Mesocycle {

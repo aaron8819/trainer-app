@@ -16,6 +16,11 @@ const STATUS_COPY: Record<
   PlanSummary["status"],
   { label: string; detail: string; tone: StatusBadgeTone }
 > = {
+  DRAFT: {
+    label: "Draft",
+    detail: "Editable and autosaved. Make it ready when the plan is executable.",
+    tone: "warning",
+  },
   PREPARING: {
     label: "Preparing",
     detail: "Generated and waiting for review and finalization.",
@@ -52,6 +57,13 @@ function formatDate(value: string): string {
   }).format(new Date(value));
 }
 
+function planGroup(plan: PlanSummary): { rank: number; label: string } {
+  if (plan.isActive) return { rank: 0, label: "Active plan" };
+  if (plan.status === "DRAFT") return { rank: 1, label: "Drafts" };
+  if (plan.status === "READY") return { rank: 2, label: "Ready to activate" };
+  return { rank: 3, label: "Other plans" };
+}
+
 async function responseBody(response: Response): Promise<{
   error?: string;
   code?: string;
@@ -62,8 +74,10 @@ async function responseBody(response: Response): Promise<{
 
 export function PlanManagementClient({
   initialData,
+  customHypertrophyEnabled = false,
 }: {
   initialData: PlanManagementData;
+  customHypertrophyEnabled?: boolean;
 }) {
   const router = useRouter();
   const [plans, setPlans] = useState(initialData.plans);
@@ -73,6 +87,9 @@ export function PlanManagementClient({
   const [showCreate, setShowCreate] = useState(initialData.plans.length === 0);
   const [newPlanType, setNewPlanType] =
     useState<SupportedPlanType>("HYPERTROPHY");
+  const [authorMethod, setAuthorMethod] = useState<"MANUAL" | "V2">("MANUAL");
+  const [sessionsPerWeek, setSessionsPerWeek] = useState(4);
+  const [manualPreset, setManualPreset] = useState("UPPER_LOWER_4");
   const [creating, setCreating] = useState(false);
   const [busyPlanId, setBusyPlanId] = useState<string | null>(null);
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
@@ -82,6 +99,17 @@ export function PlanManagementClient({
   const defaultStartDate = useMemo(
     () => new Date().toISOString().slice(0, 10),
     [],
+  );
+  const displayedPlans = useMemo(
+    () =>
+      customHypertrophyEnabled
+        ? [...plans].sort(
+            (left, right) =>
+              planGroup(left).rank - planGroup(right).rank ||
+              right.createdAt.localeCompare(left.createdAt),
+          )
+        : plans,
+    [customHypertrophyEnabled, plans],
   );
 
   const createPlan = async (formData: FormData) => {
@@ -94,7 +122,21 @@ export function PlanManagementClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
           newPlanType === "HYPERTROPHY"
-            ? {
+            ? customHypertrophyEnabled
+              ? {
+                  planType: "HYPERTROPHY",
+                  name: formData.get("name"),
+                  sessionsPerWeek: Number(formData.get("sessionsPerWeek")),
+                  sessionDurationMinutes: Number(
+                    formData.get("sessionDurationMinutes"),
+                  ),
+                  equipmentProfile: formData.get("equipmentProfile"),
+                  authorMethod,
+                  ...(authorMethod === "MANUAL"
+                    ? { preset: formData.get("preset") }
+                    : {}),
+                }
+              : {
                 planType: "HYPERTROPHY",
                 name: formData.get("name"),
                 startDate: formData.get("startDate"),
@@ -126,11 +168,40 @@ export function PlanManagementClient({
         return;
       }
       const plan = body.plan as PlanSummary;
-      router.push(`/plans/${plan.id}/review`);
+      router.push(
+        plan.status === "DRAFT"
+          ? `/plans/${plan.id}/edit`
+          : `/plans/${plan.id}/review`,
+      );
     } catch {
       setError("Could not create the plan.");
     } finally {
       setCreating(false);
+    }
+  };
+
+  const copy = async (plan: PlanSummary) => {
+    const name = window.prompt("Name the editable copy", `${plan.name} Copy`);
+    if (!name) return;
+    setBusyPlanId(plan.id);
+    setError(null);
+    try {
+      const response = await fetch(`/api/plans/${plan.id}/copy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const body = await responseBody(response);
+      if (!response.ok || typeof body.planId !== "string") {
+        setError(body.error ?? "Could not create an editable copy.");
+        return;
+      }
+      router.push(`/plans/${body.planId}/edit`);
+      router.refresh();
+    } catch {
+      setError("Could not create an editable copy.");
+    } finally {
+      setBusyPlanId(null);
     }
   };
 
@@ -321,8 +392,9 @@ export function PlanManagementClient({
                 New {planTypeLabel(newPlanType).toLowerCase()} plan
               </h3>
               <p className="mt-1 text-sm text-slate-600">
-                We’ll generate the plan first. You’ll review it before it
-                becomes READY.
+                {customHypertrophyEnabled && newPlanType === "HYPERTROPHY"
+                  ? "Create one editable five-week draft, then make it ready separately."
+                  : "We’ll generate the plan first. You’ll review it before it becomes READY."}
               </p>
             </div>
             <StatusBadge tone="neutral">
@@ -345,17 +417,19 @@ export function PlanManagementClient({
                 className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base"
               />
             </label>
-            <label className="text-sm font-medium text-slate-800">
-              Start date
-              <input
-                name="startDate"
-                type="date"
-                required
-                defaultValue={defaultStartDate}
-                className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base"
-              />
-            </label>
-            {newPlanType === "HYPERTROPHY" ? (
+            {!customHypertrophyEnabled || newPlanType === "STRENGTH" ? (
+              <label className="text-sm font-medium text-slate-800">
+                Start date
+                <input
+                  name="startDate"
+                  type="date"
+                  required
+                  defaultValue={defaultStartDate}
+                  className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base"
+                />
+              </label>
+            ) : null}
+            {newPlanType === "HYPERTROPHY" && !customHypertrophyEnabled ? (
               <label className="text-sm font-medium text-slate-800">
                 Duration
                 <select
@@ -371,6 +445,70 @@ export function PlanManagementClient({
               </label>
             ) : null}
           </div>
+          {newPlanType === "HYPERTROPHY" && customHypertrophyEnabled ? (
+            <div className="mt-5 border-t border-slate-200 pt-5">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <label className="text-sm font-medium text-slate-800">
+                  Sessions per week
+                  <select name="sessionsPerWeek" value={sessionsPerWeek} onChange={(event) => {
+                    const value = Number(event.target.value);
+                    setSessionsPerWeek(value);
+                    setAuthorMethod((current) => value === 4 ? current : "MANUAL");
+                    setManualPreset(value === 2 ? "FULL_BODY_2" : value === 3 ? "FULL_BODY_3" : value === 4 ? "UPPER_LOWER_4" : value === 6 ? "PPL_6" : "BLANK");
+                  }} className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base">
+                    {[2, 3, 4, 5, 6].map((value) => <option key={value} value={value}>{value} sessions</option>)}
+                  </select>
+                </label>
+                <label className="text-sm font-medium text-slate-800">
+                  Time per session
+                  <select name="sessionDurationMinutes" defaultValue="60" className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base">
+                    {[45, 60, 75, 90].map((value) => <option key={value} value={value}>About {value} minutes</option>)}
+                  </select>
+                </label>
+                <label className="text-sm font-medium text-slate-800">
+                  Available equipment
+                  <select name="equipmentProfile" defaultValue="FULL_GYM" className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base">
+                    <option value="FULL_GYM">Full gym</option>
+                    <option value="BARBELL_HOME">Barbell home gym</option>
+                    <option value="DUMBBELLS">Dumbbells and bench</option>
+                    <option value="MACHINES">Machines and cables</option>
+                    <option value="BODYWEIGHT">Bodyweight and bands</option>
+                  </select>
+                </label>
+              </div>
+              <fieldset className="mt-4">
+                <legend className="text-sm font-semibold text-slate-900">Starting method</legend>
+                <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                  <label className="rounded-xl border border-slate-200 bg-white p-3">
+                    <input type="radio" checked={authorMethod === "MANUAL"} onChange={() => setAuthorMethod("MANUAL")} />{" "}
+                    <span className="font-medium">Build it myself</span>
+                    <span className="mt-1 block text-sm text-slate-600">Start with editable sessions and choose every exercise.</span>
+                  </label>
+                  <label className="rounded-xl border border-slate-200 bg-white p-3">
+                    <input type="radio" checked={authorMethod === "V2"} disabled={sessionsPerWeek !== 4} onChange={() => setAuthorMethod("V2")} />{" "}
+                    <span className="font-medium">Generate a starting plan</span>
+                    <span className="mt-1 block text-sm text-slate-600">Creates an editable four-session Upper/Lower draft.</span>
+                  </label>
+                </div>
+              </fieldset>
+              {authorMethod === "MANUAL" ? (
+                <label className="mt-4 block text-sm font-medium text-slate-800">
+                  Session structure
+                  <select name="preset" value={manualPreset} onChange={(event) => setManualPreset(event.target.value)} className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base sm:max-w-sm">
+                    <option value="BLANK">Blank sessions</option>
+                    {sessionsPerWeek === 2 ? <option value="FULL_BODY_2">2-day Full Body</option> : null}
+                    {sessionsPerWeek === 3 ? <option value="FULL_BODY_3">3-day Full Body</option> : null}
+                    {sessionsPerWeek === 3 ? <option value="PPL_3">3-day Push / Pull / Legs</option> : null}
+                    {sessionsPerWeek === 4 ? <option value="UPPER_LOWER_4">4-day Upper / Lower</option> : null}
+                    {sessionsPerWeek === 6 ? <option value="PPL_6">6-day Push / Pull / Legs</option> : null}
+                  </select>
+                  <span className="mt-1 block text-xs text-slate-500">Choose a preset matching the selected frequency, or use blank sessions.</span>
+                </label>
+              ) : (
+                <p className="mt-4 text-sm text-slate-600">Generated starting plans currently require four sessions per week.</p>
+              )}
+            </div>
+          ) : null}
           {newPlanType === "STRENGTH" ? (
             <div className="mt-5 border-t border-slate-200 pt-5">
               <div className="grid gap-4 sm:grid-cols-3">
@@ -492,7 +630,11 @@ export function PlanManagementClient({
             className="mt-4 w-full sm:w-auto"
             disabled={creating}
           >
-            {creating ? "Generating plan…" : "Generate and review"}
+            {creating
+              ? authorMethod === "V2" ? "Building draft…" : "Creating draft…"
+              : customHypertrophyEnabled && newPlanType === "HYPERTROPHY"
+                ? authorMethod === "V2" ? "Generate starting plan" : "Create draft"
+                : "Generate and review"}
           </Button>
         </form>
       ) : null}
@@ -506,12 +648,21 @@ export function PlanManagementClient({
         </section>
       ) : (
         <div className="mt-5 grid gap-4">
-          {plans.map((plan) => {
+          {displayedPlans.map((plan, planIndex) => {
             const status = STATUS_COPY[plan.status];
             const busy = busyPlanId === plan.id;
+            const group = planGroup(plan);
+            const previous = displayedPlans[planIndex - 1];
+            const showGroup = customHypertrophyEnabled &&
+              (!previous || planGroup(previous).rank !== group.rank);
             return (
+              <section key={plan.id} className="contents">
+              {showGroup ? (
+                <h3 className="mt-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+                  {group.label}
+                </h3>
+              ) : null}
               <article
-                key={plan.id}
                 className={`rounded-2xl border p-4 sm:p-5 ${
                   plan.isActive
                     ? "border-blue-300 bg-blue-50/40 ring-1 ring-blue-200"
@@ -534,9 +685,11 @@ export function PlanManagementClient({
                     </div>
                     <p className="mt-2 text-sm text-slate-600">{status.detail}</p>
                     <p className="mt-2 text-xs text-slate-500">
-                      {plan.durationWeeks} weeks · {plan.mesocycleCount}{" "}
-                      mesocycle{plan.mesocycleCount === 1 ? "" : "s"} · starts{" "}
-                      {formatDate(plan.startDate)}
+                      {plan.status === "DRAFT"
+                        ? `${plan.sessionsPerWeek ?? 0} sessions per week · last saved ${formatDate(plan.updatedAt)}`
+                        : plan.editableCopyAvailable && !plan.isActive
+                          ? `${plan.sessionsPerWeek ?? 0} sessions per week · five-week block starts on activation`
+                          : `${plan.durationWeeks} weeks · ${plan.mesocycleCount} mesocycle${plan.mesocycleCount === 1 ? "" : "s"} · starts ${formatDate(plan.startDate)}`}
                     </p>
                   </div>
                 </div>
@@ -582,6 +735,11 @@ export function PlanManagementClient({
                         Review and finalize
                       </Link>
                     ) : null}
+                    {plan.status === "DRAFT" ? (
+                      <Link href={`/plans/${plan.id}/edit`} className={buttonClassName({ size: "touch" })}>
+                        Resume editing
+                      </Link>
+                    ) : null}
                     {plan.status === "READY" && !plan.isActive ? (
                       <Button
                         size="touch"
@@ -602,6 +760,11 @@ export function PlanManagementClient({
                         View program
                       </Link>
                     ) : null}
+                    {customHypertrophyEnabled && plan.editableCopyAvailable ? (
+                      <Button variant="secondary" size="touch" onClick={() => void copy(plan)} disabled={busy}>
+                        Create editable copy
+                      </Button>
+                    ) : null}
                     {plan.status === "HANDOFF_PENDING" &&
                     plan.reviewMesocycleId ? (
                       <Link
@@ -614,14 +777,16 @@ export function PlanManagementClient({
                         Review handoff
                       </Link>
                     ) : null}
-                    <Button
-                      variant="secondary"
-                      size="touch"
-                      onClick={() => setEditingPlanId(plan.id)}
-                      disabled={busy}
-                    >
-                      Rename
-                    </Button>
+                    {plan.status !== "DRAFT" ? (
+                      <Button
+                        variant="secondary"
+                        size="touch"
+                        onClick={() => setEditingPlanId(plan.id)}
+                        disabled={busy}
+                      >
+                        Rename
+                      </Button>
+                    ) : null}
                     {!plan.isActive ? (
                       <Button
                         variant="ghost"
@@ -636,6 +801,7 @@ export function PlanManagementClient({
                   </div>
                 )}
               </article>
+              </section>
             );
           })}
         </div>

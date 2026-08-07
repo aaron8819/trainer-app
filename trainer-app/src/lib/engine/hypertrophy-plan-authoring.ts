@@ -343,9 +343,15 @@ export function projectExecutableSeed(
   seed: AcceptedHypertrophySeedV2,
 ): ExecutableSeedProjection {
   const accepted = parseAcceptedHypertrophySeedV2(seed);
+  return projectExecutableSeedRows(accepted.slots);
+}
+
+export function projectExecutableSeedRows(
+  slots: ExecutableSeedProjection["slots"],
+): ExecutableSeedProjection {
   return {
     version: 1,
-    slots: accepted.slots.map((slot) => ({
+    slots: slots.map((slot) => ({
       slotId: slot.slotId,
       exercises: slot.exercises.map(({ exerciseId, role, setCount }) => ({
         exerciseId,

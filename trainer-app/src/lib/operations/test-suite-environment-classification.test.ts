@@ -105,8 +105,8 @@ describe("test-suite environment manifest", () => {
       manifest: currentManifest,
       discoveredTestFiles,
     });
-    expect(discoveredTestFiles).toHaveLength(340);
-    expect(selection.credentialFree).toHaveLength(301);
+    expect(discoveredTestFiles).toHaveLength(341);
+    expect(selection.credentialFree).toHaveLength(302);
     expect(selection.importOnlyPlaceholder).toHaveLength(34);
     expect(selection.databaseRequired).toHaveLength(5);
     for (const entry of selection.databaseRequired) {

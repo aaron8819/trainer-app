@@ -142,15 +142,13 @@ const muscleTargetSchema = z
     muscleId: z.enum(CANONICAL_MUSCLE_IDS),
   })
   .strict();
-export const acceptedExerciseTargetSchema = z.discriminatedUnion("kind", [
-  movementTargetSchema,
-  muscleTargetSchema,
-]);
-
-export const acceptedExerciseIntentSchema = z
+const acceptedExerciseIntentSchema = z
   .object({
     userRole: z.enum(HYPERTROPHY_USER_ROLE_VALUES),
-    target: acceptedExerciseTargetSchema,
+    target: z.discriminatedUnion("kind", [
+      movementTargetSchema,
+      muscleTargetSchema,
+    ]),
     requiredExerciseClass: z
       .enum(ACCEPTED_EXERCISE_CLASS_CONSTRAINT_VALUES)
       .optional(),
@@ -193,7 +191,7 @@ export const acceptedExerciseIntentSchema = z
     }
   });
 
-export const hypertrophyPlanSettingsSchema = z
+const settingsSchema = z
   .object({
     equipmentProfile: z.enum(EQUIPMENT_PROFILE_VALUES),
     sessionDurationMinutes: z.union(
@@ -230,7 +228,7 @@ const draftSessionSchema = z
 export const hypertrophyPlanDraftSchema = z
   .object({
     version: z.literal(1),
-    settings: hypertrophyPlanSettingsSchema,
+    settings: settingsSchema,
     sessions: z.array(draftSessionSchema).min(2).max(6),
   })
   .strict()
@@ -268,7 +266,7 @@ export const acceptedHypertrophySeedV2Schema = z
   .object({
     version: z.literal(2),
     source: z.literal("custom_hypertrophy_plan_v1"),
-    settings: hypertrophyPlanSettingsSchema,
+    settings: settingsSchema,
     slots: z
       .array(
         z
@@ -345,9 +343,15 @@ export function projectExecutableSeed(
   seed: AcceptedHypertrophySeedV2,
 ): ExecutableSeedProjection {
   const accepted = parseAcceptedHypertrophySeedV2(seed);
+  return projectExecutableSeedRows(accepted.slots);
+}
+
+export function projectExecutableSeedRows(
+  slots: ExecutableSeedProjection["slots"],
+): ExecutableSeedProjection {
   return {
     version: 1,
-    slots: accepted.slots.map((slot) => ({
+    slots: slots.map((slot) => ({
       slotId: slot.slotId,
       exercises: slot.exercises.map(({ exerciseId, role, setCount }) => ({
         exerciseId,

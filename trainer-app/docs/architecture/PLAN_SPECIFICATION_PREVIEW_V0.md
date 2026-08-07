@@ -3,86 +3,175 @@
 Status: read-only bounded proof
 Decision: `PROVEN WITH LIMITATIONS`
 
-## What the proof establishes
+## What was proven
 
-`src/lib/engine/plan-specification-preview-v0.ts` owns a strict, non-persisted V0 semantic contract and a pure compiler. The compiler adapts V0 through the existing `HypertrophyPlanDraftV1` construction path, then uses `compileAcceptedHypertrophySeed()` and `projectExecutableSeed()` to produce the current executable version-1 seed shape:
+`src/lib/engine/plan-specification-preview-v0.ts` owns a strict, non-persisted
+input parser and pure compiler for the complete current version-1 executable
+seed shape:
 
 ```text
-slotId -> exercises[{ exerciseId, role, setCount }]
+ordered slots -> ordered exercises[{ exerciseId, role, setCount }]
 ```
 
-`src/lib/api/plan-specification-preview-v0.ts` is read-only orchestration. It validates exercise IDs against supplied catalog context, runs the existing accepted-seed normalizer, and evaluates the existing hypertrophy Plan Health rules through an exact V0-to-draft adapter. It has no database dependency or acceptance, activation, materialization, or runtime entry point.
+The proof validates stable exercise IDs against supplied read-only catalog
+context, preserves row order and executable values exactly, delegates v1 row
+projection to the same pure projection core used by custom hypertrophy
+acceptance, and passes the result through `normalizeAcceptedSeedPayload()`.
+Previewing does not persist, accept, activate, schedule, or materialize anything.
+Runtime remains unaware of V0 and continues to prefer the immutable current
+`MesocycleSeedRevision.seedPayload`.
 
-The proof fixture is a deterministic four-day Upper 1 / Lower 1 / Upper 2 / Lower 2 plan using fixture-stable identifiers for checked-in catalog movements: Barbell Back Squat, Pull-Up, Chest-Supported T-Bar Row, Cable Crunch, Lying Leg Curl, and Bulgarian Split Squat. It does not depend on production data.
+## Exact V0 contract
 
-## Current-state findings
-
-1. `Mesocycle.currentSeedRevision.seedPayload` is accepted executable authority when a revision exists. Version 1 carries ordered exercise ID, executable role, and set count. Version 2 custom hypertrophy seeds additionally retain accepted settings and minimal intent, while runtime consumes their version-1 executable projection.
-2. `normalizeAcceptedSeedPayload()` plus `parseSlotPlanSeedJson()` own accepted payload normalization and validation. Only the existing transactional acceptance helpers create immutable revisions and advance `currentSeedRevisionId`.
-3. Custom hypertrophy make-ready validates `HypertrophyPlanDraftV1` and Plan Health, compiles `AcceptedHypertrophySeedV2`, derives compatibility projections, creates revision 1, and consumes the draft atomically.
-4. Generated Strength builds a version-1 slot seed during plan creation and finalization promotes it to a revision. Generated Hypertrophy remains runtime-selected unless a later accepted handoff supplies a seed. Workout templates do not author plan seeds; runtime may overlay an already accepted seed while materializing a session.
-5. Existing Plan Health consumes a custom hypertrophy draft, normalized catalog rows, and limitation keys. It produces structural/catalog/equipment/semantic blockers plus coverage, frequency, redundancy, and duration warnings without writing.
-6. `next-session.ts` prefers `currentSeedRevision.seedPayload`; template-session composition and deload replay consume the captured accepted seed. `slotPlanSeedJson` is only the explicit legacy/no-revision compatibility path.
-7. Executable meaning in the current contract is slot order plus `exerciseId`, `role`, and `setCount`. Source labels, accepted planner intent, diagnostics, names, settings, priorities, continuity, and rationale are provenance or explanatory meaning. Rep targets, progression, measurement, and layer execution are absent rather than inferred.
-8. The existing custom draft compiler/projection is reusable without writes. V0 delegates to it instead of creating another seed constructor.
-
-## Exact V0 fields
-
-- `version: 0`
-- metadata excluded from semantic canonical bytes and executable output:
-  - normalized `planName`
-  - `authoringSource: "USER_AUTHORED"`
-- `primaryGoal: "HYPERTROPHY"`
-- existing Plan Health constraints:
-  - `equipmentProfile`
-  - `sessionDurationMinutes`
-- fixed phase intent:
-  - `accumulationWeeks: 4`
-  - `deloadWeeks: 1`
-- one to five ranked priorities:
-  - `priorityId`, contiguous `rank`, `kind`, `targetId`, `objective`
-- exactly four ordered sessions:
-  - `slotId`, normalized `name`, current hypertrophy `focus`, ordered `placements`
-- each placement:
-  - globally unique `candidatePlacementId`
-  - catalog-context `exerciseId`
-  - `layer: "PROGRAMMED_WORK"`
-  - `prominence: "PRIMARY" | "SECONDARY" | "ACCESSORY"`
-  - `continuity: "ANCHOR" | "FLEXIBLE"` (the only input default is `FLEXIBLE`)
-  - explicit `priorityIds`
-  - integer `setCount` from 1 through 10
-  - current accepted movement-pattern or muscle `target`
-  - optional existing bounded `requiredExerciseClass`
-
-Unknown fields are rejected. This is how rep ranges, progression, measurement, extra layers, and other future concepts fail visibly instead of being discarded.
-
-## Deterministic boundary
-
-For identical normalized semantic input and catalog context:
-
-- canonical semantic JSON and its SHA-256 hash are identical;
-- ordered sessions and placements are preserved;
-- the compiled executable seed and existing accepted-seed hash are identical;
-- plan name and authoring source are metadata and do not enter semantic canonical bytes or executable rows;
-- priorities, continuity, names, constraints, phase intent, and targets remain review/validation semantics and do not alter current version-1 executable rows;
-- changing `exerciseId`, prominence, order, or `setCount` changes the executable projection deterministically.
-
-There are no timestamps, generated IDs, locale-sensitive operations, randomness, environment defaults, or persistence envelopes in this boundary.
-
-## Run and interpret the preview
-
-From `trainer-app/`:
-
-```powershell
-npm run preview:plan-specification-v0
+```ts
+type PlanSpecificationPreviewV0 = {
+  version: 0;
+  slots: Array<{
+    slotId: string;
+    exercises: Array<{
+      exerciseId: string;
+      role: "CORE_COMPOUND" | "ACCESSORY";
+      setCount: positiveInteger;
+    }>;
+  }>;
+};
 ```
 
-The JSON output includes source and normalized specifications, canonical semantic bytes/hash, compiler version/defaults, specification findings, the compiled version-1 seed, accepted-seed validation/hash, existing Plan Health findings, explicit unsupported/deferred concepts, and read-only isolation facts. A specification or seed validation failure exits nonzero. Plan Health warnings are reported but do not mutate or accept anything.
+The parser is strict at every object boundary. It trims identifier whitespace,
+applies no semantic defaults, requires at least one nonempty slot, and requires
+unique slot IDs. The four-day fixture is representative evidence, not a schema
+requirement.
 
-## What the proof does not establish
+### Retained-field classification
 
-V0 does not persist a plan specification, create a revision, accept or activate a plan, materialize a workout, alter runtime selection, add a fallback, or represent preparation, optional closeout, rep targets, progression execution, measurement profiles, fixed weekdays, conditioning, cross-block lineage, or generalized goals. Removing the proof modules and CLI would leave all execution behavior unchanged.
+| Field or context | Classification | Repository evidence and reason |
+| --- | --- | --- |
+| `version: 0` | `REQUIRED FOR VALIDATION` | Selects the strict internal V0 parser and rejects other shapes. It does not enter the compiled v1 payload. |
+| ordered `slots` | `REQUIRED FOR EXECUTION` | `parseSlotPlanSeedJson()` and template-session seed replay consume ordered slots. |
+| `slotId` | `REQUIRED FOR EXECUTION` | Runtime resolves the scheduled slot against the accepted seed by `slotId` in `next-session.ts` and template-session seed handling. |
+| ordered `exercises` | `REQUIRED FOR EXECUTION` | The seed parser and template-session materializer preserve this order. |
+| `exerciseId` | `REQUIRED FOR EXECUTION` | Runtime selects the exact stable catalog identity from each accepted seed row. Supplied catalog IDs validate the reference before compilation. |
+| `role` | `REQUIRED FOR EXECUTION` | The accepted parser permits only `CORE_COMPOUND` or `ACCESSORY`; template-session context maps those values to main/accessory behavior and role budgeting. |
+| `setCount` | `REQUIRED FOR EXECUTION` | `normalizeAcceptedSeedPayload()` requires an explicit positive integer and runtime uses it for set-count overrides and exact replay. |
+| compiler version in preview output | `REQUIRED PROVENANCE` | Identifies the non-persisted compiler result without becoming seed input or runtime truth. |
+| supplied catalog ID set | `PREVIEW-ONLY BUT JUSTIFIED` | Rejects an exercise ID that is not in the supplied catalog context. It is validation context, excluded from the projection and hash. |
 
-## Decision gate
+There are no retained authoring or planning metadata fields.
 
-`PROVEN WITH LIMITATIONS`: a bounded semantic plan can compile faithfully into the complete current executable composition contract, and runtime authority remains accepted-seed-only. Persistence should not proceed yet because the current seed cannot carry layers, rep/measurement meaning, or progression policy. The next smallest slice is the reviewed bounded execution-distinct catalog subset, followed by measurement-aware execution; only then should a persistent public specification and a correspondingly complete versioned seed contract be frozen.
+## Scope correction
+
+The reviewed commit exposed a larger schema whose non-executable fields changed
+a broadly named semantic hash. Repository tracing showed that the extra fields
+were not required to produce or validate the version-1 seed. They were removed
+instead of being preserved as a future fixture format.
+
+| Removed concept | Executable effect | Validation/compiler effect | Decision |
+| --- | --- | --- | --- |
+| ranked priorities and priority links | None | None in accepted-seed validation or current projection | `DEFER`; hashing them did not establish executable fidelity. |
+| placement prominence | Only `PRIMARY` was approximated to `CORE_COMPOUND`; two other values collapsed to `ACCESSORY` | Required an extra mapping not present in v1 | `REMOVE`; accept the exact executable role instead. |
+| anchor/flexible continuity | None | None | `DEFER`; retaining it would freeze unsettled lineage/continuity meaning. |
+| phase intent | None | The custom acceptance transaction creates four accumulation weeks plus one deload; the seed compiler does not | `REMOVE`; lifecycle construction is outside this proof. |
+| accepted target | None in v1 rows | Required only by the richer custom accepted-v2/draft and Plan Health path | `REMOVE`; no proof value after exact executable roles are input. |
+| exercise-class constraint | None in v1 rows | Required only by custom intent eligibility and Plan Health | `REMOVE`; it cannot be represented faithfully by v1. |
+| equipment constraint | None | Used by custom Plan Health, not accepted v1 validation | `REMOVE`. |
+| duration constraint | None | Used by custom Plan Health, not accepted v1 validation | `REMOVE`. |
+| accumulation/deload structure | None | Created by acceptance/lifecycle code, not compilation | `REMOVE`. |
+| plan name | None | Dropped before projection | `REMOVE`. |
+| authoring source | None | Did not select behavior because V0 supports one direct v1 projection | `REMOVE`. |
+| primary goal | None | Did not select behavior because V0 supports one direct v1 projection | `REMOVE`. |
+| session name and focus | None | Required only to fabricate `HypertrophyPlanDraftV1`/accepted-v2 data | `REMOVE`. |
+| candidate placement ID and layer | None | No current v1 representation | `DEFER`. |
+
+Rep targets, measurement profiles, progression, preparation/closeout, fixed
+weekdays, persistent specification revisions, acceptance, activation, and
+runtime fallback also remain explicitly deferred or unsupported.
+
+## Deterministic and hash boundaries
+
+The proof now has one hash with one honest meaning:
+
+1. **Normalized input boundary:** the strict V0 parser trims `slotId` and
+   `exerciseId`; all accepted fields are executable and there are no defaults.
+2. **Executable projection boundary:** `projectExecutableSeedRows()` copies the
+   ordered V0 slots and the exact `exerciseId`, `role`, and `setCount` values into
+   `{ version: 1, slots }`.
+3. **Accepted-seed hash boundary:** `normalizeAcceptedSeedPayload()` validates
+   and hashes the canonical compiled v1 payload with SHA-256.
+4. **Excluded metadata:** supplied catalog context validates identity only.
+   Every planning, provenance, display, constraint, phase, target, and health
+   field is rejected by the V0 parser rather than ignored or hashed.
+5. **Guarantee:** identical normalized V0 input produces byte-equivalent
+   executable rows and the same accepted-seed hash. Changing any accepted field
+   changes the compiled payload boundary; object-key ordering is normalized by
+   the existing accepted-seed hasher while slot/exercise array order remains
+   meaningful.
+
+The earlier separate `semanticHash` was removed. It mixed executable and
+non-executable fields and therefore could not support an executable-fidelity
+claim.
+
+## Compiler authority
+
+Authority is shared at deliberate existing boundaries:
+
+- `compileAcceptedHypertrophySeed()` owns custom draft-to-accepted-v2 mapping,
+  including custom authoring intent and role conversion.
+- `projectExecutableSeedRows()` owns construction of ordered v1 executable rows.
+  `projectExecutableSeed()` and V0 both delegate to this core.
+- `normalizeAcceptedSeedPayload()` plus `parseSlotPlanSeedJson()` own canonical
+  accepted-seed normalization, validation, and hashing.
+
+V0 does not invoke `compileAcceptedHypertrophySeed()` directly. Doing so would
+require inventing settings, session focus, targets, and class constraints that
+the minimal contract deliberately excludes. Focused equivalence coverage proves
+that the same executable rows from an existing custom draft produce the same v1
+projection. No second executable-row mapping remains in V0.
+
+## Semantic fidelity
+
+Every retained input value has an exact consumer interpretation:
+
+- slot and exercise array order are preserved;
+- `slotId` is the same identifier used to select the accepted slot;
+- `exerciseId` is the same stable identity consumed by materialization;
+- `role` is already the exact accepted/runtime enum, so there is no prominence
+  approximation or fallback;
+- `setCount` is already the exact explicit positive integer used for runtime
+  set-count overrides and replay.
+
+No mutable catalog metadata is needed to reinterpret a compiled row. Catalog
+context only proves that the supplied stable ID exists before compilation.
+
+## Plan Health decision
+
+Current hypertrophy Plan Health cannot truthfully consume only the compiled v1
+seed. It requires `HypertrophyPlanDraftV1` settings, session focus, accepted
+targets/classes, limitation keys, and rich catalog facts. V0 therefore reports
+Plan Health as omitted. Reconstructing a draft solely to obtain a richer report
+would make those broader authoring concepts part of the proof contract even
+though they do not execute.
+
+## Read-only and runtime isolation
+
+- The compiler is pure and has no Prisma, database, transaction, persistence, or
+  lifecycle dependency.
+- Preview orchestration calls only the parser, catalog-ID validation, compiler,
+  and accepted-seed normalizer.
+- Acceptance and runtime owners do not import the preview modules.
+- `next-session.ts` continues to prefer the current immutable seed revision and
+  uses `slotPlanSeedJson` only for the explicit legacy/no-revision path.
+- V0 creates no specification fallback and is not imported by workout
+  materialization.
+- Removing the preview modules and CLI would not change application execution.
+
+## Limitations and decision gate
+
+`PROVEN WITH LIMITATIONS`: the smallest semantic input that exactly matches the
+current executable contract can be validated, deterministically projected,
+accepted-seed validated, and previewed without writes or runtime consumption.
+
+The limitation is deliberate: current v1 seed truth can express only ordered
+exercise identity, executable role, and set count. It cannot faithfully carry
+priorities, continuity, placement identity, layers, measurement, progression,
+phase policy, or richer Plan Health meaning. Those concepts must not return to a
+public specification until a reviewed executable contract can preserve them.

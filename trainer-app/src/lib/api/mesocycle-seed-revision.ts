@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
-import { canonicalizeJson } from "@/lib/canonical-json";
 import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
 import {
   parseAcceptedHypertrophySeedV2,
@@ -8,7 +7,42 @@ import {
 } from "@/lib/engine/hypertrophy-plan-authoring";
 
 export const SEED_PAYLOAD_HASH_ALGORITHM = "sha256" as const;
-export { canonicalizeJson } from "@/lib/canonical-json";
+
+function assertJsonNumber(value: number): void {
+  if (!Number.isFinite(value)) {
+    throw new Error("CANONICAL_JSON_NON_FINITE_NUMBER");
+  }
+}
+
+export function canonicalizeJson(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number") {
+    assertJsonNumber(value);
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => canonicalizeJson(entry)).join(",")}]`;
+  }
+  if (typeof value === "object") {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new Error("CANONICAL_JSON_NON_PLAIN_OBJECT");
+    }
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => {
+        if (record[key] === undefined) {
+          throw new Error("CANONICAL_JSON_UNDEFINED_VALUE");
+        }
+        return `${JSON.stringify(key)}:${canonicalizeJson(record[key])}`;
+      })
+      .join(",")}}`;
+  }
+  throw new Error("CANONICAL_JSON_UNSUPPORTED_VALUE");
+}
 
 export function fingerprintCanonicalJson(value: unknown): string {
   return createHash(SEED_PAYLOAD_HASH_ALGORITHM)

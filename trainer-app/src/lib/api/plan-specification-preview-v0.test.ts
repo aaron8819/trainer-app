@@ -4,36 +4,85 @@ import { describe, expect, it } from "vitest";
 import {
   compileAcceptedHypertrophySeed,
   projectExecutableSeed,
+  type HypertrophyPlanDraftV1,
 } from "@/lib/engine/hypertrophy-plan-authoring";
 import {
-  PLAN_SPECIFICATION_PREVIEW_V0_DEFAULTS,
-  canonicalizePlanSpecificationPreviewV0,
   compilePlanSpecificationPreviewV0,
   parsePlanSpecificationPreviewV0,
 } from "@/lib/engine/plan-specification-preview-v0";
 import {
   PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE,
-  PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE_CATALOG,
-  PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE_DRAFT,
+  PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE_CATALOG_IDS,
   PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE_EXERCISE_IDS,
 } from "@/lib/engine/plan-specification-preview-v0.fixture";
 import { buildPlanSpecificationPreviewV0 } from "./plan-specification-preview-v0";
 
-function buildPreview(specification: unknown = PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE) {
+function buildPreview(
+  specification: unknown = PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE,
+  catalogExerciseIds: readonly string[] =
+    PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE_CATALOG_IDS,
+) {
   return buildPlanSpecificationPreviewV0({
     specification,
-    catalog: PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE_CATALOG,
+    catalogExerciseIds,
   });
 }
 
+function equivalentCustomDraft(): HypertrophyPlanDraftV1 {
+  const primaryTargetByExerciseId = {
+    [PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE_EXERCISE_IDS.pullUp]: "vertical_pull",
+    [PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE_EXERCISE_IDS.chestSupportedRow]:
+      "horizontal_pull",
+    [PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE_EXERCISE_IDS.squat]: "squat",
+  } as const;
+
+  return {
+    version: 1,
+    settings: {
+      equipmentProfile: "FULL_GYM",
+      sessionDurationMinutes: 60,
+    },
+    sessions: PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE.slots.map(
+      (slot, slotIndex) => ({
+        slotId: slot.slotId,
+        name: `Legacy slot ${slotIndex + 1}`,
+        focus: slotIndex % 2 === 0 ? "UPPER" : "LOWER",
+        exercises: slot.exercises.map((exercise) => ({
+          exerciseId: exercise.exerciseId,
+          workingSets: exercise.setCount,
+          intent:
+            exercise.role === "CORE_COMPOUND"
+              ? {
+                  userRole: "PRIMARY_LIFT" as const,
+                  target: {
+                    kind: "movement_pattern" as const,
+                    movementPattern:
+                      primaryTargetByExerciseId[
+                        exercise.exerciseId as keyof typeof primaryTargetByExerciseId
+                      ]!,
+                  },
+                }
+              : {
+                  userRole: "ACCESSORY" as const,
+                  target: { kind: "muscle" as const, muscleId: "abs" as const },
+                },
+        })),
+      }),
+    ),
+  };
+}
+
 describe("PlanSpecificationPreviewV0", () => {
-  it("compiles the representative specification through existing seed validation and Plan Health", () => {
+  it("compiles the minimal four-slot fixture through accepted-seed validation", () => {
     const preview = buildPreview();
 
     expect(preview.specificationValidation).toEqual({ valid: true, findings: [] });
-    expect(preview.seedValidation.valid).toBe(true);
-    expect(preview.planHealth.included).toBe(true);
-    expect(preview.planHealth).toMatchObject({ blockers: [] });
+    expect(preview.seedValidation).toMatchObject({
+      valid: true,
+      payloadVersion: 1,
+      hashAlgorithm: "sha256",
+    });
+    expect(preview.planHealth.included).toBe(false);
     expect(preview.isolation).toEqual({
       readOnly: true,
       databaseRead: false,
@@ -45,17 +94,7 @@ describe("PlanSpecificationPreviewV0", () => {
     });
   });
 
-  it("produces identical normalized semantics, canonical bytes, hashes, and seed output", () => {
-    const first = buildPreview();
-    const second = buildPreview(structuredClone(PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE));
-
-    expect(second.normalizedSpecification).toEqual(first.normalizedSpecification);
-    expect(second.compiler).toEqual(first.compiler);
-    expect(second.compiledSeed).toEqual(first.compiledSeed);
-    expect(second.seedValidation).toEqual(first.seedValidation);
-  });
-
-  it("preserves session and exercise ordering and maps supported roles and sets", () => {
+  it("preserves slot and exercise order plus exact role and set-count meaning", () => {
     const compiled = compilePlanSpecificationPreviewV0(
       PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE,
     );
@@ -78,70 +117,71 @@ describe("PlanSpecificationPreviewV0", () => {
         role: "ACCESSORY",
         setCount: 3,
       },
-      {
-        exerciseId:
-          PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE_EXERCISE_IDS.cableCrunch,
-        role: "ACCESSORY",
-        setCount: 3,
-      },
     ]);
   });
 
-  it("matches the existing custom hypertrophy executable projection", () => {
+  it("uses the same executable projection authority as custom hypertrophy acceptance", () => {
     expect(
       compilePlanSpecificationPreviewV0(PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE),
     ).toEqual(
       projectExecutableSeed(
-        compileAcceptedHypertrophySeed(
-          PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE_DRAFT,
-        ),
+        compileAcceptedHypertrophySeed(equivalentCustomDraft()),
       ),
     );
   });
 
-  it("keeps preview-only priority changes out of executable rows", () => {
-    const changed = structuredClone(PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE);
-    changed.priorities[0]!.targetId = "alternate-preview-label";
+  it("is deterministic at the normalized input, seed, and accepted-seed hash boundaries", () => {
+    const first = buildPreview();
+    const second = buildPreview(
+      structuredClone(PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE),
+    );
 
-    expect(compilePlanSpecificationPreviewV0(changed)).toEqual(
-      compilePlanSpecificationPreviewV0(PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE),
-    );
-    expect(
-      canonicalizePlanSpecificationPreviewV0({ specification: changed })
-        .semanticHash,
-    ).not.toBe(
-      canonicalizePlanSpecificationPreviewV0({
-        specification: PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE,
-      }).semanticHash,
-    );
+    expect(second.normalizedSpecification).toEqual(first.normalizedSpecification);
+    expect(second.compiledSeed).toEqual(first.compiledSeed);
+    expect(second.seedValidation).toEqual(first.seedValidation);
+    expect(second.compiler).not.toHaveProperty("semanticHash");
   });
 
-  it("changes executable rows and accepted-seed hash when set count changes", () => {
+  it("excludes catalog validation context from executable rows and their hash", () => {
+    const baseline = buildPreview();
+    const reorderedContext = buildPreview(
+      PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE,
+      [
+        "unused-catalog-id",
+        ...[...PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE_CATALOG_IDS].reverse(),
+      ],
+    );
+
+    expect(reorderedContext.compiledSeed).toEqual(baseline.compiledSeed);
+    expect(reorderedContext.seedValidation).toMatchObject({
+      acceptedSeedHash: baseline.seedValidation.acceptedSeedHash,
+    });
+  });
+
+  it("changes the accepted-seed hash when an executable field changes", () => {
     const changed = structuredClone(PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE);
-    changed.sessions[0]!.placements[0]!.setCount = 5;
+    changed.slots[0]!.exercises[0]!.setCount = 5;
+
     const baseline = buildPreview();
     const updated = buildPreview(changed);
 
     expect(updated.compiledSeed).not.toEqual(baseline.compiledSeed);
     expect(updated.seedValidation).toMatchObject({ valid: true });
     expect(updated.seedValidation).not.toMatchObject({
-      executableHash: baseline.seedValidation.executableHash,
+      acceptedSeedHash: baseline.seedValidation.acceptedSeedHash,
     });
   });
 
-  it("normalizes the only V0 input default explicitly and stably", () => {
-    const raw = structuredClone(PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE) as Record<
-      string,
-      unknown
-    >;
-    const sessions = raw.sessions as Array<{
-      placements: Array<{ continuity?: string }>;
-    }>;
-    delete sessions[1]!.placements[1]!.continuity;
+  it("normalizes only identifier whitespace and applies no semantic defaults", () => {
+    const raw = structuredClone(PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE);
+    raw.slots[0]!.slotId = "  upper-1  ";
+    raw.slots[0]!.exercises[0]!.exerciseId =
+      `  ${raw.slots[0]!.exercises[0]!.exerciseId}  `;
 
     const parsed = parsePlanSpecificationPreviewV0(raw);
-    expect(parsed.sessions[1]?.placements[1]?.continuity).toBe(
-      PLAN_SPECIFICATION_PREVIEW_V0_DEFAULTS.continuity,
+    expect(parsed.slots[0]?.slotId).toBe("upper-1");
+    expect(parsed.slots[0]?.exercises[0]?.exerciseId).toBe(
+      PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE_EXERCISE_IDS.pullUp,
     );
   });
 
@@ -149,29 +189,30 @@ describe("PlanSpecificationPreviewV0", () => {
     [
       "set count",
       (value: typeof PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE) => {
-        value.sessions[0]!.placements[0]!.setCount = 0;
+        value.slots[0]!.exercises[0]!.setCount = 0;
       },
       "TOO_SMALL",
     ],
     [
-      "phase weeks",
+      "executable role",
       (value: typeof PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE) => {
-        (value.phaseIntent as { accumulationWeeks: number }).accumulationWeeks = 3;
+        (
+          value.slots[0]!.exercises[0] as { role: string }
+        ).role = "PRIMARY";
       },
       "INVALID_VALUE",
     ],
     [
       "exercise identifier",
       (value: typeof PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE) => {
-        value.sessions[0]!.placements[0]!.exerciseId = "missing-exercise";
+        value.slots[0]!.exercises[0]!.exerciseId = "missing-exercise";
       },
       "UNKNOWN_EXERCISE_ID",
     ],
     [
-      "duplicate placement identifier",
+      "duplicate slot identifier",
       (value: typeof PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE) => {
-        value.sessions[0]!.placements[1]!.candidatePlacementId =
-          value.sessions[0]!.placements[0]!.candidatePlacementId;
+        value.slots[1]!.slotId = value.slots[0]!.slotId;
       },
       "CUSTOM",
     ],
@@ -185,27 +226,42 @@ describe("PlanSpecificationPreviewV0", () => {
       expect.arrayContaining([expect.objectContaining({ code })]),
     );
     expect(preview.compiledSeed).toBeNull();
-    expect(preview.planHealth.included).toBe(false);
   });
 
-  it("rejects unsupported future concepts instead of discarding them", () => {
+  it("rejects all deferred planning metadata instead of hashing or discarding it", () => {
     const unsupported = {
       ...structuredClone(PLAN_SPECIFICATION_PREVIEW_V0_FIXTURE),
-      progressionPolicy: { kind: "double_progression" },
+      planName: "Future plan",
+      authoringSource: "USER_AUTHORED",
+      primaryGoal: "HYPERTROPHY",
+      priorities: [],
+      constraints: {},
+      phaseIntent: {},
     };
-    const preview = buildPreview(unsupported);
+    Object.assign(unsupported.slots[0]!, {
+      name: "Upper",
+      focus: "UPPER",
+    });
+    Object.assign(unsupported.slots[0]!.exercises[0]!, {
+      candidatePlacementId: "future-placement",
+      prominence: "PRIMARY",
+      continuity: "ANCHOR",
+      priorityIds: [],
+      target: { kind: "movement_pattern", movementPattern: "vertical_pull" },
+      requiredExerciseClass: "future-class",
+    });
 
+    const preview = buildPreview(unsupported);
+    expect(preview.specificationValidation.valid).toBe(false);
     expect(preview.specificationValidation.findings).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          code: "UNSUPPORTED_FIELD",
-          message: "Unsupported field: progressionPolicy",
-        }),
+        expect.objectContaining({ code: "UNSUPPORTED_FIELD" }),
       ]),
     );
+    expect(preview.compiledSeed).toBeNull();
   });
 
-  it("keeps the preview dependency graph read-only and out of runtime authority", () => {
+  it("keeps preview code read-only and absent from acceptance and runtime owners", () => {
     const compilerSource = fs.readFileSync(
       path.join(
         process.cwd(),
@@ -227,15 +283,19 @@ describe("PlanSpecificationPreviewV0", () => {
       "utf8",
     );
     expect(compilerSource).not.toMatch(/@prisma|lib\/db|prisma\.|\$transaction/);
-    expect(previewSource).not.toMatch(/lib\/db|prisma\.|\$transaction/);
+    expect(previewSource).not.toMatch(
+      /@prisma|lib\/db|prisma\.|\$transaction|\b(createSeedRevision|acceptHypertrophy\w*|activatePlan|materializeWorkout)\s*\(/i,
+    );
+    expect(previewSource).not.toContain("evaluateHypertrophyPlanHealth");
 
-    const runtimeFiles = [
+    const authorityFiles = [
+      ["src", "lib", "api", "hypertrophy-plan-drafts.ts"],
       ["src", "lib", "api", "next-session.ts"],
       ["src", "lib", "api", "template-session", "slot-plan-seed.ts"],
       ["src", "lib", "api", "template-session", "plan-assembly.ts"],
       ["src", "lib", "api", "template-session", "finalize-session.ts"],
     ];
-    for (const segments of runtimeFiles) {
+    for (const segments of authorityFiles) {
       const source = fs.readFileSync(path.join(process.cwd(), ...segments), "utf8");
       expect(source).not.toContain("plan-specification-preview-v0");
       expect(source).not.toContain("PlanSpecificationPreviewV0");

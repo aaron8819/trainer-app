@@ -15,6 +15,7 @@ import {
   compileAcceptedHypertrophySeed,
   equipmentForCustomHypertrophyProfile,
   evaluateHypertrophyPlanHealth,
+  evaluateHypertrophySemanticIntent,
   isExerciseAvailableForHypertrophyPlan,
   isExerciseEligibleForIntent,
   parseAcceptedHypertrophySeedV2,
@@ -423,6 +424,125 @@ describe("custom hypertrophy authoring contracts", () => {
         limitationKeys: ["knee"],
       }),
     ).toBe(false);
+    expect(
+      isExerciseEligibleForIntent({
+        exercise: catalog[0]!,
+        intent: draft().sessions[0]!.exercises[0]!.intent,
+        equipmentProfile: "BODYWEIGHT",
+        limitationKeys: [],
+      }),
+    ).toBe(false);
+  });
+
+  it("evaluates accepted Hypertrophy semantics without treating catalog main-lift eligibility as plan intent", () => {
+    const primaryCases = [
+      ["Incline Machine Press", "horizontal_push"],
+      ["Chest-Supported Dumbbell Row", "horizontal_pull"],
+      ["Iso-Lateral Front Lat Pulldown", "vertical_pull"],
+      ["Cable Pull-Through", "hinge"],
+    ] as const;
+
+    for (const [name, movementPattern] of primaryCases) {
+      const exercise = shippedCatalogExercise(name);
+      const authoringExercise = toAuthoringExercise(exercise);
+      expect(exercise.isMainLiftEligible).toBe(false);
+      const intent = {
+        userRole: "PRIMARY_LIFT" as const,
+        target: { kind: "movement_pattern" as const, movementPattern },
+      };
+      const semanticDecision = evaluateHypertrophySemanticIntent({
+        exercise: toMaterializationExercise(exercise),
+        intent,
+      });
+      expect(semanticDecision).toEqual({ eligible: true });
+      expect(
+        isExerciseEligibleForIntent({
+          exercise: authoringExercise,
+          intent,
+          equipmentProfile: "FULL_GYM",
+          limitationKeys: [],
+        }),
+      ).toBe(semanticDecision.eligible);
+    }
+
+    expect(
+      evaluateHypertrophySemanticIntent({
+        exercise: toMaterializationExercise(
+          shippedCatalogExercise("Romanian Deadlift"),
+        ),
+        intent: {
+          userRole: "PRIMARY_LIFT",
+          target: { kind: "movement_pattern", movementPattern: "hinge" },
+          requiredExerciseClass: "low_axial_hip_extension_anchor",
+        },
+      }),
+    ).toEqual({
+      eligible: false,
+      reasonCode: "REQUIRED_EXERCISE_CLASS_MISMATCH",
+    });
+    expect(
+      evaluateHypertrophySemanticIntent({
+        exercise: toMaterializationExercise(
+          shippedCatalogExercise("Leg Extension"),
+        ),
+        intent: {
+          userRole: "PRIMARY_LIFT",
+          target: { kind: "movement_pattern", movementPattern: "extension" },
+        },
+      }),
+    ).toEqual({ eligible: false, reasonCode: "ROLE_REQUIRES_COMPOUND" });
+    expect(
+      evaluateHypertrophySemanticIntent({
+        exercise: toMaterializationExercise(
+          shippedCatalogExercise("Chest-Supported Dumbbell Row"),
+        ),
+        intent: {
+          userRole: "PRIMARY_LIFT",
+          target: { kind: "movement_pattern", movementPattern: "vertical_pull" },
+        },
+      }),
+    ).toEqual({ eligible: false, reasonCode: "MOVEMENT_TARGET_MISMATCH" });
+    expect(
+      evaluateHypertrophySemanticIntent({
+        exercise: toMaterializationExercise(
+          shippedCatalogExercise("Leg Extension"),
+        ),
+        intent: {
+          userRole: "MUSCLE_ISOLATION",
+          target: { kind: "muscle", muscleId: "hamstrings" },
+        },
+      }),
+    ).toEqual({ eligible: false, reasonCode: "MUSCLE_TARGET_MISMATCH" });
+  });
+
+  it("makes all accepted semantic mismatches plan-health blockers", () => {
+    const invalid = structuredClone(draft());
+    invalid.sessions[0]!.exercises[0]!.intent.target = {
+      kind: "movement_pattern",
+      movementPattern: "vertical_push",
+    };
+
+    const health = evaluateHypertrophyPlanHealth({
+      draft: invalid,
+      exercises: catalog,
+      limitationKeys: [],
+    });
+    expect(health.blockers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "ROLE_TARGET_MISMATCH",
+          exerciseId: "bench",
+        }),
+      ]),
+    );
+    expect(health.warnings).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "ROLE_TARGET_MISMATCH",
+          exerciseId: "bench",
+        }),
+      ]),
+    );
   });
 
   it("keeps shipped-catalog low-axial candidates consistent across V2 materialization, picker, and health", () => {
@@ -460,6 +580,35 @@ describe("custom hypertrophy authoring contracts", () => {
       plannerPolicy: policy,
       materializedPlan,
     });
+    const shippedById = new Map(
+      shippedAuthoringCatalog.map((exercise) => [exercise.id, exercise]),
+    );
+    for (const row of generated.sessions
+      .flatMap((session) => session.exercises)
+      .filter((exercise) => exercise.intent.userRole === "PRIMARY_LIFT")) {
+      const exercise = shippedById.get(row.exerciseId);
+      if (!exercise) throw new Error(`Missing generated exercise ${row.exerciseId}`);
+      expect(
+        isExerciseEligibleForIntent({
+          exercise,
+          intent: row.intent,
+          equipmentProfile: "MACHINES",
+          limitationKeys: [],
+        }),
+      ).toBe(true);
+    }
+    expect(
+      evaluateHypertrophyPlanHealth({
+        draft: generated,
+        exercises: shippedAuthoringCatalog,
+        limitationKeys: [],
+      }).blockers.filter((finding) =>
+        [
+          "REQUIRED_EXERCISE_CLASS_MISMATCH",
+          "ROLE_TARGET_MISMATCH",
+        ].includes(finding.code),
+      ),
+    ).toEqual([]);
     const constrainedRow = generated.sessions
       .flatMap((session) => session.exercises)
       .find(
@@ -547,7 +696,7 @@ describe("custom hypertrophy authoring contracts", () => {
         equipmentProfile: "FULL_GYM",
         limitationKeys: [],
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       isExerciseEligibleForIntent({
         exercise: shippedRomanianDeadlift,

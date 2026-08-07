@@ -1420,10 +1420,7 @@ describe("runtime exercise swap constraints", () => {
           },
         },
       } satisfies RuntimeExerciseSwapProfile,
-      accepted: {
-        ...chestSupportedDumbbellRow,
-        isMainLiftEligible: true,
-      },
+      accepted: chestSupportedDumbbellRow,
       rejected: {
         ...chestSupportedDumbbellRow,
         id: "vertical-pull",
@@ -1605,7 +1602,7 @@ describe("runtime exercise swap constraints", () => {
         },
         candidate: cablePullThrough,
       }),
-    ).toBeNull();
+    ).not.toBeNull();
     expect(
       evaluateRuntimeExerciseSwapEligibility({
         current: {
@@ -1618,27 +1615,7 @@ describe("runtime exercise swap constraints", () => {
         },
         candidate: machineHipThrust,
       }),
-    ).toBeNull();
-
-    const differentClassSource = {
-      ...machineSource,
-      sourceLane: {
-        seedRole: "CORE_COMPOUND",
-        acceptedIntent: {
-          ...acceptedIntent,
-          requiredExerciseClass: "hinge_compound",
-        },
-      },
-    } as unknown as RuntimeExerciseSwapProfile;
-    expect(
-      evaluateRuntimeExerciseSwapEligibility({
-        current: differentClassSource,
-        candidate: {
-          ...romanianDeadlift,
-          isMainLiftEligible: false,
-        },
-      }),
-    ).toBeNull();
+    ).not.toBeNull();
 
     expect(
       evaluateRuntimeExerciseSwapEligibility({
@@ -1646,15 +1623,6 @@ describe("runtime exercise swap constraints", () => {
         candidate: {
           ...cablePullThrough,
           isCompound: false,
-        },
-      }),
-    ).toBeNull();
-    expect(
-      evaluateRuntimeExerciseSwapEligibility({
-        current: machineSource,
-        candidate: {
-          ...cablePullThrough,
-          movementPatterns: ["hinge", "isolation"],
         },
       }),
     ).toBeNull();

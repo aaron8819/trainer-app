@@ -86,6 +86,7 @@ import {
   resolveRuntimeExerciseSwapPreview,
 } from "./runtime-exercise-swap-service";
 import { buildV2AcceptedPlannerIntentDto } from "@/lib/engine/planning/v2";
+import { compileAcceptedHypertrophySeed } from "@/lib/engine/hypertrophy-plan-authoring";
 
 const runtimeEditDirectives = {
   continuityAlias: "none",
@@ -93,6 +94,54 @@ const runtimeEditDirectives = {
   futureSessionGeneration: "ignore",
   futureSeedCarryForward: "ignore",
 } as const;
+
+function buildAcceptedPrimaryIntentSeed(input: {
+  exerciseId: string;
+  movementPattern: "horizontal_pull" | "horizontal_push";
+}) {
+  return compileAcceptedHypertrophySeed({
+    version: 1,
+    settings: {
+      equipmentProfile: "FULL_GYM",
+      sessionDurationMinutes: 60,
+    },
+    sessions: [
+      {
+        slotId: "upper_a",
+        name: "Upper A",
+        focus: "UPPER",
+        exercises: [
+          {
+            exerciseId: input.exerciseId,
+            workingSets: 3,
+            intent: {
+              userRole: "PRIMARY_LIFT",
+              target: {
+                kind: "movement_pattern",
+                movementPattern: input.movementPattern,
+              },
+            },
+          },
+        ],
+      },
+      {
+        slotId: "lower_a",
+        name: "Lower A",
+        focus: "LOWER",
+        exercises: [
+          {
+            exerciseId: "leg-extension",
+            workingSets: 3,
+            intent: {
+              userRole: "MUSCLE_ISOLATION",
+              target: { kind: "muscle", muscleId: "quads" },
+            },
+          },
+        ],
+      },
+    ],
+  });
+}
 
 function buildRuntimeAddedSelectionMetadata() {
   return {
@@ -1468,6 +1517,272 @@ describe("runtime exercise swap service", () => {
       exerciseId: "goblet-squat",
       swapFallbackTier: "useful_fallback_warning",
     });
+  });
+
+  it("uses current accepted V2 intent ahead of conflicting compatibility seed metadata", async () => {
+    const acceptedSeed = buildAcceptedPrimaryIntentSeed({
+      exerciseId: "close-grip-seated-cable-row",
+      movementPattern: "horizontal_pull",
+    });
+    const workoutRecord = {
+      id: "workout-1",
+      status: "IN_PROGRESS",
+      selectionMode: "INTENT",
+      sessionIntent: "UPPER",
+      exercises: [{ id: "we-1", exerciseId: "close-grip-seated-cable-row" }],
+      selectionMetadata: buildUpperARowSelectionMetadata(),
+      seedRevision: { seedPayload: acceptedSeed },
+      mesocycle: {
+        slotPlanSeedJson: {
+          version: 1,
+          slots: [
+            {
+              slotId: "upper_a",
+              exercises: [
+                {
+                  exerciseId: "close-grip-seated-cable-row",
+                  role: "ACCESSORY",
+                  setCount: 3,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const workoutRecordBeforeRead = structuredClone(workoutRecord);
+    mocks.workoutFindFirst.mockResolvedValue(workoutRecord);
+    const sourceExercise = {
+      id: "close-grip-seated-cable-row",
+      name: "Close-Grip Seated Cable Row",
+      fatigueCost: 2,
+      jointStress: "LOW",
+      isMainLiftEligible: false,
+      isCompound: true,
+      repRangeMin: 8,
+      repRangeMax: 12,
+      movementPatterns: ["HORIZONTAL_PULL"],
+      exerciseEquipment: [
+        { equipment: { type: "CABLE" } },
+        { equipment: { type: "MACHINE" } },
+      ],
+      exerciseMuscles: [
+        { role: "PRIMARY", muscle: { name: "Upper Back" } },
+        { role: "PRIMARY", muscle: { name: "Lats" } },
+        { role: "SECONDARY", muscle: { name: "Biceps" } },
+      ],
+    };
+    const candidateExercise = {
+      id: "chest-supported-db-row",
+      name: "Chest-Supported Dumbbell Row",
+      fatigueCost: 2,
+      jointStress: "LOW",
+      isMainLiftEligible: false,
+      isCompound: true,
+      repRangeMin: 8,
+      repRangeMax: 12,
+      movementPatterns: ["HORIZONTAL_PULL"],
+      exerciseEquipment: [
+        { equipment: { type: "DUMBBELL" } },
+        { equipment: { type: "BENCH" } },
+      ],
+      exerciseMuscles: [
+        { role: "PRIMARY", muscle: { name: "Upper Back" } },
+        { role: "PRIMARY", muscle: { name: "Lats" } },
+        { role: "SECONDARY", muscle: { name: "Biceps" } },
+      ],
+    };
+    const workoutExerciseRecord = {
+      id: "we-1",
+      workoutId: "workout-1",
+      exerciseId: sourceExercise.id,
+      section: "MAIN",
+      isMainLift: true,
+      exercise: sourceExercise,
+      sets: [
+        {
+          id: "set-1",
+          setIndex: 1,
+          targetRpe: 8,
+          restSeconds: 120,
+          logs: [],
+        },
+      ],
+    };
+    mocks.workoutExerciseFindFirst.mockResolvedValue(workoutExerciseRecord);
+    mocks.exerciseFindMany.mockResolvedValue([
+      sourceExercise,
+      candidateExercise,
+    ]);
+    mocks.txWorkoutExerciseFindMany.mockResolvedValue([
+      {
+        exerciseId: candidateExercise.id,
+        orderIndex: 0,
+        section: "MAIN",
+        exercise: { name: candidateExercise.name },
+        sets: [
+          {
+            setIndex: 1,
+            targetReps: 10,
+            targetRepMin: 8,
+            targetRepMax: 12,
+            targetRpe: 8,
+            targetLoad: 27.5,
+            restSeconds: 120,
+          },
+        ],
+      },
+    ]);
+
+    expect(candidateExercise.isMainLiftEligible).toBe(false);
+
+    const candidates = await resolveRuntimeExerciseSwapCandidates({
+      workoutId: "workout-1",
+      workoutExerciseId: "we-1",
+      userId: "user-1",
+    });
+
+    expect(candidates).toEqual([
+      expect.objectContaining({
+        exerciseId: "chest-supported-db-row",
+        sourceLaneRole: "PRIMARY_LIFT",
+        compatibility: expect.objectContaining({ roleMatch: true }),
+      }),
+    ]);
+    const input = {
+      workoutId: "workout-1",
+      workoutExerciseId: "we-1",
+      replacementExerciseId: candidateExercise.id,
+      userId: "user-1",
+    };
+    const preview = await resolveRuntimeExerciseSwapPreview(input);
+    const applied = await applyRuntimeExerciseSwap({
+      ...input,
+      expectedRevision: 1,
+    });
+
+    expect(preview).toMatchObject({
+      exerciseId: candidateExercise.id,
+      isMainLift: true,
+    });
+    expect(applied).toMatchObject({
+      revision: 2,
+      exercise: {
+        exerciseId: candidateExercise.id,
+        isMainLift: true,
+      },
+    });
+    expect(
+      mocks.txWorkoutExerciseUpdateMany.mock.calls.at(-1)?.[0]?.data,
+    ).not.toHaveProperty("isMainLift");
+    expect(workoutRecord).toEqual(workoutRecordBeforeRead);
+  });
+
+  it("fails closed instead of falling back from a malformed accepted V2 revision to compatibility intent", async () => {
+    const compatibilitySeed = buildAcceptedPrimaryIntentSeed({
+      exerciseId: "incline-machine-press",
+      movementPattern: "horizontal_push",
+    });
+    const malformedAcceptedRevision = {
+      ...structuredClone(compatibilitySeed),
+      slots: "malformed",
+    };
+    const workoutRecord = {
+      id: "workout-1",
+      status: "IN_PROGRESS",
+      selectionMode: "INTENT",
+      sessionIntent: "PUSH",
+      exercises: [{ id: "we-1", exerciseId: "incline-machine-press" }],
+      selectionMetadata: buildUpperARowSelectionMetadata(),
+      seedRevision: { seedPayload: malformedAcceptedRevision },
+      mesocycle: { slotPlanSeedJson: compatibilitySeed },
+    };
+    const compatibilityOnlyWorkoutRecord = {
+      ...structuredClone(workoutRecord),
+      seedRevision: null,
+    };
+    const workoutRecordBeforeRead = structuredClone(workoutRecord);
+    const compatibilityOnlyWorkoutRecordBeforeRead = structuredClone(
+      compatibilityOnlyWorkoutRecord,
+    );
+    const sourceExercise = {
+      id: "incline-machine-press",
+      name: "Incline Machine Press",
+      fatigueCost: 3,
+      jointStress: "MEDIUM",
+      isMainLiftEligible: false,
+      isCompound: true,
+      repRangeMin: 6,
+      repRangeMax: 12,
+      movementPatterns: ["HORIZONTAL_PUSH"],
+      exerciseEquipment: [{ equipment: { type: "MACHINE" } }],
+      exerciseMuscles: [
+        { role: "PRIMARY", muscle: { name: "Chest" } },
+        { role: "SECONDARY", muscle: { name: "Triceps" } },
+      ],
+    };
+    const candidateExercise = {
+      id: "machine-chest-press",
+      name: "Machine Chest Press",
+      fatigueCost: 2,
+      jointStress: "LOW",
+      isMainLiftEligible: false,
+      isCompound: true,
+      repRangeMin: 8,
+      repRangeMax: 12,
+      movementPatterns: ["HORIZONTAL_PUSH"],
+      exerciseEquipment: [{ equipment: { type: "MACHINE" } }],
+      exerciseMuscles: [
+        { role: "PRIMARY", muscle: { name: "Chest" } },
+        { role: "SECONDARY", muscle: { name: "Triceps" } },
+      ],
+    };
+    mocks.workoutFindFirst
+      .mockResolvedValueOnce(compatibilityOnlyWorkoutRecord)
+      .mockResolvedValue(workoutRecord);
+    mocks.workoutExerciseFindFirst.mockResolvedValue({
+      id: "we-1",
+      workoutId: "workout-1",
+      exerciseId: sourceExercise.id,
+      section: "MAIN",
+      isMainLift: true,
+      exercise: sourceExercise,
+      sets: [
+        {
+          id: "set-1",
+          setIndex: 1,
+          targetRpe: 8,
+          restSeconds: 120,
+          logs: [],
+        },
+      ],
+    });
+    mocks.exerciseFindMany.mockResolvedValue([
+      sourceExercise,
+      candidateExercise,
+    ]);
+
+    expect(candidateExercise.isMainLiftEligible).toBe(false);
+    const input = {
+      workoutId: "workout-1",
+      workoutExerciseId: "we-1",
+      replacementExerciseId: candidateExercise.id,
+      userId: "user-1",
+    };
+    await expect(resolveRuntimeExerciseSwapPreview(input)).resolves.toMatchObject({
+      exerciseId: candidateExercise.id,
+      isMainLift: true,
+    });
+    await expect(
+      resolveRuntimeExerciseSwapPreview(input),
+    ).rejects.toMatchObject({
+      code: "REPLACEMENT_NOT_ELIGIBLE",
+      status: 409,
+    });
+    expect(compatibilityOnlyWorkoutRecord).toEqual(
+      compatibilityOnlyWorkoutRecordBeforeRead,
+    );
+    expect(workoutRecord).toEqual(workoutRecordBeforeRead);
   });
 
   it("surfaces row-anchor main-lift substitutes through default and typed discovery", async () => {

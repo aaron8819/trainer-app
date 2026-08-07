@@ -18,7 +18,10 @@ import {
   isEquipmentProfileCompatible,
   type EquipmentProfile,
 } from "./equipment-profile";
-import { matchV2ExerciseClasses } from "./planning/v2/materialization/taxonomy";
+import {
+  matchV2ExerciseClasses,
+  normalizeV2MaterializationText,
+} from "./planning/v2/materialization/taxonomy";
 import type {
   V2ExerciseClassId,
   V2MaterializationExercise,
@@ -66,15 +69,6 @@ export type AcceptedExerciseIntentV2 = {
     | { kind: "muscle"; muscleId: CanonicalMuscleId };
   requiredExerciseClass?: AcceptedExerciseClassConstraint;
 };
-
-export function requiresMainLiftEligibility(
-  intent: AcceptedExerciseIntentV2,
-): boolean {
-  return (
-    intent.userRole === "PRIMARY_LIFT" &&
-    intent.requiredExerciseClass !== "low_axial_hip_extension_anchor"
-  );
-}
 
 export type HypertrophyPlanDraftV1 = {
   version: 1;
@@ -726,14 +720,77 @@ function toExerciseClassInput(
   };
 }
 
-function exerciseMatchesRequiredClass(
-  exercise: HypertrophyAuthoringExercise,
-  intent: AcceptedExerciseIntentV2,
-): boolean {
-  if (!intent.requiredExerciseClass) return true;
-  return matchV2ExerciseClasses(toExerciseClassInput(exercise)).some(
-    (match) => match.classId === intent.requiredExerciseClass,
-  );
+export type HypertrophySemanticEligibilityReason =
+  | "REQUIRED_EXERCISE_CLASS_MISMATCH"
+  | "MOVEMENT_TARGET_MISMATCH"
+  | "MUSCLE_TARGET_MISMATCH"
+  | "ROLE_REQUIRES_COMPOUND";
+
+export type HypertrophySemanticEligibilityDecision =
+  | { eligible: true }
+  | {
+      eligible: false;
+      reasonCode: HypertrophySemanticEligibilityReason;
+    };
+
+export function evaluateHypertrophySemanticIntent(input: {
+  exercise: V2MaterializationExercise;
+  intent: AcceptedExerciseIntentV2;
+}): HypertrophySemanticEligibilityDecision {
+  const { exercise, intent } = input;
+  if (
+    intent.requiredExerciseClass &&
+    !matchV2ExerciseClasses(exercise).some(
+      (match) => match.classId === intent.requiredExerciseClass,
+    )
+  ) {
+    return {
+      eligible: false,
+      reasonCode: "REQUIRED_EXERCISE_CLASS_MISMATCH",
+    };
+  }
+
+  if (intent.target.kind === "movement_pattern") {
+    const target = normalizeV2MaterializationText(
+      intent.target.movementPattern,
+    );
+    if (
+      !exercise.movementPatterns.some(
+        (pattern) => normalizeV2MaterializationText(pattern) === target,
+      )
+    ) {
+      return { eligible: false, reasonCode: "MOVEMENT_TARGET_MISMATCH" };
+    }
+  } else {
+    const target = normalizeV2MaterializationText(
+      MUSCLE_POLICY_BY_ID[intent.target.muscleId].displayName,
+    );
+    const matchesMuscle = [
+      ...exercise.primaryMuscles,
+      ...exercise.secondaryMuscles,
+    ].some(
+      (muscle) => normalizeV2MaterializationText(muscle) === target,
+    );
+    const hasStimulus = Object.entries(
+      exercise.stimulusByMusclePerSet,
+    ).some(
+      ([muscle, stimulus]) =>
+        normalizeV2MaterializationText(muscle) === target && stimulus > 0,
+    );
+    if (!matchesMuscle && !hasStimulus) {
+      return { eligible: false, reasonCode: "MUSCLE_TARGET_MISMATCH" };
+    }
+  }
+
+  if (
+    (intent.userRole === "PRIMARY_LIFT" ||
+      intent.userRole === "SECONDARY_LIFT") &&
+    !exercise.isCompound
+  ) {
+    return { eligible: false, reasonCode: "ROLE_REQUIRES_COMPOUND" };
+  }
+
+  return { eligible: true };
 }
 
 export type HypertrophyPlanHealth = {
@@ -758,32 +815,6 @@ export type HypertrophyPlanHealth = {
   sessions: Array<{ slotId: string; estimatedMinutes: number }>;
 };
 
-function exerciseMatchesIntent(
-  exercise: HypertrophyAuthoringExercise,
-  intent: AcceptedExerciseIntentV2,
-): boolean {
-  if (!exerciseMatchesRequiredClass(exercise, intent)) return false;
-  if (intent.target.kind === "movement_pattern") {
-    const patternMatches = exercise.movementPatterns.includes(
-      intent.target.movementPattern,
-    );
-    if (!patternMatches) return false;
-    if (intent.userRole === "PRIMARY_LIFT") {
-      return (
-        exercise.isCompound &&
-        (!requiresMainLiftEligibility(intent) || exercise.isMainLiftEligible)
-      );
-    }
-    if (intent.userRole === "SECONDARY_LIFT") return exercise.isCompound;
-    return true;
-  }
-  return (
-    exercise.primaryMuscleIds.includes(intent.target.muscleId) ||
-    exercise.secondaryMuscleIds.includes(intent.target.muscleId) ||
-    (exercise.stimulusByMuscleId[intent.target.muscleId] ?? 0) > 0
-  );
-}
-
 export function isExerciseEligibleForIntent(input: {
   exercise: HypertrophyAuthoringExercise;
   intent: AcceptedExerciseIntentV2;
@@ -792,7 +823,10 @@ export function isExerciseEligibleForIntent(input: {
 }): boolean {
   return (
     isExerciseAvailableForHypertrophyPlan(input) &&
-    exerciseMatchesIntent(input.exercise, input.intent)
+    evaluateHypertrophySemanticIntent({
+      exercise: toExerciseClassInput(input.exercise),
+      intent: input.intent,
+    }).eligible
   );
 }
 
@@ -882,17 +916,25 @@ export function evaluateHypertrophyPlanHealth(input: {
           exerciseId: row.exerciseId,
         });
       }
-      if (!exerciseMatchesRequiredClass(exercise, row.intent)) {
+      const semanticEligibility = evaluateHypertrophySemanticIntent({
+        exercise: toExerciseClassInput(exercise),
+        intent: row.intent,
+      });
+      if (
+        !semanticEligibility.eligible &&
+        semanticEligibility.reasonCode ===
+          "REQUIRED_EXERCISE_CLASS_MISMATCH"
+      ) {
         blockers.push({
           code: "REQUIRED_EXERCISE_CLASS_MISMATCH",
           message: `${exercise.name} does not satisfy the required low-axial exercise class.`,
           slotId: session.slotId,
           exerciseId: row.exerciseId,
         });
-      } else if (!exerciseMatchesIntent(exercise, row.intent)) {
-        warnings.push({
+      } else if (!semanticEligibility.eligible) {
+        blockers.push({
           code: "ROLE_TARGET_MISMATCH",
-          message: `${exercise.name} is an unusual fit for its role and target.`,
+          message: `${exercise.name} does not satisfy its role and target.`,
           slotId: session.slotId,
           exerciseId: row.exerciseId,
         });

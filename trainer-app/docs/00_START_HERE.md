@@ -36,6 +36,7 @@ Sources of truth:
 
 Reference-only docs:
 - `docs/research/` is non-canonical reference material and not a source of runtime truth.
+- `docs/architecture/PLANNING_EXECUTION_FOUNDATION_DESIGN.md`: proposed target architecture for plan meaning, exercise identity, measurement-aware execution, history, and Plan Health; not current runtime behavior until implemented
 
 Archived roadmap/design logs:
 - `docs/archive/08_MESOCYCLE_SIMPLIFICATION_ROADMAP.md`

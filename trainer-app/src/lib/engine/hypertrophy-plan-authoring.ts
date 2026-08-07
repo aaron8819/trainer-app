@@ -142,13 +142,15 @@ const muscleTargetSchema = z
     muscleId: z.enum(CANONICAL_MUSCLE_IDS),
   })
   .strict();
-const acceptedExerciseIntentSchema = z
+export const acceptedExerciseTargetSchema = z.discriminatedUnion("kind", [
+  movementTargetSchema,
+  muscleTargetSchema,
+]);
+
+export const acceptedExerciseIntentSchema = z
   .object({
     userRole: z.enum(HYPERTROPHY_USER_ROLE_VALUES),
-    target: z.discriminatedUnion("kind", [
-      movementTargetSchema,
-      muscleTargetSchema,
-    ]),
+    target: acceptedExerciseTargetSchema,
     requiredExerciseClass: z
       .enum(ACCEPTED_EXERCISE_CLASS_CONSTRAINT_VALUES)
       .optional(),
@@ -191,7 +193,7 @@ const acceptedExerciseIntentSchema = z
     }
   });
 
-const settingsSchema = z
+export const hypertrophyPlanSettingsSchema = z
   .object({
     equipmentProfile: z.enum(EQUIPMENT_PROFILE_VALUES),
     sessionDurationMinutes: z.union(
@@ -228,7 +230,7 @@ const draftSessionSchema = z
 export const hypertrophyPlanDraftSchema = z
   .object({
     version: z.literal(1),
-    settings: settingsSchema,
+    settings: hypertrophyPlanSettingsSchema,
     sessions: z.array(draftSessionSchema).min(2).max(6),
   })
   .strict()
@@ -266,7 +268,7 @@ export const acceptedHypertrophySeedV2Schema = z
   .object({
     version: z.literal(2),
     source: z.literal("custom_hypertrophy_plan_v1"),
-    settings: settingsSchema,
+    settings: hypertrophyPlanSettingsSchema,
     slots: z
       .array(
         z

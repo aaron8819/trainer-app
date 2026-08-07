@@ -17,6 +17,7 @@
         "test:ui-audit:update": "node scripts/run-ui-audit.mjs --update-snapshots",
         "test:audit:matrix": "vitest run src/lib/audit/workout-audit/future-week-explicit-intent-matrix.test.ts src/lib/audit/workout-audit/future-week-derived-intent-matrix.test.ts",
         "audit:exercise-exposure-retirement": "tsx scripts/audit-exercise-exposure-retirement.ts",
+        "preview:plan-specification-v0": "tsx scripts/preview-plan-specification-v0.ts",
         "test:db:workout-mutations": "tsx scripts/test-workout-mutations-postgres.ts",
         "test:db:multi-plan": "tsx scripts/test-multi-plan-foundation-postgres.ts",
         "test:db:historical-snapshots": "npm run test:db:workout-mutations",

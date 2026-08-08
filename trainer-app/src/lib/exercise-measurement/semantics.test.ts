@@ -90,6 +90,13 @@ describe("exercise measurement semantics", () => {
         repBasis: "TOTAL",
       }),
     ).toThrow();
+    expect(() =>
+      parseMeasurementColumns({
+        measurementProfile: "UNSUPPORTED_PROFILE",
+        loadConvention: null,
+        repBasis: "TOTAL",
+      }),
+    ).toThrow();
   });
 
   it("derives classified safety from supported tuples instead of pilot names", () => {

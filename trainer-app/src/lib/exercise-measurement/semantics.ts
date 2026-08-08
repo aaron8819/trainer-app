@@ -17,25 +17,6 @@ export const LOAD_CONVENTION_VALUES = [
 
 export const REP_BASIS_VALUES = ["TOTAL", "PER_SIDE"] as const;
 
-export const MEASUREMENT_PILOT_EXERCISE_NAMES = [
-  "Barbell Back Squat",
-  "Goblet Squat",
-  "Dumbbell Bench Press",
-  "Alternating Dumbbell Curl",
-  "Pull-Up",
-  "Weighted Pull-Up",
-  "Machine-Assisted Pull-Up",
-  "Seated Cable Row",
-] as const;
-
-const MEASUREMENT_PILOT_EXERCISE_NAME_SET = new Set<string>(
-  MEASUREMENT_PILOT_EXERCISE_NAMES,
-);
-
-export function isMeasurementPilotExerciseName(name: string): boolean {
-  return MEASUREMENT_PILOT_EXERCISE_NAME_SET.has(name);
-}
-
 export type MeasurementProfile = (typeof MEASUREMENT_PROFILE_VALUES)[number];
 export type LoadConvention = (typeof LOAD_CONVENTION_VALUES)[number];
 export type RepBasis = (typeof REP_BASIS_VALUES)[number];
@@ -190,7 +171,7 @@ export function measurementLoadLabel(
   if (measurement.profile === "REPS_BODYWEIGHT") return null;
   switch (measurement.loadConvention) {
     case "BARBELL_TOTAL":
-      return "Total barbell load (lb)";
+      return "Total bar load";
     case "IMPLEMENT_WEIGHT":
       return "Weight per implement (lb)";
     case "MACHINE_DISPLAYED":

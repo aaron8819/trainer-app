@@ -11,7 +11,7 @@ import {
 } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
-import { assertOperationalProductionWriteAllowed } from "@/lib/operations/rollout-environment";
+import { runWithRolloutEnvironment } from "@/lib/operations/rollout-environment";
 import { exerciseAliases, type ExerciseAliasSeed } from "../prisma/exercise-aliases";
 import exercisesJson from "../prisma/exercises_comprehensive.json";
 import {
@@ -404,6 +404,7 @@ export function isCatalogSyncPlanClean(plan: CatalogSyncPlan): boolean {
     plan.fieldMismatches.length === 0 &&
     plan.plannedAliasCreates.length === 0 &&
     plan.plannedAliasUpdates.length === 0 &&
+    plan.skippedAliases.length === 0 &&
     plan.missingReferencedMuscles.length === 0 &&
     plan.missingReferencedEquipment.length === 0
   );
@@ -448,6 +449,17 @@ export async function applyCatalogSyncPlan(
   snapshot: ExerciseLibrarySnapshot,
   plan: CatalogSyncPlan,
 ) {
+  if (plan.skippedAliases.length > 0) {
+    throw new Error(
+      [
+        "Catalog sync cannot apply because aliases could not be resolved.",
+        ...plan.skippedAliases.map(
+          (alias) => `${alias.alias} -> ${alias.exerciseName}: ${alias.reason}`,
+        ),
+      ].join(" "),
+    );
+  }
+
   if (plan.missingReferencedMuscles.length > 0 || plan.missingReferencedEquipment.length > 0) {
     throw new Error(
       [
@@ -469,6 +481,7 @@ export async function applyCatalogSyncPlan(
   const equipmentByName = new Map(snapshot.equipment.map((equipment) => [equipment.name, equipment]));
   let exercisesCreated = 0;
   let exercisesUpdated = 0;
+  let exerciseMappingsReplaced = 0;
 
   for (const name of plan.plannedExerciseCreates) {
     const exercise = catalogByName.get(name);
@@ -477,6 +490,7 @@ export async function applyCatalogSyncPlan(
     dbByName.set(name, created);
     await replaceMappings(db, created.id, exercise, musclesByName, equipmentByName);
     exercisesCreated++;
+    exerciseMappingsReplaced++;
   }
 
   for (const name of plan.plannedExerciseUpdates) {
@@ -484,7 +498,17 @@ export async function applyCatalogSyncPlan(
     const dbExercise = dbByName.get(name);
     if (!exercise || !dbExercise) continue;
     await db.exercise.update({ where: { id: dbExercise.id }, data: buildExerciseData(exercise) });
-    await replaceMappings(db, dbExercise.id, exercise, musclesByName, equipmentByName);
+    const changedFields = plan.fieldMismatches.find(
+      (mismatch) => mismatch.exerciseName === name,
+    )?.fields;
+    if (
+      changedFields?.some((field) =>
+        ["equipment", "primaryMuscles", "secondaryMuscles"].includes(field),
+      )
+    ) {
+      await replaceMappings(db, dbExercise.id, exercise, musclesByName, equipmentByName);
+      exerciseMappingsReplaced++;
+    }
     exercisesUpdated++;
   }
 
@@ -509,6 +533,7 @@ export async function applyCatalogSyncPlan(
     exercisesCreated,
     exercisesUpdated,
     exercisesDeleted: 0,
+    exerciseMappingsReplaced,
     aliasesUpserted,
     scope: "Exercise, ExerciseMuscle, ExerciseEquipment, ExerciseAlias",
   };
@@ -551,7 +576,7 @@ async function loadSnapshot(db: CatalogOnlyDb): Promise<ExerciseLibrarySnapshot>
   return { exercises, muscles, equipment };
 }
 
-function printPlan(plan: CatalogSyncPlan) {
+export function printCatalogSyncPlan(plan: CatalogSyncPlan) {
   console.log(`Missing: ${plan.missingInDb.length}`);
   console.log(`Extra: ${plan.extraInDb.length}`);
   console.log(`Field mismatches: ${plan.fieldMismatches.length}`);
@@ -560,6 +585,7 @@ function printPlan(plan: CatalogSyncPlan) {
   console.log(`Planned deletes: ${plan.plannedExerciseDeletes.length}`);
   console.log(`Planned alias creates: ${plan.plannedAliasCreates.length}`);
   console.log(`Planned alias updates: ${plan.plannedAliasUpdates.length}`);
+  console.log(`Skipped aliases: ${plan.skippedAliases.length}`);
   console.log("Mutation scope: exercise catalog only");
 
   if (plan.missingInDb.length > 0) {
@@ -583,6 +609,27 @@ function printPlan(plan: CatalogSyncPlan) {
     }
   }
 
+  if (plan.plannedAliasCreates.length > 0) {
+    console.log("\nPlanned alias creates:");
+    for (const alias of plan.plannedAliasCreates) {
+      console.log(`- ${alias.alias} -> ${alias.exerciseName}`);
+    }
+  }
+
+  if (plan.plannedAliasUpdates.length > 0) {
+    console.log("\nPlanned alias updates:");
+    for (const alias of plan.plannedAliasUpdates) {
+      console.log(`- ${alias.alias}: ${alias.fromExerciseName} -> ${alias.exerciseName}`);
+    }
+  }
+
+  if (plan.skippedAliases.length > 0) {
+    console.log("\nSkipped aliases (apply is blocked):");
+    for (const alias of plan.skippedAliases) {
+      console.log(`- ${alias.alias} -> ${alias.exerciseName}: ${alias.reason}`);
+    }
+  }
+
   if (plan.missingReferencedMuscles.length > 0 || plan.missingReferencedEquipment.length > 0) {
     console.log("\nMissing lookup rows, apply is blocked:");
     console.log(`- Muscles: ${plan.missingReferencedMuscles.join(", ") || "none"}`);
@@ -595,7 +642,7 @@ export async function runExerciseLibrarySync(options: { apply: boolean }) {
   try {
     const snapshot = await loadSnapshot(prisma as unknown as CatalogOnlyDb);
     const plan = buildCatalogSyncPlan(catalogExercises, exerciseAliases, snapshot);
-    printPlan(plan);
+    printCatalogSyncPlan(plan);
 
     if (!options.apply) {
       console.log("\nDry run mode. Re-run with --apply to sync catalog-only rows.");
@@ -617,6 +664,7 @@ export async function runExerciseLibrarySync(options: { apply: boolean }) {
     console.log(`Exercises created: ${result.exercisesCreated}`);
     console.log(`Exercises updated: ${result.exercisesUpdated}`);
     console.log(`Exercises deleted: ${result.exercisesDeleted}`);
+    console.log(`Exercise mappings replaced: ${result.exerciseMappingsReplaced}`);
     console.log(`Aliases upserted: ${result.aliasesUpserted}`);
     console.log(`Mutation scope: ${result.scope}`);
 
@@ -624,7 +672,7 @@ export async function runExerciseLibrarySync(options: { apply: boolean }) {
     const afterPlan = buildCatalogSyncPlan(catalogExercises, exerciseAliases, after);
     if (!isCatalogSyncPlanClean(afterPlan)) {
       console.error("Catalog sync completed but drift remains.");
-      printPlan(afterPlan);
+      printCatalogSyncPlan(afterPlan);
       process.exitCode = 1;
     }
     return afterPlan;
@@ -635,12 +683,18 @@ export async function runExerciseLibrarySync(options: { apply: boolean }) {
 }
 
 async function main() {
-  const apply = process.argv.includes("--apply");
-  assertOperationalProductionWriteAllowed({
-    argv: process.argv.slice(2),
-    writeRequested: apply,
+  const argv = process.argv.slice(2);
+  const apply = argv.includes("--apply");
+  await runWithRolloutEnvironment({
+    argv: apply ? [...argv, "--write"] : argv,
+    allowWrite: apply,
+    requiredVariables: ["DATABASE_URL"],
+  }, async (environment) => {
+    console.log(
+      `Catalog sync target: ${environment.targetClass}; mode: ${apply ? "apply" : "dry_run"}`,
+    );
+    await runExerciseLibrarySync({ apply });
   });
-  await runExerciseLibrarySync({ apply });
 }
 
 if (typeof require !== "undefined" && require.main === module) {

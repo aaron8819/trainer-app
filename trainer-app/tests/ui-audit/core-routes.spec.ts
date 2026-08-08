@@ -822,7 +822,7 @@ test.describe("lightweight fixture interaction checks", () => {
     await expectAuditPath(page, MEASUREMENT_LOG_WORKOUT_PATH);
     await expect(page.getByRole("heading", { name: "Workout Log" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Barbell Back Squat" })).toBeVisible();
-    await expect(page.getByText("Total barbell load (lb)", { exact: true })).toBeVisible();
+    await expect(page.getByText("Total bar load", { exact: true })).toBeVisible();
     await expect(page.getByLabel("Load")).toBeVisible();
 
     const cases = [

@@ -420,11 +420,19 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
   register(["Hack Squat"], hackSquat);
   register(["Leg Press"], legPress);
   register(["Belt Squat"], beltSquat);
-  register(["Bulgarian Split Squat", "Reverse Lunge"], splitSquat);
+  register(["Bulgarian Split Squat", "Reverse Lunge", "Dumbbell Reverse Lunge"], splitSquat);
   register(["Walking Lunge"], lunge);
   register(["Barbell Hip Thrust", "Machine Hip Thrust", "Single-Leg Hip Thrust"], hipThrust);
   register(["Glute Bridge"], gluteBridge);
-  register(["Romanian Deadlift", "Stiff-Legged Deadlift"], hinge);
+  register(
+    [
+      "Romanian Deadlift",
+      "Barbell Romanian Deadlift",
+      "Dumbbell Romanian Deadlift",
+      "Stiff-Legged Deadlift",
+    ],
+    hinge,
+  );
   register(["Cable Pull-Through"], cablePullThrough);
   register(["Good Morning"], axialHinge);
   register(["Conventional Deadlift"], conventionalDeadlift);
@@ -432,7 +440,15 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
   register(["Trap Bar Deadlift"], trapBarDeadlift);
   register(["Lying Leg Curl", "Seated Leg Curl", "Nordic Hamstring Curl"], legCurl);
   register(["Leg Extension"], legExtension);
-  register(["Standing Calf Raise", "Seated Calf Raise", "Leg Press Calf Raise"], calfRaise);
+  register(
+    [
+      "Standing Calf Raise",
+      "Selectorized Standing Calf Raise",
+      "Seated Calf Raise",
+      "Leg Press Calf Raise",
+    ],
+    calfRaise,
+  );
   register(["Hip Abduction Machine", "Cable Hip Abduction"], hipAbduction);
   register(["Hip Adduction Machine"], hipAdduction);
   register(["Back Extension (45 Degree)"], backExtension);

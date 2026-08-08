@@ -202,7 +202,7 @@ type MeasurementSemantics =
 
 Skipped sets require no measurement values. New snapshot rows require reps even though the legacy validator currently accepts RPE-only logs. RPE remains an optional 1–10 effort observation; RIR is not added. Warm-ups use the owning `WorkoutExercise` profile. Legacy rows retain current validation, including zero-load normalization where it already applies.
 
-First-slice UI labels are derived without catalog rereads: `BARBELL_TOTAL` → “Total barbell load (lb),” `IMPLEMENT_WEIGHT` → “Weight per implement (lb),” `MACHINE_DISPLAYED` → “Machine displayed value,” `REPS_BODYWEIGHT_PLUS_LOAD` → “Added load (lb),” and `REPS_ASSISTED` → “Displayed assistance (less is harder).” `REPS_BODYWEIGHT` hides the load control and says “Bodyweight — reps only.”
+First-slice UI labels are derived without catalog rereads: `BARBELL_TOTAL` → “Total bar load,” `IMPLEMENT_WEIGHT` → “Weight per implement (lb),” `MACHINE_DISPLAYED` → “Machine displayed value,” `REPS_BODYWEIGHT_PLUS_LOAD` → “Added load (lb),” and `REPS_ASSISTED` → “Displayed assistance (less is harder).” `REPS_BODYWEIGHT` hides the load control and says “Bodyweight — reps only.”
 
 `REPS_BODYWEIGHT` remains distinct from a future `REPS_ONLY` because it changes the user-facing label, forbids external load, protects bodyweight history from unknown-resistance work, and freezes useful future-compatible meaning. `REPS_ONLY`, duration, distance, completion, generic metric arrays, and unit conversion remain outside the pilot.
 

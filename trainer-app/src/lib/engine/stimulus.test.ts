@@ -52,6 +52,23 @@ describe("stimulus helper", () => {
     );
   });
 
+  it("reuses established stimulus profiles for the new exact catalog identities", () => {
+    const pairs = [
+      ["Barbell Romanian Deadlift", "Romanian Deadlift"],
+      ["Dumbbell Romanian Deadlift", "Romanian Deadlift"],
+      ["Dumbbell Reverse Lunge", "Reverse Lunge"],
+      ["Selectorized Standing Calf Raise", "Standing Calf Raise"],
+    ] as const;
+
+    for (const [exactName, establishedName] of pairs) {
+      expect(resolveStimulusProfile(makeExercise({ id: exactName, name: exactName }))).toEqual(
+        resolveStimulusProfile(
+          makeExercise({ id: establishedName, name: establishedName }),
+        ),
+      );
+    }
+  });
+
   it("falls back centrally to taxonomy-derived weights and logs once", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const exercise = makeExercise({

@@ -22,7 +22,6 @@ import {
 import { MUSCLE_SEED_ROWS } from "./muscle-seed-data";
 import { assertOperationalProductionWriteAllowed } from "@/lib/operations/rollout-environment";
 import {
-  isMeasurementPilotExerciseName,
   measurementColumns,
   parseMeasurementColumns,
 } from "@/lib/exercise-measurement/semantics";
@@ -538,11 +537,11 @@ async function renameExercises() {
 
   // First delete exercises that conflict with rename targets
   for (const name of EXERCISES_TO_DELETE_BEFORE_RENAME) {
-    if (isMeasurementPilotExerciseName(name)) {
-      throw new Error(`Measurement pilot exercise cannot be deleted: ${name}`);
-    }
     const existing = await prisma.exercise.findUnique({ where: { name } });
     if (existing) {
+      if (parseMeasurementColumns(existing) != null) {
+        throw new Error(`Classified measurement exercise cannot be deleted: ${name}`);
+      }
       // Clean up relations first
       await prisma.exerciseMuscle.deleteMany({ where: { exerciseId: existing.id } });
       await prisma.exerciseEquipment.deleteMany({ where: { exerciseId: existing.id } });
@@ -1124,8 +1123,8 @@ async function pruneStaleExercises() {
   const kept: string[] = [];
 
   for (const exercise of stale) {
-    if (isMeasurementPilotExerciseName(exercise.name)) {
-      kept.push(`${exercise.name} (measurement pilot identity)`);
+    if (parseMeasurementColumns(exercise) != null) {
+      kept.push(`${exercise.name} (classified measurement identity)`);
       continue;
     }
     const hasHistory = exercise.workoutExercises.length > 0;

@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   applyCatalogSyncPlan,
   buildCatalogSyncPlan,
+  isCatalogSyncPlanClean,
+  printCatalogSyncPlan,
   type ExerciseLibrarySnapshot,
 } from "../../../scripts/sync-exercise-library";
 
@@ -166,6 +168,137 @@ describe("catalog-only exercise library sync", () => {
     );
     expect(calls.some((call) => call.includes("user"))).toBe(false);
     expect(calls.some((call) => call.includes("workoutTemplate"))).toBe(false);
+  });
+
+  it("does not rebuild unchanged mappings for a measurement-only update", async () => {
+    const snapshot: ExerciseLibrarySnapshot = {
+      ...baseSnapshot,
+      exercises: [
+        {
+          id: "exercise-1",
+          name: "Machine Hip Thrust",
+          movementPatterns: ["HINGE"],
+          splitTags: ["LEGS"],
+          jointStress: "LOW",
+          isMainLiftEligible: false,
+          isCompound: false,
+          fatigueCost: 2,
+          stimulusBias: ["METABOLIC"],
+          contraindications: null,
+          timePerSetSec: 120,
+          sfrScore: 4,
+          lengthPositionScore: 4,
+          difficulty: "BEGINNER",
+          isUnilateral: false,
+          repRangeMin: 8,
+          repRangeMax: 15,
+          measurementProfile: null,
+          loadConvention: null,
+          repBasis: null,
+          aliases: [],
+          exerciseMuscles: [
+            { role: "PRIMARY", muscle: { id: "muscle-glutes", name: "Glutes" } },
+            { role: "SECONDARY", muscle: { id: "muscle-hamstrings", name: "Hamstrings" } },
+          ],
+          exerciseEquipment: [
+            { equipment: { id: "equipment-machine", name: "Machine", type: "MACHINE" } },
+          ],
+        },
+      ],
+    };
+    const classified = {
+      ...machineHipThrust,
+      measurementProfile: "REPS_EXTERNAL_LOAD",
+      loadConvention: "MACHINE_DISPLAYED",
+      repBasis: "TOTAL",
+    };
+    const plan = buildCatalogSyncPlan([classified], [], snapshot);
+    const { db, calls } = createFakeCatalogDb(snapshot);
+
+    const result = await applyCatalogSyncPlan(db, [classified], [], snapshot, plan);
+
+    expect(plan.fieldMismatches).toEqual([
+      {
+        exerciseName: "Machine Hip Thrust",
+        fields: ["measurementProfile", "loadConvention", "repBasis"],
+      },
+    ]);
+    expect(result.exerciseMappingsReplaced).toBe(0);
+    expect(calls).toEqual(["exercise.update"]);
+  });
+
+  it("prints exact alias moves and blocks apply when aliases cannot be resolved", async () => {
+    const snapshot: ExerciseLibrarySnapshot = {
+      ...baseSnapshot,
+      exercises: [
+        {
+          id: "exercise-1",
+          name: "Machine Hip Thrust",
+          movementPatterns: ["HINGE"],
+          splitTags: ["LEGS"],
+          jointStress: "LOW",
+          isMainLiftEligible: false,
+          isCompound: false,
+          fatigueCost: 2,
+          stimulusBias: ["METABOLIC"],
+          contraindications: null,
+          timePerSetSec: 120,
+          sfrScore: 4,
+          lengthPositionScore: 4,
+          difficulty: "BEGINNER",
+          isUnilateral: false,
+          repRangeMin: 8,
+          repRangeMax: 15,
+          aliases: [{ alias: "Glute Drive", exerciseId: "exercise-1" }],
+          exerciseMuscles: [],
+          exerciseEquipment: [],
+        },
+      ],
+    };
+    const plan = buildCatalogSyncPlan(
+      [machineHipThrust],
+      [
+        { exerciseName: "Machine Hip Thrust", alias: "Glute Drive" },
+        { exerciseName: "Missing Exercise", alias: "Missing Alias" },
+      ],
+      {
+        ...snapshot,
+        exercises: snapshot.exercises.map((exercise) => ({
+          ...exercise,
+          name: "Legacy Hip Thrust",
+        })),
+      },
+    );
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    printCatalogSyncPlan(plan);
+
+    expect(plan.plannedAliasUpdates).toContainEqual({
+      exerciseName: "Machine Hip Thrust",
+      alias: "Glute Drive",
+      fromExerciseName: "Legacy Hip Thrust",
+    });
+    expect(plan.skippedAliases).toContainEqual({
+      exerciseName: "Missing Exercise",
+      alias: "Missing Alias",
+      reason: "target exercise is not in catalog JSON",
+    });
+    expect(isCatalogSyncPlanClean(plan)).toBe(false);
+    expect(log).toHaveBeenCalledWith(
+      "- Glute Drive: Legacy Hip Thrust -> Machine Hip Thrust",
+    );
+    expect(log).toHaveBeenCalledWith(
+      "- Missing Alias -> Missing Exercise: target exercise is not in catalog JSON",
+    );
+    log.mockRestore();
+
+    const { db, calls } = createFakeCatalogDb(snapshot);
+    await expect(
+      applyCatalogSyncPlan(db, [machineHipThrust], [], snapshot, plan),
+    ).rejects.toThrow(
+      "Catalog sync cannot apply because aliases could not be resolved. Missing Alias -> Missing Exercise: target exercise is not in catalog JSON",
+    );
+    expect(calls).toEqual([]);
   });
 
   it("is idempotent once catalog fields, mappings, and aliases match", () => {

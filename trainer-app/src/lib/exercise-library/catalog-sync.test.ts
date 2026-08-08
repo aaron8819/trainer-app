@@ -227,7 +227,7 @@ describe("catalog-only exercise library sync", () => {
     expect(calls).toEqual(["exercise.update"]);
   });
 
-  it("prints exact alias moves and treats skipped aliases as unresolved drift", () => {
+  it("prints exact alias moves and blocks apply when aliases cannot be resolved", async () => {
     const snapshot: ExerciseLibrarySnapshot = {
       ...baseSnapshot,
       exercises: [
@@ -291,6 +291,14 @@ describe("catalog-only exercise library sync", () => {
       "- Missing Alias -> Missing Exercise: target exercise is not in catalog JSON",
     );
     log.mockRestore();
+
+    const { db, calls } = createFakeCatalogDb(snapshot);
+    await expect(
+      applyCatalogSyncPlan(db, [machineHipThrust], [], snapshot, plan),
+    ).rejects.toThrow(
+      "Catalog sync cannot apply because aliases could not be resolved. Missing Alias -> Missing Exercise: target exercise is not in catalog JSON",
+    );
+    expect(calls).toEqual([]);
   });
 
   it("is idempotent once catalog fields, mappings, and aliases match", () => {

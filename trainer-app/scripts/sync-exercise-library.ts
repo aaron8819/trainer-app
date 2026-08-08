@@ -449,6 +449,17 @@ export async function applyCatalogSyncPlan(
   snapshot: ExerciseLibrarySnapshot,
   plan: CatalogSyncPlan,
 ) {
+  if (plan.skippedAliases.length > 0) {
+    throw new Error(
+      [
+        "Catalog sync cannot apply because aliases could not be resolved.",
+        ...plan.skippedAliases.map(
+          (alias) => `${alias.alias} -> ${alias.exerciseName}: ${alias.reason}`,
+        ),
+      ].join(" "),
+    );
+  }
+
   if (plan.missingReferencedMuscles.length > 0 || plan.missingReferencedEquipment.length > 0) {
     throw new Error(
       [

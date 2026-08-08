@@ -26,6 +26,7 @@ import {
   measurementColumns,
   parseMeasurementColumns,
 } from "@/lib/exercise-measurement/semantics";
+import { parseAcceptedSeedPayload } from "@/lib/api/slot-plan-seed-parser";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -284,8 +285,9 @@ export async function POST(
   if (!exercise) {
     return NextResponse.json({ error: "Exercise not found" }, { status: 404 });
   }
-  const measurementAwareWorkout =
-    (workout.seedRevision?.seedPayload as { version?: unknown } | null)?.version === 3;
+  const measurementAwareWorkout = workout.seedRevision?.seedPayload
+    ? parseAcceptedSeedPayload(workout.seedRevision.seedPayload).acceptedVersion === 3
+    : false;
   const catalogMeasurement = parseMeasurementColumns(exercise);
   if (measurementAwareWorkout && !catalogMeasurement) {
     return NextResponse.json(
@@ -370,8 +372,10 @@ export async function POST(
       if (!latestWorkout) {
         throw new Error("WORKOUT_NOT_FOUND");
       }
-      const latestMeasurementAware =
-        (latestWorkout.seedRevision?.seedPayload as { version?: unknown } | null)?.version === 3;
+      const latestMeasurementAware = latestWorkout.seedRevision?.seedPayload
+        ? parseAcceptedSeedPayload(latestWorkout.seedRevision.seedPayload)
+            .acceptedVersion === 3
+        : false;
       const committedMeasurement = latestMeasurementAware
         ? parseMeasurementColumns(
             (await tx.exercise.findUnique({

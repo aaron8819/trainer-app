@@ -19,7 +19,7 @@ import {
   compileAcceptedHypertrophySeedV3,
   equipmentForCustomHypertrophyProfile,
   evaluateHypertrophyPlanHealth,
-  parseAcceptedHypertrophySeed,
+  getHypertrophyAuthoringStimulus,
   parseHypertrophyPlanDraft,
   type HypertrophyAuthoringExercise,
   type HypertrophyPlanDraftV1,
@@ -37,6 +37,7 @@ import { resolveCanonicalLimitations } from "@/lib/engine/limitation-policy";
 import { CANONICAL_MUSCLE_IDS, getMusclePolicyByDisplayName } from "@/lib/engine/muscle-policy";
 import { normalizeLiveInventoryForV2Materialization } from "./v2-materialization-live-inventory";
 import { createInitialAcceptedSeedRevisionInTransaction } from "./mesocycle-seed-revision";
+import { parseAcceptedSeedPayload } from "./slot-plan-seed-parser";
 import { PlanManagementError } from "./plan-management-errors";
 
 const FIVE_WEEKS_MS = 35 * 24 * 60 * 60 * 1000;
@@ -105,17 +106,13 @@ function toAuthoringExercise(
     const id = canonicalMuscleId(entry.muscle.id, entry.muscle.name);
     return entry.role === "SECONDARY" && id ? [id] : [];
   });
-  return {
+  const exercise = {
     id: row.id,
     name: row.name,
     aliases: row.aliases.map((entry) => entry.alias),
     movementPatterns: row.movementPatterns.map((value) => value.toLowerCase()) as HypertrophyAuthoringExercise["movementPatterns"],
     primaryMuscleIds,
     secondaryMuscleIds,
-    stimulusByMuscleId: Object.fromEntries([
-      ...primaryMuscleIds.map((id) => [id, 1] as const),
-      ...secondaryMuscleIds.map((id) => [id, 0.5] as const),
-    ]),
     equipment: row.exerciseEquipment.map((entry) =>
       entry.equipment.type.toLowerCase(),
     ),
@@ -124,6 +121,12 @@ function toAuthoringExercise(
     isMainLiftEligible: row.isMainLiftEligible,
     timePerSetSec: row.timePerSetSec,
     isFavorite: favoriteExerciseIds.has(row.id),
+  };
+  return {
+    ...exercise,
+    stimulusByMuscleId: Object.fromEntries(
+      getHypertrophyAuthoringStimulus(exercise, 1),
+    ),
   };
 }
 
@@ -615,10 +618,11 @@ export async function createEditableHypertrophyPlanCopy(input: {
   if (!source || !payload) throw new PlanManagementError("PLAN_COPY_UNAVAILABLE");
   let accepted;
   try {
-    accepted = parseAcceptedHypertrophySeed(payload);
+    accepted = parseAcceptedSeedPayload(payload).acceptedSeed;
   } catch {
     throw new PlanManagementError("PLAN_COPY_UNAVAILABLE");
   }
+  if (!accepted) throw new PlanManagementError("PLAN_COPY_UNAVAILABLE");
   const draft = parseHypertrophyPlanDraft({
     version: 1,
     settings: accepted.settings,

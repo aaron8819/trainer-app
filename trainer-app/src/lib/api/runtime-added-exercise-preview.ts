@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { resolveRuntimeAddedAccessoryDefaults } from "@/lib/api/runtime-added-exercise-defaults";
 import type { PrimaryGoal, TrainingAge } from "@/lib/engine/types";
 import { parseMeasurementColumns } from "@/lib/exercise-measurement/semantics";
+import { parseAcceptedSeedPayload } from "@/lib/api/slot-plan-seed-parser";
 
 type ExistingWorkoutSet = {
   targetReps?: number | null;
@@ -164,8 +165,9 @@ export async function resolveRuntimeAddedExercisePreviews(input: {
   if (!workout) {
     throw new Error("WORKOUT_NOT_FOUND");
   }
-  const measurementAware =
-    (workout.seedRevision?.seedPayload as { version?: unknown } | null)?.version === 3;
+  const measurementAware = workout.seedRevision?.seedPayload
+    ? parseAcceptedSeedPayload(workout.seedRevision.seedPayload).acceptedVersion === 3
+    : false;
 
   const exerciseMap = new Map(
     exercises.flatMap((exercise) => {

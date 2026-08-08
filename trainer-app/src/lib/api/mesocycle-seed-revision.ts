@@ -1,10 +1,7 @@
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
-import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
+import { parseAcceptedSeedPayload } from "./slot-plan-seed-parser";
 import {
-  parseAcceptedHypertrophySeed,
-  parseAcceptedHypertrophySeedV2,
-  parseAcceptedHypertrophySeedV3,
   projectExecutableSeed,
   projectExecutableSeedV3,
 } from "@/lib/engine/hypertrophy-plan-authoring";
@@ -78,12 +75,9 @@ type SeedRevisionTransaction = Pick<
   "mesocycle" | "mesocycleSeedRevision"
 >;
 
-function normalizedExecutablePayload(seed: unknown) {
-  const parsed = parseSlotPlanSeedJson(seed);
-  if (!parsed || parsed.slots.length === 0) {
-    throw new Error("ACCEPTED_SEED_PAYLOAD_INVALID");
-  }
-
+function normalizedExecutablePayload(
+  parsed: ReturnType<typeof parseAcceptedSeedPayload>,
+) {
   return {
     version: 1 as const,
     slots: parsed.slots.map((slot) => {
@@ -116,13 +110,9 @@ export function normalizeAcceptedSeedPayload(seed: unknown): {
   hashAlgorithm: typeof SEED_PAYLOAD_HASH_ALGORITHM;
   payloadVersion: 1 | 2 | 3;
 } {
-  if (
-    seed &&
-    typeof seed === "object" &&
-    !Array.isArray(seed) &&
-    (seed as Record<string, unknown>).version === 3
-  ) {
-    const canonicalPayload = parseAcceptedHypertrophySeedV3(seed);
+  const parsed = parseAcceptedSeedPayload(seed);
+  if (parsed.acceptedSeed?.version === 3) {
+    const canonicalPayload = parsed.acceptedSeed;
     const executablePayload = projectExecutableSeedV3(canonicalPayload);
     return {
       canonicalPayload: canonicalPayload as unknown as Prisma.InputJsonValue,
@@ -132,13 +122,8 @@ export function normalizeAcceptedSeedPayload(seed: unknown): {
       payloadVersion: 3,
     };
   }
-  if (
-    seed &&
-    typeof seed === "object" &&
-    !Array.isArray(seed) &&
-    (seed as Record<string, unknown>).version === 2
-  ) {
-    const canonicalPayload = parseAcceptedHypertrophySeedV2(seed);
+  if (parsed.acceptedSeed?.version === 2) {
+    const canonicalPayload = parsed.acceptedSeed;
     const executablePayload = projectExecutableSeed(canonicalPayload);
     return {
       canonicalPayload: canonicalPayload as unknown as Prisma.InputJsonValue,
@@ -148,8 +133,7 @@ export function normalizeAcceptedSeedPayload(seed: unknown): {
       payloadVersion: 2,
     };
   }
-  const parsed = parseSlotPlanSeedJson(seed);
-  const executablePayload = normalizedExecutablePayload(seed);
+  const executablePayload = normalizedExecutablePayload(parsed);
   const canonicalPayload = {
     version: 1,
     ...(parsed?.source ? { source: parsed.source } : {}),
@@ -172,8 +156,11 @@ function assertCorrectiveTopology(input: {
   current: unknown;
   replacement: unknown;
 }): void {
-  const current = parseAcceptedHypertrophySeed(input.current);
-  const replacement = parseAcceptedHypertrophySeed(input.replacement);
+  const current = parseAcceptedSeedPayload(input.current).acceptedSeed;
+  const replacement = parseAcceptedSeedPayload(input.replacement).acceptedSeed;
+  if (!current || !replacement) {
+    throw new Error("ACCEPTED_SEED_CORRECTION_INTENT_REQUIRED");
+  }
   if (current.version !== replacement.version) {
     throw new Error("ACCEPTED_SEED_CORRECTION_VERSION_CHANGED");
   }

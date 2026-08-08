@@ -4,9 +4,41 @@ import {
   buildV2AcceptedPlannerIntentDto,
   buildV2PlannerMesocyclePolicy,
 } from "@/lib/engine/planning/v2";
-import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
+import {
+  compileAcceptedHypertrophySeed,
+  compileAcceptedHypertrophySeedV3,
+  type HypertrophyPlanDraftV1,
+} from "@/lib/engine/hypertrophy-plan-authoring";
+import {
+  AcceptedSeedParseError,
+  parseAcceptedSeedPayload,
+  parseSlotPlanSeedJson,
+} from "./slot-plan-seed-parser";
 
 describe("parseSlotPlanSeedJson", () => {
+  const customDraft: HypertrophyPlanDraftV1 = {
+    version: 1,
+    settings: {
+      equipmentProfile: "FULL_GYM",
+      sessionDurationMinutes: 60,
+    },
+    sessions: ["upper", "lower"].map((slotId) => ({
+      slotId,
+      name: slotId === "upper" ? "Upper" : "Lower",
+      focus: slotId === "upper" ? "UPPER" as const : "LOWER" as const,
+      exercises: [{
+        exerciseId: `${slotId}-exercise`,
+        workingSets: 3,
+        intent: {
+          userRole: "ACCESSORY" as const,
+          target: {
+            kind: "muscle" as const,
+            muscleId: slotId === "upper" ? "biceps" as const : "calves" as const,
+          },
+        },
+      }],
+    })),
+  };
   const reductionManifest = {
     version: 1 as const,
     transformVersion: "short_today_v1" as const,
@@ -363,5 +395,65 @@ describe("parseSlotPlanSeedJson", () => {
         ],
       })
     ).toBeNull();
+  });
+
+  it("dispatches every accepted seed version and retains V2/V3 semantics", () => {
+    const v1 = parseAcceptedSeedPayload({
+      version: 1,
+      source: "strength_plan_policy_v1",
+      slots: [{
+        slotId: "strength_a",
+        exercises: [{
+          exerciseId: "squat",
+          role: "CORE_COMPOUND",
+          setCount: 3,
+        }],
+      }],
+    });
+    const v2Seed = compileAcceptedHypertrophySeed(customDraft);
+    const v2 = parseAcceptedSeedPayload(v2Seed);
+    const v3Seed = compileAcceptedHypertrophySeedV3({
+      draft: customDraft,
+      measurementByExerciseId: new Map([
+        ["upper-exercise", {
+          profile: "REPS_EXTERNAL_LOAD" as const,
+          loadConvention: "MACHINE_DISPLAYED" as const,
+          repBasis: "TOTAL" as const,
+        }],
+        ["lower-exercise", {
+          profile: "REPS_EXTERNAL_LOAD" as const,
+          loadConvention: "MACHINE_DISPLAYED" as const,
+          repBasis: "TOTAL" as const,
+        }],
+      ]),
+    });
+    const v3 = parseAcceptedSeedPayload(v3Seed);
+
+    expect(v1.acceptedVersion).toBeUndefined();
+    expect(v2.acceptedSeed).toEqual(v2Seed);
+    expect(v3.acceptedSeed).toEqual(v3Seed);
+    expect(v3.slots[0]?.exercises[0]?.measurement).toEqual(
+      v3Seed.slots[0]?.exercises[0]?.measurement,
+    );
+  });
+
+  it("fails malformed and unsupported accepted seeds explicitly without older fallback", () => {
+    for (const value of [
+      { version: 1, slots: [{ slotId: "a", exercises: [] }] },
+      { version: 2, slots: [] },
+      { ...compileAcceptedHypertrophySeed(customDraft), version: 3 },
+    ]) {
+      expect(() => parseAcceptedSeedPayload(value)).toThrowError(
+        expect.objectContaining<Partial<AcceptedSeedParseError>>({
+          code: "ACCEPTED_SEED_MALFORMED",
+        }),
+      );
+    }
+    expect(() => parseAcceptedSeedPayload({ version: 4, slots: [] })).toThrowError(
+      expect.objectContaining<Partial<AcceptedSeedParseError>>({
+        code: "ACCEPTED_SEED_VERSION_UNSUPPORTED",
+        version: 4,
+      }),
+    );
   });
 });

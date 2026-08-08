@@ -7,6 +7,7 @@ import {
   DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
 } from "./planning/v2";
 import type { V2MaterializationExercise } from "./planning/v2/materialization/types";
+import { getEffectiveStimulusByMuscleId } from "./stimulus";
 import {
   adaptV2MaterializedPlanToDraft,
   assertAcceptedCompatibilityAlignment,
@@ -94,10 +95,6 @@ function toAuthoringExercise(
     ) as HypertrophyAuthoringExercise["movementPatterns"],
     primaryMuscleIds,
     secondaryMuscleIds,
-    stimulusByMuscleId: Object.fromEntries([
-      ...primaryMuscleIds.map((muscleId) => [muscleId, 1] as const),
-      ...secondaryMuscleIds.map((muscleId) => [muscleId, 0.5] as const),
-    ]),
     equipment: exercise.equipment.map((item) => item.toLowerCase()),
     contraindicationKeys: Object.entries(
       exercise.contraindications ?? {},
@@ -192,7 +189,6 @@ const catalog: HypertrophyAuthoringExercise[] = [
     movementPatterns: ["horizontal_push"],
     primaryMuscleIds: ["chest"],
     secondaryMuscleIds: ["triceps"],
-    stimulusByMuscleId: { chest: 1, triceps: 0.5 },
     equipment: ["barbell", "bench"],
     contraindicationKeys: [],
     isCompound: true,
@@ -205,7 +201,6 @@ const catalog: HypertrophyAuthoringExercise[] = [
     movementPatterns: ["horizontal_pull"],
     primaryMuscleIds: ["lats", "upper_back"],
     secondaryMuscleIds: ["biceps"],
-    stimulusByMuscleId: { lats: 1, upper_back: 1, biceps: 0.5 },
     equipment: ["cable"],
     contraindicationKeys: [],
     isCompound: true,
@@ -218,7 +213,6 @@ const catalog: HypertrophyAuthoringExercise[] = [
     movementPatterns: ["extension"],
     primaryMuscleIds: ["quads"],
     secondaryMuscleIds: [],
-    stimulusByMuscleId: { quads: 1 },
     equipment: ["machine"],
     contraindicationKeys: ["knee"],
     isCompound: false,
@@ -231,7 +225,6 @@ const catalog: HypertrophyAuthoringExercise[] = [
     movementPatterns: ["flexion"],
     primaryMuscleIds: ["hamstrings"],
     secondaryMuscleIds: [],
-    stimulusByMuscleId: { hamstrings: 1 },
     equipment: ["machine"],
     contraindicationKeys: [],
     isCompound: false,
@@ -246,7 +239,6 @@ const lowAxialHipThrust: HypertrophyAuthoringExercise = {
   movementPatterns: ["hinge"],
   primaryMuscleIds: ["glutes"],
   secondaryMuscleIds: ["hamstrings"],
-  stimulusByMuscleId: { glutes: 1, hamstrings: 0.5 },
   equipment: ["machine"],
   contraindicationKeys: [],
   isCompound: true,
@@ -260,7 +252,6 @@ const romanianDeadlift: HypertrophyAuthoringExercise = {
   movementPatterns: ["hinge"],
   primaryMuscleIds: ["hamstrings", "glutes"],
   secondaryMuscleIds: ["lower_back"],
-  stimulusByMuscleId: { hamstrings: 1, glutes: 1, lower_back: 0.5 },
   equipment: ["barbell"],
   contraindicationKeys: [],
   isCompound: true,
@@ -448,6 +439,43 @@ describe("custom hypertrophy authoring contracts", () => {
     expect(health.warnings.map((finding) => finding.code)).not.toContain(
       "LIMITATION_CONFLICT",
     );
+  });
+
+  it("uses runtime stimulus math for Plan Health while rounding only its readout", () => {
+    const health = evaluateHypertrophyPlanHealth({
+      draft: draft(),
+      exercises: catalog,
+      limitationKeys: [],
+    });
+    const bench = catalog[0]!;
+    const runtimeContribution = getEffectiveStimulusByMuscleId(
+      {
+        id: bench.id,
+        name: bench.name,
+        primaryMuscles: ["Chest"],
+        secondaryMuscles: ["Triceps"],
+      },
+      4,
+      { logFallback: false },
+    );
+    const byMuscle = new Map(
+      health.muscles.map((muscle) => [muscle.muscleId, muscle]),
+    );
+
+    expect(byMuscle.get("chest")).toMatchObject({
+      directSets: 4,
+      effectiveSets: runtimeContribution.get("chest"),
+    });
+    expect(byMuscle.get("triceps")).toMatchObject({
+      directSets: 0,
+      effectiveSets: runtimeContribution.get("triceps"),
+    });
+    expect(byMuscle.get("front_delts")).toMatchObject({
+      directSets: 0,
+      effectiveSets: runtimeContribution.get("front_delts"),
+    });
+    expect(runtimeContribution.get("triceps")).toBe(1.8);
+    expect(runtimeContribution.get("front_delts")).toBe(1.2);
   });
 
   it("derives role-and-target eligibility from catalog, equipment, and limitations", () => {

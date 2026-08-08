@@ -20,6 +20,40 @@ vi.mock("@/lib/db/prisma", () => ({
 
 import { resolveRuntimeAddedExercisePreviews } from "./runtime-added-exercise-preview";
 
+function acceptedV3Seed() {
+  const measurement = {
+    profile: "REPS_EXTERNAL_LOAD" as const,
+    loadConvention: "MACHINE_DISPLAYED" as const,
+    repBasis: "TOTAL" as const,
+  };
+  return {
+    version: 3 as const,
+    source: "custom_hypertrophy_plan_v1" as const,
+    settings: {
+      equipmentProfile: "FULL_GYM" as const,
+      sessionDurationMinutes: 60 as const,
+    },
+    slots: ["upper", "lower"].map((slotId) => ({
+      slotId,
+      name: slotId === "upper" ? "Upper" : "Lower",
+      focus: slotId === "upper" ? "UPPER" as const : "LOWER" as const,
+      exercises: [{
+        exerciseId: `${slotId}-exercise`,
+        role: "ACCESSORY" as const,
+        setCount: 3,
+        intent: {
+          userRole: "ACCESSORY" as const,
+          target: {
+            kind: "muscle" as const,
+            muscleId: slotId === "upper" ? "biceps" as const : "calves" as const,
+          },
+        },
+        measurement,
+      }],
+    })),
+  };
+}
+
 function exercise(input: {
   id: string;
   measurementProfile?: string | null;
@@ -56,7 +90,7 @@ describe("runtime-added measurement previews", () => {
   it("filters unclassified V3 candidates and never previews a historical load", async () => {
     mocks.workoutFindFirst.mockResolvedValue({
       selectionMetadata: {},
-      seedRevision: { seedPayload: { version: 3 } },
+      seedRevision: { seedPayload: acceptedV3Seed() },
       exercises: [],
     });
     mocks.exerciseFindMany.mockResolvedValue([

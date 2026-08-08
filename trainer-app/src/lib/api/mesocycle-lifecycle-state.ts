@@ -537,18 +537,22 @@ export async function loadActiveMesocycle(
   const sessionCapacityReductionManifest =
     parseSlotPlanSeedJson(mesocycle.slotPlanSeedJson)?.acceptedPlannerIntent
       ?.sessionCapacityReductionManifest;
+  const currentSeedPayload = mesocycle.currentSeedRevision?.seedPayload;
+  const currentSeed = currentSeedPayload
+    ? {
+        payload: currentSeedPayload,
+        normalized: normalizeAcceptedSeedPayload(currentSeedPayload),
+      }
+    : null;
   return {
     ...mesocycle,
     ...(sessionCapacityReductionManifest
       ? { sessionCapacityReductionManifest }
       : {}),
-    slotPlanSeedJson:
-      mesocycle.currentSeedRevision?.seedPayload
-        ? (mesocycle.currentSeedRevision.seedPayload as { version?: unknown })
-            .version === 3
-          ? normalizeAcceptedSeedPayload(mesocycle.currentSeedRevision.seedPayload)
-              .executablePayload as Prisma.JsonValue
-          : mesocycle.currentSeedRevision.seedPayload
-        : mesocycle.slotPlanSeedJson,
+    slotPlanSeedJson: currentSeed
+      ? currentSeed.normalized.payloadVersion === 3
+        ? currentSeed.normalized.executablePayload as Prisma.JsonValue
+        : currentSeed.payload
+      : mesocycle.slotPlanSeedJson,
   };
 }

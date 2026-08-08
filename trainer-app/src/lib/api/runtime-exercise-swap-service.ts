@@ -10,7 +10,10 @@ import {
   type RuntimeExerciseSwapCandidate,
   type RuntimeExerciseSwapProfile,
 } from "@/lib/api/runtime-exercise-swap";
-import { parseSlotPlanSeedJson } from "@/lib/api/slot-plan-seed-parser";
+import {
+  parseAcceptedSeedPayload,
+  parseSlotPlanSeedJson,
+} from "@/lib/api/slot-plan-seed-parser";
 import { readSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
 import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import {
@@ -252,10 +255,10 @@ function mapSourceSwapProfile(context: SwapContext): RuntimeExerciseSwapProfile 
 }
 
 function isMeasurementAwareWorkout(context: SwapContext): boolean {
-  return (
-    (context.workout.seedRevision?.seedPayload as { version?: unknown } | null)
-      ?.version === 3
-  );
+  return context.workout.seedRevision?.seedPayload
+    ? parseAcceptedSeedPayload(context.workout.seedRevision.seedPayload)
+        .acceptedVersion === 3
+    : false;
 }
 
 function measurementCompatiblePool(

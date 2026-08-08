@@ -88,6 +88,40 @@ vi.mock("@/lib/api/workout-context", () => ({
 
 import { POST } from "./route";
 
+function acceptedV3Seed() {
+  const measurement = {
+    profile: "REPS_EXTERNAL_LOAD" as const,
+    loadConvention: "MACHINE_DISPLAYED" as const,
+    repBasis: "TOTAL" as const,
+  };
+  return {
+    version: 3 as const,
+    source: "custom_hypertrophy_plan_v1" as const,
+    settings: {
+      equipmentProfile: "FULL_GYM" as const,
+      sessionDurationMinutes: 60 as const,
+    },
+    slots: ["upper", "lower"].map((slotId) => ({
+      slotId,
+      name: slotId === "upper" ? "Upper" : "Lower",
+      focus: slotId === "upper" ? "UPPER" as const : "LOWER" as const,
+      exercises: [{
+        exerciseId: `${slotId}-exercise`,
+        role: "ACCESSORY" as const,
+        setCount: 3,
+        intent: {
+          userRole: "ACCESSORY" as const,
+          target: {
+            kind: "muscle" as const,
+            muscleId: slotId === "upper" ? "biceps" as const : "calves" as const,
+          },
+        },
+        measurement,
+      }],
+    })),
+  };
+}
+
 describe("production write pause", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -703,7 +737,7 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       status: "PLANNED",
       mesocycleId: null,
       mesocycle: null,
-      seedRevision: { seedPayload: { version: 3 } },
+      seedRevision: { seedPayload: acceptedV3Seed() },
     });
     mocks.exerciseFindUnique.mockResolvedValueOnce({
       id: "fly",
@@ -724,7 +758,7 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       status: "PLANNED",
       mesocycleId: null,
       mesocycle: null,
-      seedRevision: { seedPayload: { version: 3 } },
+      seedRevision: { seedPayload: acceptedV3Seed() },
       exercises: [],
     });
     mocks.txExerciseFindUnique.mockResolvedValueOnce(measurementColumns);
@@ -798,7 +832,7 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       status: "PLANNED",
       mesocycleId: null,
       mesocycle: null,
-      seedRevision: { seedPayload: { version: 3 } },
+      seedRevision: { seedPayload: acceptedV3Seed() },
     });
     mocks.txWorkoutFindUnique.mockResolvedValueOnce({
       selectionMetadata: buildWorkoutSelectionMetadata(),
@@ -807,7 +841,7 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       status: "PLANNED",
       mesocycleId: null,
       mesocycle: null,
-      seedRevision: { seedPayload: { version: 3 } },
+      seedRevision: { seedPayload: acceptedV3Seed() },
       exercises: [],
     });
     mocks.txExerciseFindUnique.mockResolvedValueOnce({

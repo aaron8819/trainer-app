@@ -34,6 +34,8 @@ import {
   measurementSemanticsSchema,
   type MeasurementSemantics,
 } from "@/lib/exercise-measurement/semantics";
+import { getEffectiveStimulusByMuscleId } from "./stimulus";
+import { addStimulusContribution } from "./stimulus-accounting-policy";
 
 export const HYPERTROPHY_SESSION_FOCUS_VALUES = [
   "PUSH",
@@ -841,7 +843,7 @@ export type HypertrophyAuthoringExercise = {
   movementPatterns: MovementPatternV2[];
   primaryMuscleIds: CanonicalMuscleId[];
   secondaryMuscleIds: CanonicalMuscleId[];
-  stimulusByMuscleId: Partial<Record<CanonicalMuscleId, number>>;
+  stimulusByMuscleId?: Partial<Record<CanonicalMuscleId, number>>;
   equipment: string[];
   contraindicationKeys: string[];
   isCompound: boolean;
@@ -849,6 +851,33 @@ export type HypertrophyAuthoringExercise = {
   timePerSetSec: number;
   isFavorite?: boolean;
 };
+
+export function getHypertrophyAuthoringStimulus(
+  exercise: HypertrophyAuthoringExercise,
+  workingSets: number,
+): Map<CanonicalMuscleId, number> {
+  const contribution = getEffectiveStimulusByMuscleId(
+    {
+      id: exercise.id,
+      name: exercise.name,
+      aliases: exercise.aliases,
+      primaryMuscles: exercise.primaryMuscleIds.map(
+        (muscleId) => MUSCLE_POLICY_BY_ID[muscleId].displayName,
+      ),
+      secondaryMuscles: exercise.secondaryMuscleIds.map(
+        (muscleId) => MUSCLE_POLICY_BY_ID[muscleId].displayName,
+      ),
+    },
+    workingSets,
+    { logFallback: false },
+  );
+  return new Map(
+    CANONICAL_MUSCLE_IDS.flatMap((muscleId) => {
+      const value = contribution.get(muscleId);
+      return value == null ? [] : [[muscleId, value] as const];
+    }),
+  );
+}
 
 const CUSTOM_HYPERTROPHY_ADDITIONAL_EQUIPMENT: Partial<
   Record<EquipmentProfile, readonly EquipmentType[]>
@@ -886,6 +915,7 @@ function isCustomHypertrophyEquipmentCompatible(
 function toExerciseClassInput(
   exercise: HypertrophyAuthoringExercise,
 ): V2MaterializationExercise {
+  const stimulusByMuscleId = getHypertrophyAuthoringStimulus(exercise, 1);
   return {
     exerciseId: exercise.id,
     name: exercise.name,
@@ -902,7 +932,7 @@ function toExerciseClassInput(
     isMainLiftEligible: exercise.isMainLiftEligible,
     stimulusByMusclePerSet: Object.fromEntries(
       CANONICAL_MUSCLE_IDS.flatMap((muscleId) => {
-        const stimulus = exercise.stimulusByMuscleId[muscleId];
+        const stimulus = stimulusByMuscleId.get(muscleId);
         return stimulus == null
           ? []
           : [[MUSCLE_POLICY_BY_ID[muscleId].displayName, stimulus] as const];
@@ -1134,13 +1164,13 @@ export function evaluateHypertrophyPlanHealth(input: {
       for (const muscleId of exercise.primaryMuscleIds) {
         directSets.set(muscleId, (directSets.get(muscleId) ?? 0) + row.workingSets);
       }
-      for (const muscleId of CANONICAL_MUSCLE_IDS) {
-        const stimulus = exercise.stimulusByMuscleId[muscleId] ?? 0;
+      const contribution = getHypertrophyAuthoringStimulus(
+        exercise,
+        row.workingSets,
+      );
+      addStimulusContribution(effectiveSets, contribution);
+      for (const [muscleId, stimulus] of contribution) {
         if (stimulus <= 0) continue;
-        effectiveSets.set(
-          muscleId,
-          (effectiveSets.get(muscleId) ?? 0) + stimulus * row.workingSets,
-        );
         const slots = frequency.get(muscleId) ?? new Set<string>();
         slots.add(session.slotId);
         frequency.set(muscleId, slots);

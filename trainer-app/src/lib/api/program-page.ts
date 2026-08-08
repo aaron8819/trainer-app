@@ -1381,11 +1381,6 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
     loadActiveMesocycle(userId),
     loadNextWorkoutContext(userId),
   ]);
-  if (activeMesocycle?.currentSeedRevision?.seedPayload) {
-    activeMesocycle.slotPlanSeedJson =
-      activeMesocycle.currentSeedRevision.seedPayload;
-  }
-
   const overview = buildProgramPageOverview(dashboard);
   const rawRelevantWeekClose = activeMesocycle
     ? await findRelevantWeekCloseForUser({

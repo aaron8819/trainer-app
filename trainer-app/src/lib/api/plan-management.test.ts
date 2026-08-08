@@ -889,6 +889,118 @@ describe("plan management persistence policy", () => {
     ]);
   });
 
+  it("reviews accepted V3 custom plans with their V3 editable envelope", async () => {
+    const timestamp = new Date("2026-08-03T00:00:00.000Z");
+    const measurement = {
+      profile: "REPS_EXTERNAL_LOAD",
+      loadConvention: "MACHINE_DISPLAYED",
+      repBasis: "TOTAL",
+    };
+    const seedPayload = {
+      version: 3,
+      source: "custom_hypertrophy_plan_v1",
+      settings: {
+        equipmentProfile: "FULL_GYM",
+        sessionDurationMinutes: 60,
+      },
+      slots: [
+        {
+          slotId: "upper",
+          name: "Upper Strength Bias",
+          focus: "UPPER",
+          exercises: [{
+            exerciseId: "bench",
+            role: "CORE_COMPOUND",
+            setCount: 4,
+            intent: {
+              userRole: "PRIMARY_LIFT",
+              target: {
+                kind: "movement_pattern",
+                movementPattern: "horizontal_push",
+              },
+            },
+            measurement,
+          }],
+        },
+        {
+          slotId: "lower",
+          name: "Lower Volume",
+          focus: "LOWER",
+          exercises: [{
+            exerciseId: "curl",
+            role: "ACCESSORY",
+            setCount: 3,
+            intent: {
+              userRole: "ACCESSORY",
+              target: { kind: "muscle", muscleId: "hamstrings" },
+            },
+            measurement,
+          }],
+        },
+      ],
+    };
+    mocks.userFindUnique.mockResolvedValue({ activeMacroCycleId: "custom-plan" });
+    mocks.exerciseFindMany.mockResolvedValue([
+      { id: "bench", name: "Machine Chest Press" },
+      { id: "curl", name: "Leg Curl" },
+    ]);
+    mocks.macroCycleFindFirst.mockResolvedValue({
+      id: "custom-plan",
+      name: "Custom Hypertrophy",
+      primaryGoal: "HYPERTROPHY",
+      startDate: timestamp,
+      endDate: new Date("2026-09-07T00:00:00.000Z"),
+      durationWeeks: 5,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      mesocycles: [{
+        id: "custom-meso",
+        mesoNumber: 1,
+        startWeek: 0,
+        durationWeeks: 5,
+        focus: "Hypertrophy",
+        volumeTarget: "MODERATE",
+        intensityBias: "HYPERTROPHY",
+        state: MesocycleState.ACTIVE_ACCUMULATION,
+        isActive: true,
+        _count: { blocks: 3 },
+        slotSequenceJson: null,
+        slotPlanSeedJson: null,
+        currentSeedRevision: { seedPayload },
+      }],
+    });
+
+    await expect(
+      loadPlanReview("user-1", "custom-plan", {
+        includeCustomPlanMetadata: true,
+      }),
+    ).resolves.toMatchObject({
+      editableCopyAvailable: true,
+      weeklyStructure: [
+        {
+          slotId: "upper",
+          label: "Upper Strength Bias",
+          intent: "UPPER",
+          primaryLifts: [{
+            exerciseId: "bench",
+            name: "Machine Chest Press",
+            setCount: 4,
+          }],
+        },
+        {
+          slotId: "lower",
+          label: "Lower Volume",
+          intent: "LOWER",
+          assistance: [{
+            exerciseId: "curl",
+            name: "Leg Curl",
+            setCount: 3,
+          }],
+        },
+      ],
+    });
+  });
+
   it.each([
     {
       label: "missing",

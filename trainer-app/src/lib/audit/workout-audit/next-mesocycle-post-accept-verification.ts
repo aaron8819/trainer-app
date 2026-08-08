@@ -9,7 +9,10 @@ import { buildProgramCurrentWeekPlan } from "@/lib/api/program-page";
 import { loadProjectedWeekVolumeReport } from "@/lib/api/projected-week-volume";
 import { readRuntimeSlotSequence } from "@/lib/api/mesocycle-slot-runtime";
 import { loadNextWorkoutContext } from "@/lib/api/next-session";
-import { parseSlotPlanSeedJson } from "@/lib/api/slot-plan-seed-parser";
+import {
+  parseAcceptedSeedPayload,
+  parseSlotPlanSeedJson,
+} from "@/lib/api/slot-plan-seed-parser";
 import { generateSessionFromIntent } from "@/lib/api/template-session";
 import type {
   PrescriptionConfidenceReadout,
@@ -1021,6 +1024,7 @@ export async function buildNextMesocyclePostAcceptVerificationAuditPayload(input
     loadNextWorkoutContext(input.userId).catch(() => null),
   ]);
   if (successorMesocycle?.currentSeedRevision?.seedPayload) {
+    parseAcceptedSeedPayload(successorMesocycle.currentSeedRevision.seedPayload);
     successorMesocycle.slotPlanSeedJson = successorMesocycle.currentSeedRevision.seedPayload;
   }
   const [seedExerciseNameById, generationResult, projectedWeekResult] =

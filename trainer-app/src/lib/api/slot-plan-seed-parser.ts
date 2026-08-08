@@ -2,9 +2,9 @@ import type { V2AcceptedPlannerIntentDto } from "@/lib/engine/planning/v2";
 import { mapV2CapacityChoiceToProfile } from "@/lib/engine/planning/v2/capacity-selection";
 import { sanitizeSessionCapacityReductionManifest } from "@/lib/engine/planning/v2/session-capacity-reduction-manifest";
 import {
-  acceptedHypertrophySeedV3Schema,
-  acceptedHypertrophySeedV2Schema,
   executableSeedProjectionV2Schema,
+  parseAcceptedHypertrophySeed,
+  type AcceptedHypertrophySeed,
   type AcceptedExerciseIntentV2,
 } from "@/lib/engine/hypertrophy-plan-authoring";
 import type { MeasurementSemantics } from "@/lib/exercise-measurement/semantics";
@@ -30,6 +30,7 @@ export type ParsedSlotPlanSeedSlot = {
 export type ParsedSlotPlanSeed = {
   version: 1;
   acceptedVersion?: 2 | 3;
+  acceptedSeed?: AcceptedHypertrophySeed;
   source?: string;
   acceptedPlannerIntent?: V2AcceptedPlannerIntentDto;
   slots: ParsedSlotPlanSeedSlot[];
@@ -638,32 +639,38 @@ export function sanitizeAcceptedPlannerIntent(
   };
 }
 
+function toParsedAcceptedSeed(
+  accepted: AcceptedHypertrophySeed,
+): ParsedSlotPlanSeed {
+  return {
+    version: 1,
+    acceptedVersion: accepted.version,
+    acceptedSeed: accepted,
+    source: accepted.source,
+    slots: accepted.slots.map((slot) => ({
+      slotId: slot.slotId,
+      exercises: slot.exercises.map((exercise) => ({
+        exerciseId: exercise.exerciseId,
+        role: exercise.role,
+        setCount: exercise.setCount,
+        hasExplicitName: false,
+        hasExplicitSetCount: true,
+        intent: exercise.intent,
+        ...("measurement" in exercise
+          ? { measurement: exercise.measurement }
+          : {}),
+      })),
+    })),
+  };
+}
+
 export function parseSlotPlanSeedJson(slotPlanSeedJson: unknown): ParsedSlotPlanSeed | null {
   const record = isRecord(slotPlanSeedJson) ? slotPlanSeedJson : null;
-  if (record?.version === 3) {
-    const accepted = acceptedHypertrophySeedV3Schema.safeParse(record);
-    if (!accepted.success) return null;
-    return {
-      version: 1,
-      acceptedVersion: 3,
-      source: accepted.data.source,
-      slots: accepted.data.slots.map((slot) => ({
-        slotId: slot.slotId,
-        exercises: slot.exercises.map((exercise) => ({
-          exerciseId: exercise.exerciseId,
-          role: exercise.role,
-          setCount: exercise.setCount,
-          hasExplicitName: false,
-          hasExplicitSetCount: true,
-          intent: exercise.intent,
-          measurement: exercise.measurement,
-        })),
-      })),
-    };
-  }
-  if (record?.version === 2) {
-    const accepted = acceptedHypertrophySeedV2Schema.safeParse(record);
-    if (!accepted.success) {
+  if (record?.version === 2 || record?.version === 3) {
+    try {
+      return parseAcceptedSeedPayload(record);
+    } catch {
+      if (record.version !== 2) return null;
       const executable = executableSeedProjectionV2Schema.safeParse(record);
       if (!executable.success) return null;
       return {
@@ -681,22 +688,6 @@ export function parseSlotPlanSeedJson(slotPlanSeedJson: unknown): ParsedSlotPlan
         })),
       };
     }
-    return {
-      version: 1,
-      acceptedVersion: 2,
-      source: accepted.data.source,
-      slots: accepted.data.slots.map((slot) => ({
-        slotId: slot.slotId,
-        exercises: slot.exercises.map((exercise) => ({
-          exerciseId: exercise.exerciseId,
-          role: exercise.role,
-          setCount: exercise.setCount,
-          hasExplicitName: false,
-          hasExplicitSetCount: true,
-          intent: exercise.intent,
-        })),
-      })),
-    };
   }
   const slotsValue = Array.isArray(record?.slots) ? record.slots : null;
   if (record?.version !== 1 || !slotsValue) {
@@ -766,4 +757,70 @@ export function parseSlotPlanSeedJson(slotPlanSeedJson: unknown): ParsedSlotPlan
     ...(acceptedPlannerIntent ? { acceptedPlannerIntent } : {}),
     slots,
   };
+}
+
+export type AcceptedSeedParseErrorCode =
+  | "ACCEPTED_SEED_MALFORMED"
+  | "ACCEPTED_SEED_SET_COUNT_MISSING"
+  | "ACCEPTED_SEED_VERSION_UNSUPPORTED";
+
+export class AcceptedSeedParseError extends Error {
+  constructor(
+    readonly code: AcceptedSeedParseErrorCode,
+    readonly version?: unknown,
+    detail?: string,
+  ) {
+    super(
+      detail ?? (version === undefined ? code : `${code}:${String(version)}`),
+    );
+    this.name = "AcceptedSeedParseError";
+  }
+}
+
+export function parseAcceptedSeedPayload(value: unknown): ParsedSlotPlanSeed {
+  const record = isRecord(value) ? value : null;
+  if (
+    record?.version !== 1 &&
+    record?.version !== 2 &&
+    record?.version !== 3
+  ) {
+    throw new AcceptedSeedParseError(
+      "ACCEPTED_SEED_VERSION_UNSUPPORTED",
+      record?.version,
+    );
+  }
+  let parsed: ParsedSlotPlanSeed | null;
+  if (record.version === 1) {
+    parsed = parseSlotPlanSeedJson(value);
+  } else {
+    try {
+      parsed = toParsedAcceptedSeed(parseAcceptedHypertrophySeed(value));
+    } catch {
+      parsed = null;
+    }
+  }
+  if (!parsed || parsed.slots.length === 0) {
+    throw new AcceptedSeedParseError(
+      "ACCEPTED_SEED_MALFORMED",
+      record.version,
+    );
+  }
+  for (const slot of parsed.slots) {
+    if (slot.exercises.length === 0) {
+      throw new AcceptedSeedParseError(
+        "ACCEPTED_SEED_MALFORMED",
+        record.version,
+      );
+    }
+    for (const exercise of slot.exercises) {
+      if (!exercise.hasExplicitSetCount || exercise.setCount == null) {
+        throw new AcceptedSeedParseError(
+          "ACCEPTED_SEED_SET_COUNT_MISSING",
+          record.version,
+          `ACCEPTED_SEED_SET_COUNT_MISSING:${slot.slotId}:${exercise.exerciseId}`,
+        );
+      }
+    }
+  }
+  return parsed;
 }

@@ -550,4 +550,23 @@ describe("custom hypertrophy draft persistence", () => {
         .intent.requiredExerciseClass,
     ).toBe("low_axial_hip_extension_anchor");
   });
+
+  it.each([
+    { version: 3, source: "custom_hypertrophy_plan_v1", slots: [] },
+    { version: 4, source: "custom_hypertrophy_plan_v1", slots: [] },
+  ])("rejects an invalid accepted copy source before creating a draft", async (seedPayload) => {
+    mocks.prisma.macroCycle.findFirst.mockResolvedValueOnce({
+      trainingAge: "INTERMEDIATE",
+      mesocycles: [{ currentSeedRevision: { seedPayload } }],
+    });
+
+    await expect(
+      createEditableHypertrophyPlanCopy({
+        userId: "user-1",
+        sourcePlanId: "source-plan",
+        name: "Invalid copy",
+      }),
+    ).rejects.toMatchObject({ code: "PLAN_COPY_UNAVAILABLE" });
+    expect(mocks.prisma.macroCycle.create).not.toHaveBeenCalled();
+  });
 });

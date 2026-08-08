@@ -7,6 +7,13 @@ import {
   toMuscleId,
   validateStimulusProfileCoverage,
 } from "./stimulus";
+import {
+  DIRECT_STIMULUS_WEIGHT,
+  INDIRECT_STIMULUS_WEIGHT,
+  addStimulusContribution,
+  buildRelationshipStimulusProfile,
+  calculateWorkingSetStimulus,
+} from "./stimulus-accounting-policy";
 
 function makeExercise(partial: Partial<Exercise> & Pick<Exercise, "id" | "name">): Exercise {
   return {
@@ -343,5 +350,51 @@ describe("stimulus helper", () => {
 
     expect(profile.upper_back ?? 0).toBeLessThanOrEqual(0.5);
     expect(profile.forearms ?? 0).toBeGreaterThanOrEqual(profile.upper_back ?? 0);
+  });
+});
+
+describe("stimulus accounting policy", () => {
+  it("represents direct and indirect relationships with one coefficient policy", () => {
+    expect(
+      buildRelationshipStimulusProfile({
+        directMuscleIds: ["chest"],
+        indirectMuscleIds: ["triceps", "chest"],
+      }),
+    ).toEqual({
+      chest: DIRECT_STIMULUS_WEIGHT,
+      triceps: INDIRECT_STIMULUS_WEIGHT,
+    });
+  });
+
+  it("scales multiple muscles by multiple working sets without rounding", () => {
+    const contribution = calculateWorkingSetStimulus(
+      { chest: 1, front_delts: 0.3, triceps: 0.45 },
+      3,
+    );
+    expect([...contribution.keys()]).toEqual(["chest", "front_delts", "triceps"]);
+    expect(contribution.get("chest")).toBe(3);
+    expect(contribution.get("front_delts")).toBeCloseTo(0.9, 12);
+    expect(contribution.get("triceps")).toBe(1.35);
+  });
+
+  it("treats zero, negative, and non-finite set counts as zero", () => {
+    for (const workingSets of [0, -2, Number.NaN]) {
+      expect(
+        Object.fromEntries(calculateWorkingSetStimulus({ chest: 1 }, workingSets)),
+      ).toEqual({ chest: 0 });
+    }
+  });
+
+  it("aggregates deterministically while preserving decimal values", () => {
+    const totals = new Map<string, number>();
+    addStimulusContribution(
+      totals,
+      calculateWorkingSetStimulus({ triceps: 0.45, chest: 1 }, 2),
+    );
+    addStimulusContribution(
+      totals,
+      calculateWorkingSetStimulus({ chest: 0.5, triceps: 0.3 }, 1),
+    );
+    expect(Object.fromEntries(totals)).toEqual({ chest: 2.5, triceps: 1.2 });
   });
 });

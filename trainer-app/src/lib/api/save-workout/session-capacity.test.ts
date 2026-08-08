@@ -299,4 +299,34 @@ describe("validateAndCanonicalizeShortTodaySave", () => {
       }),
     ).toThrow("SESSION_CAPACITY_REDUCTION_UNAVAILABLE");
   });
+
+  it("rejects an executable projection masquerading as the current accepted revision", () => {
+    const input = fixture();
+    input.activeMesocycle.currentSeedRevision.seedPayload = {
+      version: 2,
+      slots: seedSlots.map((slot) => ({
+        ...slot,
+        exercises: slot.exercises.map((row) => ({
+          ...row,
+          measurement: {
+            profile: "REPS_EXTERNAL_LOAD" as const,
+            loadConvention: "MACHINE_DISPLAYED" as const,
+            repBasis: "TOTAL" as const,
+          },
+        })),
+      })),
+    } as unknown as typeof input.activeMesocycle.currentSeedRevision.seedPayload;
+
+    expect(
+      parseSlotPlanSeedJson(input.activeMesocycle.currentSeedRevision.seedPayload),
+    ).not.toBeNull();
+    expect(() =>
+      validateAndCanonicalizeShortTodaySave({
+        workoutId: "workout-1",
+        selectionMetadata: input.selectionMetadata,
+        exercises: input.exercises,
+        activeMesocycle: input.activeMesocycle,
+      }),
+    ).toThrowError("ACCEPTED_SEED_MALFORMED:2");
+  });
 });

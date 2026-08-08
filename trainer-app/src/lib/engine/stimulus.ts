@@ -1,4 +1,8 @@
 import type { Exercise, Muscle, MuscleId, StimulusProfile } from "./types";
+import {
+  buildRelationshipStimulusProfile,
+  calculateWorkingSetStimulus,
+} from "./stimulus-accounting-policy";
 
 type StimulusBearingExercise = Pick<
   Exercise,
@@ -530,27 +534,21 @@ function sanitizeStimulusProfile(profile: StimulusProfile | undefined): Stimulus
 }
 
 function buildFallbackStimulusProfile(exercise: StimulusBearingExercise): StimulusProfile | undefined {
-  const fallbackEntries: Array<[MuscleId, number]> = [];
-
-  for (const muscle of exercise.primaryMuscles ?? []) {
+  const primaryMuscleIds = (exercise.primaryMuscles ?? []).flatMap((muscle) => {
     const muscleId = toMuscleId(muscle);
-    if (muscleId) {
-      fallbackEntries.push([muscleId, 1.0]);
-    }
-  }
-
-  for (const muscle of exercise.secondaryMuscles ?? []) {
+    return muscleId ? [muscleId] : [];
+  });
+  const secondaryMuscleIds = (exercise.secondaryMuscles ?? []).flatMap((muscle) => {
     const muscleId = toMuscleId(muscle);
-    if (muscleId && !fallbackEntries.some(([existingId]) => existingId === muscleId)) {
-      fallbackEntries.push([muscleId, 0.3]);
-    }
-  }
-
-  if (fallbackEntries.length === 0) {
+    return muscleId ? [muscleId] : [];
+  });
+  if (primaryMuscleIds.length === 0 && secondaryMuscleIds.length === 0) {
     return undefined;
   }
-
-  return buildStimulusProfile(fallbackEntries);
+  return buildRelationshipStimulusProfile({
+    directMuscleIds: primaryMuscleIds,
+    indirectMuscleIds: secondaryMuscleIds,
+  });
 }
 
 function logFallbackUse(exercise: StimulusBearingExercise): void {
@@ -588,15 +586,8 @@ export function getEffectiveStimulusByMuscleId(
   setCount: number,
   options?: { logFallback?: boolean }
 ): Map<MuscleId, number> {
-  const normalizedSetCount = Number.isFinite(setCount) ? Math.max(0, setCount) : 0;
   const profile = resolveStimulusProfile(exercise, options);
-  const contribution = new Map<MuscleId, number>();
-
-  for (const [muscleId, weight] of Object.entries(profile) as Array<[MuscleId, number]>) {
-    contribution.set(muscleId, normalizedSetCount * weight);
-  }
-
-  return contribution;
+  return calculateWorkingSetStimulus(profile, setCount);
 }
 
 export function getEffectiveStimulusByMuscle(

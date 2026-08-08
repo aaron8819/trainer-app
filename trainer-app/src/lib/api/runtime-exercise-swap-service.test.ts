@@ -93,6 +93,40 @@ import {
 import { buildV2AcceptedPlannerIntentDto } from "@/lib/engine/planning/v2";
 import { compileAcceptedHypertrophySeed } from "@/lib/engine/hypertrophy-plan-authoring";
 
+function acceptedV3Seed() {
+  const measurement = {
+    profile: "REPS_EXTERNAL_LOAD" as const,
+    loadConvention: "MACHINE_DISPLAYED" as const,
+    repBasis: "TOTAL" as const,
+  };
+  return {
+    version: 3 as const,
+    source: "custom_hypertrophy_plan_v1" as const,
+    settings: {
+      equipmentProfile: "FULL_GYM" as const,
+      sessionDurationMinutes: 60 as const,
+    },
+    slots: ["upper", "lower"].map((slotId) => ({
+      slotId,
+      name: slotId === "upper" ? "Upper" : "Lower",
+      focus: slotId === "upper" ? "UPPER" as const : "LOWER" as const,
+      exercises: [{
+        exerciseId: `${slotId}-exercise`,
+        role: "ACCESSORY" as const,
+        setCount: 3,
+        intent: {
+          userRole: "ACCESSORY" as const,
+          target: {
+            kind: "muscle" as const,
+            muscleId: slotId === "upper" ? "biceps" as const : "calves" as const,
+          },
+        },
+        measurement,
+      }],
+    })),
+  };
+}
+
 const runtimeEditDirectives = {
   continuityAlias: "none",
   progressionAlias: "none",
@@ -737,7 +771,7 @@ describe("runtime exercise swap service", () => {
       sessionIntent: "PULL",
       exercises: [{ id: "we-1", exerciseId: "t-bar-row" }],
       selectionMetadata: {},
-      seedRevision: { seedPayload: { version: 3 } },
+      seedRevision: { seedPayload: acceptedV3Seed() },
       mesocycle: null,
     });
     mocks.exerciseFindMany.mockResolvedValue([
@@ -794,7 +828,7 @@ describe("runtime exercise swap service", () => {
       sessionIntent: "PULL",
       exercises: [{ id: "we-1", exerciseId: "t-bar-row" }],
       selectionMetadata: {},
-      seedRevision: { seedPayload: { version: 3 } },
+      seedRevision: { seedPayload: acceptedV3Seed() },
       mesocycle: null,
     });
 
@@ -1868,8 +1902,8 @@ describe("runtime exercise swap service", () => {
     await expect(
       resolveRuntimeExerciseSwapPreview(input),
     ).rejects.toMatchObject({
-      code: "REPLACEMENT_NOT_ELIGIBLE",
-      status: 409,
+      code: "ACCEPTED_SEED_MALFORMED",
+      version: 2,
     });
     expect(compatibilityOnlyWorkoutRecord).toEqual(
       compatibilityOnlyWorkoutRecordBeforeRead,

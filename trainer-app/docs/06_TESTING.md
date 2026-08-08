@@ -387,6 +387,7 @@ Disposable PostgreSQL verification must cover migration apply, unique one-to-one
 
 ## Stimulus accounting verification
 
+- Run `src/lib/engine/stimulus.test.ts` with the custom hypertrophy authoring suite to prove direct/indirect coefficients, unrounded working-set scaling, deterministic aggregation, and Plan Health/runtime equivalence.
 - Run focused contract tests: `npm run test -- src/lib/stimulus-accounting/`.
 - Run save/add/swap tests for atomic snapshot creation and runtime-edit evidence.
 - Run historical reader tests to prove policy/catalog edits do not change snapshotted results.

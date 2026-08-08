@@ -26,6 +26,7 @@ import {
   resolveMesocycleSlotContract,
 } from "./mesocycle-slot-contract";
 import {
+  parseAcceptedSeedPayload,
   parseSlotPlanSeedJson,
   type ParsedSlotPlanSeed,
 } from "./slot-plan-seed-parser";
@@ -454,6 +455,7 @@ async function inspectEmptyReplacementSafety(
     },
   });
   if (mesocycle?.currentSeedRevision?.seedPayload) {
+    parseAcceptedSeedPayload(mesocycle.currentSeedRevision.seedPayload);
     mesocycle.slotPlanSeedJson = mesocycle.currentSeedRevision.seedPayload;
   }
 

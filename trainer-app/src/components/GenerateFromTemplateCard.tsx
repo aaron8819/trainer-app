@@ -32,6 +32,7 @@ type WorkoutExercise = {
   isMainLift: boolean;
   exercise: { id: string; name: string; equipment?: string[] };
   sets: WorkoutSet[];
+  measurement?: import("@/lib/exercise-measurement/semantics").MeasurementSemantics;
 };
 
 type WorkoutPlan = {
@@ -346,6 +347,7 @@ export function GenerateFromTemplateCard({ templates, blockPhase }: GenerateFrom
       ].map((exercise) => ({
         section: (exercise as { section: "MAIN" | "ACCESSORY" }).section,
         exerciseId: exercise.exercise.id,
+        ...(exercise.measurement ? { measurement: exercise.measurement } : {}),
         sets: exercise.sets.map((set) => ({
           setIndex: set.setIndex,
           targetReps: set.targetReps,

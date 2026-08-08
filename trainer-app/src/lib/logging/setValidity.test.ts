@@ -31,4 +31,44 @@ describe("getSetValidity", () => {
       reason: INVALID_SET_REASON_MISSING_PERFORMANCE,
     });
   });
+
+  it("enforces classified rep and load requirements", () => {
+    expect(
+      getSetValidity({
+        measurementProfile: "REPS_EXTERNAL_LOAD",
+        actualReps: 8,
+        actualLoad: 0,
+      }).valid,
+    ).toBe(false);
+    expect(
+      getSetValidity({
+        measurementProfile: "REPS_EXTERNAL_LOAD",
+        actualReps: 0,
+        actualLoad: 135,
+      }),
+    ).toEqual({ valid: true });
+    expect(
+      getSetValidity({
+        measurementProfile: "REPS_BODYWEIGHT",
+        actualReps: 8,
+      }),
+    ).toEqual({ valid: true });
+    expect(
+      getSetValidity({
+        measurementProfile: "REPS_BODYWEIGHT",
+        actualReps: 8,
+        actualLoad: 1,
+      }).valid,
+    ).toBe(false);
+    expect(
+      getSetValidity({
+        measurementProfile: "REPS_ASSISTED",
+        actualReps: 8,
+        actualLoad: 40,
+      }),
+    ).toEqual({ valid: true });
+    expect(
+      getSetValidity({ measurementProfile: "REPS_ASSISTED", actualRpe: 8 }).valid,
+    ).toBe(false);
+  });
 });

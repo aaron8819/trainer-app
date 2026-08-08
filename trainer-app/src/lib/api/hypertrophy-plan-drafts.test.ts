@@ -1,5 +1,15 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HypertrophyPlanDraftV1 } from "@/lib/engine/hypertrophy-plan-authoring";
+
+const originalMeasurementRollout = process.env.TRAINER_EXERCISE_MEASUREMENT_ROLLOUT;
+
+afterEach(() => {
+  if (originalMeasurementRollout === undefined) {
+    delete process.env.TRAINER_EXERCISE_MEASUREMENT_ROLLOUT;
+  } else {
+    process.env.TRAINER_EXERCISE_MEASUREMENT_ROLLOUT = originalMeasurementRollout;
+  }
+});
 
 const mocks = vi.hoisted(() => {
   const state = {
@@ -186,6 +196,7 @@ const exerciseRows = [
 describe("custom hypertrophy draft persistence", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.TRAINER_EXERCISE_MEASUREMENT_ROLLOUT;
     mocks.state.draft = { payload: draft(), revision: 3 };
     mocks.state.mesocycles.length = 0;
     mocks.state.revisions.length = 0;
@@ -298,6 +309,87 @@ describe("custom hypertrophy draft persistence", () => {
           },
         ],
       },
+    });
+  });
+
+  it("emits V3 only when the gate is enabled and every selected exercise is classified", async () => {
+    process.env.TRAINER_EXERCISE_MEASUREMENT_ROLLOUT = "enabled";
+    mocks.tx.exercise.findMany.mockResolvedValue(
+      exerciseRows.map((row) => ({
+        ...row,
+        measurementProfile: "REPS_EXTERNAL_LOAD",
+        loadConvention: row.id === "bench" ? "BARBELL_TOTAL" : "MACHINE_DISPLAYED",
+        repBasis: "TOTAL",
+      })),
+    );
+
+    await makeHypertrophyPlanReady({
+      userId: "user-1",
+      planId: "plan-1",
+      expectedDraftRevision: 3,
+      warningsConfirmed: true,
+    });
+
+    expect(mocks.state.revisions[0]).toMatchObject({
+      seedPayload: {
+        version: 3,
+        settings: draft().settings,
+        slots: [
+          {
+            name: "Upper",
+            focus: "UPPER",
+            exercises: [
+              {
+                measurement: {
+                  profile: "REPS_EXTERNAL_LOAD",
+                  loadConvention: "BARBELL_TOTAL",
+                  repBasis: "TOTAL",
+                },
+              },
+            ],
+          },
+          {
+            name: "Lower",
+            focus: "LOWER",
+            exercises: [
+              {
+                measurement: {
+                  profile: "REPS_EXTERNAL_LOAD",
+                  loadConvention: "MACHINE_DISPLAYED",
+                  repBasis: "TOTAL",
+                },
+              },
+            ],
+          },
+        ],
+      },
+    });
+  });
+
+  it("keeps a mixed classified plan on accepted V2 even when the gate is enabled", async () => {
+    process.env.TRAINER_EXERCISE_MEASUREMENT_ROLLOUT = "enabled";
+    mocks.tx.exercise.findMany.mockResolvedValue(
+      exerciseRows.map((row) =>
+        row.id === "bench"
+          ? {
+              ...row,
+              measurementProfile: "REPS_EXTERNAL_LOAD",
+              loadConvention: "BARBELL_TOTAL",
+              repBasis: "TOTAL",
+            }
+          : row,
+      ),
+    );
+
+    await makeHypertrophyPlanReady({
+      userId: "user-1",
+      planId: "plan-1",
+      expectedDraftRevision: 3,
+      warningsConfirmed: true,
+    });
+
+    expect(mocks.state.revisions[0]).toMatchObject({
+      seedPayload: { version: 2 },
     });
   });
 

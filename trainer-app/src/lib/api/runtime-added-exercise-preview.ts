@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { resolveRuntimeAddedAccessoryDefaults } from "@/lib/api/runtime-added-exercise-defaults";
 import type { PrimaryGoal, TrainingAge } from "@/lib/engine/types";
+import { parseMeasurementColumns } from "@/lib/exercise-measurement/semantics";
 
 type ExistingWorkoutSet = {
   targetReps?: number | null;
@@ -100,6 +101,7 @@ export async function resolveRuntimeAddedExercisePreviews(input: {
       where: { id: input.workoutId, userId: input.userId },
       select: {
         selectionMetadata: true,
+        seedRevision: { select: { seedPayload: true } },
         exercises: {
           orderBy: [{ orderIndex: "asc" }, { id: "asc" }],
           select: {
@@ -162,9 +164,15 @@ export async function resolveRuntimeAddedExercisePreviews(input: {
   if (!workout) {
     throw new Error("WORKOUT_NOT_FOUND");
   }
+  const measurementAware =
+    (workout.seedRevision?.seedPayload as { version?: unknown } | null)?.version === 3;
 
   const exerciseMap = new Map(
-    exercises.map((exercise) => [
+    exercises.flatMap((exercise) => {
+      if (measurementAware && parseMeasurementColumns(exercise) == null) {
+        return [];
+      }
+      return [[
       exercise.id,
       {
         id: exercise.id,
@@ -175,7 +183,8 @@ export async function resolveRuntimeAddedExercisePreviews(input: {
         isCompound: exercise.isCompound,
         equipment: exercise.exerciseEquipment.map((item) => item.equipment.type),
       } satisfies PreviewExercise,
-    ])
+      ] as const];
+    })
   );
 
   const latestLoadByExerciseId = new Map<string, number>();
@@ -198,7 +207,9 @@ export async function resolveRuntimeAddedExercisePreviews(input: {
     return [
       buildRuntimeAddedExercisePreview({
         exercise,
-        targetLoad: latestLoadByExerciseId.get(exerciseId) ?? null,
+        targetLoad: measurementAware
+          ? null
+          : latestLoadByExerciseId.get(exerciseId) ?? null,
         selectionMetadata: workout.selectionMetadata,
         currentExercises: workout.exercises,
         trainingAge,

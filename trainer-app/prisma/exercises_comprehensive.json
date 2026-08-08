@@ -16,7 +16,10 @@
     "stimulusBias": "Array of: mechanical (heavy tension), metabolic (pump/burn), stretch (lengthened position emphasis), stability (motor control)",
     "contraindications": "Object with body part keys (knee, low_back, shoulder, elbow, wrist, hip) mapping to true, or null",
     "primaryMuscles": "Array of muscles this exercise primarily targets",
-    "secondaryMuscles": "Array of muscles this exercise secondarily targets"
+    "secondaryMuscles": "Array of muscles this exercise secondarily targets",
+    "measurementProfile": "Optional reviewed execution default. Pilot values: REPS_EXTERNAL_LOAD, REPS_BODYWEIGHT, REPS_BODYWEIGHT_PLUS_LOAD, REPS_ASSISTED",
+    "loadConvention": "Optional reviewed load meaning. Null only for REPS_BODYWEIGHT; otherwise one of BARBELL_TOTAL, IMPLEMENT_WEIGHT, MACHINE_DISPLAYED, ADDED_EXTERNAL_LOAD, DISPLAYED_ASSISTANCE",
+    "repBasis": "Optional reviewed rep recording basis. Pilot values: TOTAL or PER_SIDE"
   },
   "_muscles": [
     "Chest",
@@ -41,6 +44,9 @@
   "exercises": [
     {
       "name": "Barbell Back Squat",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "squat"
       ],
@@ -122,6 +128,9 @@
     },
     {
       "name": "Goblet Squat",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "squat"
       ],
@@ -1411,6 +1420,9 @@
     },
     {
       "name": "Dumbbell Bench Press",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "horizontal_push"
       ],
@@ -2777,6 +2789,9 @@
     },
     {
       "name": "Pull-Up",
+      "measurementProfile": "REPS_BODYWEIGHT",
+      "loadConvention": null,
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "vertical_pull"
       ],
@@ -2854,6 +2869,9 @@
     },
     {
       "name": "Weighted Pull-Up",
+      "measurementProfile": "REPS_BODYWEIGHT_PLUS_LOAD",
+      "loadConvention": "ADDED_EXTERNAL_LOAD",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "vertical_pull"
       ],
@@ -2891,6 +2909,47 @@
         "max": 10
       },
       "timePerSetSec": 55
+    },
+    {
+      "name": "Machine-Assisted Pull-Up",
+      "measurementProfile": "REPS_ASSISTED",
+      "loadConvention": "DISPLAYED_ASSISTANCE",
+      "repBasis": "TOTAL",
+      "movementPatterns": [
+        "vertical_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": {
+        "shoulder": true
+      },
+      "primaryMuscles": [
+        "Lats",
+        "Biceps"
+      ],
+      "secondaryMuscles": [
+        "Upper Back",
+        "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 5,
+        "max": 12
+      },
+      "timePerSetSec": 45
     },
     {
       "name": "Lat Pulldown",
@@ -3371,6 +3430,9 @@
     },
     {
       "name": "Seated Cable Row",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "horizontal_pull"
       ],
@@ -3789,6 +3851,9 @@
     },
     {
       "name": "Alternating Dumbbell Curl",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "PER_SIDE",
       "movementPatterns": [
         "flexion"
       ],

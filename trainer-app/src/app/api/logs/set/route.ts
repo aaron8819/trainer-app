@@ -9,6 +9,10 @@ import { Prisma, WorkoutStatus } from "@prisma/client";
 import { resolveDefaultRestSecondsForExecutionSet } from "@/lib/logging/rest-timer-policy";
 import { quantizeLoad } from "@/lib/units/load-quantization";
 import { getSetValidity } from "@/lib/logging/setValidity";
+import {
+  parseMeasurementColumns,
+  quantizesAsPounds,
+} from "@/lib/exercise-measurement/semantics";
 import { getClosedMesocycleWorkoutFenceReason } from "@/lib/workout-workflow";
 import {
   executeWorkoutMutation,
@@ -85,6 +89,9 @@ export async function POST(request: Request) {
           exerciseId: true,
           section: true,
           isMainLift: true,
+          measurementProfile: true,
+          loadConvention: true,
+          repBasis: true,
           workout: {
             select: {
               id: true,
@@ -139,14 +146,25 @@ export async function POST(request: Request) {
       }
 
       const wasSkipped = parsed.data.wasSkipped ?? false;
+      const measurement = parseMeasurementColumns(workoutExercise);
       const normalizedActualLoad =
-        (parsed.data.actualLoad != null ? quantizeLoad(parsed.data.actualLoad) : undefined) ??
-        (!wasSkipped && baseSet.targetLoad === 0 ? 0 : undefined);
+        measurement?.profile === "REPS_BODYWEIGHT"
+          ? undefined
+          : (parsed.data.actualLoad != null
+              ? quantizesAsPounds(measurement)
+                ? quantizeLoad(parsed.data.actualLoad)
+                : parsed.data.actualLoad
+              : undefined) ??
+            (!measurement && !wasSkipped && baseSet.targetLoad === 0 ? 0 : undefined);
       const validity = getSetValidity({
         actualReps: parsed.data.actualReps,
         actualRpe: parsed.data.actualRpe,
-        actualLoad: normalizedActualLoad,
+        actualLoad:
+          measurement?.profile === "REPS_BODYWEIGHT"
+            ? parsed.data.actualLoad
+            : normalizedActualLoad,
         wasSkipped,
+        measurementProfile: measurement?.profile,
       });
       if (!validity.valid) {
         throw new SetLogMutationError(validity.reason ?? "Invalid set log", 400);
@@ -290,6 +308,9 @@ export async function POST(request: Request) {
                 },
               },
             },
+            measurementProfile: true,
+            loadConvention: true,
+            repBasis: true,
           },
         },
       },
@@ -308,14 +329,25 @@ export async function POST(request: Request) {
     }
     const wasSkipped = parsed.data.wasSkipped ?? false;
     const setIntent = parsed.data.setIntent ?? "WORK";
+    const measurement = parseMeasurementColumns(setRecord.workoutExercise);
     const normalizedActualLoad =
-      (parsed.data.actualLoad != null ? quantizeLoad(parsed.data.actualLoad) : undefined) ??
-      (!wasSkipped && setRecord.targetLoad === 0 ? 0 : undefined);
+      measurement?.profile === "REPS_BODYWEIGHT"
+        ? undefined
+        : (parsed.data.actualLoad != null
+            ? quantizesAsPounds(measurement)
+              ? quantizeLoad(parsed.data.actualLoad)
+              : parsed.data.actualLoad
+            : undefined) ??
+          (!measurement && !wasSkipped && setRecord.targetLoad === 0 ? 0 : undefined);
     const validity = getSetValidity({
       actualReps: parsed.data.actualReps,
       actualRpe: parsed.data.actualRpe,
-      actualLoad: normalizedActualLoad,
+      actualLoad:
+        measurement?.profile === "REPS_BODYWEIGHT"
+          ? parsed.data.actualLoad
+          : normalizedActualLoad,
       wasSkipped,
+      measurementProfile: measurement?.profile,
     });
     if (!validity.valid) {
       throw new SetLogMutationError(validity.reason ?? "Invalid set log", 400);
@@ -338,7 +370,8 @@ export async function POST(request: Request) {
       update: {
         actualReps: parsed.data.actualReps ?? undefined,
         actualRpe: parsed.data.actualRpe ?? undefined,
-        actualLoad: normalizedActualLoad,
+        actualLoad:
+          measurement?.profile === "REPS_BODYWEIGHT" ? null : normalizedActualLoad,
         setIntent,
         wasSkipped,
         notes: parsed.data.notes ?? undefined,

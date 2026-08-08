@@ -66,6 +66,12 @@ import {
   readRuntimeReplacedExercises,
 } from "@/lib/ui/selection-metadata";
 import { readSessionAuditSnapshot } from "@/lib/evidence/session-audit-snapshot";
+import {
+  measurementComparisonKey,
+  parseMeasurementColumns,
+  permitsComputedLoadComparison,
+  type MeasurementSemantics,
+} from "@/lib/exercise-measurement/semantics";
 
 const HISTORY_RECENCY_WINDOW_DAYS = 42;
 const CANONICAL_RATIONALE_COMPONENT_KEYS = [
@@ -306,10 +312,12 @@ export async function generateWorkoutExplanation(
       ? [effectiveRepRange.min, effectiveRepRange.max]
       : [8, 8];
     const equipmentTypes = workoutExercise.exercise.exerciseEquipment.map((item) => item.equipment.type);
+    const comparisonMeasurement = parseMeasurementColumns(workoutExercise);
     const lastPerformed = await loadLatestPerformedSetSummary(
       workout.userId,
       workout.id,
       workoutExercise.exerciseId,
+      comparisonMeasurement,
       workout.scheduledDate,
       isMainLiftEligible,
       repRange,
@@ -358,6 +366,7 @@ export async function generateWorkoutExplanation(
         userId: workout.userId,
         workoutId: workout.id,
         exerciseId: workoutExercise.exerciseId,
+        comparisonMeasurement,
         scheduledDate: workout.scheduledDate,
         selectionMode: workout.selectionMode ?? undefined,
         performedLogs: workoutExercise.sets.map((set) => ({
@@ -546,9 +555,15 @@ async function deriveWorkoutStats(
   const musclesApproachingMRV = computeMusclesApproachingMRV(weeklyWithCurrent);
 
   const plannedByExercise = buildPlannedMaxByExercise(workout.exercises);
+  const comparisonByExerciseId = new Map(
+    workout.exercises.map((exercise) => [
+      exercise.exerciseId,
+      parseMeasurementColumns(exercise),
+    ] as const),
+  );
   const historyMaxByExercise = await loadHistoricalExercisePerformance(
     workout.userId,
-    [...plannedByExercise.keys()],
+    comparisonByExerciseId,
     workout.id,
     client
   );
@@ -746,10 +761,11 @@ function getHistoricalEffectiveContribution(
 
 async function loadHistoricalExercisePerformance(
   userId: string,
-  exerciseIds: string[],
+  comparisonByExerciseId: ReadonlyMap<string, MeasurementSemantics | null>,
   excludeWorkoutId: string,
   client: ExplainabilityReader
 ): Promise<Map<string, { maxLoad: number | null; maxReps: number | null }>> {
+  const exerciseIds = [...comparisonByExerciseId.keys()];
   const output = new Map<string, { maxLoad: number | null; maxReps: number | null }>(
     exerciseIds.map((exerciseId) => [exerciseId, { maxLoad: null, maxReps: null }])
   );
@@ -781,6 +797,28 @@ async function loadHistoricalExercisePerformance(
   });
 
   for (const row of rows) {
+    const currentMeasurement = comparisonByExerciseId.get(row.exerciseId);
+    if (currentMeasurement === undefined) {
+      continue;
+    }
+    if (
+      currentMeasurement?.profile !== "REPS_BODYWEIGHT" &&
+      !permitsComputedLoadComparison(currentMeasurement)
+    ) {
+      continue;
+    }
+    if (
+      measurementComparisonKey({
+        exerciseId: row.exerciseId,
+        measurement: parseMeasurementColumns(row),
+      }) !==
+      measurementComparisonKey({
+        exerciseId: row.exerciseId,
+        measurement: currentMeasurement,
+      })
+    ) {
+      continue;
+    }
     if (
       !countsTowardCanonicalPerformanceHistory({
         advancesSplit: row.workout.advancesSplit,
@@ -979,6 +1017,7 @@ async function loadLatestPerformedSetSummary(
   userId: string,
   workoutId: string,
   exerciseId: string,
+  comparisonMeasurement: MeasurementSemantics | null,
   asOfDate: Date,
   isMainLiftEligible: boolean,
   repRange: [number, number],
@@ -986,10 +1025,14 @@ async function loadLatestPerformedSetSummary(
   isCompound: boolean | undefined,
   client: ExplainabilityReader
 ): Promise<(ProgressionSetSummary & { decisionLog?: string[] }) | null> {
+  if (!permitsComputedLoadComparison(comparisonMeasurement)) {
+    return null;
+  }
   const previous = await findLatestProgressionEligibleWorkoutExercise({
     userId,
     workoutId,
     exerciseId,
+    comparisonMeasurement,
     client,
   });
 
@@ -1051,6 +1094,7 @@ async function loadLatestPerformedSetSummary(
       selectionMode: previous.workout.selectionMode ?? undefined,
       scheduledDate: performedDate ?? undefined,
       exerciseId,
+      comparisonMeasurement,
       performedLogs,
       client,
     }
@@ -1079,6 +1123,7 @@ type ExplainabilityConfidenceInput = {
   workoutId: string;
   exposureId?: string;
   exerciseId: string;
+  comparisonMeasurement: MeasurementSemantics | null;
   selectionMode?: WorkoutSelectionMode;
   scheduledDate?: Date;
   plannedSets?: NextExposurePlannedSetInput[];
@@ -1156,6 +1201,7 @@ async function resolveExplainabilityHistoryConfidenceScale(
     userId: input.userId,
     workoutId: input.workoutId,
     exerciseId: input.exerciseId,
+    comparisonMeasurement: input.comparisonMeasurement,
     requiredSelectionMode: "INTENT",
     client: input.client,
   });
@@ -1187,6 +1233,7 @@ async function resolveExplainabilityConfidenceNotes(
     userId: input.userId,
     workoutId: input.workoutId,
     exerciseId: input.exerciseId,
+    comparisonMeasurement: input.comparisonMeasurement,
     requiredSelectionMode: "INTENT",
     client: input.client,
   });
@@ -1220,6 +1267,7 @@ async function resolveManualAnomalyFlags(
       userId: input.userId,
       workoutId: input.workoutId,
       exerciseId: input.exerciseId,
+      comparisonMeasurement: input.comparisonMeasurement,
       scheduledBefore: input.scheduledDate,
       requiredSelectionMode: "INTENT",
       client: input.client,
@@ -1249,11 +1297,16 @@ async function findLatestProgressionEligibleWorkoutExercise(input: {
   userId: string;
   workoutId: string;
   exerciseId: string;
+  comparisonMeasurement: MeasurementSemantics | null;
   scheduledBefore?: Date;
   requiredSelectionMode?: WorkoutSelectionMode;
   client: ExplainabilityReader;
 }) {
   let scheduledBefore = input.scheduledBefore;
+  const expectedComparisonKey = measurementComparisonKey({
+    exerciseId: input.exerciseId,
+    measurement: input.comparisonMeasurement,
+  });
 
   while (true) {
     const candidate = await input.client.workoutExercise.findFirst({
@@ -1299,7 +1352,12 @@ async function findLatestProgressionEligibleWorkoutExercise(input: {
       return null;
     }
 
+    const candidateComparisonKey = measurementComparisonKey({
+      exerciseId: input.exerciseId,
+      measurement: parseMeasurementColumns(candidate),
+    });
     if (
+      candidateComparisonKey === expectedComparisonKey &&
       !readRuntimeAddedExerciseIds(candidate.workout.selectionMetadata).has(candidate.id) &&
       isProgressionEligibleWorkout({
         selectionMetadata: candidate.workout.selectionMetadata,
@@ -1447,7 +1505,10 @@ async function buildNextExposureDecision(
   isCompound: boolean | undefined,
   input: NextExposureDecisionInput
 ): Promise<NextExposureDecision | null> {
-  if (!performedSemantics) {
+  if (
+    !performedSemantics ||
+    !permitsComputedLoadComparison(input.comparisonMeasurement)
+  ) {
     return null;
   }
 
@@ -2010,6 +2071,7 @@ async function loadExplainabilityProgressionSessions(
       userId: input.userId,
       workoutId: input.workoutId,
       exerciseId: input.exerciseId,
+      comparisonMeasurement: input.comparisonMeasurement,
       scheduledBefore,
       client: input.client,
     });
@@ -2023,6 +2085,7 @@ async function loadExplainabilityProgressionSessions(
         workoutId: input.workoutId,
         exposureId: previous.workoutId,
         exerciseId: input.exerciseId,
+        comparisonMeasurement: input.comparisonMeasurement,
         selectionMode: previous.workout.selectionMode ?? undefined,
         scheduledDate: previous.workout.scheduledDate,
         client: input.client,

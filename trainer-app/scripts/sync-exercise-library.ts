@@ -14,6 +14,10 @@ import { Pool } from "pg";
 import { assertOperationalProductionWriteAllowed } from "@/lib/operations/rollout-environment";
 import { exerciseAliases, type ExerciseAliasSeed } from "../prisma/exercise-aliases";
 import exercisesJson from "../prisma/exercises_comprehensive.json";
+import {
+  measurementColumns,
+  parseMeasurementColumns,
+} from "@/lib/exercise-measurement/semantics";
 
 export type CatalogExerciseSeed = {
   name: string;
@@ -34,6 +38,9 @@ export type CatalogExerciseSeed = {
   unilateral?: boolean;
   repRangeRecommendation?: { min: number; max: number };
   timePerSetSec?: number;
+  measurementProfile?: string | null;
+  loadConvention?: string | null;
+  repBasis?: string | null;
 };
 
 const catalogExercises = exercisesJson.exercises as CatalogExerciseSeed[];
@@ -56,6 +63,9 @@ type DbExercise = {
   isUnilateral: boolean;
   repRangeMin: number;
   repRangeMax: number;
+  measurementProfile?: string | null;
+  loadConvention?: string | null;
+  repBasis?: string | null;
   aliases: Array<{ alias: string; exerciseId: string }>;
   exerciseMuscles: Array<{ role: string; muscle: { id: string; name: string } }>;
   exerciseEquipment: Array<{ equipment: { id: string; name: string; type: string } }>;
@@ -205,6 +215,11 @@ function resolveTimePerSet(exercise: CatalogExerciseSeed): number {
 }
 
 export function buildExerciseData(exercise: CatalogExerciseSeed): Record<string, unknown> {
+  const measurement = parseMeasurementColumns({
+    measurementProfile: exercise.measurementProfile ?? null,
+    loadConvention: exercise.loadConvention ?? null,
+    repBasis: exercise.repBasis ?? null,
+  });
   return {
     movementPatterns: exercise.movementPatterns.map(parseMovementPattern),
     splitTags: [parseSplitTag(exercise.splitTag)],
@@ -222,6 +237,7 @@ export function buildExerciseData(exercise: CatalogExerciseSeed): Record<string,
     isUnilateral: Boolean(exercise.unilateral),
     repRangeMin: exercise.repRangeRecommendation?.min ?? 1,
     repRangeMax: exercise.repRangeRecommendation?.max ?? 20,
+    ...measurementColumns(measurement),
   };
 }
 
@@ -245,6 +261,13 @@ function normalizedCatalogExercise(exercise: CatalogExerciseSeed) {
     isUnilateral: Boolean(exercise.unilateral),
     repRangeMin: exercise.repRangeRecommendation?.min ?? 1,
     repRangeMax: exercise.repRangeRecommendation?.max ?? 20,
+    ...measurementColumns(
+      parseMeasurementColumns({
+        measurementProfile: exercise.measurementProfile ?? null,
+        loadConvention: exercise.loadConvention ?? null,
+        repBasis: exercise.repBasis ?? null,
+      }),
+    ),
   };
 }
 
@@ -276,6 +299,9 @@ function normalizedDbExercise(exercise: DbExercise) {
     isUnilateral: exercise.isUnilateral,
     repRangeMin: exercise.repRangeMin,
     repRangeMax: exercise.repRangeMax,
+    measurementProfile: exercise.measurementProfile ?? null,
+    loadConvention: exercise.loadConvention ?? null,
+    repBasis: exercise.repBasis ?? null,
   };
 }
 

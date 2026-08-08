@@ -245,6 +245,81 @@ describe("mesocycle-lifecycle", () => {
     expect(mesocycle?.slotPlanSeedJson).not.toEqual(compatibilitySeed);
   });
 
+  it("preserves the accepted V2 envelope and projects only accepted V3 for runtime", async () => {
+    const intent = {
+      userRole: "PRIMARY_LIFT",
+      target: { kind: "movement_pattern", movementPattern: "squat" },
+    };
+    const acceptedV2 = {
+      version: 2,
+      source: "custom_hypertrophy_plan_v1",
+      settings: { equipmentProfile: "FULL_GYM", sessionDurationMinutes: 60 },
+      slots: ["lower_a", "lower_b"].map((slotId) => ({
+        slotId,
+        name: slotId,
+        focus: "LOWER",
+        exercises: [
+          { exerciseId: "squat", role: "CORE_COMPOUND", setCount: 3, intent },
+        ],
+      })),
+    };
+    mocks.resolveActivePlanContext.mockResolvedValue({
+      status: "READY",
+      activeMesocycle: {
+        id: "hypertrophy-meso",
+        slotPlanSeedJson: null,
+        currentSeedRevision: { seedPayload: acceptedV2 },
+      },
+    });
+
+    expect((await loadActiveMesocycle("user-1"))?.slotPlanSeedJson).toEqual(
+      acceptedV2,
+    );
+
+    const acceptedV3 = {
+      ...acceptedV2,
+      version: 3,
+      slots: acceptedV2.slots.map((slot) => ({
+        ...slot,
+        exercises: slot.exercises.map((exercise) => ({
+          ...exercise,
+          measurement: {
+            profile: "REPS_EXTERNAL_LOAD",
+            loadConvention: "BARBELL_TOTAL",
+            repBasis: "TOTAL",
+          },
+        })),
+      })),
+    };
+    mocks.resolveActivePlanContext.mockResolvedValue({
+      status: "READY",
+      activeMesocycle: {
+        id: "hypertrophy-meso",
+        slotPlanSeedJson: null,
+        currentSeedRevision: { seedPayload: acceptedV3 },
+      },
+    });
+
+    expect((await loadActiveMesocycle("user-1"))?.slotPlanSeedJson).toEqual({
+      version: 2,
+      slots: ["lower_a", "lower_b"].map((slotId) => ({
+        slotId,
+        exercises: [
+          {
+            exerciseId: "squat",
+            role: "CORE_COMPOUND",
+            setCount: 3,
+            measurement: {
+              profile: "REPS_EXTERNAL_LOAD",
+              loadConvention: "BARBELL_TOTAL",
+              repBasis: "TOTAL",
+            },
+          },
+        ],
+      })),
+    });
+  });
+
   it.each([
     ["missing", undefined],
     ["null", null],

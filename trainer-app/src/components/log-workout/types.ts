@@ -42,6 +42,7 @@ export type LogExerciseInput = {
   name: string;
   equipment?: string[];
   loadIncrement?: number;
+  measurement?: import("@/lib/exercise-measurement/semantics").MeasurementSemantics;
   movementPatterns?: string[];
   muscleTags?: string[];
   muscleTagGroups?: LogExerciseMuscleTagGroups;

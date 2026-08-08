@@ -21,6 +21,11 @@ import {
 } from "./finisher-routine-seed-data";
 import { MUSCLE_SEED_ROWS } from "./muscle-seed-data";
 import { assertOperationalProductionWriteAllowed } from "@/lib/operations/rollout-environment";
+import {
+  isMeasurementPilotExerciseName,
+  measurementColumns,
+  parseMeasurementColumns,
+} from "@/lib/exercise-measurement/semantics";
 
 assertOperationalProductionWriteAllowed({
   argv: process.argv.slice(2),
@@ -533,6 +538,9 @@ async function renameExercises() {
 
   // First delete exercises that conflict with rename targets
   for (const name of EXERCISES_TO_DELETE_BEFORE_RENAME) {
+    if (isMeasurementPilotExerciseName(name)) {
+      throw new Error(`Measurement pilot exercise cannot be deleted: ${name}`);
+    }
     const existing = await prisma.exercise.findUnique({ where: { name } });
     if (existing) {
       // Clean up relations first
@@ -638,6 +646,11 @@ async function seedExercisesFromJson() {
     const difficulty = parseDifficulty(ex.difficulty);
 
     const timePerSetSec = resolveTimePerSet(ex);
+    const measurement = parseMeasurementColumns({
+      measurementProfile: ex.measurementProfile ?? null,
+      loadConvention: ex.loadConvention ?? null,
+      repBasis: ex.repBasis ?? null,
+    });
 
     const data = {
       movementPatterns,
@@ -659,6 +672,7 @@ async function seedExercisesFromJson() {
       isUnilateral: ex.unilateral,
       repRangeMin: ex.repRangeRecommendation.min,
       repRangeMax: ex.repRangeRecommendation.max,
+      ...measurementColumns(measurement),
     };
 
     const existing = await prisma.exercise.findUnique({ where: { name: ex.name } });
@@ -1110,6 +1124,10 @@ async function pruneStaleExercises() {
   const kept: string[] = [];
 
   for (const exercise of stale) {
+    if (isMeasurementPilotExerciseName(exercise.name)) {
+      kept.push(`${exercise.name} (measurement pilot identity)`);
+      continue;
+    }
     const hasHistory = exercise.workoutExercises.length > 0;
     const hasTemplates = exercise.templateExercises.length > 0;
 

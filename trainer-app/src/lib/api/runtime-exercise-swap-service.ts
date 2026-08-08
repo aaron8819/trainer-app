@@ -31,6 +31,11 @@ import {
   executeWorkoutMutation,
   isWorkoutMutationError,
 } from "@/lib/api/workout-mutation";
+import {
+  measurementColumns,
+  parseMeasurementColumns,
+  type MeasurementSemantics,
+} from "@/lib/exercise-measurement/semantics";
 
 type ExerciseRecord = Prisma.ExerciseGetPayload<{
   include: {
@@ -121,6 +126,7 @@ export type RuntimeExerciseSwapExercisePayload = {
   isMainLift: boolean;
   isSwapped: true;
   section: "WARMUP" | "MAIN" | "ACCESSORY";
+  measurement?: MeasurementSemantics;
   sessionNote: string;
   capabilities: {
     canAddSet: boolean;
@@ -245,6 +251,22 @@ function mapSourceSwapProfile(context: SwapContext): RuntimeExerciseSwapProfile 
   };
 }
 
+function isMeasurementAwareWorkout(context: SwapContext): boolean {
+  return (
+    (context.workout.seedRevision?.seedPayload as { version?: unknown } | null)
+      ?.version === 3
+  );
+}
+
+function measurementCompatiblePool(
+  context: SwapContext,
+  exercisePool: ExerciseRecord[],
+): ExerciseRecord[] {
+  return isMeasurementAwareWorkout(context)
+    ? exercisePool.filter((exercise) => parseMeasurementColumns(exercise) != null)
+    : exercisePool;
+}
+
 function toExistingWorkoutExerciseIds(context: SwapContext): Set<string> {
   return new Set(
     (context.workout.exercises ?? []).map((exercise) => exercise.exerciseId),
@@ -306,6 +328,9 @@ function toPreviewExercise(input: {
     isMainLift: input.context.workoutExercise.isMainLift,
     isSwapped: true,
     section: normalizeWorkoutSection(input.context.workoutExercise.section),
+    ...(isMeasurementAwareWorkout(input.context)
+      ? { measurement: parseMeasurementColumns(input.replacementExercise) ?? undefined }
+      : {}),
     sessionNote: formatRuntimeExerciseSwapNote({
       fromExerciseName: input.context.workoutExercise.exercise.name,
       fromExerciseId: input.context.workoutExercise.exerciseId,
@@ -674,19 +699,43 @@ async function resolveRuntimeExerciseSwap(input: {
           limit: DEFAULT_SWAP_SEARCH_LIMIT,
         })
       : undefined;
+  const requestedExercise = exercisePool.find(
+    (exercise) => exercise.id === input.replacementExerciseId,
+  );
+  if (
+    isMeasurementAwareWorkout(context) &&
+    requestedExercise &&
+    parseMeasurementColumns(requestedExercise) == null
+  ) {
+    throw buildRuntimeExerciseSwapError(
+      "This exercise is not yet available for measurement-aware workouts.",
+      { status: 409, code: "MEASUREMENT_AWARE_EXERCISE_REQUIRED" },
+    );
+  }
   const replacementExercise = selectEligibleReplacement({
     currentProfile,
-    exercisePool,
-    typedSearchExercisePool,
+    exercisePool: measurementCompatiblePool(context, exercisePool),
+    typedSearchExercisePool: typedSearchExercisePool
+      ? measurementCompatiblePool(context, typedSearchExercisePool)
+      : undefined,
     typedSearchLimit: DEFAULT_SWAP_SEARCH_LIMIT,
     replacementExerciseId: input.replacementExerciseId,
     existingExerciseIds: toExistingWorkoutExerciseIds(context),
     recentlyUsedExerciseIds,
   });
-  const targetLoad = await loadRecentExerciseLoad({
-    userId: input.userId,
-    exerciseId: replacementExercise.id,
-  });
+  const replacementMeasurement = parseMeasurementColumns(replacementExercise);
+  if (isMeasurementAwareWorkout(context) && !replacementMeasurement) {
+    throw buildRuntimeExerciseSwapError(
+      "This exercise is not yet available for measurement-aware workouts.",
+      { status: 409, code: "MEASUREMENT_AWARE_EXERCISE_REQUIRED" },
+    );
+  }
+  const targetLoad = isMeasurementAwareWorkout(context)
+    ? null
+    : await loadRecentExerciseLoad({
+        userId: input.userId,
+        exerciseId: replacementExercise.id,
+      });
 
   return {
     context,
@@ -765,7 +814,7 @@ export async function resolveRuntimeExerciseSwapCandidates(input: {
     const searchMatchedCandidates = buildRuntimeExerciseSwapCandidates({
       current: mapSourceSwapProfile(context),
       candidates: mapSwapProfilePool({
-        exercisePool: searchMatchedExercisePool,
+        exercisePool: measurementCompatiblePool(context, searchMatchedExercisePool),
         recentlyUsedExerciseIds,
       }),
       excludedExerciseIds: toExistingWorkoutExerciseIds(context),
@@ -785,7 +834,7 @@ export async function resolveRuntimeExerciseSwapCandidates(input: {
   return buildRuntimeExerciseSwapCandidates({
     current: mapSourceSwapProfile(context),
     candidates: mapSwapProfilePool({
-      exercisePool,
+      exercisePool: measurementCompatiblePool(context, exercisePool),
       recentlyUsedExerciseIds,
     }),
     excludedExerciseIds: toExistingWorkoutExerciseIds(context),
@@ -868,6 +917,26 @@ export async function applyRuntimeExerciseSwap(input: {
       );
     }
 
+    const measurementAware = isMeasurementAwareWorkout(latestContext);
+    const committedMeasurement = measurementAware
+      ? parseMeasurementColumns(
+          (await tx.exercise.findUnique({
+            where: { id: resolution.replacementExercise.id },
+            select: {
+              measurementProfile: true,
+              loadConvention: true,
+              repBasis: true,
+            },
+          })) ?? {},
+        )
+      : null;
+    if (measurementAware && !committedMeasurement) {
+      throw buildRuntimeExerciseSwapError(
+        "This exercise is not yet available for measurement-aware workouts.",
+        { status: 409, code: "MEASUREMENT_AWARE_EXERCISE_REQUIRED" },
+      );
+    }
+
     const replaced = await tx.workoutExercise.updateMany({
       where: {
         id: resolution.context.workoutExercise.id,
@@ -879,6 +948,7 @@ export async function applyRuntimeExerciseSwap(input: {
         movementPatterns: resolution.replacementExercise.movementPatterns,
         stimulusAccountingSnapshot:
           replacementStimulusAccountingSnapshot as unknown as Prisma.InputJsonValue,
+        ...measurementColumns(measurementAware ? committedMeasurement : null),
       },
     });
     if (replaced.count !== 1) {
@@ -958,7 +1028,14 @@ export async function applyRuntimeExerciseSwap(input: {
         selectionMetadata: selectionMetadata as Prisma.InputJsonValue,
       },
     });
-      return { exercise: resolution.exercise };
+      return {
+        exercise: {
+          ...resolution.exercise,
+          ...(committedMeasurement
+            ? { measurement: committedMeasurement }
+            : { measurement: undefined }),
+        },
+      };
     });
 
     return { ...mutation.result, revision: mutation.revision };

@@ -1,7 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { AcceptedHypertrophySeedV2 } from "@/lib/engine/hypertrophy-plan-authoring";
+import type {
+  AcceptedHypertrophySeedV2,
+  AcceptedHypertrophySeedV3,
+} from "@/lib/engine/hypertrophy-plan-authoring";
 import {
   canonicalizeJson,
   createCorrectiveSeedRevisionInTransaction,
@@ -86,6 +89,25 @@ function acceptedSeedV2(): AcceptedHypertrophySeedV2 {
         ],
       },
     ],
+  };
+}
+
+function acceptedSeedV3(): AcceptedHypertrophySeedV3 {
+  const v2 = acceptedSeedV2();
+  return {
+    ...v2,
+    version: 3,
+    slots: v2.slots.map((slot) => ({
+      ...slot,
+      exercises: slot.exercises.map((exercise) => ({
+        ...exercise,
+        measurement: {
+          profile: "REPS_EXTERNAL_LOAD" as const,
+          loadConvention: "BARBELL_TOTAL" as const,
+          repBasis: "TOTAL" as const,
+        },
+      })),
+    })),
   };
 }
 
@@ -594,6 +616,36 @@ describe("accepted seed normalization and hashing", () => {
     });
     expect(version2.executablePayload).toEqual(version1.executablePayload);
     expect(version2.hash).not.toBe(version1.hash);
+  });
+
+  it("hashes V3 measurement and projects only executable V2 fields", () => {
+    const original = acceptedSeedV3();
+    const normalized = normalizeAcceptedSeedPayload(original);
+    expect(normalized.payloadVersion).toBe(3);
+    expect(normalized.executablePayload).toEqual({
+      version: 2,
+      slots: original.slots.map((slot) => ({
+        slotId: slot.slotId,
+        exercises: slot.exercises.map(
+          ({ exerciseId, role, setCount, measurement }) => ({
+            exerciseId,
+            role,
+            setCount,
+            measurement,
+          }),
+        ),
+      })),
+    });
+    expect(JSON.stringify(normalized.executablePayload)).not.toMatch(
+      /settings|focus|intent|name/,
+    );
+    const changed = structuredClone(original);
+    changed.slots[0]!.exercises[0]!.measurement = {
+      profile: "REPS_EXTERNAL_LOAD",
+      loadConvention: "IMPLEMENT_WEIGHT",
+      repBasis: "TOTAL",
+    };
+    expect(normalizeAcceptedSeedPayload(changed).hash).not.toBe(normalized.hash);
   });
 
   it("rejects version 2 correction topology changes and preserves enriched intent", async () => {

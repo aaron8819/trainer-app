@@ -130,6 +130,26 @@ enum SetIntent {
   WARMUP
 }
 
+enum MeasurementProfile {
+  REPS_EXTERNAL_LOAD
+  REPS_BODYWEIGHT
+  REPS_BODYWEIGHT_PLUS_LOAD
+  REPS_ASSISTED
+}
+
+enum LoadConvention {
+  BARBELL_TOTAL
+  IMPLEMENT_WEIGHT
+  MACHINE_DISPLAYED
+  ADDED_EXTERNAL_LOAD
+  DISPLAYED_ASSISTANCE
+}
+
+enum RepBasis {
+  TOTAL
+  PER_SIDE
+}
+
 enum StimulusBias {
   MECHANICAL
   METABOLIC
@@ -415,6 +435,9 @@ model Exercise {
   isUnilateral        Boolean             @default(false)
   repRangeMin         Int                 @default(1)
   repRangeMax         Int                 @default(20)
+  measurementProfile  MeasurementProfile?
+  loadConvention      LoadConvention?
+  repBasis             RepBasis?
 
   variations             ExerciseVariation[]
   aliases                ExerciseAlias[]
@@ -805,6 +828,9 @@ model WorkoutExercise {
   isMainLift                 Boolean
   movementPatterns           MovementPatternV2[]     @default([])
   stimulusAccountingSnapshot Json?
+  measurementProfile         MeasurementProfile?
+  loadConvention             LoadConvention?
+  repBasis                    RepBasis?
   notes                      String?
 
   sets WorkoutSet[]

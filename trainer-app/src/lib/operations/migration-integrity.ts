@@ -23,6 +23,7 @@ export const EXPECTED_MIGRATION_CHAIN = [
   "20260728120000_add_finishers_phase_1",
   "20260803120000_add_finisher_management",
   "20260804120000_add_custom_hypertrophy_plan_drafts",
+  "20260807120000_add_exercise_measurement_foundation",
 ] as const;
 
 export type LedgerRow = {
@@ -365,6 +366,56 @@ export const PENDING_ARCHITECTURE_MANIFEST: readonly PendingMigrationExpectation
         table: "HypertrophyPlanDraft",
         name: "HypertrophyPlanDraft_revision_check",
         definitionIncludes: ["revision", ">= 1"],
+      },
+    ],
+  },
+  {
+    migration: "20260807120000_add_exercise_measurement_foundation",
+    effect: "objects",
+    objects: [
+      ...["measurementProfile", "loadConvention", "repBasis"].flatMap((name) => [
+        {
+          kind: "column" as const,
+          table: "Exercise",
+          name,
+          column: {
+            type:
+              name === "measurementProfile"
+                ? '"MeasurementProfile"'
+                : name === "loadConvention"
+                  ? '"LoadConvention"'
+                  : '"RepBasis"',
+            nullable: true,
+            default: null,
+          },
+        },
+        {
+          kind: "column" as const,
+          table: "WorkoutExercise",
+          name,
+          column: {
+            type:
+              name === "measurementProfile"
+                ? '"MeasurementProfile"'
+                : name === "loadConvention"
+                  ? '"LoadConvention"'
+                  : '"RepBasis"',
+            nullable: true,
+            default: null,
+          },
+        },
+      ]),
+      {
+        kind: "constraint",
+        table: "Exercise",
+        name: "Exercise_measurement_tuple_check",
+        definitionIncludes: ["measurementProfile", "REPS_ASSISTED", "DISPLAYED_ASSISTANCE"],
+      },
+      {
+        kind: "constraint",
+        table: "WorkoutExercise",
+        name: "WorkoutExercise_measurement_tuple_check",
+        definitionIncludes: ["measurementProfile", "REPS_ASSISTED", "DISPLAYED_ASSISTANCE"],
       },
     ],
   },

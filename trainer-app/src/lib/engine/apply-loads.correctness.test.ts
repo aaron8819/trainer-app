@@ -2557,4 +2557,110 @@ describe("applyLoads correctness", () => {
       "exact_exercise_bound_exposure"
     );
   });
+
+  it("requires exact frozen measurement semantics before classified history can assign load", () => {
+    const classifiedWorkout: WorkoutPlan = {
+      id: "classified-bench",
+      scheduledDate: "2026-07-22T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [
+        {
+          id: "we-classified",
+          exercise: bench,
+          orderIndex: 0,
+          isMainLift: true,
+          measurement: {
+            profile: "REPS_EXTERNAL_LOAD",
+            loadConvention: "BARBELL_TOTAL",
+            repBasis: "TOTAL",
+          },
+          sets: [{ setIndex: 1, targetReps: 8, targetRpe: 8 }],
+        },
+      ],
+      accessories: [],
+      estimatedMinutes: 30,
+    };
+    const baseHistory: WorkoutHistoryEntry = {
+      date: "2026-07-20T00:00:00.000Z",
+      completed: true,
+      status: "COMPLETED",
+      sessionIntent: "push",
+      progressionEligible: true,
+      performanceEligible: true,
+      selectionMode: "INTENT",
+      confidence: 1,
+      exercises: [
+        {
+          exerciseId: "bench",
+          sets: [
+            { exerciseId: "bench", setIndex: 1, reps: 8, rpe: 8, load: 185 },
+          ],
+        },
+      ],
+    };
+    const options = {
+      baselines: [],
+      exerciseById: { bench },
+      primaryGoal: "hypertrophy" as const,
+      profile: { trainingAge: "intermediate" as const },
+      sessionIntent: "push" as const,
+    };
+
+    const legacyOnly = applyLoadsWithAudit(classifiedWorkout, {
+      ...options,
+      history: [baseHistory],
+    });
+    expect(legacyOnly.audit.progressionTraces.bench).toBeUndefined();
+
+    const exact = applyLoadsWithAudit(classifiedWorkout, {
+      ...options,
+      history: [
+        {
+          ...baseHistory,
+          exercises: [
+            {
+              ...baseHistory.exercises[0],
+              measurement: classifiedWorkout.mainLifts[0].measurement,
+            },
+          ],
+        },
+      ],
+    });
+    expect(exact.workout.mainLifts[0].sets[0].targetLoad).toBe(185);
+
+    const machine = applyLoadsWithAudit(
+      {
+        ...classifiedWorkout,
+        mainLifts: [
+          {
+            ...classifiedWorkout.mainLifts[0],
+            measurement: {
+              profile: "REPS_EXTERNAL_LOAD",
+              loadConvention: "MACHINE_DISPLAYED",
+              repBasis: "TOTAL",
+            },
+          },
+        ],
+      },
+      {
+        ...options,
+        history: [
+          {
+            ...baseHistory,
+            exercises: [
+              {
+                ...baseHistory.exercises[0],
+                measurement: {
+                  profile: "REPS_EXTERNAL_LOAD",
+                  loadConvention: "MACHINE_DISPLAYED",
+                  repBasis: "TOTAL",
+                },
+              },
+            ],
+          },
+        ],
+      },
+    );
+    expect(machine.workout.mainLifts[0].sets[0].targetLoad).toBeUndefined();
+  });
 });

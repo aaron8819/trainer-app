@@ -46,6 +46,10 @@ import {
   isCanonicalDeloadPhase,
 } from "@/lib/deload/semantics";
 import {
+  measurementComparisonKey,
+  permitsComputedLoadComparison,
+} from "@/lib/exercise-measurement/semantics";
+import {
   applyCalibrationToEstimate,
   resolveCalibrationConfidenceScale,
   resolveLoadCalibrationPolicy,
@@ -217,6 +221,11 @@ export function applyLoadsWithAudit(
 
   const applyToExercise = (exerciseEntry: WorkoutPlan["mainLifts"][number]) => {
     const exercise = exerciseEntry.exercise;
+    const usesLegacyMeasurement = exerciseEntry.measurement == null;
+    const historyKey = measurementComparisonKey({
+      exerciseId: exercise.id,
+      measurement: exerciseEntry.measurement ?? null,
+    });
     const workingRole = exerciseEntry.isMainLift ? "main" : "accessory";
     const setsWithRole = exerciseEntry.sets.map((set) => ({
       ...set,
@@ -237,14 +246,17 @@ export function applyLoadsWithAudit(
       : undefined;
     const targetRpe =
       setsWithRole.find((set) => set.setIndex === 1)?.targetRpe ?? defaultTargetRpe;
-    const resolvedLoad = resolveLoadForExercise(
+    const resolvedLoad = permitsComputedLoadComparison(
+      exerciseEntry.measurement ?? null,
+    )
+      ? resolveLoadForExercise(
         exercise,
-        historyIndex.get(exercise.id),
-        crossIntentHistoryIndex.get(exercise.id),
-        baselineIndex.get(exercise.id),
-        baselineLoadIndex,
-        historyTopLoadIndex,
-        runtimeAddedCalibrationHistoryIndex.get(exercise.id),
+        historyIndex.get(historyKey),
+        crossIntentHistoryIndex.get(historyKey),
+        usesLegacyMeasurement ? baselineIndex.get(exercise.id) : undefined,
+        usesLegacyMeasurement ? baselineLoadIndex : new Map<string, number>(),
+        usesLegacyMeasurement ? historyTopLoadIndex : new Map<string, number>(),
+        runtimeAddedCalibrationHistoryIndex.get(historyKey),
         options.exerciseById,
         options.profile?.weightKg,
         repRange,
@@ -258,12 +270,13 @@ export function applyLoadsWithAudit(
         options.sessionIntent,
         useNewMesocycleBaselineSource,
         options.loadIncrementByExerciseId?.[exercise.id]
-      );
+      )
+      : { load: undefined, source: "estimate" as const };
     if (resolvedLoad.progressionTrace) {
       progressionTraces[exercise.id] = resolvedLoad.progressionTrace;
     }
     const deloadReferenceLoad = periodization?.isDeload
-      ? resolveDeloadReferenceLoad(exercise, accumulationHistoryIndex.get(exercise.id))
+      ? resolveDeloadReferenceLoad(exercise, accumulationHistoryIndex.get(historyKey))
       : undefined;
     // Deload still resolves the canonical source load first; the lighter
     // deload prescription is applied here rather than upstream in generation.
@@ -276,7 +289,10 @@ export function applyLoadsWithAudit(
         ? "existing_target_load"
         : (deloadReferenceLoad?.source ?? resolvedLoad.source);
 
-    if (load === undefined) {
+    if (
+      load === undefined ||
+      (exerciseEntry.measurement != null && load <= 0)
+    ) {
       return exerciseEntry.isMainLift
         ? { ...exerciseEntry, role: exerciseEntry.role ?? workingRole, sets: setsWithRole, warmupSets: undefined }
         : { ...exerciseEntry, role: exerciseEntry.role ?? workingRole, sets: setsWithRole };
@@ -425,10 +441,17 @@ function buildRuntimeAddedCalibrationHistoryIndex(
       ) {
         continue;
       }
-      if (!index.has(exercise.exerciseId)) {
-        index.set(exercise.exerciseId, []);
+      const key = measurementComparisonKey({
+        exerciseId: exercise.exerciseId,
+        measurement: exercise.measurement ?? null,
+      });
+      if (!permitsComputedLoadComparison(exercise.measurement ?? null)) {
+        continue;
       }
-      index.get(exercise.exerciseId)?.push({
+      if (!index.has(key)) {
+        index.set(key, []);
+      }
+      index.get(key)?.push({
         exposureId: entry.workoutId ?? `history:${entry.date}`,
         date: entry.date,
         source: "runtime_added_same_exercise",
@@ -472,10 +495,17 @@ function buildSessionHistoryIndex(
       if (exercise.sets.length === 0) {
         continue;
       }
-      if (!index.has(exercise.exerciseId)) {
-        index.set(exercise.exerciseId, []);
+      const key = measurementComparisonKey({
+        exerciseId: exercise.exerciseId,
+        measurement: exercise.measurement ?? null,
+      });
+      if (!permitsComputedLoadComparison(exercise.measurement ?? null)) {
+        continue;
       }
-      index.get(exercise.exerciseId)?.push({
+      if (!index.has(key)) {
+        index.set(key, []);
+      }
+      index.get(key)?.push({
         exposureId: entry.workoutId ?? `history:${entry.date}`,
         date: entry.date,
         source: "exact_exercise_history",
@@ -565,10 +595,13 @@ type WorkoutSessionHistory = CanonicalProgressionHistorySession & {
 
 function buildHistoryTopLoadIndex(historyIndex: Map<string, WorkoutSessionHistory[]>) {
   const topLoadIndex = new Map<string, number>();
-  for (const [exerciseId, sessions] of historyIndex.entries()) {
+  for (const [comparisonKey, sessions] of historyIndex.entries()) {
+    if (!comparisonKey.startsWith("legacy:")) {
+      continue;
+    }
     const modalLoad = resolveWeightedModalLoadAcrossHistory(sessions);
     if (modalLoad !== undefined) {
-      topLoadIndex.set(exerciseId, modalLoad);
+      topLoadIndex.set(comparisonKey.slice("legacy:".length), modalLoad);
     }
   }
   return topLoadIndex;

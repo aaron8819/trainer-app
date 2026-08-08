@@ -9,6 +9,7 @@ import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-s
 import { getAccumulationWeeks } from "./mesocycle-lifecycle-math";
 import { enterMesocycleHandoffInTransaction } from "./mesocycle-handoff";
 import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
+import { normalizeAcceptedSeedPayload } from "./mesocycle-seed-revision";
 import {
   requireSupportedPlanType,
 } from "@/lib/plan-types";
@@ -542,6 +543,12 @@ export async function loadActiveMesocycle(
       ? { sessionCapacityReductionManifest }
       : {}),
     slotPlanSeedJson:
-      mesocycle.currentSeedRevision?.seedPayload ?? mesocycle.slotPlanSeedJson,
+      mesocycle.currentSeedRevision?.seedPayload
+        ? (mesocycle.currentSeedRevision.seedPayload as { version?: unknown })
+            .version === 3
+          ? normalizeAcceptedSeedPayload(mesocycle.currentSeedRevision.seedPayload)
+              .executablePayload as Prisma.JsonValue
+          : mesocycle.currentSeedRevision.seedPayload
+        : mesocycle.slotPlanSeedJson,
   };
 }

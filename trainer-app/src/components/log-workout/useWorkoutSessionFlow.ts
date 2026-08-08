@@ -28,6 +28,7 @@ import type {
   UndoSnapshot,
 } from "@/components/log-workout/types";
 import { getSetValidity } from "@/lib/logging/setValidity";
+import { permitsComputedLoadComparison } from "@/lib/exercise-measurement/semantics";
 import { getLoadRecommendation } from "@/lib/progression/load-coaching";
 import {
   resolveExternalLoadDirection,
@@ -206,6 +207,7 @@ export function useWorkoutSessionFlow({
       const wasAlreadyLogged = loggedSetIds.has(setId);
       const mergedSet = { ...targetSet.set, ...overrides };
       const isBodyweightTarget =
+        !targetSet.exercise.measurement &&
         isBodyweightExercise(targetSet.exercise) &&
         (targetSet.set.targetLoad === null ||
           targetSet.set.targetLoad === undefined ||
@@ -213,7 +215,9 @@ export function useWorkoutSessionFlow({
       const normalizedSet: LogSetInput = {
         ...mergedSet,
         actualLoad:
-          !(mergedSet.wasSkipped ?? false) && isBodyweightTarget && mergedSet.actualLoad == null
+          targetSet.exercise.measurement?.profile === "REPS_BODYWEIGHT"
+            ? null
+            : !(mergedSet.wasSkipped ?? false) && isBodyweightTarget && mergedSet.actualLoad == null
             ? 0
             : mergedSet.actualLoad,
       };
@@ -222,6 +226,7 @@ export function useWorkoutSessionFlow({
         actualRpe: normalizedSet.actualRpe,
         actualLoad: normalizedSet.actualLoad,
         wasSkipped: normalizedSet.wasSkipped,
+        measurementProfile: targetSet.exercise.measurement?.profile,
       });
       if (!validity.valid) {
         showError(validity.reason ?? "Unable to log set");
@@ -291,7 +296,12 @@ export function useWorkoutSessionFlow({
             !nextLogged.has(item.set.setId) &&
             item.set.targetRpe != null
         );
-        if (nextExerciseSet && normalizedSet.actualRpe != null && targetSet.set.targetRpe != null) {
+        if (
+          permitsComputedLoadComparison(targetSet.exercise.measurement ?? null) &&
+          nextExerciseSet &&
+          normalizedSet.actualRpe != null &&
+          targetSet.set.targetRpe != null
+        ) {
           const repRange = targetSet.set.targetRepRange ?? {
             min: targetSet.set.targetReps,
             max: targetSet.set.targetReps,

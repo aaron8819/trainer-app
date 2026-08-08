@@ -307,6 +307,55 @@ describe("generateWorkoutExplanation progression receipt", () => {
     expect(receipt?.decisionLog?.length).toBeGreaterThan(0);
   });
 
+  it("does not use machine-displayed history for progression receipts or next-exposure decisions", async () => {
+    const currentWorkout = await mocks.workoutFindUnique();
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      ...currentWorkout,
+      exercises: currentWorkout.exercises.map((exercise: Record<string, unknown>) => ({
+        ...exercise,
+        measurementProfile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "MACHINE_DISPLAYED",
+        repBasis: "TOTAL",
+      })),
+    });
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect(result.progressionReceipts.get("ex1")?.lastPerformed).toBeNull();
+    expect(result.nextExposureDecisions.has("ex1")).toBe(false);
+    expect(mocks.workoutExerciseFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("does not compare classified history with an incompatible frozen tuple", async () => {
+    const currentWorkout = await mocks.workoutFindUnique();
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      ...currentWorkout,
+      exercises: currentWorkout.exercises.map((exercise: Record<string, unknown>) => ({
+        ...exercise,
+        measurementProfile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "BARBELL_TOTAL",
+        repBasis: "TOTAL",
+      })),
+    });
+    const previous = await mocks.workoutExerciseFindFirst();
+    mocks.workoutExerciseFindFirst
+      .mockResolvedValueOnce({
+        ...previous,
+        measurementProfile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "IMPLEMENT_WEIGHT",
+        repBasis: "TOTAL",
+      })
+      .mockResolvedValueOnce(null);
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect(result.progressionReceipts.get("ex1")?.lastPerformed).toBeNull();
+  });
+
   it("summarizes latest performed load using modal load across sets", async () => {
     mocks.workoutFindUnique.mockResolvedValueOnce({
       id: "w1",

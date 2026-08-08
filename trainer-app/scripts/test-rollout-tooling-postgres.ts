@@ -76,6 +76,16 @@ function psql(sql: string, tuplesOnly = false): string {
   return result.stdout.trim();
 }
 
+function psqlMustFail(sql: string, expected: RegExp): void {
+  const result = run("docker", [
+    "exec", "-i", containerName, "psql", "-v", "ON_ERROR_STOP=1", "-U", "trainer", "-d", "trainer",
+  ], { input: sql, quiet: true });
+  const output = `${result.stdout}\n${result.stderr}`;
+  if (result.status === 0 || !expected.test(output)) {
+    throw new Error(`Expected SQL failure did not occur: ${output}`);
+  }
+}
+
 function migrationDirectories(): string[] {
   const root = join(process.cwd(), "prisma", "migrations");
   return readdirSync(root, { withFileTypes: true })
@@ -355,6 +365,76 @@ function insertHistoricalFixture(): void {
   `);
 }
 
+function assertMeasurementTupleConstraints(): void {
+  const rows = [
+    {
+      table: "Exercise",
+      id: "rollout-exercise",
+      constraint: "Exercise_measurement_tuple_check",
+    },
+    {
+      table: "WorkoutExercise",
+      id: "rollout-workout-exercise",
+      constraint: "WorkoutExercise_measurement_tuple_check",
+    },
+  ] as const;
+  const validTuples = [
+    ["NULL", "NULL", "NULL"],
+    ["'REPS_BODYWEIGHT'", "NULL", "'TOTAL'"],
+    ["'REPS_EXTERNAL_LOAD'", "'BARBELL_TOTAL'", "'TOTAL'"],
+    ["'REPS_EXTERNAL_LOAD'", "'IMPLEMENT_WEIGHT'", "'PER_SIDE'"],
+    ["'REPS_EXTERNAL_LOAD'", "'MACHINE_DISPLAYED'", "'TOTAL'"],
+    ["'REPS_BODYWEIGHT_PLUS_LOAD'", "'ADDED_EXTERNAL_LOAD'", "'TOTAL'"],
+    ["'REPS_ASSISTED'", "'DISPLAYED_ASSISTANCE'", "'TOTAL'"],
+  ] as const;
+  const invalidTuples = [
+    ["NULL", "'BARBELL_TOTAL'", "'TOTAL'"],
+    ["'REPS_EXTERNAL_LOAD'", "NULL", "'TOTAL'"],
+    ["'REPS_EXTERNAL_LOAD'", "'BARBELL_TOTAL'", "NULL"],
+    ["'REPS_BODYWEIGHT'", "'BARBELL_TOTAL'", "'TOTAL'"],
+    ["'REPS_BODYWEIGHT_PLUS_LOAD'", "'IMPLEMENT_WEIGHT'", "'TOTAL'"],
+    ["'REPS_ASSISTED'", "'ADDED_EXTERNAL_LOAD'", "'TOTAL'"],
+    ["'REPS_EXTERNAL_LOAD'", "'DISPLAYED_ASSISTANCE'", "'TOTAL'"],
+  ] as const;
+
+  for (const row of rows) {
+    for (const [profile, loadConvention, repBasis] of validTuples) {
+      psql(`
+        BEGIN;
+        UPDATE "${row.table}"
+        SET "measurementProfile" = ${profile},
+            "loadConvention" = ${loadConvention},
+            "repBasis" = ${repBasis}
+        WHERE "id" = '${row.id}';
+        ROLLBACK;
+      `);
+    }
+    for (const [profile, loadConvention, repBasis] of invalidTuples) {
+      psqlMustFail(`
+        UPDATE "${row.table}"
+        SET "measurementProfile" = ${profile},
+            "loadConvention" = ${loadConvention},
+            "repBasis" = ${repBasis}
+        WHERE "id" = '${row.id}';
+      `, new RegExp(row.constraint));
+    }
+  }
+
+  const mutatedRows = psql(`
+    SELECT
+      (SELECT COUNT(*) FROM "Exercise"
+       WHERE "id" = 'rollout-exercise'
+         AND ("measurementProfile" IS NOT NULL OR "loadConvention" IS NOT NULL OR "repBasis" IS NOT NULL))
+      +
+      (SELECT COUNT(*) FROM "WorkoutExercise"
+       WHERE "id" = 'rollout-workout-exercise'
+         AND ("measurementProfile" IS NOT NULL OR "loadConvention" IS NOT NULL OR "repBasis" IS NOT NULL));
+  `, true);
+  if (mutatedRows !== "0") {
+    throw new Error("Measurement constraint probes changed historical null tuples");
+  }
+}
+
 function readinessContract(input: {
   slotId: string;
   sessionInWeek: number;
@@ -566,7 +646,7 @@ try {
   writeFileSync(envFile, `DATABASE_URL=${disposableUrl}\nDIRECT_URL=${disposableUrl}\n`);
 
   const migrations = migrationDirectories();
-  if (migrations.length !== 18) throw new Error(`Expected 18 migrations, found ${migrations.length}`);
+  if (migrations.length !== 21) throw new Error(`Expected 21 migrations, found ${migrations.length}`);
   const baselineMigration = migrations[0];
   const setIntentMigration = migrations[9];
 
@@ -717,14 +797,14 @@ try {
   }
 
   const beforeStateA = databaseStateFingerprint();
-  const migrationStateA = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
+  const migrationStateA = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 0);
   const afterStateA = databaseStateFingerprint();
   if (beforeStateA !== afterStateA) throw new Error("State A migration integrity inspection changed disposable database state");
   const stateALedger = objectField(migrationStateA, "ledger");
   const stateASchema = objectField(migrationStateA, "schemaIntegrity");
   if (
     numberField(objectField(migrationStateA, "chain"), "applied") !== 10 ||
-    numberField(objectField(migrationStateA, "chain"), "pending") !== 8 ||
+    numberField(objectField(migrationStateA, "chain"), "pending") !== 11 ||
     numberField(objectField(migrationStateA, "checksums"), "matched") !== 10 ||
     arrayField(stateALedger, "incomplete").length !== 0 ||
     arrayField(stateALedger, "orderViolations").length !== 0 ||
@@ -733,7 +813,7 @@ try {
     numberField(stateASchema, "semanticDriftBlocking") !== 0 ||
     numberField(stateASchema, "representationWarningCount") !== 2
   ) {
-    throw new Error(`State A did not reject the stale rollout shape: ${JSON.stringify(migrationStateA)}`);
+    throw new Error(`State A did not report the clean pending-migration shape: ${JSON.stringify(migrationStateA)}`);
   }
 
   requireUniquenessAssessment(migrationStateA, "ExerciseAlias_alias_key", {
@@ -755,7 +835,7 @@ try {
     CREATE UNIQUE INDEX "WorkoutTemplateExercise_templateId_orderIndex_key"
       ON "WorkoutTemplateExercise"("templateId", "orderIndex");
   `);
-  const standaloneRepresentation = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
+  const standaloneRepresentation = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 0);
   requireUniquenessAssessment(standaloneRepresentation, "ExerciseAlias_alias_key", {
     semantic: true,
     representation: true,
@@ -964,7 +1044,7 @@ try {
   if (
     numberField(objectField(currentProductionState, "chain"), "applied") !==
       currentProductionAppliedCount ||
-    numberField(objectField(currentProductionState, "chain"), "pending") !== 1 ||
+    numberField(objectField(currentProductionState, "chain"), "pending") !== 4 ||
     currentProductionState.migrationIntegrityValid !== true
   ) {
     throw new Error(
@@ -983,12 +1063,13 @@ try {
   const afterStateE = databaseStateFingerprint();
   if (beforeStateE !== afterStateE) throw new Error("State E migration integrity inspection changed disposable database state");
   if (
-    numberField(objectField(migrationStateE, "chain"), "applied") !== 18 ||
+    numberField(objectField(migrationStateE, "chain"), "applied") !== 21 ||
     numberField(objectField(migrationStateE, "chain"), "pending") !== 0 ||
     migrationStateE.migrationIntegrityValid !== true
   ) {
     throw new Error(`State E did not report a clean fully migrated state: ${JSON.stringify(migrationStateE)}`);
   }
+  assertMeasurementTupleConstraints();
 
   const fullSeedA = cli("scripts/backfill-immutable-seed-revisions.ts", []);
   const fullSeedB = cli("scripts/backfill-immutable-seed-revisions.ts", []);
@@ -1120,11 +1201,11 @@ try {
       resolvedBaseline: "prisma_cli_zero_step_applied",
       resolvedSetIntent: "prisma_cli_zero_step_applied",
       repeatedResolve: "P3008_state_unchanged",
-      stateA: "legacy_10_applied_7_pending_rejected",
+      stateA: "legacy_10_applied_11_pending_valid",
       stateB: "partial_object_blocked",
       stateC: "checksum_mismatch_blocked",
       stateD: "failed_rolled_back_and_unfinished_ledger_blocked",
-      currentProductionState: "16_applied_1_pending_authorization_ready_execution_not_authorized",
+      currentProductionState: "17_applied_4_pending_authorization_ready_execution_not_authorized",
       stateE: "fully_migrated_gate_a_not_applicable",
       baselineUniquenessVariants: "standalone_constraint_missing_wrong_order_non_unique_partial_predicate",
       readOnlyFingerprintsStable: true,

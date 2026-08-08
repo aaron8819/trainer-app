@@ -778,6 +778,61 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
     });
   });
 
+  it("returns 409 without mutation when classification disappears before V3 add commit", async () => {
+    mocks.exerciseFindUnique.mockResolvedValueOnce({
+      id: "fly",
+      name: "Cable Fly",
+      repRangeMin: 10,
+      repRangeMax: 14,
+      fatigueCost: 2,
+      isCompound: false,
+      exerciseEquipment: [{ equipment: { type: "CABLE" } }],
+      exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest" } }],
+      aliases: [],
+      measurementProfile: "REPS_EXTERNAL_LOAD",
+      loadConvention: "MACHINE_DISPLAYED",
+      repBasis: "TOTAL",
+    });
+    mocks.workoutFindFirst.mockResolvedValueOnce({
+      id: "workout-1",
+      status: "PLANNED",
+      mesocycleId: null,
+      mesocycle: null,
+      seedRevision: { seedPayload: { version: 3 } },
+    });
+    mocks.txWorkoutFindUnique.mockResolvedValueOnce({
+      selectionMetadata: buildWorkoutSelectionMetadata(),
+      selectionMode: "INTENT",
+      sessionIntent: "PUSH",
+      status: "PLANNED",
+      mesocycleId: null,
+      mesocycle: null,
+      seedRevision: { seedPayload: { version: 3 } },
+      exercises: [],
+    });
+    mocks.txExerciseFindUnique.mockResolvedValueOnce({
+      measurementProfile: null,
+      loadConvention: null,
+      repBasis: null,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/workout-1/add-exercise", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ exerciseId: "fly", expectedRevision: 1 }),
+      }),
+      { params: Promise.resolve({ id: "workout-1" }) },
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "This exercise is not yet available for measurement-aware workouts.",
+    });
+    expect(mocks.txWorkoutExerciseCreate).not.toHaveBeenCalled();
+    expect(mocks.txWorkoutUpdate).not.toHaveBeenCalled();
+  });
+
   it("falls back to receipt lifecycle context when no current accessory pattern exists", async () => {
     mocks.txWorkoutFindUnique.mockResolvedValueOnce({
       selectionMetadata: buildWorkoutSelectionMetadata({

@@ -29,24 +29,60 @@ ALTER TABLE "Exercise"
   ADD CONSTRAINT "Exercise_measurement_tuple_check" CHECK (
     ("measurementProfile" IS NULL AND "loadConvention" IS NULL AND "repBasis" IS NULL)
     OR
-    ("measurementProfile" = 'REPS_BODYWEIGHT' AND "loadConvention" IS NULL AND "repBasis" IS NOT NULL)
-    OR
-    ("measurementProfile" = 'REPS_EXTERNAL_LOAD' AND "loadConvention" IN ('BARBELL_TOTAL', 'IMPLEMENT_WEIGHT', 'MACHINE_DISPLAYED') AND "repBasis" IS NOT NULL)
-    OR
-    ("measurementProfile" = 'REPS_BODYWEIGHT_PLUS_LOAD' AND "loadConvention" = 'ADDED_EXTERNAL_LOAD' AND "repBasis" IS NOT NULL)
-    OR
-    ("measurementProfile" = 'REPS_ASSISTED' AND "loadConvention" = 'DISPLAYED_ASSISTANCE' AND "repBasis" IS NOT NULL)
+    (
+      "measurementProfile" IS NOT NULL
+      AND "repBasis" IS NOT NULL
+      AND (
+        ("measurementProfile" = 'REPS_BODYWEIGHT' AND "loadConvention" IS NULL)
+        OR
+        (
+          "measurementProfile" = 'REPS_EXTERNAL_LOAD'
+          AND "loadConvention" IS NOT NULL
+          AND "loadConvention" IN ('BARBELL_TOTAL', 'IMPLEMENT_WEIGHT', 'MACHINE_DISPLAYED')
+        )
+        OR
+        (
+          "measurementProfile" = 'REPS_BODYWEIGHT_PLUS_LOAD'
+          AND "loadConvention" IS NOT NULL
+          AND "loadConvention" = 'ADDED_EXTERNAL_LOAD'
+        )
+        OR
+        (
+          "measurementProfile" = 'REPS_ASSISTED'
+          AND "loadConvention" IS NOT NULL
+          AND "loadConvention" = 'DISPLAYED_ASSISTANCE'
+        )
+      )
+    )
   );
 
 ALTER TABLE "WorkoutExercise"
   ADD CONSTRAINT "WorkoutExercise_measurement_tuple_check" CHECK (
     ("measurementProfile" IS NULL AND "loadConvention" IS NULL AND "repBasis" IS NULL)
     OR
-    ("measurementProfile" = 'REPS_BODYWEIGHT' AND "loadConvention" IS NULL AND "repBasis" IS NOT NULL)
-    OR
-    ("measurementProfile" = 'REPS_EXTERNAL_LOAD' AND "loadConvention" IN ('BARBELL_TOTAL', 'IMPLEMENT_WEIGHT', 'MACHINE_DISPLAYED') AND "repBasis" IS NOT NULL)
-    OR
-    ("measurementProfile" = 'REPS_BODYWEIGHT_PLUS_LOAD' AND "loadConvention" = 'ADDED_EXTERNAL_LOAD' AND "repBasis" IS NOT NULL)
-    OR
-    ("measurementProfile" = 'REPS_ASSISTED' AND "loadConvention" = 'DISPLAYED_ASSISTANCE' AND "repBasis" IS NOT NULL)
+    (
+      "measurementProfile" IS NOT NULL
+      AND "repBasis" IS NOT NULL
+      AND (
+        ("measurementProfile" = 'REPS_BODYWEIGHT' AND "loadConvention" IS NULL)
+        OR
+        (
+          "measurementProfile" = 'REPS_EXTERNAL_LOAD'
+          AND "loadConvention" IS NOT NULL
+          AND "loadConvention" IN ('BARBELL_TOTAL', 'IMPLEMENT_WEIGHT', 'MACHINE_DISPLAYED')
+        )
+        OR
+        (
+          "measurementProfile" = 'REPS_BODYWEIGHT_PLUS_LOAD'
+          AND "loadConvention" IS NOT NULL
+          AND "loadConvention" = 'ADDED_EXTERNAL_LOAD'
+        )
+        OR
+        (
+          "measurementProfile" = 'REPS_ASSISTED'
+          AND "loadConvention" IS NOT NULL
+          AND "loadConvention" = 'DISPLAYED_ASSISTANCE'
+        )
+      )
+    )
   );

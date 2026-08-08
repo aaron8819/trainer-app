@@ -486,4 +486,68 @@ describe("custom hypertrophy draft persistence", () => {
     ).toBe("low_axial_hip_extension_anchor");
     expect(createInput.data).not.toHaveProperty("mesocycles");
   });
+
+  it("preserves the complete editable envelope when copying accepted V3", async () => {
+    const copiedDraft = lowAxialDraft();
+    const accepted = {
+      version: 3,
+      source: "custom_hypertrophy_plan_v1",
+      settings: copiedDraft.settings,
+      slots: copiedDraft.sessions.map((session) => ({
+        slotId: session.slotId,
+        name: session.name,
+        focus: session.focus,
+        exercises: session.exercises.map((exercise) => ({
+          exerciseId: exercise.exerciseId,
+          role:
+            exercise.intent.userRole === "PRIMARY_LIFT"
+              ? "CORE_COMPOUND"
+              : "ACCESSORY",
+          setCount: exercise.workingSets,
+          intent: exercise.intent,
+          measurement: {
+            profile: "REPS_EXTERNAL_LOAD",
+            loadConvention: "BARBELL_TOTAL",
+            repBasis: "TOTAL",
+          },
+        })),
+      })),
+    };
+    mocks.prisma.macroCycle.findFirst.mockResolvedValueOnce({
+      trainingAge: "INTERMEDIATE",
+      mesocycles: [{ currentSeedRevision: { seedPayload: accepted } }],
+    });
+    mocks.prisma.macroCycle.create.mockResolvedValue({});
+
+    await createEditableHypertrophyPlanCopy({
+      userId: "user-1",
+      sourcePlanId: "source-plan",
+      name: "Editable V3 copy",
+    });
+
+    const createInput = mocks.prisma.macroCycle.create.mock.calls[0]![0];
+    expect(createInput.data.hypertrophyDraft.create.payload).toEqual(copiedDraft);
+    expect(createInput.data.hypertrophyDraft.create.payload.settings).toEqual(
+      copiedDraft.settings,
+    );
+    expect(
+      createInput.data.hypertrophyDraft.create.payload.sessions.map(
+        (session: { slotId: string; name: string; focus: string }) => ({
+          slotId: session.slotId,
+          name: session.name,
+          focus: session.focus,
+        }),
+      ),
+    ).toEqual(
+      copiedDraft.sessions.map((session) => ({
+        slotId: session.slotId,
+        name: session.name,
+        focus: session.focus,
+      })),
+    );
+    expect(
+      createInput.data.hypertrophyDraft.create.payload.sessions[1].exercises[0]
+        .intent.requiredExerciseClass,
+    ).toBe("low_axial_hip_extension_anchor");
+  });
 });

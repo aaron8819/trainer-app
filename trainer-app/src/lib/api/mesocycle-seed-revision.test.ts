@@ -230,6 +230,15 @@ describe("accepted seed normalization and hashing", () => {
     expect(normalizeAcceptedSeedPayload(pgShape).hash).toMatch(/^91a62d15066e/);
   });
 
+  it("keeps frozen version 1 and version 2 hashes byte-for-byte stable", () => {
+    expect(normalizeAcceptedSeedPayload(seed()).hash).toBe(
+      "59609a556bd57e9d277e6ad564829b58772805920e358415b8a00db06c90599a",
+    );
+    expect(normalizeAcceptedSeedPayload(acceptedSeedV2()).hash).toBe(
+      "3b5e9563959c675d446746b524f4ddf1a8c936e4ee890b40b0789b2ddcb059f2",
+    );
+  });
+
   it("hashes equivalent executable payloads identically across property ordering", () => {
     const reordered = {
       slots: [

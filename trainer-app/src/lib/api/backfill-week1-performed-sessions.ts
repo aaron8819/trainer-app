@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { deriveNextRuntimeSlotSession } from "@/lib/api/mesocycle-slot-runtime";
-import { parseSlotPlanSeedJson } from "@/lib/api/slot-plan-seed-parser";
+import {
+  parseAcceptedSeedPayload,
+  parseSlotPlanSeedJson,
+} from "@/lib/api/slot-plan-seed-parser";
 import {
   attachSavedSessionAuditSnapshot,
   reconcileRuntimeEditSelectionMetadata,
@@ -997,6 +1000,7 @@ async function inspectBackfillSafety(
     blockers.push("target_mesocycle_not_found");
   }
   if (mesocycle?.currentSeedRevision?.seedPayload) {
+    parseAcceptedSeedPayload(mesocycle.currentSeedRevision.seedPayload);
     mesocycle.slotPlanSeedJson = mesocycle.currentSeedRevision.seedPayload;
   }
 

@@ -27,7 +27,10 @@ import {
 } from "@/lib/api/planner-only-policy-override";
 import { resolveMesocycleSlotContract } from "@/lib/api/mesocycle-slot-contract";
 import { evaluateAcceptedMesocycleSeedProvenance } from "@/lib/api/accepted-mesocycle-seed-provenance";
-import { parseSlotPlanSeedJson } from "@/lib/api/slot-plan-seed-parser";
+import {
+  parseAcceptedSeedPayload,
+  parseSlotPlanSeedJson,
+} from "@/lib/api/slot-plan-seed-parser";
 import {
   buildV2MesocycleStrategyInputFromReadModels,
   loadV2MesocycleStrategyHistoricalReviewEvidence,
@@ -9219,6 +9222,7 @@ async function loadExplainMesocycle(input: {
   }
 
   if (mesocycle.currentSeedRevision?.seedPayload) {
+    parseAcceptedSeedPayload(mesocycle.currentSeedRevision.seedPayload);
     mesocycle.slotPlanSeedJson = mesocycle.currentSeedRevision.seedPayload;
   }
 

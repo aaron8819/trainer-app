@@ -639,12 +639,36 @@ export function sanitizeAcceptedPlannerIntent(
   };
 }
 
+function toParsedAcceptedSeed(
+  accepted: AcceptedHypertrophySeed,
+): ParsedSlotPlanSeed {
+  return {
+    version: 1,
+    acceptedVersion: accepted.version,
+    acceptedSeed: accepted,
+    source: accepted.source,
+    slots: accepted.slots.map((slot) => ({
+      slotId: slot.slotId,
+      exercises: slot.exercises.map((exercise) => ({
+        exerciseId: exercise.exerciseId,
+        role: exercise.role,
+        setCount: exercise.setCount,
+        hasExplicitName: false,
+        hasExplicitSetCount: true,
+        intent: exercise.intent,
+        ...("measurement" in exercise
+          ? { measurement: exercise.measurement }
+          : {}),
+      })),
+    })),
+  };
+}
+
 export function parseSlotPlanSeedJson(slotPlanSeedJson: unknown): ParsedSlotPlanSeed | null {
   const record = isRecord(slotPlanSeedJson) ? slotPlanSeedJson : null;
   if (record?.version === 2 || record?.version === 3) {
-    let accepted: AcceptedHypertrophySeed;
     try {
-      accepted = parseAcceptedHypertrophySeed(record);
+      return parseAcceptedSeedPayload(record);
     } catch {
       if (record.version !== 2) return null;
       const executable = executableSeedProjectionV2Schema.safeParse(record);
@@ -664,26 +688,6 @@ export function parseSlotPlanSeedJson(slotPlanSeedJson: unknown): ParsedSlotPlan
         })),
       };
     }
-    return {
-      version: 1,
-      acceptedVersion: accepted.version,
-      acceptedSeed: accepted,
-      source: accepted.source,
-      slots: accepted.slots.map((slot) => ({
-        slotId: slot.slotId,
-        exercises: slot.exercises.map((exercise) => ({
-          exerciseId: exercise.exerciseId,
-          role: exercise.role,
-          setCount: exercise.setCount,
-          hasExplicitName: false,
-          hasExplicitSetCount: true,
-          intent: exercise.intent,
-          ...("measurement" in exercise
-            ? { measurement: exercise.measurement }
-            : {}),
-        })),
-      })),
-    };
   }
   const slotsValue = Array.isArray(record?.slots) ? record.slots : null;
   if (record?.version !== 1 || !slotsValue) {
@@ -785,10 +789,17 @@ export function parseAcceptedSeedPayload(value: unknown): ParsedSlotPlanSeed {
       record?.version,
     );
   }
-  const parsed = parseSlotPlanSeedJson(value);
-  const isAcceptedContract =
-    record.version === 1 || parsed?.acceptedVersion === record.version;
-  if (!parsed || parsed.slots.length === 0 || !isAcceptedContract) {
+  let parsed: ParsedSlotPlanSeed | null;
+  if (record.version === 1) {
+    parsed = parseSlotPlanSeedJson(value);
+  } else {
+    try {
+      parsed = toParsedAcceptedSeed(parseAcceptedHypertrophySeed(value));
+    } catch {
+      parsed = null;
+    }
+  }
+  if (!parsed || parsed.slots.length === 0) {
     throw new AcceptedSeedParseError(
       "ACCEPTED_SEED_MALFORMED",
       record.version,

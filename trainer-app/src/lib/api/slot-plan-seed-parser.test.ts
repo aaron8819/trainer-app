@@ -7,6 +7,7 @@ import {
 import {
   compileAcceptedHypertrophySeed,
   compileAcceptedHypertrophySeedV3,
+  projectExecutableSeedV3,
   type HypertrophyPlanDraftV1,
 } from "@/lib/engine/hypertrophy-plan-authoring";
 import {
@@ -453,6 +454,37 @@ describe("parseSlotPlanSeedJson", () => {
       expect.objectContaining<Partial<AcceptedSeedParseError>>({
         code: "ACCEPTED_SEED_VERSION_UNSUPPORTED",
         version: 4,
+      }),
+    );
+  });
+
+  it("keeps the internal V3 execution projection out of accepted-seed parsing", () => {
+    const acceptedV3 = compileAcceptedHypertrophySeedV3({
+      draft: customDraft,
+      measurementByExerciseId: new Map([
+        ["upper-exercise", {
+          profile: "REPS_EXTERNAL_LOAD" as const,
+          loadConvention: "MACHINE_DISPLAYED" as const,
+          repBasis: "TOTAL" as const,
+        }],
+        ["lower-exercise", {
+          profile: "REPS_EXTERNAL_LOAD" as const,
+          loadConvention: "MACHINE_DISPLAYED" as const,
+          repBasis: "TOTAL" as const,
+        }],
+      ]),
+    });
+    const executableProjection = projectExecutableSeedV3(acceptedV3);
+
+    const parsedProjection = parseSlotPlanSeedJson(executableProjection);
+    expect(parsedProjection?.acceptedVersion).toBeUndefined();
+    expect(parsedProjection?.slots[0]?.exercises[0]?.measurement).toEqual(
+      acceptedV3.slots[0]!.exercises[0]!.measurement,
+    );
+    expect(() => parseAcceptedSeedPayload(executableProjection)).toThrowError(
+      expect.objectContaining<Partial<AcceptedSeedParseError>>({
+        code: "ACCEPTED_SEED_MALFORMED",
+        version: 2,
       }),
     );
   });

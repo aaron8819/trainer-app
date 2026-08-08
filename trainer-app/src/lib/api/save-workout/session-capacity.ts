@@ -9,7 +9,10 @@ import {
   readRuntimeEditReconciliation,
   type SaveableSelectionMetadata,
 } from "@/lib/ui/selection-metadata";
-import { parseSlotPlanSeedJson } from "../slot-plan-seed-parser";
+import {
+  parseAcceptedSeedPayload,
+  parseSlotPlanSeedJson,
+} from "../slot-plan-seed-parser";
 import {
   applySessionCapacityReduction,
   fingerprintSessionCapacityWorkout,
@@ -183,7 +186,7 @@ export function validateAndCanonicalizeShortTodaySave(input: {
   const receipt = extractSessionDecisionReceipt(input.selectionMetadata);
   const active = input.activeMesocycle;
   const currentSeed = active?.currentSeedRevision
-    ? parseSlotPlanSeedJson(active.currentSeedRevision.seedPayload)
+    ? parseAcceptedSeedPayload(active.currentSeedRevision.seedPayload)
     : null;
   const compatibilitySeed = active
     ? parseSlotPlanSeedJson(active.slotPlanSeedJson)

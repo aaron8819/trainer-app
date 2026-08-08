@@ -18,7 +18,10 @@ import {
   readSessionSlotSnapshot,
 } from "@/lib/evidence/session-decision-receipt";
 import type { SessionSlotSnapshot } from "@/lib/evidence/types";
-import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
+import {
+  parseAcceptedSeedPayload,
+  parseSlotPlanSeedJson,
+} from "./slot-plan-seed-parser";
 import { normalizeAcceptedSeedPayload } from "./mesocycle-seed-revision";
 
 type MesoSessionInput = {
@@ -308,16 +311,17 @@ export function resolveMaterializedSessionIdentity(input: {
     ) {
       return unavailableMaterializedIdentity("seed_provenance_mismatch");
     }
+    let acceptedSeed: ReturnType<typeof parseAcceptedSeedPayload>;
     try {
       const normalizedSeed = normalizeAcceptedSeedPayload(revision.seedPayload);
       if (normalizedSeed.hash !== workout.seedPayloadHash) {
         return unavailableMaterializedIdentity("seed_payload_hash_mismatch");
       }
+      acceptedSeed = parseAcceptedSeedPayload(revision.seedPayload);
     } catch {
       return unavailableMaterializedIdentity("seed_payload_invalid");
     }
-    const seed = parseSlotPlanSeedJson(revision.seedPayload);
-    if (!seed?.slots.some((slot) => slot.slotId === resolvedSlot.slotId)) {
+    if (!acceptedSeed.slots.some((slot) => slot.slotId === resolvedSlot.slotId)) {
       return unavailableMaterializedIdentity("seed_slot_missing");
     }
     exactSeedEvidence = true;
@@ -840,6 +844,7 @@ export async function loadNextWorkoutContext(
     select: { weeklySchedule: true },
   });
   if (mesocycle?.currentSeedRevision?.seedPayload) {
+    parseAcceptedSeedPayload(mesocycle.currentSeedRevision.seedPayload);
     mesocycle.slotPlanSeedJson = mesocycle.currentSeedRevision.seedPayload;
   }
   const weeklySchedule = (constraints?.weeklySchedule ?? []).map((intent) => intent as string);
@@ -1002,6 +1007,7 @@ export async function loadRequestedAdvancingSlotSnapshot(input: {
     select: { weeklySchedule: true },
   });
   if (mesocycle?.currentSeedRevision?.seedPayload) {
+    parseAcceptedSeedPayload(mesocycle.currentSeedRevision.seedPayload);
     mesocycle.slotPlanSeedJson = mesocycle.currentSeedRevision.seedPayload;
   }
   const weeklySchedule = (constraints?.weeklySchedule ?? []).map((intent) => intent as string);

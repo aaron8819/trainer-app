@@ -10,7 +10,10 @@ import type {
   V2ResponseTrend,
 } from "@/lib/engine/planning/v2";
 import type { MesocycleHandoffSummary } from "./mesocycle-handoff-contract";
-import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
+import {
+  parseAcceptedSeedPayload,
+  parseSlotPlanSeedJson,
+} from "./slot-plan-seed-parser";
 import {
   loadMesocycleReview,
   type MesocycleReviewData,
@@ -595,6 +598,7 @@ export async function loadV2MesocycleStrategyHistoricalReviewEvidence(
   })) as HistoricalMesocycleSeedRow[];
   for (const row of rows) {
     if (row.currentSeedRevision?.seedPayload) {
+      parseAcceptedSeedPayload(row.currentSeedRevision.seedPayload);
       row.slotPlanSeedJson = row.currentSeedRevision.seedPayload;
     }
   }

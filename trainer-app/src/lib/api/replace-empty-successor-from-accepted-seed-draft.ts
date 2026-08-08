@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import {
+  parseAcceptedSeedPayload,
   parseSlotPlanSeedJson,
   type ParsedSlotPlanSeed,
 } from "./slot-plan-seed-parser";
@@ -458,9 +459,11 @@ async function loadMesocyclePair(
   ]);
 
   if (sourceMesocycle?.currentSeedRevision?.seedPayload) {
+    parseAcceptedSeedPayload(sourceMesocycle.currentSeedRevision.seedPayload);
     sourceMesocycle.slotPlanSeedJson = sourceMesocycle.currentSeedRevision.seedPayload;
   }
   if (targetSuccessor?.currentSeedRevision?.seedPayload) {
+    parseAcceptedSeedPayload(targetSuccessor.currentSeedRevision.seedPayload);
     targetSuccessor.slotPlanSeedJson = targetSuccessor.currentSeedRevision.seedPayload;
   }
 

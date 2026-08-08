@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import type { ActiveMesocycleSlotReseedRecommendation } from "@/lib/audit/workout-audit/types";
 import { prisma } from "@/lib/db/prisma";
 import {
+  parseAcceptedSeedPayload,
   parseSlotPlanSeedJson,
   type ParsedSlotPlanSeed,
   type ParsedSlotPlanSeedExercise,
@@ -60,16 +61,24 @@ export type AcceptActiveMesocycleSlotPlanSeedUpgradeResult = {
   hash: string;
 };
 
-function parseSeedRecord(slotPlanSeedJson: unknown): ParsedSeedRecord | null {
-  const parsed = parseSlotPlanSeedJson(slotPlanSeedJson);
-  if (!parsed) {
-    return null;
-  }
-
+function toSeedRecord(parsed: ParsedSlotPlanSeed): ParsedSeedRecord {
   return {
     ...parsed,
     source: parsed.source ?? "handoff_slot_plan_projection",
   };
+}
+
+function parseSeedRecord(slotPlanSeedJson: unknown): ParsedSeedRecord | null {
+  const parsed = parseSlotPlanSeedJson(slotPlanSeedJson);
+  return parsed ? toSeedRecord(parsed) : null;
+}
+
+function parseAcceptedSeedRecord(seedPayload: unknown): ParsedSeedRecord | null {
+  try {
+    return toSeedRecord(parseAcceptedSeedPayload(seedPayload));
+  } catch {
+    return null;
+  }
 }
 
 function normalizeTargetSlotIds(targetSlotIds: string[]): TargetSlotId[] {
@@ -271,7 +280,7 @@ export async function applyActiveMesocycleBoundedUpperSlotReseed(
     if (!activeMesocycle.currentSeedRevisionId || !activeMesocycle.currentSeedRevision) {
       throw new Error("ACTIVE_MESOCYCLE_RESEED_CURRENT_REVISION_MISSING");
     }
-    const persistedSeedRecord = parseSeedRecord(
+    const persistedSeedRecord = parseAcceptedSeedRecord(
       activeMesocycle.currentSeedRevision.seedPayload,
     );
     if (!persistedSeedRecord) {
@@ -402,7 +411,7 @@ export async function acceptActiveMesocycleSlotPlanSeedUpgrade(
     if (!activeMesocycle.currentSeedRevisionId || !activeMesocycle.currentSeedRevision) {
       throw new Error("ACTIVE_MESOCYCLE_RESEED_CURRENT_REVISION_MISSING");
     }
-    const persistedSeedRecord = parseSeedRecord(
+    const persistedSeedRecord = parseAcceptedSeedRecord(
       activeMesocycle.currentSeedRevision.seedPayload,
     );
     if (!persistedSeedRecord) {

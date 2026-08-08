@@ -129,6 +129,66 @@ export type AcceptedHypertrophySeedV3 = {
   }>;
 };
 
+export type HypertrophyPlanWeekV4 = {
+  week: number;
+  phase: "ACCUMULATION" | "DELOAD";
+};
+
+export type RepTargetV4 =
+  | { kind: "EXACT"; reps: number }
+  | { kind: "RANGE"; min: number; max: number };
+
+export type RirTargetV4 =
+  | { kind: "TARGET_RANGE"; min: number; max: number }
+  | { kind: "NOT_APPLICABLE" };
+
+export type WeeklyPrescriptionV4 =
+  | { week: number; status: "OMIT" }
+  | {
+      week: number;
+      status: "PRESCRIBE";
+      setCount: number;
+      reps: RepTargetV4;
+      rir: RirTargetV4;
+    };
+
+export type HypertrophyPlanDraftV2 = {
+  version: 2;
+  settings: HypertrophyPlanDraftV1["settings"];
+  weeks: HypertrophyPlanWeekV4[];
+  sessions: Array<{
+    slotId: string;
+    name: string;
+    focus: HypertrophySessionFocus;
+    exercises: Array<{
+      placementId: string;
+      exerciseId: string;
+      intent: AcceptedExerciseIntentV2;
+      prescriptions: WeeklyPrescriptionV4[];
+    }>;
+  }>;
+};
+
+export type AcceptedHypertrophySeedV4 = {
+  version: 4;
+  source: "custom_hypertrophy_plan_v2";
+  settings: HypertrophyPlanDraftV2["settings"];
+  weeks: HypertrophyPlanWeekV4[];
+  slots: Array<{
+    slotId: string;
+    name: string;
+    focus: HypertrophySessionFocus;
+    exercises: Array<{
+      placementId: string;
+      exerciseId: string;
+      role: "CORE_COMPOUND" | "ACCESSORY";
+      intent: AcceptedExerciseIntentV2;
+      measurement: MeasurementSemantics;
+      prescriptions: WeeklyPrescriptionV4[];
+    }>;
+  }>;
+};
+
 export type AcceptedHypertrophySeed =
   | AcceptedHypertrophySeedV2
   | AcceptedHypertrophySeedV3;
@@ -154,6 +214,21 @@ export type ExecutableSeedProjectionV2 = {
       role: "CORE_COMPOUND" | "ACCESSORY";
       setCount: number;
       measurement: MeasurementSemantics;
+    }>;
+  }>;
+};
+
+export type ExecutableSeedProjectionV3 = {
+  version: 3;
+  weeks: HypertrophyPlanWeekV4[];
+  slots: Array<{
+    slotId: string;
+    exercises: Array<{
+      placementId: string;
+      exerciseId: string;
+      role: "CORE_COMPOUND" | "ACCESSORY";
+      measurement: MeasurementSemantics;
+      prescriptions: WeeklyPrescriptionV4[];
     }>;
   }>;
 };
@@ -246,6 +321,161 @@ const settingsSchema = z
   })
   .strict();
 
+const planWeekV4Schema = z
+  .object({
+    week: z.number().int().min(1).max(52),
+    phase: z.enum(["ACCUMULATION", "DELOAD"]),
+  })
+  .strict();
+
+const repTargetV4Schema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("EXACT"),
+      reps: z.number().int().min(1).max(100),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("RANGE"),
+      min: z.number().int().min(1).max(100),
+      max: z.number().int().min(1).max(100),
+    })
+    .strict()
+    .superRefine((target, context) => {
+      if (target.min > target.max) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["max"],
+          message: "Rep-range maximum must be greater than or equal to its minimum",
+        });
+      }
+    }),
+]);
+
+const rirValueV4Schema = z.number().min(0).max(10).multipleOf(0.5);
+const rirTargetV4Schema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("TARGET_RANGE"),
+      min: rirValueV4Schema,
+      max: rirValueV4Schema,
+    })
+    .strict()
+    .superRefine((target, context) => {
+      if (target.min > target.max) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["max"],
+          message: "RIR maximum must be greater than or equal to its minimum",
+        });
+      }
+    }),
+  z.object({ kind: z.literal("NOT_APPLICABLE") }).strict(),
+]);
+
+const weeklyPrescriptionV4Schema = z.discriminatedUnion("status", [
+  z
+    .object({
+      week: z.number().int().min(1).max(52),
+      status: z.literal("PRESCRIBE"),
+      setCount: z.number().int().min(1).max(10),
+      reps: repTargetV4Schema,
+      rir: rirTargetV4Schema,
+    })
+    .strict(),
+  z
+    .object({
+      week: z.number().int().min(1).max(52),
+      status: z.literal("OMIT"),
+    })
+    .strict(),
+]);
+
+type PrescriptionPlacementV4 = {
+  placementId: string;
+  prescriptions: WeeklyPrescriptionV4[];
+};
+
+function validateV4WeekTopology(
+  weeks: HypertrophyPlanWeekV4[],
+  context: z.RefinementCtx,
+): void {
+  weeks.forEach((entry, index) => {
+    if (entry.week !== index + 1) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["weeks", index, "week"],
+        message: "Plan weeks must be contiguous, one-indexed, and ordered",
+      });
+    }
+    if (entry.phase === "DELOAD" && index !== weeks.length - 1) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["weeks", index, "phase"],
+        message: "DELOAD is permitted only for the final plan week",
+      });
+    }
+  });
+  if (weeks[0]?.phase !== "ACCUMULATION") {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["weeks", 0, "phase"],
+      message: "A plan must begin with at least one ACCUMULATION week",
+    });
+  }
+}
+
+function validateV4PrescriptionCoverage(input: {
+  weeks: HypertrophyPlanWeekV4[];
+  containers: Array<{ exercises: PrescriptionPlacementV4[] }>;
+  containerPath: "sessions" | "slots";
+  context: z.RefinementCtx;
+}): void {
+  const placementIds = new Set<string>();
+  input.containers.forEach((container, containerIndex) => {
+    container.exercises.forEach((exercise, exerciseIndex) => {
+      const path = [input.containerPath, containerIndex, "exercises", exerciseIndex];
+      if (placementIds.has(exercise.placementId)) {
+        input.context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [...path, "placementId"],
+          message: "Placement IDs must be unique across the plan",
+        });
+      }
+      placementIds.add(exercise.placementId);
+      if (exercise.prescriptions.length !== input.weeks.length) {
+        input.context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [...path, "prescriptions"],
+          message: "Every placement must have exactly one prescription for every plan week",
+        });
+      }
+      exercise.prescriptions.forEach((prescription, prescriptionIndex) => {
+        const expectedWeek = input.weeks[prescriptionIndex];
+        if (!expectedWeek || prescription.week !== expectedWeek.week) {
+          input.context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [...path, "prescriptions", prescriptionIndex, "week"],
+            message: "Placement prescriptions must exactly cover plan weeks in order",
+          });
+          return;
+        }
+        if (
+          prescription.status === "OMIT" &&
+          expectedWeek.phase !== "DELOAD"
+        ) {
+          input.context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [...path, "prescriptions", prescriptionIndex, "status"],
+            message: "OMIT is permitted only during the final DELOAD week",
+          });
+        }
+      });
+    });
+  });
+}
+
 const draftExerciseSchema = z
   .object({
     exerciseId: z.string().trim().min(1).max(100),
@@ -282,6 +512,56 @@ export const hypertrophyPlanDraftSchema = z
         message: "Session IDs must be unique",
       });
     }
+  });
+
+const draftExerciseV2Schema = z
+  .object({
+    placementId: z.string().trim().min(1).max(100),
+    exerciseId: z.string().trim().min(1).max(100),
+    intent: acceptedExerciseIntentSchema,
+    prescriptions: z.array(weeklyPrescriptionV4Schema).min(1).max(52),
+  })
+  .strict();
+
+export const hypertrophyPlanDraftV2Schema = z
+  .object({
+    version: z.literal(2),
+    settings: settingsSchema,
+    weeks: z.array(planWeekV4Schema).min(1).max(52),
+    sessions: z
+      .array(
+        z
+          .object({
+            slotId: z.string().trim().min(1).max(40),
+            name: z
+              .string()
+              .transform((value) => value.trim().replace(/\s+/g, " "))
+              .pipe(z.string().min(1).max(60)),
+            focus: z.enum(HYPERTROPHY_SESSION_FOCUS_VALUES),
+            exercises: z.array(draftExerciseV2Schema).max(20),
+          })
+          .strict(),
+      )
+      .min(2)
+      .max(6),
+  })
+  .strict()
+  .superRefine((draft, context) => {
+    const ids = draft.sessions.map((session) => session.slotId);
+    if (new Set(ids).size !== ids.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["sessions"],
+        message: "Session IDs must be unique",
+      });
+    }
+    validateV4WeekTopology(draft.weeks, context);
+    validateV4PrescriptionCoverage({
+      weeks: draft.weeks,
+      containers: draft.sessions,
+      containerPath: "sessions",
+      context,
+    });
   });
 
 const acceptedExerciseSchema = z
@@ -385,6 +665,66 @@ export const acceptedHypertrophySeedV3Schema = z
     }
   });
 
+const acceptedExerciseV4Schema = z
+  .object({
+    placementId: z.string().trim().min(1).max(100),
+    exerciseId: z.string().trim().min(1).max(100),
+    role: z.enum(["CORE_COMPOUND", "ACCESSORY"]),
+    intent: acceptedExerciseIntentSchema,
+    measurement: measurementSemanticsSchema,
+    prescriptions: z.array(weeklyPrescriptionV4Schema).min(1).max(52),
+  })
+  .strict()
+  .superRefine((exercise, context) => {
+    const expected = compileExecutableRole(exercise.intent.userRole);
+    if (exercise.role !== expected) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["role"],
+        message: `Executable role must be ${expected}`,
+      });
+    }
+  });
+
+export const acceptedHypertrophySeedV4Schema = z
+  .object({
+    version: z.literal(4),
+    source: z.literal("custom_hypertrophy_plan_v2"),
+    settings: settingsSchema,
+    weeks: z.array(planWeekV4Schema).min(1).max(52),
+    slots: z
+      .array(
+        z
+          .object({
+            slotId: z.string().trim().min(1).max(40),
+            name: z.string().trim().min(1).max(60),
+            focus: z.enum(HYPERTROPHY_SESSION_FOCUS_VALUES),
+            exercises: z.array(acceptedExerciseV4Schema).min(1).max(20),
+          })
+          .strict(),
+      )
+      .min(2)
+      .max(6),
+  })
+  .strict()
+  .superRefine((seed, context) => {
+    const ids = seed.slots.map((slot) => slot.slotId);
+    if (new Set(ids).size !== ids.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["slots"],
+        message: "Slot IDs must be unique",
+      });
+    }
+    validateV4WeekTopology(seed.weeks, context);
+    validateV4PrescriptionCoverage({
+      weeks: seed.weeks,
+      containers: seed.slots,
+      containerPath: "slots",
+      context,
+    });
+  });
+
 export const executableSeedProjectionV2Schema = z
   .object({
     version: z.literal(2),
@@ -408,10 +748,67 @@ export const executableSeedProjectionV2Schema = z
   })
   .strict();
 
+export const executableSeedProjectionV3Schema = z
+  .object({
+    version: z.literal(3),
+    weeks: z.array(planWeekV4Schema).min(1).max(52),
+    slots: z
+      .array(
+        z
+          .object({
+            slotId: z.string().trim().min(1).max(40),
+            exercises: z
+              .array(
+                z
+                  .object({
+                    placementId: z.string().trim().min(1).max(100),
+                    exerciseId: z.string().trim().min(1).max(100),
+                    role: z.enum(["CORE_COMPOUND", "ACCESSORY"]),
+                    measurement: measurementSemanticsSchema,
+                    prescriptions: z
+                      .array(weeklyPrescriptionV4Schema)
+                      .min(1)
+                      .max(52),
+                  })
+                  .strict(),
+              )
+              .min(1)
+              .max(20),
+          })
+          .strict(),
+      )
+      .min(2)
+      .max(6),
+  })
+  .strict()
+  .superRefine((seed, context) => {
+    const ids = seed.slots.map((slot) => slot.slotId);
+    if (new Set(ids).size !== ids.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["slots"],
+        message: "Slot IDs must be unique",
+      });
+    }
+    validateV4WeekTopology(seed.weeks, context);
+    validateV4PrescriptionCoverage({
+      weeks: seed.weeks,
+      containers: seed.slots,
+      containerPath: "slots",
+      context,
+    });
+  });
+
 export function parseHypertrophyPlanDraft(
   value: unknown,
 ): HypertrophyPlanDraftV1 {
   return hypertrophyPlanDraftSchema.parse(value);
+}
+
+export function parseHypertrophyPlanDraftV2(
+  value: unknown,
+): HypertrophyPlanDraftV2 {
+  return hypertrophyPlanDraftV2Schema.parse(value);
 }
 
 export function parseAcceptedHypertrophySeedV2(
@@ -424,6 +821,12 @@ export function parseAcceptedHypertrophySeedV3(
   value: unknown,
 ): AcceptedHypertrophySeedV3 {
   return acceptedHypertrophySeedV3Schema.parse(value);
+}
+
+export function parseAcceptedHypertrophySeedV4(
+  value: unknown,
+): AcceptedHypertrophySeedV4 {
+  return acceptedHypertrophySeedV4Schema.parse(value);
 }
 
 export function parseAcceptedHypertrophySeed(
@@ -499,6 +902,60 @@ export function compileAcceptedHypertrophySeedV3(input: {
   });
 }
 
+export function compileAcceptedHypertrophySeedV4(input: {
+  draft: HypertrophyPlanDraftV2;
+  measurementByExerciseId: ReadonlyMap<string, MeasurementSemantics>;
+}): AcceptedHypertrophySeedV4 {
+  const draft = parseHypertrophyPlanDraftV2(input.draft);
+  return parseAcceptedHypertrophySeedV4({
+    version: 4,
+    source: "custom_hypertrophy_plan_v2",
+    settings: draft.settings,
+    weeks: draft.weeks,
+    slots: draft.sessions.map((session) => ({
+      slotId: session.slotId,
+      name: session.name,
+      focus: session.focus,
+      exercises: session.exercises.map((exercise) => {
+        const measurement = input.measurementByExerciseId.get(exercise.exerciseId);
+        if (!measurement) {
+          throw new Error(`CUSTOM_PLAN_MEASUREMENT_UNCLASSIFIED:${exercise.exerciseId}`);
+        }
+        return {
+          placementId: exercise.placementId,
+          exerciseId: exercise.exerciseId,
+          role: compileExecutableRole(exercise.intent.userRole),
+          intent: exercise.intent,
+          measurement,
+          prescriptions: exercise.prescriptions,
+        };
+      }),
+    })),
+  });
+}
+
+export function copyAcceptedHypertrophySeedV4ToDraft(
+  seed: AcceptedHypertrophySeedV4,
+): HypertrophyPlanDraftV2 {
+  const accepted = parseAcceptedHypertrophySeedV4(seed);
+  return parseHypertrophyPlanDraftV2({
+    version: 2,
+    settings: accepted.settings,
+    weeks: accepted.weeks,
+    sessions: accepted.slots.map((slot) => ({
+      slotId: slot.slotId,
+      name: slot.name,
+      focus: slot.focus,
+      exercises: slot.exercises.map((exercise) => ({
+        placementId: exercise.placementId,
+        exerciseId: exercise.exerciseId,
+        intent: exercise.intent,
+        prescriptions: exercise.prescriptions,
+      })),
+    })),
+  });
+}
+
 export function projectExecutableSeed(
   seed: AcceptedHypertrophySeedV2,
 ): ExecutableSeedProjection {
@@ -536,6 +993,28 @@ export function projectExecutableSeedV3(
           role,
           setCount,
           measurement,
+        }),
+      ),
+    })),
+  });
+}
+
+export function projectExecutableSeedV4(
+  seed: AcceptedHypertrophySeedV4,
+): ExecutableSeedProjectionV3 {
+  const accepted = parseAcceptedHypertrophySeedV4(seed);
+  return executableSeedProjectionV3Schema.parse({
+    version: 3,
+    weeks: accepted.weeks,
+    slots: accepted.slots.map((slot) => ({
+      slotId: slot.slotId,
+      exercises: slot.exercises.map(
+        ({ placementId, exerciseId, role, measurement, prescriptions }) => ({
+          placementId,
+          exerciseId,
+          role,
+          measurement,
+          prescriptions,
         }),
       ),
     })),

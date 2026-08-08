@@ -47,6 +47,7 @@ import {
 } from "@/lib/api/save-workout/status";
 import {
   buildPersistedExercisesForSave,
+  applyAcceptedMeasurementSnapshots,
   buildStimulusAccountingReceiptManifest,
   persistWorkoutRow,
   prepareWorkoutExercisesForPersistence,
@@ -261,7 +262,7 @@ export async function POST(request: Request) {
         templateId: parsed.data.templateId,
         userId: user.id,
       });
-      const preparedExercises = hasExerciseRewrite
+      let preparedExercises = hasExerciseRewrite
         ? await prepareWorkoutExercisesForPersistence(
             tx,
             parsed.data.exercises!,
@@ -422,6 +423,13 @@ export async function POST(request: Request) {
         resolvedMesocycleId,
         existingWorkout,
       });
+      if (preparedExercises) {
+        preparedExercises = await applyAcceptedMeasurementSnapshots(tx, {
+          seedRevisionId:
+            seedProvenance?.seedRevisionId ?? existingWorkout?.seedRevisionId ?? null,
+          exercises: preparedExercises,
+        });
+      }
 
       const workoutUpdateData = {
         scheduledDate,

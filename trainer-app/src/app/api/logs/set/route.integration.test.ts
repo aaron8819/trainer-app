@@ -439,6 +439,113 @@ describe("POST /api/logs/set", () => {
     );
   });
 
+  it("uses the frozen bodyweight profile to forbid and clear load", async () => {
+    mocks.workoutSetFindFirst.mockResolvedValue({
+      id: "set-bw-classified",
+      targetLoad: 0,
+      workoutExercise: {
+        workoutId: "workout-1",
+        measurementProfile: "REPS_BODYWEIGHT",
+        loadConvention: null,
+        repBasis: "TOTAL",
+        workout: { id: "workout-1", status: "PLANNED", mesocycleId: null, mesocycle: null },
+      },
+    });
+
+    const rejected = await POST(
+      new Request("http://localhost/api/logs/set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expectedRevision: 1,
+          workoutSetId: "set-bw-classified",
+          actualReps: 10,
+          actualLoad: 25,
+        }),
+      }),
+    );
+    expect(rejected.status).toBe(400);
+    await expect(rejected.json()).resolves.toMatchObject({
+      error: "Load is not recorded for this bodyweight exercise.",
+    });
+
+    mocks.setLogFindUnique.mockResolvedValueOnce({
+      actualReps: 8,
+      actualRpe: 8,
+      actualLoad: 25,
+      setIntent: "WORK",
+      wasSkipped: false,
+      notes: null,
+    });
+    const accepted = await POST(
+      new Request("http://localhost/api/logs/set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expectedRevision: 1,
+          workoutSetId: "set-bw-classified",
+          actualReps: 10,
+        }),
+      }),
+    );
+    expect(accepted.status).toBe(200);
+    expect(mocks.setLogUpsert).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({ actualLoad: null }),
+      }),
+    );
+  });
+
+  it.each([
+    ["REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", 90],
+    ["REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", 90],
+    ["REPS_BODYWEIGHT_PLUS_LOAD", "ADDED_EXTERNAL_LOAD", 90],
+    ["REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", 91.2],
+    ["REPS_ASSISTED", "DISPLAYED_ASSISTANCE", 91.2],
+  ] as const)(
+    "applies the frozen %s/%s load interpretation",
+    async (measurementProfile, loadConvention, expectedLoad) => {
+      mocks.workoutSetFindFirst.mockResolvedValue({
+        id: "set-classified",
+        targetLoad: null,
+        workoutExercise: {
+          workoutId: "workout-1",
+          measurementProfile,
+          loadConvention,
+          repBasis: "TOTAL",
+          workout: {
+            id: "workout-1",
+            status: "PLANNED",
+            mesocycleId: null,
+            mesocycle: null,
+          },
+        },
+      });
+      mocks.setLogFindUnique.mockResolvedValue(null);
+
+      const response = await POST(
+        new Request("http://localhost/api/logs/set", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            expectedRevision: 1,
+            workoutSetId: "set-classified",
+            actualReps: 10,
+            actualLoad: 91.2,
+          }),
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(mocks.setLogUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          update: expect.objectContaining({ actualLoad: expectedLoad }),
+          create: expect.objectContaining({ actualLoad: expectedLoad }),
+        }),
+      );
+    },
+  );
+
   it("rejects empty non-skipped logs so unresolved sets remain missing", async () => {
     mocks.setLogFindUnique.mockResolvedValue(null);
 

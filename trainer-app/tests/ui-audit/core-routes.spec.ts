@@ -11,6 +11,7 @@ const CORE_ROUTES = [
 const MOBILE_NAV_ITEM_COUNT = CORE_ROUTES.length;
 const FIXTURE_HEADER = "x-ui-audit-fixture";
 const ACTIVE_LOG_WORKOUT_PATH = "/log/ui-audit-workout-planned";
+const MEASUREMENT_LOG_WORKOUT_PATH = "/log/ui-audit-workout-measurement";
 const TIMER_VISIBLE_LOG_WORKOUT_PATH = "/log/ui-audit-workout-timer-visible";
 
 type CoreRoute = (typeof CORE_ROUTES)[number];
@@ -809,6 +810,47 @@ test.describe("lightweight fixture interaction checks", () => {
     await page.getByRole("button", { name: "Close" }).click();
     await expect(page.getByRole("heading", { name: "Add Exercise" })).toBeHidden();
     await expectNoAppError(page);
+  });
+
+  test("measurement-aware logging uses frozen labels at representative viewport sizes", async ({ page }) => {
+    await page.setExtraHTTPHeaders({ [FIXTURE_HEADER]: "active" });
+    await installMutationGuards(page);
+
+    await page.goto(MEASUREMENT_LOG_WORKOUT_PATH, { waitUntil: "domcontentloaded" });
+    await waitForStableRoute(page);
+
+    await expectAuditPath(page, MEASUREMENT_LOG_WORKOUT_PATH);
+    await expect(page.getByRole("heading", { name: "Workout Log" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Barbell Back Squat" })).toBeVisible();
+    await expect(page.getByText("Total barbell load (lb)", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Load")).toBeVisible();
+
+    const cases = [
+      ["dumbbell-bench", "Dumbbell Bench Press", "Weight per implement (lb)"],
+      ["pull-up", "Pull-Up", "Bodyweight — reps only."],
+      ["weighted-pull-up", "Weighted Pull-Up", "Added load (lb)"],
+      ["assisted-pull-up", "Machine-Assisted Pull-Up", "Displayed assistance (less is harder)"],
+      ["cable-row", "Seated Cable Row", "Machine displayed value"],
+      ["legacy-machine", "Legacy Machine Press", "Load (lbs)"],
+    ] as const;
+
+    for (const [id, exerciseName, expectedLabel] of cases) {
+      const row = page.getByTestId(`queue-row-ui-audit-measurement-${id}-we`);
+      await row.getByRole("button", { name: exerciseName }).click();
+      await row.getByRole("button", { name: "Set 1" }).click();
+      await expect(page.getByRole("heading", { name: exerciseName })).toBeVisible();
+
+      if (id === "pull-up") {
+        await expect(page.getByText(expectedLabel, { exact: true })).toBeVisible();
+        await expect(page.getByLabel(/load|assistance/i)).toHaveCount(0);
+      } else {
+        await expect(page.getByText(expectedLabel, { exact: true })).toBeVisible();
+        await expect(page.getByLabel("Load")).toBeVisible();
+      }
+
+      await expectMainWithinViewport(page);
+      await expectNoAppError(page);
+    }
   });
 
   test("logging screen rest timer fixture stays visible and reachable", async ({ page }, testInfo) => {

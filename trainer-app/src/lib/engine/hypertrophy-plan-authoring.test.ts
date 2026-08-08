@@ -13,14 +13,17 @@ import {
   buildAcceptedCompatibilityProjections,
   buildManualHypertrophyDraft,
   compileAcceptedHypertrophySeed,
+  compileAcceptedHypertrophySeedV3,
   equipmentForCustomHypertrophyProfile,
   evaluateHypertrophyPlanHealth,
   evaluateHypertrophySemanticIntent,
   isExerciseAvailableForHypertrophyPlan,
   isExerciseEligibleForIntent,
   parseAcceptedHypertrophySeedV2,
+  parseAcceptedHypertrophySeedV3,
   parseHypertrophyPlanDraft,
   projectExecutableSeed,
+  projectExecutableSeedV3,
   type AcceptedHypertrophySeedV2,
   type HypertrophyAuthoringExercise,
   type HypertrophyPlanDraftV1,
@@ -380,6 +383,54 @@ describe("custom hypertrophy authoring contracts", () => {
         ),
       }),
     ).toThrow();
+  });
+
+  it("preserves the editable envelope in V3 and emits a source-neutral V2 projection", () => {
+    const source = draft();
+    const ids = source.sessions.flatMap((slot) =>
+      slot.exercises.map((exercise) => exercise.exerciseId),
+    );
+    const measurementByExerciseId = new Map(
+      ids.map((exerciseId) => [
+        exerciseId,
+        {
+          profile: "REPS_EXTERNAL_LOAD" as const,
+          loadConvention: "BARBELL_TOTAL" as const,
+          repBasis: "TOTAL" as const,
+        },
+      ]),
+    );
+    const accepted = compileAcceptedHypertrophySeedV3({
+      draft: source,
+      measurementByExerciseId,
+    });
+    expect(parseAcceptedHypertrophySeedV3(accepted).settings).toEqual(source.settings);
+    expect(
+      accepted.slots.map(({ slotId, name, focus }) => ({ slotId, name, focus })),
+    ).toEqual(
+      source.sessions.map(({ slotId, name, focus }) => ({ slotId, name, focus })),
+    );
+    expect(projectExecutableSeedV3(accepted)).toEqual({
+      version: 2,
+      slots: accepted.slots.map((slot) => ({
+        slotId: slot.slotId,
+        exercises: slot.exercises.map(
+          ({ exerciseId, role, setCount, measurement }) => ({
+            exerciseId,
+            role,
+            setCount,
+            measurement,
+          }),
+        ),
+      })),
+    });
+    measurementByExerciseId.delete(ids[0]!);
+    expect(() =>
+      compileAcceptedHypertrophySeedV3({
+        draft: source,
+        measurementByExerciseId,
+      }),
+    ).toThrow(/CUSTOM_PLAN_MEASUREMENT_UNCLASSIFIED/);
   });
 
   it("separates hard execution blockers from advisory plan-health findings", () => {

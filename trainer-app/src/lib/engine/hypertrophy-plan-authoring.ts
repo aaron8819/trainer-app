@@ -30,6 +30,10 @@ import type {
   V2ExerciseMaterializationPlan,
   V2PlannerMesocyclePolicy,
 } from "./planning/v2";
+import {
+  measurementSemanticsSchema,
+  type MeasurementSemantics,
+} from "@/lib/exercise-measurement/semantics";
 
 export const HYPERTROPHY_SESSION_FOCUS_VALUES = [
   "PUSH",
@@ -105,6 +109,28 @@ export type AcceptedHypertrophySeedV2 = {
   }>;
 };
 
+export type AcceptedHypertrophySeedV3 = {
+  version: 3;
+  source: "custom_hypertrophy_plan_v1";
+  settings: HypertrophyPlanDraftV1["settings"];
+  slots: Array<{
+    slotId: string;
+    name: string;
+    focus: HypertrophySessionFocus;
+    exercises: Array<{
+      exerciseId: string;
+      role: "CORE_COMPOUND" | "ACCESSORY";
+      setCount: number;
+      intent: AcceptedExerciseIntentV2;
+      measurement: MeasurementSemantics;
+    }>;
+  }>;
+};
+
+export type AcceptedHypertrophySeed =
+  | AcceptedHypertrophySeedV2
+  | AcceptedHypertrophySeedV3;
+
 export type ExecutableSeedProjection = {
   version: 1;
   slots: Array<{
@@ -113,6 +139,19 @@ export type ExecutableSeedProjection = {
       exerciseId: string;
       role: "CORE_COMPOUND" | "ACCESSORY";
       setCount: number;
+    }>;
+  }>;
+};
+
+export type ExecutableSeedProjectionV2 = {
+  version: 2;
+  slots: Array<{
+    slotId: string;
+    exercises: Array<{
+      exerciseId: string;
+      role: "CORE_COMPOUND" | "ACCESSORY";
+      setCount: number;
+      measurement: MeasurementSemantics;
     }>;
   }>;
 };
@@ -262,6 +301,26 @@ const acceptedExerciseSchema = z
     }
   });
 
+const acceptedExerciseV3Schema = z
+  .object({
+    exerciseId: z.string().trim().min(1).max(100),
+    role: z.enum(["CORE_COMPOUND", "ACCESSORY"]),
+    setCount: z.number().int().min(1).max(10),
+    intent: acceptedExerciseIntentSchema,
+    measurement: measurementSemanticsSchema,
+  })
+  .strict()
+  .superRefine((exercise, context) => {
+    const expected = compileExecutableRole(exercise.intent.userRole);
+    if (exercise.role !== expected) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["role"],
+        message: `Executable role must be ${expected}`,
+      });
+    }
+  });
+
 export const acceptedHypertrophySeedV2Schema = z
   .object({
     version: z.literal(2),
@@ -293,6 +352,60 @@ export const acceptedHypertrophySeedV2Schema = z
     }
   });
 
+export const acceptedHypertrophySeedV3Schema = z
+  .object({
+    version: z.literal(3),
+    source: z.literal("custom_hypertrophy_plan_v1"),
+    settings: settingsSchema,
+    slots: z
+      .array(
+        z
+          .object({
+            slotId: z.string().trim().min(1).max(40),
+            name: z.string().trim().min(1).max(60),
+            focus: z.enum(HYPERTROPHY_SESSION_FOCUS_VALUES),
+            exercises: z.array(acceptedExerciseV3Schema).min(1).max(20),
+          })
+          .strict(),
+      )
+      .min(2)
+      .max(6),
+  })
+  .strict()
+  .superRefine((seed, context) => {
+    const ids = seed.slots.map((slot) => slot.slotId);
+    if (new Set(ids).size !== ids.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["slots"],
+        message: "Slot IDs must be unique",
+      });
+    }
+  });
+
+export const executableSeedProjectionV2Schema = z
+  .object({
+    version: z.literal(2),
+    slots: z.array(
+      z
+        .object({
+          slotId: z.string().trim().min(1).max(40),
+          exercises: z.array(
+            z
+              .object({
+                exerciseId: z.string().trim().min(1).max(100),
+                role: z.enum(["CORE_COMPOUND", "ACCESSORY"]),
+                setCount: z.number().int().min(1).max(10),
+                measurement: measurementSemanticsSchema,
+              })
+              .strict(),
+          ).min(1),
+        })
+        .strict(),
+    ).min(1),
+  })
+  .strict();
+
 export function parseHypertrophyPlanDraft(
   value: unknown,
 ): HypertrophyPlanDraftV1 {
@@ -303,6 +416,21 @@ export function parseAcceptedHypertrophySeedV2(
   value: unknown,
 ): AcceptedHypertrophySeedV2 {
   return acceptedHypertrophySeedV2Schema.parse(value);
+}
+
+export function parseAcceptedHypertrophySeedV3(
+  value: unknown,
+): AcceptedHypertrophySeedV3 {
+  return acceptedHypertrophySeedV3Schema.parse(value);
+}
+
+export function parseAcceptedHypertrophySeed(
+  value: unknown,
+): AcceptedHypertrophySeed {
+  return value && typeof value === "object" && !Array.isArray(value) &&
+    (value as { version?: unknown }).version === 3
+    ? parseAcceptedHypertrophySeedV3(value)
+    : parseAcceptedHypertrophySeedV2(value);
 }
 
 export function isAcceptedHypertrophySeedV2(
@@ -339,6 +467,36 @@ export function compileAcceptedHypertrophySeed(
   });
 }
 
+export function compileAcceptedHypertrophySeedV3(input: {
+  draft: HypertrophyPlanDraftV1;
+  measurementByExerciseId: ReadonlyMap<string, MeasurementSemantics>;
+}): AcceptedHypertrophySeedV3 {
+  const draft = parseHypertrophyPlanDraft(input.draft);
+  return parseAcceptedHypertrophySeedV3({
+    version: 3,
+    source: "custom_hypertrophy_plan_v1",
+    settings: draft.settings,
+    slots: draft.sessions.map((session) => ({
+      slotId: session.slotId,
+      name: session.name,
+      focus: session.focus,
+      exercises: session.exercises.map((exercise) => {
+        const measurement = input.measurementByExerciseId.get(exercise.exerciseId);
+        if (!measurement) {
+          throw new Error(`CUSTOM_PLAN_MEASUREMENT_UNCLASSIFIED:${exercise.exerciseId}`);
+        }
+        return {
+          exerciseId: exercise.exerciseId,
+          role: compileExecutableRole(exercise.intent.userRole),
+          setCount: exercise.workingSets,
+          intent: exercise.intent,
+          measurement,
+        };
+      }),
+    })),
+  });
+}
+
 export function projectExecutableSeed(
   seed: AcceptedHypertrophySeedV2,
 ): ExecutableSeedProjection {
@@ -362,13 +520,33 @@ export function projectExecutableSeedRows(
   };
 }
 
+export function projectExecutableSeedV3(
+  seed: AcceptedHypertrophySeedV3,
+): ExecutableSeedProjectionV2 {
+  const accepted = parseAcceptedHypertrophySeedV3(seed);
+  return executableSeedProjectionV2Schema.parse({
+    version: 2,
+    slots: accepted.slots.map((slot) => ({
+      slotId: slot.slotId,
+      exercises: slot.exercises.map(
+        ({ exerciseId, role, setCount, measurement }) => ({
+          exerciseId,
+          role,
+          setCount,
+          measurement,
+        }),
+      ),
+    })),
+  });
+}
+
 export function buildAcceptedCompatibilityProjections(
-  seed: AcceptedHypertrophySeedV2,
+  seed: AcceptedHypertrophySeed,
 ): {
   slotSequenceJson: AuthoringJsonValue;
   slotPlanSeedJson: AuthoringJsonValue;
 } {
-  const accepted = parseAcceptedHypertrophySeedV2(seed);
+  const accepted = parseAcceptedHypertrophySeed(seed);
   return {
     slotSequenceJson: {
       version: 1,
@@ -386,7 +564,14 @@ export function buildAcceptedCompatibilityProjections(
     slotPlanSeedJson: {
       version: 1,
       source: "custom_hypertrophy_plan_v1",
-      slots: projectExecutableSeed(accepted).slots,
+      slots: accepted.slots.map((slot) => ({
+        slotId: slot.slotId,
+        exercises: slot.exercises.map(({ exerciseId, role, setCount }) => ({
+          exerciseId,
+          role,
+          setCount,
+        })),
+      })),
     },
   };
 }
@@ -398,11 +583,11 @@ function record(value: unknown): Record<string, unknown> | null {
 }
 
 export function assertAcceptedCompatibilityAlignment(input: {
-  acceptedSeed: AcceptedHypertrophySeedV2;
+  acceptedSeed: AcceptedHypertrophySeed;
   slotSequenceJson: unknown;
   slotPlanSeedJson: unknown;
 }): void {
-  const accepted = parseAcceptedHypertrophySeedV2(input.acceptedSeed);
+  const accepted = parseAcceptedHypertrophySeed(input.acceptedSeed);
   const sequence = record(input.slotSequenceJson);
   const sequenceSlots = Array.isArray(sequence?.slots) ? sequence.slots : [];
   const seed = record(input.slotPlanSeedJson);

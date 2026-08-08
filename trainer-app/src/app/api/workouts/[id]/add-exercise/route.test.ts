@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => {
   const txWorkoutExerciseFindFirst = vi.fn();
   const txWorkoutExerciseCreate = vi.fn();
   const txWorkoutExerciseFindMany = vi.fn();
+  const txExerciseFindUnique = vi.fn();
   const provisionOwnerForMutation = vi.fn(async () => ({ id: "user-1" }));
 
   const tx = {
@@ -33,6 +34,9 @@ const mocks = vi.hoisted(() => {
       findFirst: txWorkoutExerciseFindFirst,
       create: txWorkoutExerciseCreate,
       findMany: txWorkoutExerciseFindMany,
+    },
+    exercise: {
+      findUnique: txExerciseFindUnique,
     },
   };
 
@@ -69,6 +73,7 @@ const mocks = vi.hoisted(() => {
     txWorkoutExerciseFindFirst,
     txWorkoutExerciseCreate,
     txWorkoutExerciseFindMany,
+    txExerciseFindUnique,
     provisionOwnerForMutation,
   };
 });
@@ -612,6 +617,9 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
         orderIndex: 2,
         section: "ACCESSORY",
         isMainLift: false,
+        measurementProfile: null,
+        loadConvention: null,
+        repBasis: null,
         stimulusAccountingSnapshot: expect.objectContaining({
           version: 1,
           sourceExerciseId: "fly",
@@ -682,6 +690,147 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
         }),
       },
     });
+  });
+
+  it("atomically snapshots a classified replacement for a V3 workout", async () => {
+    const measurementColumns = {
+      measurementProfile: "REPS_EXTERNAL_LOAD" as const,
+      loadConvention: "MACHINE_DISPLAYED" as const,
+      repBasis: "TOTAL" as const,
+    };
+    mocks.workoutFindFirst.mockResolvedValueOnce({
+      id: "workout-1",
+      status: "PLANNED",
+      mesocycleId: null,
+      mesocycle: null,
+      seedRevision: { seedPayload: { version: 3 } },
+    });
+    mocks.exerciseFindUnique.mockResolvedValueOnce({
+      id: "fly",
+      name: "Cable Fly",
+      repRangeMin: 10,
+      repRangeMax: 14,
+      fatigueCost: 2,
+      isCompound: false,
+      exerciseEquipment: [{ equipment: { type: "CABLE" } }],
+      exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest" } }],
+      aliases: [],
+      ...measurementColumns,
+    });
+    mocks.txWorkoutFindUnique.mockResolvedValueOnce({
+      selectionMetadata: buildWorkoutSelectionMetadata(),
+      selectionMode: "INTENT",
+      sessionIntent: "PUSH",
+      status: "PLANNED",
+      mesocycleId: null,
+      mesocycle: null,
+      seedRevision: { seedPayload: { version: 3 } },
+      exercises: [],
+    });
+    mocks.txExerciseFindUnique.mockResolvedValueOnce(measurementColumns);
+    mocks.txWorkoutExerciseCreate.mockResolvedValueOnce({
+      id: "we-v3",
+      ...measurementColumns,
+      sets: [
+        {
+          id: "set-v3",
+          setIndex: 1,
+          targetReps: 12,
+          targetRepMin: 12,
+          targetRepMax: 14,
+          targetLoad: null,
+          targetRpe: 6.5,
+          restSeconds: 120,
+        },
+      ],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/workout-1/add-exercise", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ exerciseId: "fly", expectedRevision: 1 }),
+      }),
+      { params: Promise.resolve({ id: "workout-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.txWorkoutExerciseCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          ...measurementColumns,
+          sets: {
+            create: expect.arrayContaining([
+              expect.not.objectContaining({ targetLoad: expect.anything() }),
+            ]),
+          },
+        }),
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      exercise: {
+        measurement: {
+          profile: "REPS_EXTERNAL_LOAD",
+          loadConvention: "MACHINE_DISPLAYED",
+          repBasis: "TOTAL",
+        },
+      },
+    });
+  });
+
+  it("returns 409 without mutation when classification disappears before V3 add commit", async () => {
+    mocks.exerciseFindUnique.mockResolvedValueOnce({
+      id: "fly",
+      name: "Cable Fly",
+      repRangeMin: 10,
+      repRangeMax: 14,
+      fatigueCost: 2,
+      isCompound: false,
+      exerciseEquipment: [{ equipment: { type: "CABLE" } }],
+      exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest" } }],
+      aliases: [],
+      measurementProfile: "REPS_EXTERNAL_LOAD",
+      loadConvention: "MACHINE_DISPLAYED",
+      repBasis: "TOTAL",
+    });
+    mocks.workoutFindFirst.mockResolvedValueOnce({
+      id: "workout-1",
+      status: "PLANNED",
+      mesocycleId: null,
+      mesocycle: null,
+      seedRevision: { seedPayload: { version: 3 } },
+    });
+    mocks.txWorkoutFindUnique.mockResolvedValueOnce({
+      selectionMetadata: buildWorkoutSelectionMetadata(),
+      selectionMode: "INTENT",
+      sessionIntent: "PUSH",
+      status: "PLANNED",
+      mesocycleId: null,
+      mesocycle: null,
+      seedRevision: { seedPayload: { version: 3 } },
+      exercises: [],
+    });
+    mocks.txExerciseFindUnique.mockResolvedValueOnce({
+      measurementProfile: null,
+      loadConvention: null,
+      repBasis: null,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/workout-1/add-exercise", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ exerciseId: "fly", expectedRevision: 1 }),
+      }),
+      { params: Promise.resolve({ id: "workout-1" }) },
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "This exercise is not yet available for measurement-aware workouts.",
+    });
+    expect(mocks.txWorkoutExerciseCreate).not.toHaveBeenCalled();
+    expect(mocks.txWorkoutUpdate).not.toHaveBeenCalled();
   });
 
   it("falls back to receipt lifecycle context when no current accessory pattern exists", async () => {

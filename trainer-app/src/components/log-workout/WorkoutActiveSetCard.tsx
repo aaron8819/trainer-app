@@ -6,6 +6,11 @@ import { SlideUpSheet } from "@/components/ui/SlideUpSheet";
 import { toDisplayLoad } from "@/lib/ui/load-display";
 import { formatRepPrescriptionInline } from "@/lib/ui/rep-target-display";
 import { getSetValidity } from "@/lib/logging/setValidity";
+import {
+  measurementLoadLabel,
+  measurementRepsLabel,
+  quantizesAsPounds,
+} from "@/lib/exercise-measurement/semantics";
 import type {
   ActiveSetDraftState,
   FlatSetItem,
@@ -169,11 +174,16 @@ export function WorkoutActiveSetCard({
   const setValidity = getSetValidity({
     actualReps,
     actualRpe,
-    actualLoad,
+    actualLoad:
+      activeSet.exercise.measurement?.profile === "REPS_BODYWEIGHT"
+        ? null
+        : actualLoad,
     wasSkipped: activeSet.set.wasSkipped ?? false,
+    measurementProfile: activeSet.exercise.measurement?.profile,
   });
   const canSubmit = setValidity.valid;
   const validationMessage = setValidity.reason ?? null;
+  const repsLabel = measurementRepsLabel(activeSet.exercise.measurement ?? null);
   const executionGuidance = activeSet.exercise.executionGuidance ?? [];
 
   return (
@@ -244,8 +254,12 @@ export function WorkoutActiveSetCard({
         </p>
         <p className="mt-0.5 text-xs font-medium text-slate-600">
           Starting target: {formatTargetReps(activeSet.set, activeSet.exercise.isMainLift)}
-          {activeSet.set.targetLoad != null
-            ? ` · ${
+          {activeSet.exercise.measurement?.repBasis === "PER_SIDE" ? " per side" : ""}
+          {activeSet.set.targetLoad != null &&
+          activeSet.exercise.measurement?.profile !== "REPS_BODYWEIGHT"
+            ? activeSet.exercise.measurement
+              ? ` · ${measurementLoadLabel(activeSet.exercise.measurement)}: ${activeSet.set.targetLoad}`
+              : ` · ${
                 isDumbbell
                   ? `${toDisplayLoad(activeSet.set.targetLoad, true)} lbs each`
                   : `${activeSet.set.targetLoad} lbs`
@@ -298,8 +312,10 @@ export function WorkoutActiveSetCard({
           </div>
         ) : null}
       </div>
-      {!isWarmup && shouldUseBodyweightLoadLabel(activeSet.exercise, activeSet.set) ? (
-        <p className="mt-2 text-xs text-slate-500">Bodyweight movement (load optional for weighted variation).</p>
+      {activeSet.exercise.measurement?.profile === "REPS_BODYWEIGHT" ? (
+        <p className="mt-2 text-xs text-slate-500">Bodyweight — reps only.</p>
+      ) : !isWarmup && shouldUseBodyweightLoadLabel(activeSet.exercise, activeSet.set) ? (
+        <p className="mt-2 text-xs text-slate-500">Bodyweight movement (legacy load behavior).</p>
       ) : null}
       <div className="mt-2 min-h-5">
         {showDraftRestored ? <p className="text-xs text-slate-400">Draft restored</p> : null}
@@ -314,7 +330,9 @@ export function WorkoutActiveSetCard({
 
       <div className="mt-3 space-y-2.5">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Reps</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            {repsLabel}
+          </p>
           <div className="mt-1 flex items-center gap-2">
             <button
               className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-300 px-3 text-sm font-semibold text-slate-700"
@@ -329,7 +347,7 @@ export function WorkoutActiveSetCard({
               -1
             </button>
             <input
-              aria-label="Reps"
+              aria-label={repsLabel}
               className={`min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-base ${
                 prefilledFieldsBySet[setId]?.actualReps && !touchedFieldsBySet[setId]?.actualReps
                   ? "text-slate-400"
@@ -368,16 +386,21 @@ export function WorkoutActiveSetCard({
           </div>
         </div>
 
-        <div>
+        {activeSet.exercise.measurement?.profile === "REPS_BODYWEIGHT" ? null : <div>
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            {shouldUseBodyweightLoadLabel(activeSet.exercise, activeSet.set)
+            {activeSet.exercise.measurement
+              ? measurementLoadLabel(activeSet.exercise.measurement)
+              : shouldUseBodyweightLoadLabel(activeSet.exercise, activeSet.set)
               ? "Load (lbs, optional)"
               : isDumbbell
               ? "Load per dumbbell (lbs)"
               : "Load (lbs)"}
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
-            {[-5, -2.5, 2.5, 5].map((delta) => (
+            {(quantizesAsPounds(activeSet.exercise.measurement ?? null)
+              ? [-5, -2.5, 2.5, 5]
+              : [-5, -1, 1, 5]
+            ).map((delta) => (
               <button
                 key={`${setId}-delta-${delta}`}
                 className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-300 px-3 text-xs font-semibold text-slate-700"
@@ -417,7 +440,7 @@ export function WorkoutActiveSetCard({
                 : "text-slate-900"
             }`}
             type="number"
-            step="2.5"
+            step={quantizesAsPounds(activeSet.exercise.measurement ?? null) ? "2.5" : "any"}
             inputMode="decimal"
             value={loadDraft}
             onFocus={() => {
@@ -434,7 +457,7 @@ export function WorkoutActiveSetCard({
               updateDraftBuffer(setId, "load", event.target.value);
             }}
           />
-        </div>
+        </div>}
 
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">RPE</p>
@@ -540,7 +563,10 @@ export function WorkoutActiveSetCard({
           onClose={() => setHistoryOpen(false)}
           title={`${activeSet.exercise.name} history`}
         >
-          <PersonalHistorySection exerciseId={activeSet.exercise.exerciseId} />
+          <PersonalHistorySection
+            exerciseId={activeSet.exercise.exerciseId}
+            comparisonMeasurement={activeSet.exercise.measurement ?? null}
+          />
         </SlideUpSheet>
       ) : null}
     </section>

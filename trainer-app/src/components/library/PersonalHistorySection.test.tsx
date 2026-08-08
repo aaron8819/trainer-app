@@ -107,4 +107,23 @@ describe("PersonalHistorySection", () => {
       )
     ).toBeInTheDocument();
   });
+
+  it("requests the exact frozen measurement cohort when a workout snapshot is supplied", async () => {
+    render(
+      <PersonalHistorySection
+        exerciseId="bench"
+        comparisonMeasurement={{
+          profile: "REPS_EXTERNAL_LOAD",
+          loadConvention: "BARBELL_TOTAL",
+          repBasis: "TOTAL",
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/exercises/bench/history?limit=3&measurementSnapshot=classified&measurementProfile=REPS_EXTERNAL_LOAD&loadConvention=BARBELL_TOTAL&repBasis=TOTAL",
+      );
+    });
+  });
 });

@@ -9,6 +9,7 @@ import {
   type SlotPlanSeedRole,
 } from "@/lib/api/slot-plan-seed-parser";
 import type { MappedGenerationContext } from "./types";
+import type { MeasurementSemantics } from "@/lib/exercise-measurement/semantics";
 
 export type NormalizedSeededSlotExercise = {
   exerciseId: string;
@@ -17,6 +18,7 @@ export type NormalizedSeededSlotExercise = {
   setCount?: number;
   hasExplicitName: boolean;
   hasExplicitSetCount: boolean;
+  measurement?: MeasurementSemantics;
 };
 
 export type NormalizedSeededSlot = {
@@ -227,6 +229,7 @@ function resolveSeededSlotPlan(input: {
       exercise: exerciseById.get(exercise.exerciseId)!,
       orderIndex,
       mesocycleRole: exercise.role,
+      ...(exercise.measurement ? { measurement: exercise.measurement } : {}),
     })),
     ...(!seedHasMissingSetCounts
       ? {

@@ -6,6 +6,7 @@ import type {
   ExerciseHistoryRepresentativeSet,
   ExerciseHistoryResult,
 } from "@/lib/api/exercise-history";
+import type { MeasurementSemantics } from "@/lib/exercise-measurement/semantics";
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString(undefined, {
@@ -26,7 +27,25 @@ function formatLoad(
   if (load == null) {
     return null;
   }
-  return `${formatNumber(load)} lb${loadConvention === "per_dumbbell" ? " each" : ""}`;
+  if (loadConvention === "no_load") {
+    return null;
+  }
+  if (loadConvention === "machine_displayed") {
+    return `${formatNumber(load)} displayed`;
+  }
+  if (loadConvention === "displayed_assistance") {
+    return `${formatNumber(load)} assistance`;
+  }
+  if (loadConvention === "not_comparable") {
+    return `${formatNumber(load)} recorded value`;
+  }
+  return `${formatNumber(load)} lb${
+    loadConvention === "per_dumbbell"
+      ? " each"
+      : loadConvention === "per_implement"
+        ? " per implement"
+        : ""
+  }`;
 }
 
 function formatSet(
@@ -53,7 +72,13 @@ function exposureNote(exposure: ExerciseExposure): string | null {
   return notes.length > 0 ? notes.join(" · ") : null;
 }
 
-export function PersonalHistorySection({ exerciseId }: { exerciseId: string }) {
+export function PersonalHistorySection({
+  exerciseId,
+  comparisonMeasurement,
+}: {
+  exerciseId: string;
+  comparisonMeasurement?: MeasurementSemantics | null;
+}) {
   const [data, setData] = useState<ExerciseHistoryResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -68,8 +93,19 @@ export function PersonalHistorySection({ exerciseId }: { exerciseId: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    const searchParams = new URLSearchParams({ limit: "3" });
+    if (comparisonMeasurement === null) {
+      searchParams.set("measurementSnapshot", "legacy");
+    } else if (comparisonMeasurement) {
+      searchParams.set("measurementSnapshot", "classified");
+      searchParams.set("measurementProfile", comparisonMeasurement.profile);
+      if ("loadConvention" in comparisonMeasurement) {
+        searchParams.set("loadConvention", comparisonMeasurement.loadConvention);
+      }
+      searchParams.set("repBasis", comparisonMeasurement.repBasis);
+    }
 
-    fetch(`/api/exercises/${exerciseId}/history?limit=3`)
+    fetch(`/api/exercises/${exerciseId}/history?${searchParams.toString()}`)
       .then(async (response) => {
         if (!response.ok) {
           throw new Error("History request failed");
@@ -95,7 +131,7 @@ export function PersonalHistorySection({ exerciseId }: { exerciseId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [exerciseId]);
+  }, [comparisonMeasurement, exerciseId]);
 
   if (loading) {
     return (

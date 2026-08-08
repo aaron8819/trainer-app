@@ -2,8 +2,11 @@ import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
 import {
+  parseAcceptedHypertrophySeed,
   parseAcceptedHypertrophySeedV2,
+  parseAcceptedHypertrophySeedV3,
   projectExecutableSeed,
+  projectExecutableSeedV3,
 } from "@/lib/engine/hypertrophy-plan-authoring";
 
 export const SEED_PAYLOAD_HASH_ALGORITHM = "sha256" as const;
@@ -111,8 +114,24 @@ export function normalizeAcceptedSeedPayload(seed: unknown): {
   executablePayload: Prisma.InputJsonValue;
   hash: string;
   hashAlgorithm: typeof SEED_PAYLOAD_HASH_ALGORITHM;
-  payloadVersion: 1 | 2;
+  payloadVersion: 1 | 2 | 3;
 } {
+  if (
+    seed &&
+    typeof seed === "object" &&
+    !Array.isArray(seed) &&
+    (seed as Record<string, unknown>).version === 3
+  ) {
+    const canonicalPayload = parseAcceptedHypertrophySeedV3(seed);
+    const executablePayload = projectExecutableSeedV3(canonicalPayload);
+    return {
+      canonicalPayload: canonicalPayload as unknown as Prisma.InputJsonValue,
+      executablePayload: executablePayload as unknown as Prisma.InputJsonValue,
+      hash: fingerprintCanonicalJson(canonicalPayload),
+      hashAlgorithm: SEED_PAYLOAD_HASH_ALGORITHM,
+      payloadVersion: 3,
+    };
+  }
   if (
     seed &&
     typeof seed === "object" &&
@@ -153,8 +172,11 @@ function assertCorrectiveTopology(input: {
   current: unknown;
   replacement: unknown;
 }): void {
-  const current = parseAcceptedHypertrophySeedV2(input.current);
-  const replacement = parseAcceptedHypertrophySeedV2(input.replacement);
+  const current = parseAcceptedHypertrophySeed(input.current);
+  const replacement = parseAcceptedHypertrophySeed(input.replacement);
+  if (current.version !== replacement.version) {
+    throw new Error("ACCEPTED_SEED_CORRECTION_VERSION_CHANGED");
+  }
   if (
     current.slots.length !== replacement.slots.length ||
     current.slots.some(
@@ -273,9 +295,9 @@ export async function createCorrectiveSeedRevisionInTransaction(
   }
 
   const currentNormalized = normalizeAcceptedSeedPayload(current.seedPayload);
-  if (currentNormalized.payloadVersion === 2) {
-    if (normalized.payloadVersion !== 2) {
-      throw new Error("ACCEPTED_SEED_V2_CORRECTION_INTENT_REQUIRED");
+  if (currentNormalized.payloadVersion === 2 || currentNormalized.payloadVersion === 3) {
+    if (normalized.payloadVersion !== currentNormalized.payloadVersion) {
+      throw new Error("ACCEPTED_SEED_CORRECTION_INTENT_REQUIRED");
     }
     assertCorrectiveTopology({
       current: current.seedPayload,

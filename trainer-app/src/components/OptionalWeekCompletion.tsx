@@ -171,6 +171,7 @@ export function OptionalWeekCompletion({
       ].map((exercise) => ({
         section: exercise.section,
         exerciseId: exercise.exercise.id,
+        ...(exercise.measurement ? { measurement: exercise.measurement } : {}),
         sets: exercise.sets.map((set) => ({
           setIndex: set.setIndex,
           targetReps: set.targetReps,

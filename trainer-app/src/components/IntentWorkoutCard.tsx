@@ -29,6 +29,7 @@ type WorkoutExercise = {
   isMainLift: boolean;
   exercise: { id: string; name: string; equipment?: string[] };
   sets: WorkoutSet[];
+  measurement?: import("@/lib/exercise-measurement/semantics").MeasurementSemantics;
 };
 
 type WorkoutPlan = {
@@ -124,6 +125,7 @@ function buildSaveWorkoutPayload(input: {
     exercises: listWorkoutPlanExercisesInOrder(input.workout).map(({ exercise, section }) => ({
       section: toSaveExerciseSection(section),
       exerciseId: exercise.exercise.id,
+      ...(exercise.measurement ? { measurement: exercise.measurement } : {}),
       sets: exercise.sets.map((set) => ({
         setIndex: set.setIndex,
         targetReps: set.targetReps,

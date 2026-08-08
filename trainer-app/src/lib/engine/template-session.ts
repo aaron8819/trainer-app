@@ -28,6 +28,7 @@ import { estimateStrengthSessionTiming } from "./strength-session-timing";
 
 export type TemplateExerciseInput = {
   exercise: Exercise;
+  measurement?: import("@/lib/exercise-measurement/semantics").MeasurementSemantics;
   orderIndex: number;
   supersetGroup?: number;
   mesocycleRole?: "CORE_COMPOUND" | "ACCESSORY";
@@ -328,6 +329,7 @@ function buildTemplateExercise(
     notes: isMainLift ? "Primary movement" : undefined,
     supersetGroup,
     sets: cappedSets,
+    ...(input.measurement ? { measurement: input.measurement } : {}),
   };
 }
 

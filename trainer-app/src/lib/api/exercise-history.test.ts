@@ -30,6 +30,11 @@ function makeRow(input?: {
   equipment?: string[];
   selectionMetadata?: unknown;
   phase?: "ACCUMULATION" | "DELOAD";
+  measurement?: {
+    measurementProfile: "REPS_EXTERNAL_LOAD" | "REPS_BODYWEIGHT" | "REPS_BODYWEIGHT_PLUS_LOAD" | "REPS_ASSISTED";
+    loadConvention: "BARBELL_TOTAL" | "IMPLEMENT_WEIGHT" | "MACHINE_DISPLAYED" | "ADDED_EXTERNAL_LOAD" | "DISPLAYED_ASSISTANCE" | null;
+    repBasis: "TOTAL" | "PER_SIDE";
+  };
   sets?: Array<{
     id?: string;
     setIndex: number;
@@ -44,6 +49,9 @@ function makeRow(input?: {
   const date = input?.date ?? "2026-02-20T00:00:00.000Z";
   return {
     id: `we-${input?.workoutId ?? "1"}`,
+    measurementProfile: input?.measurement?.measurementProfile ?? null,
+    loadConvention: input?.measurement?.loadConvention ?? null,
+    repBasis: input?.measurement?.repBasis ?? null,
     exercise: {
       id: "bench",
       name: "Bench Press",
@@ -167,5 +175,115 @@ describe("loadExerciseHistory", () => {
       heaviestCompletedLoad: null,
       highestSessionVolume: null,
     });
+  });
+
+  it("keeps classified, incompatible, and legacy histories in separate cohorts", async () => {
+    mocks.findMany.mockResolvedValue([
+      makeRow({
+        workoutId: "current",
+        date: "2026-03-03T00:00:00.000Z",
+        measurement: {
+          measurementProfile: "REPS_EXTERNAL_LOAD",
+          loadConvention: "BARBELL_TOTAL",
+          repBasis: "TOTAL",
+        },
+        sets: [{ setIndex: 1, reps: 8, load: 185, rpe: 8 }],
+      }),
+      makeRow({
+        workoutId: "incompatible",
+        date: "2026-03-02T00:00:00.000Z",
+        measurement: {
+          measurementProfile: "REPS_EXTERNAL_LOAD",
+          loadConvention: "IMPLEMENT_WEIGHT",
+          repBasis: "TOTAL",
+        },
+        sets: [{ setIndex: 1, reps: 8, load: 100, rpe: 8 }],
+      }),
+      makeRow({
+        workoutId: "legacy",
+        date: "2026-03-01T00:00:00.000Z",
+        sets: [{ setIndex: 1, reps: 8, load: 225, rpe: 8 }],
+      }),
+    ]);
+
+    const result = await loadExerciseHistory("bench", "user-1", 10);
+
+    expect(result.recentExposures.map((row) => row.workoutId)).toEqual(["current"]);
+    expect(result.comparison.loadConvention).toBe("recorded_external_load");
+    expect(result.records.heaviestCompletedLoad?.load).toBe(185);
+  });
+
+  it("labels classified implement loads without assuming two dumbbells", async () => {
+    mocks.findMany.mockResolvedValue([
+      makeRow({
+        measurement: {
+          measurementProfile: "REPS_EXTERNAL_LOAD",
+          loadConvention: "IMPLEMENT_WEIGHT",
+          repBasis: "TOTAL",
+        },
+      }),
+    ]);
+
+    const result = await loadExerciseHistory("goblet", "user-1", 3);
+
+    expect(result.comparison.loadConvention).toBe("per_implement");
+  });
+
+  it("labels displayed machine and assistance values without claiming pounds", async () => {
+    mocks.findMany.mockResolvedValue([
+      makeRow({
+        measurement: {
+          measurementProfile: "REPS_ASSISTED",
+          loadConvention: "DISPLAYED_ASSISTANCE",
+          repBasis: "TOTAL",
+        },
+      }),
+    ]);
+
+    const assisted = await loadExerciseHistory("assisted", "user-1", 3);
+    expect(assisted.comparison.loadConvention).toBe("displayed_assistance");
+    expect(assisted.records.heaviestCompletedLoad).toBeNull();
+
+    mocks.findMany.mockResolvedValue([
+      makeRow({
+        measurement: {
+          measurementProfile: "REPS_EXTERNAL_LOAD",
+          loadConvention: "MACHINE_DISPLAYED",
+          repBasis: "TOTAL",
+        },
+      }),
+    ]);
+    const machine = await loadExerciseHistory("cable-row", "user-1", 3);
+    expect(machine.comparison.loadConvention).toBe("machine_displayed");
+    expect(machine.records.heaviestCompletedLoad).toBeNull();
+  });
+
+  it("uses the active workout snapshot instead of the newest historical cohort", async () => {
+    mocks.findMany.mockResolvedValue([
+      makeRow({
+        workoutId: "classified-newest",
+        date: "2026-03-03T00:00:00.000Z",
+        measurement: {
+          measurementProfile: "REPS_EXTERNAL_LOAD",
+          loadConvention: "BARBELL_TOTAL",
+          repBasis: "TOTAL",
+        },
+        sets: [{ setIndex: 1, reps: 8, load: 185, rpe: 8 }],
+      }),
+      makeRow({
+        workoutId: "legacy-active-cohort",
+        date: "2026-03-01T00:00:00.000Z",
+        sets: [{ setIndex: 1, reps: 8, load: 225, rpe: 8 }],
+      }),
+    ]);
+
+    const result = await loadExerciseHistory("bench", "user-1", 10, {
+      measurement: null,
+    });
+
+    expect(result.recentExposures.map((row) => row.workoutId)).toEqual([
+      "legacy-active-cohort",
+    ]);
+    expect(result.records.heaviestCompletedLoad?.load).toBe(225);
   });
 });

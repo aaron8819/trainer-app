@@ -479,7 +479,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     ).toBeInTheDocument();
     expect(await screen.findByText("Last exposure")).toBeInTheDocument();
     expect(mockedFetch).toHaveBeenCalledWith(
-      "/api/exercises/exercise-1/history?limit=3"
+      "/api/exercises/exercise-1/history?limit=3&measurementSnapshot=legacy"
     );
     expect(screen.getByLabelText("Reps")).toBeInTheDocument();
   });

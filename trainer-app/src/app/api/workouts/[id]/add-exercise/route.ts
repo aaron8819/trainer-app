@@ -22,6 +22,10 @@ import {
   executeWorkoutMutation,
   isWorkoutMutationError,
 } from "@/lib/api/workout-mutation";
+import {
+  measurementColumns,
+  parseMeasurementColumns,
+} from "@/lib/exercise-measurement/semantics";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -227,6 +231,7 @@ export async function POST(
       id: true,
       status: true,
       mesocycleId: true,
+      seedRevision: { select: { seedPayload: true } },
       mesocycle: {
         select: {
           state: true,
@@ -279,6 +284,15 @@ export async function POST(
   if (!exercise) {
     return NextResponse.json({ error: "Exercise not found" }, { status: 404 });
   }
+  const measurementAwareWorkout =
+    (workout.seedRevision?.seedPayload as { version?: unknown } | null)?.version === 3;
+  const catalogMeasurement = parseMeasurementColumns(exercise);
+  if (measurementAwareWorkout && !catalogMeasurement) {
+    return NextResponse.json(
+      { error: "This exercise is not yet available for measurement-aware workouts." },
+      { status: 409 },
+    );
+  }
   const stimulusAccountingSnapshot = buildExerciseStimulusSnapshot(
     {
       id: exercise.id,
@@ -295,7 +309,7 @@ export async function POST(
   );
 
   // Use last logged load as the starting target — keeps prescription grounded in reality
-  const targetLoad = recentSet?.actualLoad ?? null;
+  const targetLoad = measurementAwareWorkout ? null : recentSet?.actualLoad ?? null;
   const trainingAge = (profile?.trainingAge?.toLowerCase() as TrainingAge) ?? "intermediate";
   const primaryGoal = (goals?.primaryGoal?.toLowerCase() as PrimaryGoal) ?? "hypertrophy";
 
@@ -313,6 +327,7 @@ export async function POST(
           sessionIntent: true,
           status: true,
           mesocycleId: true,
+          seedRevision: { select: { seedPayload: true } },
           mesocycle: {
             select: {
               state: true,
@@ -354,6 +369,23 @@ export async function POST(
       });
       if (!latestWorkout) {
         throw new Error("WORKOUT_NOT_FOUND");
+      }
+      const latestMeasurementAware =
+        (latestWorkout.seedRevision?.seedPayload as { version?: unknown } | null)?.version === 3;
+      const committedMeasurement = latestMeasurementAware
+        ? parseMeasurementColumns(
+            (await tx.exercise.findUnique({
+              where: { id: exercise.id },
+              select: {
+                measurementProfile: true,
+                loadConvention: true,
+                repBasis: true,
+              },
+            })) ?? {},
+          )
+        : null;
+      if (latestMeasurementAware && !committedMeasurement) {
+        throw new Error("MEASUREMENT_AWARE_EXERCISE_REQUIRED");
       }
       const transactionBlockedReason = getRuntimeEditBlockedReason(latestWorkout);
       if (transactionBlockedReason) {
@@ -411,6 +443,7 @@ export async function POST(
           isMainLift: preview.isMainLift,
           stimulusAccountingSnapshot:
             stimulusAccountingSnapshot as unknown as Prisma.InputJsonValue,
+          ...measurementColumns(latestMeasurementAware ? committedMeasurement : null),
           sets: {
             create: setIndices.map((setIndex) => ({
               setIndex,
@@ -504,6 +537,15 @@ export async function POST(
       if (error instanceof Error && error.message === "WORKOUT_NOT_FOUND") {
         return NextResponse.json({ error: "Workout not found" }, { status: 404 });
       }
+      if (
+        error instanceof Error &&
+        error.message === "MEASUREMENT_AWARE_EXERCISE_REQUIRED"
+      ) {
+        return NextResponse.json(
+          { error: "This exercise is not yet available for measurement-aware workouts." },
+          { status: 409 },
+        );
+      }
       if (isWorkoutMutationError(error)) {
         return NextResponse.json({ error: error.message }, { status: error.status });
       }
@@ -531,6 +573,7 @@ export async function POST(
     throw new Error("Workout exercise was not created.");
   }
   const workoutExercise = workoutMutation.result;
+  const persistedMeasurement = parseMeasurementColumns(workoutExercise);
 
   // Return in LogExerciseInput format
   const muscleTagGroups = buildExerciseMuscleDisplayGroups(exercise);
@@ -547,6 +590,9 @@ export async function POST(
     isRuntimeAdded: true as const,
     isMainLift: false,
     section: "ACCESSORY" as const,
+    ...(persistedMeasurement
+      ? { measurement: persistedMeasurement }
+      : {}),
     sessionNote: RUNTIME_ADDED_EXERCISE_SESSION_NOTE,
     capabilities: {
       canAddSet: true,

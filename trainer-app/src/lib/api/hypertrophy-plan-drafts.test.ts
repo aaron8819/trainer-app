@@ -1,5 +1,15 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HypertrophyPlanDraftV1 } from "@/lib/engine/hypertrophy-plan-authoring";
+
+const originalMeasurementRollout = process.env.TRAINER_EXERCISE_MEASUREMENT_ROLLOUT;
+
+afterEach(() => {
+  if (originalMeasurementRollout === undefined) {
+    delete process.env.TRAINER_EXERCISE_MEASUREMENT_ROLLOUT;
+  } else {
+    process.env.TRAINER_EXERCISE_MEASUREMENT_ROLLOUT = originalMeasurementRollout;
+  }
+});
 
 const mocks = vi.hoisted(() => {
   const state = {
@@ -186,6 +196,7 @@ const exerciseRows = [
 describe("custom hypertrophy draft persistence", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.TRAINER_EXERCISE_MEASUREMENT_ROLLOUT;
     mocks.state.draft = { payload: draft(), revision: 3 };
     mocks.state.mesocycles.length = 0;
     mocks.state.revisions.length = 0;
@@ -301,6 +312,87 @@ describe("custom hypertrophy draft persistence", () => {
     });
   });
 
+  it("emits V3 only when the gate is enabled and every selected exercise is classified", async () => {
+    process.env.TRAINER_EXERCISE_MEASUREMENT_ROLLOUT = "enabled";
+    mocks.tx.exercise.findMany.mockResolvedValue(
+      exerciseRows.map((row) => ({
+        ...row,
+        measurementProfile: "REPS_EXTERNAL_LOAD",
+        loadConvention: row.id === "bench" ? "BARBELL_TOTAL" : "MACHINE_DISPLAYED",
+        repBasis: "TOTAL",
+      })),
+    );
+
+    await makeHypertrophyPlanReady({
+      userId: "user-1",
+      planId: "plan-1",
+      expectedDraftRevision: 3,
+      warningsConfirmed: true,
+    });
+
+    expect(mocks.state.revisions[0]).toMatchObject({
+      seedPayload: {
+        version: 3,
+        settings: draft().settings,
+        slots: [
+          {
+            name: "Upper",
+            focus: "UPPER",
+            exercises: [
+              {
+                measurement: {
+                  profile: "REPS_EXTERNAL_LOAD",
+                  loadConvention: "BARBELL_TOTAL",
+                  repBasis: "TOTAL",
+                },
+              },
+            ],
+          },
+          {
+            name: "Lower",
+            focus: "LOWER",
+            exercises: [
+              {
+                measurement: {
+                  profile: "REPS_EXTERNAL_LOAD",
+                  loadConvention: "MACHINE_DISPLAYED",
+                  repBasis: "TOTAL",
+                },
+              },
+            ],
+          },
+        ],
+      },
+    });
+  });
+
+  it("keeps a mixed classified plan on accepted V2 even when the gate is enabled", async () => {
+    process.env.TRAINER_EXERCISE_MEASUREMENT_ROLLOUT = "enabled";
+    mocks.tx.exercise.findMany.mockResolvedValue(
+      exerciseRows.map((row) =>
+        row.id === "bench"
+          ? {
+              ...row,
+              measurementProfile: "REPS_EXTERNAL_LOAD",
+              loadConvention: "BARBELL_TOTAL",
+              repBasis: "TOTAL",
+            }
+          : row,
+      ),
+    );
+
+    await makeHypertrophyPlanReady({
+      userId: "user-1",
+      planId: "plan-1",
+      expectedDraftRevision: 3,
+      warningsConfirmed: true,
+    });
+
+    expect(mocks.state.revisions[0]).toMatchObject({
+      seedPayload: { version: 2 },
+    });
+  });
+
   it("preserves the low-axial semantic through make-ready acceptance", async () => {
     const constrainedDraft = lowAxialDraft();
     mocks.state.draft = { payload: constrainedDraft, revision: 3 };
@@ -393,5 +485,69 @@ describe("custom hypertrophy draft persistence", () => {
         .intent.requiredExerciseClass,
     ).toBe("low_axial_hip_extension_anchor");
     expect(createInput.data).not.toHaveProperty("mesocycles");
+  });
+
+  it("preserves the complete editable envelope when copying accepted V3", async () => {
+    const copiedDraft = lowAxialDraft();
+    const accepted = {
+      version: 3,
+      source: "custom_hypertrophy_plan_v1",
+      settings: copiedDraft.settings,
+      slots: copiedDraft.sessions.map((session) => ({
+        slotId: session.slotId,
+        name: session.name,
+        focus: session.focus,
+        exercises: session.exercises.map((exercise) => ({
+          exerciseId: exercise.exerciseId,
+          role:
+            exercise.intent.userRole === "PRIMARY_LIFT"
+              ? "CORE_COMPOUND"
+              : "ACCESSORY",
+          setCount: exercise.workingSets,
+          intent: exercise.intent,
+          measurement: {
+            profile: "REPS_EXTERNAL_LOAD",
+            loadConvention: "BARBELL_TOTAL",
+            repBasis: "TOTAL",
+          },
+        })),
+      })),
+    };
+    mocks.prisma.macroCycle.findFirst.mockResolvedValueOnce({
+      trainingAge: "INTERMEDIATE",
+      mesocycles: [{ currentSeedRevision: { seedPayload: accepted } }],
+    });
+    mocks.prisma.macroCycle.create.mockResolvedValue({});
+
+    await createEditableHypertrophyPlanCopy({
+      userId: "user-1",
+      sourcePlanId: "source-plan",
+      name: "Editable V3 copy",
+    });
+
+    const createInput = mocks.prisma.macroCycle.create.mock.calls[0]![0];
+    expect(createInput.data.hypertrophyDraft.create.payload).toEqual(copiedDraft);
+    expect(createInput.data.hypertrophyDraft.create.payload.settings).toEqual(
+      copiedDraft.settings,
+    );
+    expect(
+      createInput.data.hypertrophyDraft.create.payload.sessions.map(
+        (session: { slotId: string; name: string; focus: string }) => ({
+          slotId: session.slotId,
+          name: session.name,
+          focus: session.focus,
+        }),
+      ),
+    ).toEqual(
+      copiedDraft.sessions.map((session) => ({
+        slotId: session.slotId,
+        name: session.name,
+        focus: session.focus,
+      })),
+    );
+    expect(
+      createInput.data.hypertrophyDraft.create.payload.sessions[1].exercises[0]
+        .intent.requiredExerciseClass,
+    ).toBe("low_axial_hip_extension_anchor");
   });
 });

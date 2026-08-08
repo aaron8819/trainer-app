@@ -187,6 +187,7 @@ export type WorkoutExercise = {
   supersetGroup?: number;
   sets: WorkoutSet[];
   warmupSets?: WorkoutSet[];
+  measurement?: import("@/lib/exercise-measurement/semantics").MeasurementSemantics;
 };
 
 export type WorkoutPlan = {
@@ -230,6 +231,7 @@ export type WorkoutHistoryEntry = {
   mesocycleSnapshot?: WorkoutMesocycleSnapshot;
   exercises: {
     exerciseId: string;
+    measurement?: import("@/lib/exercise-measurement/semantics").MeasurementSemantics;
     plannedWorkingSetCount?: number;
     primaryMuscles?: string[];
     secondaryMuscles?: string[];
@@ -238,6 +240,7 @@ export type WorkoutHistoryEntry = {
   }[];
   calibrationExercises?: {
     exerciseId: string;
+    measurement?: import("@/lib/exercise-measurement/semantics").MeasurementSemantics;
     source: "runtime_added_same_exercise";
     plannedWorkingSetCount?: number;
     sets: SetLog[];

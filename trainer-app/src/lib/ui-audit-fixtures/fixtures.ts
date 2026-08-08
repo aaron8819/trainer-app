@@ -450,6 +450,117 @@ const activeLogWorkout: LogWorkoutFixture = {
   },
 };
 
+function buildMeasurementFixtureExercise(input: {
+  id: string;
+  name: string;
+  equipment: string[];
+  measurement?: SectionedExercises["main"][number]["measurement"];
+  targetLoad: number | null;
+}): SectionedExercises["main"][number] {
+  return {
+    workoutExerciseId: `ui-audit-measurement-${input.id}-we`,
+    exerciseId: `ui-audit-measurement-${input.id}`,
+    name: input.name,
+    equipment: input.equipment,
+    movementPatterns: [],
+    muscleTags: [],
+    muscleTagGroups: { primaryMuscles: [], secondaryMuscles: [] },
+    isMainLift: false,
+    section: "MAIN",
+    ...(input.measurement ? { measurement: input.measurement } : {}),
+    sets: [
+      {
+        setId: `ui-audit-measurement-${input.id}-set-1`,
+        setIndex: 1,
+        targetReps: 8,
+        targetRepRange: { min: 6, max: 10 },
+        targetLoad: input.targetLoad,
+        targetRpe: 8,
+        restSeconds: 120,
+      },
+    ],
+  };
+}
+
+const measurementLogWorkout: LogWorkoutFixture = {
+  workoutId: "ui-audit-workout-measurement",
+  sessionIdentityLabel: "Measurement Pilot",
+  sessionTechnicalLabel: "Execution snapshot review",
+  exercises: {
+    main: [
+      buildMeasurementFixtureExercise({
+        id: "barbell-squat",
+        name: "Barbell Back Squat",
+        equipment: ["barbell"],
+        measurement: {
+          profile: "REPS_EXTERNAL_LOAD",
+          loadConvention: "BARBELL_TOTAL",
+          repBasis: "TOTAL",
+        },
+        targetLoad: 185,
+      }),
+      buildMeasurementFixtureExercise({
+        id: "dumbbell-bench",
+        name: "Dumbbell Bench Press",
+        equipment: ["dumbbell"],
+        measurement: {
+          profile: "REPS_EXTERNAL_LOAD",
+          loadConvention: "IMPLEMENT_WEIGHT",
+          repBasis: "TOTAL",
+        },
+        targetLoad: 50,
+      }),
+      buildMeasurementFixtureExercise({
+        id: "pull-up",
+        name: "Pull-Up",
+        equipment: ["bodyweight"],
+        measurement: { profile: "REPS_BODYWEIGHT", repBasis: "TOTAL" },
+        targetLoad: null,
+      }),
+      buildMeasurementFixtureExercise({
+        id: "weighted-pull-up",
+        name: "Weighted Pull-Up",
+        equipment: ["bodyweight"],
+        measurement: {
+          profile: "REPS_BODYWEIGHT_PLUS_LOAD",
+          loadConvention: "ADDED_EXTERNAL_LOAD",
+          repBasis: "TOTAL",
+        },
+        targetLoad: 25,
+      }),
+      buildMeasurementFixtureExercise({
+        id: "assisted-pull-up",
+        name: "Machine-Assisted Pull-Up",
+        equipment: ["machine"],
+        measurement: {
+          profile: "REPS_ASSISTED",
+          loadConvention: "DISPLAYED_ASSISTANCE",
+          repBasis: "TOTAL",
+        },
+        targetLoad: 60,
+      }),
+      buildMeasurementFixtureExercise({
+        id: "cable-row",
+        name: "Seated Cable Row",
+        equipment: ["cable", "machine"],
+        measurement: {
+          profile: "REPS_EXTERNAL_LOAD",
+          loadConvention: "MACHINE_DISPLAYED",
+          repBasis: "TOTAL",
+        },
+        targetLoad: 100,
+      }),
+      buildMeasurementFixtureExercise({
+        id: "legacy-machine",
+        name: "Legacy Machine Press",
+        equipment: ["machine"],
+        targetLoad: 70,
+      }),
+    ],
+    accessory: [],
+  },
+};
+
 const timerVisibleLogWorkout: LogWorkoutFixture = {
   ...activeLogWorkout,
   workoutId: "ui-audit-workout-timer-visible",
@@ -1525,6 +1636,7 @@ const activeFixture: UiAuditFixture = {
   },
   logWorkouts: {
     [activeLogWorkout.workoutId]: activeLogWorkout,
+    [measurementLogWorkout.workoutId]: measurementLogWorkout,
   },
 };
 

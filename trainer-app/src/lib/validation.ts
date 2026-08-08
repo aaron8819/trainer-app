@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { measurementSemanticsSchema } from "@/lib/exercise-measurement/semantics";
 import {
   V2_CAPACITY_PRODUCT_CHOICES,
   V2_CAPACITY_TIME_PRIORITIES,
@@ -173,6 +174,7 @@ const saveWorkoutPayloadSchema = z.object({
         z.object({
           section: z.enum(WORKOUT_EXERCISE_SECTION_VALUES),
           exerciseId: z.string(),
+          measurement: measurementSemanticsSchema.optional(),
           sets: z
             .array(
               z.object({

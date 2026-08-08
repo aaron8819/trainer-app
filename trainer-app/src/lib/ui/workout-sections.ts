@@ -7,12 +7,16 @@ import {
   RUNTIME_ADDED_EXERCISE_SESSION_NOTE,
 } from "@/lib/ui/selection-metadata";
 import { buildExerciseMuscleDisplayGroups } from "@/lib/ui/exercise-muscle-tags";
+import { parseMeasurementColumns } from "@/lib/exercise-measurement/semantics";
 
 type WorkoutExercise = {
   id: string;
   isMainLift: boolean;
   orderIndex: number;
   section?: "WARMUP" | "MAIN" | "ACCESSORY" | null;
+  measurementProfile?: string | null;
+  loadConvention?: string | null;
+  repBasis?: string | null;
   exercise: {
     id?: string | null;
     name: string;
@@ -75,6 +79,7 @@ export function splitExercises(
   const ordered = [...exercises].sort((a, b) => a.orderIndex - b.orderIndex);
 
   for (const exercise of ordered) {
+    const measurement = parseMeasurementColumns(exercise);
     const muscleTagGroups = buildExerciseMuscleDisplayGroups({
       id: exercise.exercise.id,
       name: exercise.exercise.name,
@@ -89,6 +94,7 @@ export function splitExercises(
       movementPatterns: (exercise.exercise.movementPatterns ?? []).map((pattern) =>
         pattern.toLowerCase()
       ),
+      ...(measurement ? { measurement } : {}),
       muscleTags: muscleTagGroups.muscleTags,
       muscleTagGroups: {
         primaryMuscles: muscleTagGroups.primaryMuscles,

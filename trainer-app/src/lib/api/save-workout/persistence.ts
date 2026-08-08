@@ -5,10 +5,16 @@ import {
   type ExerciseStimulusSnapshot,
 } from "@/lib/stimulus-accounting/snapshot";
 import type { SessionDecisionStimulusAccounting } from "@/lib/evidence/types";
+import {
+  measurementColumns,
+  type MeasurementSemantics,
+} from "@/lib/exercise-measurement/semantics";
+import { normalizeAcceptedSeedPayload } from "@/lib/api/mesocycle-seed-revision";
 
 export type SaveWorkoutExerciseInput = {
   exerciseId: string;
   section: "WARMUP" | "MAIN" | "ACCESSORY";
+  measurement?: MeasurementSemantics;
   sets: Array<{
     setIndex: number;
     targetReps: number;
@@ -41,6 +47,58 @@ export type PreparedWorkoutExercise = SaveWorkoutExerciseInput & {
   movementPatterns: MovementPatternV2[];
   stimulusAccountingSnapshot: ExerciseStimulusSnapshot;
 };
+
+function stripMeasurementSnapshot(
+  exercise: PreparedWorkoutExercise,
+): PreparedWorkoutExercise {
+  const legacyExercise = { ...exercise };
+  delete legacyExercise.measurement;
+  return legacyExercise;
+}
+
+export async function applyAcceptedMeasurementSnapshots(
+  tx: Prisma.TransactionClient,
+  input: {
+    seedRevisionId: string | null;
+    exercises: PreparedWorkoutExercise[];
+  },
+): Promise<PreparedWorkoutExercise[]> {
+  if (!input.seedRevisionId) {
+    return input.exercises.map(stripMeasurementSnapshot);
+  }
+  const revision = await tx.mesocycleSeedRevision.findUnique({
+    where: { id: input.seedRevisionId },
+    select: { seedPayload: true },
+  });
+  if (!revision) throw new Error("WORKOUT_SEED_REVISION_MISSING");
+  const normalized = normalizeAcceptedSeedPayload(revision.seedPayload);
+  if (normalized.payloadVersion !== 3) {
+    return input.exercises.map(stripMeasurementSnapshot);
+  }
+
+  const executable = normalized.executablePayload as unknown as {
+    slots: Array<{
+      exercises: Array<{ exerciseId: string; measurement: MeasurementSemantics }>;
+    }>;
+  };
+  const measurementByExerciseId = new Map<string, MeasurementSemantics>();
+  for (const slot of executable.slots) {
+    for (const exercise of slot.exercises) {
+      const previous = measurementByExerciseId.get(exercise.exerciseId);
+      if (previous && JSON.stringify(previous) !== JSON.stringify(exercise.measurement)) {
+        throw new Error(`ACCEPTED_SEED_MEASUREMENT_CONFLICT:${exercise.exerciseId}`);
+      }
+      measurementByExerciseId.set(exercise.exerciseId, exercise.measurement);
+    }
+  }
+  return input.exercises.map((exercise) => {
+    const accepted = measurementByExerciseId.get(exercise.exerciseId);
+    if (!accepted || JSON.stringify(exercise.measurement) !== JSON.stringify(accepted)) {
+      throw new Error(`WORKOUT_MEASUREMENT_SNAPSHOT_MISMATCH:${exercise.exerciseId}`);
+    }
+    return { ...exercise, measurement: accepted };
+  });
+}
 
 export type FilteredExerciseInput = {
   exerciseId?: string | null;
@@ -213,6 +271,7 @@ export async function rewriteWorkoutExercises(
         movementPatterns: exercise.movementPatterns,
         stimulusAccountingSnapshot:
           exercise.stimulusAccountingSnapshot as unknown as Prisma.InputJsonValue,
+        ...measurementColumns(exercise.measurement ?? null),
         sets: {
           create: exercise.sets.map((set) => ({
             setIndex: set.setIndex,

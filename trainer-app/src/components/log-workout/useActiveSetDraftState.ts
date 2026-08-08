@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useReducer, useRef, type FocusEvent } from "react";
 import { useSetDraft } from "@/components/log-workout/useSetDraft";
 import { quantizeLoad } from "@/lib/units/load-quantization";
+import { quantizesAsPounds } from "@/lib/exercise-measurement/semantics";
 import type {
   FlatSetItem,
   LogExerciseInput,
@@ -388,8 +389,11 @@ export function useActiveSetDraftState({
   const setLoadValue = useCallback(
     (setId: string, rawValue: string, isDumbbell: boolean, options?: { commit?: boolean }) => {
       const parsed = parseNullableNumber(rawValue);
+      const stored = parsed == null ? null : toStoredLoadValue(parsed, isDumbbell) ?? parsed;
       const normalized =
-        parsed == null ? null : quantizeLoad(toStoredLoadValue(parsed, isDumbbell) ?? parsed);
+        stored == null || !quantizesAsPounds(activeSet?.exercise.measurement ?? null)
+          ? stored
+          : quantizeLoad(stored);
       updateDraftBuffer(
         setId,
         "load",
@@ -398,19 +402,22 @@ export function useActiveSetDraftState({
           : rawValue
       );
     },
-    [toStoredLoadValue, updateDraftBuffer]
+    [activeSet, toStoredLoadValue, updateDraftBuffer]
   );
 
   const commitLoadValue = useCallback(
     (setId: string, rawValue: string, isDumbbell: boolean) => {
       const parsed = parseNullableNumber(rawValue.trim());
+      const stored = parsed == null ? null : toStoredLoadValue(parsed, isDumbbell) ?? parsed;
       const normalized =
-        parsed == null ? null : quantizeLoad(toStoredLoadValue(parsed, isDumbbell) ?? parsed);
+        stored == null || !quantizesAsPounds(activeSet?.exercise.measurement ?? null)
+          ? stored
+          : quantizeLoad(stored);
       markFieldTouched(setId, "actualLoad");
       setFieldPrefilled(setId, "actualLoad", false);
       updateDraftBuffer(setId, "load", toInputNumberString(normalized));
     },
-    [markFieldTouched, setFieldPrefilled, toStoredLoadValue, updateDraftBuffer]
+    [activeSet, markFieldTouched, setFieldPrefilled, toStoredLoadValue, updateDraftBuffer]
   );
 
   const setRpeValue = useCallback(
@@ -471,8 +478,11 @@ export function useActiveSetDraftState({
       const isDumbbell = isDumbbellExercise(activeSet.exercise);
       const rawValue = (event.currentTarget.value ?? draftBuffersBySet[setId]?.load ?? "").trim();
       const parsed = parseNullableNumber(rawValue);
+      const stored = parsed == null ? null : toStoredLoadValue(parsed, isDumbbell) ?? parsed;
       const normalized =
-        parsed == null ? null : quantizeLoad(toStoredLoadValue(parsed, isDumbbell) ?? parsed);
+        stored == null || !quantizesAsPounds(activeSet.exercise.measurement ?? null)
+          ? stored
+          : quantizeLoad(stored);
       markFieldTouched(setId, "actualLoad");
       setFieldPrefilled(setId, "actualLoad", false);
       updateDraftBuffer(setId, "load", toInputNumberString(normalized));

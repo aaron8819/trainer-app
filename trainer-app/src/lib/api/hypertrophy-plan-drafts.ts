@@ -16,15 +16,18 @@ import {
   buildAcceptedCompatibilityProjections,
   buildManualHypertrophyDraft,
   compileAcceptedHypertrophySeed,
+  compileAcceptedHypertrophySeedV3,
   equipmentForCustomHypertrophyProfile,
   evaluateHypertrophyPlanHealth,
-  parseAcceptedHypertrophySeedV2,
+  parseAcceptedHypertrophySeed,
   parseHypertrophyPlanDraft,
   type HypertrophyAuthoringExercise,
   type HypertrophyPlanDraftV1,
   type HypertrophyPlanHealth,
   type ManualHypertrophyPreset,
 } from "@/lib/engine/hypertrophy-plan-authoring";
+import { parseMeasurementColumns } from "@/lib/exercise-measurement/semantics";
+import { isExerciseMeasurementRolloutEnabled } from "@/lib/operations/exercise-measurement-rollout";
 import {
   buildV2ExerciseMaterializationPlan,
   buildV2PlannerMesocyclePolicy,
@@ -68,6 +71,9 @@ async function loadExerciseRows(reader: DraftReader) {
       isMainLiftEligible: true,
       fatigueCost: true,
       timePerSetSec: true,
+      measurementProfile: true,
+      loadConvention: true,
+      repBasis: true,
       aliases: { select: { alias: true } },
       exerciseEquipment: { select: { equipment: { select: { type: true } } } },
       exerciseMuscles: {
@@ -482,7 +488,21 @@ export async function makeHypertrophyPlanReady(input: {
           });
         }
 
-        const acceptedSeed = compileAcceptedHypertrophySeed(draft);
+        const measurementByExerciseId = new Map(
+          rows.flatMap((row) => {
+            const measurement = parseMeasurementColumns(row);
+            return measurement ? [[row.id, measurement] as const] : [];
+          }),
+        );
+        const allSelectedExercisesClassified = draft.sessions.every((session) =>
+          session.exercises.every((exercise) =>
+            measurementByExerciseId.has(exercise.exerciseId),
+          ),
+        );
+        const acceptedSeed =
+          isExerciseMeasurementRolloutEnabled() && allSelectedExercisesClassified
+            ? compileAcceptedHypertrophySeedV3({ draft, measurementByExerciseId })
+            : compileAcceptedHypertrophySeed(draft);
         const projections = buildAcceptedCompatibilityProjections(acceptedSeed);
         assertAcceptedCompatibilityAlignment({
           acceptedSeed,
@@ -595,7 +615,7 @@ export async function createEditableHypertrophyPlanCopy(input: {
   if (!source || !payload) throw new PlanManagementError("PLAN_COPY_UNAVAILABLE");
   let accepted;
   try {
-    accepted = parseAcceptedHypertrophySeedV2(payload);
+    accepted = parseAcceptedHypertrophySeed(payload);
   } catch {
     throw new PlanManagementError("PLAN_COPY_UNAVAILABLE");
   }

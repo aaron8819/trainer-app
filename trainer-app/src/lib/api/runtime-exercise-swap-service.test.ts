@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
   const txWorkoutExerciseUpdateMany = vi.fn();
   const txWorkoutExerciseFindMany = vi.fn();
   const txWorkoutSetUpdate = vi.fn();
+  const txExerciseFindUnique = vi.fn();
 
   const tx = {
     workout: {
@@ -29,6 +30,9 @@ const mocks = vi.hoisted(() => {
     },
     workoutSet: {
       update: txWorkoutSetUpdate,
+    },
+    exercise: {
+      findUnique: txExerciseFindUnique,
     },
   };
 
@@ -68,6 +72,7 @@ const mocks = vi.hoisted(() => {
     txWorkoutExerciseUpdateMany,
     txWorkoutExerciseFindMany,
     txWorkoutSetUpdate,
+    txExerciseFindUnique,
     searchExerciseLibrary,
   };
 });
@@ -717,6 +722,93 @@ describe("runtime exercise swap service", () => {
         }),
       }),
     );
+  });
+
+  it("snapshots the commit-time classified tuple and suppresses recent-load reuse for V3", async () => {
+    const classified = {
+      measurementProfile: "REPS_EXTERNAL_LOAD" as const,
+      loadConvention: "IMPLEMENT_WEIGHT" as const,
+      repBasis: "TOTAL" as const,
+    };
+    mocks.workoutFindFirst.mockResolvedValue({
+      id: "workout-1",
+      status: "IN_PROGRESS",
+      selectionMode: "INTENT",
+      sessionIntent: "PULL",
+      exercises: [{ id: "we-1", exerciseId: "t-bar-row" }],
+      selectionMetadata: {},
+      seedRevision: { seedPayload: { version: 3 } },
+      mesocycle: null,
+    });
+    mocks.exerciseFindMany.mockResolvedValue([
+      {
+        id: "chest-supported-db-row",
+        name: "Chest-Supported Dumbbell Row",
+        fatigueCost: 2,
+        jointStress: "LOW",
+        isMainLiftEligible: false,
+        isCompound: true,
+        repRangeMin: 8,
+        repRangeMax: 12,
+        movementPatterns: ["HORIZONTAL_PULL"],
+        exerciseEquipment: [{ equipment: { type: "DUMBBELL" } }],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Lats" } },
+          { role: "PRIMARY", muscle: { name: "Upper Back" } },
+        ],
+        aliases: [],
+        ...classified,
+      },
+    ]);
+    mocks.txExerciseFindUnique.mockResolvedValue(classified);
+
+    const applied = await applyRuntimeExerciseSwap({
+      workoutId: "workout-1",
+      workoutExerciseId: "we-1",
+      replacementExerciseId: "chest-supported-db-row",
+      userId: "user-1",
+      expectedRevision: 1,
+    });
+
+    expect(mocks.setLogFindFirst).not.toHaveBeenCalled();
+    expect(mocks.txWorkoutExerciseUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining(classified),
+      }),
+    );
+    expect(applied.exercise).toMatchObject({
+      measurement: {
+        profile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "IMPLEMENT_WEIGHT",
+        repBasis: "TOTAL",
+      },
+    });
+    expect(applied.exercise.sets.every((set) => set.targetLoad === null)).toBe(true);
+  });
+
+  it("returns a recoverable classification error for an unclassified V3 replacement", async () => {
+    mocks.workoutFindFirst.mockResolvedValue({
+      id: "workout-1",
+      status: "IN_PROGRESS",
+      selectionMode: "INTENT",
+      sessionIntent: "PULL",
+      exercises: [{ id: "we-1", exerciseId: "t-bar-row" }],
+      selectionMetadata: {},
+      seedRevision: { seedPayload: { version: 3 } },
+      mesocycle: null,
+    });
+
+    await expect(
+      resolveRuntimeExerciseSwapPreview({
+        workoutId: "workout-1",
+        workoutExerciseId: "we-1",
+        replacementExerciseId: "chest-supported-db-row",
+        userId: "user-1",
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "MEASUREMENT_AWARE_EXERCISE_REQUIRED",
+    });
   });
 
   it("rejects a swap if logs arrive after preflight and before the conditional mutation", async () => {

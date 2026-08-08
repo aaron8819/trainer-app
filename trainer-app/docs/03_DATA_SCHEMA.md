@@ -239,6 +239,9 @@ Sources of truth:
 - `WorkoutSessionIntent`: `PUSH`, `PULL`, `LEGS`, `UPPER`, `LOWER`, `FULL_BODY`, `BODY_PART`
 - `WorkoutExerciseSection`: `WARMUP`, `MAIN`, `ACCESSORY`
 - `SetIntent`: `WORK`, `WARMUP`
+- `MeasurementProfile`: `REPS_EXTERNAL_LOAD`, `REPS_BODYWEIGHT`, `REPS_BODYWEIGHT_PLUS_LOAD`, `REPS_ASSISTED`
+- `LoadConvention`: `BARBELL_TOTAL`, `IMPLEMENT_WEIGHT`, `MACHINE_DISPLAYED`, `ADDED_EXTERNAL_LOAD`, `DISPLAYED_ASSISTANCE`
+- `RepBasis`: `TOTAL`, `PER_SIDE`
 - `MesocycleState`: `ACTIVE_ACCUMULATION`, `ACTIVE_DELOAD`, `AWAITING_HANDOFF`, `COMPLETED`
 
 Canonical machine-readable values in `docs/contracts/runtime-contracts.json` currently cover the validation-backed workout enums above. `SetIntent` and `MesocycleState` remain schema-owned in `prisma/schema.prisma`.
@@ -292,7 +295,7 @@ Lifecycle/handoff meanings:
 - The frozen handoff recommendation is explainability-bearing data, not a UI-local recomputation target. `recommendedDesign` now persists branch-owned structure explainability (`structureReasonCodes` plus `structureSignalQuality`) and each carry-forward recommendation persists the canonical returned `reasonCodes` plus `signalQuality` from the genesis policy seam.
 - `nextSeedDraftJson` stores the mutable pending setup draft while the mesocycle is in `AWAITING_HANDOFF`. It is not editable once the mesocycle is archived as `COMPLETED`. An explicit guarded V2 draft refresh may add `acceptedSeedDraft` while still in `AWAITING_HANDOFF`; that object records `source=v2_materialized_seed`, compact production-eligibility provenance, and a parser-compatible minimal seed candidate. It is draft candidate truth only until accept creates the successor's immutable revision 1 in the same transaction.
 - `slotSequenceJson` stores the accepted ordered-flexible slot sequence on the successor mesocycle and is the canonical runtime authority for slot-aware sequencing. Each persisted slot may now carry authored slot semantics alongside placement using the additive contract fields `slotArchetype`, `primaryLaneContract`, `supportCoverageContract`, and `continuityScope`.
-- `MesocycleSeedRevision.seedPayload` stores immutable accepted seed truth selected by `Mesocycle.currentSeedRevisionId`. Version 1 retains the ordered executable `slotId -> exercises[{ exerciseId, role, setCount }]` normalization and hash contract. Version 2 custom hypertrophy payloads additionally preserve settings, slot name/focus, and minimal `userRole + target` intent; their SHA-256 hash covers the complete strict canonical payload. Revision rows remain append-only and uniquely numbered, corrections preserve slot topology, and `slotPlanSeedJson` remains a revision-1 compatibility snapshot that never overrides a current revision. Planner diagnostics, lane ids, ranking/fallback/fatigue/capacity policy, and provenance sidecars are never accepted seed truth.
+- `MesocycleSeedRevision.seedPayload` stores immutable accepted seed truth selected by `Mesocycle.currentSeedRevisionId`. Version 1 retains the ordered executable `slotId -> exercises[{ exerciseId, role, setCount }]` normalization and hash contract. Version 2 custom hypertrophy payloads additionally preserve settings, slot name/focus, and minimal `userRole + target` intent. Version 3 retains that editable envelope and requires a hash-covered `measurement` snapshot on every exercise; runtime receives only its source-neutral executable V2 projection. Revision rows remain append-only and uniquely numbered, corrections preserve slot topology and version, and `slotPlanSeedJson` remains a revision-1 compatibility snapshot that never overrides a current revision.
 
 ## Custom hypertrophy draft persistence
 
@@ -302,6 +305,7 @@ Lifecycle/handoff meanings:
 - `MacroCycle.scheduleAnchoredAt` distinguishes placeholder draft dates from the activation-anchored schedule. First activation anchors the five-week date range; later activation does not silently rewrite an established schedule.
 - Migration `20260804120000_add_custom_hypertrophy_plan_drafts` adds the draft table, cascade ownership foreign key, positive revision check, and nullable schedule anchor without converting existing plans.
 - `Workout.seedRevisionId`, `Workout.seedRevisionNumber`, and `Workout.seedPayloadHash` preserve the exact accepted seed revision used to materialize the workout. The same tuple is stored in `selectionMetadata.sessionDecisionReceipt.sessionProvenance.seedProvenance`. Exact tuples are immutable on resume/update; legacy workouts remain readable with null fields and are reported as `legacy_unknown` rather than assigned fabricated provenance.
+- `Exercise.measurementProfile/loadConvention/repBasis` are nullable catalog defaults. `WorkoutExercise` has the same nullable columns as the execution snapshot: all null means legacy; otherwise the database and shared parser require one complete compatible tuple. Accepted V3 materialization copies the seed tuple exactly. V1/V2 and historical workouts stay null and are never inferred or backfilled.
 
 ## Training block fields
 - `TrainingBlock.mesocycleId`

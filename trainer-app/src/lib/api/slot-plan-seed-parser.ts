@@ -2,9 +2,12 @@ import type { V2AcceptedPlannerIntentDto } from "@/lib/engine/planning/v2";
 import { mapV2CapacityChoiceToProfile } from "@/lib/engine/planning/v2/capacity-selection";
 import { sanitizeSessionCapacityReductionManifest } from "@/lib/engine/planning/v2/session-capacity-reduction-manifest";
 import {
+  acceptedHypertrophySeedV3Schema,
   acceptedHypertrophySeedV2Schema,
+  executableSeedProjectionV2Schema,
   type AcceptedExerciseIntentV2,
 } from "@/lib/engine/hypertrophy-plan-authoring";
+import type { MeasurementSemantics } from "@/lib/exercise-measurement/semantics";
 
 export type SlotPlanSeedRole = "CORE_COMPOUND" | "ACCESSORY";
 
@@ -16,6 +19,7 @@ export type ParsedSlotPlanSeedExercise = {
   hasExplicitName: boolean;
   hasExplicitSetCount: boolean;
   intent?: AcceptedExerciseIntentV2;
+  measurement?: MeasurementSemantics;
 };
 
 export type ParsedSlotPlanSeedSlot = {
@@ -25,7 +29,7 @@ export type ParsedSlotPlanSeedSlot = {
 
 export type ParsedSlotPlanSeed = {
   version: 1;
-  acceptedVersion?: 2;
+  acceptedVersion?: 2 | 3;
   source?: string;
   acceptedPlannerIntent?: V2AcceptedPlannerIntentDto;
   slots: ParsedSlotPlanSeedSlot[];
@@ -636,9 +640,47 @@ export function sanitizeAcceptedPlannerIntent(
 
 export function parseSlotPlanSeedJson(slotPlanSeedJson: unknown): ParsedSlotPlanSeed | null {
   const record = isRecord(slotPlanSeedJson) ? slotPlanSeedJson : null;
+  if (record?.version === 3) {
+    const accepted = acceptedHypertrophySeedV3Schema.safeParse(record);
+    if (!accepted.success) return null;
+    return {
+      version: 1,
+      acceptedVersion: 3,
+      source: accepted.data.source,
+      slots: accepted.data.slots.map((slot) => ({
+        slotId: slot.slotId,
+        exercises: slot.exercises.map((exercise) => ({
+          exerciseId: exercise.exerciseId,
+          role: exercise.role,
+          setCount: exercise.setCount,
+          hasExplicitName: false,
+          hasExplicitSetCount: true,
+          intent: exercise.intent,
+          measurement: exercise.measurement,
+        })),
+      })),
+    };
+  }
   if (record?.version === 2) {
     const accepted = acceptedHypertrophySeedV2Schema.safeParse(record);
-    if (!accepted.success) return null;
+    if (!accepted.success) {
+      const executable = executableSeedProjectionV2Schema.safeParse(record);
+      if (!executable.success) return null;
+      return {
+        version: 1,
+        slots: executable.data.slots.map((slot) => ({
+          slotId: slot.slotId,
+          exercises: slot.exercises.map((exercise) => ({
+            exerciseId: exercise.exerciseId,
+            role: exercise.role,
+            setCount: exercise.setCount,
+            hasExplicitName: false,
+            hasExplicitSetCount: true,
+            measurement: exercise.measurement,
+          })),
+        })),
+      };
+    }
     return {
       version: 1,
       acceptedVersion: 2,

@@ -7,6 +7,12 @@ import {
   readRuntimeAddedExerciseIds,
   readRuntimeAddedSetIds,
 } from "@/lib/ui/selection-metadata";
+import {
+  measurementComparisonKey,
+  parseMeasurementColumns,
+  permitsComputedLoadComparison,
+  type MeasurementSemantics,
+} from "@/lib/exercise-measurement/semantics";
 
 const ESTIMATED_STRENGTH_MAX_REPS = 15;
 
@@ -60,7 +66,14 @@ export type ExerciseHistoryResult = {
   };
   comparison: {
     scope: "exact_exercise";
-    loadConvention: "per_dumbbell" | "recorded_external_load" | "not_comparable";
+    loadConvention:
+      | "per_dumbbell"
+      | "per_implement"
+      | "recorded_external_load"
+      | "machine_displayed"
+      | "displayed_assistance"
+      | "no_load"
+      | "not_comparable";
     note: string;
   };
   lastExposure: ExerciseExposure | null;
@@ -274,10 +287,27 @@ function buildRecords(
 export async function loadExerciseHistory(
   exerciseId: string,
   userId: string,
-  limit: number = 3
+  limit: number = 3,
+  comparisonSnapshot?: { measurement: MeasurementSemantics | null },
 ): Promise<ExerciseHistoryResult> {
   const rows = await loadHistoryRows(exerciseId, userId);
-  const exposures = rows
+  const currentMeasurement = comparisonSnapshot
+    ? comparisonSnapshot.measurement
+    : rows[0]
+      ? parseMeasurementColumns(rows[0])
+      : null;
+  const currentComparisonKey = measurementComparisonKey({
+    exerciseId,
+    measurement: currentMeasurement,
+  });
+  const comparableRows = rows.filter(
+    (row) =>
+      measurementComparisonKey({
+        exerciseId,
+        measurement: parseMeasurementColumns(row),
+      }) === currentComparisonKey,
+  );
+  const exposures = comparableRows
     .map(toExposure)
     .filter((row): row is ExerciseExposure => row !== null)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -288,7 +318,17 @@ export async function loadExerciseHistory(
   );
   const isDumbbell = equipment.includes("dumbbell");
   const hasBodyweight = equipment.includes("bodyweight");
-  const loadConvention = hasBodyweight
+  const loadConvention = currentMeasurement
+    ? currentMeasurement.profile === "REPS_BODYWEIGHT"
+      ? "no_load"
+      : currentMeasurement.loadConvention === "MACHINE_DISPLAYED"
+        ? "machine_displayed"
+        : currentMeasurement.loadConvention === "DISPLAYED_ASSISTANCE"
+          ? "displayed_assistance"
+          : currentMeasurement.loadConvention === "IMPLEMENT_WEIGHT"
+            ? "per_implement"
+            : "recorded_external_load"
+    : hasBodyweight
     ? "not_comparable"
     : isDumbbell
       ? "per_dumbbell"
@@ -303,7 +343,11 @@ export async function loadExerciseHistory(
     comparison: {
       scope: "exact_exercise",
       loadConvention,
-      note: hasBodyweight
+      note: currentMeasurement
+        ? permitsComputedLoadComparison(currentMeasurement)
+          ? "Compared only with this exact exercise and frozen measurement semantics."
+          : "Raw matching history is shown, but computed load records are disabled for this measurement convention."
+        : hasBodyweight
         ? "Load-based records are hidden because bodyweight and assistance are not comparable in the current data model."
         : isDumbbell
           ? "Compared only with this exact exercise; dumbbell loads are recorded per dumbbell."
@@ -311,6 +355,11 @@ export async function loadExerciseHistory(
     },
     lastExposure: exposures[0] ?? null,
     recentExposures: exposures.slice(0, limit),
-    records: buildRecords(exposures, !hasBodyweight),
+    records: buildRecords(
+      exposures,
+      currentMeasurement
+        ? permitsComputedLoadComparison(currentMeasurement)
+        : !hasBodyweight,
+    ),
   };
 }

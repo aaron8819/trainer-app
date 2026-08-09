@@ -2,8 +2,10 @@ import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { parseAcceptedSeedPayload } from "./slot-plan-seed-parser";
 import {
+  parseAcceptedHypertrophySeedV4,
   projectExecutableSeed,
   projectExecutableSeedV3,
+  projectExecutableSeedV4,
 } from "@/lib/engine/hypertrophy-plan-authoring";
 
 export const SEED_PAYLOAD_HASH_ALGORITHM = "sha256" as const;
@@ -149,6 +151,24 @@ export function normalizeAcceptedSeedPayload(seed: unknown): {
       .digest("hex"),
     hashAlgorithm: SEED_PAYLOAD_HASH_ALGORITHM,
     payloadVersion: 1,
+  };
+}
+
+export function normalizeAcceptedHypertrophySeedV4(seed: unknown): {
+  canonicalPayload: Prisma.InputJsonValue;
+  executablePayload: Prisma.InputJsonValue;
+  hash: string;
+  hashAlgorithm: typeof SEED_PAYLOAD_HASH_ALGORITHM;
+  payloadVersion: 4;
+} {
+  const canonicalPayload = parseAcceptedHypertrophySeedV4(seed);
+  const executablePayload = projectExecutableSeedV4(canonicalPayload);
+  return {
+    canonicalPayload: canonicalPayload as unknown as Prisma.InputJsonValue,
+    executablePayload: executablePayload as unknown as Prisma.InputJsonValue,
+    hash: fingerprintCanonicalJson(canonicalPayload),
+    hashAlgorithm: SEED_PAYLOAD_HASH_ALGORITHM,
+    payloadVersion: 4,
   };
 }
 

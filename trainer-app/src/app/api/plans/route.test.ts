@@ -133,4 +133,39 @@ describe("POST /api/plans", () => {
       }),
     );
   });
+
+  it("passes a client creation identity to the custom-plan owner", async () => {
+    process.env.TRAINER_CUSTOM_HYPERTROPHY_PLANS_ROLLOUT = "enabled";
+    mocks.provisionOwnerForMutation.mockResolvedValue({ id: "user-1" });
+    mocks.createCustomHypertrophyPlan.mockResolvedValue({
+      planId: "plan-v4",
+      draftRevision: 1,
+    });
+    mocks.loadPlanManagementData.mockResolvedValue({
+      activeMacroCycleId: null,
+      plans: [{ id: "plan-v4", status: "DRAFT" }],
+    });
+    const creationId = "00000000-0000-4000-8000-000000000123";
+
+    await POST(
+      new Request("http://localhost/api/plans", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          planType: "HYPERTROPHY",
+          name: "Weekly",
+          sessionsPerWeek: 4,
+          equipmentProfile: "FULL_GYM",
+          sessionDurationMinutes: 60,
+          authorMethod: "WEEKLY",
+          preset: "UPPER_LOWER_4",
+          creationId,
+        }),
+      }),
+    );
+
+    expect(mocks.createCustomHypertrophyPlan).toHaveBeenCalledWith(
+      expect.objectContaining({ creationId }),
+    );
+  });
 });

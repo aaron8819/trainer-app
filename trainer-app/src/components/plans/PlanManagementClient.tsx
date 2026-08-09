@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PlanManagementData, PlanSummary } from "@/lib/ui/plan-management";
 import { Button, buttonClassName } from "@/components/ui/Button";
@@ -96,6 +96,7 @@ export function PlanManagementClient({
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const creationAttempt = useRef<{ signature: string; id: string } | null>(null);
 
   const defaultStartDate = useMemo(
     () => new Date().toISOString().slice(0, 10),
@@ -118,6 +119,28 @@ export function PlanManagementClient({
     setError(null);
     setMessage(null);
     try {
+      const customInput =
+        newPlanType === "HYPERTROPHY" && customHypertrophyEnabled
+          ? {
+              planType: "HYPERTROPHY" as const,
+              name: formData.get("name"),
+              sessionsPerWeek: Number(formData.get("sessionsPerWeek")),
+              sessionDurationMinutes: Number(
+                formData.get("sessionDurationMinutes"),
+              ),
+              equipmentProfile: formData.get("equipmentProfile"),
+              authorMethod,
+              ...(authorMethod !== "V2"
+                ? { preset: formData.get("preset") }
+                : {}),
+            }
+          : null;
+      if (customInput) {
+        const signature = JSON.stringify(customInput);
+        if (creationAttempt.current?.signature !== signature) {
+          creationAttempt.current = { signature, id: crypto.randomUUID() };
+        }
+      }
       const response = await fetch("/api/plans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -125,17 +148,8 @@ export function PlanManagementClient({
           newPlanType === "HYPERTROPHY"
             ? customHypertrophyEnabled
               ? {
-                  planType: "HYPERTROPHY",
-                  name: formData.get("name"),
-                  sessionsPerWeek: Number(formData.get("sessionsPerWeek")),
-                  sessionDurationMinutes: Number(
-                    formData.get("sessionDurationMinutes"),
-                  ),
-                  equipmentProfile: formData.get("equipmentProfile"),
-                  authorMethod,
-                  ...(authorMethod !== "V2"
-                    ? { preset: formData.get("preset") }
-                    : {}),
+                  ...customInput!,
+                  creationId: creationAttempt.current!.id,
                 }
               : {
                 planType: "HYPERTROPHY",
@@ -326,6 +340,7 @@ export function PlanManagementClient({
           size="touch"
           onClick={() => {
             setShowCreate((current) => !current);
+            creationAttempt.current = null;
             setError(null);
             setMessage(null);
           }}

@@ -118,6 +118,21 @@ const initialData = {
   limitationKeys: [],
 };
 
+function deferredResponse() {
+  let resolve!: (response: Response) => void;
+  const promise = new Promise<Response>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+function savedResponse(revision: number) {
+  return new Response(
+    JSON.stringify({ revision, preview: initialData.preview }),
+    { status: 200, headers: { "Content-Type": "application/json" } },
+  );
+}
+
 describe("WeeklyHypertrophyPlanEditor", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -210,6 +225,155 @@ describe("WeeklyHypertrophyPlanEditor", () => {
       ...intent,
       userRole: "SECONDARY_LIFT",
     });
+  });
+
+  it("saves the latest valid draft before Back navigation and disables repeated Back requests", async () => {
+    const pending = deferredResponse();
+    vi.mocked(fetch).mockReturnValue(pending.promise);
+    render(<WeeklyHypertrophyPlanEditor initialData={initialData} />);
+
+    fireEvent.change(screen.getByLabelText("Plan name"), {
+      target: { value: "Latest weekly plan" },
+    });
+    const back = screen.getByRole("button", { name: "Back to plans" });
+    fireEvent.click(back);
+    fireEvent.click(back);
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(back).toBeDisabled();
+    expect(router.push).not.toHaveBeenCalled();
+    pending.resolve(savedResponse(2));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(router.push).toHaveBeenCalledWith("/plans");
+  });
+
+  it("waits for an in-flight save and then persists the newest queued edit before leaving", async () => {
+    const first = deferredResponse();
+    const second = deferredResponse();
+    vi.mocked(fetch)
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    render(<WeeklyHypertrophyPlanEditor initialData={initialData} />);
+
+    fireEvent.change(screen.getByLabelText("Plan name"), {
+      target: { value: "Older name" },
+    });
+    await act(() => vi.advanceTimersByTimeAsync(800));
+    fireEvent.change(screen.getByLabelText("Plan name"), {
+      target: { value: "Newest name" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Back to plans" }));
+    first.resolve(savedResponse(2));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("Saving…")).toBeVisible();
+    expect(fetch).toHaveBeenCalledTimes(2);
+    const secondBody = JSON.parse(String(vi.mocked(fetch).mock.calls[1]![1]!.body));
+    expect(secondBody).toMatchObject({
+      expectedRevision: 2,
+      name: "Newest name",
+    });
+    expect(router.push).not.toHaveBeenCalled();
+    second.resolve(savedResponse(3));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(router.push).toHaveBeenCalledWith("/plans");
+  });
+
+  it("offers retry, stay, and explicit discard after a Back save failure", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "Offline" }), { status: 503 }),
+    );
+    render(<WeeklyHypertrophyPlanEditor initialData={initialData} />);
+    fireEvent.change(screen.getByLabelText("Plan name"), {
+      target: { value: "Unsaved name" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Back to plans" }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole("button", { name: "Retry save and leave" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Stay and keep editing" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Discard changes and leave" })).toBeVisible();
+    expect(router.push).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Stay and keep editing" }));
+    expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it("keeps malformed text local on Back unless the user explicitly discards it", () => {
+    render(<WeeklyHypertrophyPlanEditor initialData={initialData} />);
+    fireEvent.change(screen.getAllByLabelText("Week 1 sets")[0]!, {
+      target: { value: "" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Back to plans" }));
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(router.push).not.toHaveBeenCalled();
+    expect(screen.getByText("Correct the incomplete field before leaving.")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Discard changes and leave" }));
+    expect(router.push).toHaveBeenCalledWith("/plans");
+  });
+
+  it("remounts prescriptions only when week topology changes their semantic identity", () => {
+    const data = structuredClone(initialData);
+    data.draft.sessions[0]!.exercises[0]!.prescriptions[0]!.setCount = 5;
+    data.draft.sessions[0]!.exercises[0]!.prescriptions[1]!.setCount = 1;
+    render(<WeeklyHypertrophyPlanEditor initialData={data} />);
+
+    fireEvent.change(screen.getAllByLabelText("Week 1 sets")[0]!, {
+      target: { value: "" },
+    });
+    fireEvent.change(screen.getByLabelText("Accumulation weeks"), {
+      target: { value: "2" },
+    });
+
+    expect(screen.getAllByLabelText("Week 1 sets")[0]).toHaveValue(null);
+    expect(screen.getAllByLabelText("Week 2 sets")[0]).toHaveValue(5);
+    expect(screen.getAllByLabelText("Week 3 sets")[0]).toHaveValue(1);
+    expect(screen.getByText("Incomplete — not saved")).toBeVisible();
+  });
+
+  it("moves an omitted deload without leaking it into a new accumulation week", () => {
+    const data = structuredClone(initialData);
+    data.draft.sessions[0]!.exercises[0]!.prescriptions[0]!.setCount = 5;
+    render(<WeeklyHypertrophyPlanEditor initialData={data} />);
+
+    fireEvent.click(screen.getAllByLabelText("Omit")[0]!);
+    fireEvent.change(screen.getByLabelText("Accumulation weeks"), {
+      target: { value: "2" },
+    });
+
+    expect(screen.getAllByLabelText("Week 2 sets")[0]).toHaveValue(5);
+    expect(screen.getAllByLabelText("Omit")[0]).toBeChecked();
+    expect(screen.getAllByText("Week 3 · Deload")).toHaveLength(2);
+  });
+
+  it("preserves retained placements through deload toggles and week reduction", () => {
+    render(<WeeklyHypertrophyPlanEditor initialData={initialData} />);
+
+    fireEvent.change(screen.getByLabelText("Accumulation weeks"), {
+      target: { value: "2" },
+    });
+    expect(screen.getAllByLabelText("Week 2 sets")).toHaveLength(2);
+    fireEvent.click(screen.getByLabelText("Add a final deload week"));
+    expect(screen.queryAllByLabelText("Week 3 sets")).toHaveLength(0);
+    fireEvent.change(screen.getByLabelText("Accumulation weeks"), {
+      target: { value: "1" },
+    });
+    expect(screen.queryAllByLabelText("Week 2 sets")).toHaveLength(0);
+    expect(screen.getAllByLabelText("Week 1 sets")).toHaveLength(2);
+    fireEvent.click(screen.getByLabelText("Add a final deload week"));
+    expect(screen.getAllByLabelText("Week 2 sets")).toHaveLength(2);
   });
 
   it("keeps the principal weekly, session, prescription, and preview controls available on mobile", () => {

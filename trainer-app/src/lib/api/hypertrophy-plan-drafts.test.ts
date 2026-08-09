@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Prisma } from "@prisma/client";
 import type {
   HypertrophyPlanDraftV1,
   HypertrophyPlanDraftV2,
@@ -346,6 +347,89 @@ describe("custom hypertrophy draft persistence", () => {
     expect(createInput.data.hypertrophyDraft.create.payload.sessions).toHaveLength(4);
     expect(createInput.data.hypertrophyDraft.create.payload.sessions[0].exercises).toEqual([]);
     expect(createInput.data).not.toHaveProperty("mesocycles");
+  });
+
+  it("replays concurrent identical custom-plan creates by server-enforced creation identity", async () => {
+    const creationId = "00000000-0000-4000-8000-000000000123";
+    let persisted: {
+      name: string;
+      hypertrophyDraft: { payload: unknown; revision: number };
+    } | null = null;
+    mocks.prisma.user.findUnique.mockResolvedValue({
+      profile: { trainingAge: "INTERMEDIATE" },
+    });
+    mocks.prisma.macroCycle.create
+      .mockImplementationOnce(async ({ data }) => {
+        persisted = {
+          name: data.name,
+          hypertrophyDraft: {
+            payload: data.hypertrophyDraft.create.payload,
+            revision: 1,
+          },
+        };
+        return {};
+      })
+      .mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError("duplicate", {
+          code: "P2002",
+          clientVersion: "test",
+        }),
+      );
+    mocks.prisma.macroCycle.findFirst.mockImplementation(async ({ where }) =>
+      where.id === creationId ? persisted : null,
+    );
+    const input = {
+      userId: "user-1",
+      name: "Weekly plan",
+      sessionsPerWeek: 4,
+      equipmentProfile: "FULL_GYM" as const,
+      sessionDurationMinutes: 60 as const,
+      authorMethod: "WEEKLY" as const,
+      preset: "UPPER_LOWER_4" as const,
+      creationId,
+    };
+
+    await expect(
+      Promise.all([
+        createCustomHypertrophyPlan(input),
+        createCustomHypertrophyPlan(input),
+      ]),
+    ).resolves.toEqual([
+      { planId: creationId, draftRevision: 1 },
+      { planId: creationId, draftRevision: 1 },
+    ]);
+  });
+
+  it("keeps separate intentional create identities separate", async () => {
+    mocks.prisma.user.findUnique.mockResolvedValue({
+      profile: { trainingAge: "INTERMEDIATE" },
+    });
+    mocks.prisma.macroCycle.create.mockResolvedValue({});
+    const base = {
+      userId: "user-1",
+      name: "Weekly plan",
+      sessionsPerWeek: 4,
+      equipmentProfile: "FULL_GYM" as const,
+      sessionDurationMinutes: 60 as const,
+      authorMethod: "WEEKLY" as const,
+      preset: "UPPER_LOWER_4" as const,
+    };
+
+    const created = await Promise.all([
+      createCustomHypertrophyPlan({
+        ...base,
+        creationId: "00000000-0000-4000-8000-000000000123",
+      }),
+      createCustomHypertrophyPlan({
+        ...base,
+        creationId: "00000000-0000-4000-8000-000000000124",
+      }),
+    ]);
+
+    expect(created.map((result) => result.planId)).toEqual([
+      "00000000-0000-4000-8000-000000000123",
+      "00000000-0000-4000-8000-000000000124",
+    ]);
   });
 
   it("autosaves a structurally valid but preview-incomplete V4 draft", async () => {

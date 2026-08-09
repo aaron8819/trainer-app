@@ -462,6 +462,7 @@ const createCustomHypertrophyPlanSchema = z
     ),
     authorMethod: z.enum(["MANUAL", "V2", "WEEKLY"]),
     preset: manualHypertrophyPresetSchema.optional(),
+    creationId: z.string().uuid().optional(),
   })
   .strict()
   .superRefine((value, context) => {

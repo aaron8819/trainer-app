@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
-import { finalizePlan } from "@/lib/api/plan-management";
+import {
+  assertPlanVersionFinalizable,
+  finalizePlan,
+} from "@/lib/api/plan-management";
 import { makeHypertrophyPlanReady } from "@/lib/api/hypertrophy-plan-drafts";
 import { planManagementErrorResponse } from "@/lib/api/plan-management-http";
-import { provisionOwnerForMutation } from "@/lib/api/workout-context";
+import {
+  findOwnerReadOnly,
+  provisionOwnerForMutation,
+} from "@/lib/api/workout-context";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import {
   makeHypertrophyPlanReadySchema,
@@ -19,6 +25,21 @@ export async function POST(
     "/api/plans/[id]/finalize",
   );
   if (paused) return paused;
+
+  const { id } = await context.params;
+  const readOnlyOwner = await findOwnerReadOnly();
+  try {
+    if (readOnlyOwner) {
+      await assertPlanVersionFinalizable({
+        userId: readOnlyOwner.id,
+        planId: id,
+      });
+    }
+  } catch (error) {
+    const response = planManagementErrorResponse(error);
+    if (response) return response;
+    throw error;
+  }
 
   const body = await request.json().catch(() => null);
   const customEnabled = isCustomHypertrophyPlanRolloutEnabled();
@@ -39,10 +60,7 @@ export async function POST(
     );
   }
 
-  const [{ id }, owner] = await Promise.all([
-    context.params,
-    provisionOwnerForMutation("mesocycle_acceptance"),
-  ]);
+  const owner = await provisionOwnerForMutation("mesocycle_acceptance");
   try {
     if (isCustomRequest && "expectedDraftRevision" in parsed.data) {
       const result = await makeHypertrophyPlanReady({

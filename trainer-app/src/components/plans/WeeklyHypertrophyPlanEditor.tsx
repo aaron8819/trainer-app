@@ -24,6 +24,7 @@ import type {
 
 type WeeklyEditorData = HypertrophyPlanEditorDataV2;
 type SaveState = "saved" | "saving" | "failed" | "incomplete";
+type LeaveState = "idle" | "saving" | "save_failed" | "incomplete";
 
 const ROLE_LABEL: Record<HypertrophyUserRole, string> = {
   PRIMARY_LIFT: "Primary lift",
@@ -89,14 +90,18 @@ function prescriptionForWeek(
   return { ...source, week };
 }
 
+function draftSignature(value: {
+  name: string;
+  draft: HypertrophyPlanDraftV2;
+}): string {
+  return JSON.stringify({ name: value.name, draft: value.draft });
+}
+
 function reconfigureWeeks(
   draft: HypertrophyPlanDraftV2,
   accumulationWeekCount: number,
   includeDeload: boolean,
 ): HypertrophyPlanDraftV2 {
-  const oldAccumulationCount = draft.weeks.filter(
-    (week) => week.phase === "ACCUMULATION",
-  ).length;
   const oldDeloadIndex = draft.weeks.findIndex(
     (week) => week.phase === "DELOAD",
   );
@@ -120,8 +125,12 @@ function reconfigureWeeks(
     sessions: draft.sessions.map((session) => ({
       ...session,
       exercises: session.exercises.map((exercise) => {
-        const lastAccumulation =
-          exercise.prescriptions[Math.max(0, oldAccumulationCount - 1)];
+        const oldAccumulation = draft.weeks.flatMap((week, index) =>
+          week.phase === "ACCUMULATION"
+            ? [exercise.prescriptions[index]!]
+            : [],
+        );
+        const lastAccumulation = oldAccumulation.at(-1);
         const oldDeload =
           oldDeloadIndex >= 0
             ? exercise.prescriptions[oldDeloadIndex]
@@ -134,7 +143,7 @@ function reconfigureWeeks(
                 ? { ...oldDeload, week: week.week }
                 : prescriptionForWeek(lastAccumulation, week.week)
               : prescriptionForWeek(
-                  exercise.prescriptions[week.week - 1] ?? lastAccumulation,
+                  oldAccumulation[week.week - 1] ?? lastAccumulation,
                   week.week,
                 ),
           ),
@@ -167,6 +176,7 @@ export function WeeklyHypertrophyPlanEditor({
     initialData.draft.sessions[0]!.slotId,
   );
   const [saveState, setSaveState] = useState<SaveState>("saved");
+  const [leaveState, setLeaveState] = useState<LeaveState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [invalidFields, setInvalidFields] = useState<Set<string>>(new Set());
   const [weekCountInput, setWeekCountInput] = useState(
@@ -182,18 +192,29 @@ export function WeeklyHypertrophyPlanEditor({
   );
   const [newExerciseId, setNewExerciseId] = useState("");
 
-  const lastSavedSignature = useRef(
-    JSON.stringify({ name: initialData.name, draft: initialData.draft }),
+  const [savedSignature, setSavedSignature] = useState(() =>
+    draftSignature({ name: initialData.name, draft: initialData.draft }),
   );
-  const currentSignature = JSON.stringify({ name, draft });
-  const unsaved = currentSignature !== lastSavedSignature.current;
-  const inFlight = useRef(false);
-  const queued = useRef(false);
+  const lastSavedSignature = useRef(savedSignature);
+  const currentSignature = draftSignature({ name, draft });
+  const unsaved = currentSignature !== savedSignature;
+  const activeSave = useRef<Promise<boolean> | null>(null);
+  const autosaveTimer = useRef<number | null>(null);
+  const leaving = useRef(false);
   const invalidFieldCount = invalidFields.size;
+  const displayedSaveState: SaveState =
+    invalidFieldCount > 0
+      ? "incomplete"
+      : unsaved && saveState === "saved"
+        ? "saving"
+        : saveState;
   const invalidFieldCountRef = useRef(invalidFieldCount);
-  invalidFieldCountRef.current = invalidFieldCount;
   const latest = useRef({ name, draft, revision });
-  latest.current = { name, draft, revision };
+
+  useEffect(() => {
+    invalidFieldCountRef.current = invalidFieldCount;
+    latest.current = { name, draft, revision };
+  }, [draft, invalidFieldCount, name, revision]);
 
   const selectedIndex = Math.max(
     0,
@@ -218,72 +239,86 @@ export function WeeklyHypertrophyPlanEditor({
     });
   }, []);
 
-  const save = useCallback(async () => {
-    if (invalidFieldCountRef.current > 0) {
-      setSaveState("incomplete");
-      return false;
-    }
-    if (inFlight.current) {
-      queued.current = true;
-      return false;
-    }
-    const snapshot = latest.current;
-    const signature = JSON.stringify({
-      name: snapshot.name,
-      draft: snapshot.draft,
-    });
-    if (signature === lastSavedSignature.current) {
-      setSaveState("saved");
-      return true;
-    }
-    inFlight.current = true;
-    setSaveState("saving");
-    setError(null);
-    try {
-      const response = await fetch(`/api/plans/${initialData.planId}/draft`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          expectedRevision: snapshot.revision,
-          name: snapshot.name,
-          draft: snapshot.draft,
-        }),
-      });
-      const body = await responseBody(response);
-      if (!response.ok || body.revision == null || !body.preview) {
-        setError(body.error ?? "Could not save the weekly draft.");
+  const performSave = useCallback(async () => {
+    while (true) {
+      if (invalidFieldCountRef.current > 0) {
+        setSaveState("incomplete");
+        return false;
+      }
+      const snapshot = latest.current;
+      const signature = draftSignature(snapshot);
+      if (signature === lastSavedSignature.current) {
+        setSaveState("saved");
+        return true;
+      }
+      setSaveState("saving");
+      setError(null);
+      try {
+        const response = await fetch(`/api/plans/${initialData.planId}/draft`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            expectedRevision: snapshot.revision,
+            name: snapshot.name,
+            draft: snapshot.draft,
+          }),
+        });
+        const body = await responseBody(response);
+        if (!response.ok || body.revision == null || !body.preview) {
+          setError(body.error ?? "Could not save the weekly draft.");
+          setSaveState("failed");
+          return false;
+        }
+        setRevision(body.revision);
+        latest.current.revision = body.revision;
+        lastSavedSignature.current = signature;
+        setSavedSignature(signature);
+        setPreview(body.preview);
+      } catch {
+        setError("Could not save the weekly draft.");
         setSaveState("failed");
         return false;
       }
-      setRevision(body.revision);
-      latest.current.revision = body.revision;
-      lastSavedSignature.current = signature;
-      setPreview(body.preview);
+      if (invalidFieldCountRef.current > 0) {
+        setSaveState("incomplete");
+        return false;
+      }
+      if (draftSignature(latest.current) !== lastSavedSignature.current) {
+        setSaveState("saving");
+        continue;
+      }
       setSaveState("saved");
       return true;
-    } catch {
-      setError("Could not save the weekly draft.");
-      setSaveState("failed");
-      return false;
-    } finally {
-      inFlight.current = false;
-      if (queued.current) {
-        queued.current = false;
-        window.setTimeout(() => void save(), 0);
-      }
     }
   }, [initialData.planId]);
 
-  useEffect(() => {
-    if (invalidFieldCount > 0) {
-      setSaveState("incomplete");
-      return;
+  const save = useCallback(() => {
+    if (activeSave.current) return activeSave.current;
+    const operation = performSave();
+    const tracked = operation.finally(() => {
+      if (activeSave.current === tracked) activeSave.current = null;
+    });
+    activeSave.current = tracked;
+    return tracked;
+  }, [performSave]);
+
+  const cancelPendingAutosave = useCallback(() => {
+    if (autosaveTimer.current != null) {
+      window.clearTimeout(autosaveTimer.current);
+      autosaveTimer.current = null;
     }
-    if (!unsaved || saveState === "failed") return;
-    setSaveState("saving");
-    const timer = window.setTimeout(() => void save(), 750);
-    return () => window.clearTimeout(timer);
-  }, [currentSignature, invalidFieldCount, save, saveState, unsaved]);
+  }, []);
+
+  useEffect(() => {
+    cancelPendingAutosave();
+    if (invalidFieldCount > 0) return;
+    if (!unsaved) return;
+    autosaveTimer.current = window.setTimeout(() => {
+      autosaveTimer.current = null;
+      void save();
+    }, 750);
+    return cancelPendingAutosave;
+  }, [cancelPendingAutosave, currentSignature, invalidFieldCount, save, unsaved]);
 
   useEffect(() => {
     if (!unsaved && invalidFieldCount === 0) return;
@@ -384,8 +419,46 @@ export function WeeklyHypertrophyPlanEditor({
     setShowAdd(false);
   };
 
+  const discardAndLeave = () => {
+    cancelPendingAutosave();
+    leaving.current = true;
+    router.push("/plans");
+  };
+
+  const stayOnEditor = () => {
+    leaving.current = false;
+    setLeaveState("idle");
+  };
+
+  const handleBack = async () => {
+    if (leaving.current) return;
+    cancelPendingAutosave();
+    if (invalidFieldCountRef.current > 0) {
+      setLeaveState("incomplete");
+      return;
+    }
+    leaving.current = true;
+    setLeaveState("saving");
+    while (invalidFieldCountRef.current === 0) {
+      const saved = await save();
+      if (!saved) {
+        leaving.current = false;
+        setLeaveState(
+          invalidFieldCountRef.current > 0 ? "incomplete" : "save_failed",
+        );
+        return;
+      }
+      if (draftSignature(latest.current) === lastSavedSignature.current) {
+        router.push("/plans");
+        return;
+      }
+    }
+    leaving.current = false;
+    setLeaveState("incomplete");
+  };
+
   const previewCurrent =
-    !unsaved && invalidFieldCount === 0 && saveState === "saved";
+    !unsaved && invalidFieldCount === 0 && displayedSaveState === "saved";
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
@@ -403,20 +476,20 @@ export function WeeklyHypertrophyPlanEditor({
           <div className="flex items-center gap-2 text-sm" aria-live="polite">
             <span
               className={
-                saveState === "failed" || saveState === "incomplete"
+                displayedSaveState === "failed" || displayedSaveState === "incomplete"
                   ? "text-rose-700"
                   : "text-slate-600"
               }
             >
-              {saveState === "saving"
+              {displayedSaveState === "saving"
                 ? "Saving…"
-                : saveState === "failed"
+                : displayedSaveState === "failed"
                   ? "Save failed"
-                  : saveState === "incomplete"
+                  : displayedSaveState === "incomplete"
                     ? "Incomplete — not saved"
                     : "Saved"}
             </span>
-            {saveState === "failed" ? (
+            {displayedSaveState === "failed" ? (
               <Button size="touch" variant="secondary" onClick={() => void save()}>
                 Retry
               </Button>
@@ -702,8 +775,8 @@ export function WeeklyHypertrophyPlanEditor({
                   <div className="mt-4 grid gap-3 xl:grid-cols-2">
                     {row.prescriptions.map((prescription, prescriptionIndex) => (
                       <PrescriptionFields
-                        key={`${row.placementId}-${prescription.week}`}
-                        fieldKey={`${row.placementId}-${prescription.week}`}
+                        key={`${row.placementId}-${prescription.week}-${draft.weeks[prescriptionIndex]!.phase}`}
+                        fieldKey={`${row.placementId}-${prescription.week}-${draft.weeks[prescriptionIndex]!.phase}`}
                         phase={draft.weeks[prescriptionIndex]!.phase}
                         prescription={prescription}
                         onValidityChange={setFieldValidity}
@@ -844,10 +917,42 @@ export function WeeklyHypertrophyPlanEditor({
         </aside>
       </div>
 
+      {leaveState === "save_failed" ? (
+        <section role="alert" className="mt-5 rounded-xl border border-rose-200 bg-rose-50 p-4">
+          <p className="font-semibold text-rose-900">The latest changes could not be saved.</p>
+          <p className="mt-1 text-sm text-rose-800">Retry before leaving, stay here, or explicitly discard the unsaved changes.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button onClick={() => void handleBack()}>Retry save and leave</Button>
+            <Button variant="secondary" onClick={stayOnEditor}>Stay and keep editing</Button>
+            <Button variant="ghost" onClick={discardAndLeave}>Discard changes and leave</Button>
+          </div>
+        </section>
+      ) : leaveState === "incomplete" ? (
+        <section role="alert" className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <p className="font-semibold text-amber-950">Correct the incomplete field before leaving.</p>
+          <p className="mt-1 text-sm text-amber-900">The malformed text exists only in this editor and has not been saved.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={stayOnEditor}>Stay and correct it</Button>
+            <Button variant="ghost" onClick={discardAndLeave}>Discard changes and leave</Button>
+          </div>
+        </section>
+      ) : null}
+
       <footer className="sticky bottom-0 z-20 -mx-4 mt-5 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
-          <p className="text-sm text-slate-600">Autosave keeps only structurally valid weekly drafts.</p>
-          <Button variant="secondary" size="touch" onClick={() => router.push("/plans")}>Back to plans</Button>
+          <p className="text-sm text-slate-600">
+            {leaveState === "saving"
+              ? "Saving the latest changes before leaving…"
+              : "Autosave keeps only structurally valid weekly drafts."}
+          </p>
+          <Button
+            variant="secondary"
+            size="touch"
+            disabled={leaveState === "saving"}
+            onClick={() => void handleBack()}
+          >
+            Back to plans
+          </Button>
         </div>
       </footer>
     </div>

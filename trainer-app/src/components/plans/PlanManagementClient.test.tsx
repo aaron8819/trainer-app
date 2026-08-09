@@ -143,6 +143,7 @@ describe("PlanManagementClient", () => {
       authorMethod: "WEEKLY",
       sessionsPerWeek: 4,
       preset: "UPPER_LOWER_4",
+      creationId: expect.any(String),
     });
   });
 

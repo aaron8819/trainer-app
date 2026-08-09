@@ -123,6 +123,14 @@ export function planManagementErrorResponse(
         },
         { status: 409 },
       );
+    case "PLAN_CREATION_ID_CONFLICT":
+      return NextResponse.json(
+        {
+          error: "This create request was already used with different plan details. Try creating the plan again.",
+          code: error.code,
+        },
+        { status: 409 },
+      );
     case "PLAN_VERSION_NOT_EXECUTABLE":
       return NextResponse.json(
         {

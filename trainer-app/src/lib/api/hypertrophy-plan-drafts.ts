@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   AdaptationType,
   BlockType,
@@ -210,7 +210,27 @@ export type CreateCustomHypertrophyPlanInput = {
   sessionDurationMinutes: HypertrophyPlanDraftV1["settings"]["sessionDurationMinutes"];
   authorMethod: "MANUAL" | "V2" | "WEEKLY";
   preset?: ManualHypertrophyPreset;
+  creationId?: string;
 };
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (isRecord(value)) {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function deterministicUuid(value: string): string {
+  const characters = createHash("sha256").update(value).digest("hex").slice(0, 32).split("");
+  characters[12] = "5";
+  characters[16] = "8";
+  const hex = characters.join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 export async function createCustomHypertrophyPlan(
   input: CreateCustomHypertrophyPlanInput,
@@ -231,6 +251,11 @@ export async function createCustomHypertrophyPlan(
     equipmentProfile: input.equipmentProfile,
     sessionDurationMinutes: input.sessionDurationMinutes,
   } as const;
+  const planId = input.creationId ?? randomUUID();
+  let slotIndex = 0;
+  const createSlotId = input.creationId
+    ? () => deterministicUuid(`${input.creationId}:slot:${slotIndex++}`)
+    : randomUUID;
   let draft: HypertrophyPlanDraft;
   try {
     draft =
@@ -241,39 +266,66 @@ export async function createCustomHypertrophyPlan(
               settings,
               sessionsPerWeek: input.sessionsPerWeek,
               preset: input.preset ?? "BLANK",
-              createSlotId: randomUUID,
+              createSlotId,
             })
           : buildManualHypertrophyDraft({
             settings,
             sessionsPerWeek: input.sessionsPerWeek,
             preset: input.preset ?? "BLANK",
-            createSlotId: randomUUID,
+            createSlotId,
           });
   } catch (error) {
     if (error instanceof PlanManagementError) throw error;
     throw new PlanManagementError("PLAN_GENERATION_FAILED");
   }
   const schedule = placeholderSchedule();
-  const planId = randomUUID();
-  await prisma.macroCycle.create({
-    data: {
-      id: planId,
-      userId: input.userId,
-      name: input.name,
-      startDate: schedule.startDate,
-      endDate: schedule.endDate,
-      durationWeeks: 5,
-      scheduleAnchoredAt: null,
-      trainingAge: owner.profile.trainingAge,
-      primaryGoal: "HYPERTROPHY",
-      hypertrophyDraft: {
-        create: {
-          payload: draft as unknown as Prisma.InputJsonValue,
-          revision: 1,
+  try {
+    await prisma.macroCycle.create({
+      data: {
+        id: planId,
+        userId: input.userId,
+        name: input.name,
+        startDate: schedule.startDate,
+        endDate: schedule.endDate,
+        durationWeeks: 5,
+        scheduleAnchoredAt: null,
+        trainingAge: owner.profile.trainingAge,
+        primaryGoal: "HYPERTROPHY",
+        hypertrophyDraft: {
+          create: {
+            payload: draft as unknown as Prisma.InputJsonValue,
+            revision: 1,
+          },
         },
       },
-    },
-  });
+    });
+  } catch (error) {
+    if (
+      !input.creationId ||
+      !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+      error.code !== "P2002"
+    ) {
+      throw error;
+    }
+    const existing = await prisma.macroCycle.findFirst({
+      where: { id: planId, userId: input.userId },
+      select: {
+        name: true,
+        hypertrophyDraft: { select: { payload: true, revision: true } },
+      },
+    });
+    if (
+      !existing?.hypertrophyDraft ||
+      existing.name !== input.name ||
+      stableStringify(existing.hypertrophyDraft.payload) !== stableStringify(draft)
+    ) {
+      throw new PlanManagementError("PLAN_CREATION_ID_CONFLICT");
+    }
+    return {
+      planId,
+      draftRevision: existing.hypertrophyDraft.revision,
+    };
+  }
   return { planId, draftRevision: 1 };
 }
 

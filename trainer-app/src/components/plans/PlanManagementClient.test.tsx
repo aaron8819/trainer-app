@@ -79,6 +79,7 @@ function creationBody(
   return JSON.parse(String(fetchMock.mock.calls[callIndex]![1]!.body)) as {
     creationId: string;
     name: string;
+    authorMethod?: "MANUAL" | "V2" | "WEEKLY";
   };
 }
 
@@ -222,6 +223,226 @@ describe("PlanManagementClient", () => {
     expect(firstCreationId).toBe(firstId);
     expect(secondCreationId).toBe(firstId);
     expect(creationBody(fetchMock, 2).creationId).toBe(secondId);
+  });
+
+  it("retains the creation token after an unreadable 201 until valid navigation begins", async () => {
+    const user = userEvent.setup();
+    const firstId = "00000000-0000-4000-8000-000000000103";
+    const secondId = "00000000-0000-4000-8000-000000000104";
+    vi.stubGlobal("crypto", {
+      ...globalThis.crypto,
+      randomUUID: vi.fn().mockReturnValueOnce(firstId).mockReturnValueOnce(secondId),
+    });
+    const nextAttempt = deferredResponse();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(
+        new Response("{", {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(createdPlanResponse("weekly-plan-1"))
+      .mockReturnValueOnce(nextAttempt.promise);
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <PlanManagementClient
+        initialData={{ activeMacroCycleId: null, plans: [] }}
+        customHypertrophyEnabled
+      />,
+    );
+
+    const submit = screen.getByRole("button", { name: "Create draft" });
+    await user.click(submit);
+    await screen.findByText("Could not create the plan.");
+    expect(router.push).not.toHaveBeenCalled();
+
+    await user.click(submit);
+    await waitFor(() => expect(router.push).toHaveBeenCalledTimes(1));
+    await user.click(submit);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+
+    expect(creationBody(fetchMock, 0).creationId).toBe(firstId);
+    expect(creationBody(fetchMock, 1).creationId).toBe(firstId);
+    expect(creationBody(fetchMock, 2).creationId).toBe(secondId);
+    expect(router.push).toHaveBeenCalledWith("/plans/weekly-plan-1/edit");
+  });
+
+  it("retains the creation token when a 201 response has no valid plan", async () => {
+    const user = userEvent.setup();
+    const firstId = "00000000-0000-4000-8000-000000000105";
+    const secondId = "00000000-0000-4000-8000-000000000205";
+    vi.stubGlobal("crypto", {
+      ...globalThis.crypto,
+      randomUUID: vi.fn().mockReturnValueOnce(firstId).mockReturnValueOnce(secondId),
+    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(createdPlanResponse("weekly-plan"));
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <PlanManagementClient
+        initialData={{ activeMacroCycleId: null, plans: [] }}
+        customHypertrophyEnabled
+      />,
+    );
+
+    const submit = screen.getByRole("button", { name: "Create draft" });
+    await user.click(submit);
+    await screen.findByText("Could not create the plan.");
+    expect(router.push).not.toHaveBeenCalled();
+
+    await user.click(submit);
+    await waitFor(() => expect(router.push).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(creationBody(fetchMock, 0).creationId).toBe(firstId);
+    expect(creationBody(fetchMock, 1).creationId).toBe(firstId);
+  });
+
+  it("uses one token and one canonical payload for whitespace-equivalent names", async () => {
+    const user = userEvent.setup();
+    const firstId = "00000000-0000-4000-8000-000000000106";
+    const secondId = "00000000-0000-4000-8000-000000000206";
+    vi.stubGlobal("crypto", {
+      ...globalThis.crypto,
+      randomUUID: vi.fn().mockReturnValueOnce(firstId).mockReturnValueOnce(secondId),
+    });
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError("response lost"))
+      .mockResolvedValueOnce(createdPlanResponse("weekly-plan"));
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <PlanManagementClient
+        initialData={{ activeMacroCycleId: null, plans: [] }}
+        customHypertrophyEnabled
+      />,
+    );
+
+    const name = screen.getByLabelText("Plan name");
+    fireEvent.change(name, { target: { value: "  Equivalent   Plan  " } });
+    await user.click(screen.getByRole("button", { name: "Create draft" }));
+    await screen.findByText("Could not create the plan.");
+    fireEvent.change(name, { target: { value: "Equivalent Plan" } });
+    await user.click(screen.getByRole("button", { name: "Create draft" }));
+    await waitFor(() => expect(router.push).toHaveBeenCalledTimes(1));
+
+    expect(creationBody(fetchMock, 0)).toMatchObject({
+      creationId: firstId,
+      name: "Equivalent Plan",
+    });
+    expect(creationBody(fetchMock, 1)).toMatchObject({
+      creationId: firstId,
+      name: "Equivalent Plan",
+    });
+  });
+
+  it("retains the creation token after a non-2xx response", async () => {
+    const user = userEvent.setup();
+    const firstId = "00000000-0000-4000-8000-000000000107";
+    const secondId = "00000000-0000-4000-8000-000000000207";
+    vi.stubGlobal("crypto", {
+      ...globalThis.crypto,
+      randomUUID: vi.fn().mockReturnValueOnce(firstId).mockReturnValueOnce(secondId),
+    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: "Try again" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(createdPlanResponse("weekly-plan"));
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <PlanManagementClient
+        initialData={{ activeMacroCycleId: null, plans: [] }}
+        customHypertrophyEnabled
+      />,
+    );
+
+    const submit = screen.getByRole("button", { name: "Create draft" });
+    await user.click(submit);
+    await screen.findByText("Try again");
+    await user.click(submit);
+    await waitFor(() => expect(router.push).toHaveBeenCalledTimes(1));
+
+    expect(creationBody(fetchMock, 0).creationId).toBe(firstId);
+    expect(creationBody(fetchMock, 1).creationId).toBe(firstId);
+  });
+
+  it("retains the creation token when navigation throws", async () => {
+    const user = userEvent.setup();
+    const firstId = "00000000-0000-4000-8000-000000000108";
+    const secondId = "00000000-0000-4000-8000-000000000208";
+    vi.stubGlobal("crypto", {
+      ...globalThis.crypto,
+      randomUUID: vi.fn().mockReturnValueOnce(firstId).mockReturnValueOnce(secondId),
+    });
+    router.push.mockImplementationOnce(() => {
+      throw new Error("navigation failed");
+    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(createdPlanResponse("weekly-plan"))
+      .mockResolvedValueOnce(createdPlanResponse("weekly-plan"));
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <PlanManagementClient
+        initialData={{ activeMacroCycleId: null, plans: [] }}
+        customHypertrophyEnabled
+      />,
+    );
+
+    const submit = screen.getByRole("button", { name: "Create draft" });
+    await user.click(submit);
+    await screen.findByText("Could not create the plan.");
+    await user.click(submit);
+    await waitFor(() => expect(router.push).toHaveBeenCalledTimes(2));
+
+    expect(creationBody(fetchMock, 0).creationId).toBe(firstId);
+    expect(creationBody(fetchMock, 1).creationId).toBe(firstId);
+  });
+
+  it("isolates manual and weekly creation attempts", async () => {
+    const user = userEvent.setup();
+    const manualId = "00000000-0000-4000-8000-000000000109";
+    const weeklyId = "00000000-0000-4000-8000-000000000110";
+    vi.stubGlobal("crypto", {
+      ...globalThis.crypto,
+      randomUUID: vi.fn().mockReturnValueOnce(manualId).mockReturnValueOnce(weeklyId),
+    });
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError("response lost"))
+      .mockResolvedValueOnce(createdPlanResponse("weekly-plan"));
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <PlanManagementClient
+        initialData={{ activeMacroCycleId: null, plans: [] }}
+        customHypertrophyEnabled
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Create draft" }));
+    await screen.findByText("Could not create the plan.");
+    await user.click(
+      screen.getByRole("radio", { name: /Author week by week/ }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Create weekly draft" }),
+    );
+    await waitFor(() => expect(router.push).toHaveBeenCalledTimes(1));
+
+    expect(creationBody(fetchMock, 0)).toMatchObject({
+      creationId: manualId,
+      authorMethod: "MANUAL",
+    });
+    expect(creationBody(fetchMock, 1)).toMatchObject({
+      creationId: weeklyId,
+      authorMethod: "WEEKLY",
+    });
   });
 
   it("changes the creation token when the form payload changes after failure", async () => {

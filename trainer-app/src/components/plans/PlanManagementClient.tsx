@@ -11,6 +11,7 @@ import {
   planTypeLabel,
   type SupportedPlanType,
 } from "@/lib/plan-types";
+import { normalizePlanName } from "@/lib/validation";
 
 const STATUS_COPY: Record<
   PlanSummary["status"],
@@ -72,6 +73,21 @@ async function responseBody(response: Response): Promise<{
   return response.json().catch(() => ({}));
 }
 
+function isPlanNavigationTarget(
+  value: unknown,
+): value is Pick<PlanSummary, "id" | "status"> {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const candidate = value as { id?: unknown; status?: unknown };
+  return (
+    typeof candidate.id === "string" &&
+    candidate.id.length > 0 &&
+    typeof candidate.status === "string" &&
+    Object.prototype.hasOwnProperty.call(STATUS_COPY, candidate.status)
+  );
+}
+
 export function PlanManagementClient({
   initialData,
   customHypertrophyEnabled = false,
@@ -126,7 +142,7 @@ export function PlanManagementClient({
         newPlanType === "HYPERTROPHY" && customHypertrophyEnabled
           ? {
               planType: "HYPERTROPHY" as const,
-              name: formData.get("name"),
+              name: normalizePlanName(String(formData.get("name") ?? "")),
               sessionsPerWeek: Number(formData.get("sessionsPerWeek")),
               sessionDurationMinutes: Number(
                 formData.get("sessionDurationMinutes"),
@@ -185,13 +201,17 @@ export function PlanManagementClient({
         setError(body.error ?? "Could not create the plan.");
         return;
       }
-      const plan = body.plan as PlanSummary;
-      creationAttempt.current = null;
+      if (!isPlanNavigationTarget(body.plan)) {
+        setError("Could not create the plan.");
+        return;
+      }
+      const plan = body.plan;
       router.push(
         plan.status === "DRAFT"
           ? `/plans/${plan.id}/edit`
           : `/plans/${plan.id}/review`,
       );
+      creationAttempt.current = null;
     } catch {
       setError("Could not create the plan.");
     } finally {

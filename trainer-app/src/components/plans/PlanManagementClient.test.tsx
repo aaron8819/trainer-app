@@ -210,8 +210,17 @@ describe("PlanManagementClient", () => {
     await user.click(submit);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
 
-    expect(creationBody(fetchMock, 0).creationId).toBe(firstId);
-    expect(creationBody(fetchMock, 1).creationId).toBe(firstId);
+    const { creationId: firstCreationId, ...firstPayload } = creationBody(
+      fetchMock,
+      0,
+    );
+    const { creationId: secondCreationId, ...secondPayload } = creationBody(
+      fetchMock,
+      1,
+    );
+    expect(secondPayload).toEqual(firstPayload);
+    expect(firstCreationId).toBe(firstId);
+    expect(secondCreationId).toBe(firstId);
     expect(creationBody(fetchMock, 2).creationId).toBe(secondId);
   });
 

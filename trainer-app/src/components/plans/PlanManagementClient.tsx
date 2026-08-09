@@ -373,7 +373,10 @@ export function PlanManagementClient({
       {showCreate ? (
         <form
           className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5"
-          action={createPlan}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void createPlan(new FormData(event.currentTarget));
+          }}
         >
           <fieldset>
             <legend className="text-sm font-semibold text-slate-900">

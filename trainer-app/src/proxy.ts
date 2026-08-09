@@ -9,6 +9,10 @@ export function proxy(request: NextRequest) {
   if (
     pathname.startsWith("/ui-audit-fixture") ||
     pathname.startsWith("/_next") ||
+    pathname.startsWith("/brand/") ||
+    pathname.startsWith("/icons/") ||
+    pathname === "/apple-icon.png" ||
+    pathname === "/manifest.webmanifest" ||
     pathname === "/favicon.ico"
   ) {
     return NextResponse.next();

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useVisualViewportMetrics } from "@/lib/ui/use-visual-viewport-metrics";
 import { NavLink } from "./NavLink";
@@ -142,7 +143,17 @@ export function AppNavigation() {
   return (
     <nav className="sticky top-0 z-50 border-b border-slate-200 bg-white">
       <div className="mx-auto flex max-w-5xl items-center gap-1 px-4 py-2 sm:px-5 md:px-6">
-        <span className="mr-6 text-lg font-bold text-slate-900">Trainer</span>
+        <span className="mr-4 flex shrink-0 items-center gap-2 text-lg font-bold text-slate-900">
+          <Image
+            src="/brand/trainer-mark.png"
+            alt=""
+            aria-hidden="true"
+            width={21}
+            height={30}
+            unoptimized
+          />
+          <span>Trainer</span>
+        </span>
         {DESKTOP_NAV_ITEMS.map((item) => (
           <NavLink
             key={item.href}

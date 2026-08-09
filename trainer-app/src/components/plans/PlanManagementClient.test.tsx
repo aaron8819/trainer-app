@@ -183,6 +183,78 @@ describe("PlanManagementClient", () => {
     });
   });
 
+  it("keeps newer form intent when an older creation succeeds", async () => {
+    const user = userEvent.setup();
+    const firstId = "00000000-0000-4000-8000-000000000091";
+    const secondId = "00000000-0000-4000-8000-000000000092";
+    vi.stubGlobal("crypto", {
+      ...globalThis.crypto,
+      randomUUID: vi.fn().mockReturnValueOnce(firstId).mockReturnValueOnce(secondId),
+    });
+    const first = deferredResponse();
+    const fetchMock = vi.fn()
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce(createdPlanResponse("plan-b"));
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <PlanManagementClient
+        initialData={{ activeMacroCycleId: null, plans: [] }}
+        customHypertrophyEnabled
+      />,
+    );
+
+    const name = screen.getByLabelText("Plan name");
+    await user.click(screen.getByRole("button", { name: "Create draft" }));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await user.clear(name);
+    await user.type(name, "Payload B");
+    first.resolve(createdPlanResponse("plan-a"));
+
+    await screen.findByText(
+      "The earlier plan was created, but your newer changes were kept. Submit again to create the updated plan.",
+    );
+    expect(router.push).not.toHaveBeenCalled();
+    expect(name).toHaveValue("Payload B");
+    expect(screen.getByRole("button", { name: "Create draft" })).toBeEnabled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: "Create draft" }));
+    await waitFor(() => expect(router.push).toHaveBeenCalledTimes(1));
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(creationBody(fetchMock, 0).creationId).toBe(firstId);
+    expect(creationBody(fetchMock, 1)).toMatchObject({
+      creationId: secondId,
+      name: "Payload B",
+    });
+    expect(router.push).toHaveBeenCalledWith("/plans/plan-b/edit");
+  });
+
+  it("navigates when a pending edit is canonically equivalent", async () => {
+    const user = userEvent.setup();
+    const first = deferredResponse();
+    const fetchMock = vi.fn().mockReturnValueOnce(first.promise);
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <PlanManagementClient
+        initialData={{ activeMacroCycleId: null, plans: [] }}
+        customHypertrophyEnabled
+      />,
+    );
+
+    const name = screen.getByLabelText("Plan name");
+    fireEvent.change(name, { target: { value: "  Equivalent   Plan  " } });
+    await user.click(screen.getByRole("button", { name: "Create draft" }));
+    fireEvent.change(name, { target: { value: "Equivalent Plan" } });
+    first.resolve(createdPlanResponse("equivalent-plan"));
+
+    await waitFor(() => expect(router.push).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(creationBody(fetchMock, 0).name).toBe("Equivalent Plan");
+    expect(router.push).toHaveBeenCalledWith("/plans/equivalent-plan/edit");
+  });
+
   it("retains one creation token across response loss and advances it after success", async () => {
     const user = userEvent.setup();
     const firstId = "00000000-0000-4000-8000-000000000101";

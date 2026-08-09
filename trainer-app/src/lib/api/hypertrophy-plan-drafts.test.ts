@@ -351,6 +351,7 @@ describe("custom hypertrophy draft persistence", () => {
 
   it("replays concurrent identical custom-plan creates by server-enforced creation identity", async () => {
     const creationId = "00000000-0000-4000-8000-000000000123";
+    let persistedPlanId: string | null = null;
     let persisted: {
       name: string;
       hypertrophyDraft: { payload: unknown; revision: number };
@@ -360,6 +361,7 @@ describe("custom hypertrophy draft persistence", () => {
     });
     mocks.prisma.macroCycle.create
       .mockImplementationOnce(async ({ data }) => {
+        persistedPlanId = data.id;
         persisted = {
           name: data.name,
           hypertrophyDraft: {
@@ -376,7 +378,9 @@ describe("custom hypertrophy draft persistence", () => {
         }),
       );
     mocks.prisma.macroCycle.findFirst.mockImplementation(async ({ where }) =>
-      where.id === creationId ? persisted : null,
+      where.id === persistedPlanId && where.userId === "user-1"
+        ? persisted
+        : null,
     );
     const input = {
       userId: "user-1",
@@ -389,15 +393,14 @@ describe("custom hypertrophy draft persistence", () => {
       creationId,
     };
 
-    await expect(
-      Promise.all([
-        createCustomHypertrophyPlan(input),
-        createCustomHypertrophyPlan(input),
-      ]),
-    ).resolves.toEqual([
-      { planId: creationId, draftRevision: 1 },
-      { planId: creationId, draftRevision: 1 },
+    const results = await Promise.all([
+      createCustomHypertrophyPlan(input),
+      createCustomHypertrophyPlan(input),
     ]);
+
+    expect(results[0]).toEqual(results[1]);
+    expect(results[0]).toEqual({ planId: persistedPlanId, draftRevision: 1 });
+    expect(persistedPlanId).not.toBe(creationId);
   });
 
   it("rejects reuse of one creation identity with a different canonical payload", async () => {
@@ -558,10 +561,13 @@ describe("custom hypertrophy draft persistence", () => {
       }),
     ]);
 
-    expect(created.map((result) => result.planId)).toEqual([
+    expect(created[0].planId).not.toBe(created[1].planId);
+    expect(created.map((result) => result.planId)).not.toContain(
       "00000000-0000-4000-8000-000000000123",
+    );
+    expect(created.map((result) => result.planId)).not.toContain(
       "00000000-0000-4000-8000-000000000124",
-    ]);
+    );
   });
 
   it("autosaves a structurally valid but preview-incomplete V4 draft", async () => {

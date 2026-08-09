@@ -97,6 +97,7 @@ export function PlanManagementClient({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const creationAttempt = useRef<{ signature: string; id: string } | null>(null);
+  const creatingRef = useRef(false);
 
   const defaultStartDate = useMemo(
     () => new Date().toISOString().slice(0, 10),
@@ -115,6 +116,8 @@ export function PlanManagementClient({
   );
 
   const createPlan = async (formData: FormData) => {
+    if (creatingRef.current) return;
+    creatingRef.current = true;
     setCreating(true);
     setError(null);
     setMessage(null);
@@ -183,6 +186,7 @@ export function PlanManagementClient({
         return;
       }
       const plan = body.plan as PlanSummary;
+      creationAttempt.current = null;
       router.push(
         plan.status === "DRAFT"
           ? `/plans/${plan.id}/edit`
@@ -191,6 +195,7 @@ export function PlanManagementClient({
     } catch {
       setError("Could not create the plan.");
     } finally {
+      creatingRef.current = false;
       setCreating(false);
     }
   };

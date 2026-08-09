@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import {
@@ -211,7 +218,7 @@ export function WeeklyHypertrophyPlanEditor({
   const invalidFieldCountRef = useRef(invalidFieldCount);
   const latest = useRef({ name, draft, revision });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     invalidFieldCountRef.current = invalidFieldCount;
     latest.current = { name, draft, revision };
   }, [draft, invalidFieldCount, name, revision]);

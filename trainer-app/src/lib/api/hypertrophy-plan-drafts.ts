@@ -251,10 +251,12 @@ export async function createCustomHypertrophyPlan(
     equipmentProfile: input.equipmentProfile,
     sessionDurationMinutes: input.sessionDurationMinutes,
   } as const;
-  const planId = input.creationId ?? randomUUID();
+  const planId = input.creationId
+    ? deterministicUuid(`${input.userId}:plan:${input.creationId}`)
+    : randomUUID();
   let slotIndex = 0;
   const createSlotId = input.creationId
-    ? () => deterministicUuid(`${input.creationId}:slot:${slotIndex++}`)
+    ? () => deterministicUuid(`${planId}:slot:${slotIndex++}`)
     : randomUUID;
   let draft: HypertrophyPlanDraft;
   try {

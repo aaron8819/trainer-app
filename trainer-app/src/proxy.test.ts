@@ -36,6 +36,29 @@ describe("UI audit request boundary", () => {
     expect(location.searchParams.has("scenario")).toBe(false);
   });
 
+  it("leaves public Trainer brand assets available to fixture pages", () => {
+    vi.stubEnv("UI_AUDIT_FIXTURE_MODE", "1");
+    vi.stubEnv("NODE_ENV", "development");
+
+    for (const pathname of [
+      "/brand/trainer-mark.png",
+      "/icons/trainer-icon-192.png",
+      "/icons/trainer-icon-512.png",
+      "/apple-icon.png",
+      "/manifest.webmanifest",
+      "/favicon.ico",
+    ]) {
+      const response = proxy(
+        new NextRequest(`http://localhost${pathname}`, {
+          headers: { "x-ui-audit-fixture": "active" },
+        }),
+      );
+
+      expect(response.headers.get("x-middleware-next"), pathname).toBe("1");
+      expect(response.headers.get("location"), pathname).toBeNull();
+    }
+  });
+
   it("blocks every unhandled fixture API request before database code", async () => {
     vi.stubEnv("UI_AUDIT_FIXTURE_MODE", "1");
     vi.stubEnv("NODE_ENV", "development");

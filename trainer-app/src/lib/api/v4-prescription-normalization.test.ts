@@ -227,8 +227,9 @@ describe("V4 prescription normalization boundary", () => {
     expect(normalizeAcceptedHypertrophySeedV4(accepted).executablePayload).toEqual(
       projection,
     );
+    expect(JSON.stringify(accepted)).not.toContain("preservedMeasurement");
     expect(JSON.stringify(projection)).not.toMatch(
-      /settings|focus|name|progressionPolicy|RirDefaults/,
+      /settings|focus|name|preservedMeasurement|progressionPolicy|RirDefaults/,
     );
     expect(JSON.stringify(projection)).toMatch(
       /weeks|phase|placementId|intent|measurement|prescriptions|setCount|reps|rir/,

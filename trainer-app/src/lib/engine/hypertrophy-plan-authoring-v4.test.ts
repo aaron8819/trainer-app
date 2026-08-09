@@ -343,7 +343,10 @@ describe("V4 custom-plan prescription foundation", () => {
         ...session,
         exercises: session.exercises.map((exercise) => ({
           ...exercise,
-          preservedMeasurement: measurement,
+          preservedMeasurement: {
+            exerciseId: exercise.exerciseId,
+            measurement,
+          },
         })),
       })),
     });
@@ -398,5 +401,73 @@ describe("V4 custom-plan prescription foundation", () => {
     });
 
     expect(recompiled).toEqual(accepted);
+  });
+
+  it("resolves a replacement exercise measurement instead of reusing a stale snapshot", () => {
+    const accepted = compileAcceptedHypertrophySeedV4({
+      draft: draft(),
+      measurementByExerciseId: measurements,
+    });
+    const copied = copyAcceptedHypertrophySeedV4ToDraft(accepted);
+    copied.sessions[0]!.exercises[0]!.exerciseId = "pullup";
+    const replacementMeasurement: MeasurementSemantics = {
+      profile: "REPS_BODYWEIGHT",
+      repBasis: "TOTAL",
+    };
+
+    const recompiled = compileAcceptedHypertrophySeedV4({
+      draft: copied,
+      measurementByExerciseId: new Map<string, MeasurementSemantics>([
+        ["pullup", replacementMeasurement],
+        ["core", measurement],
+      ]),
+    });
+
+    expect(recompiled.slots[0]!.exercises[0]).toMatchObject({
+      exerciseId: "pullup",
+      measurement: replacementMeasurement,
+    });
+  });
+
+  it("reactivates the bound snapshot when an edited exercise returns to its source identity", () => {
+    const accepted = compileAcceptedHypertrophySeedV4({
+      draft: draft(),
+      measurementByExerciseId: measurements,
+    });
+    const copied = copyAcceptedHypertrophySeedV4ToDraft(accepted);
+    const copiedExercise = copied.sessions[0]!.exercises[0]!;
+    copiedExercise.exerciseId = "pullup";
+    copiedExercise.exerciseId = "bench";
+    const driftedCatalogMeasurement: MeasurementSemantics = {
+      profile: "REPS_EXTERNAL_LOAD",
+      loadConvention: "MACHINE_DISPLAYED",
+      repBasis: "PER_SIDE",
+    };
+
+    const recompiled = compileAcceptedHypertrophySeedV4({
+      draft: copied,
+      measurementByExerciseId: new Map([
+        ["bench", driftedCatalogMeasurement],
+        ["core", driftedCatalogMeasurement],
+      ]),
+    });
+
+    expect(recompiled).toEqual(accepted);
+  });
+
+  it("fails existing validation when a changed exercise has no measurement data", () => {
+    const accepted = compileAcceptedHypertrophySeedV4({
+      draft: draft(),
+      measurementByExerciseId: measurements,
+    });
+    const copied = copyAcceptedHypertrophySeedV4ToDraft(accepted);
+    copied.sessions[0]!.exercises[0]!.exerciseId = "pullup";
+
+    expect(() =>
+      compileAcceptedHypertrophySeedV4({
+        draft: copied,
+        measurementByExerciseId: new Map([["core", measurement]]),
+      }),
+    ).toThrow("CUSTOM_PLAN_MEASUREMENT_UNCLASSIFIED:pullup");
   });
 });

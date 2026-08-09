@@ -164,7 +164,10 @@ export type HypertrophyPlanDraftV2 = {
       placementId: string;
       exerciseId: string;
       intent: AcceptedExerciseIntentV2;
-      preservedMeasurement?: MeasurementSemantics;
+      preservedMeasurement?: {
+        exerciseId: string;
+        measurement: MeasurementSemantics;
+      };
       prescriptions: WeeklyPrescriptionV4[];
     }>;
   }>;
@@ -521,7 +524,13 @@ const draftExerciseV2Schema = z
     placementId: z.string().trim().min(1).max(100),
     exerciseId: z.string().trim().min(1).max(100),
     intent: acceptedExerciseIntentSchema,
-    preservedMeasurement: measurementSemanticsSchema.optional(),
+    preservedMeasurement: z
+      .object({
+        exerciseId: z.string().trim().min(1).max(100),
+        measurement: measurementSemanticsSchema,
+      })
+      .strict()
+      .optional(),
     prescriptions: z.array(weeklyPrescriptionV4Schema).min(1).max(52),
   })
   .strict();
@@ -921,8 +930,12 @@ export function compileAcceptedHypertrophySeedV4(input: {
       name: session.name,
       focus: session.focus,
       exercises: session.exercises.map((exercise) => {
+        const preservedMeasurement =
+          exercise.preservedMeasurement?.exerciseId === exercise.exerciseId
+            ? exercise.preservedMeasurement.measurement
+            : undefined;
         const measurement =
-          exercise.preservedMeasurement ??
+          preservedMeasurement ??
           input.measurementByExerciseId.get(exercise.exerciseId);
         if (!measurement) {
           throw new Error(`CUSTOM_PLAN_MEASUREMENT_UNCLASSIFIED:${exercise.exerciseId}`);
@@ -956,7 +969,10 @@ export function copyAcceptedHypertrophySeedV4ToDraft(
         placementId: exercise.placementId,
         exerciseId: exercise.exerciseId,
         intent: exercise.intent,
-        preservedMeasurement: exercise.measurement,
+        preservedMeasurement: {
+          exerciseId: exercise.exerciseId,
+          measurement: exercise.measurement,
+        },
         prescriptions: exercise.prescriptions,
       })),
     })),

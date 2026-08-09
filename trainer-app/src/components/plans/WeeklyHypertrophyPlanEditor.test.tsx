@@ -3,6 +3,31 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WeeklyHypertrophyPlanEditor } from "./WeeklyHypertrophyPlanEditor";
 
+const reactEffectControl = vi.hoisted(() => ({
+  deferSnapshotPublication: false,
+}));
+
+vi.mock("react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react")>();
+  return {
+    ...actual,
+    useEffect: (
+      effect: React.EffectCallback,
+      dependencies?: React.DependencyList,
+    ) =>
+      actual.useEffect(() => {
+        if (
+          reactEffectControl.deferSnapshotPublication &&
+          dependencies?.length === 4
+        ) {
+          const timer = window.setTimeout(effect, 0);
+          return () => window.clearTimeout(timer);
+        }
+        return effect();
+      }, dependencies),
+  };
+});
+
 const router = { push: vi.fn(), refresh: vi.fn() };
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 
@@ -137,6 +162,7 @@ describe("WeeklyHypertrophyPlanEditor", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    reactEffectControl.deferSnapshotPublication = false;
     vi.stubGlobal("crypto", {
       ...globalThis.crypto,
       randomUUID: vi.fn(() => "00000000-0000-4000-8000-000000000099"),
@@ -154,6 +180,7 @@ describe("WeeklyHypertrophyPlanEditor", () => {
   });
 
   afterEach(() => {
+    reactEffectControl.deferSnapshotPublication = false;
     cleanup();
     vi.useRealTimers();
     vi.unstubAllGlobals();
@@ -288,10 +315,78 @@ describe("WeeklyHypertrophyPlanEditor", () => {
     expect(router.push).toHaveBeenCalledWith("/plans");
   });
 
-  it("offers retry, stay, and explicit discard after a Back save failure", async () => {
+  it("publishes a newer committed edit before an older Back save can navigate", async () => {
+    reactEffectControl.deferSnapshotPublication = true;
+    const first = deferredResponse();
+    const second = deferredResponse();
+    vi.mocked(fetch)
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    render(<WeeklyHypertrophyPlanEditor initialData={initialData} />);
+
+    fireEvent.change(screen.getByLabelText("Plan name"), {
+      target: { value: "Snapshot A" },
+    });
+    await act(() => vi.advanceTimersByTimeAsync(800));
+    fireEvent.click(screen.getByRole("button", { name: "Back to plans" }));
+    fireEvent.change(screen.getByLabelText("Plan name"), {
+      target: { value: "Snapshot B" },
+    });
+
+    first.resolve(savedResponse(2));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(router.push).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(
+      JSON.parse(String(vi.mocked(fetch).mock.calls[1]![1]!.body)),
+    ).toMatchObject({ expectedRevision: 2, name: "Snapshot B" });
+
+    second.resolve(savedResponse(3));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(router.push).toHaveBeenCalledTimes(1);
+    expect(router.push).toHaveBeenCalledWith("/plans");
+  });
+
+  it("blocks Back when a newer malformed edit commits during an older save", async () => {
+    reactEffectControl.deferSnapshotPublication = true;
+    const first = deferredResponse();
+    vi.mocked(fetch).mockReturnValue(first.promise);
+    render(<WeeklyHypertrophyPlanEditor initialData={initialData} />);
+
+    fireEvent.change(screen.getByLabelText("Plan name"), {
+      target: { value: "Snapshot A" },
+    });
+    await act(() => vi.advanceTimersByTimeAsync(800));
+    fireEvent.click(screen.getByRole("button", { name: "Back to plans" }));
+    fireEvent.change(screen.getAllByLabelText("Week 1 sets")[0]!, {
+      target: { value: "" },
+    });
+
+    first.resolve(savedResponse(2));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(router.push).not.toHaveBeenCalled();
+    expect(
+      screen.getByText("Correct the incomplete field before leaving."),
+    ).toBeVisible();
+  });
+
+  it("retries the newest valid snapshot and navigates only after it is authoritative", async () => {
+    const retry = deferredResponse();
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response(JSON.stringify({ error: "Offline" }), { status: 503 }),
-    );
+    ).mockReturnValueOnce(retry.promise);
     render(<WeeklyHypertrophyPlanEditor initialData={initialData} />);
     fireEvent.change(screen.getByLabelText("Plan name"), {
       target: { value: "Unsaved name" },
@@ -306,8 +401,25 @@ describe("WeeklyHypertrophyPlanEditor", () => {
     expect(screen.getByRole("button", { name: "Stay and keep editing" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Discard changes and leave" })).toBeVisible();
     expect(router.push).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Stay and keep editing" }));
+
+    fireEvent.change(screen.getByLabelText("Plan name"), {
+      target: { value: "Newest retry name" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Retry save and leave" }));
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(
+      JSON.parse(String(vi.mocked(fetch).mock.calls[1]![1]!.body)),
+    ).toMatchObject({ expectedRevision: 1, name: "Newest retry name" });
     expect(router.push).not.toHaveBeenCalled();
+
+    retry.resolve(savedResponse(2));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(router.push).toHaveBeenCalledTimes(1);
+    expect(router.push).toHaveBeenCalledWith("/plans");
   });
 
   it("keeps malformed text local on Back unless the user explicitly discards it", () => {

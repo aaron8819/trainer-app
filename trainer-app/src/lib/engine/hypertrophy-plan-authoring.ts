@@ -164,6 +164,7 @@ export type HypertrophyPlanDraftV2 = {
       placementId: string;
       exerciseId: string;
       intent: AcceptedExerciseIntentV2;
+      preservedMeasurement?: MeasurementSemantics;
       prescriptions: WeeklyPrescriptionV4[];
     }>;
   }>;
@@ -227,6 +228,7 @@ export type ExecutableSeedProjectionV3 = {
       placementId: string;
       exerciseId: string;
       role: "CORE_COMPOUND" | "ACCESSORY";
+      intent: AcceptedExerciseIntentV2;
       measurement: MeasurementSemantics;
       prescriptions: WeeklyPrescriptionV4[];
     }>;
@@ -519,6 +521,7 @@ const draftExerciseV2Schema = z
     placementId: z.string().trim().min(1).max(100),
     exerciseId: z.string().trim().min(1).max(100),
     intent: acceptedExerciseIntentSchema,
+    preservedMeasurement: measurementSemanticsSchema.optional(),
     prescriptions: z.array(weeklyPrescriptionV4Schema).min(1).max(52),
   })
   .strict();
@@ -764,6 +767,7 @@ export const executableSeedProjectionV3Schema = z
                     placementId: z.string().trim().min(1).max(100),
                     exerciseId: z.string().trim().min(1).max(100),
                     role: z.enum(["CORE_COMPOUND", "ACCESSORY"]),
+                    intent: acceptedExerciseIntentSchema,
                     measurement: measurementSemanticsSchema,
                     prescriptions: z
                       .array(weeklyPrescriptionV4Schema)
@@ -917,7 +921,9 @@ export function compileAcceptedHypertrophySeedV4(input: {
       name: session.name,
       focus: session.focus,
       exercises: session.exercises.map((exercise) => {
-        const measurement = input.measurementByExerciseId.get(exercise.exerciseId);
+        const measurement =
+          exercise.preservedMeasurement ??
+          input.measurementByExerciseId.get(exercise.exerciseId);
         if (!measurement) {
           throw new Error(`CUSTOM_PLAN_MEASUREMENT_UNCLASSIFIED:${exercise.exerciseId}`);
         }
@@ -950,6 +956,7 @@ export function copyAcceptedHypertrophySeedV4ToDraft(
         placementId: exercise.placementId,
         exerciseId: exercise.exerciseId,
         intent: exercise.intent,
+        preservedMeasurement: exercise.measurement,
         prescriptions: exercise.prescriptions,
       })),
     })),
@@ -1009,10 +1016,18 @@ export function projectExecutableSeedV4(
     slots: accepted.slots.map((slot) => ({
       slotId: slot.slotId,
       exercises: slot.exercises.map(
-        ({ placementId, exerciseId, role, measurement, prescriptions }) => ({
+        ({
           placementId,
           exerciseId,
           role,
+          intent,
+          measurement,
+          prescriptions,
+        }) => ({
+          placementId,
+          exerciseId,
+          role,
+          intent,
           measurement,
           prescriptions,
         }),

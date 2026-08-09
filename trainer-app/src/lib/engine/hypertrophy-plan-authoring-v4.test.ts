@@ -180,16 +180,48 @@ describe("V4 custom-plan prescription foundation", () => {
       slots: accepted.slots.map((slot) => ({
         slotId: slot.slotId,
         exercises: slot.exercises.map(
-          ({ placementId, exerciseId, role, measurement, prescriptions }) => ({
+          ({
             placementId,
             exerciseId,
             role,
+            intent,
+            measurement,
+            prescriptions,
+          }) => ({
+            placementId,
+            exerciseId,
+            role,
+            intent,
             measurement,
             prescriptions,
           }),
         ),
       })),
     });
+  });
+
+  it("preserves every accepted intent field in the executable projection", () => {
+    const candidate = draft();
+    candidate.sessions[0]!.exercises[0]!.intent = {
+      userRole: "PRIMARY_LIFT",
+      target: { kind: "movement_pattern", movementPattern: "hinge" },
+      requiredExerciseClass: "low_axial_hip_extension_anchor",
+    };
+    const accepted = compileAcceptedHypertrophySeedV4({
+      draft: candidate,
+      measurementByExerciseId: measurements,
+    });
+    const projected = projectExecutableSeedV4(accepted);
+
+    expect(
+      projected.slots.map((slot) =>
+        slot.exercises.map((exercise) => exercise.intent),
+      ),
+    ).toEqual(
+      accepted.slots.map((slot) =>
+        slot.exercises.map((exercise) => exercise.intent),
+      ),
+    );
   });
 
   it("allows a fully prescribed deload without a blocking set-count reduction", () => {
@@ -298,13 +330,23 @@ describe("V4 custom-plan prescription foundation", () => {
     ).toThrow();
   });
 
-  it("copies V4 accepted intent losslessly back to Draft V2", () => {
+  it("copies V4 accepted intent and measurement losslessly back to Draft V2", () => {
     const accepted = compileAcceptedHypertrophySeedV4({
       draft: draft(),
       measurementByExerciseId: measurements,
     });
     const copied = copyAcceptedHypertrophySeedV4ToDraft(accepted);
-    expect(copied).toEqual(draft());
+    const expectedDraft = draft();
+    expect(copied).toEqual({
+      ...expectedDraft,
+      sessions: expectedDraft.sessions.map((session) => ({
+        ...session,
+        exercises: session.exercises.map((exercise) => ({
+          ...exercise,
+          preservedMeasurement: measurement,
+        })),
+      })),
+    });
     expect(
       compileAcceptedHypertrophySeedV4({
         draft: copied,
@@ -312,5 +354,49 @@ describe("V4 custom-plan prescription foundation", () => {
       }),
     ).toEqual(accepted);
     expect(parseAcceptedHypertrophySeedV4(accepted)).toEqual(accepted);
+  });
+
+  it("resolves new drafts from the supplied measurement map", () => {
+    const catalogMeasurement: MeasurementSemantics = {
+      profile: "REPS_EXTERNAL_LOAD",
+      loadConvention: "MACHINE_DISPLAYED",
+      repBasis: "PER_SIDE",
+    };
+    const accepted = compileAcceptedHypertrophySeedV4({
+      draft: draft(),
+      measurementByExerciseId: new Map([
+        ["bench", catalogMeasurement],
+        ["core", catalogMeasurement],
+      ]),
+    });
+
+    expect(accepted.slots[0]!.exercises[0]!.measurement).toEqual(
+      catalogMeasurement,
+    );
+    expect(accepted.slots[1]!.exercises[0]!.measurement).toEqual(
+      catalogMeasurement,
+    );
+  });
+
+  it("preserves copied measurement identity when the supplied map changes", () => {
+    const accepted = compileAcceptedHypertrophySeedV4({
+      draft: draft(),
+      measurementByExerciseId: measurements,
+    });
+    const copied = copyAcceptedHypertrophySeedV4ToDraft(accepted);
+    const changedMeasurement: MeasurementSemantics = {
+      profile: "REPS_EXTERNAL_LOAD",
+      loadConvention: "MACHINE_DISPLAYED",
+      repBasis: "TOTAL",
+    };
+    const recompiled = compileAcceptedHypertrophySeedV4({
+      draft: copied,
+      measurementByExerciseId: new Map([
+        ["bench", changedMeasurement],
+        ["core", changedMeasurement],
+      ]),
+    });
+
+    expect(recompiled).toEqual(accepted);
   });
 });

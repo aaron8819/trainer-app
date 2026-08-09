@@ -19,6 +19,8 @@ const expected = renderFinisherCatalogMigrationSql().trimEnd();
 const actual = current
   .slice(start, end + FINISHER_CATALOG_SQL_END.length)
   .trimEnd();
+const normalizeLineEndings = (value: string): string =>
+  value.replace(/\r\n?/g, "\n");
 
 if (process.argv.includes("--refresh")) {
   const next =
@@ -27,7 +29,7 @@ if (process.argv.includes("--refresh")) {
     current.slice(end + FINISHER_CATALOG_SQL_END.length);
   writeFileSync(migrationPath, next);
   console.log("Updated generated Finisher catalog migration SQL.");
-} else if (actual !== expected) {
+} else if (normalizeLineEndings(actual) !== normalizeLineEndings(expected)) {
   throw new Error(
     "Finisher catalog migration SQL is stale. Run npm run generate:finisher-catalog -- --refresh."
   );

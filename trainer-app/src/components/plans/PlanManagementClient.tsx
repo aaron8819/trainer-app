@@ -87,7 +87,8 @@ export function PlanManagementClient({
   const [showCreate, setShowCreate] = useState(initialData.plans.length === 0);
   const [newPlanType, setNewPlanType] =
     useState<SupportedPlanType>("HYPERTROPHY");
-  const [authorMethod, setAuthorMethod] = useState<"MANUAL" | "V2">("MANUAL");
+  const [authorMethod, setAuthorMethod] =
+    useState<"MANUAL" | "V2" | "WEEKLY">("MANUAL");
   const [sessionsPerWeek, setSessionsPerWeek] = useState(4);
   const [manualPreset, setManualPreset] = useState("UPPER_LOWER_4");
   const [creating, setCreating] = useState(false);
@@ -132,7 +133,7 @@ export function PlanManagementClient({
                   ),
                   equipmentProfile: formData.get("equipmentProfile"),
                   authorMethod,
-                  ...(authorMethod === "MANUAL"
+                  ...(authorMethod !== "V2"
                     ? { preset: formData.get("preset") }
                     : {}),
                 }
@@ -453,7 +454,9 @@ export function PlanManagementClient({
                   <select name="sessionsPerWeek" value={sessionsPerWeek} onChange={(event) => {
                     const value = Number(event.target.value);
                     setSessionsPerWeek(value);
-                    setAuthorMethod((current) => value === 4 ? current : "MANUAL");
+                    setAuthorMethod((current) =>
+                      value !== 4 && current === "V2" ? "MANUAL" : current,
+                    );
                     setManualPreset(value === 2 ? "FULL_BODY_2" : value === 3 ? "FULL_BODY_3" : value === 4 ? "UPPER_LOWER_4" : value === 6 ? "PPL_6" : "BLANK");
                   }} className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base">
                     {[2, 3, 4, 5, 6].map((value) => <option key={value} value={value}>{value} sessions</option>)}
@@ -478,7 +481,7 @@ export function PlanManagementClient({
               </div>
               <fieldset className="mt-4">
                 <legend className="text-sm font-semibold text-slate-900">Starting method</legend>
-                <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                <div className="mt-2 grid gap-3 sm:grid-cols-3">
                   <label className="rounded-xl border border-slate-200 bg-white p-3">
                     <input type="radio" checked={authorMethod === "MANUAL"} onChange={() => setAuthorMethod("MANUAL")} />{" "}
                     <span className="font-medium">Build it myself</span>
@@ -489,9 +492,14 @@ export function PlanManagementClient({
                     <span className="font-medium">Generate a starting plan</span>
                     <span className="mt-1 block text-sm text-slate-600">Creates an editable four-session Upper/Lower draft.</span>
                   </label>
+                  <label className="rounded-xl border border-blue-200 bg-blue-50/40 p-3">
+                    <input type="radio" checked={authorMethod === "WEEKLY"} onChange={() => setAuthorMethod("WEEKLY")} />{" "}
+                    <span className="font-medium">Author week by week</span>
+                    <span className="mt-1 block text-sm text-slate-600">Set each exercise’s sets, reps, and RIR for every week, then preview the normalized draft.</span>
+                  </label>
                 </div>
               </fieldset>
-              {authorMethod === "MANUAL" ? (
+              {authorMethod !== "V2" ? (
                 <label className="mt-4 block text-sm font-medium text-slate-800">
                   Session structure
                   <select name="preset" value={manualPreset} onChange={(event) => setManualPreset(event.target.value)} className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base sm:max-w-sm">
@@ -633,7 +641,11 @@ export function PlanManagementClient({
             {creating
               ? authorMethod === "V2" ? "Building draft…" : "Creating draft…"
               : customHypertrophyEnabled && newPlanType === "HYPERTROPHY"
-                ? authorMethod === "V2" ? "Generate starting plan" : "Create draft"
+                ? authorMethod === "V2"
+                  ? "Generate starting plan"
+                  : authorMethod === "WEEKLY"
+                    ? "Create weekly draft"
+                    : "Create draft"
                 : "Generate and review"}
           </Button>
         </form>

@@ -93,6 +93,59 @@ describe("PlanManagementClient", () => {
     expect(screen.getAllByRole("button", { name: "Archive" })).toHaveLength(2);
   });
 
+  it("keeps weekly authoring absent when the custom-plan flag is off", () => {
+    render(
+      <PlanManagementClient
+        initialData={{ activeMacroCycleId: null, plans: [] }}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("radio", { name: /Author week by week/ }),
+    ).toBeNull();
+  });
+
+  it("submits the explicit weekly authoring method when the flag is on", async () => {
+    const user = userEvent.setup();
+    const created = plan({
+      id: "weekly-plan",
+      name: "My Hypertrophy Plan",
+      status: "DRAFT",
+      sessionsPerWeek: 4,
+    });
+    const fetchMock = vi.fn<
+      (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+    >(async () =>
+      new Response(JSON.stringify({ ok: true, plan: created }), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <PlanManagementClient
+        initialData={{ activeMacroCycleId: null, plans: [] }}
+        customHypertrophyEnabled
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("radio", { name: /Author week by week/ }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Create weekly draft" }),
+    );
+
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith("/plans/weekly-plan/edit"));
+    const request = fetchMock.mock.calls[0]![1]!;
+    expect(JSON.parse(String(request.body))).toMatchObject({
+      planType: "HYPERTROPHY",
+      authorMethod: "WEEKLY",
+      sessionsPerWeek: 4,
+      preset: "UPPER_LOWER_4",
+    });
+  });
+
   it("confirms the target and updates the active marker after switching", async () => {
     const user = userEvent.setup();
     const data: PlanManagementData = {

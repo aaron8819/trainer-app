@@ -1,16 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Prisma } from "@prisma/client";
 import catalog from "../../../prisma/exercises_comprehensive.json";
-import { parseMeasurementColumns } from "@/lib/exercise-measurement/semantics";
+import type { MeasurementSemantics } from "@/lib/exercise-measurement/semantics";
 import {
   materializeHypertrophyExerciseRecommendation,
+  type AcceptedHypertrophySeedV4,
   type AcceptedExerciseIntentV2,
-  type HypertrophyAuthoringExercise,
+  type ExecutableSeedProjectionV3,
   type HypertrophyPlanDraftV1,
   type HypertrophyPlanDraftV2,
+  type WeeklyPrescriptionV4,
 } from "@/lib/engine/hypertrophy-plan-authoring";
 import { getMusclePolicyByDisplayName } from "@/lib/engine/muscle-policy";
-import type { MovementPatternV2 } from "@/lib/engine/types";
 
 const originalMeasurementRollout = process.env.TRAINER_EXERCISE_MEASUREMENT_ROLLOUT;
 
@@ -92,6 +93,8 @@ import {
   loadHypertrophyPlanEditorData,
   makeHypertrophyPlanReady,
   saveHypertrophyPlanDraft,
+  toAuthoringExercise,
+  type HypertrophyPlanDraftExerciseRow,
 } from "./hypertrophy-plan-drafts";
 
 type CatalogRow = {
@@ -103,37 +106,226 @@ type CatalogRow = {
   contraindications?: Record<string, boolean> | null;
   isCompound: boolean;
   isMainLiftEligible: boolean;
+  fatigueCost: number;
   timePerSetSec: number;
   measurementProfile?: string;
   loadConvention?: string;
   repBasis?: string;
 };
 
-function referenceAuthoringExercise(name: string): HypertrophyAuthoringExercise {
+function referenceExerciseRow(name: string): HypertrophyPlanDraftExerciseRow {
   const row = (catalog.exercises as CatalogRow[]).find(
     (candidate) => candidate.name === name,
   );
   if (!row) throw new Error(`Missing reference-plan exercise: ${name}`);
-  const muscleIds = (names: string[]) =>
-    names.flatMap((muscleName) => {
+  const exerciseMuscles = (
+    names: string[],
+    role: "PRIMARY" | "SECONDARY",
+  ) =>
+    names.map((muscleName) => {
       const policy = getMusclePolicyByDisplayName(muscleName);
-      return policy ? [policy.id] : [];
+      if (!policy) throw new Error(`Missing canonical muscle: ${muscleName}`);
+      return { role, muscle: { id: policy.id, name: muscleName } };
     });
   return {
     id: row.name,
     name: row.name,
-    movementPatterns: row.movementPatterns as MovementPatternV2[],
-    primaryMuscleIds: muscleIds(row.primaryMuscles),
-    secondaryMuscleIds: muscleIds(row.secondaryMuscles),
-    equipment: row.equipment.map((item) => item.toLowerCase()),
-    contraindicationKeys: Object.entries(row.contraindications ?? {}).flatMap(
-      ([key, enabled]) => (enabled ? [key] : []),
-    ),
+    aliases: [],
+    movementPatterns: row.movementPatterns,
+    contraindications: row.contraindications ?? Prisma.JsonNull,
     isCompound: row.isCompound,
     isMainLiftEligible: row.isMainLiftEligible,
-    measurement: parseMeasurementColumns(row),
+    fatigueCost: row.fatigueCost,
     timePerSetSec: row.timePerSetSec,
-  };
+    measurementProfile: row.measurementProfile ?? null,
+    loadConvention: row.loadConvention ?? null,
+    repBasis: row.repBasis ?? null,
+    exerciseEquipment: row.equipment.map((type) => ({ equipment: { type } })),
+    exerciseMuscles: [
+      ...exerciseMuscles(row.primaryMuscles, "PRIMARY"),
+      ...exerciseMuscles(row.secondaryMuscles, "SECONDARY"),
+    ],
+  } as HypertrophyPlanDraftExerciseRow;
+}
+
+const REFERENCE_WEEKS = [
+  { week: 1, phase: "ACCUMULATION" as const },
+  { week: 2, phase: "ACCUMULATION" as const },
+  { week: 3, phase: "ACCUMULATION" as const },
+  { week: 4, phase: "ACCUMULATION" as const },
+  { week: 5, phase: "DELOAD" as const },
+];
+
+const THREE_BY_FIVE_TO_EIGHT: WeeklyPrescriptionV4[] = [
+  { week: 1, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 5, max: 8 }, rir: { kind: "TARGET_RANGE", min: 3, max: 4 } },
+  { week: 2, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 5, max: 8 }, rir: { kind: "TARGET_RANGE", min: 3, max: 3 } },
+  { week: 3, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 5, max: 8 }, rir: { kind: "TARGET_RANGE", min: 2, max: 3 } },
+  { week: 4, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 5, max: 8 }, rir: { kind: "TARGET_RANGE", min: 1, max: 2 } },
+  { week: 5, status: "PRESCRIBE", setCount: 2, reps: { kind: "RANGE", min: 5, max: 8 }, rir: { kind: "TARGET_RANGE", min: 4, max: 5 } },
+];
+const THREE_BY_SIX_TO_TEN: WeeklyPrescriptionV4[] = [
+  { week: 1, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 6, max: 10 }, rir: { kind: "TARGET_RANGE", min: 3, max: 4 } },
+  { week: 2, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 6, max: 10 }, rir: { kind: "TARGET_RANGE", min: 3, max: 3 } },
+  { week: 3, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 6, max: 10 }, rir: { kind: "TARGET_RANGE", min: 2, max: 3 } },
+  { week: 4, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 6, max: 10 }, rir: { kind: "TARGET_RANGE", min: 1, max: 2 } },
+  { week: 5, status: "PRESCRIBE", setCount: 2, reps: { kind: "RANGE", min: 6, max: 10 }, rir: { kind: "TARGET_RANGE", min: 4, max: 5 } },
+];
+const THREE_BY_EIGHT_TO_TWELVE: WeeklyPrescriptionV4[] = [
+  { week: 1, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 8, max: 12 }, rir: { kind: "TARGET_RANGE", min: 3, max: 4 } },
+  { week: 2, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 8, max: 12 }, rir: { kind: "TARGET_RANGE", min: 3, max: 3 } },
+  { week: 3, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 8, max: 12 }, rir: { kind: "TARGET_RANGE", min: 2, max: 3 } },
+  { week: 4, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 8, max: 12 }, rir: { kind: "TARGET_RANGE", min: 1, max: 2 } },
+  { week: 5, status: "PRESCRIBE", setCount: 2, reps: { kind: "RANGE", min: 8, max: 12 }, rir: { kind: "TARGET_RANGE", min: 4, max: 5 } },
+];
+const THREE_BY_TEN_TO_FIFTEEN: WeeklyPrescriptionV4[] = [
+  { week: 1, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 10, max: 15 }, rir: { kind: "TARGET_RANGE", min: 3, max: 4 } },
+  { week: 2, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 10, max: 15 }, rir: { kind: "TARGET_RANGE", min: 3, max: 3 } },
+  { week: 3, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 10, max: 15 }, rir: { kind: "TARGET_RANGE", min: 2, max: 3 } },
+  { week: 4, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 10, max: 15 }, rir: { kind: "TARGET_RANGE", min: 1, max: 2 } },
+  { week: 5, status: "PRESCRIBE", setCount: 1, reps: { kind: "RANGE", min: 10, max: 15 }, rir: { kind: "TARGET_RANGE", min: 4, max: 5 } },
+];
+const TWO_BY_TEN_TO_FIFTEEN: WeeklyPrescriptionV4[] = [
+  { week: 1, status: "PRESCRIBE", setCount: 2, reps: { kind: "RANGE", min: 10, max: 15 }, rir: { kind: "TARGET_RANGE", min: 3, max: 4 } },
+  { week: 2, status: "PRESCRIBE", setCount: 2, reps: { kind: "RANGE", min: 10, max: 15 }, rir: { kind: "TARGET_RANGE", min: 3, max: 3 } },
+  { week: 3, status: "PRESCRIBE", setCount: 2, reps: { kind: "RANGE", min: 10, max: 15 }, rir: { kind: "TARGET_RANGE", min: 2, max: 3 } },
+  { week: 4, status: "PRESCRIBE", setCount: 2, reps: { kind: "RANGE", min: 10, max: 15 }, rir: { kind: "TARGET_RANGE", min: 1, max: 2 } },
+  { week: 5, status: "PRESCRIBE", setCount: 1, reps: { kind: "RANGE", min: 10, max: 15 }, rir: { kind: "TARGET_RANGE", min: 4, max: 5 } },
+];
+const TWO_BY_TWELVE_TO_TWENTY_WITH_OMISSION: WeeklyPrescriptionV4[] = [
+  { week: 1, status: "PRESCRIBE", setCount: 2, reps: { kind: "RANGE", min: 12, max: 20 }, rir: { kind: "TARGET_RANGE", min: 3, max: 4 } },
+  { week: 2, status: "PRESCRIBE", setCount: 2, reps: { kind: "RANGE", min: 12, max: 20 }, rir: { kind: "TARGET_RANGE", min: 3, max: 3 } },
+  { week: 3, status: "PRESCRIBE", setCount: 2, reps: { kind: "RANGE", min: 12, max: 20 }, rir: { kind: "TARGET_RANGE", min: 2, max: 3 } },
+  { week: 4, status: "PRESCRIBE", setCount: 2, reps: { kind: "RANGE", min: 12, max: 20 }, rir: { kind: "TARGET_RANGE", min: 1, max: 2 } },
+  { week: 5, status: "OMIT" },
+];
+const THREE_BY_EIGHT_TO_FIFTEEN_WITH_OMISSION: WeeklyPrescriptionV4[] = [
+  { week: 1, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 8, max: 15 }, rir: { kind: "TARGET_RANGE", min: 3, max: 4 } },
+  { week: 2, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 8, max: 15 }, rir: { kind: "TARGET_RANGE", min: 3, max: 3 } },
+  { week: 3, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 8, max: 15 }, rir: { kind: "TARGET_RANGE", min: 2, max: 3 } },
+  { week: 4, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 8, max: 15 }, rir: { kind: "TARGET_RANGE", min: 1, max: 2 } },
+  { week: 5, status: "OMIT" },
+];
+const THREE_BY_TWELVE_TO_TWENTY: WeeklyPrescriptionV4[] = [
+  { week: 1, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 12, max: 20 }, rir: { kind: "TARGET_RANGE", min: 3, max: 4 } },
+  { week: 2, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 12, max: 20 }, rir: { kind: "TARGET_RANGE", min: 3, max: 3 } },
+  { week: 3, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 12, max: 20 }, rir: { kind: "TARGET_RANGE", min: 2, max: 3 } },
+  { week: 4, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 12, max: 20 }, rir: { kind: "TARGET_RANGE", min: 1, max: 2 } },
+  { week: 5, status: "PRESCRIBE", setCount: 1, reps: { kind: "RANGE", min: 12, max: 20 }, rir: { kind: "TARGET_RANGE", min: 4, max: 5 } },
+];
+
+const BARBELL_TOTAL: MeasurementSemantics = {
+  profile: "REPS_EXTERNAL_LOAD",
+  loadConvention: "BARBELL_TOTAL",
+  repBasis: "TOTAL",
+};
+const IMPLEMENT_WEIGHT_TOTAL: MeasurementSemantics = {
+  profile: "REPS_EXTERNAL_LOAD",
+  loadConvention: "IMPLEMENT_WEIGHT",
+  repBasis: "TOTAL",
+};
+const IMPLEMENT_WEIGHT_PER_SIDE: MeasurementSemantics = {
+  profile: "REPS_EXTERNAL_LOAD",
+  loadConvention: "IMPLEMENT_WEIGHT",
+  repBasis: "PER_SIDE",
+};
+const MACHINE_DISPLAYED: MeasurementSemantics = {
+  profile: "REPS_EXTERNAL_LOAD",
+  loadConvention: "MACHINE_DISPLAYED",
+  repBasis: "TOTAL",
+};
+const BODYWEIGHT_TOTAL: MeasurementSemantics = {
+  profile: "REPS_BODYWEIGHT",
+  repBasis: "TOTAL",
+};
+
+type ReferenceSessionExpectation = AcceptedHypertrophySeedV4["slots"][number];
+
+const REFERENCE_PLAN_EXPECTATIONS: ReferenceSessionExpectation[] = [
+  {
+    slotId: "upper-a",
+    name: "Upper A",
+    focus: "UPPER",
+    exercises: [
+      { placementId: "upper-a-1", exerciseId: "Barbell Bench Press", role: "CORE_COMPOUND", intent: { userRole: "PRIMARY_LIFT", target: { kind: "movement_pattern", movementPattern: "horizontal_push" } }, measurement: BARBELL_TOTAL, prescriptions: THREE_BY_FIVE_TO_EIGHT },
+      { placementId: "upper-a-2", exerciseId: "Pull-Up", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "vertical_pull" } }, measurement: BODYWEIGHT_TOTAL, prescriptions: THREE_BY_SIX_TO_TEN },
+      { placementId: "upper-a-3", exerciseId: "Incline Dumbbell Bench Press", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "horizontal_push" } }, measurement: IMPLEMENT_WEIGHT_TOTAL, prescriptions: THREE_BY_EIGHT_TO_TWELVE },
+      { placementId: "upper-a-4", exerciseId: "Chest-Supported Dumbbell Row", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "horizontal_pull" } }, measurement: IMPLEMENT_WEIGHT_TOTAL, prescriptions: THREE_BY_EIGHT_TO_TWELVE },
+      { placementId: "upper-a-5", exerciseId: "Dumbbell Lateral Raise", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "side_delts" } }, measurement: IMPLEMENT_WEIGHT_TOTAL, prescriptions: THREE_BY_TEN_TO_FIFTEEN },
+      { placementId: "upper-a-6", exerciseId: "EZ-Bar Curl", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "biceps" } }, measurement: BARBELL_TOTAL, prescriptions: THREE_BY_TEN_TO_FIFTEEN },
+      { placementId: "upper-a-7", exerciseId: "Cable Triceps Pushdown", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "triceps" } }, measurement: MACHINE_DISPLAYED, prescriptions: TWO_BY_TEN_TO_FIFTEEN },
+    ],
+  },
+  {
+    slotId: "lower-a",
+    name: "Lower A",
+    focus: "LOWER",
+    exercises: [
+      { placementId: "lower-a-1", exerciseId: "Barbell Back Squat", role: "CORE_COMPOUND", intent: { userRole: "PRIMARY_LIFT", target: { kind: "movement_pattern", movementPattern: "squat" } }, measurement: BARBELL_TOTAL, prescriptions: THREE_BY_FIVE_TO_EIGHT },
+      { placementId: "lower-a-2", exerciseId: "Leg Press", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "squat" } }, measurement: MACHINE_DISPLAYED, prescriptions: THREE_BY_EIGHT_TO_TWELVE },
+      { placementId: "lower-a-3", exerciseId: "Barbell Romanian Deadlift", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "hinge" } }, measurement: BARBELL_TOTAL, prescriptions: THREE_BY_SIX_TO_TEN },
+      { placementId: "lower-a-4", exerciseId: "Lying Leg Curl", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "hamstrings" } }, measurement: MACHINE_DISPLAYED, prescriptions: TWO_BY_TEN_TO_FIFTEEN },
+      { placementId: "lower-a-5", exerciseId: "Hip Abduction Machine", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "abductors" } }, measurement: MACHINE_DISPLAYED, prescriptions: TWO_BY_TWELVE_TO_TWENTY_WITH_OMISSION },
+      { placementId: "lower-a-6", exerciseId: "Cable Crunch", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "abs" } }, measurement: MACHINE_DISPLAYED, prescriptions: THREE_BY_EIGHT_TO_FIFTEEN_WITH_OMISSION },
+    ],
+  },
+  {
+    slotId: "upper-b",
+    name: "Upper B",
+    focus: "UPPER",
+    exercises: [
+      { placementId: "upper-b-1", exerciseId: "Chest-Supported Dumbbell Row", role: "CORE_COMPOUND", intent: { userRole: "PRIMARY_LIFT", target: { kind: "movement_pattern", movementPattern: "horizontal_pull" } }, measurement: IMPLEMENT_WEIGHT_TOTAL, prescriptions: THREE_BY_SIX_TO_TEN },
+      { placementId: "upper-b-2", exerciseId: "Lat Pulldown", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "vertical_pull" } }, measurement: MACHINE_DISPLAYED, prescriptions: THREE_BY_EIGHT_TO_TWELVE },
+      { placementId: "upper-b-3", exerciseId: "Dumbbell Overhead Press", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "vertical_push" } }, measurement: IMPLEMENT_WEIGHT_TOTAL, prescriptions: THREE_BY_EIGHT_TO_TWELVE },
+      { placementId: "upper-b-4", exerciseId: "Reverse Pec Deck", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "rear_delts" } }, measurement: MACHINE_DISPLAYED, prescriptions: THREE_BY_TWELVE_TO_TWENTY },
+      { placementId: "upper-b-5", exerciseId: "Dumbbell Bench Press", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "horizontal_push" } }, measurement: IMPLEMENT_WEIGHT_TOTAL, prescriptions: THREE_BY_EIGHT_TO_TWELVE },
+      { placementId: "upper-b-6", exerciseId: "Cable Curl", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "biceps" } }, measurement: MACHINE_DISPLAYED, prescriptions: THREE_BY_TEN_TO_FIFTEEN },
+      { placementId: "upper-b-7", exerciseId: "Overhead Cable Triceps Extension", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "triceps" } }, measurement: MACHINE_DISPLAYED, prescriptions: TWO_BY_TEN_TO_FIFTEEN },
+    ],
+  },
+  {
+    slotId: "lower-b",
+    name: "Lower B",
+    focus: "LOWER",
+    exercises: [
+      { placementId: "lower-b-1", exerciseId: "Dumbbell Romanian Deadlift", role: "CORE_COMPOUND", intent: { userRole: "PRIMARY_LIFT", target: { kind: "movement_pattern", movementPattern: "hinge" } }, measurement: IMPLEMENT_WEIGHT_TOTAL, prescriptions: THREE_BY_SIX_TO_TEN },
+      { placementId: "lower-b-2", exerciseId: "Goblet Squat", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "squat" } }, measurement: IMPLEMENT_WEIGHT_TOTAL, prescriptions: THREE_BY_EIGHT_TO_TWELVE },
+      { placementId: "lower-b-3", exerciseId: "Bulgarian Split Squat", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "lunge" } }, measurement: IMPLEMENT_WEIGHT_PER_SIDE, prescriptions: THREE_BY_EIGHT_TO_TWELVE },
+      { placementId: "lower-b-4", exerciseId: "Seated Leg Curl", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "hamstrings" } }, measurement: MACHINE_DISPLAYED, prescriptions: TWO_BY_TEN_TO_FIFTEEN },
+      { placementId: "lower-b-5", exerciseId: "Machine Crunch", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "abs" } }, measurement: MACHINE_DISPLAYED, prescriptions: THREE_BY_EIGHT_TO_FIFTEEN_WITH_OMISSION },
+    ],
+  },
+];
+
+function expectedAcceptedReferencePlan(): AcceptedHypertrophySeedV4 {
+  return structuredClone({
+    version: 4,
+    source: "custom_hypertrophy_plan_v2",
+    settings: { equipmentProfile: "FULL_GYM", sessionDurationMinutes: 60 },
+    weeks: REFERENCE_WEEKS,
+    slots: REFERENCE_PLAN_EXPECTATIONS,
+  });
+}
+
+function expectedExecutableReferencePlan(): ExecutableSeedProjectionV3 {
+  return structuredClone({
+    version: 3,
+    weeks: REFERENCE_WEEKS,
+    // Executable V3 intentionally drops authoring-only session name and focus.
+    slots: REFERENCE_PLAN_EXPECTATIONS.map(({ slotId, exercises }) => ({
+      slotId,
+      exercises,
+    })),
+  });
+}
+
+function assertReferenceProjections(input: {
+  accepted: AcceptedHypertrophySeedV4;
+  executable: ExecutableSeedProjectionV3;
+}) {
+  expect(input.accepted).toEqual(expectedAcceptedReferencePlan());
+  expect(input.executable).toEqual(expectedExecutableReferencePlan());
+  expect(JSON.stringify(input.accepted)).not.toContain("recommendationBaseline");
+  expect(JSON.stringify(input.executable)).not.toContain("recommendationBaseline");
 }
 
 function draft(): HypertrophyPlanDraftV1 {
@@ -731,145 +923,59 @@ describe("custom hypertrophy draft persistence", () => {
     });
   });
 
-  it("materializes the complete four-day reference plan through recommendation and preview without claiming hip-flexor coverage", () => {
-    const referencePlan = [
-      {
-        slotId: "upper-a",
-        name: "Upper A",
-        focus: "UPPER" as const,
-        exerciseNames: [
-          "Barbell Bench Press",
-          "Pull-Up",
-          "Incline Dumbbell Bench Press",
-          "Chest-Supported Dumbbell Row",
-          "Dumbbell Lateral Raise",
-          "EZ-Bar Curl",
-          "Cable Triceps Pushdown",
-        ],
-      },
-      {
-        slotId: "lower-a",
-        name: "Lower A",
-        focus: "LOWER" as const,
-        exerciseNames: [
-          "Barbell Back Squat",
-          "Leg Press",
-          "Barbell Romanian Deadlift",
-          "Lying Leg Curl",
-          "Hip Abduction Machine",
-          "Cable Crunch",
-        ],
-      },
-      {
-        slotId: "upper-b",
-        name: "Upper B",
-        focus: "UPPER" as const,
-        exerciseNames: [
-          "Chest-Supported Dumbbell Row",
-          "Lat Pulldown",
-          "Dumbbell Overhead Press",
-          "Reverse Pec Deck",
-          "Dumbbell Bench Press",
-          "Cable Curl",
-          "Overhead Cable Triceps Extension",
-        ],
-      },
-      {
-        slotId: "lower-b",
-        name: "Lower B",
-        focus: "LOWER" as const,
-        exerciseNames: [
-          "Dumbbell Romanian Deadlift",
-          "Goblet Squat",
-          "Bulgarian Split Squat",
-          "Seated Leg Curl",
-          "Machine Crunch",
-        ],
-      },
-    ];
-    const weeks = [
-      { week: 1, phase: "ACCUMULATION" as const },
-      { week: 2, phase: "ACCUMULATION" as const },
-      { week: 3, phase: "ACCUMULATION" as const },
-      { week: 4, phase: "ACCUMULATION" as const },
-      { week: 5, phase: "DELOAD" as const },
-    ];
-    const expectedAccumulationRir = [
-      { kind: "TARGET_RANGE", min: 3, max: 4 },
-      { kind: "TARGET_RANGE", min: 3, max: 3 },
-      { kind: "TARGET_RANGE", min: 2, max: 3 },
-      { kind: "TARGET_RANGE", min: 1, max: 2 },
-    ];
-    const deloadOmissions = new Set([
-      "Hip Abduction Machine",
-      "Cable Crunch",
-      "Machine Crunch",
-    ]);
-    const resolvedExercises = new Map<string, HypertrophyAuthoringExercise>();
-
+  function buildReferencePlanPreview() {
+    const resolvedExercises = new Map<
+      string,
+      ReturnType<typeof toAuthoringExercise>
+    >();
     const candidate: HypertrophyPlanDraftV2 = {
       version: 2,
       settings: {
         equipmentProfile: "FULL_GYM",
         sessionDurationMinutes: 60,
       },
-      weeks,
-      sessions: referencePlan.map((session) => {
+      weeks: REFERENCE_WEEKS,
+      sessions: REFERENCE_PLAN_EXPECTATIONS.map((session) => {
         const existingIntents: AcceptedExerciseIntentV2[] = [];
         return {
           slotId: session.slotId,
           name: session.name,
           focus: session.focus,
-          exercises: session.exerciseNames.map((exerciseName, index) => {
-            const exercise = referenceAuthoringExercise(exerciseName);
-            const expectedRole = exercise.isCompound
-              ? existingIntents.some((intent) => intent.userRole === "PRIMARY_LIFT")
-                ? "SECONDARY_LIFT"
-                : "PRIMARY_LIFT"
-              : "MUSCLE_ISOLATION";
+          exercises: session.exercises.map((expected) => {
+            const exercise = toAuthoringExercise(
+              referenceExerciseRow(expected.exerciseId),
+            );
             const recommendation = materializeHypertrophyExerciseRecommendation({
               exercise,
-              weeks,
+              weeks: REFERENCE_WEEKS,
               existingIntents,
             });
             existingIntents.push(recommendation.intent);
             resolvedExercises.set(exercise.id, exercise);
 
-            expect(recommendation.intent.userRole, exerciseName).toBe(expectedRole);
-            expect(recommendation.prescriptions, exerciseName).toHaveLength(5);
-            const accumulation = recommendation.prescriptions.slice(0, 4);
-            expect(
-              accumulation.map((entry) => entry.status),
-              exerciseName,
-            ).toEqual(["PRESCRIBE", "PRESCRIBE", "PRESCRIBE", "PRESCRIBE"]);
-            expect(
-              accumulation.map((entry) =>
-                entry.status === "PRESCRIBE" ? entry.setCount : null,
-              ),
-              exerciseName,
-            ).toEqual(Array(4).fill(
-              accumulation[0]?.status === "PRESCRIBE"
-                ? accumulation[0].setCount
-                : null,
-            ));
-            expect(
-              accumulation.map((entry) =>
-                entry.status === "PRESCRIBE" ? entry.rir : null,
-              ),
-              exerciseName,
-            ).toEqual(expectedAccumulationRir);
-            expect(recommendation.prescriptions[4], exerciseName).toEqual(
-              deloadOmissions.has(exerciseName)
-                ? { week: 5, status: "OMIT" }
-                : expect.objectContaining({
-                    week: 5,
-                    status: "PRESCRIBE",
-                    rir: { kind: "TARGET_RANGE", min: 4, max: 5 },
-                  }),
+            // These checks pin the catalog-shaped fixture to the API-owned mapper
+            // before recommendation inference or either projection can mask it.
+            expect(exercise.id, expected.placementId).toBe(expected.exerciseId);
+            expect(exercise.measurement, expected.placementId).toEqual(
+              expected.measurement,
+            );
+            expect(recommendation.intent, expected.placementId).toEqual(
+              expected.intent,
+            );
+            expect(recommendation.prescriptions, expected.placementId).toEqual(
+              expected.prescriptions,
+            );
+            expect(recommendation.recommendationBaseline, expected.placementId).toEqual(
+              {
+                version: 1,
+                exerciseId: expected.exerciseId,
+                intent: expected.intent,
+                prescriptions: expected.prescriptions,
+              },
             );
 
             return {
-              placementId: `${session.slotId}-${index + 1}`,
+              placementId: expected.placementId,
               exerciseId: exercise.id,
               ...recommendation,
             };
@@ -890,18 +996,20 @@ describe("custom hypertrophy draft persistence", () => {
       knownExerciseIds: new Set(resolvedExercises.keys()),
       measurementByExerciseId,
     });
-
     expect(preview.status).toBe("ELIGIBLE");
-    if (preview.status !== "ELIGIBLE") throw new Error("Reference plan is ineligible");
-    expect(preview.normalizedPlan.slots.flatMap((slot) => slot.exercises)).toHaveLength(
-      25,
-    );
-    expect(JSON.stringify(preview.normalizedPlan)).not.toContain(
-      "recommendationBaseline",
-    );
-    expect(JSON.stringify(preview.executablePlan)).not.toContain(
-      "recommendationBaseline",
-    );
+    if (preview.status !== "ELIGIBLE") {
+      throw new Error("Reference plan is ineligible");
+    }
+    return preview;
+  }
+
+  it("materializes the complete four-day reference plan through the API adapter, recommendation, and both projections", () => {
+    const preview = buildReferencePlanPreview();
+
+    assertReferenceProjections({
+      accepted: preview.normalizedPlan,
+      executable: preview.executablePlan,
+    });
     expect(
       (catalog.exercises as CatalogRow[]).filter((exercise) =>
         [...exercise.primaryMuscles, ...exercise.secondaryMuscles].some(
@@ -909,6 +1017,91 @@ describe("custom hypertrophy draft persistence", () => {
         ),
       ),
     ).toEqual([]);
+  });
+
+  it("rejects representative accepted and executable projection mutations", () => {
+    const preview = buildReferencePlanPreview();
+    const mutations: Array<{
+      name: string;
+      mutate: (projection: {
+        accepted: AcceptedHypertrophySeedV4;
+        executable: ExecutableSeedProjectionV3;
+      }) => void;
+    }> = [
+      {
+        name: "swapped accepted exercise order",
+        mutate: ({ accepted }) => {
+          [accepted.slots[0]!.exercises[0], accepted.slots[0]!.exercises[1]] = [
+            accepted.slots[0]!.exercises[1]!,
+            accepted.slots[0]!.exercises[0]!,
+          ];
+        },
+      },
+      {
+        name: "replaced executable exercise identity",
+        mutate: ({ executable }) => {
+          executable.slots[0]!.exercises[0]!.exerciseId = "Dumbbell Bench Press";
+        },
+      },
+      {
+        name: "changed executable role and intent",
+        mutate: ({ executable }) => {
+          const exercise = executable.slots[0]!.exercises[0]!;
+          exercise.role = "ACCESSORY";
+          exercise.intent = {
+            userRole: "SECONDARY_LIFT",
+            target: exercise.intent.target,
+          };
+        },
+      },
+      {
+        name: "changed executable measurement semantics",
+        mutate: ({ executable }) => {
+          executable.slots[0]!.exercises[4]!.measurement = MACHINE_DISPLAYED;
+        },
+      },
+      {
+        name: "changed an accumulation prescription",
+        mutate: ({ executable }) => {
+          const prescription = executable.slots[1]!.exercises[1]!.prescriptions[0];
+          if (prescription?.status !== "PRESCRIBE") {
+            throw new Error("Expected prescribed Week 1 work");
+          }
+          prescription.setCount = 4;
+        },
+      },
+      {
+        name: "changed a retained Week 5 set count",
+        mutate: ({ executable }) => {
+          const prescription = executable.slots[0]!.exercises[0]!.prescriptions[4];
+          if (prescription?.status !== "PRESCRIBE") {
+            throw new Error("Expected retained Week 5 work");
+          }
+          prescription.setCount = 3;
+        },
+      },
+      {
+        name: "replaced an explicit Week 5 omission with work",
+        mutate: ({ executable }) => {
+          executable.slots[3]!.exercises[4]!.prescriptions[4] = {
+            week: 5,
+            status: "PRESCRIBE",
+            setCount: 1,
+            reps: { kind: "RANGE", min: 8, max: 15 },
+            rir: { kind: "TARGET_RANGE", min: 4, max: 5 },
+          };
+        },
+      },
+    ];
+
+    for (const mutation of mutations) {
+      const projection = structuredClone({
+        accepted: preview.normalizedPlan,
+        executable: preview.executablePlan,
+      });
+      mutation.mutate(projection);
+      expect(() => assertReferenceProjections(projection), mutation.name).toThrow();
+    }
   });
 
   it("rejects V4 finalization before accepted-plan or materialization writes", async () => {

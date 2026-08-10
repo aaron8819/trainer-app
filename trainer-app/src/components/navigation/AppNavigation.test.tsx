@@ -118,6 +118,8 @@ describe("L-5 — AppNavigation active tab on /log paths", () => {
   it("keeps the full desktop navigation", () => {
     renderDesktopNav("/");
 
+    expect(screen.getByText("Trainer")).toBeInTheDocument();
+    expect(document.querySelector('img[src*="trainer-mark.png"]')).toBeInTheDocument();
     expect(linkLabels()).toEqual([
       "Home",
       "Program",

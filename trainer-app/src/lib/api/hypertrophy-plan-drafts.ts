@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   AdaptationType,
   BlockType,
@@ -15,16 +15,22 @@ import {
   assertAcceptedCompatibilityAlignment,
   buildAcceptedCompatibilityProjections,
   buildManualHypertrophyDraft,
+  buildWeeklyHypertrophyDraft,
   compileAcceptedHypertrophySeed,
   compileAcceptedHypertrophySeedV3,
+  compileAcceptedHypertrophySeedV4,
   equipmentForCustomHypertrophyProfile,
   evaluateHypertrophyPlanHealth,
   getHypertrophyAuthoringStimulus,
   parseHypertrophyPlanDraft,
+  parsePersistedHypertrophyPlanDraft,
   type HypertrophyAuthoringExercise,
+  type HypertrophyPlanDraft,
   type HypertrophyPlanDraftV1,
+  type HypertrophyPlanDraftV2,
   type HypertrophyPlanHealth,
   type ManualHypertrophyPreset,
+  type ExecutableSeedProjectionV3,
 } from "@/lib/engine/hypertrophy-plan-authoring";
 import { parseMeasurementColumns } from "@/lib/exercise-measurement/semantics";
 import { isExerciseMeasurementRolloutEnabled } from "@/lib/operations/exercise-measurement-rollout";
@@ -36,7 +42,10 @@ import {
 import { resolveCanonicalLimitations } from "@/lib/engine/limitation-policy";
 import { CANONICAL_MUSCLE_IDS, getMusclePolicyByDisplayName } from "@/lib/engine/muscle-policy";
 import { normalizeLiveInventoryForV2Materialization } from "./v2-materialization-live-inventory";
-import { createInitialAcceptedSeedRevisionInTransaction } from "./mesocycle-seed-revision";
+import {
+  createInitialAcceptedSeedRevisionInTransaction,
+  normalizeAcceptedHypertrophySeedV4,
+} from "./mesocycle-seed-revision";
 import { parseAcceptedSeedPayload } from "./slot-plan-seed-parser";
 import { PlanManagementError } from "./plan-management-errors";
 
@@ -199,9 +208,29 @@ export type CreateCustomHypertrophyPlanInput = {
   sessionsPerWeek: number;
   equipmentProfile: HypertrophyPlanDraftV1["settings"]["equipmentProfile"];
   sessionDurationMinutes: HypertrophyPlanDraftV1["settings"]["sessionDurationMinutes"];
-  authorMethod: "MANUAL" | "V2";
+  authorMethod: "MANUAL" | "V2" | "WEEKLY";
   preset?: ManualHypertrophyPreset;
+  creationId?: string;
 };
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (isRecord(value)) {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function deterministicUuid(value: string): string {
+  const characters = createHash("sha256").update(value).digest("hex").slice(0, 32).split("");
+  characters[12] = "5";
+  characters[16] = "8";
+  const hex = characters.join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 export async function createCustomHypertrophyPlan(
   input: CreateCustomHypertrophyPlanInput,
@@ -222,55 +251,204 @@ export async function createCustomHypertrophyPlan(
     equipmentProfile: input.equipmentProfile,
     sessionDurationMinutes: input.sessionDurationMinutes,
   } as const;
-  let draft: HypertrophyPlanDraftV1;
+  const planId = input.creationId
+    ? deterministicUuid(`${input.userId}:plan:${input.creationId}`)
+    : randomUUID();
+  let slotIndex = 0;
+  const createSlotId = input.creationId
+    ? () => deterministicUuid(`${planId}:slot:${slotIndex++}`)
+    : randomUUID;
+  let draft: HypertrophyPlanDraft;
   try {
     draft =
       input.authorMethod === "V2"
         ? await generateV2Draft({ reader: prisma, userId: input.userId, settings })
-        : buildManualHypertrophyDraft({
+        : input.authorMethod === "WEEKLY"
+          ? buildWeeklyHypertrophyDraft({
+              settings,
+              sessionsPerWeek: input.sessionsPerWeek,
+              preset: input.preset ?? "BLANK",
+              createSlotId,
+            })
+          : buildManualHypertrophyDraft({
             settings,
             sessionsPerWeek: input.sessionsPerWeek,
             preset: input.preset ?? "BLANK",
-            createSlotId: randomUUID,
+            createSlotId,
           });
   } catch (error) {
     if (error instanceof PlanManagementError) throw error;
     throw new PlanManagementError("PLAN_GENERATION_FAILED");
   }
   const schedule = placeholderSchedule();
-  const planId = randomUUID();
-  await prisma.macroCycle.create({
-    data: {
-      id: planId,
-      userId: input.userId,
-      name: input.name,
-      startDate: schedule.startDate,
-      endDate: schedule.endDate,
-      durationWeeks: 5,
-      scheduleAnchoredAt: null,
-      trainingAge: owner.profile.trainingAge,
-      primaryGoal: "HYPERTROPHY",
-      hypertrophyDraft: {
-        create: {
-          payload: draft as unknown as Prisma.InputJsonValue,
-          revision: 1,
+  try {
+    await prisma.macroCycle.create({
+      data: {
+        id: planId,
+        userId: input.userId,
+        name: input.name,
+        startDate: schedule.startDate,
+        endDate: schedule.endDate,
+        durationWeeks: 5,
+        scheduleAnchoredAt: null,
+        trainingAge: owner.profile.trainingAge,
+        primaryGoal: "HYPERTROPHY",
+        hypertrophyDraft: {
+          create: {
+            payload: draft as unknown as Prisma.InputJsonValue,
+            revision: 1,
+          },
         },
       },
-    },
-  });
+    });
+  } catch (error) {
+    if (
+      !input.creationId ||
+      !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+      error.code !== "P2002"
+    ) {
+      throw error;
+    }
+    const existing = await prisma.macroCycle.findFirst({
+      where: { id: planId, userId: input.userId },
+      select: {
+        name: true,
+        hypertrophyDraft: { select: { payload: true, revision: true } },
+      },
+    });
+    if (
+      !existing?.hypertrophyDraft ||
+      existing.name !== input.name ||
+      stableStringify(existing.hypertrophyDraft.payload) !== stableStringify(draft)
+    ) {
+      throw new PlanManagementError("PLAN_CREATION_ID_CONFLICT");
+    }
+    return {
+      planId,
+      draftRevision: existing.hypertrophyDraft.revision,
+    };
+  }
   return { planId, draftRevision: 1 };
 }
 
-export type HypertrophyPlanEditorData = {
+type HypertrophyPlanEditorDataBase = {
   planId: string;
   name: string;
   revision: number;
   updatedAt: string;
-  draft: HypertrophyPlanDraftV1;
-  health: HypertrophyPlanHealth;
   exercises: HypertrophyAuthoringExercise[];
   limitationKeys: string[];
 };
+
+export type HypertrophyPlanV4PreviewReason = {
+  code: "EMPTY_SESSION" | "EXERCISE_NOT_FOUND" | "MEASUREMENT_UNRESOLVED";
+  message: string;
+  slotId: string;
+  placementId?: string;
+};
+
+export type HypertrophyPlanV4Preview =
+  | { status: "INELIGIBLE"; reasons: HypertrophyPlanV4PreviewReason[] }
+  | {
+      status: "ELIGIBLE";
+      reasons: [];
+      hash: string;
+      hashAlgorithm: "sha256";
+      normalizedPlan: ReturnType<typeof compileAcceptedHypertrophySeedV4>;
+      executablePlan: ExecutableSeedProjectionV3;
+    };
+
+export type HypertrophyPlanEditorDataV1 = HypertrophyPlanEditorDataBase & {
+  draft: HypertrophyPlanDraftV1;
+  health: HypertrophyPlanHealth;
+  preview?: null;
+};
+
+export type HypertrophyPlanEditorDataV2 = HypertrophyPlanEditorDataBase & {
+  draft: HypertrophyPlanDraftV2;
+  health: null;
+  preview: HypertrophyPlanV4Preview;
+};
+
+export type HypertrophyPlanEditorData =
+  | HypertrophyPlanEditorDataV1
+  | HypertrophyPlanEditorDataV2;
+
+export function deriveHypertrophyPlanV4Preview(input: {
+  draft: HypertrophyPlanDraftV2;
+  knownExerciseIds: ReadonlySet<string>;
+  measurementByExerciseId: ReadonlyMap<
+    string,
+    NonNullable<ReturnType<typeof parseMeasurementColumns>>
+  >;
+}): HypertrophyPlanV4Preview {
+  const reasons: HypertrophyPlanV4PreviewReason[] = [];
+  input.draft.sessions.forEach((session) => {
+    if (session.exercises.length === 0) {
+      reasons.push({
+        code: "EMPTY_SESSION",
+        message: `${session.name} needs at least one exercise before preview.`,
+        slotId: session.slotId,
+      });
+    }
+    session.exercises.forEach((exercise) => {
+      if (!input.knownExerciseIds.has(exercise.exerciseId)) {
+        reasons.push({
+          code: "EXERCISE_NOT_FOUND",
+          message: `${session.name} contains an exercise that is no longer available.`,
+          slotId: session.slotId,
+          placementId: exercise.placementId,
+        });
+        return;
+      }
+      const hasPreservedMeasurement =
+        exercise.preservedMeasurement?.exerciseId === exercise.exerciseId;
+      if (
+        !hasPreservedMeasurement &&
+        !input.measurementByExerciseId.has(exercise.exerciseId)
+      ) {
+        reasons.push({
+          code: "MEASUREMENT_UNRESOLVED",
+          message: `${session.name} has an exercise without a supported measurement identity.`,
+          slotId: session.slotId,
+          placementId: exercise.placementId,
+        });
+      }
+    });
+  });
+  if (reasons.length > 0) return { status: "INELIGIBLE", reasons };
+
+  const accepted = compileAcceptedHypertrophySeedV4({
+    draft: input.draft,
+    measurementByExerciseId: input.measurementByExerciseId,
+  });
+  const normalized = normalizeAcceptedHypertrophySeedV4(accepted);
+  return {
+    status: "ELIGIBLE",
+    reasons: [],
+    hash: normalized.hash,
+    hashAlgorithm: normalized.hashAlgorithm,
+    normalizedPlan: accepted,
+    executablePlan:
+      normalized.executablePayload as unknown as ExecutableSeedProjectionV3,
+  };
+}
+
+function v4PreviewFromRows(
+  draft: HypertrophyPlanDraftV2,
+  rows: ExerciseRow[],
+): HypertrophyPlanV4Preview {
+  return deriveHypertrophyPlanV4Preview({
+    draft,
+    knownExerciseIds: new Set(rows.map((row) => row.id)),
+    measurementByExerciseId: new Map(
+      rows.flatMap((row) => {
+        const measurement = parseMeasurementColumns(row);
+        return measurement ? [[row.id, measurement] as const] : [];
+      }),
+    ),
+  });
+}
 
 export async function loadHypertrophyPlanEditorData(
   userId: string,
@@ -300,7 +478,9 @@ export async function loadHypertrophyPlanEditorData(
     loadLimitations(prisma, userId),
   ]);
   if (!plan?.hypertrophyDraft) return null;
-  const draft = parseHypertrophyPlanDraft(plan.hypertrophyDraft.payload);
+  const draft = parsePersistedHypertrophyPlanDraft(
+    plan.hypertrophyDraft.payload,
+  );
   const favorites = new Set(preferences?.favoriteExerciseIds ?? []);
   const exercises = rows.map((row) => toAuthoringExercise(row, favorites));
   return {
@@ -308,14 +488,23 @@ export async function loadHypertrophyPlanEditorData(
     name: plan.name,
     revision: plan.hypertrophyDraft.revision,
     updatedAt: plan.hypertrophyDraft.updatedAt.toISOString(),
-    draft,
-    health: evaluateHypertrophyPlanHealth({
-      draft,
-      exercises,
-      limitationKeys,
-    }),
     exercises,
     limitationKeys,
+    ...(draft.version === 2
+      ? {
+          draft,
+          health: null,
+          preview: v4PreviewFromRows(draft, rows),
+        }
+      : {
+          draft,
+          health: evaluateHypertrophyPlanHealth({
+            draft,
+            exercises,
+            limitationKeys,
+          }),
+          preview: null,
+        }),
   };
 }
 
@@ -324,10 +513,18 @@ export async function saveHypertrophyPlanDraft(input: {
   planId: string;
   expectedRevision: number;
   name: string;
-  draft: HypertrophyPlanDraftV1;
-}): Promise<{ revision: number; updatedAt: string }> {
-  const draft = parseHypertrophyPlanDraft(input.draft);
-  return prisma.$transaction(
+  draft: HypertrophyPlanDraft;
+}): Promise<{
+  revision: number;
+  updatedAt: string;
+  preview?: HypertrophyPlanV4Preview;
+}> {
+  const draft = parsePersistedHypertrophyPlanDraft(input.draft);
+  const preview =
+    draft.version === 2
+      ? v4PreviewFromRows(draft, await loadExerciseRows(prisma))
+      : null;
+  const saved = await prisma.$transaction(
     async (tx) => {
       const plan = await tx.macroCycle.findFirst({
         where: {
@@ -372,6 +569,7 @@ export async function saveHypertrophyPlanDraft(input: {
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
   );
+  return preview ? { ...saved, preview } : saved;
 }
 
 export async function regenerateHypertrophyPlanDraft(input: {
@@ -398,7 +596,12 @@ export async function regenerateHypertrophyPlanDraft(input: {
       currentRevision: String(current.hypertrophyDraft.revision),
     });
   }
-  const existing = parseHypertrophyPlanDraft(current.hypertrophyDraft.payload);
+  const existing = parsePersistedHypertrophyPlanDraft(
+    current.hypertrophyDraft.payload,
+  );
+  if (existing.version === 2) {
+    throw new PlanManagementError("PLAN_VERSION_NOT_EXECUTABLE");
+  }
   if (existing.sessions.length !== 4) throw new PlanManagementError("PLAN_INVALID");
   let generated: HypertrophyPlanDraftV1;
   try {
@@ -467,6 +670,12 @@ export async function makeHypertrophyPlanReady(input: {
         }
         if (plan.mesocycles.length !== 0) {
           throw new PlanManagementError("PLAN_NOT_PREPARING");
+        }
+        if (
+          isRecord(plan.hypertrophyDraft.payload) &&
+          plan.hypertrophyDraft.payload.version === 2
+        ) {
+          throw new PlanManagementError("PLAN_VERSION_NOT_EXECUTABLE");
         }
 
         const [rows, limitationKeys] = await Promise.all([

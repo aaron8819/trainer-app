@@ -16,6 +16,7 @@ import { CANONICAL_LIMITATION_TAGS } from "@/lib/engine/limitation-policy";
 import {
   HYPERTROPHY_SESSION_DURATION_VALUES,
   hypertrophyPlanDraftSchema,
+  hypertrophyPlanDraftV2Schema,
 } from "@/lib/engine/hypertrophy-plan-authoring";
 import { EQUIPMENT_PROFILE_VALUES } from "@/lib/engine/equipment-profile";
 
@@ -459,8 +460,9 @@ const createCustomHypertrophyPlanSchema = z
         z.ZodLiteral<90>,
       ],
     ),
-    authorMethod: z.enum(["MANUAL", "V2"]),
+    authorMethod: z.enum(["MANUAL", "V2", "WEEKLY"]),
     preset: manualHypertrophyPresetSchema.optional(),
+    creationId: z.string().uuid().optional(),
   })
   .strict()
   .superRefine((value, context) => {
@@ -492,7 +494,7 @@ export const saveHypertrophyPlanDraftSchema = z
   .object({
     expectedRevision: z.number().int().min(1),
     name: planNameSchema,
-    draft: hypertrophyPlanDraftSchema,
+    draft: z.union([hypertrophyPlanDraftSchema, hypertrophyPlanDraftV2Schema]),
   })
   .strict();
 

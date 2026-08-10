@@ -21,7 +21,12 @@ import {
   type HypertrophySessionFocus,
   type HypertrophyUserRole,
 } from "@/lib/engine/hypertrophy-plan-authoring";
-import type { HypertrophyPlanEditorData } from "@/lib/api/hypertrophy-plan-drafts";
+import type {
+  HypertrophyPlanEditorData,
+  HypertrophyPlanEditorDataV1,
+  HypertrophyPlanEditorDataV2,
+} from "@/lib/api/hypertrophy-plan-drafts";
+import { WeeklyHypertrophyPlanEditor } from "./WeeklyHypertrophyPlanEditor";
 
 type SaveState = "saved" | "saving" | "failed";
 
@@ -88,6 +93,24 @@ export function HypertrophyPlanEditor({
   initialData,
 }: {
   initialData: HypertrophyPlanEditorData;
+}) {
+  return isWeeklyEditorData(initialData) ? (
+    <WeeklyHypertrophyPlanEditor initialData={initialData} />
+  ) : (
+    <LegacyHypertrophyPlanEditor initialData={initialData} />
+  );
+}
+
+function isWeeklyEditorData(
+  data: HypertrophyPlanEditorData,
+): data is HypertrophyPlanEditorDataV2 {
+  return data.draft.version === 2;
+}
+
+function LegacyHypertrophyPlanEditor({
+  initialData,
+}: {
+  initialData: HypertrophyPlanEditorDataV1;
 }) {
   const router = useRouter();
   const [name, setName] = useState(initialData.name);

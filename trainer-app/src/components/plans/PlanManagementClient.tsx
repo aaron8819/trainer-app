@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PlanManagementData, PlanSummary } from "@/lib/ui/plan-management";
 import { Button, buttonClassName } from "@/components/ui/Button";
@@ -11,6 +11,7 @@ import {
   planTypeLabel,
   type SupportedPlanType,
 } from "@/lib/plan-types";
+import { normalizePlanName } from "@/lib/validation";
 
 const STATUS_COPY: Record<
   PlanSummary["status"],
@@ -72,6 +73,54 @@ async function responseBody(response: Response): Promise<{
   return response.json().catch(() => ({}));
 }
 
+function isPlanNavigationTarget(
+  value: unknown,
+): value is Pick<PlanSummary, "id" | "status"> {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const candidate = value as { id?: unknown; status?: unknown };
+  return (
+    typeof candidate.id === "string" &&
+    candidate.id.length > 0 &&
+    typeof candidate.status === "string" &&
+    Object.prototype.hasOwnProperty.call(STATUS_COPY, candidate.status)
+  );
+}
+
+type CustomPlanAuthorMethod = "MANUAL" | "V2" | "WEEKLY";
+
+function customPlanCreationInput(
+  formData: FormData,
+  customHypertrophyEnabled: boolean,
+) {
+  if (
+    !customHypertrophyEnabled ||
+    formData.get("planType") !== "HYPERTROPHY"
+  ) {
+    return null;
+  }
+  const authorMethod = formData.get("authorMethod");
+  if (
+    authorMethod !== "MANUAL" &&
+    authorMethod !== "V2" &&
+    authorMethod !== "WEEKLY"
+  ) {
+    return null;
+  }
+  return {
+    planType: "HYPERTROPHY" as const,
+    name: normalizePlanName(String(formData.get("name") ?? "")),
+    sessionsPerWeek: Number(formData.get("sessionsPerWeek")),
+    sessionDurationMinutes: Number(
+      formData.get("sessionDurationMinutes"),
+    ),
+    equipmentProfile: formData.get("equipmentProfile"),
+    authorMethod,
+    ...(authorMethod !== "V2" ? { preset: formData.get("preset") } : {}),
+  };
+}
+
 export function PlanManagementClient({
   initialData,
   customHypertrophyEnabled = false,
@@ -87,7 +136,8 @@ export function PlanManagementClient({
   const [showCreate, setShowCreate] = useState(initialData.plans.length === 0);
   const [newPlanType, setNewPlanType] =
     useState<SupportedPlanType>("HYPERTROPHY");
-  const [authorMethod, setAuthorMethod] = useState<"MANUAL" | "V2">("MANUAL");
+  const [authorMethod, setAuthorMethod] =
+    useState<CustomPlanAuthorMethod>("MANUAL");
   const [sessionsPerWeek, setSessionsPerWeek] = useState(4);
   const [manualPreset, setManualPreset] = useState("UPPER_LOWER_4");
   const [creating, setCreating] = useState(false);
@@ -95,6 +145,9 @@ export function PlanManagementClient({
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const creationAttempt = useRef<{ signature: string; id: string } | null>(null);
+  const creatingRef = useRef(false);
+  const createFormRef = useRef<HTMLFormElement>(null);
 
   const defaultStartDate = useMemo(
     () => new Date().toISOString().slice(0, 10),
@@ -113,10 +166,27 @@ export function PlanManagementClient({
   );
 
   const createPlan = async (formData: FormData) => {
+    if (creatingRef.current) return;
+    creatingRef.current = true;
     setCreating(true);
     setError(null);
     setMessage(null);
     try {
+      const customInput = customPlanCreationInput(
+        formData,
+        customHypertrophyEnabled,
+      );
+      const submittedSignature = customInput
+        ? JSON.stringify(customInput)
+        : null;
+      if (customInput) {
+        if (creationAttempt.current?.signature !== submittedSignature) {
+          creationAttempt.current = {
+            signature: submittedSignature!,
+            id: crypto.randomUUID(),
+          };
+        }
+      }
       const response = await fetch("/api/plans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -124,17 +194,8 @@ export function PlanManagementClient({
           newPlanType === "HYPERTROPHY"
             ? customHypertrophyEnabled
               ? {
-                  planType: "HYPERTROPHY",
-                  name: formData.get("name"),
-                  sessionsPerWeek: Number(formData.get("sessionsPerWeek")),
-                  sessionDurationMinutes: Number(
-                    formData.get("sessionDurationMinutes"),
-                  ),
-                  equipmentProfile: formData.get("equipmentProfile"),
-                  authorMethod,
-                  ...(authorMethod === "MANUAL"
-                    ? { preset: formData.get("preset") }
-                    : {}),
+                  ...customInput!,
+                  creationId: creationAttempt.current!.id,
                 }
               : {
                 planType: "HYPERTROPHY",
@@ -167,15 +228,35 @@ export function PlanManagementClient({
         setError(body.error ?? "Could not create the plan.");
         return;
       }
-      const plan = body.plan as PlanSummary;
+      if (!isPlanNavigationTarget(body.plan)) {
+        setError("Could not create the plan.");
+        return;
+      }
+      if (submittedSignature) {
+        const latestInput = createFormRef.current
+          ? customPlanCreationInput(
+              new FormData(createFormRef.current),
+              customHypertrophyEnabled,
+            )
+          : null;
+        if (JSON.stringify(latestInput) !== submittedSignature) {
+          setMessage(
+            "The earlier plan was created, but your newer changes were kept. Submit again to create the updated plan.",
+          );
+          return;
+        }
+      }
+      const plan = body.plan;
       router.push(
         plan.status === "DRAFT"
           ? `/plans/${plan.id}/edit`
           : `/plans/${plan.id}/review`,
       );
+      creationAttempt.current = null;
     } catch {
       setError("Could not create the plan.");
     } finally {
+      creatingRef.current = false;
       setCreating(false);
     }
   };
@@ -325,6 +406,7 @@ export function PlanManagementClient({
           size="touch"
           onClick={() => {
             setShowCreate((current) => !current);
+            creationAttempt.current = null;
             setError(null);
             setMessage(null);
           }}
@@ -351,8 +433,12 @@ export function PlanManagementClient({
 
       {showCreate ? (
         <form
+          ref={createFormRef}
           className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5"
-          action={createPlan}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void createPlan(new FormData(event.currentTarget));
+          }}
         >
           <fieldset>
             <legend className="text-sm font-semibold text-slate-900">
@@ -453,7 +539,9 @@ export function PlanManagementClient({
                   <select name="sessionsPerWeek" value={sessionsPerWeek} onChange={(event) => {
                     const value = Number(event.target.value);
                     setSessionsPerWeek(value);
-                    setAuthorMethod((current) => value === 4 ? current : "MANUAL");
+                    setAuthorMethod((current) =>
+                      value !== 4 && current === "V2" ? "MANUAL" : current,
+                    );
                     setManualPreset(value === 2 ? "FULL_BODY_2" : value === 3 ? "FULL_BODY_3" : value === 4 ? "UPPER_LOWER_4" : value === 6 ? "PPL_6" : "BLANK");
                   }} className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base">
                     {[2, 3, 4, 5, 6].map((value) => <option key={value} value={value}>{value} sessions</option>)}
@@ -478,20 +566,25 @@ export function PlanManagementClient({
               </div>
               <fieldset className="mt-4">
                 <legend className="text-sm font-semibold text-slate-900">Starting method</legend>
-                <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                <div className="mt-2 grid gap-3 sm:grid-cols-3">
                   <label className="rounded-xl border border-slate-200 bg-white p-3">
-                    <input type="radio" checked={authorMethod === "MANUAL"} onChange={() => setAuthorMethod("MANUAL")} />{" "}
+                    <input type="radio" name="authorMethod" value="MANUAL" checked={authorMethod === "MANUAL"} onChange={() => setAuthorMethod("MANUAL")} />{" "}
                     <span className="font-medium">Build it myself</span>
                     <span className="mt-1 block text-sm text-slate-600">Start with editable sessions and choose every exercise.</span>
                   </label>
                   <label className="rounded-xl border border-slate-200 bg-white p-3">
-                    <input type="radio" checked={authorMethod === "V2"} disabled={sessionsPerWeek !== 4} onChange={() => setAuthorMethod("V2")} />{" "}
+                    <input type="radio" name="authorMethod" value="V2" checked={authorMethod === "V2"} disabled={sessionsPerWeek !== 4} onChange={() => setAuthorMethod("V2")} />{" "}
                     <span className="font-medium">Generate a starting plan</span>
                     <span className="mt-1 block text-sm text-slate-600">Creates an editable four-session Upper/Lower draft.</span>
                   </label>
+                  <label className="rounded-xl border border-blue-200 bg-blue-50/40 p-3">
+                    <input type="radio" name="authorMethod" value="WEEKLY" checked={authorMethod === "WEEKLY"} onChange={() => setAuthorMethod("WEEKLY")} />{" "}
+                    <span className="font-medium">Author week by week</span>
+                    <span className="mt-1 block text-sm text-slate-600">Set each exercise’s sets, reps, and RIR for every week, then preview the normalized draft.</span>
+                  </label>
                 </div>
               </fieldset>
-              {authorMethod === "MANUAL" ? (
+              {authorMethod !== "V2" ? (
                 <label className="mt-4 block text-sm font-medium text-slate-800">
                   Session structure
                   <select name="preset" value={manualPreset} onChange={(event) => setManualPreset(event.target.value)} className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base sm:max-w-sm">
@@ -633,7 +726,11 @@ export function PlanManagementClient({
             {creating
               ? authorMethod === "V2" ? "Building draft…" : "Creating draft…"
               : customHypertrophyEnabled && newPlanType === "HYPERTROPHY"
-                ? authorMethod === "V2" ? "Generate starting plan" : "Create draft"
+                ? authorMethod === "V2"
+                  ? "Generate starting plan"
+                  : authorMethod === "WEEKLY"
+                    ? "Create weekly draft"
+                    : "Create draft"
                 : "Generate and review"}
           </Button>
         </form>

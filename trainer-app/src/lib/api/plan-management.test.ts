@@ -517,6 +517,28 @@ describe("plan management persistence policy", () => {
     expect(mocks.tx.user.findUniqueOrThrow).toHaveBeenCalledTimes(1);
   });
 
+  it("rejects a persisted V4 draft before legacy lifecycle or accepted-seed writes", async () => {
+    const timestamp = new Date("2026-07-27T01:00:00.000Z");
+    mocks.tx.macroCycle.findFirst.mockResolvedValue({
+      id: "weekly-plan",
+      primaryGoal: "HYPERTROPHY",
+      updatedAt: timestamp,
+      hypertrophyDraft: { payload: { version: 2 } },
+      mesocycles: [],
+    });
+
+    await expect(
+      finalizePlan({
+        userId: "user-1",
+        planId: "weekly-plan",
+        expectedUpdatedAt: timestamp.toISOString(),
+      }),
+    ).rejects.toMatchObject({ code: "PLAN_VERSION_NOT_EXECUTABLE" });
+    expect(mocks.tx.macroCycle.updateMany).not.toHaveBeenCalled();
+    expect(mocks.tx.mesocycle.updateMany).not.toHaveBeenCalled();
+    expect(mocks.createInitialAcceptedSeedRevision).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed Strength seed counts during finalization", async () => {
     const timestamp = new Date("2026-07-27T01:00:00.000Z");
     mocks.tx.macroCycle.findFirst.mockResolvedValue({

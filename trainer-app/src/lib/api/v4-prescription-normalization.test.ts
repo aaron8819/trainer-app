@@ -17,6 +17,7 @@ import {
   parseAcceptedSeedPayload,
   parseSlotPlanSeedJson,
 } from "./slot-plan-seed-parser";
+import { buildFourDayV4ExpressivenessFixture } from "@/lib/engine/hypertrophy-plan-authoring-v4.fixture";
 
 const measurement = {
   profile: "REPS_EXTERNAL_LOAD" as const,
@@ -151,6 +152,57 @@ function reverseObjectKeys(value: unknown): unknown {
 }
 
 describe("V4 prescription normalization boundary", () => {
+  it("represents the generic four-day weekly fixture without special cases", () => {
+    const fixture = buildFourDayV4ExpressivenessFixture();
+    const accepted = compileAcceptedHypertrophySeedV4({
+      draft: fixture.draft,
+      measurementByExerciseId: fixture.measurementByExerciseId,
+    });
+    const normalized = normalizeAcceptedHypertrophySeedV4(accepted);
+    const repeated = normalizeAcceptedHypertrophySeedV4(
+      compileAcceptedHypertrophySeedV4({
+        draft: structuredClone(fixture.draft),
+        measurementByExerciseId: fixture.measurementByExerciseId,
+      }),
+    );
+
+    expect(accepted.weeks).toEqual([
+      { week: 1, phase: "ACCUMULATION" },
+      { week: 2, phase: "ACCUMULATION" },
+      { week: 3, phase: "ACCUMULATION" },
+      { week: 4, phase: "DELOAD" },
+    ]);
+    expect(accepted.slots.map((slot) => slot.slotId)).toEqual(
+      fixture.draft.sessions.map((session) => session.slotId),
+    );
+    expect(
+      accepted.slots.flatMap((slot) =>
+        slot.exercises.map((exercise) => exercise.placementId),
+      ),
+    ).toEqual(
+      fixture.draft.sessions.flatMap((session) =>
+        session.exercises.map((exercise) => exercise.placementId),
+      ),
+    );
+    expect(
+      accepted.slots.flatMap((slot) =>
+        slot.exercises.flatMap((exercise) => exercise.prescriptions),
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ reps: { kind: "EXACT", reps: 7 } }),
+        expect.objectContaining({ reps: { kind: "RANGE", min: 10, max: 12 } }),
+        expect.objectContaining({ rir: { kind: "NOT_APPLICABLE" } }),
+        { week: 4, status: "OMIT" },
+      ]),
+    );
+    expect(accepted.slots.every((slot) => slot.exercises[0]!.measurement)).toBe(
+      true,
+    );
+    expect(normalized.hash).toBe(repeated.hash);
+    expect(normalized.executablePayload).toEqual(projectExecutableSeedV4(accepted));
+  });
+
   it("canonicalizes and hashes the full strict accepted V4 contract", () => {
     const accepted = compileAcceptedHypertrophySeedV4({
       draft: v4Draft(),

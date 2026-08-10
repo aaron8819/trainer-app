@@ -38,7 +38,7 @@ import type {
   PlanSummary,
 } from "@/lib/ui/plan-management";
 import { PlanManagementError } from "./plan-management-errors";
-import { parseHypertrophyPlanDraft } from "@/lib/engine/hypertrophy-plan-authoring";
+import { parsePersistedHypertrophyPlanDraft } from "@/lib/engine/hypertrophy-plan-authoring";
 import { isCustomHypertrophyPlanRolloutEnabled } from "@/lib/operations/custom-hypertrophy-plan-rollout";
 
 export {
@@ -186,7 +186,7 @@ function toPlanSummary(
           }
         : derivePlanLifecycle(plan.mesocycles);
   const draft = plan.hypertrophyDraft
-    ? parseHypertrophyPlanDraft(plan.hypertrophyDraft.payload)
+    ? parsePersistedHypertrophyPlanDraft(plan.hypertrophyDraft.payload)
     : null;
   const customFieldsIncluded = "hypertrophyDraft" in plan;
   return {
@@ -570,7 +570,13 @@ export async function loadPlanActivationTarget(
   userId: string,
   planId: string,
 ): Promise<
-  | { status: "NOT_FOUND" | "ARCHIVED" | "NOT_READY" }
+  | {
+      status:
+        | "NOT_FOUND"
+        | "ARCHIVED"
+        | "NOT_READY"
+        | "VERSION_NOT_EXECUTABLE";
+    }
   | { status: "READY"; activeMesocycleId: string }
 > {
   const plan = await prisma.macroCycle.findFirst({
@@ -581,6 +587,7 @@ export async function loadPlanActivationTarget(
     },
     select: {
       archivedAt: true,
+      hypertrophyDraft: { select: { payload: true } },
       mesocycles: {
         orderBy: [{ mesoNumber: "asc" }, { id: "asc" }],
         select: {
@@ -594,6 +601,14 @@ export async function loadPlanActivationTarget(
   });
   if (!plan) return { status: "NOT_FOUND" };
   if (plan.archivedAt) return { status: "ARCHIVED" };
+  if (
+    plan.hypertrophyDraft?.payload &&
+    typeof plan.hypertrophyDraft.payload === "object" &&
+    !Array.isArray(plan.hypertrophyDraft.payload) &&
+    (plan.hypertrophyDraft.payload as { version?: unknown }).version === 2
+  ) {
+    return { status: "VERSION_NOT_EXECUTABLE" };
+  }
 
   const lifecycle = derivePlanLifecycle(plan.mesocycles);
   return lifecycle.status === "READY" && lifecycle.activeMesocycleId
@@ -917,6 +932,7 @@ export async function finalizePlan(input: {
             id: true,
             primaryGoal: true,
             updatedAt: true,
+            hypertrophyDraft: { select: { payload: true } },
             mesocycles: {
               orderBy: [{ mesoNumber: "asc" }, { id: "asc" }],
               select: {
@@ -931,6 +947,9 @@ export async function finalizePlan(input: {
           },
         });
         if (!plan) throw new PlanManagementError("PLAN_NOT_FOUND");
+        if (isPersistedWeeklyDraft(plan.hypertrophyDraft?.payload)) {
+          throw new PlanManagementError("PLAN_VERSION_NOT_EXECUTABLE");
+        }
         if (!isExpectedTimestamp(plan.updatedAt, input.expectedUpdatedAt)) {
           throw new PlanManagementError("PLAN_MUTATION_CONFLICT", {
             currentUpdatedAt: plan.updatedAt.toISOString(),
@@ -1030,6 +1049,33 @@ export async function finalizePlan(input: {
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     ),
   );
+}
+
+function isPersistedWeeklyDraft(payload: unknown): boolean {
+  return Boolean(
+    payload &&
+      typeof payload === "object" &&
+      !Array.isArray(payload) &&
+      "version" in payload &&
+      payload.version === 2,
+  );
+}
+
+export async function assertPlanVersionFinalizable(input: {
+  userId: string;
+  planId: string;
+}): Promise<void> {
+  const plan = await prisma.macroCycle.findFirst({
+    where: {
+      id: input.planId,
+      userId: input.userId,
+      archivedAt: null,
+    },
+    select: { hypertrophyDraft: { select: { payload: true } } },
+  });
+  if (isPersistedWeeklyDraft(plan?.hypertrophyDraft?.payload)) {
+    throw new PlanManagementError("PLAN_VERSION_NOT_EXECUTABLE");
+  }
 }
 
 export async function renamePlan(input: {

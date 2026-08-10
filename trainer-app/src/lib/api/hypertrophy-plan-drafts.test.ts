@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { HypertrophyPlanDraftV1 } from "@/lib/engine/hypertrophy-plan-authoring";
+import { Prisma } from "@prisma/client";
+import type {
+  HypertrophyPlanDraftV1,
+  HypertrophyPlanDraftV2,
+} from "@/lib/engine/hypertrophy-plan-authoring";
 
 const originalMeasurementRollout = process.env.TRAINER_EXERCISE_MEASUREMENT_ROLLOUT;
 
@@ -69,12 +73,16 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("@/lib/db/prisma", () => ({ prisma: mocks.prisma }));
-vi.mock("./mesocycle-seed-revision", () => ({
+vi.mock("./mesocycle-seed-revision", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./mesocycle-seed-revision")>()),
   createInitialAcceptedSeedRevisionInTransaction: mocks.createRevision,
 }));
 
 import {
+  createCustomHypertrophyPlan,
   createEditableHypertrophyPlanCopy,
+  deriveHypertrophyPlanV4Preview,
+  loadHypertrophyPlanEditorData,
   makeHypertrophyPlanReady,
   saveHypertrophyPlanDraft,
 } from "./hypertrophy-plan-drafts";
@@ -138,6 +146,71 @@ function lowAxialDraft() {
   return value;
 }
 
+function weeklyDraft({ emptyUpper = false } = {}): HypertrophyPlanDraftV2 {
+  return {
+    version: 2,
+    settings: draft().settings,
+    weeks: [
+      { week: 1, phase: "ACCUMULATION" },
+      { week: 2, phase: "DELOAD" },
+    ],
+    sessions: [
+      {
+        slotId: "upper",
+        name: "Upper",
+        focus: "UPPER",
+        exercises: emptyUpper
+          ? []
+          : [
+              {
+                placementId: "placement-bench",
+                exerciseId: "bench",
+                intent: draft().sessions[0]!.exercises[0]!.intent,
+                prescriptions: [
+                  {
+                    week: 1,
+                    status: "PRESCRIBE",
+                    setCount: 4,
+                    reps: { kind: "RANGE", min: 6, max: 8 },
+                    rir: { kind: "TARGET_RANGE", min: 2, max: 3 },
+                  },
+                  {
+                    week: 2,
+                    status: "PRESCRIBE",
+                    setCount: 4,
+                    reps: { kind: "EXACT", reps: 6 },
+                    rir: { kind: "TARGET_RANGE", min: 4, max: 5 },
+                  },
+                ],
+              },
+            ],
+      },
+      {
+        slotId: "lower",
+        name: "Lower",
+        focus: "LOWER",
+        exercises: [
+          {
+            placementId: "placement-curl",
+            exerciseId: "curl",
+            intent: draft().sessions[1]!.exercises[0]!.intent,
+            prescriptions: [
+              {
+                week: 1,
+                status: "PRESCRIBE",
+                setCount: 3,
+                reps: { kind: "EXACT", reps: 10 },
+                rir: { kind: "NOT_APPLICABLE" },
+              },
+              { week: 2, status: "OMIT" },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
 const exerciseRows = [
   {
     id: "bench",
@@ -148,6 +221,9 @@ const exerciseRows = [
     isMainLiftEligible: true,
     fatigueCost: 3,
     timePerSetSec: 180,
+    measurementProfile: "REPS_EXTERNAL_LOAD",
+    loadConvention: "BARBELL_TOTAL",
+    repBasis: "TOTAL",
     aliases: [],
     exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
     exerciseMuscles: [
@@ -163,6 +239,9 @@ const exerciseRows = [
     isMainLiftEligible: false,
     fatigueCost: 1,
     timePerSetSec: 90,
+    measurementProfile: "REPS_EXTERNAL_LOAD",
+    loadConvention: "MACHINE_DISPLAYED",
+    repBasis: "TOTAL",
     aliases: [],
     exerciseEquipment: [{ equipment: { type: "MACHINE" } }],
     exerciseMuscles: [
@@ -181,6 +260,9 @@ const exerciseRows = [
     isMainLiftEligible: true,
     fatigueCost: 2,
     timePerSetSec: 120,
+    measurementProfile: "REPS_EXTERNAL_LOAD",
+    loadConvention: "MACHINE_DISPLAYED",
+    repBasis: "TOTAL",
     aliases: [],
     exerciseEquipment: [{ equipment: { type: "MACHINE" } }],
     exerciseMuscles: [
@@ -232,6 +314,388 @@ describe("custom hypertrophy draft persistence", () => {
         draft: draft(),
       }),
     ).rejects.toMatchObject({ code: "PLAN_MUTATION_CONFLICT" });
+    expect(mocks.tx.macroCycle.update).not.toHaveBeenCalled();
+  });
+
+  it("creates a generic V4 weekly draft in the existing JSON draft row", async () => {
+    mocks.prisma.user.findUnique.mockResolvedValue({
+      profile: { trainingAge: "INTERMEDIATE" },
+    });
+    mocks.prisma.macroCycle.create.mockResolvedValue({});
+
+    await createCustomHypertrophyPlan({
+      userId: "user-1",
+      name: "Weekly plan",
+      sessionsPerWeek: 4,
+      equipmentProfile: "FULL_GYM",
+      sessionDurationMinutes: 60,
+      authorMethod: "WEEKLY",
+      preset: "UPPER_LOWER_4",
+    });
+
+    const createInput = mocks.prisma.macroCycle.create.mock.calls[0]![0];
+    expect(createInput.data.hypertrophyDraft.create.payload).toMatchObject({
+      version: 2,
+      weeks: [
+        { week: 1, phase: "ACCUMULATION" },
+        { week: 2, phase: "ACCUMULATION" },
+        { week: 3, phase: "ACCUMULATION" },
+        { week: 4, phase: "ACCUMULATION" },
+        { week: 5, phase: "DELOAD" },
+      ],
+    });
+    expect(createInput.data.hypertrophyDraft.create.payload.sessions).toHaveLength(4);
+    expect(createInput.data.hypertrophyDraft.create.payload.sessions[0].exercises).toEqual([]);
+    expect(createInput.data).not.toHaveProperty("mesocycles");
+  });
+
+  it("replays concurrent identical custom-plan creates by server-enforced creation identity", async () => {
+    const creationId = "00000000-0000-4000-8000-000000000123";
+    let persistedPlanId: string | null = null;
+    let persisted: {
+      name: string;
+      hypertrophyDraft: { payload: unknown; revision: number };
+    } | null = null;
+    mocks.prisma.user.findUnique.mockResolvedValue({
+      profile: { trainingAge: "INTERMEDIATE" },
+    });
+    mocks.prisma.macroCycle.create
+      .mockImplementationOnce(async ({ data }) => {
+        persistedPlanId = data.id;
+        persisted = {
+          name: data.name,
+          hypertrophyDraft: {
+            payload: data.hypertrophyDraft.create.payload,
+            revision: 1,
+          },
+        };
+        return {};
+      })
+      .mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError("duplicate", {
+          code: "P2002",
+          clientVersion: "test",
+        }),
+      );
+    mocks.prisma.macroCycle.findFirst.mockImplementation(async ({ where }) =>
+      where.id === persistedPlanId && where.userId === "user-1"
+        ? persisted
+        : null,
+    );
+    const input = {
+      userId: "user-1",
+      name: "Weekly plan",
+      sessionsPerWeek: 4,
+      equipmentProfile: "FULL_GYM" as const,
+      sessionDurationMinutes: 60 as const,
+      authorMethod: "WEEKLY" as const,
+      preset: "UPPER_LOWER_4" as const,
+      creationId,
+    };
+
+    const results = await Promise.all([
+      createCustomHypertrophyPlan(input),
+      createCustomHypertrophyPlan(input),
+    ]);
+
+    expect(results[0]).toEqual(results[1]);
+    expect(results[0]).toEqual({ planId: persistedPlanId, draftRevision: 1 });
+    expect(persistedPlanId).not.toBe(creationId);
+  });
+
+  it("rejects reuse of one creation identity with a different canonical payload", async () => {
+    const creationId = "00000000-0000-4000-8000-000000000133";
+    const persisted = new Map<string, {
+      userId: string;
+      name: string;
+      hypertrophyDraft: { payload: unknown; revision: number };
+    }>();
+    mocks.prisma.user.findUnique.mockResolvedValue({
+      profile: { trainingAge: "INTERMEDIATE" },
+    });
+    mocks.prisma.macroCycle.create.mockImplementation(async ({ data }) => {
+      if (persisted.has(data.id)) {
+        throw new Prisma.PrismaClientKnownRequestError("duplicate", {
+          code: "P2002",
+          clientVersion: "test",
+        });
+      }
+      persisted.set(data.id, {
+        userId: data.userId,
+        name: data.name,
+        hypertrophyDraft: {
+          payload: structuredClone(data.hypertrophyDraft.create.payload),
+          revision: 1,
+        },
+      });
+      return {};
+    });
+    mocks.prisma.macroCycle.findFirst.mockImplementation(async ({ where }) => {
+      const existing = persisted.get(where.id);
+      return existing?.userId === where.userId ? existing : null;
+    });
+    const base = {
+      userId: "user-1",
+      name: "Weekly plan",
+      sessionsPerWeek: 4,
+      equipmentProfile: "FULL_GYM" as const,
+      authorMethod: "WEEKLY" as const,
+      preset: "UPPER_LOWER_4" as const,
+      creationId,
+    };
+
+    const created = await createCustomHypertrophyPlan({
+      ...base,
+      sessionDurationMinutes: 60,
+    });
+    const original = structuredClone(persisted.get(created.planId));
+    await expect(
+      createCustomHypertrophyPlan({
+        ...base,
+        sessionDurationMinutes: 75,
+      }),
+    ).rejects.toMatchObject({ code: "PLAN_CREATION_ID_CONFLICT" });
+
+    expect(persisted).toHaveLength(1);
+    expect(persisted.get(created.planId)).toEqual(original);
+    expect(mocks.prisma.macroCycle.create).toHaveBeenCalledTimes(2);
+  });
+
+  it("namespaces one creation identity by owner and keeps replay lookup owner-scoped", async () => {
+    const creationId = "00000000-0000-4000-8000-000000000143";
+    const persisted = new Map<string, {
+      userId: string;
+      name: string;
+      hypertrophyDraft: { payload: unknown; revision: number };
+    }>();
+    mocks.prisma.user.findUnique.mockResolvedValue({
+      profile: { trainingAge: "INTERMEDIATE" },
+    });
+    mocks.prisma.macroCycle.create.mockImplementation(async ({ data }) => {
+      if (persisted.has(data.id)) {
+        throw new Prisma.PrismaClientKnownRequestError("duplicate", {
+          code: "P2002",
+          clientVersion: "test",
+        });
+      }
+      persisted.set(data.id, {
+        userId: data.userId,
+        name: data.name,
+        hypertrophyDraft: {
+          payload: structuredClone(data.hypertrophyDraft.create.payload),
+          revision: 1,
+        },
+      });
+      return {};
+    });
+    mocks.prisma.macroCycle.findFirst.mockImplementation(async ({ where }) => {
+      const existing = persisted.get(where.id);
+      return existing?.userId === where.userId ? existing : null;
+    });
+    const input = {
+      name: "Weekly plan",
+      sessionsPerWeek: 4,
+      equipmentProfile: "FULL_GYM" as const,
+      sessionDurationMinutes: 60 as const,
+      authorMethod: "WEEKLY" as const,
+      preset: "UPPER_LOWER_4" as const,
+      creationId,
+    };
+
+    const ownerOne = await createCustomHypertrophyPlan({
+      ...input,
+      userId: "user-1",
+    });
+    const ownerTwo = await createCustomHypertrophyPlan({
+      ...input,
+      userId: "user-2",
+    });
+    await expect(
+      createCustomHypertrophyPlan({ ...input, userId: "user-1" }),
+    ).resolves.toEqual(ownerOne);
+    await expect(
+      createCustomHypertrophyPlan({ ...input, userId: "user-2" }),
+    ).resolves.toEqual(ownerTwo);
+
+    expect(ownerOne.planId).not.toBe(ownerTwo.planId);
+    expect(persisted).toHaveLength(2);
+    expect([...persisted.values()].map((entry) => entry.userId).sort()).toEqual([
+      "user-1",
+      "user-2",
+    ]);
+    expect(mocks.prisma.macroCycle.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: ownerOne.planId, userId: "user-1" },
+      }),
+    );
+    expect(mocks.prisma.macroCycle.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: ownerTwo.planId, userId: "user-2" },
+      }),
+    );
+  });
+
+  it("keeps separate intentional create identities separate", async () => {
+    mocks.prisma.user.findUnique.mockResolvedValue({
+      profile: { trainingAge: "INTERMEDIATE" },
+    });
+    mocks.prisma.macroCycle.create.mockResolvedValue({});
+    const base = {
+      userId: "user-1",
+      name: "Weekly plan",
+      sessionsPerWeek: 4,
+      equipmentProfile: "FULL_GYM" as const,
+      sessionDurationMinutes: 60 as const,
+      authorMethod: "WEEKLY" as const,
+      preset: "UPPER_LOWER_4" as const,
+    };
+
+    const created = await Promise.all([
+      createCustomHypertrophyPlan({
+        ...base,
+        creationId: "00000000-0000-4000-8000-000000000123",
+      }),
+      createCustomHypertrophyPlan({
+        ...base,
+        creationId: "00000000-0000-4000-8000-000000000124",
+      }),
+    ]);
+
+    expect(created[0].planId).not.toBe(created[1].planId);
+    expect(created.map((result) => result.planId)).not.toContain(
+      "00000000-0000-4000-8000-000000000123",
+    );
+    expect(created.map((result) => result.planId)).not.toContain(
+      "00000000-0000-4000-8000-000000000124",
+    );
+  });
+
+  it("autosaves a structurally valid but preview-incomplete V4 draft", async () => {
+    const incomplete = weeklyDraft({ emptyUpper: true });
+    mocks.tx.hypertrophyPlanDraft.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.hypertrophyPlanDraft.findUniqueOrThrow.mockResolvedValue({
+      revision: 4,
+      updatedAt: new Date("2026-08-06T12:00:00.000Z"),
+    });
+
+    await expect(
+      saveHypertrophyPlanDraft({
+        userId: "user-1",
+        planId: "plan-1",
+        expectedRevision: 3,
+        name: "Weekly draft",
+        draft: incomplete,
+      }),
+    ).resolves.toMatchObject({
+      revision: 4,
+      preview: {
+        status: "INELIGIBLE",
+        reasons: [expect.objectContaining({ code: "EMPTY_SESSION", slotId: "upper" })],
+      },
+    });
+    expect(mocks.tx.hypertrophyPlanDraft.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ payload: incomplete }),
+      }),
+    );
+    expect(mocks.tx.mesocycle.create).not.toHaveBeenCalled();
+    expect(mocks.createRevision).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed V4 placement before persistence", async () => {
+    const malformed = weeklyDraft();
+    const prescription = malformed.sessions[0]!.exercises[0]!.prescriptions[0];
+    if (prescription?.status !== "PRESCRIBE") throw new Error("fixture");
+    prescription.setCount = 0;
+
+    await expect(
+      saveHypertrophyPlanDraft({
+        userId: "user-1",
+        planId: "plan-1",
+        expectedRevision: 3,
+        name: "Malformed weekly draft",
+        draft: malformed,
+      }),
+    ).rejects.toThrow();
+    expect(mocks.tx.hypertrophyPlanDraft.updateMany).not.toHaveBeenCalled();
+    expect(mocks.tx.macroCycle.update).not.toHaveBeenCalled();
+  });
+
+  it("restores the exact saved V4 draft and derives preview without downstream writes", async () => {
+    const saved = weeklyDraft();
+    mocks.prisma.macroCycle.findFirst.mockResolvedValueOnce({
+      id: "plan-1",
+      name: "Weekly draft",
+      hypertrophyDraft: {
+        payload: structuredClone(saved),
+        revision: 7,
+        updatedAt: new Date("2026-08-06T12:00:00.000Z"),
+      },
+    });
+
+    const restored = await loadHypertrophyPlanEditorData("user-1", "plan-1");
+
+    expect(restored).toMatchObject({
+      draft: saved,
+      revision: 7,
+      preview: { status: "ELIGIBLE", hash: expect.stringMatching(/^[a-f0-9]{64}$/) },
+    });
+    expect(mocks.tx.mesocycle.create).not.toHaveBeenCalled();
+    expect(mocks.createRevision).not.toHaveBeenCalled();
+    expect(mocks.tx.hypertrophyPlanDraft.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("returns clear deterministic preview reasons for unresolved measurement identity", () => {
+    const candidate = weeklyDraft();
+    const measurement = {
+      profile: "REPS_EXTERNAL_LOAD" as const,
+      loadConvention: "BARBELL_TOTAL" as const,
+      repBasis: "TOTAL" as const,
+    };
+    const input = {
+      draft: candidate,
+      knownExerciseIds: new Set(["bench", "curl"]),
+      measurementByExerciseId: new Map([["bench", measurement]]),
+    };
+
+    expect(deriveHypertrophyPlanV4Preview(input)).toEqual(
+      deriveHypertrophyPlanV4Preview(input),
+    );
+    expect(deriveHypertrophyPlanV4Preview(input)).toEqual({
+      status: "INELIGIBLE",
+      reasons: [
+        {
+          code: "MEASUREMENT_UNRESOLVED",
+          message:
+            "Lower has an exercise without a supported measurement identity.",
+          slotId: "lower",
+          placementId: "placement-curl",
+        },
+      ],
+    });
+  });
+
+  it("rejects V4 finalization before accepted-plan or materialization writes", async () => {
+    mocks.state.draft = { payload: weeklyDraft(), revision: 3 };
+    mocks.tx.macroCycle.findFirst.mockResolvedValue({
+      id: "plan-1",
+      trainingAge: "INTERMEDIATE",
+      hypertrophyDraft: mocks.state.draft,
+      mesocycles: [],
+    });
+
+    await expect(
+      makeHypertrophyPlanReady({
+        userId: "user-1",
+        planId: "plan-1",
+        expectedDraftRevision: 3,
+        warningsConfirmed: true,
+      }),
+    ).rejects.toMatchObject({ code: "PLAN_VERSION_NOT_EXECUTABLE" });
+    expect(mocks.tx.exercise.findMany).not.toHaveBeenCalled();
+    expect(mocks.tx.mesocycle.create).not.toHaveBeenCalled();
+    expect(mocks.createRevision).not.toHaveBeenCalled();
+    expect(mocks.tx.hypertrophyPlanDraft.deleteMany).not.toHaveBeenCalled();
     expect(mocks.tx.macroCycle.update).not.toHaveBeenCalled();
   });
 
@@ -377,7 +841,12 @@ describe("custom hypertrophy draft persistence", () => {
               loadConvention: "BARBELL_TOTAL",
               repBasis: "TOTAL",
             }
-          : row,
+          : {
+              ...row,
+              measurementProfile: null,
+              loadConvention: null,
+              repBasis: null,
+            },
       ),
     );
 

@@ -47,6 +47,16 @@ export async function POST(
     if (target.status === "ARCHIVED") {
       throw new ActivePlanTargetArchivedError();
     }
+    if (target.status === "VERSION_NOT_EXECUTABLE") {
+      return NextResponse.json(
+        {
+          error:
+            "Weekly prescription drafts can be saved and previewed, but cannot be activated yet.",
+          code: "PLAN_VERSION_NOT_EXECUTABLE",
+        },
+        { status: 409 },
+      );
+    }
     if (target.status !== "READY") {
       throw new ActivePlanTargetNotReadyError();
     }

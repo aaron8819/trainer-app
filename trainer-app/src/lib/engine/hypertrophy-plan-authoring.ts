@@ -173,6 +173,10 @@ export type HypertrophyPlanDraftV2 = {
   }>;
 };
 
+export type HypertrophyPlanDraft =
+  | HypertrophyPlanDraftV1
+  | HypertrophyPlanDraftV2;
+
 export type AcceptedHypertrophySeedV4 = {
   version: 4;
   source: "custom_hypertrophy_plan_v2";
@@ -824,6 +828,15 @@ export function parseHypertrophyPlanDraftV2(
   return hypertrophyPlanDraftV2Schema.parse(value);
 }
 
+export function parsePersistedHypertrophyPlanDraft(
+  value: unknown,
+): HypertrophyPlanDraft {
+  return value && typeof value === "object" && !Array.isArray(value) &&
+    (value as { version?: unknown }).version === 2
+    ? parseHypertrophyPlanDraftV2(value)
+    : parseHypertrophyPlanDraft(value);
+}
+
 export function parseAcceptedHypertrophySeedV2(
   value: unknown,
 ): AcceptedHypertrophySeedV2 {
@@ -1223,6 +1236,43 @@ export function buildManualHypertrophyDraft(input: {
       focus: session.focus,
       exercises: [],
     })),
+  });
+}
+
+export function buildWeeklyHypertrophyDraft(input: {
+  settings: HypertrophyPlanDraftV2["settings"];
+  sessionsPerWeek: number;
+  preset: ManualHypertrophyPreset;
+  accumulationWeekCount?: number;
+  includeDeload?: boolean;
+  createSlotId?: () => string;
+}): HypertrophyPlanDraftV2 {
+  const base = buildManualHypertrophyDraft({
+    settings: input.settings,
+    sessionsPerWeek: input.sessionsPerWeek,
+    preset: input.preset,
+    createSlotId: input.createSlotId,
+  });
+  const accumulationWeekCount = input.accumulationWeekCount ?? 4;
+  const includeDeload = input.includeDeload ?? true;
+  return parseHypertrophyPlanDraftV2({
+    version: 2,
+    settings: base.settings,
+    weeks: [
+      ...Array.from({ length: accumulationWeekCount }, (_, index) => ({
+        week: index + 1,
+        phase: "ACCUMULATION" as const,
+      })),
+      ...(includeDeload
+        ? [
+            {
+              week: accumulationWeekCount + 1,
+              phase: "DELOAD" as const,
+            },
+          ]
+        : []),
+    ],
+    sessions: base.sessions,
   });
 }
 

@@ -106,6 +106,23 @@ describe("POST /api/plans/[id]/activate", () => {
     expect(mocks.selectActivePlan).not.toHaveBeenCalled();
   });
 
+  it("rejects a V4 draft before active-plan selection writes", async () => {
+    mocks.loadPlanActivationTarget.mockResolvedValue({
+      status: "VERSION_NOT_EXECUTABLE",
+    });
+
+    const response = await POST(
+      request({ expectedActiveMacroCycleId: null }),
+      { params: Promise.resolve({ id: "plan-b" }) },
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "PLAN_VERSION_NOT_EXECUTABLE",
+    });
+    expect(mocks.selectActivePlan).not.toHaveBeenCalled();
+  });
+
   it("returns a structured conflict for an owned archived target", async () => {
     mocks.loadPlanActivationTarget.mockResolvedValue({ status: "ARCHIVED" });
 

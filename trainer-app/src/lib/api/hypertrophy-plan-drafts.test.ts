@@ -572,6 +572,13 @@ describe("custom hypertrophy draft persistence", () => {
 
   it("autosaves a structurally valid but preview-incomplete V4 draft", async () => {
     const incomplete = weeklyDraft({ emptyUpper: true });
+    const recommended = incomplete.sessions[1]!.exercises[0]!;
+    recommended.recommendationBaseline = {
+      version: 1,
+      exerciseId: recommended.exerciseId,
+      intent: structuredClone(recommended.intent),
+      prescriptions: structuredClone(recommended.prescriptions),
+    };
     mocks.tx.hypertrophyPlanDraft.updateMany.mockResolvedValue({ count: 1 });
     mocks.tx.hypertrophyPlanDraft.findUniqueOrThrow.mockResolvedValue({
       revision: 4,

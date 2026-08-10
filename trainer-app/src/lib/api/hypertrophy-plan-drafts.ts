@@ -128,6 +128,7 @@ function toAuthoringExercise(
     contraindicationKeys: activeContraindicationKeys(row.contraindications),
     isCompound: row.isCompound,
     isMainLiftEligible: row.isMainLiftEligible,
+    measurement: parseMeasurementColumns(row),
     timePerSetSec: row.timePerSetSec,
     isFavorite: favoriteExerciseIds.has(row.id),
   };

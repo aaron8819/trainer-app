@@ -200,6 +200,32 @@ describe("V4 custom-plan prescription foundation", () => {
     });
   });
 
+  it("persists recommendation provenance only in the editable draft boundary", () => {
+    const candidate = draft();
+    const row = candidate.sessions[0]!.exercises[0]!;
+    row.recommendationBaseline = {
+      version: 1,
+      exerciseId: row.exerciseId,
+      intent: structuredClone(row.intent),
+      prescriptions: structuredClone(row.prescriptions),
+    };
+
+    expect(
+      parseHypertrophyPlanDraftV2(candidate).sessions[0]!.exercises[0]!
+        .recommendationBaseline,
+    ).toEqual(row.recommendationBaseline);
+    const accepted = compileAcceptedHypertrophySeedV4({
+      draft: candidate,
+      measurementByExerciseId: measurements,
+    });
+    expect(accepted.slots[0]!.exercises[0]).not.toHaveProperty(
+      "recommendationBaseline",
+    );
+    expect(
+      copyAcceptedHypertrophySeedV4ToDraft(accepted).sessions[0]!.exercises[0],
+    ).not.toHaveProperty("recommendationBaseline");
+  });
+
   it("preserves every accepted intent field in the executable projection", () => {
     const candidate = draft();
     candidate.sessions[0]!.exercises[0]!.intent = {

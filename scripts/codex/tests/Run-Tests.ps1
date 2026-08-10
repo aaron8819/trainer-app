@@ -2615,6 +2615,45 @@ Invoke-Test 'remote command registry metadata preserves offline default and expl
     Assert-Equal $policy.vercelReadOnly.authorizationRequired 'explicit-scope' 'Vercel provider authorization metadata mismatch.'
 }
 
+Invoke-Test 'exercise-library sync metadata preserves dry-run and effective write classification' {
+    $policy = Get-Content -Raw -LiteralPath $sourcePolicy | ConvertFrom-Json -Depth 100
+    $applyFlag = '--' + 'apply'
+    $writeFlag = '--' + 'write'
+    $dryRunEntry = @($policy.commandRegistry | Where-Object { $_.id -eq 'npm-sync-exercise-library' })
+    $applyEntry = @($policy.commandRegistry | Where-Object { $_.id -eq 'npm-sync-exercise-library-apply' })
+    Assert-Equal $dryRunEntry.Count 1 'Exercise-library dry-run registry entry missing.'
+    Assert-Equal $applyEntry.Count 1 'Exercise-library apply registry entry missing.'
+
+    $dryRunProfile = $policy.commandProfiles.($dryRunEntry[0].profile)
+    Assert-Equal $dryRunEntry[0].profile 'database-read' 'Exercise-library dry run must retain the database-read profile.'
+    Assert-Equal $dryRunProfile.defaultSideEffectClass 'read-only' 'Exercise-library dry run must remain read-only.'
+    Assert-True $dryRunProfile.accessesDatabase 'Exercise-library dry run must declare its database read.'
+    Assert-True (-not $dryRunProfile.mayMutateProduction) 'Exercise-library dry run must not be production-mutating by default.'
+
+    $writeEscalations = @($dryRunEntry[0].flagEscalations | Where-Object {
+        $_.flag -in @($applyFlag, $writeFlag) -and $_.sideEffectClass -eq 'production-write'
+    })
+    Assert-Equal $writeEscalations.Count 2 'Public apply intent and effective write signal must both be protected production-write escalations.'
+    Assert-Equal (@($writeEscalations.flag | Sort-Object) -join ',') ((@($applyFlag, $writeFlag) | Sort-Object) -join ',') 'Exercise-library write escalation flags drifted.'
+    Assert-True (@($writeEscalations | Where-Object {
+        [string]::IsNullOrWhiteSpace([string]$_.authorizationRequirement)
+    }).Count -eq 0) 'Exercise-library write escalation authorization metadata is missing.'
+
+    $applyProfile = $policy.commandProfiles.($applyEntry[0].profile)
+    Assert-Equal $applyEntry[0].command ('tsx scripts/sync-exercise-library.ts ' + $applyFlag) 'Exercise-library apply wrapper contract drifted.'
+    Assert-Equal $applyProfile.defaultSideEffectClass 'production-write' 'Exercise-library apply wrapper must remain a protected production write.'
+    Assert-True $applyProfile.mayMutateProduction 'Exercise-library apply wrapper must retain production-mutation classification.'
+
+    $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $sourceRoot '..\..'))
+    $syncSource = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot 'trainer-app\scripts\sync-exercise-library.ts')
+    $rolloutSource = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot 'trainer-app\src\lib\operations\rollout-environment.ts')
+    Assert-True $syncSource.Contains(('const apply = argv.includes("' + $applyFlag + '");')) 'Exercise-library public apply parsing drifted.'
+    Assert-True $syncSource.Contains(('argv: apply ? [...argv, "' + $writeFlag + '"] : argv')) 'Exercise-library apply must inject the protected write signal.'
+    Assert-True $syncSource.Contains('allowWrite: apply') 'Exercise-library dry run/apply write allowance drifted.'
+    Assert-True (-not $syncSource.Contains('"--confirm-remote-write"')) 'Exercise-library sync must not self-confirm remote writes.'
+    Assert-True $rolloutSource.Contains(('Remote ' + $writeFlag + ' requires --confirm-remote-write before any database connection.')) 'Remote apply must still require explicit confirmation before database import.'
+}
+
 Invoke-Test 'registry parses and covers committed command surfaces' {
     $result = Invoke-RegistryValidator
     $report = $result.Text | ConvertFrom-Json

@@ -152,6 +152,13 @@ export type WeeklyPrescriptionV4 =
       rir: RirTargetV4;
     };
 
+export type HypertrophyRecommendationBaselineV1 = {
+  version: 1;
+  exerciseId: string;
+  intent: AcceptedExerciseIntentV2;
+  prescriptions: WeeklyPrescriptionV4[];
+};
+
 export type HypertrophyPlanDraftV2 = {
   version: 2;
   settings: HypertrophyPlanDraftV1["settings"];
@@ -168,6 +175,7 @@ export type HypertrophyPlanDraftV2 = {
         exerciseId: string;
         measurement: MeasurementSemantics;
       };
+      recommendationBaseline?: HypertrophyRecommendationBaselineV1;
       prescriptions: WeeklyPrescriptionV4[];
     }>;
   }>;
@@ -535,6 +543,15 @@ const draftExerciseV2Schema = z
       })
       .strict()
       .optional(),
+    recommendationBaseline: z
+      .object({
+        version: z.literal(1),
+        exerciseId: z.string().trim().min(1).max(100),
+        intent: acceptedExerciseIntentSchema,
+        prescriptions: z.array(weeklyPrescriptionV4Schema).min(1).max(52),
+      })
+      .strict()
+      .optional(),
     prescriptions: z.array(weeklyPrescriptionV4Schema).min(1).max(52),
   })
   .strict();
@@ -577,6 +594,53 @@ export const hypertrophyPlanDraftV2Schema = z
       containers: draft.sessions,
       containerPath: "sessions",
       context,
+    });
+    draft.sessions.forEach((session, sessionIndex) => {
+      session.exercises.forEach((exercise, exerciseIndex) => {
+        const baseline = exercise.recommendationBaseline;
+        if (!baseline) return;
+        const path = [
+          "sessions",
+          sessionIndex,
+          "exercises",
+          exerciseIndex,
+          "recommendationBaseline",
+        ];
+        if (baseline.exerciseId !== exercise.exerciseId) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [...path, "exerciseId"],
+            message: "Recommendation baseline must belong to the current exercise",
+          });
+        }
+        if (baseline.prescriptions.length !== draft.weeks.length) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [...path, "prescriptions"],
+            message: "Recommendation baseline must cover every plan week",
+          });
+        }
+        baseline.prescriptions.forEach((prescription, prescriptionIndex) => {
+          const expectedWeek = draft.weeks[prescriptionIndex];
+          if (!expectedWeek || prescription.week !== expectedWeek.week) {
+            context.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [...path, "prescriptions", prescriptionIndex, "week"],
+              message: "Recommendation baseline weeks must match the plan",
+            });
+          }
+          if (
+            prescription.status === "OMIT" &&
+            expectedWeek?.phase !== "DELOAD"
+          ) {
+            context.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [...path, "prescriptions", prescriptionIndex, "status"],
+              message: "Recommendation baseline may omit only the deload week",
+            });
+          }
+        });
+      });
     });
   });
 
@@ -1408,9 +1472,267 @@ export type HypertrophyAuthoringExercise = {
   contraindicationKeys: string[];
   isCompound: boolean;
   isMainLiftEligible: boolean;
+  measurement?: MeasurementSemantics | null;
   timePerSetSec: number;
   isFavorite?: boolean;
 };
+
+export type HypertrophyRecommendationClass =
+  | "PRIMARY_STRENGTH_ANCHOR"
+  | "PRIMARY_COMPOUND"
+  | "BODYWEIGHT_OR_ASSISTED_COMPOUND"
+  | "OTHER_COMPOUND"
+  | "SUPPORTING_COMPOUND"
+  | "ISOLATION"
+  | "CORE"
+  | "HIP_SUPPORT";
+
+const ACCUMULATION_RIR = [
+  { min: 3, max: 4 },
+  { min: 3, max: 3 },
+  { min: 2, max: 3 },
+  { min: 1, max: 2 },
+] as const;
+
+// Keep recommendation-specific targets aligned with the specialized dose branches,
+// then fall back to the repository's canonical muscle-policy order. Primary-muscle
+// facts remain authoritative over secondary-muscle facts.
+const RECOMMENDATION_TARGET_MUSCLE_PRECEDENCE: readonly CanonicalMuscleId[] = [
+  "abs",
+  "core",
+  "abductors",
+  "adductors",
+  "rear_delts",
+  "triceps",
+  "hamstrings",
+  ...CANONICAL_MUSCLE_IDS.filter(
+    (muscleId) =>
+      ![
+        "abs",
+        "core",
+        "abductors",
+        "adductors",
+        "rear_delts",
+        "triceps",
+        "hamstrings",
+      ].includes(muscleId),
+  ),
+];
+
+function recommendationTargetMuscle(
+  muscleIds: readonly CanonicalMuscleId[],
+): CanonicalMuscleId | undefined {
+  const available = new Set(muscleIds);
+  return RECOMMENDATION_TARGET_MUSCLE_PRECEDENCE.find((muscleId) =>
+    available.has(muscleId),
+  );
+}
+
+function firstExerciseTarget(
+  exercise: HypertrophyAuthoringExercise,
+): AcceptedExerciseIntentV2["target"] {
+  const movementPattern = exercise.movementPatterns[0];
+  if (exercise.isCompound && movementPattern) {
+    return { kind: "movement_pattern", movementPattern };
+  }
+  const muscleId =
+    recommendationTargetMuscle(exercise.primaryMuscleIds) ??
+    recommendationTargetMuscle(exercise.secondaryMuscleIds);
+  if (muscleId) return { kind: "muscle", muscleId };
+  if (movementPattern) return { kind: "movement_pattern", movementPattern };
+  throw new Error(`CUSTOM_PLAN_RECOMMENDATION_TARGET_MISSING:${exercise.id}`);
+}
+
+export function inferHypertrophyExerciseIntent(input: {
+  exercise: HypertrophyAuthoringExercise;
+  existingIntents: readonly AcceptedExerciseIntentV2[];
+}): AcceptedExerciseIntentV2 {
+  const target = firstExerciseTarget(input.exercise);
+  if (input.exercise.isCompound && target.kind === "movement_pattern") {
+    return {
+      userRole: input.existingIntents.some(
+        (intent) => intent.userRole === "PRIMARY_LIFT",
+      )
+        ? "SECONDARY_LIFT"
+        : "PRIMARY_LIFT",
+      target,
+    };
+  }
+  return {
+    userRole: target.kind === "muscle" ? "MUSCLE_ISOLATION" : "ACCESSORY",
+    target,
+  };
+}
+
+function isBodyweightOrAssisted(
+  measurement: MeasurementSemantics | null | undefined,
+): boolean {
+  return (
+    measurement?.profile === "REPS_BODYWEIGHT" ||
+    measurement?.profile === "REPS_BODYWEIGHT_PLUS_LOAD" ||
+    measurement?.profile === "REPS_ASSISTED"
+  );
+}
+
+function isCoreExercise(exercise: HypertrophyAuthoringExercise): boolean {
+  return exercise.primaryMuscleIds.some(
+    (muscleId) => muscleId === "abs" || muscleId === "core",
+  );
+}
+
+function isHipSupportExercise(
+  exercise: HypertrophyAuthoringExercise,
+): boolean {
+  return exercise.primaryMuscleIds.some(
+    (muscleId) => muscleId === "abductors" || muscleId === "adductors",
+  );
+}
+
+export function classifyHypertrophyRecommendation(input: {
+  exercise: HypertrophyAuthoringExercise;
+  intent: AcceptedExerciseIntentV2;
+}): HypertrophyRecommendationClass {
+  if (input.exercise.isCompound) {
+    if (isBodyweightOrAssisted(input.exercise.measurement)) {
+      return "BODYWEIGHT_OR_ASSISTED_COMPOUND";
+    }
+    if (input.intent.userRole === "PRIMARY_LIFT") {
+      const stableBarbellAnchor =
+        input.exercise.isMainLiftEligible &&
+        input.exercise.equipment.some((item) =>
+          ["barbell", "trap_bar"].includes(item),
+        );
+      return stableBarbellAnchor
+        ? "PRIMARY_STRENGTH_ANCHOR"
+        : "PRIMARY_COMPOUND";
+    }
+    if (input.intent.userRole === "ACCESSORY") {
+      return "SUPPORTING_COMPOUND";
+    }
+    return "OTHER_COMPOUND";
+  }
+  if (isCoreExercise(input.exercise)) return "CORE";
+  if (isHipSupportExercise(input.exercise)) return "HIP_SUPPORT";
+  return "ISOLATION";
+}
+
+function recommendationDose(input: {
+  exercise: HypertrophyAuthoringExercise;
+  intent: AcceptedExerciseIntentV2;
+  recommendationClass: HypertrophyRecommendationClass;
+}): { setCount: number; minReps: number; maxReps: number } {
+  switch (input.recommendationClass) {
+    case "PRIMARY_STRENGTH_ANCHOR":
+      return { setCount: 3, minReps: 5, maxReps: 8 };
+    case "PRIMARY_COMPOUND":
+    case "BODYWEIGHT_OR_ASSISTED_COMPOUND":
+      return { setCount: 3, minReps: 6, maxReps: 10 };
+    case "OTHER_COMPOUND":
+      return input.exercise.movementPatterns.includes("hinge") &&
+        input.exercise.isMainLiftEligible
+        ? { setCount: 3, minReps: 6, maxReps: 10 }
+        : { setCount: 3, minReps: 8, maxReps: 12 };
+    case "SUPPORTING_COMPOUND":
+      return { setCount: 2, minReps: 8, maxReps: 12 };
+    case "CORE":
+      return { setCount: 3, minReps: 8, maxReps: 15 };
+    case "HIP_SUPPORT":
+      return { setCount: 2, minReps: 12, maxReps: 20 };
+    case "ISOLATION": {
+      const primary = new Set(input.exercise.primaryMuscleIds);
+      if (primary.has("rear_delts")) {
+        return { setCount: 3, minReps: 12, maxReps: 20 };
+      }
+      if (primary.has("triceps") || primary.has("hamstrings")) {
+        return { setCount: 2, minReps: 10, maxReps: 15 };
+      }
+      return { setCount: 3, minReps: 10, maxReps: 15 };
+    }
+  }
+}
+
+export function buildHypertrophyExerciseRecommendation(input: {
+  exercise: HypertrophyAuthoringExercise;
+  intent: AcceptedExerciseIntentV2;
+  weeks: readonly HypertrophyPlanWeekV4[];
+}): WeeklyPrescriptionV4[] {
+  const recommendationClass = classifyHypertrophyRecommendation(input);
+  const dose = recommendationDose({ ...input, recommendationClass });
+  return input.weeks.map((week, accumulationIndex) => {
+    if (week.phase === "DELOAD") {
+      if (recommendationClass === "CORE" || recommendationClass === "HIP_SUPPORT") {
+        return { week: week.week, status: "OMIT" };
+      }
+      const setCount = input.exercise.isCompound
+        ? Math.max(1, Math.ceil(dose.setCount / 2))
+        : 1;
+      return {
+        week: week.week,
+        status: "PRESCRIBE",
+        setCount,
+        reps: { kind: "RANGE", min: dose.minReps, max: dose.maxReps },
+        rir: { kind: "TARGET_RANGE", min: 4, max: 5 },
+      };
+    }
+    const rir = ACCUMULATION_RIR[accumulationIndex] ?? ACCUMULATION_RIR[3];
+    return {
+      week: week.week,
+      status: "PRESCRIBE",
+      setCount: dose.setCount,
+      reps: { kind: "RANGE", min: dose.minReps, max: dose.maxReps },
+      rir: { kind: "TARGET_RANGE", min: rir.min, max: rir.max },
+    };
+  });
+}
+
+export function materializeHypertrophyExerciseRecommendation(input: {
+  exercise: HypertrophyAuthoringExercise;
+  weeks: readonly HypertrophyPlanWeekV4[];
+  existingIntents?: readonly AcceptedExerciseIntentV2[];
+  intent?: AcceptedExerciseIntentV2;
+}): {
+  intent: AcceptedExerciseIntentV2;
+  prescriptions: WeeklyPrescriptionV4[];
+  recommendationBaseline: HypertrophyRecommendationBaselineV1;
+} {
+  const intent =
+    input.intent ??
+    inferHypertrophyExerciseIntent({
+      exercise: input.exercise,
+      existingIntents: input.existingIntents ?? [],
+    });
+  const prescriptions = buildHypertrophyExerciseRecommendation({
+    exercise: input.exercise,
+    intent,
+    weeks: input.weeks,
+  });
+  return {
+    intent,
+    prescriptions,
+    recommendationBaseline: {
+      version: 1,
+      exerciseId: input.exercise.id,
+      intent,
+      prescriptions,
+    },
+  };
+}
+
+export function isHypertrophyRecommendationCustomized(input: {
+  exerciseId: string;
+  intent: AcceptedExerciseIntentV2;
+  prescriptions: WeeklyPrescriptionV4[];
+  recommendationBaseline?: HypertrophyRecommendationBaselineV1;
+}): boolean {
+  const baseline = input.recommendationBaseline;
+  return Boolean(
+    baseline &&
+      (baseline.exerciseId !== input.exerciseId ||
+        JSON.stringify(baseline.intent) !== JSON.stringify(input.intent) ||
+        JSON.stringify(baseline.prescriptions) !==
+          JSON.stringify(input.prescriptions)),
+  );
+}
 
 export function getHypertrophyAuthoringStimulus(
   exercise: HypertrophyAuthoringExercise,

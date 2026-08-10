@@ -56,7 +56,9 @@ type DraftReader = Pick<
   "exercise" | "injury" | "userPreference"
 >;
 
-type ExerciseRow = Awaited<ReturnType<typeof loadExerciseRows>>[number];
+export type HypertrophyPlanDraftExerciseRow = Awaited<
+  ReturnType<typeof loadExerciseRows>
+>[number];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -103,8 +105,8 @@ function canonicalMuscleId(id: string, name: string) {
   return getMusclePolicyByDisplayName(name)?.id ?? null;
 }
 
-function toAuthoringExercise(
-  row: ExerciseRow,
+export function toAuthoringExercise(
+  row: HypertrophyPlanDraftExerciseRow,
   favoriteExerciseIds: ReadonlySet<string> = new Set(),
 ): HypertrophyAuthoringExercise {
   const primaryMuscleIds = row.exerciseMuscles.flatMap((entry) => {
@@ -128,6 +130,7 @@ function toAuthoringExercise(
     contraindicationKeys: activeContraindicationKeys(row.contraindications),
     isCompound: row.isCompound,
     isMainLiftEligible: row.isMainLiftEligible,
+    measurement: parseMeasurementColumns(row),
     timePerSetSec: row.timePerSetSec,
     isFavorite: favoriteExerciseIds.has(row.id),
   };
@@ -436,7 +439,7 @@ export function deriveHypertrophyPlanV4Preview(input: {
 
 function v4PreviewFromRows(
   draft: HypertrophyPlanDraftV2,
-  rows: ExerciseRow[],
+  rows: HypertrophyPlanDraftExerciseRow[],
 ): HypertrophyPlanV4Preview {
   return deriveHypertrophyPlanV4Preview({
     draft,

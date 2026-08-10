@@ -11,19 +11,16 @@ import {
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import {
+  inferHypertrophyExerciseIntent,
   isExerciseEligibleForIntent,
+  isHypertrophyRecommendationCustomized,
+  materializeHypertrophyExerciseRecommendation,
   type AcceptedExerciseIntentV2,
+  type HypertrophyAuthoringExercise,
   type HypertrophyPlanDraftV2,
   type HypertrophySessionFocus,
-  type HypertrophyUserRole,
   type WeeklyPrescriptionV4,
 } from "@/lib/engine/hypertrophy-plan-authoring";
-import {
-  CANONICAL_MUSCLE_IDS,
-  MUSCLE_POLICY_BY_ID,
-  type CanonicalMuscleId,
-} from "@/lib/engine/muscle-policy";
-import { CANONICAL_MOVEMENT_PATTERN_VALUES } from "@/lib/engine/types";
 import type {
   HypertrophyPlanEditorDataV2,
   HypertrophyPlanV4Preview,
@@ -33,12 +30,14 @@ type WeeklyEditorData = HypertrophyPlanEditorDataV2;
 type SaveState = "saved" | "saving" | "failed" | "incomplete";
 type LeaveState = "idle" | "saving" | "save_failed" | "incomplete";
 
-const ROLE_LABEL: Record<HypertrophyUserRole, string> = {
-  PRIMARY_LIFT: "Primary lift",
-  SECONDARY_LIFT: "Secondary lift",
-  MUSCLE_ISOLATION: "Muscle isolation",
-  ACCESSORY: "Accessory",
+const ROLE_LABEL: Record<AcceptedExerciseIntentV2["userRole"], string> = {
+  PRIMARY_LIFT: "Primary",
+  SECONDARY_LIFT: "Secondary",
+  MUSCLE_ISOLATION: "Supporting",
+  ACCESSORY: "Supporting",
 };
+
+type DisplayRole = "PRIMARY" | "SECONDARY" | "SUPPORTING";
 
 const FOCUS_LABEL: Record<HypertrophySessionFocus, string> = {
   PUSH: "Push",
@@ -50,19 +49,38 @@ const FOCUS_LABEL: Record<HypertrophySessionFocus, string> = {
   BODY_PART: "Custom",
 };
 
-function defaultIntent(role: HypertrophyUserRole): AcceptedExerciseIntentV2 {
-  return role === "PRIMARY_LIFT" || role === "SECONDARY_LIFT"
-    ? {
-        userRole: role,
-        target: {
-          kind: "movement_pattern",
-          movementPattern: "horizontal_push",
-        },
-      }
-    : {
-        userRole: role,
-        target: { kind: "muscle", muscleId: "chest" },
-      };
+function displayRole(intent: AcceptedExerciseIntentV2): DisplayRole {
+  if (intent.userRole === "PRIMARY_LIFT") return "PRIMARY";
+  if (intent.userRole === "SECONDARY_LIFT") return "SECONDARY";
+  return "SUPPORTING";
+}
+
+function intentForDisplayRole(
+  exercise: HypertrophyAuthoringExercise,
+  role: DisplayRole,
+): AcceptedExerciseIntentV2 {
+  const movementPattern = exercise.movementPatterns[0];
+  const muscleId =
+    exercise.primaryMuscleIds[0] ?? exercise.secondaryMuscleIds[0];
+  if ((role === "PRIMARY" || role === "SECONDARY") && movementPattern) {
+    return {
+      userRole: role === "PRIMARY" ? "PRIMARY_LIFT" : "SECONDARY_LIFT",
+      target: { kind: "movement_pattern", movementPattern },
+    };
+  }
+  if (exercise.isCompound && movementPattern) {
+    return {
+      userRole: "ACCESSORY",
+      target: { kind: "movement_pattern", movementPattern },
+    };
+  }
+  if (!muscleId) {
+    throw new Error(`CUSTOM_PLAN_RECOMMENDATION_TARGET_MISSING:${exercise.id}`);
+  }
+  return {
+    userRole: "MUSCLE_ISOLATION",
+    target: { kind: "muscle", muscleId },
+  };
 }
 
 function replaceAt<T>(values: T[], index: number, value: T): T[] {
@@ -95,6 +113,50 @@ function prescriptionForWeek(
 ): WeeklyPrescriptionV4 {
   if (!source || source.status === "OMIT") return defaultPrescription(week);
   return { ...source, week };
+}
+
+function formatRepTarget(prescription: WeeklyPrescriptionV4): string {
+  if (prescription.status === "OMIT") return "omitted";
+  return prescription.reps.kind === "EXACT"
+    ? String(prescription.reps.reps)
+    : `${prescription.reps.min}–${prescription.reps.max}`;
+}
+
+function formatRirTarget(prescription: WeeklyPrescriptionV4): string {
+  if (prescription.status === "OMIT") return "omitted";
+  return prescription.rir.kind === "NOT_APPLICABLE"
+    ? "n/a"
+    : prescription.rir.min === prescription.rir.max
+      ? String(prescription.rir.min)
+      : `${prescription.rir.min}–${prescription.rir.max}`;
+}
+
+function compactPrescriptionSummary(input: {
+  intent: AcceptedExerciseIntentV2;
+  prescriptions: WeeklyPrescriptionV4[];
+  weeks: HypertrophyPlanDraftV2["weeks"];
+}): string {
+  const accumulation = input.prescriptions.filter(
+    (_, index) => input.weeks[index]?.phase === "ACCUMULATION",
+  );
+  const first = accumulation[0];
+  const last = accumulation.at(-1);
+  const deloadIndex = input.weeks.findIndex((week) => week.phase === "DELOAD");
+  const deload = deloadIndex >= 0 ? input.prescriptions[deloadIndex] : undefined;
+  if (!first || !last || first.status === "OMIT" || last.status === "OMIT") {
+    return ROLE_LABEL[input.intent.userRole];
+  }
+  const deloadLabel = !deload
+    ? "No deload"
+    : deload.status === "OMIT"
+      ? `W${deload.week} omitted`
+      : `W${deload.week} ${deload.setCount} set${deload.setCount === 1 ? "" : "s"} deload`;
+  return [
+    ROLE_LABEL[input.intent.userRole],
+    `${first.setCount} × ${formatRepTarget(first)}`,
+    `RIR ${formatRirTarget(first)} → ${formatRirTarget(last)}`,
+    deloadLabel,
+  ].join(" · ");
 }
 
 function draftSignature(value: {
@@ -144,6 +206,7 @@ function reconfigureWeeks(
             : undefined;
         return {
           ...exercise,
+          recommendationBaseline: undefined,
           prescriptions: weeks.map((week) =>
             week.phase === "DELOAD"
               ? oldDeload
@@ -194,10 +257,10 @@ export function WeeklyHypertrophyPlanEditor({
     ),
   );
   const [showAdd, setShowAdd] = useState(false);
-  const [newIntent, setNewIntent] = useState<AcceptedExerciseIntentV2>(
-    defaultIntent("PRIMARY_LIFT"),
-  );
   const [newExerciseId, setNewExerciseId] = useState("");
+  const [prescriptionResetRevision, setPrescriptionResetRevision] = useState<
+    Record<string, number>
+  >({});
 
   const [savedSignature, setSavedSignature] = useState(() =>
     draftSignature({ name: initialData.name, draft: initialData.draft }),
@@ -245,6 +308,13 @@ export function WeeklyHypertrophyPlanEditor({
         : next;
     });
   }, []);
+
+  const remountPrescriptionFields = (placementId: string) => {
+    setPrescriptionResetRevision((current) => ({
+      ...current,
+      [placementId]: (current[placementId] ?? 0) + 1,
+    }));
+  };
 
   const performSave = useCallback(async () => {
     while (true) {
@@ -354,14 +424,19 @@ export function WeeklyHypertrophyPlanEditor({
   const eligibleExercises = useMemo(
     () =>
       initialData.exercises
-        .filter((exercise) =>
-          isExerciseEligibleForIntent({
+        .filter((exercise) => {
+          if (!exercise.measurement) return false;
+          const intent = inferHypertrophyExerciseIntent({
             exercise,
-            intent: newIntent,
+            existingIntents: session.exercises.map((row) => row.intent),
+          });
+          return isExerciseEligibleForIntent({
+            exercise,
+            intent,
             equipmentProfile: draft.settings.equipmentProfile,
             limitationKeys: initialData.limitationKeys,
-          }),
-        )
+          });
+        })
         .sort(
           (left, right) =>
             Number(Boolean(right.isFavorite)) - Number(Boolean(left.isFavorite)) ||
@@ -371,9 +446,20 @@ export function WeeklyHypertrophyPlanEditor({
       draft.settings.equipmentProfile,
       initialData.exercises,
       initialData.limitationKeys,
-      newIntent,
+      session.exercises,
     ],
   );
+
+  const newRecommendation = useMemo(() => {
+    const exercise = exerciseById.get(newExerciseId);
+    return exercise
+      ? materializeHypertrophyExerciseRecommendation({
+          exercise,
+          weeks: draft.weeks,
+          existingIntents: session.exercises.map((row) => row.intent),
+        })
+      : null;
+  }, [draft.weeks, exerciseById, newExerciseId, session.exercises]);
 
   const addSession = () => {
     if (draft.sessions.length >= 6) return;
@@ -407,7 +493,7 @@ export function WeeklyHypertrophyPlanEditor({
   };
 
   const addExercise = () => {
-    if (!newExerciseId) return;
+    if (!newExerciseId || !newRecommendation) return;
     updateSession((current) => ({
       ...current,
       exercises: [
@@ -415,10 +501,7 @@ export function WeeklyHypertrophyPlanEditor({
         {
           placementId: crypto.randomUUID(),
           exerciseId: newExerciseId,
-          intent: newIntent,
-          prescriptions: draft.weeks.map((week) =>
-            defaultPrescription(week.week),
-          ),
+          ...newRecommendation,
         },
       ],
     }));
@@ -689,6 +772,9 @@ export function WeeklyHypertrophyPlanEditor({
           <div className="mt-5 space-y-4">
             {session.exercises.map((row, exerciseIndex) => {
               const exercise = exerciseById.get(row.exerciseId);
+              const customized = isHypertrophyRecommendationCustomized(row);
+              const hasBaseline =
+                row.recommendationBaseline?.exerciseId === row.exerciseId;
               return (
                 <article key={row.placementId} className="rounded-xl border border-slate-200 p-3 sm:p-4">
                   <div className="flex flex-wrap items-start justify-between gap-2">
@@ -697,8 +783,21 @@ export function WeeklyHypertrophyPlanEditor({
                         {exercise?.name ?? "Unavailable exercise"}
                       </h3>
                       <p className="mt-1 text-xs text-slate-500">
-                        Stable placement · {ROLE_LABEL[row.intent.userRole]}
+                        {compactPrescriptionSummary({
+                          intent: row.intent,
+                          prescriptions: row.prescriptions,
+                          weeks: draft.weeks,
+                        })}
                       </p>
+                      {customized ? (
+                        <span className="mt-2 inline-flex rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900">
+                          Customized
+                        </span>
+                      ) : !hasBaseline ? (
+                        <span className="mt-2 inline-flex rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
+                          Manual
+                        </span>
+                      ) : null}
                     </div>
                     <div className="flex gap-1">
                       <Button
@@ -728,7 +827,11 @@ export function WeeklyHypertrophyPlanEditor({
                     </div>
                   </div>
 
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <details className="mt-3">
+                    <summary className="flex min-h-11 cursor-pointer items-center rounded-lg px-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                      Review or edit weekly prescription
+                    </summary>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     <label className="text-sm font-medium text-slate-700">
                       Exercise
                       <select
@@ -744,6 +847,7 @@ export function WeeklyHypertrophyPlanEditor({
                                 row.preservedMeasurement?.exerciseId === event.target.value
                                   ? row.preservedMeasurement
                                   : undefined,
+                              recommendationBaseline: undefined,
                             }),
                           }))
                         }
@@ -753,12 +857,13 @@ export function WeeklyHypertrophyPlanEditor({
                           .filter(
                             (candidate) =>
                               candidate.id === row.exerciseId ||
-                              isExerciseEligibleForIntent({
-                                exercise: candidate,
-                                intent: row.intent,
-                                equipmentProfile: draft.settings.equipmentProfile,
-                                limitationKeys: initialData.limitationKeys,
-                              }),
+                              (Boolean(candidate.measurement) &&
+                                isExerciseEligibleForIntent({
+                                  exercise: candidate,
+                                  intent: row.intent,
+                                  equipmentProfile: draft.settings.equipmentProfile,
+                                  limitationKeys: initialData.limitationKeys,
+                                })),
                           )
                           .map((candidate) => (
                             <option key={candidate.id} value={candidate.id}>{candidate.name}</option>
@@ -766,6 +871,7 @@ export function WeeklyHypertrophyPlanEditor({
                       </select>
                     </label>
                     <IntentFields
+                      exercise={exercise}
                       intent={row.intent}
                       onChange={(intent) =>
                         updateSession((current) => ({
@@ -777,12 +883,12 @@ export function WeeklyHypertrophyPlanEditor({
                         }))
                       }
                     />
-                  </div>
+                    </div>
 
-                  <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                    <div className="mt-4 grid gap-3 xl:grid-cols-2">
                     {row.prescriptions.map((prescription, prescriptionIndex) => (
                       <PrescriptionFields
-                        key={`${row.placementId}-${prescription.week}-${draft.weeks[prescriptionIndex]!.phase}`}
+                        key={`${row.placementId}-${prescriptionResetRevision[row.placementId] ?? 0}-${prescription.week}-${draft.weeks[prescriptionIndex]!.phase}`}
                         fieldKey={`${row.placementId}-${prescription.week}-${draft.weeks[prescriptionIndex]!.phase}`}
                         phase={draft.weeks[prescriptionIndex]!.phase}
                         prescription={prescription}
@@ -809,23 +915,86 @@ export function WeeklyHypertrophyPlanEditor({
                         }
                       />
                     ))}
-                  </div>
+                    </div>
 
-                  <Button
-                    variant="ghost"
-                    size="touch"
-                    className="mt-3 text-rose-700"
-                    onClick={() =>
-                      updateSession((current) => ({
-                        ...current,
-                        exercises: current.exercises.filter(
-                          (candidate) => candidate.placementId !== row.placementId,
-                        ),
-                      }))
-                    }
-                  >
-                    Remove exercise
-                  </Button>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                    {hasBaseline ? (
+                      <Button
+                        variant="secondary"
+                        size="touch"
+                        disabled={!customized}
+                        onClick={() => {
+                          if (
+                            !row.recommendationBaseline ||
+                            !window.confirm(
+                              `Reset “${exercise?.name ?? "this exercise"}” to its saved recommendation? Customized intent and weekly values will be replaced.`,
+                            )
+                          ) {
+                            return;
+                          }
+                          const baseline = row.recommendationBaseline;
+                          updateSession((current) => ({
+                            ...current,
+                            exercises: replaceAt(current.exercises, exerciseIndex, {
+                              ...current.exercises[exerciseIndex]!,
+                              intent: structuredClone(baseline.intent),
+                              prescriptions: structuredClone(baseline.prescriptions),
+                            }),
+                          }));
+                          remountPrescriptionFields(row.placementId);
+                        }}
+                      >
+                        Reset to recommended
+                      </Button>
+                    ) : exercise ? (
+                      <Button
+                        variant="secondary"
+                        size="touch"
+                        onClick={() => {
+                          if (
+                            !window.confirm(
+                              `Apply a new recommendation to “${exercise.name}”? Current weekly values will be replaced.`,
+                            )
+                          ) {
+                            return;
+                          }
+                          const recommendation =
+                            materializeHypertrophyExerciseRecommendation({
+                              exercise,
+                              weeks: draft.weeks,
+                              intent: row.intent,
+                            });
+                          updateSession((current) => ({
+                            ...current,
+                            exercises: replaceAt(current.exercises, exerciseIndex, {
+                              ...current.exercises[exerciseIndex]!,
+                              ...recommendation,
+                            }),
+                          }));
+                          remountPrescriptionFields(row.placementId);
+                        }}
+                      >
+                        Apply recommendation
+                      </Button>
+                    ) : null}
+
+                      <Button
+                        variant="ghost"
+                        size="touch"
+                        className="text-rose-700"
+                        onClick={() =>
+                          updateSession((current) => ({
+                            ...current,
+                            exercises: current.exercises.filter(
+                              (candidate) => candidate.placementId !== row.placementId,
+                            ),
+                          }))
+                        }
+                      >
+                        Remove exercise
+                      </Button>
+                    </div>
+                  </details>
                 </article>
               );
             })}
@@ -834,11 +1003,7 @@ export function WeeklyHypertrophyPlanEditor({
           {showAdd ? (
             <section className="mt-4 rounded-xl border border-blue-200 bg-blue-50/40 p-4">
               <h3 className="font-semibold text-slate-900">Add exercise placement</h3>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <IntentFields intent={newIntent} onChange={(intent) => {
-                  setNewIntent(intent);
-                  setNewExerciseId("");
-                }} />
+              <div className="mt-3">
                 <label className="text-sm font-medium text-slate-700">
                   Exercise
                   <select
@@ -854,6 +1019,15 @@ export function WeeklyHypertrophyPlanEditor({
                     ))}
                   </select>
                 </label>
+                {newRecommendation ? (
+                  <p className="mt-3 rounded-lg border border-blue-200 bg-white p-3 text-sm text-slate-700" aria-live="polite">
+                    {compactPrescriptionSummary({
+                      intent: newRecommendation.intent,
+                      prescriptions: newRecommendation.prescriptions,
+                      weeks: draft.weeks,
+                    })}
+                  </p>
+                ) : null}
               </div>
               <div className="mt-3 flex gap-2">
                 <Button size="touch" disabled={!newExerciseId} onClick={addExercise}>Add exercise</Button>
@@ -967,72 +1141,47 @@ export function WeeklyHypertrophyPlanEditor({
 }
 
 function IntentFields({
+  exercise,
   intent,
   onChange,
 }: {
+  exercise: HypertrophyAuthoringExercise | undefined;
   intent: AcceptedExerciseIntentV2;
   onChange: (intent: AcceptedExerciseIntentV2) => void;
 }) {
+  if (!exercise) {
+    return (
+      <div className="text-sm text-slate-600">
+        Intent: {ROLE_LABEL[intent.userRole]}
+      </div>
+    );
+  }
+  const roles: DisplayRole[] = exercise.isCompound
+    ? ["PRIMARY", "SECONDARY", "SUPPORTING"]
+    : ["SUPPORTING"];
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      <label className="text-sm font-medium text-slate-700">
-        Role
-        <select
-          value={intent.userRole}
-          onChange={(event) =>
-            onChange(defaultIntent(event.target.value as HypertrophyUserRole))
-          }
-          className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3"
-        >
-          {Object.entries(ROLE_LABEL).map(([value, label]) => (
-            <option key={value} value={value}>{label}</option>
-          ))}
-        </select>
-      </label>
-      {intent.target.kind === "movement_pattern" ? (
-        <label className="text-sm font-medium text-slate-700">
-          Target
-          <select
-            value={intent.target.movementPattern}
-            onChange={(event) =>
-              onChange({
-                ...intent,
-                target: {
-                  kind: "movement_pattern",
-                  movementPattern: event.target.value as (typeof CANONICAL_MOVEMENT_PATTERN_VALUES)[number],
-                },
-              })
-            }
-            className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3"
-          >
-            {CANONICAL_MOVEMENT_PATTERN_VALUES.map((value) => (
-              <option key={value} value={value}>{value.replaceAll("_", " ")}</option>
-            ))}
-          </select>
-        </label>
-      ) : (
-        <label className="text-sm font-medium text-slate-700">
-          Target
-          <select
-            value={intent.target.muscleId}
-            onChange={(event) =>
-              onChange({
-                ...intent,
-                target: {
-                  kind: "muscle",
-                  muscleId: event.target.value as CanonicalMuscleId,
-                },
-              })
-            }
-            className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3"
-          >
-            {CANONICAL_MUSCLE_IDS.map((value) => (
-              <option key={value} value={value}>{MUSCLE_POLICY_BY_ID[value].displayName}</option>
-            ))}
-          </select>
-        </label>
-      )}
-    </div>
+    <label className="text-sm font-medium text-slate-700">
+      Intent
+      <select
+        value={displayRole(intent)}
+        onChange={(event) =>
+          onChange(
+            intentForDisplayRole(exercise, event.target.value as DisplayRole),
+          )
+        }
+        className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3"
+      >
+        {roles.map((role) => (
+          <option key={role} value={role}>
+            {role === "PRIMARY"
+              ? "Primary"
+              : role === "SECONDARY"
+                ? "Secondary"
+                : "Supporting"}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

@@ -12,6 +12,7 @@ import {
 
 const REVIEWED_MEASUREMENT_MANIFEST = [
   ["Barbell Back Squat", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Leg Press", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
   ["Barbell Romanian Deadlift", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
   ["Goblet Squat", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
   ["Bulgarian Split Squat", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "PER_SIDE"],
@@ -33,6 +34,7 @@ const REVIEWED_MEASUREMENT_MANIFEST = [
   ["Hanging Knee Raise", "REPS_BODYWEIGHT", null, "TOTAL"],
   ["Pull-Up", "REPS_BODYWEIGHT", null, "TOTAL"],
   ["Dumbbell Overhead Press", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Dumbbell Lateral Raise", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
   ["Seated Cable Row", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
   ["One-Arm Dumbbell Row", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "PER_SIDE"],
   ["Alternating Dumbbell Curl", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "PER_SIDE"],
@@ -158,9 +160,9 @@ describe("exercise measurement semantics", () => {
     ).toBe(label);
   });
 
-  it("classifies exactly the reviewed 47-identity manifest", () => {
-    expect(REVIEWED_MEASUREMENT_MANIFEST).toHaveLength(47);
-    expect(new Set(REVIEWED_MEASUREMENT_MANIFEST.map(([name]) => name)).size).toBe(47);
+  it("classifies exactly the reviewed 49-identity manifest", () => {
+    expect(REVIEWED_MEASUREMENT_MANIFEST).toHaveLength(49);
+    expect(new Set(REVIEWED_MEASUREMENT_MANIFEST.map(([name]) => name)).size).toBe(49);
     expect(new Set(catalog.exercises.map((exercise) => exercise.name)).size).toBe(
       catalog.exercises.length,
     );
@@ -180,7 +182,7 @@ describe("exercise measurement semantics", () => {
       left.localeCompare(right),
     );
 
-    expect(classified).toHaveLength(47);
+    expect(classified).toHaveLength(49);
     expect(actual).toEqual(expected);
   });
 
@@ -192,7 +194,6 @@ describe("exercise measurement semantics", () => {
       "Walking Lunge",
       "Standing Calf Raise",
       "Seated Calf Raise",
-      "Leg Press",
       "Hack Squat",
       "T-Bar Row",
     ];
@@ -231,6 +232,42 @@ describe("exercise measurement semantics", () => {
       { exerciseName: "Barbell Romanian Deadlift", alias: "Romanian Deadlift (Barbell)" },
       { exerciseName: "Dumbbell Romanian Deadlift", alias: "DB Romanian Deadlift" },
     ]);
+  });
+
+  it("keeps the selected four-day authoring fixture measurement-eligible", () => {
+    const selectedIdentities = [
+      "Barbell Bench Press",
+      "Pull-Up",
+      "Machine-Assisted Pull-Up",
+      "Incline Dumbbell Bench Press",
+      "Chest-Supported Dumbbell Row",
+      "Dumbbell Lateral Raise",
+      "EZ-Bar Curl",
+      "Cable Triceps Pushdown",
+      "Barbell Back Squat",
+      "Leg Press",
+      "Barbell Romanian Deadlift",
+      "Lying Leg Curl",
+      "Hip Abduction Machine",
+      "Cable Crunch",
+      "Lat Pulldown",
+      "Dumbbell Overhead Press",
+      "Reverse Pec Deck",
+      "Dumbbell Bench Press",
+      "Cable Curl",
+      "Overhead Cable Triceps Extension",
+      "Goblet Squat",
+      "Bulgarian Split Squat",
+    ];
+    const byName = new Map(
+      catalog.exercises.map((exercise) => [exercise.name, exercise]),
+    );
+
+    for (const name of selectedIdentities) {
+      const exercise = byName.get(name);
+      expect(exercise, name).toBeDefined();
+      expect(parseMeasurementColumns(exercise ?? {}), name).not.toBeNull();
+    }
   });
 
   it("adds the approved exact lunge and selectorized calf identities", () => {

@@ -205,6 +205,9 @@
     },
     {
       "name": "Leg Press",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "squat"
       ],
@@ -2383,6 +2386,9 @@
     },
     {
       "name": "Dumbbell Lateral Raise",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "abduction"
       ],

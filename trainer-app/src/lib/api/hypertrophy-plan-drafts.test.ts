@@ -1,9 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Prisma } from "@prisma/client";
-import type {
-  HypertrophyPlanDraftV1,
-  HypertrophyPlanDraftV2,
+import catalog from "../../../prisma/exercises_comprehensive.json";
+import { parseMeasurementColumns } from "@/lib/exercise-measurement/semantics";
+import {
+  materializeHypertrophyExerciseRecommendation,
+  type AcceptedExerciseIntentV2,
+  type HypertrophyAuthoringExercise,
+  type HypertrophyPlanDraftV1,
+  type HypertrophyPlanDraftV2,
 } from "@/lib/engine/hypertrophy-plan-authoring";
+import { getMusclePolicyByDisplayName } from "@/lib/engine/muscle-policy";
+import type { MovementPatternV2 } from "@/lib/engine/types";
 
 const originalMeasurementRollout = process.env.TRAINER_EXERCISE_MEASUREMENT_ROLLOUT;
 
@@ -86,6 +93,48 @@ import {
   makeHypertrophyPlanReady,
   saveHypertrophyPlanDraft,
 } from "./hypertrophy-plan-drafts";
+
+type CatalogRow = {
+  name: string;
+  movementPatterns: string[];
+  primaryMuscles: string[];
+  secondaryMuscles: string[];
+  equipment: string[];
+  contraindications?: Record<string, boolean> | null;
+  isCompound: boolean;
+  isMainLiftEligible: boolean;
+  timePerSetSec: number;
+  measurementProfile?: string;
+  loadConvention?: string;
+  repBasis?: string;
+};
+
+function referenceAuthoringExercise(name: string): HypertrophyAuthoringExercise {
+  const row = (catalog.exercises as CatalogRow[]).find(
+    (candidate) => candidate.name === name,
+  );
+  if (!row) throw new Error(`Missing reference-plan exercise: ${name}`);
+  const muscleIds = (names: string[]) =>
+    names.flatMap((muscleName) => {
+      const policy = getMusclePolicyByDisplayName(muscleName);
+      return policy ? [policy.id] : [];
+    });
+  return {
+    id: row.name,
+    name: row.name,
+    movementPatterns: row.movementPatterns as MovementPatternV2[],
+    primaryMuscleIds: muscleIds(row.primaryMuscles),
+    secondaryMuscleIds: muscleIds(row.secondaryMuscles),
+    equipment: row.equipment.map((item) => item.toLowerCase()),
+    contraindicationKeys: Object.entries(row.contraindications ?? {}).flatMap(
+      ([key, enabled]) => (enabled ? [key] : []),
+    ),
+    isCompound: row.isCompound,
+    isMainLiftEligible: row.isMainLiftEligible,
+    measurement: parseMeasurementColumns(row),
+    timePerSetSec: row.timePerSetSec,
+  };
+}
 
 function draft(): HypertrophyPlanDraftV1 {
   return {
@@ -680,6 +729,186 @@ describe("custom hypertrophy draft persistence", () => {
         },
       ],
     });
+  });
+
+  it("materializes the complete four-day reference plan through recommendation and preview without claiming hip-flexor coverage", () => {
+    const referencePlan = [
+      {
+        slotId: "upper-a",
+        name: "Upper A",
+        focus: "UPPER" as const,
+        exerciseNames: [
+          "Barbell Bench Press",
+          "Pull-Up",
+          "Incline Dumbbell Bench Press",
+          "Chest-Supported Dumbbell Row",
+          "Dumbbell Lateral Raise",
+          "EZ-Bar Curl",
+          "Cable Triceps Pushdown",
+        ],
+      },
+      {
+        slotId: "lower-a",
+        name: "Lower A",
+        focus: "LOWER" as const,
+        exerciseNames: [
+          "Barbell Back Squat",
+          "Leg Press",
+          "Barbell Romanian Deadlift",
+          "Lying Leg Curl",
+          "Hip Abduction Machine",
+          "Cable Crunch",
+        ],
+      },
+      {
+        slotId: "upper-b",
+        name: "Upper B",
+        focus: "UPPER" as const,
+        exerciseNames: [
+          "Chest-Supported Dumbbell Row",
+          "Lat Pulldown",
+          "Dumbbell Overhead Press",
+          "Reverse Pec Deck",
+          "Dumbbell Bench Press",
+          "Cable Curl",
+          "Overhead Cable Triceps Extension",
+        ],
+      },
+      {
+        slotId: "lower-b",
+        name: "Lower B",
+        focus: "LOWER" as const,
+        exerciseNames: [
+          "Dumbbell Romanian Deadlift",
+          "Goblet Squat",
+          "Bulgarian Split Squat",
+          "Seated Leg Curl",
+          "Machine Crunch",
+        ],
+      },
+    ];
+    const weeks = [
+      { week: 1, phase: "ACCUMULATION" as const },
+      { week: 2, phase: "ACCUMULATION" as const },
+      { week: 3, phase: "ACCUMULATION" as const },
+      { week: 4, phase: "ACCUMULATION" as const },
+      { week: 5, phase: "DELOAD" as const },
+    ];
+    const expectedAccumulationRir = [
+      { kind: "TARGET_RANGE", min: 3, max: 4 },
+      { kind: "TARGET_RANGE", min: 3, max: 3 },
+      { kind: "TARGET_RANGE", min: 2, max: 3 },
+      { kind: "TARGET_RANGE", min: 1, max: 2 },
+    ];
+    const deloadOmissions = new Set([
+      "Hip Abduction Machine",
+      "Cable Crunch",
+      "Machine Crunch",
+    ]);
+    const resolvedExercises = new Map<string, HypertrophyAuthoringExercise>();
+
+    const candidate: HypertrophyPlanDraftV2 = {
+      version: 2,
+      settings: {
+        equipmentProfile: "FULL_GYM",
+        sessionDurationMinutes: 60,
+      },
+      weeks,
+      sessions: referencePlan.map((session) => {
+        const existingIntents: AcceptedExerciseIntentV2[] = [];
+        return {
+          slotId: session.slotId,
+          name: session.name,
+          focus: session.focus,
+          exercises: session.exerciseNames.map((exerciseName, index) => {
+            const exercise = referenceAuthoringExercise(exerciseName);
+            const expectedRole = exercise.isCompound
+              ? existingIntents.some((intent) => intent.userRole === "PRIMARY_LIFT")
+                ? "SECONDARY_LIFT"
+                : "PRIMARY_LIFT"
+              : "MUSCLE_ISOLATION";
+            const recommendation = materializeHypertrophyExerciseRecommendation({
+              exercise,
+              weeks,
+              existingIntents,
+            });
+            existingIntents.push(recommendation.intent);
+            resolvedExercises.set(exercise.id, exercise);
+
+            expect(recommendation.intent.userRole, exerciseName).toBe(expectedRole);
+            expect(recommendation.prescriptions, exerciseName).toHaveLength(5);
+            const accumulation = recommendation.prescriptions.slice(0, 4);
+            expect(
+              accumulation.map((entry) => entry.status),
+              exerciseName,
+            ).toEqual(["PRESCRIBE", "PRESCRIBE", "PRESCRIBE", "PRESCRIBE"]);
+            expect(
+              accumulation.map((entry) =>
+                entry.status === "PRESCRIBE" ? entry.setCount : null,
+              ),
+              exerciseName,
+            ).toEqual(Array(4).fill(
+              accumulation[0]?.status === "PRESCRIBE"
+                ? accumulation[0].setCount
+                : null,
+            ));
+            expect(
+              accumulation.map((entry) =>
+                entry.status === "PRESCRIBE" ? entry.rir : null,
+              ),
+              exerciseName,
+            ).toEqual(expectedAccumulationRir);
+            expect(recommendation.prescriptions[4], exerciseName).toEqual(
+              deloadOmissions.has(exerciseName)
+                ? { week: 5, status: "OMIT" }
+                : expect.objectContaining({
+                    week: 5,
+                    status: "PRESCRIBE",
+                    rir: { kind: "TARGET_RANGE", min: 4, max: 5 },
+                  }),
+            );
+
+            return {
+              placementId: `${session.slotId}-${index + 1}`,
+              exerciseId: exercise.id,
+              ...recommendation,
+            };
+          }),
+        };
+      }),
+    };
+    const measurementByExerciseId = new Map(
+      [...resolvedExercises.values()].map((exercise) => {
+        if (!exercise.measurement) {
+          throw new Error(`Missing reference-plan measurement: ${exercise.name}`);
+        }
+        return [exercise.id, exercise.measurement] as const;
+      }),
+    );
+    const preview = deriveHypertrophyPlanV4Preview({
+      draft: candidate,
+      knownExerciseIds: new Set(resolvedExercises.keys()),
+      measurementByExerciseId,
+    });
+
+    expect(preview.status).toBe("ELIGIBLE");
+    if (preview.status !== "ELIGIBLE") throw new Error("Reference plan is ineligible");
+    expect(preview.normalizedPlan.slots.flatMap((slot) => slot.exercises)).toHaveLength(
+      25,
+    );
+    expect(JSON.stringify(preview.normalizedPlan)).not.toContain(
+      "recommendationBaseline",
+    );
+    expect(JSON.stringify(preview.executablePlan)).not.toContain(
+      "recommendationBaseline",
+    );
+    expect(
+      (catalog.exercises as CatalogRow[]).filter((exercise) =>
+        [...exercise.primaryMuscles, ...exercise.secondaryMuscles].some(
+          (muscle) => muscle.toLowerCase().includes("hip flexor"),
+        ),
+      ),
+    ).toEqual([]);
   });
 
   it("rejects V4 finalization before accepted-plan or materialization writes", async () => {

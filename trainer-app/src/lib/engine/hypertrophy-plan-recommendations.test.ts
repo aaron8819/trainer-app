@@ -214,6 +214,81 @@ describe("custom-plan authoring recommendations", () => {
     },
   );
 
+  it("uses rear-delt semantic precedence for Face Pull regardless of relation order", () => {
+    const facePull = authoringExercise("Face Pull");
+    const reversed = {
+      ...facePull,
+      name: "Display name is not recommendation input",
+      primaryMuscleIds: [...facePull.primaryMuscleIds].reverse(),
+      secondaryMuscleIds: [...facePull.secondaryMuscleIds].reverse(),
+    };
+    const forwardRecommendation = materializeHypertrophyExerciseRecommendation({
+      exercise: facePull,
+      weeks,
+    });
+    const reversedRecommendation = materializeHypertrophyExerciseRecommendation({
+      exercise: reversed,
+      weeks,
+    });
+
+    expect(facePull.primaryMuscleIds).toEqual(["rear_delts", "upper_back"]);
+    expect(forwardRecommendation.intent).toEqual({
+      userRole: "MUSCLE_ISOLATION",
+      target: { kind: "muscle", muscleId: "rear_delts" },
+    });
+    expect(reversedRecommendation).toEqual(forwardRecommendation);
+    expect(forwardRecommendation.prescriptions[0]).toMatchObject({
+      setCount: 3,
+      reps: { kind: "RANGE", min: 12, max: 20 },
+    });
+  });
+
+  it.each([
+    ["Overhead Cable Triceps Extension", "triceps", 2, 10, 15, false],
+    ["Lying Leg Curl", "hamstrings", 2, 10, 15, false],
+    ["Oblique Crunch Machine", "abs", 3, 8, 15, true],
+    ["Hip Abduction Machine", "abductors", 2, 12, 20, true],
+    ["Dumbbell Lateral Raise", "side_delts", 3, 10, 15, false],
+  ] as const)(
+    "%s remains deterministic under reversed relation order",
+    (name, targetMuscleId, sets, minReps, maxReps, deloadOmitted) => {
+      const exercise = authoringExercise(name);
+      const reversed = {
+        ...exercise,
+        name: "Display name is not recommendation input",
+        primaryMuscleIds: [...exercise.primaryMuscleIds].reverse(),
+        secondaryMuscleIds: [...exercise.secondaryMuscleIds].reverse(),
+      };
+      const forwardRecommendation = materializeHypertrophyExerciseRecommendation({
+        exercise,
+        weeks,
+      });
+      const reversedRecommendation = materializeHypertrophyExerciseRecommendation({
+        exercise: reversed,
+        weeks,
+      });
+
+      expect(reversedRecommendation).toEqual(forwardRecommendation);
+      expect(forwardRecommendation.intent.target).toEqual({
+        kind: "muscle",
+        muscleId: targetMuscleId,
+      });
+      expect(forwardRecommendation.prescriptions[0]).toMatchObject({
+        setCount: sets,
+        reps: { kind: "RANGE", min: minReps, max: maxReps },
+      });
+      expect(forwardRecommendation.prescriptions[4]).toEqual(
+        deloadOmitted
+          ? { week: 5, status: "OMIT" }
+          : expect.objectContaining({
+              week: 5,
+              status: "PRESCRIBE",
+              rir: { kind: "TARGET_RANGE", min: 4, max: 5 },
+            }),
+      );
+    },
+  );
+
   it("treats baseline-free rows as manual and detects only changes from a frozen baseline", () => {
     const exercise = authoringExercise("Barbell Bench Press");
     const recommendation = materializeHypertrophyExerciseRecommendation({

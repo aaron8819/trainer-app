@@ -1494,6 +1494,40 @@ const ACCUMULATION_RIR = [
   { min: 1, max: 2 },
 ] as const;
 
+// Keep recommendation-specific targets aligned with the specialized dose branches,
+// then fall back to the repository's canonical muscle-policy order. Primary-muscle
+// facts remain authoritative over secondary-muscle facts.
+const RECOMMENDATION_TARGET_MUSCLE_PRECEDENCE: readonly CanonicalMuscleId[] = [
+  "abs",
+  "core",
+  "abductors",
+  "adductors",
+  "rear_delts",
+  "triceps",
+  "hamstrings",
+  ...CANONICAL_MUSCLE_IDS.filter(
+    (muscleId) =>
+      ![
+        "abs",
+        "core",
+        "abductors",
+        "adductors",
+        "rear_delts",
+        "triceps",
+        "hamstrings",
+      ].includes(muscleId),
+  ),
+];
+
+function recommendationTargetMuscle(
+  muscleIds: readonly CanonicalMuscleId[],
+): CanonicalMuscleId | undefined {
+  const available = new Set(muscleIds);
+  return RECOMMENDATION_TARGET_MUSCLE_PRECEDENCE.find((muscleId) =>
+    available.has(muscleId),
+  );
+}
+
 function firstExerciseTarget(
   exercise: HypertrophyAuthoringExercise,
 ): AcceptedExerciseIntentV2["target"] {
@@ -1502,7 +1536,8 @@ function firstExerciseTarget(
     return { kind: "movement_pattern", movementPattern };
   }
   const muscleId =
-    exercise.primaryMuscleIds[0] ?? exercise.secondaryMuscleIds[0];
+    recommendationTargetMuscle(exercise.primaryMuscleIds) ??
+    recommendationTargetMuscle(exercise.secondaryMuscleIds);
   if (muscleId) return { kind: "muscle", muscleId };
   if (movementPattern) return { kind: "movement_pattern", movementPattern };
   throw new Error(`CUSTOM_PLAN_RECOMMENDATION_TARGET_MISSING:${exercise.id}`);

@@ -105,10 +105,13 @@ describe("test-suite environment manifest", () => {
       manifest: currentManifest,
       discoveredTestFiles,
     });
-    expect(discoveredTestFiles).toHaveLength(352);
-    expect(selection.credentialFree).toHaveLength(313);
+    expect(discoveredTestFiles).toHaveLength(353);
+    expect(selection.credentialFree).toHaveLength(314);
     expect(selection.credentialFree).toContain(
       "src/lib/engine/hypertrophy-plan-recommendations.test.ts"
+    );
+    expect(selection.credentialFree).toContain(
+      "src/lib/exercise-library/catalog-invariants.test.ts"
     );
     expect(selection.importOnlyPlaceholder).toHaveLength(34);
     expect(selection.databaseRequired).toHaveLength(5);

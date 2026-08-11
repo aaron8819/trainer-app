@@ -18,30 +18,12 @@ import {
   measurementColumns,
   parseMeasurementColumns,
 } from "@/lib/exercise-measurement/semantics";
+import {
+  assertCatalogInvariants,
+  type CatalogExerciseDefinition as CatalogExerciseSeed,
+} from "@/lib/exercise-library/catalog-invariants";
 
-export type CatalogExerciseSeed = {
-  name: string;
-  movementPatterns: string[];
-  splitTag: string;
-  isCompound: boolean;
-  isMainLiftEligible: boolean;
-  jointStress: string;
-  equipment: string[];
-  fatigueCost: number;
-  sfrScore: number;
-  lengthPositionScore: number;
-  stimulusBias: string[];
-  contraindications: Record<string, unknown> | null;
-  primaryMuscles: string[];
-  secondaryMuscles: string[];
-  difficulty?: string;
-  unilateral?: boolean;
-  repRangeRecommendation?: { min: number; max: number };
-  timePerSetSec?: number;
-  measurementProfile?: string | null;
-  loadConvention?: string | null;
-  repBasis?: string | null;
-};
+export type { CatalogExerciseDefinition as CatalogExerciseSeed } from "@/lib/exercise-library/catalog-invariants";
 
 const catalogExercises = exercisesJson.exercises as CatalogExerciseSeed[];
 
@@ -638,6 +620,7 @@ export function printCatalogSyncPlan(plan: CatalogSyncPlan) {
 }
 
 export async function runExerciseLibrarySync(options: { apply: boolean }) {
+  assertCatalogInvariants({ exercises: catalogExercises, aliases: exerciseAliases });
   const { prisma, pool } = createPrisma();
   try {
     const snapshot = await loadSnapshot(prisma as unknown as CatalogOnlyDb);

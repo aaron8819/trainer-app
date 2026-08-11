@@ -1,19 +1,22 @@
 import { describe, expect, it } from "vitest";
 import catalog from "../../../prisma/exercises_comprehensive.json";
 import { exerciseAliases } from "../../../prisma/exercise-aliases";
+import { MEASUREMENT_SUPPORT_MANIFEST } from "../exercise-measurement/catalog-support-manifest";
 import {
   assertCatalogInvariants,
   normalizeCatalogIdentityKey,
   validateCatalogInvariants,
+  validateMeasurementSupportManifest,
   type CatalogAliasDefinition,
   type CatalogExerciseDefinition,
+  type MeasurementSupportManifest,
 } from "./catalog-invariants";
 
 function exercise(
   overrides: Partial<CatalogExerciseDefinition> = {},
 ): CatalogExerciseDefinition {
   return {
-    name: "Machine Hip Thrust",
+    name: "Pec Deck Machine",
     movementPatterns: ["hinge"],
     splitTag: "legs",
     isCompound: true,
@@ -47,20 +50,29 @@ function errorsFor(input: {
   });
 }
 
+function supportManifestErrors(
+  overrides: Partial<MeasurementSupportManifest>,
+): string[] {
+  return validateMeasurementSupportManifest({
+    manifest: { ...MEASUREMENT_SUPPORT_MANIFEST, ...overrides },
+    canonicalNames: catalog.exercises.map(({ name }) => name),
+  });
+}
+
 describe("exercise catalog invariants", () => {
-  it("accepts a structurally valid focused fixture", () => {
-    expect(() =>
-      assertCatalogInvariants({
-        exercises: [exercise()],
-        aliases: [{ exerciseName: "Machine Hip Thrust", alias: "Glute Drive" }],
+  it("accepts the production measurement-support manifest", () => {
+    expect(
+      validateMeasurementSupportManifest({
+        manifest: MEASUREMENT_SUPPORT_MANIFEST,
+        canonicalNames: catalog.exercises.map(({ name }) => name),
       }),
-    ).not.toThrow();
+    ).toEqual([]);
   });
 
   it.each([
     {
       label: "normalized duplicate canonical names",
-      exercises: [exercise(), exercise({ name: " machine   hip-thrust " })],
+      exercises: [exercise(), exercise({ name: " pec deck-machine " })],
       aliases: [],
       diagnostic: "CATALOG_CANONICAL_NAME_DUPLICATE",
     },
@@ -68,8 +80,8 @@ describe("exercise catalog invariants", () => {
       label: "normalized duplicate aliases",
       exercises: [exercise()],
       aliases: [
-        { exerciseName: "Machine Hip Thrust", alias: "Glute Drive" },
-        { exerciseName: "Machine Hip Thrust", alias: "glute-drive" },
+        { exerciseName: "Pec Deck Machine", alias: "Pec Fly" },
+        { exerciseName: "Pec Deck Machine", alias: "pec-fly" },
       ],
       diagnostic: "CATALOG_ALIAS_DUPLICATE",
     },
@@ -82,20 +94,20 @@ describe("exercise catalog invariants", () => {
     {
       label: "aliases colliding with another canonical identity",
       exercises: [exercise(), exercise({ name: "Barbell Bench Press" })],
-      aliases: [{ exerciseName: "Machine Hip Thrust", alias: "barbell-bench press" }],
+      aliases: [{ exerciseName: "Pec Deck Machine", alias: "barbell-bench press" }],
       diagnostic: "CATALOG_ALIAS_CANONICAL_COLLISION",
     },
     {
       label: "empty primary muscles",
       exercises: [exercise({ primaryMuscles: [] })],
       aliases: [],
-      diagnostic: "CATALOG_PRIMARY_MUSCLES_EMPTY:Machine Hip Thrust",
+      diagnostic: "CATALOG_PRIMARY_MUSCLES_EMPTY:Pec Deck Machine",
     },
     {
       label: "overlapping muscle roles",
       exercises: [exercise({ secondaryMuscles: ["Glutes"] })],
       aliases: [],
-      diagnostic: "CATALOG_MUSCLE_ROLE_OVERLAP:Machine Hip Thrust:Glutes",
+      diagnostic: "CATALOG_MUSCLE_ROLE_OVERLAP:Pec Deck Machine:Glutes",
     },
     {
       label: "unknown movement patterns",
@@ -148,29 +160,119 @@ describe("exercise catalog invariants", () => {
         }),
       ],
       aliases: [],
-      diagnostic: "CATALOG_MEASUREMENT_INVALID:Machine Hip Thrust",
+      diagnostic: "CATALOG_MEASUREMENT_INVALID:Pec Deck Machine",
     },
     {
       label: "unknown load conventions",
       exercises: [exercise({ loadConvention: "PLATE_COUNT" })],
       aliases: [],
-      diagnostic: "CATALOG_MEASUREMENT_INVALID:Machine Hip Thrust",
+      diagnostic: "CATALOG_MEASUREMENT_INVALID:Pec Deck Machine",
     },
     {
       label: "unknown rep aggregation values",
       exercises: [exercise({ repBasis: "PER_IMPLEMENT" })],
       aliases: [],
-      diagnostic: "CATALOG_MEASUREMENT_INVALID:Machine Hip Thrust",
+      diagnostic: "CATALOG_MEASUREMENT_INVALID:Pec Deck Machine",
+    },
+    {
+      label: "missing tuples for complete-supported identities",
+      exercises: [
+        exercise({
+          loadConvention: undefined,
+        }),
+      ],
+      aliases: [],
+      diagnostic: "CATALOG_MEASUREMENT_COMPLETE_TUPLE_MISMATCH:Pec Deck Machine",
+    },
+    {
+      label: "unreviewed null measurement tuples",
+      exercises: [
+        exercise({
+          name: "Unreviewed Exercise",
+          measurementProfile: undefined,
+          loadConvention: undefined,
+          repBasis: undefined,
+        }),
+      ],
+      aliases: [],
+      diagnostic: "CATALOG_MEASUREMENT_PARTITION_GAP:Unreviewed Exercise",
+    },
+    {
+      label: "populated tuples for ambiguous execution identities",
+      exercises: [exercise({ name: "Romanian Deadlift" })],
+      aliases: [],
+      diagnostic:
+        "CATALOG_MEASUREMENT_PARTITION_CONFLICT:Romanian Deadlift:AMBIGUOUS_EXECUTION_IDENTITY",
+    },
+    {
+      label: "populated tuples for unsupported measurement semantics",
+      exercises: [exercise({ name: "Plank" })],
+      aliases: [],
+      diagnostic:
+        "CATALOG_MEASUREMENT_PARTITION_CONFLICT:Plank:UNSUPPORTED_MEASUREMENT_SEMANTICS",
+    },
+    {
+      label: "generic machine-display tuples for unsupported plate-loaded identities",
+      exercises: [exercise({ name: "Chest-Supported T-Bar Row" })],
+      aliases: [],
+      diagnostic:
+        "CATALOG_MEASUREMENT_PARTITION_CONFLICT:Chest-Supported T-Bar Row:UNSUPPORTED_MEASUREMENT_SEMANTICS",
+    },
+    {
+      label: "generic machine-display tuples for ambiguous machine identities",
+      exercises: [exercise({ name: "Machine Hip Thrust" })],
+      aliases: [],
+      diagnostic:
+        "CATALOG_MEASUREMENT_PARTITION_CONFLICT:Machine Hip Thrust:AMBIGUOUS_EXECUTION_IDENTITY",
     },
     {
       label: "main-lift-eligible isolation exercises",
       exercises: [exercise({ isCompound: false, isMainLiftEligible: true })],
       aliases: [],
-      diagnostic: "CATALOG_MAIN_LIFT_REQUIRES_COMPOUND:Machine Hip Thrust",
+      diagnostic: "CATALOG_MAIN_LIFT_REQUIRES_COMPOUND:Pec Deck Machine",
     },
   ])("rejects $label with an identity-specific diagnostic", ({ exercises, aliases, diagnostic }) => {
     expect(errorsFor({ exercises, aliases })).toEqual(
       expect.arrayContaining([expect.stringContaining(diagnostic)]),
+    );
+  });
+
+  it("rejects duplicate, unknown, and overlapping manifest identities", () => {
+    expect(
+      supportManifestErrors({
+        AMBIGUOUS_EXECUTION_IDENTITY: [
+          ...MEASUREMENT_SUPPORT_MANIFEST.AMBIGUOUS_EXECUTION_IDENTITY,
+          "Romanian Deadlift",
+        ],
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        "CATALOG_MEASUREMENT_MANIFEST_DUPLICATE:AMBIGUOUS_EXECUTION_IDENTITY:Romanian Deadlift",
+      ]),
+    );
+
+    expect(
+      supportManifestErrors({
+        UNSUPPORTED_MEASUREMENT_SEMANTICS: [
+          ...MEASUREMENT_SUPPORT_MANIFEST.UNSUPPORTED_MEASUREMENT_SEMANTICS,
+          "Unknown Exercise",
+        ],
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        "CATALOG_MEASUREMENT_MANIFEST_UNKNOWN:UNSUPPORTED_MEASUREMENT_SEMANTICS:Unknown Exercise",
+      ]),
+    );
+
+    expect(
+      supportManifestErrors({
+        AMBIGUOUS_EXECUTION_IDENTITY: [
+          ...MEASUREMENT_SUPPORT_MANIFEST.AMBIGUOUS_EXECUTION_IDENTITY,
+          "Plank",
+        ],
+      }),
+    ).toEqual(
+      expect.arrayContaining(["CATALOG_MEASUREMENT_PARTITION_OVERLAP:Plank"]),
     );
   });
 

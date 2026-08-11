@@ -33,7 +33,7 @@ export const exerciseAliases: ExerciseAliasSeed[] = [
   { exerciseName: "Face Pull", alias: "Face Pulls (Rope)" },
   { exerciseName: "Cable Triceps Pushdown", alias: "Tricep Rope Pushdown" },
   { exerciseName: "Barbell Bench Press", alias: "Flat Barbell Bench Press" },
-  { exerciseName: "Barbell Bench Press", alias: "Decline Barbell Bench" },
+  { exerciseName: "Decline Barbell Bench Press", alias: "Decline Barbell Bench" },
   { exerciseName: "Dumbbell Bench Press", alias: "Flat DB Press" },
   { exerciseName: "Bulgarian Split Squat", alias: "Front-Foot Elevated Split Squat" },
   { exerciseName: "Machine Hip Thrust", alias: "Machine Hip Thrust / Glute Drive" },

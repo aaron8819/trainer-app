@@ -158,6 +158,74 @@ describe("custom-plan authoring recommendations", () => {
     ).not.toThrow();
   });
 
+  it("skips an ineligible first compound and promotes the next eligible compound", () => {
+    const ineligible = authoringExercise("Cable Pull-Through");
+    const eligible = authoringExercise("Barbell Bench Press");
+    const first = materializeHypertrophyExerciseRecommendation({
+      exercise: ineligible,
+      weeks,
+      existingIntents: [],
+    });
+    const second = materializeHypertrophyExerciseRecommendation({
+      exercise: eligible,
+      weeks,
+      existingIntents: [first.intent],
+    });
+
+    expect(first.intent.userRole).toBe("SECONDARY_LIFT");
+    expect(second.intent.userRole).toBe("PRIMARY_LIFT");
+  });
+
+  it("keeps an all-ineligible compound sequence valid without fabricating a primary", () => {
+    const names = [
+      "Cable Pull-Through",
+      "45-Degree Back Extension, Hamstring Bias",
+      "Farmer's Walk",
+    ];
+    const inferred: AcceptedExerciseIntentV2[] = [];
+
+    for (const name of names) {
+      inferred.push(
+        inferHypertrophyExerciseIntent({
+          exercise: authoringExercise(name),
+          existingIntents: inferred,
+        }),
+      );
+    }
+
+    expect(inferred.map((entry) => entry.userRole)).toEqual([
+      "SECONDARY_LIFT",
+      "SECONDARY_LIFT",
+      "SECONDARY_LIFT",
+    ]);
+  });
+
+  it.each([
+    "Cable Pull-Through",
+    "45-Degree Back Extension, Hamstring Bias",
+    "Farmer's Walk",
+  ])("never infers an ineligible %s as PRIMARY_LIFT", (name) => {
+    const exercise = authoringExercise(name);
+    expect(exercise.isCompound).toBe(true);
+    expect(exercise.isMainLiftEligible).toBe(false);
+    expect(
+      inferHypertrophyExerciseIntent({ exercise, existingIntents: [] }).userRole,
+    ).toBe("SECONDARY_LIFT");
+  });
+
+  it("preserves an explicit compound role instead of creating a new override policy", () => {
+    const exercise = authoringExercise("Cable Pull-Through");
+    const explicit = intent("PRIMARY_LIFT", exercise);
+    const recommendation = materializeHypertrophyExerciseRecommendation({
+      exercise,
+      weeks,
+      intent: explicit,
+    });
+
+    expect(recommendation.intent).toEqual(explicit);
+    expect(recommendation.recommendationBaseline.intent).toEqual(explicit);
+  });
+
   it.each([
     ["Barbell Bench Press", "PRIMARY_LIFT", "PRIMARY_STRENGTH_ANCHOR", 3, 5, 8, 2, false],
     ["Chest-Supported Dumbbell Row", "PRIMARY_LIFT", "PRIMARY_COMPOUND", 3, 6, 10, 2, false],

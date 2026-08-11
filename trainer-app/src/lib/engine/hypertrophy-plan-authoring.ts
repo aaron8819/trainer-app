@@ -1549,12 +1549,13 @@ export function inferHypertrophyExerciseIntent(input: {
 }): AcceptedExerciseIntentV2 {
   const target = firstExerciseTarget(input.exercise);
   if (input.exercise.isCompound && target.kind === "movement_pattern") {
-    return {
-      userRole: input.existingIntents.some(
+    const canBePrimary =
+      input.exercise.isMainLiftEligible &&
+      !input.existingIntents.some(
         (intent) => intent.userRole === "PRIMARY_LIFT",
-      )
-        ? "SECONDARY_LIFT"
-        : "PRIMARY_LIFT",
+      );
+    return {
+      userRole: canBePrimary ? "PRIMARY_LIFT" : "SECONDARY_LIFT",
       target,
     };
   }

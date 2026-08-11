@@ -36,6 +36,42 @@ const baseSnapshot: ExerciseLibrarySnapshot = {
   equipment: [{ id: "equipment-machine", name: "Machine" }],
 };
 
+function snapshotExercise(
+  name: string,
+  aliases: Array<{ alias: string; exerciseId: string }> = [],
+): ExerciseLibrarySnapshot["exercises"][number] {
+  return {
+    id: `exercise-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    name,
+    movementPatterns: ["HINGE"],
+    splitTags: ["LEGS"],
+    jointStress: "LOW",
+    isMainLiftEligible: false,
+    isCompound: false,
+    fatigueCost: 2,
+    stimulusBias: ["METABOLIC"],
+    contraindications: null,
+    timePerSetSec: 120,
+    sfrScore: 4,
+    lengthPositionScore: 4,
+    difficulty: "BEGINNER",
+    isUnilateral: false,
+    repRangeMin: 8,
+    repRangeMax: 15,
+    measurementProfile: null,
+    loadConvention: null,
+    repBasis: null,
+    aliases,
+    exerciseMuscles: [
+      { role: "PRIMARY", muscle: { id: "muscle-glutes", name: "Glutes" } },
+      { role: "SECONDARY", muscle: { id: "muscle-hamstrings", name: "Hamstrings" } },
+    ],
+    exerciseEquipment: [
+      { equipment: { id: "equipment-machine", name: "Machine", type: "MACHINE" } },
+    ],
+  };
+}
+
 function createFakeCatalogDb(snapshot: ExerciseLibrarySnapshot) {
   const calls: string[] = [];
   const exercisesByName = new Map(snapshot.exercises.map((exercise) => [exercise.name, exercise]));
@@ -124,6 +160,37 @@ describe("catalog-only exercise library sync", () => {
       plannedExerciseDeletes: [],
       plannedAliasCreates: [{ exerciseName: "Machine Hip Thrust", alias: "Glute Drive" }],
     });
+  });
+
+  it("plans only the decline alias reassignment when the flat-bench relation exists", () => {
+    const flat = { ...machineHipThrust, name: "Barbell Bench Press" };
+    const decline = { ...machineHipThrust, name: "Decline Barbell Bench Press" };
+    const flatDb = snapshotExercise("Barbell Bench Press");
+    flatDb.aliases = [
+      { alias: "Decline Barbell Bench", exerciseId: flatDb.id },
+    ];
+    const declineDb = snapshotExercise("Decline Barbell Bench Press");
+
+    const plan = buildCatalogSyncPlan(
+      [flat, decline],
+      [
+        {
+          exerciseName: "Decline Barbell Bench Press",
+          alias: "Decline Barbell Bench",
+        },
+      ],
+      { ...baseSnapshot, exercises: [flatDb, declineDb] },
+    );
+
+    expect(plan.plannedAliasUpdates).toEqual([
+      {
+        exerciseName: "Decline Barbell Bench Press",
+        alias: "Decline Barbell Bench",
+        fromExerciseName: "Barbell Bench Press",
+      },
+    ]);
+    expect(plan.plannedAliasCreates).toEqual([]);
+    expect(plan.skippedAliases).toEqual([]);
   });
 
   it("dry-run planning is read-only", () => {

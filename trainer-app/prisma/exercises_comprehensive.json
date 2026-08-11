@@ -1365,7 +1365,7 @@
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
       "movementPatterns": [
-        "calf_raise_extended"
+        "isolation"
       ],
       "splitTag": "legs",
       "isCompound": false,
@@ -1430,7 +1430,7 @@
     {
       "name": "Seated Calf Raise",
       "movementPatterns": [
-        "calf_raise_flexed"
+        "isolation"
       ],
       "splitTag": "legs",
       "isCompound": false,
@@ -1462,7 +1462,7 @@
     {
       "name": "Leg Press Calf Raise",
       "movementPatterns": [
-        "calf_raise_extended"
+        "isolation"
       ],
       "splitTag": "legs",
       "isCompound": false,

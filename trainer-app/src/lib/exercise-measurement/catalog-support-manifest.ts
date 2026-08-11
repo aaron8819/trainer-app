@@ -1,3 +1,128 @@
+import type {
+  LoadConvention,
+  MeasurementProfile,
+  RepBasis,
+} from "./semantics";
+
+export type CompleteSupportedMeasurementEntry = readonly [
+  name: string,
+  measurementProfile: MeasurementProfile,
+  loadConvention: LoadConvention | null,
+  repBasis: RepBasis,
+];
+
+export const STEP_2A_PRESERVED_MEASUREMENT_ASSIGNMENTS = [
+  ["Arnold Press", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Barbell Row", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Barbell Shrug", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Cable Crossover", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Cable Fly", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Cable Pull-Through", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Cable Pullover", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Chin-Up", "REPS_BODYWEIGHT", null, "TOTAL"],
+  ["Close-Grip Bench Press", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Close-Grip Seated Cable Row", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Concentration Curl", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "PER_SIDE"],
+  ["Conventional Deadlift", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Cross-Body Hammer Curl", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "PER_SIDE"],
+  ["Decline Barbell Bench Press", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Decline Dumbbell Bench Press", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Decline Sit-Up", "REPS_BODYWEIGHT", null, "TOTAL"],
+  ["Deficit Push-Up", "REPS_BODYWEIGHT", null, "TOTAL"],
+  ["Diamond Push-Up", "REPS_BODYWEIGHT", null, "TOTAL"],
+  ["Dumbbell Fly", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Dumbbell Pullover", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Dumbbell Shrug", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Good Morning", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Hip Adduction Machine", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Incline Dumbbell Fly", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Inverted Row", "REPS_BODYWEIGHT", null, "TOTAL"],
+  ["Low-to-High Cable Fly", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Machine Lateral Raise", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Neutral Grip Pull-Up", "REPS_BODYWEIGHT", null, "TOTAL"],
+  ["Oblique Crunch Machine", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Pec Deck Machine", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Pendlay Row", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Push-Up", "REPS_BODYWEIGHT", null, "TOTAL"],
+  ["Reverse Crunch", "REPS_BODYWEIGHT", null, "TOTAL"],
+  ["Reverse Curl", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Seated Barbell Overhead Press", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Seated Dip Machine", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Straight-Arm Pulldown", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Sumo Deadlift", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Trap Bar Deadlift", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+] as const satisfies readonly CompleteSupportedMeasurementEntry[];
+
+// Exact reviewed tuples for identities supported by the current rep/load model.
+export const COMPLETE_SUPPORTED_MEASUREMENT_IDENTITIES = [
+  ["Barbell Back Squat", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Leg Press", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Barbell Romanian Deadlift", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Goblet Squat", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Bulgarian Split Squat", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "PER_SIDE"],
+  ["Selectorized Standing Calf Raise", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Cable Crunch", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Barbell Bench Press", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Chest-Supported Dumbbell Row", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Incline Dumbbell Bench Press", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Lat Pulldown", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Cable Rear Delt Fly", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Cable Curl", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Cable Triceps Pushdown", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Front Squat", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Barbell Hip Thrust", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Dumbbell Reverse Lunge", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "PER_SIDE"],
+  ["Leg Extension", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Seated Leg Curl", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Hip Abduction Machine", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Hanging Knee Raise", "REPS_BODYWEIGHT", null, "TOTAL"],
+  ["Pull-Up", "REPS_BODYWEIGHT", null, "TOTAL"],
+  ["Dumbbell Overhead Press", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Dumbbell Lateral Raise", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Seated Cable Row", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["One-Arm Dumbbell Row", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "PER_SIDE"],
+  ["Alternating Dumbbell Curl", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "PER_SIDE"],
+  ["Hammer Curl", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Overhead Cable Triceps Extension", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Dumbbell Romanian Deadlift", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Dumbbell Bench Press", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Machine Chest Press", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Incline Barbell Bench Press", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Close-Grip Lat Pulldown", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Weighted Pull-Up", "REPS_BODYWEIGHT_PLUS_LOAD", "ADDED_EXTERNAL_LOAD", "TOTAL"],
+  ["Machine-Assisted Pull-Up", "REPS_ASSISTED", "DISPLAYED_ASSISTANCE", "TOTAL"],
+  ["Reverse Pec Deck", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Face Pull", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Dumbbell Rear Delt Fly", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Barbell Overhead Press", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Machine Shoulder Press", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["EZ-Bar Curl", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Dumbbell Curl", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Rope Triceps Pushdown", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Lying Leg Curl", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Cable Hip Abduction", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "PER_SIDE"],
+  ["Machine Crunch", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Ab Wheel Rollout", "REPS_BODYWEIGHT", null, "TOTAL"],
+  ["Hanging Leg Raise", "REPS_BODYWEIGHT", null, "TOTAL"],
+  ...STEP_2A_PRESERVED_MEASUREMENT_ASSIGNMENTS,
+] as const satisfies readonly CompleteSupportedMeasurementEntry[];
+
+export const STEP_2A_AMBIGUOUS_CORRECTIONS = [
+  "Bayesian Curl",
+  "Bicycle Crunch",
+  "Cable Front Raise",
+  "Cable Lateral Raise",
+  "Dumbbell Front Raise",
+  "Dumbbell Row",
+  "Incline Dumbbell Curl",
+  "Incline Machine Press",
+  "Machine Hip Thrust",
+  "Overhead Dumbbell Extension",
+  "Seated Machine Shrug",
+  "Torso Rotation Machine",
+  "Wood Chop",
+] as const;
+
 // Historical identities whose execution/load meaning is too broad for one frozen tuple.
 export const AMBIGUOUS_EXECUTION_IDENTITIES = [
   "45-Degree Back Extension, Hamstring Bias",
@@ -26,6 +151,17 @@ export const AMBIGUOUS_EXECUTION_IDENTITIES = [
   "T-Bar Row",
   "Walking Lunge",
   "Wrist Curl",
+  ...STEP_2A_AMBIGUOUS_CORRECTIONS,
+] as const;
+
+export const STEP_2A_UNSUPPORTED_CORRECTIONS = [
+  "Chest-Supported T-Bar Row",
+  "Iso-Lateral Decline Press",
+  "Iso-Lateral Front Lat Pulldown",
+  "Iso-Lateral High Row",
+  "Iso-Lateral Incline Press",
+  "Iso-Lateral Low Row",
+  "Reverse Hyperextension",
 ] as const;
 
 // Exact identities whose logging semantics cannot be represented by the current rep/load fields.
@@ -45,4 +181,11 @@ export const UNSUPPORTED_MEASUREMENT_IDENTITIES = [
   "Sled Pull",
   "Sled Push",
   "Suitcase Carry",
+  ...STEP_2A_UNSUPPORTED_CORRECTIONS,
 ] as const;
+
+export const MEASUREMENT_SUPPORT_MANIFEST = {
+  COMPLETE_SUPPORTED: COMPLETE_SUPPORTED_MEASUREMENT_IDENTITIES,
+  AMBIGUOUS_EXECUTION_IDENTITY: AMBIGUOUS_EXECUTION_IDENTITIES,
+  UNSUPPORTED_MEASUREMENT_SEMANTICS: UNSUPPORTED_MEASUREMENT_IDENTITIES,
+} as const;

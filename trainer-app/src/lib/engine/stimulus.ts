@@ -57,8 +57,9 @@ function buildStimulusProfile(entries: Array<[MuscleId, number]>): StimulusProfi
   return Object.fromEntries(entries) as StimulusProfile;
 }
 
-// Phase 1 seed table for initial accounting review. Anything not listed here falls back
-// through the centralized temporary mapper below.
+// Compatibility-only runtime registry pending canonical-facts consumer migration.
+// Stage 1 authoring facts intentionally do not change this production resolver;
+// anything not listed here still falls back through the temporary mapper below.
 export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> = (() => {
   const registry: Record<string, StimulusProfile> = {};
   const register = (names: string[], profile: StimulusProfile) => {

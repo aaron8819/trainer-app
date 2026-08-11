@@ -16,6 +16,11 @@ function exercise(
   overrides: Partial<CatalogExerciseDefinition> = {},
 ): CatalogExerciseDefinition {
   return {
+    catalogKey: "pec-deck-machine",
+    facts: {
+      version: 1,
+      stimulus: { disposition: "COMPLETE", profile: { chest: 1 } },
+    },
     name: "Pec Deck Machine",
     movementPatterns: ["hinge"],
     splitTag: "legs",

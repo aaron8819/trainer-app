@@ -44,6 +44,19 @@
   "exercises": [
     {
       "name": "Barbell Back Squat",
+      "catalogKey": "barbell-back-squat",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "quads": 1,
+            "glutes": 0.5,
+            "adductors": 0.25,
+            "core": 0.2
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "BARBELL_TOTAL",
       "repBasis": "TOTAL",
@@ -89,6 +102,18 @@
     },
     {
       "name": "Front Squat",
+      "catalogKey": "front-squat",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "quads": 1,
+            "glutes": 0.35,
+            "core": 0.25
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "BARBELL_TOTAL",
       "repBasis": "TOTAL",
@@ -131,6 +156,19 @@
     },
     {
       "name": "Goblet Squat",
+      "catalogKey": "goblet-squat",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "quads": 1,
+            "glutes": 0.5,
+            "adductors": 0.25,
+            "core": 0.2
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "IMPLEMENT_WEIGHT",
       "repBasis": "TOTAL",
@@ -170,6 +208,18 @@
     },
     {
       "name": "Hack Squat",
+      "catalogKey": "hack-squat",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "quads": 1,
+            "glutes": 0.4,
+            "adductors": 0.15
+          }
+        }
+      },
       "movementPatterns": [
         "squat"
       ],
@@ -205,6 +255,18 @@
     },
     {
       "name": "Leg Press",
+      "catalogKey": "leg-press",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "quads": 1,
+            "glutes": 0.45,
+            "adductors": 0.2
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -246,6 +308,18 @@
     },
     {
       "name": "Belt Squat",
+      "catalogKey": "belt-squat",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "quads": 1,
+            "glutes": 0.35,
+            "adductors": 0.2
+          }
+        }
+      },
       "movementPatterns": [
         "squat"
       ],
@@ -281,6 +355,18 @@
     },
     {
       "name": "Bulgarian Split Squat",
+      "catalogKey": "bulgarian-split-squat",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "quads": 1,
+            "glutes": 0.55,
+            "adductors": 0.25
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "IMPLEMENT_WEIGHT",
       "repBasis": "PER_SIDE",
@@ -324,6 +410,19 @@
     },
     {
       "name": "Walking Lunge",
+      "catalogKey": "walking-lunge",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "quads": 0.9,
+            "glutes": 0.8,
+            "hamstrings": 0.15,
+            "adductors": 0.25
+          }
+        }
+      },
       "movementPatterns": [
         "lunge"
       ],
@@ -364,6 +463,18 @@
     },
     {
       "name": "Dumbbell Reverse Lunge",
+      "catalogKey": "dumbbell-reverse-lunge",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "quads": 1,
+            "glutes": 0.55,
+            "adductors": 0.25
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "IMPLEMENT_WEIGHT",
       "repBasis": "PER_SIDE",
@@ -404,6 +515,18 @@
     },
     {
       "name": "Reverse Lunge",
+      "catalogKey": "reverse-lunge",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "quads": 1,
+            "glutes": 0.55,
+            "adductors": 0.25
+          }
+        }
+      },
       "movementPatterns": [
         "lunge"
       ],
@@ -442,6 +565,16 @@
     },
     {
       "name": "Leg Extension",
+      "catalogKey": "leg-extension",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "quads": 1
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -479,6 +612,16 @@
     },
     {
       "name": "Sissy Squat",
+      "catalogKey": "sissy-squat",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "quads": 1
+          }
+        }
+      },
       "movementPatterns": [
         "squat"
       ],
@@ -514,6 +657,20 @@
     },
     {
       "name": "Conventional Deadlift",
+      "catalogKey": "conventional-deadlift",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "glutes": 0.85,
+            "hamstrings": 0.65,
+            "lower_back": 0.85,
+            "upper_back": 0.4,
+            "quads": 0.35
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "BARBELL_TOTAL",
       "repBasis": "TOTAL",
@@ -558,6 +715,21 @@
     },
     {
       "name": "Sumo Deadlift",
+      "catalogKey": "sumo-deadlift",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "glutes": 0.85,
+            "hamstrings": 0.5,
+            "lower_back": 0.7,
+            "upper_back": 0.35,
+            "quads": 0.45,
+            "adductors": 0.35
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "BARBELL_TOTAL",
       "repBasis": "TOTAL",
@@ -602,6 +774,20 @@
     },
     {
       "name": "Trap Bar Deadlift",
+      "catalogKey": "trap-bar-deadlift",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "glutes": 0.75,
+            "hamstrings": 0.45,
+            "lower_back": 0.65,
+            "upper_back": 0.3,
+            "quads": 0.6
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "BARBELL_TOTAL",
       "repBasis": "TOTAL",
@@ -642,6 +828,18 @@
     },
     {
       "name": "Barbell Romanian Deadlift",
+      "catalogKey": "barbell-romanian-deadlift",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "hamstrings": 1,
+            "glutes": 0.75,
+            "lower_back": 0.45
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "BARBELL_TOTAL",
       "repBasis": "TOTAL",
@@ -683,6 +881,18 @@
     },
     {
       "name": "Dumbbell Romanian Deadlift",
+      "catalogKey": "dumbbell-romanian-deadlift",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "hamstrings": 1,
+            "glutes": 0.75,
+            "lower_back": 0.45
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "IMPLEMENT_WEIGHT",
       "repBasis": "TOTAL",
@@ -724,6 +934,18 @@
     },
     {
       "name": "Romanian Deadlift",
+      "catalogKey": "romanian-deadlift",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "hamstrings": 1,
+            "glutes": 0.75,
+            "lower_back": 0.45
+          }
+        }
+      },
       "movementPatterns": [
         "hinge"
       ],
@@ -763,6 +985,18 @@
     },
     {
       "name": "Stiff-Legged Deadlift",
+      "catalogKey": "stiff-legged-deadlift",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "hamstrings": 1,
+            "glutes": 0.75,
+            "lower_back": 0.45
+          }
+        }
+      },
       "movementPatterns": [
         "hinge"
       ],
@@ -800,6 +1034,19 @@
     },
     {
       "name": "Good Morning",
+      "catalogKey": "good-morning",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "hamstrings": 0.85,
+            "glutes": 0.7,
+            "lower_back": 0.7,
+            "upper_back": 0.25
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "BARBELL_TOTAL",
       "repBasis": "TOTAL",
@@ -840,6 +1087,16 @@
     },
     {
       "name": "Lying Leg Curl",
+      "catalogKey": "lying-leg-curl",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "hamstrings": 1
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -874,6 +1131,16 @@
     },
     {
       "name": "Seated Leg Curl",
+      "catalogKey": "seated-leg-curl",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "hamstrings": 1
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -909,6 +1176,16 @@
     },
     {
       "name": "Nordic Hamstring Curl",
+      "catalogKey": "nordic-hamstring-curl",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "hamstrings": 1
+          }
+        }
+      },
       "movementPatterns": [
         "flexion"
       ],
@@ -946,6 +1223,17 @@
     },
     {
       "name": "Barbell Hip Thrust",
+      "catalogKey": "barbell-hip-thrust",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "glutes": 1,
+            "hamstrings": 0.2
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "BARBELL_TOTAL",
       "repBasis": "TOTAL",
@@ -985,6 +1273,17 @@
     },
     {
       "name": "Machine Hip Thrust",
+      "catalogKey": "machine-hip-thrust",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "glutes": 1,
+            "hamstrings": 0.2
+          }
+        }
+      },
       "movementPatterns": [
         "hinge"
       ],
@@ -1019,6 +1318,17 @@
     },
     {
       "name": "Single-Leg Hip Thrust",
+      "catalogKey": "single-leg-hip-thrust",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "glutes": 1,
+            "hamstrings": 0.2
+          }
+        }
+      },
       "movementPatterns": [
         "hinge"
       ],
@@ -1055,6 +1365,17 @@
     },
     {
       "name": "Glute Bridge",
+      "catalogKey": "glute-bridge",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "glutes": 1,
+            "hamstrings": 0.25
+          }
+        }
+      },
       "movementPatterns": [
         "hinge"
       ],
@@ -1091,6 +1412,18 @@
     },
     {
       "name": "Back Extension (45 Degree)",
+      "catalogKey": "back-extension-45-degree",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "lower_back": 0.9,
+            "glutes": 0.65,
+            "hamstrings": 0.45
+          }
+        }
+      },
       "movementPatterns": [
         "extension"
       ],
@@ -1128,6 +1461,18 @@
     },
     {
       "name": "45-Degree Back Extension, Hamstring Bias",
+      "catalogKey": "45-degree-back-extension-hamstring-bias",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "hamstrings": 0.75,
+            "glutes": 0.65,
+            "lower_back": 0.35
+          }
+        }
+      },
       "movementPatterns": [
         "extension"
       ],
@@ -1166,6 +1511,18 @@
     },
     {
       "name": "Reverse Hyperextension",
+      "catalogKey": "reverse-hyperextension",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "glutes": 1,
+            "hamstrings": 0.75,
+            "lower_back": 0.35
+          }
+        }
+      },
       "movementPatterns": [
         "extension"
       ],
@@ -1201,6 +1558,17 @@
     },
     {
       "name": "Cable Pull-Through",
+      "catalogKey": "cable-pull-through",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "glutes": 1,
+            "hamstrings": 0.75
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -1237,6 +1605,17 @@
     },
     {
       "name": "Hip Abduction Machine",
+      "catalogKey": "hip-abduction-machine",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "abductors": 1,
+            "glutes": 0.3
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -1273,6 +1652,17 @@
     },
     {
       "name": "Cable Hip Abduction",
+      "catalogKey": "cable-hip-abduction",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "abductors": 1,
+            "glutes": 0.3
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "PER_SIDE",
@@ -1310,6 +1700,16 @@
     },
     {
       "name": "Hip Adduction Machine",
+      "catalogKey": "hip-adduction-machine",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "adductors": 1
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -1344,6 +1744,17 @@
     },
     {
       "name": "Copenhagen Plank",
+      "catalogKey": "copenhagen-plank",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "adductors": 1,
+            "core": 0.4
+          }
+        }
+      },
       "movementPatterns": [
         "adduction"
       ],
@@ -1379,6 +1790,16 @@
     },
     {
       "name": "Selectorized Standing Calf Raise",
+      "catalogKey": "selectorized-standing-calf-raise",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "calves": 1
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -1414,6 +1835,16 @@
     },
     {
       "name": "Standing Calf Raise",
+      "catalogKey": "standing-calf-raise",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "calves": 1
+          }
+        }
+      },
       "movementPatterns": [
         "calf_raise_extended"
       ],
@@ -1447,6 +1878,16 @@
     },
     {
       "name": "Seated Calf Raise",
+      "catalogKey": "seated-calf-raise",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "calves": 1
+          }
+        }
+      },
       "movementPatterns": [
         "isolation"
       ],
@@ -1479,6 +1920,16 @@
     },
     {
       "name": "Leg Press Calf Raise",
+      "catalogKey": "leg-press-calf-raise",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "calves": 1
+          }
+        }
+      },
       "movementPatterns": [
         "isolation"
       ],
@@ -1511,6 +1962,18 @@
     },
     {
       "name": "Barbell Bench Press",
+      "catalogKey": "barbell-bench-press",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "chest": 1,
+            "triceps": 0.45,
+            "front_delts": 0.3
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "BARBELL_TOTAL",
       "repBasis": "TOTAL",
@@ -1551,6 +2014,18 @@
     },
     {
       "name": "Incline Barbell Bench Press",
+      "catalogKey": "incline-barbell-bench-press",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "chest": 1,
+            "triceps": 0.4,
+            "front_delts": 0.45
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "BARBELL_TOTAL",
       "repBasis": "TOTAL",
@@ -1591,6 +2066,18 @@
     },
     {
       "name": "Decline Barbell Bench Press",
+      "catalogKey": "decline-barbell-bench-press",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "chest": 1,
+            "triceps": 0.3,
+            "front_delts": 0.25
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "BARBELL_TOTAL",
       "repBasis": "TOTAL",
@@ -1631,6 +2118,18 @@
     },
     {
       "name": "Dumbbell Bench Press",
+      "catalogKey": "dumbbell-bench-press",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "chest": 1,
+            "triceps": 0.45,
+            "front_delts": 0.3
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "IMPLEMENT_WEIGHT",
       "repBasis": "TOTAL",
@@ -1672,6 +2171,18 @@
     },
     {
       "name": "Incline Dumbbell Bench Press",
+      "catalogKey": "incline-dumbbell-bench-press",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "chest": 1,
+            "triceps": 0.4,
+            "front_delts": 0.45
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "IMPLEMENT_WEIGHT",
       "repBasis": "TOTAL",
@@ -1713,6 +2224,18 @@
     },
     {
       "name": "Decline Dumbbell Bench Press",
+      "catalogKey": "decline-dumbbell-bench-press",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "chest": 1,
+            "triceps": 0.3,
+            "front_delts": 0.25
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "IMPLEMENT_WEIGHT",
       "repBasis": "TOTAL",
@@ -1754,6 +2277,18 @@
     },
     {
       "name": "Machine Chest Press",
+      "catalogKey": "machine-chest-press",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "chest": 1,
+            "triceps": 0.45,
+            "front_delts": 0.3
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -1792,6 +2327,18 @@
     },
     {
       "name": "Incline Machine Press",
+      "catalogKey": "incline-machine-press",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "chest": 1,
+            "triceps": 0.4,
+            "front_delts": 0.45
+          }
+        }
+      },
       "movementPatterns": [
         "horizontal_push"
       ],
@@ -1827,6 +2374,18 @@
     },
     {
       "name": "Iso-Lateral Incline Press",
+      "catalogKey": "iso-lateral-incline-press",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "chest": 1,
+            "triceps": 0.4,
+            "front_delts": 0.45
+          }
+        }
+      },
       "movementPatterns": [
         "horizontal_push"
       ],
@@ -1862,6 +2421,18 @@
     },
     {
       "name": "Iso-Lateral Decline Press",
+      "catalogKey": "iso-lateral-decline-press",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "chest": 1,
+            "triceps": 0.3,
+            "front_delts": 0.25
+          }
+        }
+      },
       "movementPatterns": [
         "horizontal_push"
       ],
@@ -1897,6 +2468,16 @@
     },
     {
       "name": "Dumbbell Fly",
+      "catalogKey": "dumbbell-fly",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "chest": 1
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "IMPLEMENT_WEIGHT",
       "repBasis": "TOTAL",
@@ -1935,6 +2516,16 @@
     },
     {
       "name": "Incline Dumbbell Fly",
+      "catalogKey": "incline-dumbbell-fly",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "chest": 1
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "IMPLEMENT_WEIGHT",
       "repBasis": "TOTAL",
@@ -1973,6 +2564,16 @@
     },
     {
       "name": "Cable Fly",
+      "catalogKey": "cable-fly",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "chest": 1
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -2008,6 +2609,17 @@
     },
     {
       "name": "Low-to-High Cable Fly",
+      "catalogKey": "low-to-high-cable-fly",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "chest": 1,
+            "front_delts": 0.15
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -2043,6 +2655,16 @@
     },
     {
       "name": "Pec Deck Machine",
+      "catalogKey": "pec-deck-machine",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "chest": 1
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -2078,6 +2700,18 @@
     },
     {
       "name": "Push-Up",
+      "catalogKey": "push-up",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "chest": 1,
+            "triceps": 0.3,
+            "front_delts": 0.3
+          }
+        }
+      },
       "measurementProfile": "REPS_BODYWEIGHT",
       "loadConvention": null,
       "repBasis": "TOTAL",
@@ -2117,6 +2751,18 @@
     },
     {
       "name": "Deficit Push-Up",
+      "catalogKey": "deficit-push-up",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "chest": 1,
+            "triceps": 0.3,
+            "front_delts": 0.3
+          }
+        }
+      },
       "measurementProfile": "REPS_BODYWEIGHT",
       "loadConvention": null,
       "repBasis": "TOTAL",
@@ -2158,6 +2804,18 @@
     },
     {
       "name": "Dip (Chest Emphasis)",
+      "catalogKey": "dip-chest-emphasis",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "chest": 1,
+            "triceps": 0.5,
+            "front_delts": 0.25
+          }
+        }
+      },
       "movementPatterns": [
         "vertical_push"
       ],
@@ -2196,6 +2854,18 @@
     },
     {
       "name": "Barbell Overhead Press",
+      "catalogKey": "barbell-overhead-press",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "side_delts": 1,
+            "front_delts": 0.7,
+            "triceps": 0.5
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "BARBELL_TOTAL",
       "repBasis": "TOTAL",
@@ -2239,6 +2909,18 @@
     },
     {
       "name": "Seated Barbell Overhead Press",
+      "catalogKey": "seated-barbell-overhead-press",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "side_delts": 1,
+            "front_delts": 0.7,
+            "triceps": 0.5
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "BARBELL_TOTAL",
       "repBasis": "TOTAL",
@@ -2280,6 +2962,18 @@
     },
     {
       "name": "Dumbbell Overhead Press",
+      "catalogKey": "dumbbell-overhead-press",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "side_delts": 1,
+            "front_delts": 0.7,
+            "triceps": 0.5
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "IMPLEMENT_WEIGHT",
       "repBasis": "TOTAL",
@@ -2322,6 +3016,18 @@
     },
     {
       "name": "Arnold Press",
+      "catalogKey": "arnold-press",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "side_delts": 1,
+            "front_delts": 0.75,
+            "triceps": 0.35
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "IMPLEMENT_WEIGHT",
       "repBasis": "TOTAL",
@@ -2363,6 +3069,18 @@
     },
     {
       "name": "Machine Shoulder Press",
+      "catalogKey": "machine-shoulder-press",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "side_delts": 1,
+            "front_delts": 0.7,
+            "triceps": 0.5
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -2401,6 +3119,18 @@
     },
     {
       "name": "Landmine Press",
+      "catalogKey": "landmine-press",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "front_delts": 1,
+            "chest": 0.35,
+            "triceps": 0.35
+          }
+        }
+      },
       "movementPatterns": [
         "vertical_push"
       ],
@@ -2437,6 +3167,16 @@
     },
     {
       "name": "Dumbbell Lateral Raise",
+      "catalogKey": "dumbbell-lateral-raise",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "side_delts": 1
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "IMPLEMENT_WEIGHT",
       "repBasis": "TOTAL",
@@ -2471,6 +3211,16 @@
     },
     {
       "name": "Cable Lateral Raise",
+      "catalogKey": "cable-lateral-raise",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "side_delts": 1
+          }
+        }
+      },
       "movementPatterns": [
         "abduction"
       ],
@@ -2503,6 +3253,16 @@
     },
     {
       "name": "Machine Lateral Raise",
+      "catalogKey": "machine-lateral-raise",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "side_delts": 1
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -2537,6 +3297,16 @@
     },
     {
       "name": "Dumbbell Front Raise",
+      "catalogKey": "dumbbell-front-raise",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "front_delts": 1
+          }
+        }
+      },
       "movementPatterns": [
         "flexion"
       ],
@@ -2568,6 +3338,16 @@
     },
     {
       "name": "Cable Front Raise",
+      "catalogKey": "cable-front-raise",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "front_delts": 1
+          }
+        }
+      },
       "movementPatterns": [
         "flexion"
       ],
@@ -2600,6 +3380,17 @@
     },
     {
       "name": "Dumbbell Rear Delt Fly",
+      "catalogKey": "dumbbell-rear-delt-fly",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "rear_delts": 1,
+            "upper_back": 0.2
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "IMPLEMENT_WEIGHT",
       "repBasis": "TOTAL",
@@ -2637,6 +3428,17 @@
     },
     {
       "name": "Cable Rear Delt Fly",
+      "catalogKey": "cable-rear-delt-fly",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "rear_delts": 1,
+            "upper_back": 0.2
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -2674,6 +3476,17 @@
     },
     {
       "name": "Reverse Pec Deck",
+      "catalogKey": "reverse-pec-deck",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "rear_delts": 1,
+            "upper_back": 0.2
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -2711,6 +3524,17 @@
     },
     {
       "name": "Face Pull",
+      "catalogKey": "face-pull",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "rear_delts": 1,
+            "upper_back": 0.45
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -2746,6 +3570,18 @@
     },
     {
       "name": "Close-Grip Bench Press",
+      "catalogKey": "close-grip-bench-press",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "triceps": 1,
+            "chest": 0.35,
+            "front_delts": 0.25
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "BARBELL_TOTAL",
       "repBasis": "TOTAL",
@@ -2787,6 +3623,18 @@
     },
     {
       "name": "Dip (Triceps Emphasis)",
+      "catalogKey": "dip-triceps-emphasis",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "triceps": 1,
+            "chest": 0.4,
+            "front_delts": 0.25
+          }
+        }
+      },
       "movementPatterns": [
         "vertical_push"
       ],
@@ -2825,6 +3673,18 @@
     },
     {
       "name": "Seated Dip Machine",
+      "catalogKey": "seated-dip-machine",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "triceps": 1,
+            "chest": 0.4,
+            "front_delts": 0.25
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -2866,6 +3726,16 @@
     },
     {
       "name": "Overhead Cable Triceps Extension",
+      "catalogKey": "overhead-cable-triceps-extension",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "triceps": 1
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -2901,6 +3771,16 @@
     },
     {
       "name": "Overhead Dumbbell Extension",
+      "catalogKey": "overhead-dumbbell-extension",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "triceps": 1
+          }
+        }
+      },
       "movementPatterns": [
         "extension"
       ],
@@ -2936,6 +3816,16 @@
     },
     {
       "name": "Lying Triceps Extension (Skull Crusher)",
+      "catalogKey": "lying-triceps-extension-skull-crusher",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "triceps": 1
+          }
+        }
+      },
       "movementPatterns": [
         "extension"
       ],
@@ -2972,6 +3862,16 @@
     },
     {
       "name": "Cable Triceps Pushdown",
+      "catalogKey": "cable-triceps-pushdown",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "triceps": 1
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -3006,6 +3906,16 @@
     },
     {
       "name": "Rope Triceps Pushdown",
+      "catalogKey": "rope-triceps-pushdown",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "triceps": 1
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -3040,6 +3950,18 @@
     },
     {
       "name": "Diamond Push-Up",
+      "catalogKey": "diamond-push-up",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "triceps": 1,
+            "chest": 0.4,
+            "front_delts": 0.25
+          }
+        }
+      },
       "measurementProfile": "REPS_BODYWEIGHT",
       "loadConvention": null,
       "repBasis": "TOTAL",
@@ -3081,6 +4003,18 @@
     },
     {
       "name": "Pull-Up",
+      "catalogKey": "pull-up",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "lats": 1,
+            "biceps": 0.45,
+            "upper_back": 0.35
+          }
+        }
+      },
       "measurementProfile": "REPS_BODYWEIGHT",
       "loadConvention": null,
       "repBasis": "TOTAL",
@@ -3122,6 +4056,18 @@
     },
     {
       "name": "Chin-Up",
+      "catalogKey": "chin-up",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "lats": 1,
+            "biceps": 0.55,
+            "upper_back": 0.35
+          }
+        }
+      },
       "measurementProfile": "REPS_BODYWEIGHT",
       "loadConvention": null,
       "repBasis": "TOTAL",
@@ -3164,6 +4110,18 @@
     },
     {
       "name": "Weighted Pull-Up",
+      "catalogKey": "weighted-pull-up",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "lats": 1,
+            "biceps": 0.45,
+            "upper_back": 0.35
+          }
+        }
+      },
       "measurementProfile": "REPS_BODYWEIGHT_PLUS_LOAD",
       "loadConvention": "ADDED_EXTERNAL_LOAD",
       "repBasis": "TOTAL",
@@ -3207,6 +4165,13 @@
     },
     {
       "name": "Machine-Assisted Pull-Up",
+      "catalogKey": "machine-assisted-pull-up",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "MISSING"
+        }
+      },
       "measurementProfile": "REPS_ASSISTED",
       "loadConvention": "DISPLAYED_ASSISTANCE",
       "repBasis": "TOTAL",
@@ -3248,6 +4213,18 @@
     },
     {
       "name": "Lat Pulldown",
+      "catalogKey": "lat-pulldown",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "lats": 1,
+            "biceps": 0.45,
+            "upper_back": 0.35
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -3288,6 +4265,18 @@
     },
     {
       "name": "Iso-Lateral Front Lat Pulldown",
+      "catalogKey": "iso-lateral-front-lat-pulldown",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "lats": 1,
+            "biceps": 0.45,
+            "upper_back": 0.35
+          }
+        }
+      },
       "movementPatterns": [
         "vertical_pull"
       ],
@@ -3323,6 +4312,18 @@
     },
     {
       "name": "Close-Grip Lat Pulldown",
+      "catalogKey": "close-grip-lat-pulldown",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "lats": 1,
+            "biceps": 0.45,
+            "upper_back": 0.35
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -3362,6 +4363,17 @@
     },
     {
       "name": "Straight-Arm Pulldown",
+      "catalogKey": "straight-arm-pulldown",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "lats": 1,
+            "upper_back": 0.2
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -3397,6 +4409,17 @@
     },
     {
       "name": "Dumbbell Pullover",
+      "catalogKey": "dumbbell-pullover",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "lats": 1,
+            "upper_back": 0.2
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "IMPLEMENT_WEIGHT",
       "repBasis": "TOTAL",
@@ -3437,6 +4460,17 @@
     },
     {
       "name": "Cable Pullover",
+      "catalogKey": "cable-pullover",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "lats": 1,
+            "upper_back": 0.2
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -3472,6 +4506,20 @@
     },
     {
       "name": "Barbell Row",
+      "catalogKey": "barbell-row",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "upper_back": 1,
+            "lats": 0.8,
+            "biceps": 0.4,
+            "rear_delts": 0.25,
+            "lower_back": 0.2
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "BARBELL_TOTAL",
       "repBasis": "TOTAL",
@@ -3514,6 +4562,20 @@
     },
     {
       "name": "Pendlay Row",
+      "catalogKey": "pendlay-row",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "upper_back": 1,
+            "lats": 0.8,
+            "biceps": 0.4,
+            "rear_delts": 0.25,
+            "lower_back": 0.2
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "BARBELL_TOTAL",
       "repBasis": "TOTAL",
@@ -3556,6 +4618,20 @@
     },
     {
       "name": "T-Bar Row",
+      "catalogKey": "t-bar-row",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "upper_back": 1,
+            "lats": 0.8,
+            "biceps": 0.4,
+            "rear_delts": 0.25,
+            "lower_back": 0.2
+          }
+        }
+      },
       "movementPatterns": [
         "horizontal_pull"
       ],
@@ -3596,6 +4672,19 @@
     },
     {
       "name": "Chest-Supported T-Bar Row",
+      "catalogKey": "chest-supported-t-bar-row",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "upper_back": 1,
+            "lats": 0.75,
+            "biceps": 0.35,
+            "rear_delts": 0.2
+          }
+        }
+      },
       "movementPatterns": [
         "horizontal_pull"
       ],
@@ -3632,6 +4721,20 @@
     },
     {
       "name": "One-Arm Dumbbell Row",
+      "catalogKey": "one-arm-dumbbell-row",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "upper_back": 1,
+            "lats": 0.8,
+            "biceps": 0.4,
+            "rear_delts": 0.25,
+            "lower_back": 0.2
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "IMPLEMENT_WEIGHT",
       "repBasis": "PER_SIDE",
@@ -3672,6 +4775,20 @@
     },
     {
       "name": "Dumbbell Row",
+      "catalogKey": "dumbbell-row",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "upper_back": 1,
+            "lats": 0.8,
+            "biceps": 0.4,
+            "rear_delts": 0.25,
+            "lower_back": 0.2
+          }
+        }
+      },
       "movementPatterns": [
         "horizontal_pull"
       ],
@@ -3712,6 +4829,19 @@
     },
     {
       "name": "Chest-Supported Dumbbell Row",
+      "catalogKey": "chest-supported-dumbbell-row",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "upper_back": 1,
+            "lats": 0.75,
+            "biceps": 0.35,
+            "rear_delts": 0.2
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "IMPLEMENT_WEIGHT",
       "repBasis": "TOTAL",
@@ -3752,6 +4882,19 @@
     },
     {
       "name": "Seated Cable Row",
+      "catalogKey": "seated-cable-row",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "upper_back": 1,
+            "lats": 0.8,
+            "biceps": 0.4,
+            "rear_delts": 0.25
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -3791,6 +4934,19 @@
     },
     {
       "name": "Close-Grip Seated Cable Row",
+      "catalogKey": "close-grip-seated-cable-row",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "upper_back": 1,
+            "lats": 0.8,
+            "biceps": 0.4,
+            "rear_delts": 0.25
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -3830,6 +4986,19 @@
     },
     {
       "name": "Iso-Lateral High Row",
+      "catalogKey": "iso-lateral-high-row",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "upper_back": 1,
+            "lats": 0.8,
+            "biceps": 0.4,
+            "rear_delts": 0.25
+          }
+        }
+      },
       "movementPatterns": [
         "horizontal_pull"
       ],
@@ -3866,6 +5035,19 @@
     },
     {
       "name": "Iso-Lateral Low Row",
+      "catalogKey": "iso-lateral-low-row",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "upper_back": 1,
+            "lats": 0.8,
+            "biceps": 0.4,
+            "rear_delts": 0.25
+          }
+        }
+      },
       "movementPatterns": [
         "horizontal_pull"
       ],
@@ -3902,6 +5084,20 @@
     },
     {
       "name": "Meadows Row",
+      "catalogKey": "meadows-row",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "upper_back": 1,
+            "lats": 0.8,
+            "biceps": 0.4,
+            "rear_delts": 0.25,
+            "lower_back": 0.2
+          }
+        }
+      },
       "movementPatterns": [
         "horizontal_pull"
       ],
@@ -3938,6 +5134,19 @@
     },
     {
       "name": "Inverted Row",
+      "catalogKey": "inverted-row",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "upper_back": 1,
+            "lats": 0.8,
+            "biceps": 0.4,
+            "rear_delts": 0.25
+          }
+        }
+      },
       "measurementProfile": "REPS_BODYWEIGHT",
       "loadConvention": null,
       "repBasis": "TOTAL",
@@ -3977,6 +5186,17 @@
     },
     {
       "name": "Barbell Shrug",
+      "catalogKey": "barbell-shrug",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "upper_back": 1,
+            "forearms": 0.25
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "BARBELL_TOTAL",
       "repBasis": "TOTAL",
@@ -4013,6 +5233,17 @@
     },
     {
       "name": "Dumbbell Shrug",
+      "catalogKey": "dumbbell-shrug",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "upper_back": 1,
+            "forearms": 0.25
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "IMPLEMENT_WEIGHT",
       "repBasis": "TOTAL",
@@ -4049,6 +5280,17 @@
     },
     {
       "name": "Seated Machine Shrug",
+      "catalogKey": "seated-machine-shrug",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "upper_back": 1,
+            "forearms": 0.25
+          }
+        }
+      },
       "movementPatterns": [
         "isolation"
       ],
@@ -4083,6 +5325,17 @@
     },
     {
       "name": "Barbell Curl",
+      "catalogKey": "barbell-curl",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "biceps": 1,
+            "forearms": 0.25
+          }
+        }
+      },
       "movementPatterns": [
         "flexion"
       ],
@@ -4119,6 +5372,17 @@
     },
     {
       "name": "EZ-Bar Curl",
+      "catalogKey": "ez-bar-curl",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "biceps": 1,
+            "forearms": 0.25
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "BARBELL_TOTAL",
       "repBasis": "TOTAL",
@@ -4155,6 +5419,17 @@
     },
     {
       "name": "Dumbbell Curl",
+      "catalogKey": "dumbbell-curl",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "biceps": 1,
+            "forearms": 0.25
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "IMPLEMENT_WEIGHT",
       "repBasis": "TOTAL",
@@ -4191,6 +5466,17 @@
     },
     {
       "name": "Alternating Dumbbell Curl",
+      "catalogKey": "alternating-dumbbell-curl",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "biceps": 1,
+            "forearms": 0.25
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "IMPLEMENT_WEIGHT",
       "repBasis": "PER_SIDE",
@@ -4227,6 +5513,17 @@
     },
     {
       "name": "Incline Dumbbell Curl",
+      "catalogKey": "incline-dumbbell-curl",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "biceps": 1,
+            "forearms": 0.25
+          }
+        }
+      },
       "movementPatterns": [
         "flexion"
       ],
@@ -4260,6 +5557,17 @@
     },
     {
       "name": "Hammer Curl",
+      "catalogKey": "hammer-curl",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "biceps": 0.8,
+            "forearms": 0.45
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "IMPLEMENT_WEIGHT",
       "repBasis": "TOTAL",
@@ -4296,6 +5604,17 @@
     },
     {
       "name": "Cross-Body Hammer Curl",
+      "catalogKey": "cross-body-hammer-curl",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "biceps": 0.8,
+            "forearms": 0.45
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "IMPLEMENT_WEIGHT",
       "repBasis": "PER_SIDE",
@@ -4332,6 +5651,17 @@
     },
     {
       "name": "Cable Curl",
+      "catalogKey": "cable-curl",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "biceps": 1,
+            "forearms": 0.25
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -4368,6 +5698,17 @@
     },
     {
       "name": "Bayesian Curl",
+      "catalogKey": "bayesian-curl",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "biceps": 1,
+            "forearms": 0.25
+          }
+        }
+      },
       "movementPatterns": [
         "flexion"
       ],
@@ -4400,6 +5741,17 @@
     },
     {
       "name": "Preacher Curl",
+      "catalogKey": "preacher-curl",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "biceps": 1,
+            "forearms": 0.25
+          }
+        }
+      },
       "movementPatterns": [
         "flexion"
       ],
@@ -4436,6 +5788,17 @@
     },
     {
       "name": "Spider Curl",
+      "catalogKey": "spider-curl",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "biceps": 1,
+            "forearms": 0.25
+          }
+        }
+      },
       "movementPatterns": [
         "flexion"
       ],
@@ -4470,6 +5833,17 @@
     },
     {
       "name": "Concentration Curl",
+      "catalogKey": "concentration-curl",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "biceps": 1,
+            "forearms": 0.25
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "IMPLEMENT_WEIGHT",
       "repBasis": "PER_SIDE",
@@ -4504,6 +5878,17 @@
     },
     {
       "name": "Reverse Curl",
+      "catalogKey": "reverse-curl",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "forearms": 1,
+            "biceps": 0.25
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "BARBELL_TOTAL",
       "repBasis": "TOTAL",
@@ -4540,6 +5925,16 @@
     },
     {
       "name": "Wrist Curl",
+      "catalogKey": "wrist-curl",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "forearms": 1
+          }
+        }
+      },
       "movementPatterns": [
         "flexion"
       ],
@@ -4572,6 +5967,16 @@
     },
     {
       "name": "Reverse Wrist Curl",
+      "catalogKey": "reverse-wrist-curl",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "forearms": 1
+          }
+        }
+      },
       "movementPatterns": [
         "extension"
       ],
@@ -4604,6 +6009,18 @@
     },
     {
       "name": "Farmer's Walk",
+      "catalogKey": "farmers-walk",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "forearms": 1,
+            "core": 0.6,
+            "upper_back": 0.35
+          }
+        }
+      },
       "movementPatterns": [
         "carry"
       ],
@@ -4641,6 +6058,18 @@
     },
     {
       "name": "Dead Hang",
+      "catalogKey": "dead-hang",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "lats": 0.35,
+            "forearms": 0.8,
+            "upper_back": 0.15
+          }
+        }
+      },
       "movementPatterns": [
         "carry"
       ],
@@ -4678,6 +6107,16 @@
     },
     {
       "name": "Plank",
+      "catalogKey": "plank",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "core": 1
+          }
+        }
+      },
       "movementPatterns": [
         "anti_rotation"
       ],
@@ -4711,6 +6150,16 @@
     },
     {
       "name": "RKC Plank",
+      "catalogKey": "rkc-plank",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "core": 1
+          }
+        }
+      },
       "movementPatterns": [
         "anti_rotation"
       ],
@@ -4745,6 +6194,17 @@
     },
     {
       "name": "Side Plank",
+      "catalogKey": "side-plank",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "core": 1,
+            "abductors": 0.25
+          }
+        }
+      },
       "movementPatterns": [
         "anti_rotation"
       ],
@@ -4778,6 +6238,16 @@
     },
     {
       "name": "Ab Wheel Rollout",
+      "catalogKey": "ab-wheel-rollout",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "core": 1
+          }
+        }
+      },
       "measurementProfile": "REPS_BODYWEIGHT",
       "loadConvention": null,
       "repBasis": "TOTAL",
@@ -4818,6 +6288,16 @@
     },
     {
       "name": "Pallof Press",
+      "catalogKey": "pallof-press",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "core": 1
+          }
+        }
+      },
       "movementPatterns": [
         "anti_rotation"
       ],
@@ -4850,6 +6330,16 @@
     },
     {
       "name": "Cable Crunch",
+      "catalogKey": "cable-crunch",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "core": 1
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -4885,6 +6375,16 @@
     },
     {
       "name": "Machine Crunch",
+      "catalogKey": "machine-crunch",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "core": 1
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -4920,6 +6420,16 @@
     },
     {
       "name": "Oblique Crunch Machine",
+      "catalogKey": "oblique-crunch-machine",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "core": 1
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -4959,6 +6469,17 @@
     },
     {
       "name": "Hanging Leg Raise",
+      "catalogKey": "hanging-leg-raise",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "core": 1,
+            "forearms": 0.2
+          }
+        }
+      },
       "measurementProfile": "REPS_BODYWEIGHT",
       "loadConvention": null,
       "repBasis": "TOTAL",
@@ -4995,6 +6516,17 @@
     },
     {
       "name": "Hanging Knee Raise",
+      "catalogKey": "hanging-knee-raise",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "core": 1,
+            "forearms": 0.2
+          }
+        }
+      },
       "measurementProfile": "REPS_BODYWEIGHT",
       "loadConvention": null,
       "repBasis": "TOTAL",
@@ -5031,6 +6563,16 @@
     },
     {
       "name": "Dragon Flag",
+      "catalogKey": "dragon-flag",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "core": 1
+          }
+        }
+      },
       "movementPatterns": [
         "anti_rotation"
       ],
@@ -5067,6 +6609,16 @@
     },
     {
       "name": "Decline Sit-Up",
+      "catalogKey": "decline-sit-up",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "core": 1
+          }
+        }
+      },
       "measurementProfile": "REPS_BODYWEIGHT",
       "loadConvention": null,
       "repBasis": "TOTAL",
@@ -5102,6 +6654,16 @@
     },
     {
       "name": "Reverse Crunch",
+      "catalogKey": "reverse-crunch",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "core": 1
+          }
+        }
+      },
       "measurementProfile": "REPS_BODYWEIGHT",
       "loadConvention": null,
       "repBasis": "TOTAL",
@@ -5136,6 +6698,16 @@
     },
     {
       "name": "Bicycle Crunch",
+      "catalogKey": "bicycle-crunch",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "core": 1
+          }
+        }
+      },
       "movementPatterns": [
         "rotation"
       ],
@@ -5167,6 +6739,16 @@
     },
     {
       "name": "Russian Twist",
+      "catalogKey": "russian-twist",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "core": 1
+          }
+        }
+      },
       "movementPatterns": [
         "rotation"
       ],
@@ -5199,6 +6781,16 @@
     },
     {
       "name": "Torso Rotation Machine",
+      "catalogKey": "torso-rotation-machine",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "core": 1
+          }
+        }
+      },
       "movementPatterns": [
         "rotation"
       ],
@@ -5232,6 +6824,16 @@
     },
     {
       "name": "Wood Chop",
+      "catalogKey": "wood-chop",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "core": 1
+          }
+        }
+      },
       "movementPatterns": [
         "rotation"
       ],
@@ -5264,6 +6866,16 @@
     },
     {
       "name": "Landmine Rotation",
+      "catalogKey": "landmine-rotation",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "core": 1
+          }
+        }
+      },
       "movementPatterns": [
         "rotation"
       ],
@@ -5299,6 +6911,18 @@
     },
     {
       "name": "Suitcase Carry",
+      "catalogKey": "suitcase-carry",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "core": 1,
+            "forearms": 0.6,
+            "upper_back": 0.25
+          }
+        }
+      },
       "movementPatterns": [
         "carry"
       ],
@@ -5334,6 +6958,18 @@
     },
     {
       "name": "Overhead Carry",
+      "catalogKey": "overhead-carry",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "core": 0.8,
+            "front_delts": 0.35,
+            "upper_back": 0.25
+          }
+        }
+      },
       "movementPatterns": [
         "carry"
       ],
@@ -5371,6 +7007,19 @@
     },
     {
       "name": "Sled Push",
+      "catalogKey": "sled-push",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "quads": 0.8,
+            "glutes": 0.6,
+            "calves": 0.25,
+            "core": 0.2
+          }
+        }
+      },
       "movementPatterns": [
         "horizontal_push"
       ],
@@ -5406,6 +7055,19 @@
     },
     {
       "name": "Sled Pull",
+      "catalogKey": "sled-pull",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "hamstrings": 0.75,
+            "glutes": 0.65,
+            "upper_back": 0.25,
+            "core": 0.2
+          }
+        }
+      },
       "movementPatterns": [
         "horizontal_pull"
       ],
@@ -5441,6 +7103,19 @@
     },
     {
       "name": "Sled Drag",
+      "catalogKey": "sled-drag",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "hamstrings": 0.75,
+            "glutes": 0.65,
+            "calves": 0.25,
+            "core": 0.2
+          }
+        }
+      },
       "movementPatterns": [
         "carry"
       ],
@@ -5476,6 +7151,16 @@
     },
     {
       "name": "Cable Crossover",
+      "catalogKey": "cable-crossover",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "chest": 1
+          }
+        }
+      },
       "measurementProfile": "REPS_EXTERNAL_LOAD",
       "loadConvention": "MACHINE_DISPLAYED",
       "repBasis": "TOTAL",
@@ -5511,6 +7196,18 @@
     },
     {
       "name": "Neutral Grip Pull-Up",
+      "catalogKey": "neutral-grip-pull-up",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "lats": 1,
+            "biceps": 0.45,
+            "upper_back": 0.35
+          }
+        }
+      },
       "measurementProfile": "REPS_BODYWEIGHT",
       "loadConvention": null,
       "repBasis": "TOTAL",

@@ -15,6 +15,7 @@ import {
 import {
   validateCatalogInvariants,
   type CatalogAliasDefinition,
+  type CatalogExerciseDefinition,
   type CanonicalCatalogExerciseDefinition,
 } from "./catalog-invariants";
 
@@ -31,6 +32,27 @@ function factsSnapshot(
   exercises: readonly CanonicalCatalogExerciseDefinition[] = catalogExercises,
 ): Record<string, CanonicalExerciseFactsV1> {
   return Object.fromEntries(indexCanonicalFactsByCatalogKey(authoringEntries(exercises)));
+}
+
+function consumedAliasSnapshot(
+  aliases: readonly CatalogAliasDefinition[],
+): string[] {
+  return aliases
+    .map(({ exerciseName, alias }) => JSON.stringify([exerciseName, alias]))
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function canonicalOwnershipSnapshot(
+  exercises: readonly CanonicalCatalogExerciseDefinition[],
+  aliases: readonly CatalogAliasDefinition[],
+) {
+  return {
+    consumedAliases: consumedAliasSnapshot(aliases),
+    catalogKeyByIdentity: Object.fromEntries(
+      exercises.map(({ name, catalogKey }) => [name, catalogKey]),
+    ),
+    factsByCatalogKey: factsSnapshot(exercises),
+  };
 }
 
 const validCompleteFacts = {
@@ -248,7 +270,7 @@ describe("canonical exercise authoring facts", () => {
     }
   });
 
-  it("gives Farmer's Walk canonical ownership independent of its alias", () => {
+  it("gives Farmer's Walk exact canonical ownership", () => {
     const farmerFacts = factsSnapshot()["farmers-walk"];
     expect(farmerFacts.stimulus).toEqual({
       disposition: "COMPLETE",
@@ -258,12 +280,6 @@ describe("canonical exercise authoring facts", () => {
         upper_back: 0.35,
       },
     });
-
-    const aliasesWithoutFarmer = exerciseAliases.filter(
-      ({ alias }) => alias !== "Farmer's Carry",
-    );
-    expect(aliasesWithoutFarmer).toHaveLength(exerciseAliases.length - 1);
-    expect(factsSnapshot()["farmers-walk"]).toEqual(farmerFacts);
   });
 
   it("classifies only Machine-Assisted Pull-Up as missing", () => {
@@ -281,41 +297,77 @@ describe("canonical exercise authoring facts", () => {
     expect(factsSnapshot(renamed)).toEqual(factsSnapshot());
   });
 
-  it("keeps facts stable when aliases are added, removed, or changed", () => {
-    const baseline = factsSnapshot();
-    const aliasVariants = [
-      exerciseAliases.slice(1),
-      [
+  it.each([
+    {
+      label: "adds a managed alias",
+      expectedAliasCount: 55,
+      aliases: [
         ...exerciseAliases,
         { exerciseName: "Barbell Back Squat", alias: "Semantic Squat Alias" },
       ],
-      exerciseAliases.map((alias, index) =>
+    },
+    {
+      label: "removes a managed alias",
+      expectedAliasCount: 53,
+      aliases: exerciseAliases.filter(
+        ({ alias }) => alias !== "Farmer's Carry",
+      ),
+    },
+    {
+      label: "changes an existing managed alias",
+      expectedAliasCount: 54,
+      aliases: exerciseAliases.map((alias, index) =>
         index === 0 ? { ...alias, alias: "Changed Alias" } : alias,
       ),
-    ];
-    expect(aliasVariants.map((aliases) => aliases.length)).toEqual([53, 55, 54]);
-    for (const aliases of aliasVariants) {
-      expect(aliases).toBeDefined();
-      expect(factsSnapshot()).toEqual(baseline);
-    }
-  });
+    },
+    {
+      label: "adds an alias matching another canonical identity",
+      expectedAliasCount: 55,
+      aliases: [
+        ...exerciseAliases,
+        { exerciseName: "Barbell Back Squat", alias: "Copenhagen Plank" },
+      ],
+    },
+    {
+      label: "adds an alias matching a legacy stimulus-registry key",
+      expectedAliasCount: 55,
+      aliases: [
+        ...exerciseAliases,
+        {
+          exerciseName: "Machine-Assisted Pull-Up",
+          alias: "Farmer's Carry",
+        },
+      ],
+    },
+  ])(
+    "$label without changing canonical ownership",
+    ({ aliases, expectedAliasCount }) => {
+      const baseline = canonicalOwnershipSnapshot(
+        catalogExercises,
+        exerciseAliases,
+      );
+      const mutated = canonicalOwnershipSnapshot(catalogExercises, aliases);
 
-  it("does not let a semantic-looking alias change stimulus ownership", () => {
-    const machineFacts = factsSnapshot()["machine-assisted-pull-up"];
-    const legacyAliasMatch = getExplicitStimulusProfileForExercise({
-      name: "Machine-Assisted Pull-Up",
-      aliases: ["Farmer's Carry"],
-    });
-    expect(legacyAliasMatch).toEqual({
-      forearms: 1,
-      core: 0.6,
-      upper_back: 0.35,
-    });
-    expect(factsSnapshot()["machine-assisted-pull-up"]).toEqual(machineFacts);
-    expect(machineFacts.stimulus).toEqual({ disposition: "MISSING" });
-  });
+      expect(aliases).toHaveLength(expectedAliasCount);
+      expect(mutated.consumedAliases).toEqual(consumedAliasSnapshot(aliases));
+      expect(mutated.consumedAliases).not.toEqual(baseline.consumedAliases);
+      expect(mutated.catalogKeyByIdentity).toEqual(baseline.catalogKeyByIdentity);
+      expect(mutated.factsByCatalogKey).toEqual(baseline.factsByCatalogKey);
+      expect(mutated.catalogKeyByIdentity["Farmer's Walk"]).toBe("farmers-walk");
+      expect(mutated.factsByCatalogKey["farmers-walk"].stimulus).toEqual({
+        disposition: "COMPLETE",
+        profile: { forearms: 1, core: 0.6, upper_back: 0.35 },
+      });
+      expect(mutated.catalogKeyByIdentity["Machine-Assisted Pull-Up"]).toBe(
+        "machine-assisted-pull-up",
+      );
+      expect(
+        mutated.factsByCatalogKey["machine-assisted-pull-up"].stimulus,
+      ).toEqual({ disposition: "MISSING" });
+    },
+  );
 
-  it("rejects a new identity without a stored key or stimulus facts", () => {
+  it("rejects a new identity without a stored key and with empty stimulus facts", () => {
     const unreviewed = {
       ...structuredClone(catalogExercises[0]),
       name: "Unreviewed Exercise",
@@ -333,6 +385,24 @@ describe("canonical exercise authoring facts", () => {
           "CATALOG_CANONICAL_STIMULUS_DISPOSITION_INVALID",
         ),
       ]),
+    );
+  });
+
+  it("rejects a catalog entry with the entire facts property absent", () => {
+    const withoutFacts = structuredClone(
+      catalogExercises[0],
+    ) as CatalogExerciseDefinition;
+    delete withoutFacts.facts;
+    expect(Object.prototype.hasOwnProperty.call(withoutFacts, "facts")).toBe(
+      false,
+    );
+
+    const errors = validateCatalogInvariants({
+      exercises: [withoutFacts, ...catalogExercises.slice(1)],
+      aliases: exerciseAliases,
+    });
+    expect(errors).toContain(
+      "CATALOG_CANONICAL_FACTS_NOT_OBJECT:barbell-back-squat",
     );
   });
 

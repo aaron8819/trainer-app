@@ -25,6 +25,10 @@ import {
   EXPECTED_CATALOG_IDENTITY_KEYS_V1,
   EXPECTED_CATALOG_KEY_MEMBERSHIP_V1,
 } from "@/lib/exercise-library/catalog-key-membership";
+import {
+  REVIEWED_STEP_2A_MEASUREMENT_MEMBERSHIP,
+  type ReviewedStep2AMeasurementCategory,
+} from "@/lib/exercise-library/step-2a-measurement-membership";
 
 export type CatalogExerciseDefinition = {
   catalogKey?: string;
@@ -155,6 +159,48 @@ export function validateMeasurementSupportManifest(input: {
   for (const [name, memberships] of membershipByName) {
     if (new Set(memberships).size > 1) {
       errors.push(`CATALOG_MEASUREMENT_PARTITION_OVERLAP:${name}`);
+    }
+  }
+
+  const reviewedMembershipByName = new Map<
+    string,
+    ReviewedStep2AMeasurementCategory
+  >();
+  for (const [name, category] of REVIEWED_STEP_2A_MEASUREMENT_MEMBERSHIP) {
+    if (reviewedMembershipByName.has(name)) {
+      errors.push(`CATALOG_MEASUREMENT_REVIEW_ORACLE_DUPLICATE:${name}`);
+    }
+    reviewedMembershipByName.set(name, category);
+    if (!canonicalNames.has(name)) {
+      errors.push(`CATALOG_MEASUREMENT_REVIEW_ORACLE_UNKNOWN:${name}`);
+    }
+  }
+
+  for (const name of canonicalNames) {
+    if (!reviewedMembershipByName.has(name)) {
+      errors.push(`CATALOG_MEASUREMENT_REVIEW_ORACLE_MISSING:${name}`);
+    }
+  }
+
+  for (const [name, expectedCategory] of reviewedMembershipByName) {
+    const actualCategories = [...new Set(membershipByName.get(name) ?? [])];
+    if (
+      actualCategories.length !== 1 ||
+      actualCategories[0] !== expectedCategory
+    ) {
+      errors.push(
+        `CATALOG_MEASUREMENT_MEMBERSHIP_MISMATCH:${name}:expected:${expectedCategory}:actual:${actualCategories.join("+") || "MISSING"}`,
+      );
+    }
+  }
+
+  for (const [name, actualCategories] of membershipByName) {
+    if (!reviewedMembershipByName.has(name)) {
+      errors.push(
+        `CATALOG_MEASUREMENT_MEMBERSHIP_UNREVIEWED:${name}:${[
+          ...new Set(actualCategories),
+        ].join("+")}`,
+      );
     }
   }
 

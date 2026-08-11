@@ -163,6 +163,33 @@ describe("exercise catalog invariants", () => {
       diagnostic: "CATALOG_MEASUREMENT_INVALID:Machine Hip Thrust",
     },
     {
+      label: "unreviewed null measurement tuples",
+      exercises: [
+        exercise({
+          name: "Unreviewed Exercise",
+          measurementProfile: undefined,
+          loadConvention: undefined,
+          repBasis: undefined,
+        }),
+      ],
+      aliases: [],
+      diagnostic: "CATALOG_MEASUREMENT_PARTITION_GAP:Unreviewed Exercise",
+    },
+    {
+      label: "populated tuples for ambiguous execution identities",
+      exercises: [exercise({ name: "Romanian Deadlift" })],
+      aliases: [],
+      diagnostic:
+        "CATALOG_MEASUREMENT_PARTITION_CONFLICT:Romanian Deadlift:AMBIGUOUS_EXECUTION_IDENTITY",
+    },
+    {
+      label: "populated tuples for unsupported measurement semantics",
+      exercises: [exercise({ name: "Plank" })],
+      aliases: [],
+      diagnostic:
+        "CATALOG_MEASUREMENT_PARTITION_CONFLICT:Plank:UNSUPPORTED_MEASUREMENT_SEMANTICS",
+    },
+    {
       label: "main-lift-eligible isolation exercises",
       exercises: [exercise({ isCompound: false, isMainLiftEligible: true })],
       aliases: [],

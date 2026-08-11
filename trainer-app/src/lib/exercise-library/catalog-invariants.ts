@@ -9,6 +9,10 @@ import {
 } from "@/lib/engine/types";
 import { MUSCLE_POLICY_BY_ID } from "@/lib/engine/muscle-policy";
 import { parseMeasurementColumns } from "@/lib/exercise-measurement/semantics";
+import {
+  AMBIGUOUS_EXECUTION_IDENTITIES,
+  UNSUPPORTED_MEASUREMENT_IDENTITIES,
+} from "@/lib/exercise-measurement/catalog-support-manifest";
 import { normalizeSearchText } from "@/lib/exercise-library/search";
 
 export type CatalogExerciseDefinition = {
@@ -51,6 +55,12 @@ const DIFFICULTIES = new Set<string>(DIFFICULTY_VALUES);
 const EQUIPMENT = new Set<string>(EQUIPMENT_TYPE_VALUES);
 const MUSCLES = new Set<string>(
   Object.values(MUSCLE_POLICY_BY_ID).map((policy) => policy.displayName),
+);
+const AMBIGUOUS_MEASUREMENT_IDENTITIES = new Set<string>(
+  AMBIGUOUS_EXECUTION_IDENTITIES,
+);
+const UNSUPPORTED_MEASUREMENT_SEMANTICS = new Set<string>(
+  UNSUPPORTED_MEASUREMENT_IDENTITIES,
 );
 
 export function normalizeCatalogIdentityKey(value: string): string {
@@ -171,11 +181,27 @@ export function validateCatalogInvariants(input: {
     );
 
     try {
-      parseMeasurementColumns({
+      const measurement = parseMeasurementColumns({
         measurementProfile: exercise.measurementProfile ?? null,
         loadConvention: exercise.loadConvention ?? null,
         repBasis: exercise.repBasis ?? null,
       });
+      const isAmbiguous = AMBIGUOUS_MEASUREMENT_IDENTITIES.has(exercise.name);
+      const isUnsupported = UNSUPPORTED_MEASUREMENT_SEMANTICS.has(exercise.name);
+
+      if (isAmbiguous && isUnsupported) {
+        errors.push(`CATALOG_MEASUREMENT_PARTITION_OVERLAP:${exercise.name}`);
+      } else if (measurement && isAmbiguous) {
+        errors.push(
+          `CATALOG_MEASUREMENT_PARTITION_CONFLICT:${exercise.name}:AMBIGUOUS_EXECUTION_IDENTITY`,
+        );
+      } else if (measurement && isUnsupported) {
+        errors.push(
+          `CATALOG_MEASUREMENT_PARTITION_CONFLICT:${exercise.name}:UNSUPPORTED_MEASUREMENT_SEMANTICS`,
+        );
+      } else if (!measurement && !isAmbiguous && !isUnsupported) {
+        errors.push(`CATALOG_MEASUREMENT_PARTITION_GAP:${exercise.name}`);
+      }
     } catch {
       errors.push(`CATALOG_MEASUREMENT_INVALID:${exercise.name}`);
     }

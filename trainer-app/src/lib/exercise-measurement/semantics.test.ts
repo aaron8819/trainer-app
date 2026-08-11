@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { exerciseAliases } from "../../../prisma/exercise-aliases";
 import catalog from "../../../prisma/exercises_comprehensive.json";
 import {
+  AMBIGUOUS_EXECUTION_IDENTITIES,
+  UNSUPPORTED_MEASUREMENT_IDENTITIES,
+} from "./catalog-support-manifest";
+import {
   measurementComparisonKey,
   measurementLoadLabel,
   measurementRepsLabel,
@@ -60,6 +64,100 @@ const REVIEWED_MEASUREMENT_MANIFEST = [
   ["Machine Crunch", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
   ["Ab Wheel Rollout", "REPS_BODYWEIGHT", null, "TOTAL"],
   ["Hanging Leg Raise", "REPS_BODYWEIGHT", null, "TOTAL"],
+  ["Arnold Press", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Barbell Row", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Barbell Shrug", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Bayesian Curl", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Bicycle Crunch", "REPS_BODYWEIGHT", null, "TOTAL"],
+  ["Cable Crossover", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Cable Fly", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Cable Front Raise", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Cable Lateral Raise", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Cable Pull-Through", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Cable Pullover", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  [
+    "Chest-Supported T-Bar Row",
+    "REPS_EXTERNAL_LOAD",
+    "MACHINE_DISPLAYED",
+    "TOTAL",
+  ],
+  ["Chin-Up", "REPS_BODYWEIGHT", null, "TOTAL"],
+  ["Close-Grip Bench Press", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  [
+    "Close-Grip Seated Cable Row",
+    "REPS_EXTERNAL_LOAD",
+    "MACHINE_DISPLAYED",
+    "TOTAL",
+  ],
+  ["Concentration Curl", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "PER_SIDE"],
+  ["Conventional Deadlift", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Cross-Body Hammer Curl", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "PER_SIDE"],
+  ["Decline Barbell Bench Press", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  [
+    "Decline Dumbbell Bench Press",
+    "REPS_EXTERNAL_LOAD",
+    "IMPLEMENT_WEIGHT",
+    "TOTAL",
+  ],
+  ["Decline Sit-Up", "REPS_BODYWEIGHT", null, "TOTAL"],
+  ["Deficit Push-Up", "REPS_BODYWEIGHT", null, "TOTAL"],
+  ["Diamond Push-Up", "REPS_BODYWEIGHT", null, "TOTAL"],
+  ["Dumbbell Fly", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Dumbbell Front Raise", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Dumbbell Pullover", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Dumbbell Row", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Dumbbell Shrug", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Good Morning", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Hip Adduction Machine", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Incline Dumbbell Curl", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Incline Dumbbell Fly", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Incline Machine Press", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Inverted Row", "REPS_BODYWEIGHT", null, "TOTAL"],
+  [
+    "Iso-Lateral Decline Press",
+    "REPS_EXTERNAL_LOAD",
+    "MACHINE_DISPLAYED",
+    "TOTAL",
+  ],
+  [
+    "Iso-Lateral Front Lat Pulldown",
+    "REPS_EXTERNAL_LOAD",
+    "MACHINE_DISPLAYED",
+    "TOTAL",
+  ],
+  ["Iso-Lateral High Row", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  [
+    "Iso-Lateral Incline Press",
+    "REPS_EXTERNAL_LOAD",
+    "MACHINE_DISPLAYED",
+    "TOTAL",
+  ],
+  ["Iso-Lateral Low Row", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Low-to-High Cable Fly", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Machine Hip Thrust", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Machine Lateral Raise", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Neutral Grip Pull-Up", "REPS_BODYWEIGHT", null, "TOTAL"],
+  ["Oblique Crunch Machine", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Overhead Dumbbell Extension", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
+  ["Pec Deck Machine", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Pendlay Row", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Push-Up", "REPS_BODYWEIGHT", null, "TOTAL"],
+  ["Reverse Crunch", "REPS_BODYWEIGHT", null, "TOTAL"],
+  ["Reverse Curl", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Reverse Hyperextension", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  [
+    "Seated Barbell Overhead Press",
+    "REPS_EXTERNAL_LOAD",
+    "BARBELL_TOTAL",
+    "TOTAL",
+  ],
+  ["Seated Dip Machine", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Seated Machine Shrug", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Straight-Arm Pulldown", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Sumo Deadlift", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Torso Rotation Machine", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Trap Bar Deadlift", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
+  ["Wood Chop", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
 ] as const;
 
 describe("exercise measurement semantics", () => {
@@ -160,9 +258,9 @@ describe("exercise measurement semantics", () => {
     ).toBe(label);
   });
 
-  it("classifies exactly the reviewed 49-identity manifest", () => {
-    expect(REVIEWED_MEASUREMENT_MANIFEST).toHaveLength(49);
-    expect(new Set(REVIEWED_MEASUREMENT_MANIFEST.map(([name]) => name)).size).toBe(49);
+  it("classifies exactly the reviewed 108-identity manifest", () => {
+    expect(REVIEWED_MEASUREMENT_MANIFEST).toHaveLength(108);
+    expect(new Set(REVIEWED_MEASUREMENT_MANIFEST.map(([name]) => name)).size).toBe(108);
     expect(new Set(catalog.exercises.map((exercise) => exercise.name)).size).toBe(
       catalog.exercises.length,
     );
@@ -182,8 +280,25 @@ describe("exercise measurement semantics", () => {
       left.localeCompare(right),
     );
 
-    expect(classified).toHaveLength(49);
+    expect(classified).toHaveLength(108);
     expect(actual).toEqual(expected);
+  });
+
+  it("partitions every canonical identity into exactly one measurement-support category", () => {
+    const complete = new Set(REVIEWED_MEASUREMENT_MANIFEST.map(([name]) => name));
+    const ambiguous = new Set<string>(AMBIGUOUS_EXECUTION_IDENTITIES);
+    const unsupported = new Set<string>(UNSUPPORTED_MEASUREMENT_IDENTITIES);
+    const allNames = catalog.exercises.map((exercise) => exercise.name);
+    const memberships = allNames.map((name) =>
+      [complete, ambiguous, unsupported].filter((category) => category.has(name)).length,
+    );
+
+    expect(complete.size).toBe(108);
+    expect(ambiguous.size).toBe(26);
+    expect(unsupported.size).toBe(15);
+    expect(allNames).toHaveLength(149);
+    expect(memberships.filter((count) => count === 0)).toHaveLength(0);
+    expect(memberships.filter((count) => count > 1)).toHaveLength(0);
   });
 
   it("keeps ambiguous legacy identities unclassified", () => {

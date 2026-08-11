@@ -514,6 +514,9 @@
     },
     {
       "name": "Conventional Deadlift",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "hinge"
       ],
@@ -555,6 +558,9 @@
     },
     {
       "name": "Sumo Deadlift",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "hinge"
       ],
@@ -596,6 +602,9 @@
     },
     {
       "name": "Trap Bar Deadlift",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "hinge"
       ],
@@ -791,6 +800,9 @@
     },
     {
       "name": "Good Morning",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "hinge"
       ],
@@ -973,6 +985,9 @@
     },
     {
       "name": "Machine Hip Thrust",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "hinge"
       ],
@@ -1154,6 +1169,9 @@
     },
     {
       "name": "Reverse Hyperextension",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "extension"
       ],
@@ -1189,6 +1207,9 @@
     },
     {
       "name": "Cable Pull-Through",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "hinge"
       ],
@@ -1295,6 +1316,9 @@
     },
     {
       "name": "Hip Adduction Machine",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "adduction"
       ],
@@ -1573,6 +1597,9 @@
     },
     {
       "name": "Decline Barbell Bench Press",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "horizontal_push"
       ],
@@ -1692,6 +1719,9 @@
     },
     {
       "name": "Decline Dumbbell Bench Press",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "horizontal_push"
       ],
@@ -1768,6 +1798,9 @@
     },
     {
       "name": "Incline Machine Press",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "horizontal_push"
       ],
@@ -1803,6 +1836,9 @@
     },
     {
       "name": "Iso-Lateral Incline Press",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "horizontal_push"
       ],
@@ -1838,6 +1874,9 @@
     },
     {
       "name": "Iso-Lateral Decline Press",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "horizontal_push"
       ],
@@ -1873,6 +1912,9 @@
     },
     {
       "name": "Dumbbell Fly",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "horizontal_push"
       ],
@@ -1908,6 +1950,9 @@
     },
     {
       "name": "Incline Dumbbell Fly",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "horizontal_push"
       ],
@@ -1943,6 +1988,9 @@
     },
     {
       "name": "Cable Fly",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "horizontal_push"
       ],
@@ -1975,6 +2023,9 @@
     },
     {
       "name": "Low-to-High Cable Fly",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "horizontal_push"
       ],
@@ -2007,6 +2058,9 @@
     },
     {
       "name": "Pec Deck Machine",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "horizontal_push"
       ],
@@ -2039,6 +2093,9 @@
     },
     {
       "name": "Push-Up",
+      "measurementProfile": "REPS_BODYWEIGHT",
+      "loadConvention": null,
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "horizontal_push"
       ],
@@ -2075,6 +2132,9 @@
     },
     {
       "name": "Deficit Push-Up",
+      "measurementProfile": "REPS_BODYWEIGHT",
+      "loadConvention": null,
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "horizontal_push"
       ],
@@ -2194,6 +2254,9 @@
     },
     {
       "name": "Seated Barbell Overhead Press",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "vertical_push"
       ],
@@ -2274,6 +2337,9 @@
     },
     {
       "name": "Arnold Press",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "vertical_push"
       ],
@@ -2420,6 +2486,9 @@
     },
     {
       "name": "Cable Lateral Raise",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "abduction"
       ],
@@ -2452,6 +2521,9 @@
     },
     {
       "name": "Machine Lateral Raise",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "abduction"
       ],
@@ -2483,6 +2555,9 @@
     },
     {
       "name": "Dumbbell Front Raise",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "flexion"
       ],
@@ -2514,6 +2589,9 @@
     },
     {
       "name": "Cable Front Raise",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "flexion"
       ],
@@ -2692,6 +2770,9 @@
     },
     {
       "name": "Close-Grip Bench Press",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "horizontal_push"
       ],
@@ -2768,6 +2849,9 @@
     },
     {
       "name": "Seated Dip Machine",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "vertical_push"
       ],
@@ -2841,6 +2925,9 @@
     },
     {
       "name": "Overhead Dumbbell Extension",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "extension"
       ],
@@ -2980,6 +3067,9 @@
     },
     {
       "name": "Diamond Push-Up",
+      "measurementProfile": "REPS_BODYWEIGHT",
+      "loadConvention": null,
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "horizontal_push"
       ],
@@ -3059,6 +3149,9 @@
     },
     {
       "name": "Chin-Up",
+      "measurementProfile": "REPS_BODYWEIGHT",
+      "loadConvention": null,
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "vertical_pull"
       ],
@@ -3222,6 +3315,9 @@
     },
     {
       "name": "Iso-Lateral Front Lat Pulldown",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "vertical_pull"
       ],
@@ -3296,6 +3392,9 @@
     },
     {
       "name": "Straight-Arm Pulldown",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "vertical_pull"
       ],
@@ -3328,6 +3427,9 @@
     },
     {
       "name": "Dumbbell Pullover",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "vertical_pull"
       ],
@@ -3365,6 +3467,9 @@
     },
     {
       "name": "Cable Pullover",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "vertical_pull"
       ],
@@ -3397,6 +3502,9 @@
     },
     {
       "name": "Barbell Row",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "horizontal_pull"
       ],
@@ -3436,6 +3544,9 @@
     },
     {
       "name": "Pendlay Row",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "horizontal_pull"
       ],
@@ -3515,6 +3626,9 @@
     },
     {
       "name": "Chest-Supported T-Bar Row",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "horizontal_pull"
       ],
@@ -3591,6 +3705,9 @@
     },
     {
       "name": "Dumbbell Row",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "horizontal_pull"
       ],
@@ -3710,6 +3827,9 @@
     },
     {
       "name": "Close-Grip Seated Cable Row",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "horizontal_pull"
       ],
@@ -3746,6 +3866,9 @@
     },
     {
       "name": "Iso-Lateral High Row",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "horizontal_pull"
       ],
@@ -3782,6 +3905,9 @@
     },
     {
       "name": "Iso-Lateral Low Row",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "horizontal_pull"
       ],
@@ -3854,6 +3980,9 @@
     },
     {
       "name": "Inverted Row",
+      "measurementProfile": "REPS_BODYWEIGHT",
+      "loadConvention": null,
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "horizontal_pull"
       ],
@@ -3890,6 +4019,9 @@
     },
     {
       "name": "Barbell Shrug",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "isolation"
       ],
@@ -3923,6 +4055,9 @@
     },
     {
       "name": "Dumbbell Shrug",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "isolation"
       ],
@@ -3956,6 +4091,9 @@
     },
     {
       "name": "Seated Machine Shrug",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "isolation"
       ],
@@ -4134,6 +4272,9 @@
     },
     {
       "name": "Incline Dumbbell Curl",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "flexion"
       ],
@@ -4203,6 +4344,9 @@
     },
     {
       "name": "Cross-Body Hammer Curl",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "PER_SIDE",
       "movementPatterns": [
         "flexion"
       ],
@@ -4272,6 +4416,9 @@
     },
     {
       "name": "Bayesian Curl",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "flexion"
       ],
@@ -4374,6 +4521,9 @@
     },
     {
       "name": "Concentration Curl",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "PER_SIDE",
       "movementPatterns": [
         "flexion"
       ],
@@ -4405,6 +4555,9 @@
     },
     {
       "name": "Reverse Curl",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "flexion"
       ],
@@ -4818,6 +4971,9 @@
     },
     {
       "name": "Oblique Crunch Machine",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "flexion",
         "rotation"
@@ -4962,6 +5118,9 @@
     },
     {
       "name": "Decline Sit-Up",
+      "measurementProfile": "REPS_BODYWEIGHT",
+      "loadConvention": null,
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "flexion"
       ],
@@ -4994,6 +5153,9 @@
     },
     {
       "name": "Reverse Crunch",
+      "measurementProfile": "REPS_BODYWEIGHT",
+      "loadConvention": null,
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "flexion"
       ],
@@ -5025,6 +5187,9 @@
     },
     {
       "name": "Bicycle Crunch",
+      "measurementProfile": "REPS_BODYWEIGHT",
+      "loadConvention": null,
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "rotation"
       ],
@@ -5088,6 +5253,9 @@
     },
     {
       "name": "Torso Rotation Machine",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "rotation"
       ],
@@ -5121,6 +5289,9 @@
     },
     {
       "name": "Wood Chop",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "rotation"
       ],
@@ -5365,6 +5536,9 @@
     },
     {
       "name": "Cable Crossover",
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "horizontal_push"
       ],
@@ -5397,6 +5571,9 @@
     },
     {
       "name": "Neutral Grip Pull-Up",
+      "measurementProfile": "REPS_BODYWEIGHT",
+      "loadConvention": null,
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "vertical_pull"
       ],

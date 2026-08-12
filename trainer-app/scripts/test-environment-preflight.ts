@@ -15,6 +15,7 @@ import {
   collectSensitiveVerificationEnvironmentValues,
   compareTestSuiteEnvironmentManifests,
   DATABASE_TARGET_ENV_VARS,
+  evaluateCredentialFreeInventoryOutcome,
   IMPORT_ONLY_PLACEHOLDER_URL,
   inspectCriticalDependencyIntegrity,
   inspectDependencyFilesystem,
@@ -421,25 +422,23 @@ async function runCredentialFreeInventory(input: {
   console.log(
     `- socket connection attempt: ${placeholderConnectionAttempted ? "detected and failed" : "none observed"}`
   );
-  const credentialFreeFailure = credentialFreeResult.status !== 0;
-  const importOnlyFailure = !importOnlyResult.success || placeholderConnectionAttempted;
-  const malformedResult =
-    !credentialFreeResult.summary || !importOnlyResult.summary;
+  const outcome = evaluateCredentialFreeInventoryOutcome({
+    credentialFreeResult,
+    importOnlyResult,
+    placeholderConnectionAttempted,
+  });
   console.log("Unexpected failure status:");
   console.log(
-    `- credential-free collection, setup, import, or test failure: ${credentialFreeFailure ? "present" : "none"}`
+    `- credential-free collection, setup, import, or test failure: ${outcome.credentialFreeFailure ? "present" : "none"}`
   );
   console.log(
-    `- import-only collection, setup, import, or test failure: ${importOnlyFailure ? "present" : "none"}`
+    `- import-only collection, setup, import, or test failure: ${outcome.importOnlyFailure ? "present" : "none"}`
   );
   console.log(
-    `- malformed or incomplete Vitest result: ${malformedResult ? "present" : "none"}`
+    `- malformed or incomplete Vitest result: ${outcome.malformedResult ? "present" : "none"}`
   );
   console.log("- manifest or classification failure: none");
   console.log(`- branch/base comparison failure: ${baseRef ? "none" : "not requested"}`);
-  const unexpectedFailure =
-    credentialFreeFailure || importOnlyFailure || malformedResult;
-
   if (baseRef) {
     const delta = compareTestSuiteEnvironmentManifests(baseManifest, manifest);
     console.log(`Branch/base classification delta (${baseRef}):`);
@@ -462,7 +461,7 @@ async function runCredentialFreeInventory(input: {
     console.log("Branch/base classification delta: not requested (use --base-ref <git-ref>)");
   }
 
-  return unexpectedFailure ? 1 : 0;
+  return outcome.exitCode;
   } finally {
     console.log(
       `Credential-free inventory total elapsed: ${formatElapsed(Date.now() - totalStartedAt)}`

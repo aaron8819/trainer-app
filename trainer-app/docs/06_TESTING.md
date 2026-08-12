@@ -166,8 +166,9 @@ elapsed time, and emits a structured final summary. Successful phases remove the
 captures. Failed phases retain complete stdout, stderr, reporter output when present, and
   machine-readable failure metadata under `artifacts/credential-free-inventory/<unique-run>/` and
   print every retained path. GitHub Actions uploads that narrowly scoped directory only after a failed
-  inventory as `credential-free-inventory-<run-id>-<attempt>` for seven days. Successful phases remove their
-  unique local directory and therefore upload nothing:
+  inventory. Download it from the specific workflow run's **Artifacts** section under the name
+  `credential-free-inventory-<run-id>-<attempt>`; CI retains it for seven days. Successful phases remove
+  their unique local directory and therefore upload nothing:
 
 ```text
 npm run test:inventory:credential-free -- --base-ref origin/master
@@ -194,6 +195,10 @@ subprocess failure. When artifact I/O fails, the runner retains whatever safe pa
 a fallback terminal summary; a cleanup failure turns an otherwise successful phase into an explicit artifact
 failure. Recovery is to inspect the primary failure first, then correct the named local filesystem/permission
 problem and rerun the same command. Do not repair dependencies or broaden timeouts as an artifact workaround.
+
+Worker benchmarking, worker tuning, change-aware selection, dependency sharing, classification-only
+preflight, and broader verification optimization remain deferred. Reopen them only if normal workflow
+evidence continues to demonstrate material pain.
 
 The gate does not run or claim disposable PostgreSQL coverage. These suites remain separately
 authorized:

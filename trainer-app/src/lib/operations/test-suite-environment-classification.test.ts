@@ -7,6 +7,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -25,6 +26,108 @@ import {
 } from "./test-environment-preflight";
 
 const temporaryDirectories: string[] = [];
+const yaml = createRequire(import.meta.url)("js-yaml") as {
+  load(source: string): unknown;
+};
+
+type WorkflowStep = {
+  name?: unknown;
+  id?: unknown;
+  run?: unknown;
+  uses?: unknown;
+  if?: unknown;
+  with?: Record<string, unknown>;
+  "continue-on-error"?: unknown;
+};
+
+type CredentialFreeWorkflow = {
+  on?: {
+    pull_request?: {
+      branches?: unknown;
+    };
+  };
+  permissions?: Record<string, unknown>;
+  jobs?: Record<
+    string,
+    {
+      name?: unknown;
+      env?: Record<string, unknown>;
+      steps?: WorkflowStep[];
+    }
+  >;
+};
+
+function parseWorkflow(source: string): CredentialFreeWorkflow {
+  const parsed = yaml.load(source);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Credential-free workflow must parse as an object.");
+  }
+  return parsed as CredentialFreeWorkflow;
+}
+
+function workflowStep(
+  workflow: CredentialFreeWorkflow,
+  name: string
+): WorkflowStep | undefined {
+  return workflow.jobs?.["credential-free-inventory"]?.steps?.find(
+    (step) => step.name === name
+  );
+}
+
+function validateCredentialFreeWorkflow(workflow: CredentialFreeWorkflow): string[] {
+  const errors: string[] = [];
+  const job = workflow.jobs?.["credential-free-inventory"];
+  const branches = workflow.on?.pull_request?.branches;
+  if (!Array.isArray(branches) || !branches.includes("master")) errors.push("pull-request-branch");
+  if (workflow.permissions?.contents !== "read") errors.push("permissions");
+  if (job?.name !== "credential-free-inventory") errors.push("job-name");
+  if (job?.env?.CI !== true || job.env.TZ !== "America/Chicago") errors.push("job-env");
+
+  const checkout = workflowStep(workflow, "Check out repository");
+  if (checkout?.uses !== "actions/checkout@v7" || checkout.with?.["fetch-depth"] !== 0) {
+    errors.push("checkout-step");
+  }
+  const setupNode = workflowStep(workflow, "Set up Node.js");
+  if (setupNode?.uses !== "actions/setup-node@v7" || setupNode.with?.["node-version"] !== 22) {
+    errors.push("node-step");
+  }
+  if (workflowStep(workflow, "Install exact dependencies")?.run !== "npm ci") {
+    errors.push("install-step");
+  }
+
+  const inventory = workflowStep(workflow, "Run credential-free inventory");
+  if (inventory?.id !== "credential_free_inventory") errors.push("inventory-id");
+  if (
+    inventory?.run !==
+    "npm run test:inventory:credential-free -- --base-ref origin/master"
+  ) {
+    errors.push("inventory-run");
+  }
+
+  const upload = workflowStep(workflow, "Upload credential-free failure bundle");
+  if (
+    upload?.if !==
+    "${{ always() && steps.credential_free_inventory.outcome == 'failure' }}"
+  ) {
+    errors.push("upload-if");
+  }
+  if (upload?.uses !== "actions/upload-artifact@v4") errors.push("upload-action");
+  if (
+    upload?.with?.name !==
+    "credential-free-inventory-${{ github.run_id }}-${{ github.run_attempt }}"
+  ) {
+    errors.push("upload-name");
+  }
+  if (upload?.with?.path !== "trainer-app/artifacts/credential-free-inventory/") {
+    errors.push("upload-path");
+  }
+  if (upload?.with?.["if-no-files-found"] !== "error") errors.push("upload-missing-files");
+  if (upload?.with?.["retention-days"] !== 7) errors.push("upload-retention");
+  if (job?.steps?.some((step) => step["continue-on-error"] !== undefined)) {
+    errors.push("continue-on-error");
+  }
+  return errors;
+}
 const authorizedCommand: TestCommandRegistryEntry = {
   id: "npm-test-db-workout-mutations",
   packageScript: "test:db:workout-mutations",
@@ -384,45 +487,84 @@ describe("credential-free and placeholder failure boundaries", () => {
 });
 
 describe("pull-request CI contract", () => {
-  it("delegates every environment class to the canonical inventory command", () => {
-    const workflow = readFileSync(
-      resolve("..", ".github/workflows/credential-free-inventory.yml"),
-      "utf8"
-    );
+  const workflowSource = readFileSync(
+    resolve("..", ".github/workflows/credential-free-inventory.yml"),
+    "utf8"
+  );
 
-    expect(workflow).toContain("pull_request:");
-    expect(workflow).toContain("- master");
-    expect(workflow).toContain("name: credential-free-inventory");
-    expect(workflow).toContain("fetch-depth: 0");
-    expect(workflow).toContain("node-version: 22");
-    expect(workflow).toContain("CI: true");
-    expect(workflow).toContain("TZ: America/Chicago");
-    expect(workflow).toContain("uses: actions/checkout@v7");
-    expect(workflow).toContain("uses: actions/setup-node@v7");
-    expect(workflow).toContain("run: npm ci");
-    expect(workflow).toContain(
-      "run: npm run test:inventory:credential-free -- --base-ref origin/master"
-    );
-    expect(workflow).not.toMatch(/\bDATABASE_URL\b|\bTEST_DATABASE_URL\b/);
-    expect(workflow).not.toContain("test:db:");
-    expect(workflow).not.toContain("continue-on-error");
-    expect(workflow).not.toMatch(/\bvitest\b/);
-    expect(workflow).toContain("uses: actions/upload-artifact@v4");
-    expect(workflow).toContain(
-      "if: ${{ failure() && hashFiles('trainer-app/artifacts/credential-free-inventory/**') != '' }}"
-    );
-    expect(workflow).toContain(
-      "name: credential-free-inventory-${{ github.run_id }}-${{ github.run_attempt }}"
-    );
-    expect(workflow).toContain(
-      "path: trainer-app/artifacts/credential-free-inventory/"
-    );
-    expect(workflow).toContain("if-no-files-found: error");
-    expect(workflow).toContain("retention-days: 7");
-    expect(workflow).not.toMatch(
-      /^\s+path:\s+(?:\.|trainer-app\/?|artifacts\/?|\.env\S*)\s*$/m
-    );
+  it("parses the workflow and validates the identified inventory and upload steps", () => {
+    const workflow = parseWorkflow(workflowSource);
 
+    expect(validateCredentialFreeWorkflow(workflow)).toEqual([]);
+    expect(workflowSource).not.toMatch(/\bDATABASE_URL\b|\bTEST_DATABASE_URL\b/);
+    expect(workflowSource).not.toContain("test:db:");
+    expect(workflowSource).not.toMatch(/^\s+run:\s+.*\bvitest\b/m);
+  });
+
+  it("rejects missing or misplaced workflow contract fields", () => {
+    const cases: Array<{
+      label: string;
+      expectedError: string;
+      mutate(workflow: CredentialFreeWorkflow): void;
+    }> = [
+      {
+        label: "missing inventory step ID",
+        expectedError: "inventory-id",
+        mutate: (workflow) => {
+          delete workflowStep(workflow, "Run credential-free inventory")?.id;
+        },
+      },
+      {
+        label: "upload condition unrelated to inventory outcome",
+        expectedError: "upload-if",
+        mutate: (workflow) => {
+          const upload = workflowStep(workflow, "Upload credential-free failure bundle");
+          if (upload) upload.if = "${{ always() && steps.checkout.outcome == 'failure' }}";
+        },
+      },
+      {
+        label: "broad artifact path",
+        expectedError: "upload-path",
+        mutate: (workflow) => {
+          const upload = workflowStep(workflow, "Upload credential-free failure bundle");
+          if (upload?.with) upload.with.path = "trainer-app/";
+        },
+      },
+      {
+        label: "missing retention",
+        expectedError: "upload-retention",
+        mutate: (workflow) => {
+          const upload = workflowStep(workflow, "Upload credential-free failure bundle");
+          if (upload?.with) delete upload.with["retention-days"];
+        },
+      },
+      {
+        label: "upload action and fields attached to the inventory step",
+        expectedError: "upload-action",
+        mutate: (workflow) => {
+          const inventory = workflowStep(workflow, "Run credential-free inventory");
+          const upload = workflowStep(workflow, "Upload credential-free failure bundle");
+          if (inventory && upload) {
+            inventory.uses = upload.uses;
+            inventory.with = upload.with;
+            delete upload.uses;
+            delete upload.with;
+          }
+        },
+      },
+    ];
+
+    for (const testCase of cases) {
+      const fixture = structuredClone(parseWorkflow(workflowSource));
+      testCase.mutate(fixture);
+      expect(
+        validateCredentialFreeWorkflow(fixture),
+        testCase.label
+      ).toContain(testCase.expectedError);
+    }
+  });
+
+  it("keeps one-worker progress and reporter separation in the canonical runner", () => {
     const runner = readFileSync(
       resolve("scripts/test-environment-preflight.ts"),
       "utf8"

@@ -118,6 +118,36 @@ export type VitestSummaryCounts = {
     skipped: number;
   };
 };
+export type CredentialFreeInventoryPhaseOutcome = {
+  success: boolean;
+  summary: VitestSummaryCounts | null;
+};
+export type CredentialFreeInventoryOutcome = {
+  credentialFreeFailure: boolean;
+  importOnlyFailure: boolean;
+  malformedResult: boolean;
+  exitCode: 0 | 1;
+};
+
+export function evaluateCredentialFreeInventoryOutcome(input: {
+  credentialFreeResult: CredentialFreeInventoryPhaseOutcome;
+  importOnlyResult: CredentialFreeInventoryPhaseOutcome;
+  placeholderConnectionAttempted: boolean;
+}): CredentialFreeInventoryOutcome {
+  const credentialFreeFailure = !input.credentialFreeResult.success;
+  const importOnlyFailure =
+    !input.importOnlyResult.success || input.placeholderConnectionAttempted;
+  const malformedResult =
+    !input.credentialFreeResult.summary || !input.importOnlyResult.summary;
+  return {
+    credentialFreeFailure,
+    importOnlyFailure,
+    malformedResult,
+    exitCode:
+      credentialFreeFailure || importOnlyFailure || malformedResult ? 1 : 0,
+  };
+}
+
 export type TestSuiteEnvironmentDelta = {
   added: TestSuiteEnvironmentEntry[];
   removed: TestSuiteEnvironmentEntry[];

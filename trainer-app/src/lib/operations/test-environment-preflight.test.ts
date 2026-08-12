@@ -24,6 +24,7 @@ import {
   collectSensitiveVerificationEnvironmentValues,
   DATABASE_TARGET_ENV_VARS,
   discoverDatabaseTargetVariableReferences,
+  evaluateCredentialFreeInventoryOutcome,
   inspectDependencyFilesystem,
   inspectCriticalDependencyIntegrity,
   inspectPrismaClientFilesystem,
@@ -50,6 +51,55 @@ afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+describe("credential-free inventory orchestration", () => {
+  const passingSummary = {
+    files: { total: 1, passed: 1, failed: 0, skipped: 0 },
+    tests: { total: 1, passed: 1, failed: 0, skipped: 0 },
+  };
+
+  it("fails the command for an artifact-only phase failure with subprocess status zero", () => {
+    const artifactFailure = {
+      status: 0,
+      success: false,
+      failureKind: "artifact-failure" as const,
+      summary: passingSummary,
+    };
+
+    expect(
+      evaluateCredentialFreeInventoryOutcome({
+        credentialFreeResult: artifactFailure,
+        importOnlyResult: { success: true, summary: passingSummary },
+        placeholderConnectionAttempted: false,
+      })
+    ).toEqual({
+      credentialFreeFailure: true,
+      importOnlyFailure: false,
+      malformedResult: false,
+      exitCode: 1,
+    });
+    expect(artifactFailure).toMatchObject({
+      status: 0,
+      success: false,
+      failureKind: "artifact-failure",
+    });
+  });
+
+  it("keeps a normal successful inventory successful", () => {
+    expect(
+      evaluateCredentialFreeInventoryOutcome({
+        credentialFreeResult: { success: true, summary: passingSummary },
+        importOnlyResult: { success: true, summary: passingSummary },
+        placeholderConnectionAttempted: false,
+      })
+    ).toEqual({
+      credentialFreeFailure: false,
+      importOnlyFailure: false,
+      malformedResult: false,
+      exitCode: 0,
+    });
+  });
 });
 
 describe("classifyDatabaseTarget", () => {

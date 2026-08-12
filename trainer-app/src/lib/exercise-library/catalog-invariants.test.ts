@@ -115,13 +115,13 @@ describe("exercise catalog invariants", () => {
       ]),
     );
 
-    expect(names).toHaveLength(149);
-    expect(new Set(names)).toHaveLength(149);
+    expect(names).toHaveLength(150);
+    expect(new Set(names)).toHaveLength(150);
     expect([...names].sort()).toEqual(
       catalog.exercises.map(({ name }) => name).sort(),
     );
     expect(counts).toEqual({
-      COMPLETE_SUPPORTED: 88,
+      COMPLETE_SUPPORTED: 89,
       AMBIGUOUS_EXECUTION_IDENTITY: 39,
       UNSUPPORTED_MEASUREMENT_SEMANTICS: 22,
     });

@@ -123,11 +123,11 @@ describe("exercise measurement semantics", () => {
     ).toBe(label);
   });
 
-  it("matches the catalog to the production-owned 88-tuple complete manifest", () => {
-    expect(COMPLETE_SUPPORTED_MEASUREMENT_IDENTITIES).toHaveLength(88);
+  it("matches the catalog to the production-owned 89-tuple complete manifest", () => {
+    expect(COMPLETE_SUPPORTED_MEASUREMENT_IDENTITIES).toHaveLength(89);
     expect(
       new Set(COMPLETE_SUPPORTED_MEASUREMENT_IDENTITIES.map(([name]) => name)).size,
-    ).toBe(88);
+    ).toBe(89);
 
     const classified = catalog.exercises.filter(
       (exercise) => exercise.measurementProfile != null,
@@ -144,11 +144,11 @@ describe("exercise measurement semantics", () => {
       ([left], [right]) => left.localeCompare(right),
     );
 
-    expect(classified).toHaveLength(88);
+    expect(classified).toHaveLength(89);
     expect(actual).toEqual(expected);
   });
 
-  it("partitions all 149 canonical identities as 88 complete, 39 ambiguous, and 22 unsupported", () => {
+  it("partitions all 150 canonical identities as 89 complete, 39 ambiguous, and 22 unsupported", () => {
     const complete = new Set(
       COMPLETE_SUPPORTED_MEASUREMENT_IDENTITIES.map(([name]) => name),
     );
@@ -159,10 +159,10 @@ describe("exercise measurement semantics", () => {
       [complete, ambiguous, unsupported].filter((category) => category.has(name)).length,
     );
 
-    expect(complete.size).toBe(88);
+    expect(complete.size).toBe(89);
     expect(ambiguous.size).toBe(39);
     expect(unsupported.size).toBe(22);
-    expect(allNames).toHaveLength(149);
+    expect(allNames).toHaveLength(150);
     expect(exerciseAliases).toHaveLength(54);
     expect(memberships.filter((count) => count === 0)).toHaveLength(0);
     expect(memberships.filter((count) => count > 1)).toHaveLength(0);

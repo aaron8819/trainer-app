@@ -6329,6 +6329,50 @@
       "timePerSetSec": 35
     },
     {
+      "name": "Cable Pallof Press",
+      "catalogKey": "cable-pallof-press",
+      "facts": {
+        "version": 1,
+        "stimulus": {
+          "disposition": "COMPLETE",
+          "profile": {
+            "core": 1
+          }
+        }
+      },
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "PER_SIDE",
+      "movementPatterns": [
+        "anti_rotation"
+      ],
+      "splitTag": "core",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Cable"
+      ],
+      "fatigueCost": 1,
+      "sfrScore": 4,
+      "lengthPositionScore": 1,
+      "stimulusBias": [
+        "stability"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Core"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 20
+      },
+      "timePerSetSec": 35
+    },
+    {
       "name": "Cable Crunch",
       "catalogKey": "cable-crunch",
       "facts": {

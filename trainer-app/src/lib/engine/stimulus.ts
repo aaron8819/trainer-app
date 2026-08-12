@@ -465,6 +465,7 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
       "Ab Wheel Rollout",
       "Bicycle Crunch",
       "Cable Crunch",
+      "Cable Pallof Press",
       "Decline Sit-Up",
       "Dragon Flag",
       "Landmine Rotation",

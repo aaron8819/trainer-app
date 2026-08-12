@@ -594,6 +594,41 @@ describe("custom hypertrophy authoring contracts", () => {
     ).toEqual({ eligible: false, reasonCode: "MUSCLE_TARGET_MISMATCH" });
   });
 
+  it("makes Cable Pallof Press eligible for a full-gym anti-rotation accessory intent", () => {
+    const exercise = shippedCatalogExercise("Cable Pallof Press");
+    const authoringExercise = toAuthoringExercise(exercise);
+    const intent = {
+      userRole: "ACCESSORY" as const,
+      target: {
+        kind: "movement_pattern" as const,
+        movementPattern: "anti_rotation" as const,
+      },
+    };
+
+    expect(authoringExercise.id).toBe("cable-pallof-press");
+    expect(
+      isExerciseAvailableForHypertrophyPlan({
+        exercise: authoringExercise,
+        equipmentProfile: "FULL_GYM",
+        limitationKeys: [],
+      }),
+    ).toBe(true);
+    expect(
+      evaluateHypertrophySemanticIntent({
+        exercise: toMaterializationExercise(exercise),
+        intent,
+      }),
+    ).toEqual({ eligible: true });
+    expect(
+      isExerciseEligibleForIntent({
+        exercise: authoringExercise,
+        intent,
+        equipmentProfile: "FULL_GYM",
+        limitationKeys: [],
+      }),
+    ).toBe(true);
+  });
+
   it("makes all accepted semantic mismatches plan-health blockers", () => {
     const invalid = structuredClone(draft());
     invalid.sessions[0]!.exercises[0]!.intent.target = {

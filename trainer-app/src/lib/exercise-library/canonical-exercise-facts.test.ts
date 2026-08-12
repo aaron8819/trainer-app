@@ -66,8 +66,8 @@ const validCompleteFacts = {
 describe("canonical exercise authoring facts", () => {
   it("stores one unique key for every identity with exact reviewed membership", () => {
     const keys = catalogExercises.map(({ catalogKey }) => catalogKey);
-    expect(keys).toHaveLength(149);
-    expect(new Set(keys)).toHaveLength(149);
+    expect(keys).toHaveLength(150);
+    expect(new Set(keys)).toHaveLength(150);
     expect([...keys].sort()).toEqual([
       "45-degree-back-extension-hamstring-bias",
       "ab-wheel-rollout",
@@ -93,6 +93,7 @@ describe("canonical exercise authoring facts", () => {
       "cable-front-raise",
       "cable-hip-abduction",
       "cable-lateral-raise",
+      "cable-pallof-press",
       "cable-pull-through",
       "cable-pullover",
       "cable-rear-delt-fly",
@@ -221,12 +222,81 @@ describe("canonical exercise authoring facts", () => {
     ]);
   });
 
+  it("adds an execution-distinct Cable Pallof Press without changing the legacy identity", () => {
+    const cablePallofPress = catalogExercises.find(
+      ({ catalogKey }) => catalogKey === "cable-pallof-press",
+    );
+    const legacyPallofPress = catalogExercises.find(
+      ({ catalogKey }) => catalogKey === "pallof-press",
+    );
+
+    expect(cablePallofPress).toEqual({
+      name: "Cable Pallof Press",
+      catalogKey: "cable-pallof-press",
+      facts: {
+        version: 1,
+        stimulus: { disposition: "COMPLETE", profile: { core: 1 } },
+      },
+      measurementProfile: "REPS_EXTERNAL_LOAD",
+      loadConvention: "MACHINE_DISPLAYED",
+      repBasis: "PER_SIDE",
+      movementPatterns: ["anti_rotation"],
+      splitTag: "core",
+      isCompound: false,
+      isMainLiftEligible: false,
+      jointStress: "low",
+      equipment: ["Cable"],
+      fatigueCost: 1,
+      sfrScore: 4,
+      lengthPositionScore: 1,
+      stimulusBias: ["stability"],
+      contraindications: null,
+      primaryMuscles: ["Core"],
+      secondaryMuscles: [],
+      difficulty: "beginner",
+      unilateral: false,
+      repRangeRecommendation: { min: 8, max: 20 },
+      timePerSetSec: 35,
+    });
+    expect(legacyPallofPress).toEqual({
+      name: "Pallof Press",
+      catalogKey: "pallof-press",
+      facts: {
+        version: 1,
+        stimulus: { disposition: "COMPLETE", profile: { core: 1 } },
+      },
+      movementPatterns: ["anti_rotation"],
+      splitTag: "core",
+      isCompound: false,
+      isMainLiftEligible: false,
+      jointStress: "low",
+      equipment: ["Cable", "Band"],
+      fatigueCost: 1,
+      sfrScore: 4,
+      lengthPositionScore: 1,
+      stimulusBias: ["stability"],
+      contraindications: null,
+      primaryMuscles: ["Core"],
+      secondaryMuscles: [],
+      difficulty: "beginner",
+      unilateral: false,
+      repRangeRecommendation: { min: 8, max: 20 },
+      timePerSetSec: 35,
+    });
+    expect(
+      exerciseAliases.filter(
+        ({ exerciseName, alias }) =>
+          /pallof/i.test(exerciseName) || /pallof/i.test(alias),
+      ),
+    ).toEqual([]);
+  });
+
   it("stores an explicit stimulus disposition for every identity", () => {
     const dispositions = catalogExercises.map(
       ({ facts }) => parseCanonicalExerciseFactsV1(facts).stimulus.disposition,
     );
-    expect(dispositions).toHaveLength(149);
-    expect(dispositions.filter((value) => value === "COMPLETE")).toHaveLength(148);
+    expect(dispositions).toHaveLength(150);
+    expect(dispositions.filter((value) => value === "COMPLETE")).toHaveLength(149);
     expect(dispositions.filter((value) => value === "MISSING")).toHaveLength(1);
     expect(
       dispositions.filter(
@@ -250,7 +320,7 @@ describe("canonical exercise authoring facts", () => {
           name.trim().toLowerCase().replace(/\s+/g, " ")
         ] != null,
     );
-    expect(directCanonicalProfiles).toHaveLength(147);
+    expect(directCanonicalProfiles).toHaveLength(148);
 
     for (const exercise of catalogExercises) {
       const authored = parseCanonicalExerciseFactsV1(exercise.facts).stimulus;

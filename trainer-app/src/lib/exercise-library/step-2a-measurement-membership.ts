@@ -135,6 +135,7 @@ export const REVIEWED_STEP_2A_MEASUREMENT_MEMBERSHIP = [
   ["Side Plank", "UNSUPPORTED_MEASUREMENT_SEMANTICS"],
   ["Ab Wheel Rollout", "COMPLETE_SUPPORTED"],
   ["Pallof Press", "AMBIGUOUS_EXECUTION_IDENTITY"],
+  ["Cable Pallof Press", "COMPLETE_SUPPORTED"],
   ["Cable Crunch", "COMPLETE_SUPPORTED"],
   ["Machine Crunch", "COMPLETE_SUPPORTED"],
   ["Oblique Crunch Machine", "COMPLETE_SUPPORTED"],

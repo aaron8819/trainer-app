@@ -128,6 +128,7 @@ export const EXPECTED_CATALOG_IDENTITY_KEYS_V1 = [
   ["Side Plank", "side-plank"],
   ["Ab Wheel Rollout", "ab-wheel-rollout"],
   ["Pallof Press", "pallof-press"],
+  ["Cable Pallof Press", "cable-pallof-press"],
   ["Cable Crunch", "cable-crunch"],
   ["Machine Crunch", "machine-crunch"],
   ["Oblique Crunch Machine", "oblique-crunch-machine"],

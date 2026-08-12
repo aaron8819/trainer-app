@@ -37,6 +37,7 @@ Sources of truth:
 Reference-only docs:
 - `docs/research/` is non-canonical reference material and not a source of runtime truth.
 - `docs/architecture/PLANNING_EXECUTION_FOUNDATION_DESIGN.md`: proposed target architecture for plan meaning, exercise identity, measurement-aware execution, history, and Plan Health; not current runtime behavior until implemented
+- `docs/architecture/CATALOG_FACTS_STAGE_2_TAXONOMY_CONTRACT.md`: proposed implementation-ready design contract for the future Catalog Facts Stage 2 taxonomy authoring and validation increment; not implemented or consumed by runtime
 
 Archived roadmap/design logs:
 - `docs/archive/08_MESOCYCLE_SIMPLIFICATION_ROADMAP.md`

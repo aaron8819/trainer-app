@@ -209,6 +209,54 @@ const SANITIZED_ENVIRONMENT_NAMES = new Set(
     IMPORT_ONLY_PLACEHOLDER_ENV,
   ].map((name) => name.toUpperCase())
 );
+const VERIFICATION_ENVIRONMENT_ALLOWLIST = new Set(
+  [
+    "APPDATA",
+    "CI",
+    "COLORTERM",
+    "COMSPEC",
+    "FORCE_COLOR",
+    "GITHUB_ACTIONS",
+    "GITHUB_RUN_ATTEMPT",
+    "GITHUB_RUN_ID",
+    "GITHUB_WORKSPACE",
+    "HOME",
+    "HOMEDRIVE",
+    "HOMEPATH",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "LOCALAPPDATA",
+    "NODE_ENV",
+    "NO_COLOR",
+    "NPM_EXECPATH",
+    "NPM_NODE_EXECPATH",
+    "NUMBER_OF_PROCESSORS",
+    "OS",
+    "PATH",
+    "PATHEXT",
+    "PROCESSOR_ARCHITECTURE",
+    "PROGRAMDATA",
+    "PROGRAMFILES",
+    "PROGRAMFILES(X86)",
+    "RUNNER_ARCH",
+    "RUNNER_OS",
+    "RUNNER_TEMP",
+    "SHELL",
+    "SYSTEMDRIVE",
+    "SYSTEMROOT",
+    "TEMP",
+    "TERM",
+    "TMP",
+    "TMPDIR",
+    "TZ",
+    "USER",
+    "USERPROFILE",
+    "WINDIR",
+  ].map((name) => name.toUpperCase())
+);
+const SENSITIVE_ENVIRONMENT_NAME =
+  /(?:^|_)(?:ACCESS_KEY|API_KEY|AUTH|AUTHORIZATION|CLIENT_SECRET|CONNECTION_STRING|COOKIE|CREDENTIAL|CREDENTIALS|DATABASE_URL|DIRECT_URL|ID_TOKEN|PASSWORD|PASSCODE|PRIVATE_KEY|REFRESH_TOKEN|SECRET|SESSION_KEY|SHADOW_URL|TOKEN)(?:$|_)/;
 const DATABASE_TARGET_REFERENCE =
   /\b(?:[A-Z][A-Z0-9_]*(?:DATABASE|POSTGRESQL|POSTGRES|DB)[A-Z0-9_]*_URL|DIRECT_URL|SHADOW_URL)\b/g;
 
@@ -293,6 +341,58 @@ export function sanitizeDatabaseTargetEnvironment<
     }
   }
   return sanitized;
+}
+
+export function isSensitiveVerificationEnvironmentName(name: string): boolean {
+  const normalized = name.toUpperCase();
+  return (
+    SANITIZED_ENVIRONMENT_NAMES.has(normalized) ||
+    normalized === "PGPASSWORD" ||
+    normalized.endsWith("TOKEN") ||
+    SENSITIVE_ENVIRONMENT_NAME.test(normalized)
+  );
+}
+
+export function collectSensitiveVerificationEnvironmentValues(
+  environment: Record<string, string | undefined>
+): string[] {
+  return [
+    ...new Set(
+      Object.entries(environment)
+        .filter(
+          ([name, value]) =>
+            isSensitiveVerificationEnvironmentName(name) &&
+            typeof value === "string" &&
+            value.length >= 8
+        )
+        .map(([, value]) => value as string)
+    ),
+  ].sort((left, right) => right.length - left.length);
+}
+
+export function buildCredentialSafeVerificationEnvironment(
+  environment: Record<string, string | undefined>
+): NodeJS.ProcessEnv {
+  const nodeEnvironment =
+    environment.NODE_ENV === "development" || environment.NODE_ENV === "production"
+      ? environment.NODE_ENV
+      : "test";
+  const safe: NodeJS.ProcessEnv = { NODE_ENV: nodeEnvironment };
+  const seen = new Set<string>(["NODE_ENV"]);
+  for (const [name, value] of Object.entries(environment)) {
+    const normalized = name.toUpperCase();
+    if (
+      value === undefined ||
+      seen.has(normalized) ||
+      isSensitiveVerificationEnvironmentName(name) ||
+      !VERIFICATION_ENVIRONMENT_ALLOWLIST.has(normalized)
+    ) {
+      continue;
+    }
+    safe[name] = value;
+    seen.add(normalized);
+  }
+  return safe;
 }
 
 function normalizedTestPath(testPath: string): string {
@@ -446,22 +546,20 @@ export function selectTestSuitesByEnvironment(input: {
   };
 }
 
-export function buildImportOnlyPlaceholderEnvironment<
-  T extends Record<string, string | undefined>,
->(
-  environment: T
-): T &
+export function buildImportOnlyPlaceholderEnvironment(
+  environment: Record<string, string | undefined>
+): NodeJS.ProcessEnv &
   Record<typeof IMPORT_ONLY_PLACEHOLDER_ENV, "1"> & {
     DATABASE_URL: typeof IMPORT_ONLY_PLACEHOLDER_URL;
     TRAINER_CREDENTIAL_FREE_TEST: "1";
   } {
-  const sanitized = sanitizeDatabaseTargetEnvironment(environment);
+  const sanitized = buildCredentialSafeVerificationEnvironment(environment);
   return {
     ...sanitized,
     DATABASE_URL: IMPORT_ONLY_PLACEHOLDER_URL,
     TRAINER_CREDENTIAL_FREE_TEST: "1",
     [IMPORT_ONLY_PLACEHOLDER_ENV]: "1",
-  } as T &
+  } as NodeJS.ProcessEnv &
     Record<typeof IMPORT_ONLY_PLACEHOLDER_ENV, "1"> & {
       DATABASE_URL: typeof IMPORT_ONLY_PLACEHOLDER_URL;
       TRAINER_CREDENTIAL_FREE_TEST: "1";

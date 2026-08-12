@@ -10,14 +10,15 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   buildImportOnlyPlaceholderEnvironment,
+  buildCredentialSafeVerificationEnvironment,
   buildTestEnvironmentPreflight,
+  collectSensitiveVerificationEnvironmentValues,
   compareTestSuiteEnvironmentManifests,
   DATABASE_TARGET_ENV_VARS,
   IMPORT_ONLY_PLACEHOLDER_URL,
   inspectCriticalDependencyIntegrity,
   inspectDependencyFilesystem,
   inspectPrismaClientFilesystem,
-  sanitizeDatabaseTargetEnvironment,
   selectTestSuitesByEnvironment,
   validateImportOnlyPlaceholderEnvironment,
   validateTestSuiteEnvironmentManifest,
@@ -51,6 +52,7 @@ function readOptional(filePath: string): string | undefined {
 function registeredWorktreeRoots(projectRoot: string): string[] {
   const result = spawnSync("git", ["worktree", "list", "--porcelain"], {
     cwd: projectRoot,
+    env: credentialFreeEnvironment(),
     encoding: "utf8",
     windowsHide: true,
   });
@@ -72,6 +74,29 @@ function resolveNpmCli(): string | undefined {
 }
 
 let dependencyIntegrity: CriticalDependencyIntegrityReport | undefined;
+const restrictedLauncherEnvironment = "TRAINER_RESTRICTED_VERIFICATION_LAUNCHER";
+
+function launcherSensitiveValues(): string[] {
+  if (process.env[restrictedLauncherEnvironment] !== "1") {
+    return collectSensitiveVerificationEnvironmentValues(process.env);
+  }
+  try {
+    const values = JSON.parse(readFileSync(0, "utf8")) as unknown;
+    if (!Array.isArray(values)) return [];
+    return [
+      ...new Set(
+        values.filter(
+          (value): value is string =>
+            typeof value === "string" && value.length >= 8
+        )
+      ),
+    ].sort((left, right) => right.length - left.length);
+  } catch {
+    return [];
+  }
+}
+
+const sensitiveVerificationValues = launcherSensitiveValues();
 
 function validateDependencyInstallation(projectRoot: string): boolean {
   const npmCli = resolveNpmCli();
@@ -84,6 +109,7 @@ function validateDependencyInstallation(projectRoot: string): boolean {
   }
   const result = spawnSync(process.execPath, [npmCli, "ls", "--all", "--json"], {
     cwd: projectRoot,
+    env: credentialFreeEnvironment(),
     encoding: "utf8",
     windowsHide: true,
   });
@@ -112,7 +138,7 @@ function runSanitized(command: string, args: string[]): number {
 }
 
 function credentialFreeEnvironment(): NodeJS.ProcessEnv {
-  const env = sanitizeDatabaseTargetEnvironment(process.env);
+  const env = buildCredentialSafeVerificationEnvironment(process.env);
   env.TRAINER_CREDENTIAL_FREE_TEST = "1";
   return env;
 }
@@ -152,6 +178,7 @@ function readBaseManifest(
     ["show", `${baseRef}:trainer-app/scripts/test-suite-environments.json`],
     {
       cwd: projectRoot,
+      env: credentialFreeEnvironment(),
       encoding: "utf8",
       windowsHide: true,
     }
@@ -298,6 +325,7 @@ async function runCredentialFreeInventory(input: {
       ...vitestArgs,
     ],
     environment: credentialFreeEnvironment(),
+    sensitiveValues: sensitiveVerificationValues,
   });
 
   const placeholderEnvironment = buildImportOnlyPlaceholderEnvironment(process.env);
@@ -335,7 +363,9 @@ async function runCredentialFreeInventory(input: {
             reporterState: "available",
             failureKind: "none",
             failures: [],
+            artifactDiagnostics: [],
             artifacts: {
+              root: "not-created",
               directory: "not-created",
               stdout: "not-created",
               stderr: "not-created",
@@ -353,6 +383,7 @@ async function runCredentialFreeInventory(input: {
               ...vitestArgs,
             ],
             environment: placeholderEnvironment,
+            sensitiveValues: sensitiveVerificationValues,
             postRunFailure: () =>
               existsSync(attemptMarker)
                 ? "Import-only placeholder connection attempt was blocked."
@@ -462,8 +493,7 @@ function probeGeneratedPrismaClient(
     "if(typeof client.PrismaClient!==\"function\"||!Array.isArray(models))process.exit(1);",
     "if(!expected.every((name)=>models.includes(name)))process.exit(2);",
   ].join("");
-  const env = sanitizeDatabaseTargetEnvironment(process.env);
-  env.TRAINER_CREDENTIAL_FREE_TEST = "1";
+  const env = credentialFreeEnvironment();
   const result = spawnSync(
     process.execPath,
     ["-e", probe, clientForwarder, JSON.stringify(expectedModels)],
@@ -504,6 +534,7 @@ const prismaReadiness = inspectPrismaClientFilesystem({
   expectedModelMetadataAvailable: probe.expectedModelsAvailable,
 });
 const dockerProbe = spawnSync("docker", ["--version"], {
+  env: credentialFreeEnvironment(),
   encoding: "utf8",
   windowsHide: true,
   timeout: 5_000,

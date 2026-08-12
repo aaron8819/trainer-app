@@ -15,17 +15,20 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  buildCredentialSafeVerificationEnvironment,
   buildTestEnvironmentPreflight,
   classifyDatabaseTarget,
   classifyDependencyArrangement,
   classifyPrismaReadiness,
   CRITICAL_VERIFICATION_DEPENDENCIES,
+  collectSensitiveVerificationEnvironmentValues,
   DATABASE_TARGET_ENV_VARS,
   discoverDatabaseTargetVariableReferences,
   inspectDependencyFilesystem,
   inspectCriticalDependencyIntegrity,
   inspectPrismaClientFilesystem,
   isDependencyLinkAllowed,
+  isSensitiveVerificationEnvironmentName,
   normalizePrismaSchema,
   parseExactDisposableConfirmationArgs,
   resolveDisposableDatabaseTestTarget,
@@ -585,6 +588,69 @@ describe("dependency and Prisma readiness", () => {
   });
 });
 
+describe("credential-safe verification environment", () => {
+  it("preserves only platform and verification essentials while removing common credentials", () => {
+    const safe = buildCredentialSafeVerificationEnvironment({
+      Path: "C:/trusted/node",
+      TEMP: "C:/temp",
+      NODE_ENV: "test",
+      TZ: "America/Chicago",
+      CI: "true",
+      GH_TOKEN: "common-token-sentinel-123456",
+      VERCEL_TOKEN: "deployment-token-sentinel-123456",
+      npm_config_authToken: "npm-token-sentinel-123456",
+      DATABASE_URL: "database-secret-sentinel-123456",
+      TRAINER_DISPOSABLE_DB_CONFIRMED: "1",
+      UNRELATED_APPLICATION_SETTING: "must-not-be-inherited",
+    });
+
+    expect(safe).toMatchObject({
+      Path: "C:/trusted/node",
+      TEMP: "C:/temp",
+      NODE_ENV: "test",
+      TZ: "America/Chicago",
+      CI: "true",
+    });
+    expect(safe.GH_TOKEN).toBeUndefined();
+    expect(safe.VERCEL_TOKEN).toBeUndefined();
+    expect(safe.npm_config_authToken).toBeUndefined();
+    expect(safe.DATABASE_URL).toBeUndefined();
+    expect(safe.TRAINER_DISPOSABLE_DB_CONFIRMED).toBeUndefined();
+    expect(safe.UNRELATED_APPLICATION_SETTING).toBeUndefined();
+  });
+
+  it("handles mixed-case Windows-style sensitive keys and records actual values for redaction", () => {
+    const environment = {
+      Gh_ToKeN: "mixed-token-sentinel-123456",
+      Authorization: "authorization-sentinel-123456",
+      Cookie: "cookie-sentinel-123456",
+      pGpAsSwOrD: "postgres-password-sentinel-123456",
+      Path: "C:/trusted/node",
+    };
+    expect(Object.keys(buildCredentialSafeVerificationEnvironment(environment))).not.toEqual(
+      expect.arrayContaining(["Gh_ToKeN", "Authorization", "Cookie", "pGpAsSwOrD"])
+    );
+    expect(collectSensitiveVerificationEnvironmentValues(environment)).toEqual(
+      expect.arrayContaining([
+        "mixed-token-sentinel-123456",
+        "authorization-sentinel-123456",
+        "cookie-sentinel-123456",
+        "postgres-password-sentinel-123456",
+      ])
+    );
+    expect(isSensitiveVerificationEnvironmentName("MiXeD_Client_Secret")).toBe(true);
+  });
+
+  it("deduplicates Windows-equivalent allowlisted keys case-insensitively", () => {
+    const safe = buildCredentialSafeVerificationEnvironment({
+      Path: "first",
+      PATH: "second",
+      NODE_ENV: "test",
+    });
+    expect(Object.keys(safe).filter((name) => name.toUpperCase() === "PATH")).toHaveLength(1);
+  });
+});
+
 describe("critical exact-lock dependency integrity", () => {
   function createExactLockFixture(label = "exact lock fixture with spaces"): string {
     const fixture = mkdtempSync(join(tmpdir(), "trainer-exact-lock-"));
@@ -832,6 +898,38 @@ describe("dependency-free launcher", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("typed-runner-loader-failed");
     expect(result.stderr).not.toContain("secret-value");
+  });
+
+  it("passes sensitive values over stdin while restricting the typed-runner environment", () => {
+    const sentinel = "launcher-token-sentinel-81c5c410";
+    const fixture = createLauncherFixture({
+      tsxLauncherSource: [
+        'import { readFileSync } from "node:fs";',
+        `const sentinel = ${JSON.stringify(sentinel)};`,
+        'const values = JSON.parse(readFileSync(0, "utf8"));',
+        'console.log("Trainer test environment preflight");',
+        'console.log(JSON.stringify({ inherited: Object.keys(process.env).some((name) => name.toUpperCase() === "GH_TOKEN"), arbitrary: process.env.TRAINER_APP_DIAGNOSTIC ?? null, path: Boolean(process.env.PATH), restricted: process.env.TRAINER_RESTRICTED_VERIFICATION_LAUNCHER === "1", channel: values.includes(sentinel) }));',
+      ].join("\n"),
+    });
+    const result = spawnSync(process.execPath, [launcher], {
+      cwd: fixture,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        Gh_ToKeN: sentinel,
+        TRAINER_APP_DIAGNOSTIC: "unrelated-parent-value",
+      },
+    });
+    const details = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1) ?? "null");
+
+    expect(result.status).toBe(0);
+    expect(details).toEqual({
+      inherited: false,
+      arbitrary: null,
+      path: true,
+      restricted: true,
+      channel: true,
+    });
   });
 
   it.skipIf(process.platform === "win32")(

@@ -53,8 +53,16 @@ Sources of truth:
   a socket connection guard. Registered DB-required suites are excluded before Vitest collection,
   listed with their owner, reason, and separate authorized command, and are never reported as
   credential-free coverage. Any unregistered import or collection failure remains fatal. Each
-  phase uses one worker, prints Vitest's concise native dot progress plus phase/total elapsed time, and writes the
-  JSON reporter to a separate file so progress cannot corrupt machine-readable results.
+  phase uses one worker and emits Vitest's concise native dot progress plus phase/total elapsed time. The built-in
+  JSON reporter shares the captured stdout pipe; the parent extracts its final record after streaming redaction
+  and persists only that redacted record as the retained reporter. The dependency-free launcher identifies
+  recognized sensitive parent values, sends those values to the typed orchestrator through stdin for redaction,
+  and does not persist them or place them in the child environment. Inventory subprocesses, including Vitest children, receive
+  an explicit allowlist of platform, temporary-directory, locale, terminal, Node test-mode, and CI context
+  variables rather than the arbitrary parent environment. Database/mutation authorization, tokens, cookies,
+  authorization values, deployment credentials, and common secret-bearing variables are excluded
+  case-insensitively. Known sensitive values from the parent environment are also redacted from streamed output,
+  retained captures, reporter-derived messages, metadata, and terminal summaries before those outputs are kept.
 - `npm run test:inventory:credential-free -- --base-ref <git-ref>`: runs the same inventory and
   reports added, removed, and changed environment classifications relative to the named base.
   Equal branch/base failures are not accepted; only explicit classifications can compare cleanly.
@@ -64,7 +72,7 @@ Sources of truth:
   60-second timeout because the demonstrated Windows filesystem traversal exceeded Vitest's
   inherited default; the global Vitest timeout is unchanged.
 - `src/lib/operations/credential-free-inventory-runner.test.ts`: focused success cleanup, failure
-  retention, reporter parsing, subprocess classification, unique/path-safe naming, complete raw
+  retention, reporter parsing, subprocess classification, unique/path-safe naming, complete redacted
   capture, and concise failure-summary coverage.
 - `npm run test:seed-revision-concurrency -- --confirm-disposable`: against a local disposable PostgreSQL database, verifies one-winner concurrent correction, generation/correction revision preservation, and full rollback after a failed correction. The command refuses non-local or unconfirmed targets.
 - `npm run test:db:workout-mutations -- --confirm-disposable`: explicitly mutating integration
@@ -153,11 +161,13 @@ uses Node.js 22, fixes `TZ` to `America/Chicago` for the repository's local-week
 installs the exact lockfile with `npm ci`, and delegates all classification and execution behavior
 to the canonical command. The runner keeps each Vitest phase at one worker so the full
 jsdom/happy-dom inventory stays within hosted-runner memory. It streams Vitest's native dot reporter
-for basic progress while writing the JSON reporter to a separate file, reports phase and total
+for basic progress while extracting the built-in JSON reporter from the redacted stdout pipe, reports phase and total
 elapsed time, and emits a structured final summary. Successful phases remove their disposable
 captures. Failed phases retain complete stdout, stderr, reporter output when present, and
-machine-readable failure metadata under `artifacts/credential-free-inventory/<unique-run>/` and
-print every retained path:
+  machine-readable failure metadata under `artifacts/credential-free-inventory/<unique-run>/` and
+  print every retained path. GitHub Actions uploads that narrowly scoped directory only after a failed
+  inventory as `credential-free-inventory-<run-id>-<attempt>` for seven days. Successful phases remove their
+  unique local directory and therefore upload nothing:
 
 ```text
 npm run test:inventory:credential-free -- --base-ref origin/master
@@ -168,10 +178,22 @@ suite runs with the exact guarded TEST-NET placeholder and no socket attempt, ev
 DB-required suite is excluded before Vitest collection, the manifest is valid, and unexpected
 collection, setup, import, test, subprocess, or result-parsing failures remain fatal. It prints the
 selected and passed file/test counts, skipped counts, both DB exclusions and their authorized
-command, placeholder safeguards, the manifest delta against `origin/master`, and the failing
-file/test whenever Vitest reports that identity. Missing or malformed reporter output, test
-timeouts, signals/worker termination, dependency-readiness failures, and generic nonzero exits
-remain distinct failure classes; no failed-test identity is invented when the reporter omits it.
+  command, placeholder safeguards, the manifest delta against `origin/master`, and the failing
+  file/test whenever Vitest reports that identity. Missing or malformed reporter output, test
+  timeouts, signals/worker termination, dependency-readiness failures, and generic nonzero exits
+  remain distinct failure classes; no failed-test identity is invented when the reporter omits it.
+
+Failure bundles are restricted diagnostic material. The runner blocks arbitrary inherited credentials and
+redacts exact sensitive parent-environment values of at least eight characters, but it cannot identify every
+possible application secret embedded independently in test fixtures or generated output. Review and share a
+bundle accordingly. The runner does not give Vitest an output-file path: reporter output crosses the subprocess
+pipe, is value-redacted in the parent, and only then is written to captures or the retained reporter file.
+Artifact creation, capture, reporter-read, metadata-write, and cleanup errors are
+reported as secondary diagnostics without replacing a primary assertion, timeout, signal, safety-guard, or
+subprocess failure. When artifact I/O fails, the runner retains whatever safe partial evidence exists and prints
+a fallback terminal summary; a cleanup failure turns an otherwise successful phase into an explicit artifact
+failure. Recovery is to inspect the primary failure first, then correct the named local filesystem/permission
+problem and rerun the same command. Do not repair dependencies or broaden timeouts as an artifact workaround.
 
 The gate does not run or claim disposable PostgreSQL coverage. These suites remain separately
 authorized:
@@ -242,7 +264,8 @@ enforcement can be claimed.
 - Credential-free subprocesses enumerate actual environment keys and remove every casing variant
   and duplicate of the canonical DB-target names. They also remove
   `TRAINER_DISPOSABLE_DB_CONFIRMED`; inherited authorization can never make credential-free
-  collection mutation-capable. Unrelated variables are preserved.
+  collection mutation-capable. The inventory subprocess additionally uses the restricted allowlist and
+  value-redaction policy described above; arbitrary unrelated variables are not inherited.
 - The dependency-free `.mjs` launcher exits `0` when requested checks pass, `1` for an
   environment/installation blocker, and `2` for an invalid invocation or malformed user
   configuration. Unknown flags are invalid. Repository/package metadata, lockfile, typed helper,

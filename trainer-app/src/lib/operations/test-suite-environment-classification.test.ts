@@ -407,6 +407,21 @@ describe("pull-request CI contract", () => {
     expect(workflow).not.toContain("test:db:");
     expect(workflow).not.toContain("continue-on-error");
     expect(workflow).not.toMatch(/\bvitest\b/);
+    expect(workflow).toContain("uses: actions/upload-artifact@v4");
+    expect(workflow).toContain(
+      "if: ${{ failure() && hashFiles('trainer-app/artifacts/credential-free-inventory/**') != '' }}"
+    );
+    expect(workflow).toContain(
+      "name: credential-free-inventory-${{ github.run_id }}-${{ github.run_attempt }}"
+    );
+    expect(workflow).toContain(
+      "path: trainer-app/artifacts/credential-free-inventory/"
+    );
+    expect(workflow).toContain("if-no-files-found: error");
+    expect(workflow).toContain("retention-days: 7");
+    expect(workflow).not.toMatch(
+      /^\s+path:\s+(?:\.|trainer-app\/?|artifacts\/?|\.env\S*)\s*$/m
+    );
 
     const runner = readFileSync(
       resolve("scripts/test-environment-preflight.ts"),
@@ -421,7 +436,9 @@ describe("pull-request CI contract", () => {
     );
     expect(phaseRunner).toContain('"--reporter=dot"');
     expect(phaseRunner).toContain('"--reporter=json"');
-    expect(phaseRunner).toContain("--outputFile.json=");
+    expect(phaseRunner).not.toContain("--outputFile.json=");
+    expect(phaseRunner).toContain("extractVitestJsonReporter");
+    expect(phaseRunner).toContain("reporterOutput:");
     expect(phaseRunner).toContain('stdio: ["ignore", "pipe", "pipe"]');
   });
 

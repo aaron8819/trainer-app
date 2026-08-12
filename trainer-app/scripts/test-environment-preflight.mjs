@@ -7,6 +7,104 @@ const EXIT = Object.freeze({
   blocked: 1,
   invalidInvocation: 2,
 });
+const restrictedLauncherEnvironment = "TRAINER_RESTRICTED_VERIFICATION_LAUNCHER";
+const environmentAllowlist = new Set([
+  "APPDATA",
+  "CI",
+  "COLORTERM",
+  "COMSPEC",
+  "FORCE_COLOR",
+  "GITHUB_ACTIONS",
+  "GITHUB_RUN_ATTEMPT",
+  "GITHUB_RUN_ID",
+  "GITHUB_WORKSPACE",
+  "HOME",
+  "HOMEDRIVE",
+  "HOMEPATH",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "LOCALAPPDATA",
+  "NODE_ENV",
+  "NO_COLOR",
+  "NPM_EXECPATH",
+  "NPM_NODE_EXECPATH",
+  "NUMBER_OF_PROCESSORS",
+  "OS",
+  "PATH",
+  "PATHEXT",
+  "PROCESSOR_ARCHITECTURE",
+  "PROGRAMDATA",
+  "PROGRAMFILES",
+  "PROGRAMFILES(X86)",
+  "RUNNER_ARCH",
+  "RUNNER_OS",
+  "RUNNER_TEMP",
+  "SHELL",
+  "SYSTEMDRIVE",
+  "SYSTEMROOT",
+  "TEMP",
+  "TERM",
+  "TMP",
+  "TMPDIR",
+  "TZ",
+  "USER",
+  "USERPROFILE",
+  "WINDIR",
+]);
+const sensitiveEnvironmentName =
+  /(?:^|_)(?:ACCESS_KEY|API_KEY|AUTH|AUTHORIZATION|CLIENT_SECRET|CONNECTION_STRING|COOKIE|CREDENTIAL|CREDENTIALS|DATABASE_URL|DIRECT_URL|ID_TOKEN|PASSWORD|PASSCODE|PRIVATE_KEY|REFRESH_TOKEN|SECRET|SESSION_KEY|SHADOW_URL|TOKEN)(?:$|_)/;
+
+function isSensitiveEnvironmentName(name) {
+  const normalized = name.toUpperCase();
+  return (
+    normalized === "PGPASSWORD" ||
+    normalized.endsWith("TOKEN") ||
+    sensitiveEnvironmentName.test(normalized) ||
+    normalized === "TRAINER_DISPOSABLE_DB_CONFIRMED" ||
+    normalized === "TRAINER_IMPORT_ONLY_PLACEHOLDER_TEST"
+  );
+}
+
+function credentialSafeEnvironment(environment) {
+  const safe = {
+    NODE_ENV:
+      environment.NODE_ENV === "development" || environment.NODE_ENV === "production"
+        ? environment.NODE_ENV
+        : "test",
+    [restrictedLauncherEnvironment]: "1",
+  };
+  const seen = new Set(["NODE_ENV", restrictedLauncherEnvironment]);
+  for (const [name, value] of Object.entries(environment)) {
+    const normalized = name.toUpperCase();
+    if (
+      value === undefined ||
+      seen.has(normalized) ||
+      isSensitiveEnvironmentName(name) ||
+      !environmentAllowlist.has(normalized)
+    ) {
+      continue;
+    }
+    safe[name] = value;
+    seen.add(normalized);
+  }
+  return safe;
+}
+
+function sensitiveEnvironmentValues(environment) {
+  return [
+    ...new Set(
+      Object.entries(environment)
+        .filter(
+          ([name, value]) =>
+            isSensitiveEnvironmentName(name) &&
+            typeof value === "string" &&
+            value.length >= 8
+        )
+        .map(([, value]) => value)
+    ),
+  ].sort((left, right) => right.length - left.length);
+}
 const allowedBooleanFlags = new Set([
   "--debug",
   "--json",
@@ -107,10 +205,14 @@ if (!existsSync(tsxLauncher)) {
 
 const result = spawnSync(process.execPath, [tsxLauncher, typedRunner, ...args], {
   cwd: projectRoot,
-  env: process.env,
+  env: credentialSafeEnvironment(process.env),
+  input: JSON.stringify(sensitiveEnvironmentValues(process.env)),
   encoding: runFlags.length > 0 ? undefined : "utf8",
   windowsHide: true,
-  stdio: runFlags.length > 0 ? "inherit" : ["ignore", "pipe", "pipe"],
+  stdio:
+    runFlags.length > 0
+      ? ["pipe", "inherit", "inherit"]
+      : ["pipe", "pipe", "pipe"],
 });
 if (result.error) {
   if (args.includes("--debug")) {

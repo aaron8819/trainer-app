@@ -1,7 +1,10 @@
 import {
+  closeSync,
   existsSync,
   mkdtempSync,
+  openSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -12,6 +15,8 @@ import {
   createVitestPhaseArtifactPaths,
   finalizeVitestPhaseArtifacts,
   formatVitestPhaseFailure,
+  runVitestPhase,
+  type ArtifactIo,
 } from "./credential-free-inventory-runner";
 
 const temporaryDirectories: string[] = [];
@@ -191,7 +196,7 @@ describe("credential-free Vitest failure artifacts", () => {
     });
     expect(result).toMatchObject({
       success: false,
-      failureKind: "subprocess-exit",
+      failureKind: "safety-guard",
       externalFailure: "Import-only placeholder connection attempt was blocked.",
       artifactsRetained: true,
     });
@@ -231,6 +236,20 @@ describe("credential-free Vitest failure artifacts", () => {
     expect(first.directory).not.toBe(second.directory);
   });
 
+  it("keeps hostile phase and injected fixture identifiers inside the artifact root", () => {
+    const root = mkdtempSync(join(tmpdir(), "trainer-artifact-safe-root-"));
+    temporaryDirectories.push(root);
+    const paths = createVitestPhaseArtifactPaths({
+      artifactRoot: root,
+      phase: "../../outside\\phase",
+      uniqueId: "../../hostile\\identifier",
+    });
+    expect(paths.directory.startsWith(`${paths.root}${process.platform === "win32" ? "\\" : "/"}`)).toBe(
+      true
+    );
+    expect(paths.directory).not.toContain("..");
+  });
+
   it("preserves complete captures under paths containing spaces", () => {
     const completeOutput = `begin\n${"x".repeat(300_000)}\nend`;
     const result = finalizeFixture({
@@ -264,5 +283,369 @@ describe("credential-free Vitest failure artifacts", () => {
     expect(summary).toContain("C:/repo/failing.test.ts > named test");
     expect(summary).toContain(result.artifacts.metadata);
     expect(summary).toContain("Next action:");
+  });
+});
+
+function retainedSources(directory: string): string {
+  return readdirSync(directory, { withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => readFileSync(join(directory, entry.name), "utf8"))
+    .join("\n");
+}
+
+function createFakeVitestCli(): { projectRoot: string; cli: string } {
+  const projectRoot = mkdtempSync(join(tmpdir(), "trainer fake vitest with spaces "));
+  temporaryDirectories.push(projectRoot);
+  const cli = join(projectRoot, "fake-vitest.mjs");
+  writeFileSync(
+    cli,
+    [
+      'if (process.argv.some((argument) => argument.startsWith("--outputFile"))) {',
+      '  throw new Error("Reporter output must not be persisted by the child process.");',
+      '}',
+      'const sentinelArgument = process.argv.find((argument) => argument.startsWith("--sentinel="));',
+      'const sentinel = sentinelArgument?.slice("--sentinel=".length) ?? "";',
+      'process.stdout.write(`useful stdout before ${sentinel} after\\n`);',
+      'process.stderr.write(`useful stderr before ${sentinel} after\\n`);',
+      'process.stdout.write(JSON.stringify({',
+      '  numTotalTestSuites: 1, numPassedTestSuites: 0, numFailedTestSuites: 1, numPendingTestSuites: 0,',
+      '  numTotalTests: 1, numPassedTests: 0, numFailedTests: 1, numPendingTests: 0, numTodoTests: 0,',
+      '  testResults: [{ name: "fake.test.ts", status: "failed", message: `file ${sentinel}`, assertionResults: [{ fullName: "fake failure", status: "failed", failureMessages: [`AssertionError: useful ${sentinel} evidence\\nstack`] }]}]',
+      '}));',
+      'process.stdout.write("\\n");',
+      'process.exitCode = 1;',
+    ].join("\n")
+  );
+  return { projectRoot, cli };
+}
+
+describe("credential-free Vitest runner integration", () => {
+  it("redacts parent sentinel values before terminal display or retained persistence", async () => {
+    const sentinel = "trainer-common-token-sentinel-4dbf77f6";
+    const { projectRoot, cli } = createFakeVitestCli();
+    const terminal: string[] = [];
+    const result = await runVitestPhase({
+      phase: "sentinel phase",
+      projectRoot,
+      vitestCli: cli,
+      args: [`--sentinel=${sentinel}`],
+      environment: { NODE_ENV: "test" },
+      artifactRoot: join(projectRoot, "artifact root"),
+      sensitiveValues: [sentinel],
+      output: {
+        stdout: (source) => terminal.push(source),
+        stderr: (source) => terminal.push(source),
+        log: (source) => terminal.push(source),
+      },
+    });
+
+    expect(result.failureKind).toBe("test-assertion");
+    expect(terminal.join("\n")).not.toContain(sentinel);
+    expect(terminal.join("\n")).toContain("useful stdout before [REDACTED]");
+    expect(terminal.join("\n")).toContain("after");
+    expect(terminal.join("\n")).not.toContain("numTotalTestSuites");
+    expect(retainedSources(result.artifacts.directory)).not.toContain(sentinel);
+    expect(retainedSources(result.artifacts.directory)).toContain("useful [REDACTED] evidence");
+    expect(JSON.stringify(result)).not.toContain(sentinel);
+    expect(formatVitestPhaseFailure(result).join("\n")).not.toContain(sentinel);
+  });
+
+  it("keeps an assertion primary when capture creation and writes fail", async () => {
+    const { projectRoot, cli } = createFakeVitestCli();
+    const result = await runVitestPhase({
+      phase: "capture fault",
+      projectRoot,
+      vitestCli: cli,
+      args: [],
+      environment: { NODE_ENV: "test" },
+      artifactRoot: join(projectRoot, "artifacts"),
+      output: { stdout: () => {}, stderr: () => {}, log: () => {} },
+      artifactIo: {
+        openCapture: (filePath) => {
+          if (filePath.endsWith("vitest.stdout.log")) throw new Error("EACCES locked capture");
+          return openSync(filePath, "wx");
+        },
+        writeCapture: () => {
+          throw new Error("ENOSPC capture write failed");
+        },
+        closeCapture: (fileDescriptor) => {
+          closeSync(fileDescriptor);
+          throw new Error("EPERM capture completion failed");
+        },
+      },
+    });
+
+    expect(result.failureKind).toBe("test-assertion");
+    expect(result.artifactDiagnostics.map((entry) => entry.operation)).toEqual(
+      expect.arrayContaining(["capture-open", "capture-write", "capture-close"])
+    );
+  });
+});
+
+describe("artifact fault isolation and failure precedence", () => {
+  function throwingIo(
+    operation: keyof ArtifactIo,
+    predicate: (filePath: string) => boolean = () => true
+  ): Partial<ArtifactIo> {
+    if (operation === "readText") {
+      return {
+        readText: (filePath) => {
+          if (predicate(filePath)) throw new Error("EACCES reporter locked");
+          return readFileSync(filePath, "utf8");
+        },
+      };
+    }
+    if (operation === "writeText") {
+      return {
+        writeText: (filePath, source) => {
+          if (predicate(filePath)) throw new Error("ENOSPC metadata write failed");
+          writeFileSync(filePath, source);
+        },
+      };
+    }
+    if (operation === "removeDirectory") {
+      return {
+        removeDirectory: (directory) => {
+          if (predicate(directory)) throw new Error("EPERM cleanup locked");
+          rmSync(directory, { recursive: true, force: true });
+        },
+      };
+    }
+    throw new Error(`Unsupported fault operation: ${operation}`);
+  }
+
+  it("keeps a signal primary when reporter read and external guard checks also fail", () => {
+    const root = mkdtempSync(join(tmpdir(), "trainer-signal-fault-"));
+    temporaryDirectories.push(root);
+    const paths = createVitestPhaseArtifactPaths({ artifactRoot: root, phase: "signal" });
+    writeFileSync(paths.stdout, "stdout");
+    writeFileSync(paths.stderr, "stderr");
+    writeFileSync(paths.reporter, reporter());
+    const result = finalizeVitestPhaseArtifacts({
+      phase: "signal",
+      paths,
+      exitCode: null,
+      signal: "SIGTERM",
+      terminationError: "worker terminated",
+      externalFailure: "socket attempt blocked",
+      durationMs: 50,
+      artifactIo: throwingIo("readText"),
+    });
+    expect(result.failureKind).toBe("worker-termination");
+    expect(result.externalFailure).toBe("socket attempt blocked");
+    expect(result.artifactDiagnostics).toContainEqual(
+      expect.objectContaining({ operation: "reporter-read" })
+    );
+    const summary = formatVitestPhaseFailure(result).join("\n");
+    expect(summary).toContain("Termination detail: worker terminated");
+    expect(summary).toContain("Additional safety finding: socket attempt blocked");
+    expect(summary).toContain("Artifact diagnostic:");
+  });
+
+  it("keeps assertion and timeout evidence ahead of external or malformed conditions", () => {
+    const assertion = finalizeFixture({
+      exitCode: 1,
+      externalFailure: "socket attempt blocked",
+      reporter: reporter({
+        failures: [{ file: "assert.test.ts", test: "asserts", message: "AssertionError: no" }],
+      }),
+    });
+    expect(assertion.failureKind).toBe("test-assertion");
+
+    const timeoutSource = JSON.stringify({
+      numTotalTests: "invalid-summary",
+      numPassedTests: 0,
+      numFailedTests: 1,
+      numPendingTests: 0,
+      numTodoTests: 0,
+      testResults: [
+        {
+          name: "slow.test.ts",
+          status: "failed",
+          assertionResults: [
+            {
+              fullName: "times out",
+              status: "failed",
+              failureMessages: ["Error: Test timed out in 5000ms"],
+            },
+          ],
+        },
+      ],
+    });
+    const timeout = finalizeFixture({ exitCode: 1, reporter: timeoutSource });
+    expect(timeout).toMatchObject({ failureKind: "timeout", reporterState: "malformed" });
+  });
+
+  it("reports metadata write failure secondarily without replacing assertion", () => {
+    const root = mkdtempSync(join(tmpdir(), "trainer-metadata-fault-"));
+    temporaryDirectories.push(root);
+    const paths = createVitestPhaseArtifactPaths({ artifactRoot: root, phase: "metadata" });
+    writeFileSync(paths.stdout, "stdout");
+    writeFileSync(paths.stderr, "stderr");
+    writeFileSync(
+      paths.reporter,
+      reporter({
+        failures: [{ file: "primary.test.ts", test: "primary", message: "AssertionError: primary" }],
+      })
+    );
+    const result = finalizeVitestPhaseArtifacts({
+      phase: "metadata",
+      paths,
+      exitCode: 1,
+      signal: null,
+      terminationError: null,
+      durationMs: 10,
+      artifactIo: throwingIo("writeText", (filePath) => filePath.endsWith("failure-metadata.json")),
+    });
+    expect(result.failureKind).toBe("test-assertion");
+    expect(result.artifactDiagnostics).toContainEqual(
+      expect.objectContaining({ operation: "metadata-write" })
+    );
+    expect(formatVitestPhaseFailure(result).join("\n")).toContain("metadata-write");
+  });
+
+  it("turns success cleanup failure into an explicit artifact failure", () => {
+    const root = mkdtempSync(join(tmpdir(), "trainer-cleanup-fault-"));
+    temporaryDirectories.push(root);
+    const paths = createVitestPhaseArtifactPaths({ artifactRoot: root, phase: "cleanup" });
+    writeFileSync(paths.stdout, "stdout");
+    writeFileSync(paths.stderr, "stderr");
+    writeFileSync(paths.reporter, reporter());
+    const result = finalizeVitestPhaseArtifacts({
+      phase: "cleanup",
+      paths,
+      exitCode: 0,
+      signal: null,
+      terminationError: null,
+      durationMs: 10,
+      artifactIo: throwingIo("removeDirectory"),
+    });
+    expect(result).toMatchObject({ success: false, failureKind: "artifact-failure" });
+    expect(result.artifactDiagnostics).toContainEqual(
+      expect.objectContaining({ operation: "success-cleanup" })
+    );
+  });
+
+  it("refuses cleanup when the run directory resolves to the artifact root", () => {
+    const root = mkdtempSync(join(tmpdir(), "trainer-unsafe-cleanup-"));
+    temporaryDirectories.push(root);
+    const paths = {
+      root,
+      directory: root,
+      stdout: join(root, "vitest.stdout.log"),
+      stderr: join(root, "vitest.stderr.log"),
+      reporter: join(root, "vitest.reporter.json"),
+      metadata: join(root, "failure-metadata.json"),
+    };
+    writeFileSync(paths.stdout, "stdout");
+    writeFileSync(paths.stderr, "stderr");
+    writeFileSync(paths.reporter, reporter());
+    let cleanupCalled = false;
+    const result = finalizeVitestPhaseArtifacts({
+      phase: "unsafe cleanup",
+      paths,
+      exitCode: 0,
+      signal: null,
+      terminationError: null,
+      durationMs: 10,
+      artifactIo: {
+        removeDirectory: () => {
+          cleanupCalled = true;
+        },
+      },
+    });
+    expect(cleanupCalled).toBe(false);
+    expect(result.failureKind).toBe("artifact-failure");
+    expect(result.artifactDiagnostics).toContainEqual(
+      expect.objectContaining({ operation: "unsafe-cleanup" })
+    );
+  });
+
+  it("retains partial evidence when a capture is missing during failure finalization", () => {
+    const root = mkdtempSync(join(tmpdir(), "trainer-missing-capture-"));
+    temporaryDirectories.push(root);
+    const paths = createVitestPhaseArtifactPaths({ artifactRoot: root, phase: "missing" });
+    writeFileSync(paths.stderr, "stderr remains");
+    writeFileSync(
+      paths.reporter,
+      reporter({
+        failures: [{ file: "primary.test.ts", test: "primary", message: "AssertionError: primary" }],
+      })
+    );
+    const result = finalizeVitestPhaseArtifacts({
+      phase: "missing",
+      paths,
+      exitCode: 1,
+      signal: null,
+      terminationError: null,
+      durationMs: 10,
+    });
+    expect(result.failureKind).toBe("test-assertion");
+    expect(result.artifactDiagnostics).toContainEqual(
+      expect.objectContaining({ operation: "capture-size", path: paths.stdout })
+    );
+    expect(readFileSync(paths.stderr, "utf8")).toBe("stderr remains");
+  });
+
+  it("keeps generic subprocess exit primary when an artifact also fails", () => {
+    const root = mkdtempSync(join(tmpdir(), "trainer-exit-artifact-"));
+    temporaryDirectories.push(root);
+    const paths = createVitestPhaseArtifactPaths({ artifactRoot: root, phase: "exit" });
+    writeFileSync(paths.stdout, "stdout");
+    writeFileSync(paths.stderr, "stderr");
+    writeFileSync(paths.reporter, reporter());
+    const result = finalizeVitestPhaseArtifacts({
+      phase: "exit",
+      paths,
+      exitCode: 2,
+      signal: null,
+      terminationError: null,
+      durationMs: 10,
+      artifactIo: throwingIo("writeText", (filePath) => filePath.endsWith("failure-metadata.json")),
+    });
+    expect(result.failureKind).toBe("subprocess-exit");
+    expect(result.artifactDiagnostics).toContainEqual(
+      expect.objectContaining({ operation: "metadata-write" })
+    );
+  });
+
+  it("distinguishes missing reporter with and without known termination", () => {
+    expect(finalizeFixture({ reporter: null, exitCode: 1 }).failureKind).toBe(
+      "reporter-missing"
+    );
+    expect(
+      finalizeFixture({ reporter: null, exitCode: null, signal: "SIGTERM" }).failureKind
+    ).toBe("worker-termination");
+  });
+
+  it("redacts reporter, metadata, guard, termination, and rendered summary values", () => {
+    const sentinel = "mixed-case-secret-sentinel-8f6b";
+    const root = mkdtempSync(join(tmpdir(), "trainer-summary-redaction-"));
+    temporaryDirectories.push(root);
+    const paths = createVitestPhaseArtifactPaths({ artifactRoot: root, phase: "redaction" });
+    writeFileSync(paths.stdout, `safe ${sentinel} output`);
+    writeFileSync(paths.stderr, `safe ${sentinel} error`);
+    writeFileSync(
+      paths.reporter,
+      reporter({
+        failures: [{ file: "redact.test.ts", test: "redacts", message: `AssertionError: ${sentinel} useful` }],
+      })
+    );
+    const result = finalizeVitestPhaseArtifacts({
+      phase: "redaction",
+      paths,
+      exitCode: null,
+      signal: "SIGTERM",
+      terminationError: `terminated ${sentinel}`,
+      externalFailure: `guard ${sentinel}`,
+      durationMs: 10,
+      sensitiveValues: [sentinel],
+    });
+    const rendered = formatVitestPhaseFailure(result).join("\n");
+    expect(rendered).not.toContain(sentinel);
+    expect(JSON.stringify(result)).not.toContain(sentinel);
+    expect(readFileSync(paths.reporter, "utf8")).not.toContain(sentinel);
+    expect(readFileSync(paths.metadata, "utf8")).not.toContain(sentinel);
+    expect(rendered).toContain("[REDACTED]");
   });
 });

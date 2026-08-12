@@ -11,11 +11,17 @@ import {
   type CatalogExerciseDefinition,
   type MeasurementSupportManifest,
 } from "./catalog-invariants";
+import { REVIEWED_STEP_2A_MEASUREMENT_MEMBERSHIP } from "./step-2a-measurement-membership";
 
 function exercise(
   overrides: Partial<CatalogExerciseDefinition> = {},
 ): CatalogExerciseDefinition {
   return {
+    catalogKey: "pec-deck-machine",
+    facts: {
+      version: 1,
+      stimulus: { disposition: "COMPLETE", profile: { chest: 1 } },
+    },
     name: "Pec Deck Machine",
     movementPatterns: ["hinge"],
     splitTag: "legs",
@@ -59,6 +65,31 @@ function supportManifestErrors(
   });
 }
 
+function sameCountAmbiguousUnsupportedSwap(
+  ambiguousIdentity: string,
+  unsupportedIdentity: string,
+): string[] {
+  const ambiguous: string[] = [
+    ...MEASUREMENT_SUPPORT_MANIFEST.AMBIGUOUS_EXECUTION_IDENTITY,
+  ];
+  const unsupported: string[] = [
+    ...MEASUREMENT_SUPPORT_MANIFEST.UNSUPPORTED_MEASUREMENT_SEMANTICS,
+  ];
+  const ambiguousIndex = ambiguous.indexOf(ambiguousIdentity);
+  const unsupportedIndex = unsupported.indexOf(unsupportedIdentity);
+  if (ambiguousIndex < 0 || unsupportedIndex < 0) {
+    throw new Error(
+      `Invalid swap fixture: ${ambiguousIdentity} / ${unsupportedIdentity}`,
+    );
+  }
+  ambiguous[ambiguousIndex] = unsupportedIdentity;
+  unsupported[unsupportedIndex] = ambiguousIdentity;
+  return supportManifestErrors({
+    AMBIGUOUS_EXECUTION_IDENTITY: ambiguous,
+    UNSUPPORTED_MEASUREMENT_SEMANTICS: unsupported,
+  });
+}
+
 describe("exercise catalog invariants", () => {
   it("accepts the production measurement-support manifest", () => {
     expect(
@@ -67,6 +98,65 @@ describe("exercise catalog invariants", () => {
         canonicalNames: catalog.exercises.map(({ name }) => name),
       }),
     ).toEqual([]);
+  });
+
+  it("keeps an independent exact reviewed Step 2A membership oracle", () => {
+    const names = REVIEWED_STEP_2A_MEASUREMENT_MEMBERSHIP.map(([name]) => name);
+    const counts = Object.fromEntries(
+      [
+        "COMPLETE_SUPPORTED",
+        "AMBIGUOUS_EXECUTION_IDENTITY",
+        "UNSUPPORTED_MEASUREMENT_SEMANTICS",
+      ].map((category) => [
+        category,
+        REVIEWED_STEP_2A_MEASUREMENT_MEMBERSHIP.filter(
+          ([, actualCategory]) => actualCategory === category,
+        ).length,
+      ]),
+    );
+
+    expect(names).toHaveLength(149);
+    expect(new Set(names)).toHaveLength(149);
+    expect([...names].sort()).toEqual(
+      catalog.exercises.map(({ name }) => name).sort(),
+    );
+    expect(counts).toEqual({
+      COMPLETE_SUPPORTED: 88,
+      AMBIGUOUS_EXECUTION_IDENTITY: 39,
+      UNSUPPORTED_MEASUREMENT_SEMANTICS: 22,
+    });
+  });
+
+  it("rejects the reviewed back-extension/Copenhagen same-count swap", () => {
+    const errors = sameCountAmbiguousUnsupportedSwap(
+      "45-Degree Back Extension, Hamstring Bias",
+      "Copenhagen Plank",
+    );
+    expect(errors.filter((error) => error.includes("CATEGORY_COUNT"))).toEqual(
+      [],
+    );
+    expect(errors).toEqual(
+      expect.arrayContaining([
+        "CATALOG_MEASUREMENT_MEMBERSHIP_MISMATCH:45-Degree Back Extension, Hamstring Bias:expected:AMBIGUOUS_EXECUTION_IDENTITY:actual:UNSUPPORTED_MEASUREMENT_SEMANTICS",
+        "CATALOG_MEASUREMENT_MEMBERSHIP_MISMATCH:Copenhagen Plank:expected:UNSUPPORTED_MEASUREMENT_SEMANTICS:actual:AMBIGUOUS_EXECUTION_IDENTITY",
+      ]),
+    );
+  });
+
+  it("rejects an arbitrary same-count Step 2A category swap", () => {
+    const errors = sameCountAmbiguousUnsupportedSwap(
+      "Barbell Curl",
+      "Dead Hang",
+    );
+    expect(errors.filter((error) => error.includes("CATEGORY_COUNT"))).toEqual(
+      [],
+    );
+    expect(errors).toEqual(
+      expect.arrayContaining([
+        "CATALOG_MEASUREMENT_MEMBERSHIP_MISMATCH:Barbell Curl:expected:AMBIGUOUS_EXECUTION_IDENTITY:actual:UNSUPPORTED_MEASUREMENT_SEMANTICS",
+        "CATALOG_MEASUREMENT_MEMBERSHIP_MISMATCH:Dead Hang:expected:UNSUPPORTED_MEASUREMENT_SEMANTICS:actual:AMBIGUOUS_EXECUTION_IDENTITY",
+      ]),
+    );
   });
 
   it.each([

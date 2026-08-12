@@ -14,8 +14,25 @@ import {
   type CompleteSupportedMeasurementEntry,
 } from "@/lib/exercise-measurement/catalog-support-manifest";
 import { normalizeSearchText } from "@/lib/exercise-library/search";
+import {
+  CATALOG_KEY_GRAMMAR,
+  CANONICAL_STIMULUS_DISPOSITIONS,
+  validateCanonicalExerciseFactsV1,
+  type CanonicalExerciseFactsV1,
+  type CanonicalStimulusDisposition,
+} from "@/lib/exercise-library/canonical-exercise-facts";
+import {
+  EXPECTED_CATALOG_IDENTITY_KEYS_V1,
+  EXPECTED_CATALOG_KEY_MEMBERSHIP_V1,
+} from "@/lib/exercise-library/catalog-key-membership";
+import {
+  REVIEWED_STEP_2A_MEASUREMENT_MEMBERSHIP,
+  type ReviewedStep2AMeasurementCategory,
+} from "@/lib/exercise-library/step-2a-measurement-membership";
 
 export type CatalogExerciseDefinition = {
+  catalogKey?: string;
+  facts?: unknown;
   name: string;
   movementPatterns: string[];
   splitTag: string;
@@ -39,6 +56,11 @@ export type CatalogExerciseDefinition = {
   repBasis?: string | null;
 };
 
+export type CanonicalCatalogExerciseDefinition = CatalogExerciseDefinition & {
+  catalogKey: string;
+  facts: CanonicalExerciseFactsV1;
+};
+
 export type CatalogAliasDefinition = {
   exerciseName: string;
   alias: string;
@@ -58,6 +80,26 @@ const MUSCLES = new Set<string>(
 );
 const EXPECTED_CANONICAL_COUNT = 149;
 const EXPECTED_MANAGED_ALIAS_COUNT = 54;
+const EXPECTED_CATALOG_KEYS = new Set<string>(
+  EXPECTED_CATALOG_KEY_MEMBERSHIP_V1,
+);
+const EXPECTED_CATALOG_KEY_BY_IDENTITY = new Map<string, string>(
+  EXPECTED_CATALOG_IDENTITY_KEYS_V1,
+);
+const EXPECTED_STIMULUS_DISPOSITION_COUNTS: Record<
+  CanonicalStimulusDisposition,
+  number
+> = {
+  COMPLETE: 148,
+  NOT_APPLICABLE: 0,
+  AMBIGUOUS: 0,
+  UNSUPPORTED: 0,
+  MISSING: 1,
+};
+const EXPECTED_NON_COMPLETE_STIMULUS_BY_KEY = new Map<
+  string,
+  CanonicalStimulusDisposition
+>([["machine-assisted-pull-up", "MISSING"]]);
 const EXPECTED_MEASUREMENT_CATEGORY_COUNTS = {
   COMPLETE_SUPPORTED: 88,
   AMBIGUOUS_EXECUTION_IDENTITY: 39,
@@ -117,6 +159,48 @@ export function validateMeasurementSupportManifest(input: {
   for (const [name, memberships] of membershipByName) {
     if (new Set(memberships).size > 1) {
       errors.push(`CATALOG_MEASUREMENT_PARTITION_OVERLAP:${name}`);
+    }
+  }
+
+  const reviewedMembershipByName = new Map<
+    string,
+    ReviewedStep2AMeasurementCategory
+  >();
+  for (const [name, category] of REVIEWED_STEP_2A_MEASUREMENT_MEMBERSHIP) {
+    if (reviewedMembershipByName.has(name)) {
+      errors.push(`CATALOG_MEASUREMENT_REVIEW_ORACLE_DUPLICATE:${name}`);
+    }
+    reviewedMembershipByName.set(name, category);
+    if (!canonicalNames.has(name)) {
+      errors.push(`CATALOG_MEASUREMENT_REVIEW_ORACLE_UNKNOWN:${name}`);
+    }
+  }
+
+  for (const name of canonicalNames) {
+    if (!reviewedMembershipByName.has(name)) {
+      errors.push(`CATALOG_MEASUREMENT_REVIEW_ORACLE_MISSING:${name}`);
+    }
+  }
+
+  for (const [name, expectedCategory] of reviewedMembershipByName) {
+    const actualCategories = [...new Set(membershipByName.get(name) ?? [])];
+    if (
+      actualCategories.length !== 1 ||
+      actualCategories[0] !== expectedCategory
+    ) {
+      errors.push(
+        `CATALOG_MEASUREMENT_MEMBERSHIP_MISMATCH:${name}:expected:${expectedCategory}:actual:${actualCategories.join("+") || "MISSING"}`,
+      );
+    }
+  }
+
+  for (const [name, actualCategories] of membershipByName) {
+    if (!reviewedMembershipByName.has(name)) {
+      errors.push(
+        `CATALOG_MEASUREMENT_MEMBERSHIP_UNREVIEWED:${name}:${[
+          ...new Set(actualCategories),
+        ].join("+")}`,
+      );
     }
   }
 
@@ -193,8 +277,57 @@ export function validateCatalogInvariants(input: {
   }
   const canonicalByExactName = new Map<string, CatalogExerciseDefinition>();
   const canonicalByNormalizedName = new Map<string, CatalogExerciseDefinition>();
+  const canonicalByCatalogKey = new Map<string, CatalogExerciseDefinition>();
+  const stimulusDispositionCounts = Object.fromEntries(
+    CANONICAL_STIMULUS_DISPOSITIONS.map((disposition) => [disposition, 0]),
+  ) as Record<CanonicalStimulusDisposition, number>;
+  const nonCompleteStimulusByKey = new Map<
+    string,
+    CanonicalStimulusDisposition
+  >();
 
   for (const exercise of input.exercises) {
+    if (
+      typeof exercise.catalogKey !== "string" ||
+      !CATALOG_KEY_GRAMMAR.test(exercise.catalogKey)
+    ) {
+      errors.push(`CATALOG_KEY_INVALID:${exercise.name}:${String(exercise.catalogKey)}`);
+    } else {
+      const existingKeyOwner = canonicalByCatalogKey.get(exercise.catalogKey);
+      if (existingKeyOwner) {
+        errors.push(
+          `CATALOG_KEY_DUPLICATE:${exercise.catalogKey}:${exercise.name}:conflicts_with:${existingKeyOwner.name}`,
+        );
+      } else {
+        canonicalByCatalogKey.set(exercise.catalogKey, exercise);
+      }
+      const expectedKey = EXPECTED_CATALOG_KEY_BY_IDENTITY.get(exercise.name);
+      if (expectedKey && expectedKey !== exercise.catalogKey) {
+        errors.push(
+          `CATALOG_IDENTITY_KEY_MISMATCH:${exercise.name}:expected:${expectedKey}:actual:${exercise.catalogKey}`,
+        );
+      }
+    }
+
+    const factsErrors = validateCanonicalExerciseFactsV1(exercise.facts);
+    errors.push(
+      ...factsErrors.map(
+        (error) =>
+          `CATALOG_${error}:${exercise.catalogKey || exercise.name}`,
+      ),
+    );
+    if (factsErrors.length === 0) {
+      const facts = exercise.facts as CanonicalExerciseFactsV1;
+      const disposition = facts.stimulus.disposition;
+      stimulusDispositionCounts[disposition] += 1;
+      if (
+        disposition !== "COMPLETE" &&
+        typeof exercise.catalogKey === "string"
+      ) {
+        nonCompleteStimulusByKey.set(exercise.catalogKey, disposition);
+      }
+    }
+
     const normalizedName = normalizeCatalogIdentityKey(exercise.name);
     const existing = canonicalByNormalizedName.get(normalizedName);
     if (!normalizedName) {
@@ -330,6 +463,41 @@ export function validateCatalogInvariants(input: {
     }
   }
 
+  for (const expectedKey of EXPECTED_CATALOG_KEYS) {
+    if (!canonicalByCatalogKey.has(expectedKey)) {
+      errors.push(`CATALOG_KEY_MEMBERSHIP_MISSING:${expectedKey}`);
+    }
+  }
+  for (const actualKey of canonicalByCatalogKey.keys()) {
+    if (!EXPECTED_CATALOG_KEYS.has(actualKey)) {
+      errors.push(`CATALOG_KEY_MEMBERSHIP_UNEXPECTED:${actualKey}`);
+    }
+  }
+  for (const disposition of CANONICAL_STIMULUS_DISPOSITIONS) {
+    const expected = EXPECTED_STIMULUS_DISPOSITION_COUNTS[disposition];
+    const actual = stimulusDispositionCounts[disposition];
+    if (actual !== expected) {
+      errors.push(
+        `CATALOG_STIMULUS_DISPOSITION_COUNT:${disposition}:expected:${expected}:actual:${actual}`,
+      );
+    }
+  }
+  for (const [catalogKey, expectedDisposition] of EXPECTED_NON_COMPLETE_STIMULUS_BY_KEY) {
+    const actualDisposition = nonCompleteStimulusByKey.get(catalogKey);
+    if (actualDisposition !== expectedDisposition) {
+      errors.push(
+        `CATALOG_STIMULUS_NON_COMPLETE_MEMBERSHIP:${catalogKey}:expected:${expectedDisposition}:actual:${actualDisposition ?? "COMPLETE_OR_INVALID"}`,
+      );
+    }
+  }
+  for (const [catalogKey, disposition] of nonCompleteStimulusByKey) {
+    if (!EXPECTED_NON_COMPLETE_STIMULUS_BY_KEY.has(catalogKey)) {
+      errors.push(
+        `CATALOG_STIMULUS_NON_COMPLETE_UNEXPECTED:${catalogKey}:${disposition}`,
+      );
+    }
+  }
+
   errors.push(
     ...validateMeasurementSupportManifest({
       manifest: MEASUREMENT_SUPPORT_MANIFEST,
@@ -339,6 +507,9 @@ export function validateCatalogInvariants(input: {
 
   const aliasByNormalizedName = new Map<string, CatalogAliasDefinition>();
   for (const alias of input.aliases) {
+    if ("catalogKey" in alias || "facts" in alias) {
+      errors.push(`CATALOG_ALIAS_FACTS_OWNER_FORBIDDEN:${alias.alias}`);
+    }
     const normalizedAlias = normalizeCatalogIdentityKey(alias.alias);
     const existingAlias = aliasByNormalizedName.get(normalizedAlias);
     if (!normalizedAlias) {
@@ -355,7 +526,7 @@ export function validateCatalogInvariants(input: {
       errors.push(`CATALOG_ALIAS_TARGET_MISSING:${alias.alias}:${alias.exerciseName}`);
     }
     const canonicalCollision = canonicalByNormalizedName.get(normalizedAlias);
-    if (canonicalCollision && canonicalCollision.name !== alias.exerciseName) {
+    if (canonicalCollision) {
       errors.push(
         `CATALOG_ALIAS_CANONICAL_COLLISION:${alias.alias}:${alias.exerciseName}:collides_with:${canonicalCollision.name}`,
       );

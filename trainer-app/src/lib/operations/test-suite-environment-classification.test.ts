@@ -105,8 +105,8 @@ describe("test-suite environment manifest", () => {
       manifest: currentManifest,
       discoveredTestFiles,
     });
-    expect(discoveredTestFiles).toHaveLength(353);
-    expect(selection.credentialFree).toHaveLength(314);
+    expect(discoveredTestFiles).toHaveLength(354);
+    expect(selection.credentialFree).toHaveLength(315);
     expect(selection.credentialFree).toContain(
       "src/lib/engine/hypertrophy-plan-recommendations.test.ts"
     );

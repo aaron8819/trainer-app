@@ -15,15 +15,21 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  buildCredentialSafeVerificationEnvironment,
   buildTestEnvironmentPreflight,
   classifyDatabaseTarget,
   classifyDependencyArrangement,
   classifyPrismaReadiness,
+  CRITICAL_VERIFICATION_DEPENDENCIES,
+  collectSensitiveVerificationEnvironmentValues,
   DATABASE_TARGET_ENV_VARS,
   discoverDatabaseTargetVariableReferences,
+  evaluateCredentialFreeInventoryOutcome,
   inspectDependencyFilesystem,
+  inspectCriticalDependencyIntegrity,
   inspectPrismaClientFilesystem,
   isDependencyLinkAllowed,
+  isSensitiveVerificationEnvironmentName,
   normalizePrismaSchema,
   parseExactDisposableConfirmationArgs,
   resolveDisposableDatabaseTestTarget,
@@ -45,6 +51,55 @@ afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+describe("credential-free inventory orchestration", () => {
+  const passingSummary = {
+    files: { total: 1, passed: 1, failed: 0, skipped: 0 },
+    tests: { total: 1, passed: 1, failed: 0, skipped: 0 },
+  };
+
+  it("fails the command for an artifact-only phase failure with subprocess status zero", () => {
+    const artifactFailure = {
+      status: 0,
+      success: false,
+      failureKind: "artifact-failure" as const,
+      summary: passingSummary,
+    };
+
+    expect(
+      evaluateCredentialFreeInventoryOutcome({
+        credentialFreeResult: artifactFailure,
+        importOnlyResult: { success: true, summary: passingSummary },
+        placeholderConnectionAttempted: false,
+      })
+    ).toEqual({
+      credentialFreeFailure: true,
+      importOnlyFailure: false,
+      malformedResult: false,
+      exitCode: 1,
+    });
+    expect(artifactFailure).toMatchObject({
+      status: 0,
+      success: false,
+      failureKind: "artifact-failure",
+    });
+  });
+
+  it("keeps a normal successful inventory successful", () => {
+    expect(
+      evaluateCredentialFreeInventoryOutcome({
+        credentialFreeResult: { success: true, summary: passingSummary },
+        importOnlyResult: { success: true, summary: passingSummary },
+        placeholderConnectionAttempted: false,
+      })
+    ).toEqual({
+      credentialFreeFailure: false,
+      importOnlyFailure: false,
+      malformedResult: false,
+      exitCode: 0,
+    });
+  });
 });
 
 describe("classifyDatabaseTarget", () => {
@@ -583,6 +638,201 @@ describe("dependency and Prisma readiness", () => {
   });
 });
 
+describe("credential-safe verification environment", () => {
+  it("preserves only platform and verification essentials while removing common credentials", () => {
+    const safe = buildCredentialSafeVerificationEnvironment({
+      Path: "C:/trusted/node",
+      TEMP: "C:/temp",
+      NODE_ENV: "test",
+      TZ: "America/Chicago",
+      CI: "true",
+      GH_TOKEN: "common-token-sentinel-123456",
+      VERCEL_TOKEN: "deployment-token-sentinel-123456",
+      npm_config_authToken: "npm-token-sentinel-123456",
+      DATABASE_URL: "database-secret-sentinel-123456",
+      TRAINER_DISPOSABLE_DB_CONFIRMED: "1",
+      UNRELATED_APPLICATION_SETTING: "must-not-be-inherited",
+    });
+
+    expect(safe).toMatchObject({
+      Path: "C:/trusted/node",
+      TEMP: "C:/temp",
+      NODE_ENV: "test",
+      TZ: "America/Chicago",
+      CI: "true",
+    });
+    expect(safe.GH_TOKEN).toBeUndefined();
+    expect(safe.VERCEL_TOKEN).toBeUndefined();
+    expect(safe.npm_config_authToken).toBeUndefined();
+    expect(safe.DATABASE_URL).toBeUndefined();
+    expect(safe.TRAINER_DISPOSABLE_DB_CONFIRMED).toBeUndefined();
+    expect(safe.UNRELATED_APPLICATION_SETTING).toBeUndefined();
+  });
+
+  it("handles mixed-case Windows-style sensitive keys and records actual values for redaction", () => {
+    const environment = {
+      Gh_ToKeN: "mixed-token-sentinel-123456",
+      Authorization: "authorization-sentinel-123456",
+      Cookie: "cookie-sentinel-123456",
+      pGpAsSwOrD: "postgres-password-sentinel-123456",
+      Path: "C:/trusted/node",
+    };
+    expect(Object.keys(buildCredentialSafeVerificationEnvironment(environment))).not.toEqual(
+      expect.arrayContaining(["Gh_ToKeN", "Authorization", "Cookie", "pGpAsSwOrD"])
+    );
+    expect(collectSensitiveVerificationEnvironmentValues(environment)).toEqual(
+      expect.arrayContaining([
+        "mixed-token-sentinel-123456",
+        "authorization-sentinel-123456",
+        "cookie-sentinel-123456",
+        "postgres-password-sentinel-123456",
+      ])
+    );
+    expect(isSensitiveVerificationEnvironmentName("MiXeD_Client_Secret")).toBe(true);
+  });
+
+  it("deduplicates Windows-equivalent allowlisted keys case-insensitively", () => {
+    const safe = buildCredentialSafeVerificationEnvironment({
+      Path: "first",
+      PATH: "second",
+      NODE_ENV: "test",
+    });
+    expect(Object.keys(safe).filter((name) => name.toUpperCase() === "PATH")).toHaveLength(1);
+  });
+});
+
+describe("critical exact-lock dependency integrity", () => {
+  function createExactLockFixture(label = "exact lock fixture with spaces"): string {
+    const fixture = mkdtempSync(join(tmpdir(), "trainer-exact-lock-"));
+    temporaryDirectories.push(fixture);
+    const projectRoot = join(fixture, label);
+    const packages: Record<string, { version: string }> = {};
+    const hiddenPackages: Record<string, { version: string }> = {};
+    mkdirSync(join(projectRoot, "node_modules"), { recursive: true });
+    for (const packageName of CRITICAL_VERIFICATION_DEPENDENCIES) {
+      const version = packageName.startsWith("@prisma/") || packageName === "prisma"
+        ? "7.3.0"
+        : packageName.startsWith("@vitest/") || packageName === "vitest"
+          ? "4.0.18"
+          : "1.2.3";
+      packages[`node_modules/${packageName}`] = { version };
+      hiddenPackages[`node_modules/${packageName}`] = { version };
+      const packageRoot = join(projectRoot, "node_modules", ...packageName.split("/"));
+      mkdirSync(packageRoot, { recursive: true });
+      writeFileSync(
+        join(packageRoot, "package.json"),
+        JSON.stringify({ name: packageName, version })
+      );
+    }
+    writeFileSync(
+      join(projectRoot, "package-lock.json"),
+      JSON.stringify({ lockfileVersion: 3, packages })
+    );
+    writeFileSync(
+      join(projectRoot, "node_modules", ".package-lock.json"),
+      JSON.stringify({ lockfileVersion: 3, packages: hiddenPackages })
+    );
+    return projectRoot;
+  }
+
+  it("accepts exact root-lock, hidden-lock, and installed metadata matches", () => {
+    const projectRoot = createExactLockFixture();
+    expect(
+      inspectCriticalDependencyIntegrity({ projectRoot, npmLsSucceeded: true })
+    ).toMatchObject({ success: true, issues: [] });
+  });
+
+  it("detects installed drift even when npm ls succeeds", () => {
+    const projectRoot = createExactLockFixture();
+    writeFileSync(
+      join(projectRoot, "node_modules", "vitest", "package.json"),
+      JSON.stringify({ name: "vitest", version: "4.1.4" })
+    );
+    const report = inspectCriticalDependencyIntegrity({
+      projectRoot,
+      npmLsSucceeded: true,
+    });
+    expect(report.success).toBe(false);
+    expect(report.issues).toContainEqual(
+      expect.objectContaining({
+        packageName: "vitest",
+        lockedVersion: "4.0.18",
+        installedVersion: "4.1.4",
+        check: "installed-version",
+      })
+    );
+  });
+
+  it("detects a missing installed critical package", () => {
+    const projectRoot = createExactLockFixture();
+    rmSync(join(projectRoot, "node_modules", "tsx"), { recursive: true });
+    expect(
+      inspectCriticalDependencyIntegrity({ projectRoot, npmLsSucceeded: true }).issues
+    ).toContainEqual(
+      expect.objectContaining({
+        packageName: "tsx",
+        installedVersion: null,
+        check: "installed-package-metadata",
+      })
+    );
+  });
+
+  it.each(["missing", "malformed"])(
+    "fails closed for %s root lock metadata",
+    (state) => {
+      const projectRoot = createExactLockFixture();
+      const lockPath = join(projectRoot, "package-lock.json");
+      if (state === "missing") rmSync(lockPath);
+      else writeFileSync(lockPath, "{");
+      expect(
+        inspectCriticalDependencyIntegrity({ projectRoot, npmLsSucceeded: true }).issues
+      ).toContainEqual(
+        expect.objectContaining({
+          packageName: "vitest",
+          lockedVersion: null,
+          check: "root-lock-metadata",
+        })
+      );
+    }
+  );
+
+  it("detects missing entries and hidden-lock inconsistency", () => {
+    const projectRoot = createExactLockFixture();
+    const hiddenPath = join(projectRoot, "node_modules", ".package-lock.json");
+    const hidden = JSON.parse(readFileSync(hiddenPath, "utf8")) as {
+      packages: Record<string, { version: string }>;
+    };
+    delete hidden.packages["node_modules/tsx"];
+    hidden.packages["node_modules/vitest"].version = "4.1.4";
+    writeFileSync(hiddenPath, JSON.stringify({ lockfileVersion: 3, ...hidden }));
+    const issues = inspectCriticalDependencyIntegrity({
+      projectRoot,
+      npmLsSucceeded: true,
+    }).issues;
+    expect(issues).toContainEqual(
+      expect.objectContaining({ packageName: "tsx", check: "hidden-lock-entry" })
+    );
+    expect(issues).toContainEqual(
+      expect.objectContaining({
+        packageName: "vitest",
+        check: "hidden-lock-version",
+      })
+    );
+  });
+
+  it("handles scoped package paths under a Windows-style platform fixture path", () => {
+    const projectRoot = createExactLockFixture("Windows ARM64 path with spaces");
+    const report = inspectCriticalDependencyIntegrity({
+      projectRoot,
+      npmLsSucceeded: true,
+    });
+    expect(report.success).toBe(true);
+    expect(
+      existsSync(join(projectRoot, "node_modules", "@prisma", "client", "package.json"))
+    ).toBe(true);
+  });
+});
+
 describe("dependency-free launcher", () => {
   const launcher = resolve("scripts/test-environment-preflight.mjs");
 
@@ -698,6 +948,38 @@ describe("dependency-free launcher", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("typed-runner-loader-failed");
     expect(result.stderr).not.toContain("secret-value");
+  });
+
+  it("passes sensitive values over stdin while restricting the typed-runner environment", () => {
+    const sentinel = "launcher-token-sentinel-81c5c410";
+    const fixture = createLauncherFixture({
+      tsxLauncherSource: [
+        'import { readFileSync } from "node:fs";',
+        `const sentinel = ${JSON.stringify(sentinel)};`,
+        'const values = JSON.parse(readFileSync(0, "utf8"));',
+        'console.log("Trainer test environment preflight");',
+        'console.log(JSON.stringify({ inherited: Object.keys(process.env).some((name) => name.toUpperCase() === "GH_TOKEN"), arbitrary: process.env.TRAINER_APP_DIAGNOSTIC ?? null, path: Boolean(process.env.PATH), restricted: process.env.TRAINER_RESTRICTED_VERIFICATION_LAUNCHER === "1", channel: values.includes(sentinel) }));',
+      ].join("\n"),
+    });
+    const result = spawnSync(process.execPath, [launcher], {
+      cwd: fixture,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        Gh_ToKeN: sentinel,
+        TRAINER_APP_DIAGNOSTIC: "unrelated-parent-value",
+      },
+    });
+    const details = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1) ?? "null");
+
+    expect(result.status).toBe(0);
+    expect(details).toEqual({
+      inherited: false,
+      arbitrary: null,
+      path: true,
+      restricted: true,
+      channel: true,
+    });
   });
 
   it.skipIf(process.platform === "win32")(
@@ -1048,7 +1330,7 @@ describe("credential-free and mutation subprocess boundaries", () => {
   }, 30_000);
 });
 
-describe("database target inventory guard", () => {
+describe("database target inventory guard", { timeout: 60_000 }, () => {
   function filesBelow(root: string): string[] {
     if (!statSync(root).isDirectory()) return [root];
     return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {

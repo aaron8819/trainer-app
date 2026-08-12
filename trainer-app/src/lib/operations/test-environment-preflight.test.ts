@@ -19,9 +19,11 @@ import {
   classifyDatabaseTarget,
   classifyDependencyArrangement,
   classifyPrismaReadiness,
+  CRITICAL_VERIFICATION_DEPENDENCIES,
   DATABASE_TARGET_ENV_VARS,
   discoverDatabaseTargetVariableReferences,
   inspectDependencyFilesystem,
+  inspectCriticalDependencyIntegrity,
   inspectPrismaClientFilesystem,
   isDependencyLinkAllowed,
   normalizePrismaSchema,
@@ -583,6 +585,138 @@ describe("dependency and Prisma readiness", () => {
   });
 });
 
+describe("critical exact-lock dependency integrity", () => {
+  function createExactLockFixture(label = "exact lock fixture with spaces"): string {
+    const fixture = mkdtempSync(join(tmpdir(), "trainer-exact-lock-"));
+    temporaryDirectories.push(fixture);
+    const projectRoot = join(fixture, label);
+    const packages: Record<string, { version: string }> = {};
+    const hiddenPackages: Record<string, { version: string }> = {};
+    mkdirSync(join(projectRoot, "node_modules"), { recursive: true });
+    for (const packageName of CRITICAL_VERIFICATION_DEPENDENCIES) {
+      const version = packageName.startsWith("@prisma/") || packageName === "prisma"
+        ? "7.3.0"
+        : packageName.startsWith("@vitest/") || packageName === "vitest"
+          ? "4.0.18"
+          : "1.2.3";
+      packages[`node_modules/${packageName}`] = { version };
+      hiddenPackages[`node_modules/${packageName}`] = { version };
+      const packageRoot = join(projectRoot, "node_modules", ...packageName.split("/"));
+      mkdirSync(packageRoot, { recursive: true });
+      writeFileSync(
+        join(packageRoot, "package.json"),
+        JSON.stringify({ name: packageName, version })
+      );
+    }
+    writeFileSync(
+      join(projectRoot, "package-lock.json"),
+      JSON.stringify({ lockfileVersion: 3, packages })
+    );
+    writeFileSync(
+      join(projectRoot, "node_modules", ".package-lock.json"),
+      JSON.stringify({ lockfileVersion: 3, packages: hiddenPackages })
+    );
+    return projectRoot;
+  }
+
+  it("accepts exact root-lock, hidden-lock, and installed metadata matches", () => {
+    const projectRoot = createExactLockFixture();
+    expect(
+      inspectCriticalDependencyIntegrity({ projectRoot, npmLsSucceeded: true })
+    ).toMatchObject({ success: true, issues: [] });
+  });
+
+  it("detects installed drift even when npm ls succeeds", () => {
+    const projectRoot = createExactLockFixture();
+    writeFileSync(
+      join(projectRoot, "node_modules", "vitest", "package.json"),
+      JSON.stringify({ name: "vitest", version: "4.1.4" })
+    );
+    const report = inspectCriticalDependencyIntegrity({
+      projectRoot,
+      npmLsSucceeded: true,
+    });
+    expect(report.success).toBe(false);
+    expect(report.issues).toContainEqual(
+      expect.objectContaining({
+        packageName: "vitest",
+        lockedVersion: "4.0.18",
+        installedVersion: "4.1.4",
+        check: "installed-version",
+      })
+    );
+  });
+
+  it("detects a missing installed critical package", () => {
+    const projectRoot = createExactLockFixture();
+    rmSync(join(projectRoot, "node_modules", "tsx"), { recursive: true });
+    expect(
+      inspectCriticalDependencyIntegrity({ projectRoot, npmLsSucceeded: true }).issues
+    ).toContainEqual(
+      expect.objectContaining({
+        packageName: "tsx",
+        installedVersion: null,
+        check: "installed-package-metadata",
+      })
+    );
+  });
+
+  it.each(["missing", "malformed"])(
+    "fails closed for %s root lock metadata",
+    (state) => {
+      const projectRoot = createExactLockFixture();
+      const lockPath = join(projectRoot, "package-lock.json");
+      if (state === "missing") rmSync(lockPath);
+      else writeFileSync(lockPath, "{");
+      expect(
+        inspectCriticalDependencyIntegrity({ projectRoot, npmLsSucceeded: true }).issues
+      ).toContainEqual(
+        expect.objectContaining({
+          packageName: "vitest",
+          lockedVersion: null,
+          check: "root-lock-metadata",
+        })
+      );
+    }
+  );
+
+  it("detects missing entries and hidden-lock inconsistency", () => {
+    const projectRoot = createExactLockFixture();
+    const hiddenPath = join(projectRoot, "node_modules", ".package-lock.json");
+    const hidden = JSON.parse(readFileSync(hiddenPath, "utf8")) as {
+      packages: Record<string, { version: string }>;
+    };
+    delete hidden.packages["node_modules/tsx"];
+    hidden.packages["node_modules/vitest"].version = "4.1.4";
+    writeFileSync(hiddenPath, JSON.stringify({ lockfileVersion: 3, ...hidden }));
+    const issues = inspectCriticalDependencyIntegrity({
+      projectRoot,
+      npmLsSucceeded: true,
+    }).issues;
+    expect(issues).toContainEqual(
+      expect.objectContaining({ packageName: "tsx", check: "hidden-lock-entry" })
+    );
+    expect(issues).toContainEqual(
+      expect.objectContaining({
+        packageName: "vitest",
+        check: "hidden-lock-version",
+      })
+    );
+  });
+
+  it("handles scoped package paths under a Windows-style platform fixture path", () => {
+    const projectRoot = createExactLockFixture("Windows ARM64 path with spaces");
+    const report = inspectCriticalDependencyIntegrity({
+      projectRoot,
+      npmLsSucceeded: true,
+    });
+    expect(report.success).toBe(true);
+    expect(
+      existsSync(join(projectRoot, "node_modules", "@prisma", "client", "package.json"))
+    ).toBe(true);
+  });
+});
+
 describe("dependency-free launcher", () => {
   const launcher = resolve("scripts/test-environment-preflight.mjs");
 
@@ -1048,7 +1182,7 @@ describe("credential-free and mutation subprocess boundaries", () => {
   }, 30_000);
 });
 
-describe("database target inventory guard", () => {
+describe("database target inventory guard", { timeout: 60_000 }, () => {
   function filesBelow(root: string): string[] {
     if (!statSync(root).isDirectory()) return [root];
     return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {

@@ -6,6 +6,44 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 
+export const CRITICAL_VERIFICATION_DEPENDENCIES = [
+  "vitest",
+  "@vitest/coverage-v8",
+  "vite",
+  "@vitejs/plugin-react",
+  "tsx",
+  "happy-dom",
+  "jsdom",
+  "prisma",
+  "@prisma/client",
+  "@prisma/adapter-pg",
+] as const;
+
+export type CriticalVerificationDependency =
+  (typeof CRITICAL_VERIFICATION_DEPENDENCIES)[number];
+export type CriticalDependencyIntegrityCheck =
+  | "npm-tree"
+  | "root-lock-metadata"
+  | "root-lock-entry"
+  | "installed-package-metadata"
+  | "installed-version"
+  | "hidden-lock-metadata"
+  | "hidden-lock-entry"
+  | "hidden-lock-version";
+export type CriticalDependencyIntegrityIssue = {
+  packageName: CriticalVerificationDependency;
+  lockedVersion: string | null;
+  installedVersion: string | null;
+  check: CriticalDependencyIntegrityCheck;
+  detail: string;
+};
+export type CriticalDependencyIntegrityReport = {
+  success: boolean;
+  npmLsSucceeded: boolean;
+  issues: CriticalDependencyIntegrityIssue[];
+  recovery: string;
+};
+
 export const DATABASE_TARGET_ENV_VARS = [
   "DATABASE_URL",
   "TEST_DATABASE_URL",
@@ -690,6 +728,169 @@ function dependencyPathIdentity(
 ): string {
   const normalized = join(filePath);
   return platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
+type LockMetadata = {
+  lockfileVersion?: unknown;
+  packages?: Record<string, { version?: unknown }>;
+};
+
+function readJsonObject(filePath: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function packageLockKey(packageName: string): string {
+  return `node_modules/${packageName}`;
+}
+
+function installedPackageMetadata(
+  projectRoot: string,
+  packageName: CriticalVerificationDependency
+): { state: "available"; version: string } | { state: "missing" | "malformed" } {
+  const metadataPath = join(
+    projectRoot,
+    "node_modules",
+    ...packageName.split("/"),
+    "package.json"
+  );
+  if (!existsSync(metadataPath)) return { state: "missing" };
+  const metadata = readJsonObject(metadataPath);
+  return metadata?.name === packageName &&
+    typeof metadata.version === "string" &&
+    metadata.version.length > 0
+    ? { state: "available", version: metadata.version }
+    : { state: "malformed" };
+}
+
+function validLockMetadata(value: Record<string, unknown> | null): LockMetadata | null {
+  if (
+    !value ||
+    typeof value.lockfileVersion !== "number" ||
+    !value.packages ||
+    typeof value.packages !== "object" ||
+    Array.isArray(value.packages)
+  ) {
+    return null;
+  }
+  return value as LockMetadata;
+}
+
+export function inspectCriticalDependencyIntegrity(input: {
+  projectRoot: string;
+  npmLsSucceeded: boolean;
+}): CriticalDependencyIntegrityReport {
+  const rootLock = validLockMetadata(
+    readJsonObject(join(input.projectRoot, "package-lock.json"))
+  );
+  const hiddenLock = validLockMetadata(
+    readJsonObject(join(input.projectRoot, "node_modules", ".package-lock.json"))
+  );
+  const issues: CriticalDependencyIntegrityIssue[] = [];
+
+  for (const packageName of CRITICAL_VERIFICATION_DEPENDENCIES) {
+    const installed = installedPackageMetadata(input.projectRoot, packageName);
+    const installedVersion =
+      installed.state === "available" ? installed.version : null;
+    const rootEntry = rootLock?.packages?.[packageLockKey(packageName)];
+    const lockedVersion =
+      typeof rootEntry?.version === "string" && rootEntry.version.length > 0
+        ? rootEntry.version
+        : null;
+
+    if (!input.npmLsSucceeded) {
+      issues.push({
+        packageName,
+        lockedVersion,
+        installedVersion,
+        check: "npm-tree",
+        detail: "npm ls --all did not validate the installed dependency tree.",
+      });
+    }
+    if (!rootLock) {
+      issues.push({
+        packageName,
+        lockedVersion: null,
+        installedVersion,
+        check: "root-lock-metadata",
+        detail: "The root package-lock.json is missing, unreadable, or malformed.",
+      });
+    } else if (!lockedVersion) {
+      issues.push({
+        packageName,
+        lockedVersion: null,
+        installedVersion,
+        check: "root-lock-entry",
+        detail: "The root lockfile has no valid exact version for this critical package.",
+      });
+    }
+
+    if (installed.state !== "available") {
+      issues.push({
+        packageName,
+        lockedVersion,
+        installedVersion: null,
+        check: "installed-package-metadata",
+        detail:
+          installed.state === "missing"
+            ? "The installed package is missing."
+            : "The installed package metadata is unreadable, malformed, or names a different package.",
+      });
+    } else if (lockedVersion && installed.version !== lockedVersion) {
+      issues.push({
+        packageName,
+        lockedVersion,
+        installedVersion: installed.version,
+        check: "installed-version",
+        detail: "The installed version differs from the exact root lockfile version.",
+      });
+    }
+
+    const hiddenEntry = hiddenLock?.packages?.[packageLockKey(packageName)];
+    const hiddenVersion =
+      typeof hiddenEntry?.version === "string" && hiddenEntry.version.length > 0
+        ? hiddenEntry.version
+        : null;
+    if (!hiddenLock) {
+      issues.push({
+        packageName,
+        lockedVersion,
+        installedVersion,
+        check: "hidden-lock-metadata",
+        detail: "node_modules/.package-lock.json is missing, unreadable, or malformed.",
+      });
+    } else if (!hiddenVersion) {
+      issues.push({
+        packageName,
+        lockedVersion,
+        installedVersion,
+        check: "hidden-lock-entry",
+        detail: "The hidden lockfile has no valid exact version for this critical package.",
+      });
+    } else if (lockedVersion && hiddenVersion !== lockedVersion) {
+      issues.push({
+        packageName,
+        lockedVersion,
+        installedVersion,
+        check: "hidden-lock-version",
+        detail: `The hidden lockfile records ${hiddenVersion}, not the root lockfile version.`,
+      });
+    }
+  }
+
+  return {
+    success: issues.length === 0,
+    npmLsSucceeded: input.npmLsSucceeded,
+    issues,
+    recovery:
+      "Run trusted-runtime npm ci from trainer-app, then rerun verification; no automatic repair was attempted.",
+  };
 }
 
 export function inspectDependencyFilesystem(input: {

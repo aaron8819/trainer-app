@@ -105,8 +105,11 @@ describe("test-suite environment manifest", () => {
       manifest: currentManifest,
       discoveredTestFiles,
     });
-    expect(discoveredTestFiles).toHaveLength(354);
-    expect(selection.credentialFree).toHaveLength(315);
+    expect(discoveredTestFiles).toHaveLength(355);
+    expect(selection.credentialFree).toHaveLength(316);
+    expect(selection.credentialFree).toContain(
+      "src/lib/operations/credential-free-inventory-runner.test.ts"
+    );
     expect(selection.credentialFree).toContain(
       "src/lib/engine/hypertrophy-plan-recommendations.test.ts"
     );
@@ -409,9 +412,29 @@ describe("pull-request CI contract", () => {
       resolve("scripts/test-environment-preflight.ts"),
       "utf8"
     );
-    expect(runner).toContain('["--maxWorkers", "1", "--reporter", "json"]');
-    expect(runner).toContain('stdio: ["ignore", stdoutFd, stderrFd]');
-    expect(runner).toContain("Vitest failure output (bounded tail):");
-    expect(runner).toContain("abnormal process termination");
+    expect(runner).toContain('const vitestArgs = ["--maxWorkers", "1"]');
+    expect(runner).toContain("formatVitestPhaseFailure");
+    expect(runner).toContain("Credential-free inventory total elapsed");
+    const phaseRunner = readFileSync(
+      resolve("src/lib/operations/credential-free-inventory-runner.ts"),
+      "utf8"
+    );
+    expect(phaseRunner).toContain('"--reporter=dot"');
+    expect(phaseRunner).toContain('"--reporter=json"');
+    expect(phaseRunner).toContain("--outputFile.json=");
+    expect(phaseRunner).toContain('stdio: ["ignore", "pipe", "pipe"]');
+  });
+
+  it("configures only the proven filesystem inventory guard with a 60 second timeout", () => {
+    const source = readFileSync(
+      resolve("src/lib/operations/test-environment-preflight.test.ts"),
+      "utf8"
+    );
+    expect(source).toContain(
+      'describe("database target inventory guard", { timeout: 60_000 }'
+    );
+    expect(readFileSync(resolve("vitest.config.ts"), "utf8")).not.toContain(
+      "testTimeout"
+    );
   });
 });

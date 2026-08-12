@@ -108,8 +108,9 @@ if (!existsSync(tsxLauncher)) {
 const result = spawnSync(process.execPath, [tsxLauncher, typedRunner, ...args], {
   cwd: projectRoot,
   env: process.env,
-  encoding: "utf8",
+  encoding: runFlags.length > 0 ? undefined : "utf8",
   windowsHide: true,
+  stdio: runFlags.length > 0 ? "inherit" : ["ignore", "pipe", "pipe"],
 });
 if (result.error) {
   if (args.includes("--debug")) {
@@ -129,6 +130,7 @@ if (result.signal || result.status === null) {
 }
 
 const trustedOutput =
+  runFlags.length > 0 ||
   result.status === 0 ||
   result.stdout.includes("Trainer test environment preflight") ||
   result.stdout.trimStart().startsWith("{");

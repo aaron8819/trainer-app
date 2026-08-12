@@ -52,12 +52,20 @@ Sources of truth:
   import-only placeholder files run in a separate phase with the exact reserved TEST-NET URL and
   a socket connection guard. Registered DB-required suites are excluded before Vitest collection,
   listed with their owner, reason, and separate authorized command, and are never reported as
-  credential-free coverage. Any unregistered import or collection failure remains fatal.
+  credential-free coverage. Any unregistered import or collection failure remains fatal. Each
+  phase uses one worker, prints Vitest's concise native dot progress plus phase/total elapsed time, and writes the
+  JSON reporter to a separate file so progress cannot corrupt machine-readable results.
 - `npm run test:inventory:credential-free -- --base-ref <git-ref>`: runs the same inventory and
   reports added, removed, and changed environment classifications relative to the named base.
   Equal branch/base failures are not accepted; only explicit classifications can compare cleanly.
 - `npm run test:environment-classification`: focused manifest, sanitizer, placeholder-guard,
-  subprocess-boundary, summary-count, and branch/base-delta coverage.
+  subprocess-boundary, exact-lock integrity, summary-count, and branch/base-delta coverage. The
+  recursive database-target source inventory test alone has a
+  60-second timeout because the demonstrated Windows filesystem traversal exceeded Vitest's
+  inherited default; the global Vitest timeout is unchanged.
+- `src/lib/operations/credential-free-inventory-runner.test.ts`: focused success cleanup, failure
+  retention, reporter parsing, subprocess classification, unique/path-safe naming, complete raw
+  capture, and concise failure-summary coverage.
 - `npm run test:seed-revision-concurrency -- --confirm-disposable`: against a local disposable PostgreSQL database, verifies one-winner concurrent correction, generation/correction revision preservation, and full rollback after a failed correction. The command refuses non-local or unconfirmed targets.
 - `npm run test:db:workout-mutations -- --confirm-disposable`: explicitly mutating integration
   coverage. Its effective argument list must be exactly `["--confirm-disposable"]`; unknown,
@@ -143,10 +151,13 @@ Every pull request targeting `master` runs the `credential-free-inventory` GitHu
 from `.github/workflows/credential-free-inventory.yml`. The workflow checks out full Git history,
 uses Node.js 22, fixes `TZ` to `America/Chicago` for the repository's local-week test semantics,
 installs the exact lockfile with `npm ci`, and delegates all classification and execution behavior
-to the canonical command. The runner caps each Vitest phase at one worker when `CI=true` so the
-full jsdom/happy-dom inventory stays within hosted-runner memory. CI spools raw Vitest output to
-ephemeral local files, uses Vitest's JSON reporter for deterministic counts, emits structured
-summaries on success or a bounded output tail on failure, and removes the spools after each phase:
+to the canonical command. The runner keeps each Vitest phase at one worker so the full
+jsdom/happy-dom inventory stays within hosted-runner memory. It streams Vitest's native dot reporter
+for basic progress while writing the JSON reporter to a separate file, reports phase and total
+elapsed time, and emits a structured final summary. Successful phases remove their disposable
+captures. Failed phases retain complete stdout, stderr, reporter output when present, and
+machine-readable failure metadata under `artifacts/credential-free-inventory/<unique-run>/` and
+print every retained path:
 
 ```text
 npm run test:inventory:credential-free -- --base-ref origin/master
@@ -157,7 +168,10 @@ suite runs with the exact guarded TEST-NET placeholder and no socket attempt, ev
 DB-required suite is excluded before Vitest collection, the manifest is valid, and unexpected
 collection, setup, import, test, subprocess, or result-parsing failures remain fatal. It prints the
 selected and passed file/test counts, skipped counts, both DB exclusions and their authorized
-command, placeholder safeguards, and the manifest delta against `origin/master`.
+command, placeholder safeguards, the manifest delta against `origin/master`, and the failing
+file/test whenever Vitest reports that identity. Missing or malformed reporter output, test
+timeouts, signals/worker termination, dependency-readiness failures, and generic nonzero exits
+remain distinct failure classes; no failed-test identity is invented when the reporter omits it.
 
 The gate does not run or claim disposable PostgreSQL coverage. These suites remain separately
 authorized:
@@ -240,7 +254,13 @@ enforcement can be claimed.
   worktree and that worktree has the exact current lockfile hash; policy-external, stale,
   lock-incompatible, chained-outside-policy, and unresolved links are blocked. Installation
   validation runs from the resolved exact-lock project root, so npm traversal of the link itself
-  is not treated as incompatibility proof. No machine-local path is committed.
+  is not treated as incompatibility proof. No machine-local path is committed. Dependency
+  readiness does not treat a successful `npm ls --all` as exact-lock proof: it also compares the
+  root lock, installed package metadata, and hidden `node_modules/.package-lock.json` entries for
+  Vitest, coverage, Vite and its React plugin, tsx, happy-dom, Prisma CLI/client/adapter packages.
+  Missing, malformed, or version-drifted critical metadata fails closed with package name, locked
+  and installed versions, the failed integrity check, and trusted-runtime `npm ci` recovery
+  guidance. Preflight never installs or repairs dependencies automatically.
 - Prisma readiness is reported distinctly as dependencies missing, Prisma packages missing,
   generated client missing, generated client partial/corrupt, generated client stale, or
   compatible. “Compatible” means required package metadata, forwarders, declarations,

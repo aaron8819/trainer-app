@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import exerciseCatalog from "../../../prisma/exercises_comprehensive.json";
+import { parseCanonicalExerciseFactsV1 } from "../exercise-library/canonical-exercise-facts";
 import { getMusclePolicyByDisplayName } from "./muscle-policy";
 import {
   buildV2ExerciseMaterializationPlan,
@@ -29,6 +30,13 @@ import {
   type HypertrophyAuthoringExercise,
   type HypertrophyPlanDraftV1,
 } from "./hypertrophy-plan-authoring";
+
+vi.mock("@/lib/db/prisma", () => ({ prisma: {} }));
+
+import {
+  toAuthoringExercise as toProductionAuthoringExercise,
+  type HypertrophyPlanDraftExerciseRow,
+} from "../api/hypertrophy-plan-drafts";
 
 const settings = {
   equipmentProfile: "FULL_GYM" as const,
@@ -103,6 +111,73 @@ function toAuthoringExercise(
     isMainLiftEligible: exercise.isMainLiftEligible,
     timePerSetSec: exercise.timePerSetSec,
   };
+}
+
+function toProductionAuthoringRow(
+  exercise: ShippedCatalogExercise,
+): HypertrophyPlanDraftExerciseRow {
+  const exerciseMuscles = (
+    names: readonly string[],
+    role: "PRIMARY" | "SECONDARY",
+  ) =>
+    names.map((muscleName) => {
+      const policy = getMusclePolicyByDisplayName(muscleName);
+      if (!policy) throw new Error(`Missing canonical muscle: ${muscleName}`);
+      return { role, muscle: { id: policy.id, name: muscleName } };
+    });
+
+  return {
+    id: exercise.catalogKey,
+    name: exercise.name,
+    aliases: [],
+    movementPatterns: exercise.movementPatterns,
+    contraindications: exercise.contraindications ?? null,
+    isCompound: exercise.isCompound,
+    isMainLiftEligible: exercise.isMainLiftEligible,
+    fatigueCost: exercise.fatigueCost,
+    timePerSetSec: exercise.timePerSetSec,
+    measurementProfile:
+      "measurementProfile" in exercise ? exercise.measurementProfile : null,
+    loadConvention:
+      "loadConvention" in exercise ? exercise.loadConvention : null,
+    repBasis: "repBasis" in exercise ? exercise.repBasis : null,
+    exerciseEquipment: exercise.equipment.map((type) => ({
+      equipment: { type },
+    })),
+    exerciseMuscles: [
+      ...exerciseMuscles(exercise.primaryMuscles, "PRIMARY"),
+      ...exerciseMuscles(exercise.secondaryMuscles, "SECONDARY"),
+    ],
+  } as HypertrophyPlanDraftExerciseRow;
+}
+
+function toConsumerReadyAuthoringExercise(
+  exercise: ShippedCatalogExercise,
+): HypertrophyAuthoringExercise {
+  const facts = parseCanonicalExerciseFactsV1(exercise.facts);
+  if (facts.stimulus.disposition !== "COMPLETE") {
+    throw new Error("Canonical stimulus is not consumer-ready");
+  }
+
+  const authoringExercise = toProductionAuthoringExercise(
+    toProductionAuthoringRow(exercise),
+  );
+  if (!authoringExercise.measurement) {
+    throw new Error("Parsed measurement is not consumer-ready");
+  }
+  if (!authoringExercise.stimulusByMuscleId) {
+    throw new Error("Projected stimulus is not consumer-ready");
+  }
+
+  const canonicalStimulus = Object.entries(facts.stimulus.profile).sort();
+  const projectedStimulus = Object.entries(
+    authoringExercise.stimulusByMuscleId,
+  ).sort();
+  if (JSON.stringify(projectedStimulus) !== JSON.stringify(canonicalStimulus)) {
+    throw new Error("Projected stimulus does not match canonical facts");
+  }
+
+  return authoringExercise;
 }
 
 type MutableProjections = {
@@ -592,6 +667,92 @@ describe("custom hypertrophy authoring contracts", () => {
         },
       }),
     ).toEqual({ eligible: false, reasonCode: "MUSCLE_TARGET_MISMATCH" });
+  });
+
+  it("makes Cable Pallof Press eligible for a full-gym anti-rotation accessory intent", () => {
+    const exercise = shippedCatalogExercise("Cable Pallof Press");
+    const authoringExercise = toConsumerReadyAuthoringExercise(exercise);
+    const intent = {
+      userRole: "ACCESSORY" as const,
+      target: {
+        kind: "movement_pattern" as const,
+        movementPattern: "anti_rotation" as const,
+      },
+    };
+
+    expect(authoringExercise.id).toBe("cable-pallof-press");
+    expect(authoringExercise.equipment).toEqual(["cable"]);
+    expect(authoringExercise.movementPatterns).toEqual(["anti_rotation"]);
+    expect(authoringExercise.stimulusByMuscleId).toEqual({ core: 1 });
+    expect(authoringExercise.measurement).toEqual({
+      profile: "REPS_EXTERNAL_LOAD",
+      loadConvention: "MACHINE_DISPLAYED",
+      repBasis: "PER_SIDE",
+    });
+    expect(
+      isExerciseAvailableForHypertrophyPlan({
+        exercise: authoringExercise,
+        equipmentProfile: "FULL_GYM",
+        limitationKeys: [],
+      }),
+    ).toBe(true);
+    expect(
+      evaluateHypertrophySemanticIntent({
+        exercise: toMaterializationExercise(exercise),
+        intent,
+      }),
+    ).toEqual({ eligible: true });
+    expect(
+      isExerciseEligibleForIntent({
+        exercise: authoringExercise,
+        intent,
+        equipmentProfile: "FULL_GYM",
+        limitationKeys: [],
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects Cable Pallof Press when canonical stimulus readiness is absent or incomplete", () => {
+    const missingFacts = structuredClone(
+      shippedCatalogExercise("Cable Pallof Press"),
+    ) as unknown as Record<string, unknown>;
+    delete missingFacts.facts;
+    const exercise = {
+      ...shippedCatalogExercise("Cable Pallof Press"),
+      facts: { version: 1, stimulus: { disposition: "MISSING" } },
+    } as unknown as ShippedCatalogExercise;
+
+    expect(() =>
+      toConsumerReadyAuthoringExercise(
+        missingFacts as unknown as ShippedCatalogExercise,
+      ),
+    ).toThrow("CANONICAL_FACTS_NOT_OBJECT");
+    expect(() => toConsumerReadyAuthoringExercise(exercise)).toThrow(
+      "Canonical stimulus is not consumer-ready",
+    );
+  });
+
+  it("rejects Cable Pallof Press when parsed measurement readiness is absent or invalid", () => {
+    const exercise = shippedCatalogExercise("Cable Pallof Press");
+    const missingMeasurement = structuredClone(exercise) as unknown as Record<
+      string,
+      unknown
+    >;
+    delete missingMeasurement.measurementProfile;
+    delete missingMeasurement.loadConvention;
+    delete missingMeasurement.repBasis;
+
+    expect(() =>
+      toConsumerReadyAuthoringExercise(
+        missingMeasurement as unknown as ShippedCatalogExercise,
+      ),
+    ).toThrow("Parsed measurement is not consumer-ready");
+    expect(() =>
+      toConsumerReadyAuthoringExercise({
+        ...exercise,
+        loadConvention: "DISPLAYED_ASSISTANCE",
+      } as unknown as ShippedCatalogExercise),
+    ).toThrow(/loadConvention/);
   });
 
   it("makes all accepted semantic mismatches plan-health blockers", () => {

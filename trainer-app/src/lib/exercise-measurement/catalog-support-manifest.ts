@@ -61,6 +61,7 @@ export const COMPLETE_SUPPORTED_MEASUREMENT_IDENTITIES = [
   ["Goblet Squat", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],
   ["Bulgarian Split Squat", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "PER_SIDE"],
   ["Selectorized Standing Calf Raise", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
+  ["Cable Pallof Press", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "PER_SIDE"],
   ["Cable Crunch", "REPS_EXTERNAL_LOAD", "MACHINE_DISPLAYED", "TOTAL"],
   ["Barbell Bench Press", "REPS_EXTERNAL_LOAD", "BARBELL_TOTAL", "TOTAL"],
   ["Chest-Supported Dumbbell Row", "REPS_EXTERNAL_LOAD", "IMPLEMENT_WEIGHT", "TOTAL"],

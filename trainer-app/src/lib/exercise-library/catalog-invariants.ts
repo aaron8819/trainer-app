@@ -78,7 +78,7 @@ const EQUIPMENT = new Set<string>(EQUIPMENT_TYPE_VALUES);
 const MUSCLES = new Set<string>(
   Object.values(MUSCLE_POLICY_BY_ID).map((policy) => policy.displayName),
 );
-const EXPECTED_CANONICAL_COUNT = 149;
+const EXPECTED_CANONICAL_COUNT = 150;
 const EXPECTED_MANAGED_ALIAS_COUNT = 54;
 const EXPECTED_CATALOG_KEYS = new Set<string>(
   EXPECTED_CATALOG_KEY_MEMBERSHIP_V1,
@@ -90,7 +90,7 @@ const EXPECTED_STIMULUS_DISPOSITION_COUNTS: Record<
   CanonicalStimulusDisposition,
   number
 > = {
-  COMPLETE: 148,
+  COMPLETE: 149,
   NOT_APPLICABLE: 0,
   AMBIGUOUS: 0,
   UNSUPPORTED: 0,
@@ -101,7 +101,7 @@ const EXPECTED_NON_COMPLETE_STIMULUS_BY_KEY = new Map<
   CanonicalStimulusDisposition
 >([["machine-assisted-pull-up", "MISSING"]]);
 const EXPECTED_MEASUREMENT_CATEGORY_COUNTS = {
-  COMPLETE_SUPPORTED: 88,
+  COMPLETE_SUPPORTED: 89,
   AMBIGUOUS_EXECUTION_IDENTITY: 39,
   UNSUPPORTED_MEASUREMENT_SEMANTICS: 22,
 } as const;

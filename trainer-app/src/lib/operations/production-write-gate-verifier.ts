@@ -321,11 +321,16 @@ function commandEntry(command: string): string | null {
 }
 
 function hasTargetAwareBoundary(source: string): boolean {
+  const delegatesToCanonicalCatalogSync =
+    /import\s*{\s*runExerciseLibrarySyncCli\s*}\s*from\s*["']\.\/sync-exercise-library["']/.test(
+      source,
+    ) && /\brunExerciseLibrarySyncCli\s*\(/.test(source);
   return (
     source.includes("runWithRolloutEnvironment") ||
     source.includes("assertOperationalProductionWriteAllowed") ||
     /loadAuditEnv\([\s\S]{0,180}writeRequested\s*:/.test(source) ||
-    source.includes("PRODUCTION_PRINCIPAL_PROVISIONING_BLOCKED")
+    source.includes("PRODUCTION_PRINCIPAL_PROVISIONING_BLOCKED") ||
+    delegatesToCanonicalCatalogSync
   );
 }
 

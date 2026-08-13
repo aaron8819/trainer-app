@@ -1,14 +1,9 @@
-import { runExerciseLibrarySync } from "./sync-exercise-library";
-import { assertOperationalProductionWriteAllowed } from "@/lib/operations/rollout-environment";
+import { runExerciseLibrarySyncCli } from "./sync-exercise-library";
 
 async function main() {
-  const apply = process.argv.includes("--apply");
-  assertOperationalProductionWriteAllowed({
-    argv: process.argv.slice(2),
-    writeRequested: apply,
+  await runExerciseLibrarySyncCli(process.argv.slice(2), {
+    allowCatalogKeySelectors: false,
   });
-
-  await runExerciseLibrarySync({ apply });
 }
 
 main().catch((error) => {

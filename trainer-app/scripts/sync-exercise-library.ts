@@ -1,4 +1,3 @@
-import "dotenv/config";
 import {
   Difficulty,
   JointStress,
@@ -77,14 +76,14 @@ export type CatalogSyncPlan = {
   missingReferencedEquipment: string[];
 };
 
-export type CatalogSyncScope = {
+type CatalogSyncScope = {
   mode: "catalog-wide" | "identity-scoped";
   catalogKeys: string[];
   exerciseNames: string[];
   databaseMatch: "exact-canonical-name";
 };
 
-export type CatalogSyncOperationSummary = {
+type CatalogSyncOperationSummary = {
   operationCount: number;
   exerciseCreates: string[];
   exerciseUpdates: string[];
@@ -92,14 +91,14 @@ export type CatalogSyncOperationSummary = {
   aliasUpdates: Array<{ exerciseName: string; alias: string; fromExerciseName: string }>;
 };
 
-export type CatalogSyncDriftSummary = CatalogSyncOperationSummary & {
+type CatalogSyncDriftSummary = CatalogSyncOperationSummary & {
   extraInDb: string[];
   skippedAliases: Array<{ exerciseName: string; alias: string; reason: string }>;
   missingReferencedMuscles: string[];
   missingReferencedEquipment: string[];
 };
 
-export type CatalogSyncReport = {
+type CatalogSyncReport = {
   scope: CatalogSyncScope;
   totalPlan: CatalogSyncPlan;
   inScopePlan: CatalogSyncPlan;
@@ -107,6 +106,62 @@ export type CatalogSyncReport = {
     totalCatalogDrift: CatalogSyncDriftSummary;
     selectedInScopeOperations: CatalogSyncOperationSummary;
     deferredOutOfScopeOperations: CatalogSyncOperationSummary;
+  };
+};
+
+type DbAliasOwnership = {
+  alias: string;
+  exerciseId: string;
+  exerciseName: string;
+};
+
+type SelectedCatalogDatabaseState = {
+  snapshot: ExerciseLibrarySnapshot;
+  aliasOwnership: DbAliasOwnership[];
+};
+
+export type SelectedCatalogStateFingerprint = {
+  identities: Array<{
+    catalogKey: string;
+    canonicalName: string;
+    database:
+      | { state: "absent" }
+      | {
+          state: "present";
+          id: string;
+          name: string;
+          scalars: {
+            movementPatterns: string[];
+            splitTags: string[];
+            jointStress: string;
+            isMainLiftEligible: boolean;
+            isCompound: boolean;
+            fatigueCost: number;
+            stimulusBias: string[];
+            contraindications: unknown;
+            timePerSetSec: number;
+            sfrScore: number;
+            lengthPositionScore: number;
+            difficulty: string;
+            isUnilateral: boolean;
+            repRangeMin: number;
+            repRangeMax: number;
+            measurementProfile: string | null;
+            loadConvention: string | null;
+            repBasis: string | null;
+          };
+          muscles: Array<{ muscleId: string; role: string }>;
+          equipment: Array<{ equipmentId: string }>;
+        };
+  }>;
+  aliases: Array<{
+    alias: string;
+    canonicalExerciseName: string;
+    databaseOwner: { exerciseId: string; exerciseName: string } | null;
+  }>;
+  lookups: {
+    muscles: Array<{ name: string; id: string | null }>;
+    equipment: Array<{ name: string; id: string | null }>;
   };
 };
 
@@ -135,6 +190,13 @@ type CatalogOnlyDb = {
     }): Promise<unknown>;
   };
   exerciseAlias: {
+    findMany(args?: unknown): Promise<
+      Array<{
+        alias: string;
+        exerciseId: string;
+        exercise: { id: string; name: string };
+      }>
+    >;
     upsert(args: {
       where: { alias: string };
       update: { exerciseId: string };
@@ -144,7 +206,10 @@ type CatalogOnlyDb = {
 };
 
 type CatalogTransactionalDb = CatalogOnlyDb & {
-  $transaction<T>(operation: (tx: CatalogOnlyDb) => Promise<T>): Promise<T>;
+  $transaction<T>(
+    operation: (tx: CatalogOnlyDb) => Promise<T>,
+    options?: { isolationLevel: Prisma.TransactionIsolationLevel },
+  ): Promise<T>;
 };
 
 function normalizeArray(values: string[] | undefined): string[] {
@@ -338,18 +403,58 @@ function uniqueSorted(values: Iterable<string>): string[] {
 
 const CATALOG_KEY_SELECTOR = "--catalog-key";
 
-export function parseCatalogKeySelectors(
+type CatalogSyncCliArgs = {
+  apply: boolean;
+  catalogKeys: string[] | undefined;
+};
+
+export function parseCatalogSyncCliArgs(
   argv: string[],
   catalog: CatalogExerciseSeed[] = catalogExercises,
   aliases: ExerciseAliasSeed[] = exerciseAliases,
-): string[] | undefined {
+  options: { allowCatalogKeySelectors?: boolean } = {},
+): CatalogSyncCliArgs {
   const selectors: string[] = [];
+  let apply = false;
+  let confirmRemoteWrite = false;
+  let envFileSeen = false;
 
   for (let index = 0; index < argv.length; index++) {
     const argument = argv[index]!;
+    if (argument === "--apply") {
+      if (apply) throw new Error("Duplicate catalog sync argument: --apply");
+      apply = true;
+      continue;
+    }
+    if (argument === "--confirm-remote-write") {
+      if (confirmRemoteWrite) {
+        throw new Error("Duplicate catalog sync argument: --confirm-remote-write");
+      }
+      confirmRemoteWrite = true;
+      continue;
+    }
+    if (argument === "--env-file") {
+      if (envFileSeen) throw new Error("Duplicate catalog sync argument: --env-file");
+      const value = argv[index + 1];
+      if (value === undefined || value.trim().length === 0 || value.startsWith("-")) {
+        throw new Error("Missing value for --env-file.");
+      }
+      envFileSeen = true;
+      index++;
+      continue;
+    }
+    if (argument.startsWith("--env-file=")) {
+      if (envFileSeen) throw new Error("Duplicate catalog sync argument: --env-file");
+      const value = argument.slice("--env-file=".length);
+      if (value.trim().length === 0 || value.startsWith("-")) {
+        throw new Error("Missing value for --env-file.");
+      }
+      envFileSeen = true;
+      continue;
+    }
     if (argument === CATALOG_KEY_SELECTOR) {
       const value = argv[index + 1];
-      if (value === undefined || value.startsWith("--")) {
+      if (value === undefined || value.trim().length === 0 || value.startsWith("-")) {
         throw new Error(`Missing value for ${CATALOG_KEY_SELECTOR}.`);
       }
       selectors.push(value);
@@ -358,10 +463,19 @@ export function parseCatalogKeySelectors(
     }
     if (argument.startsWith(`${CATALOG_KEY_SELECTOR}=`)) {
       selectors.push(argument.slice(CATALOG_KEY_SELECTOR.length + 1));
+      continue;
     }
+    throw new Error(`Unsupported catalog sync argument: ${argument}`);
   }
 
-  if (selectors.length === 0) return undefined;
+  if (confirmRemoteWrite && !apply) {
+    throw new Error("--confirm-remote-write requires --apply.");
+  }
+  if (selectors.length > 0 && options.allowCatalogKeySelectors === false) {
+    throw new Error("Catalog key selectors are supported only by sync:exercise-library.");
+  }
+
+  if (selectors.length === 0) return { apply, catalogKeys: undefined };
 
   const catalogByKey = new Map<string, CatalogExerciseSeed>();
   const catalogByName = new Map(catalog.map((exercise) => [exercise.name, exercise]));
@@ -404,7 +518,7 @@ export function parseCatalogKeySelectors(
     }
   }
 
-  return selectors;
+  return { apply, catalogKeys: selectors };
 }
 
 export function resolveCatalogSyncScope(
@@ -551,6 +665,156 @@ function selectedCatalogForScope(
     }
   }
   return selectedCatalog;
+}
+
+function selectedStateFromSnapshot(
+  catalog: CatalogExerciseSeed[],
+  aliases: ExerciseAliasSeed[],
+  snapshot: ExerciseLibrarySnapshot,
+): SelectedCatalogDatabaseState {
+  const selectedNames = new Set(catalog.map((exercise) => exercise.name));
+  const referencedMuscles = new Set(
+    catalog.flatMap((exercise) => [...exercise.primaryMuscles, ...exercise.secondaryMuscles]),
+  );
+  const referencedEquipment = new Set(catalog.flatMap((exercise) => exercise.equipment));
+  const selectedAliasNames = new Set(aliases.map((alias) => alias.alias));
+  const aliasOwnership = snapshot.exercises.flatMap((exercise) =>
+    exercise.aliases
+      .filter((alias) => selectedAliasNames.has(alias.alias))
+      .map((alias) => ({
+        alias: alias.alias,
+        exerciseId: alias.exerciseId,
+        exerciseName: exercise.name,
+      })),
+  );
+
+  return {
+    snapshot: {
+      exercises: snapshot.exercises.filter((exercise) => selectedNames.has(exercise.name)),
+      muscles: snapshot.muscles.filter((muscle) => referencedMuscles.has(muscle.name)),
+      equipment: snapshot.equipment.filter((equipment) =>
+        referencedEquipment.has(equipment.name),
+      ),
+    },
+    aliasOwnership,
+  };
+}
+
+function uniqueLookupIdByName(
+  rows: Array<{ id: string; name: string }>,
+  name: string,
+  kind: "muscle" | "equipment",
+): string | null {
+  const matches = rows.filter((row) => row.name === name);
+  if (matches.length > 1) {
+    throw new Error(`Selected catalog ${kind} lookup is not unique: ${name}`);
+  }
+  return matches[0]?.id ?? null;
+}
+
+function buildSelectedCatalogStateFingerprintFromState(
+  catalog: CatalogExerciseSeed[],
+  aliases: ExerciseAliasSeed[],
+  state: SelectedCatalogDatabaseState,
+): SelectedCatalogStateFingerprint {
+  const identities = [...catalog]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((catalogExercise) => {
+      const matches = state.snapshot.exercises.filter(
+        (exercise) => exercise.name === catalogExercise.name,
+      );
+      if (matches.length > 1) {
+        throw new Error(`Selected catalog database identity is not unique: ${catalogExercise.name}`);
+      }
+      const exercise = matches[0];
+      return {
+        catalogKey: catalogExercise.catalogKey!,
+        canonicalName: catalogExercise.name,
+        database: exercise
+          ? {
+              state: "present" as const,
+              id: exercise.id,
+              name: exercise.name,
+              scalars: {
+                movementPatterns: [...exercise.movementPatterns],
+                splitTags: [...exercise.splitTags],
+                jointStress: exercise.jointStress,
+                isMainLiftEligible: exercise.isMainLiftEligible,
+                isCompound: exercise.isCompound,
+                fatigueCost: exercise.fatigueCost,
+                stimulusBias: [...exercise.stimulusBias],
+                contraindications: normalizeJson(exercise.contraindications),
+                timePerSetSec: exercise.timePerSetSec,
+                sfrScore: exercise.sfrScore,
+                lengthPositionScore: exercise.lengthPositionScore,
+                difficulty: exercise.difficulty,
+                isUnilateral: exercise.isUnilateral,
+                repRangeMin: exercise.repRangeMin,
+                repRangeMax: exercise.repRangeMax,
+                measurementProfile: exercise.measurementProfile ?? null,
+                loadConvention: exercise.loadConvention ?? null,
+                repBasis: exercise.repBasis ?? null,
+              },
+              muscles: exercise.exerciseMuscles
+                .map((entry) => ({ muscleId: entry.muscle.id, role: entry.role }))
+                .sort((a, b) =>
+                  `${a.muscleId}\u0000${a.role}`.localeCompare(`${b.muscleId}\u0000${b.role}`),
+                ),
+              equipment: exercise.exerciseEquipment
+                .map((entry) => ({ equipmentId: entry.equipment.id }))
+                .sort((a, b) => a.equipmentId.localeCompare(b.equipmentId)),
+            }
+          : { state: "absent" as const },
+      };
+    });
+
+  const aliasesFingerprint = [...aliases]
+    .sort((a, b) =>
+      `${a.alias}\u0000${a.exerciseName}`.localeCompare(`${b.alias}\u0000${b.exerciseName}`),
+    )
+    .map((alias) => {
+      const matches = state.aliasOwnership.filter((row) => row.alias === alias.alias);
+      if (matches.length > 1) {
+        throw new Error(`Selected catalog alias is not unique: ${alias.alias}`);
+      }
+      const owner = matches[0];
+      return {
+        alias: alias.alias,
+        canonicalExerciseName: alias.exerciseName,
+        databaseOwner: owner
+          ? { exerciseId: owner.exerciseId, exerciseName: owner.exerciseName }
+          : null,
+      };
+    });
+
+  return {
+    identities,
+    aliases: aliasesFingerprint,
+    lookups: {
+      muscles: uniqueSorted(
+        catalog.flatMap((exercise) => [...exercise.primaryMuscles, ...exercise.secondaryMuscles]),
+      ).map((name) => ({
+        name,
+        id: uniqueLookupIdByName(state.snapshot.muscles, name, "muscle"),
+      })),
+      equipment: uniqueSorted(catalog.flatMap((exercise) => exercise.equipment)).map((name) => ({
+        name,
+        id: uniqueLookupIdByName(state.snapshot.equipment, name, "equipment"),
+      })),
+    },
+  };
+}
+
+export function buildSelectedCatalogStateFingerprint(
+  catalog: CatalogExerciseSeed[],
+  aliases: ExerciseAliasSeed[],
+  snapshot: ExerciseLibrarySnapshot,
+): SelectedCatalogStateFingerprint {
+  return buildSelectedCatalogStateFingerprintFromState(
+    catalog,
+    aliases,
+    selectedStateFromSnapshot(catalog, aliases, snapshot),
+  );
 }
 
 function filterPlanToScope(
@@ -890,6 +1154,53 @@ async function loadSnapshot(db: CatalogOnlyDb): Promise<ExerciseLibrarySnapshot>
   return { exercises, muscles, equipment };
 }
 
+async function loadSelectedCatalogDatabaseState(
+  db: CatalogOnlyDb,
+  catalog: CatalogExerciseSeed[],
+  aliases: ExerciseAliasSeed[],
+): Promise<SelectedCatalogDatabaseState> {
+  const exerciseNames = uniqueSorted(catalog.map((exercise) => exercise.name));
+  const muscleNames = uniqueSorted(
+    catalog.flatMap((exercise) => [...exercise.primaryMuscles, ...exercise.secondaryMuscles]),
+  );
+  const equipmentNames = uniqueSorted(catalog.flatMap((exercise) => exercise.equipment));
+  const aliasNames = uniqueSorted(aliases.map((alias) => alias.alias));
+
+  const exercises = await db.exercise.findMany({
+    where: { name: { in: exerciseNames } },
+    include: {
+      exerciseEquipment: { include: { equipment: true } },
+      exerciseMuscles: { include: { muscle: true } },
+    },
+    orderBy: { name: "asc" },
+  });
+  const [muscles, equipment, aliasRows] = await Promise.all([
+    db.muscle.findMany({ where: { name: { in: muscleNames } }, orderBy: { name: "asc" } }),
+    db.equipment.findMany({
+      where: { name: { in: equipmentNames } },
+      orderBy: { name: "asc" },
+    }),
+    db.exerciseAlias.findMany({
+      where: { alias: { in: aliasNames } },
+      include: { exercise: { select: { id: true, name: true } } },
+      orderBy: { alias: "asc" },
+    }),
+  ]);
+
+  return {
+    snapshot: {
+      exercises: exercises.map((exercise) => ({ ...exercise, aliases: [] })),
+      muscles,
+      equipment,
+    },
+    aliasOwnership: aliasRows.map((row) => ({
+      alias: row.alias,
+      exerciseId: row.exerciseId,
+      exerciseName: row.exercise.name,
+    })),
+  };
+}
+
 export async function executeCatalogSync(input: {
   db: CatalogTransactionalDb;
   catalog: CatalogExerciseSeed[];
@@ -904,38 +1215,47 @@ export async function executeCatalogSync(input: {
     beforeSnapshot,
     input.scope,
   );
-  if (!input.apply) return { beforeReport };
+
+  const selectedCatalog = selectedCatalogForScope(input.catalog, input.scope);
+  const selectedNames = new Set(selectedCatalog.map((exercise) => exercise.name));
+  const selectedAliases = input.aliases.filter((alias) => selectedNames.has(alias.exerciseName));
+  const authorizedFingerprint = buildSelectedCatalogStateFingerprintFromState(
+    selectedCatalog,
+    selectedAliases,
+    selectedStateFromSnapshot(selectedCatalog, selectedAliases, beforeSnapshot),
+  );
+  if (!input.apply) return { beforeReport, authorizedFingerprint };
 
   if (beforeReport.inScopePlan.plannedExerciseDeletes.length > 0) {
     throw new Error("Catalog sync does not delete exercises.");
   }
 
-  const selectedCatalog = selectedCatalogForScope(input.catalog, input.scope);
-  const selectedNames = new Set(selectedCatalog.map((exercise) => exercise.name));
-  const selectedAliases = input.aliases.filter((alias) => selectedNames.has(alias.exerciseName));
   assertPlanWithinCatalog(selectedCatalog, selectedAliases, beforeReport.inScopePlan);
 
   const mutationResult = await input.db.$transaction(async (tx) => {
-    const transactionSnapshot = await loadSnapshot(tx);
-    const transactionReport = buildCatalogSyncReport(
-      input.catalog,
-      input.aliases,
-      transactionSnapshot,
-      input.scope,
+    const transactionState = await loadSelectedCatalogDatabaseState(
+      tx,
+      selectedCatalog,
+      selectedAliases,
     );
-    if (JSON.stringify(transactionReport.inScopePlan) !== JSON.stringify(beforeReport.inScopePlan)) {
+    const transactionFingerprint = buildSelectedCatalogStateFingerprintFromState(
+      selectedCatalog,
+      selectedAliases,
+      transactionState,
+    );
+    if (JSON.stringify(transactionFingerprint) !== JSON.stringify(authorizedFingerprint)) {
       throw new Error(
-        "Selected catalog mutation plan changed before apply; transaction aborted before writes.",
+        "Selected catalog database state changed before apply; transaction aborted before writes.",
       );
     }
     return applyCatalogSyncPlan(
       tx,
       selectedCatalog,
       selectedAliases,
-      transactionSnapshot,
-      transactionReport.inScopePlan,
+      transactionState.snapshot,
+      beforeReport.inScopePlan,
     );
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
   const afterSnapshot = await loadSnapshot(input.db);
   const afterReport = buildCatalogSyncReport(
@@ -944,7 +1264,7 @@ export async function executeCatalogSync(input: {
     afterSnapshot,
     input.scope,
   );
-  return { beforeReport, mutationResult, afterReport };
+  return { beforeReport, authorizedFingerprint, mutationResult, afterReport };
 }
 
 export function printCatalogSyncReport(report: CatalogSyncReport) {
@@ -1081,20 +1401,45 @@ export async function runExerciseLibrarySync(options: {
   }
 }
 
-async function main() {
-  const argv = process.argv.slice(2);
-  const apply = argv.includes("--apply");
-  const catalogKeys = parseCatalogKeySelectors(argv);
-  await runWithRolloutEnvironment({
-    argv: apply ? [...argv, "--write"] : argv,
-    allowWrite: apply,
+type CatalogSyncCliRuntime = {
+  runWithEnvironment(
+    options: { argv: string[]; allowWrite: boolean; requiredVariables: string[] },
+    operation: (environment: { targetClass: string }) => Promise<unknown>,
+  ): Promise<unknown>;
+  runSync(options: { apply: boolean; catalogKeys?: string[] }): Promise<unknown>;
+};
+
+const defaultCatalogSyncCliRuntime: CatalogSyncCliRuntime = {
+  runWithEnvironment: (options, operation) => runWithRolloutEnvironment(options, operation),
+  runSync: runExerciseLibrarySync,
+};
+
+export async function runExerciseLibrarySyncCli(
+  argv: string[],
+  options: { allowCatalogKeySelectors?: boolean } = {},
+  runtime: CatalogSyncCliRuntime = defaultCatalogSyncCliRuntime,
+) {
+  const parsed = parseCatalogSyncCliArgs(
+    argv,
+    catalogExercises,
+    exerciseAliases,
+    options,
+  );
+
+  return runtime.runWithEnvironment({
+    argv: parsed.apply ? [...argv, "--write"] : argv,
+    allowWrite: parsed.apply,
     requiredVariables: ["DATABASE_URL"],
   }, async (environment) => {
     console.log(
-      `Catalog sync target: ${environment.targetClass}; mode: ${apply ? "apply" : "dry_run"}`,
+      `Catalog sync target: ${environment.targetClass}; mode: ${parsed.apply ? "apply" : "dry_run"}`,
     );
-    await runExerciseLibrarySync({ apply, catalogKeys });
+    return runtime.runSync({ apply: parsed.apply, catalogKeys: parsed.catalogKeys });
   });
+}
+
+async function main() {
+  await runExerciseLibrarySyncCli(process.argv.slice(2));
 }
 
 if (typeof require !== "undefined" && require.main === module) {

@@ -3,12 +3,14 @@ import {
   applyCatalogSyncPlan,
   buildCatalogSyncReport,
   buildCatalogSyncPlan,
+  buildSelectedCatalogStateFingerprint,
   executeCatalogSync,
   isCatalogSyncPlanClean,
-  parseCatalogKeySelectors,
+  parseCatalogSyncCliArgs,
   printCatalogSyncPlan,
   printCatalogSyncReport,
   resolveCatalogSyncScope,
+  runExerciseLibrarySyncCli,
   type ExerciseLibrarySnapshot,
 } from "../../../scripts/sync-exercise-library";
 
@@ -141,6 +143,7 @@ function createFakeCatalogDb(snapshot: ExerciseLibrarySnapshot) {
         },
       },
       exerciseAlias: {
+        findMany: async () => [],
         upsert: async () => {
           calls.push("exerciseAlias.upsert");
         },
@@ -170,7 +173,7 @@ function matchingSnapshotExercise(
 
 function createSequencedTransactionalDb(
   snapshots: ExerciseLibrarySnapshot[],
-  options: { failOn?: string } = {},
+  options: { failOn?: string; failureCode?: string } = {},
 ) {
   let exerciseReadIndex = 0;
   let activeSnapshot = snapshots[0]!;
@@ -179,20 +182,35 @@ function createSequencedTransactionalDb(
   const writeArguments: Array<{ call: string; args: unknown }> = [];
   let commits = 0;
   let rollbacks = 0;
+  let transactionAttempts = 0;
+  const transactionOptions: unknown[] = [];
 
   const record = (call: string, args: unknown) => {
     if (!transactionCalls) throw new Error(`Write outside transaction: ${call}`);
     transactionCalls.push(call);
     writeArguments.push({ call, args });
-    if (options.failOn === call) throw new Error(`Injected transaction failure: ${call}`);
+    if (options.failOn === call) {
+      const error = new Error(`Injected transaction failure: ${call}`) as Error & { code?: string };
+      error.code = options.failureCode;
+      throw error;
+    }
+  };
+
+  const requestedNames = (args: unknown): Set<string> | undefined => {
+    const names = (args as { where?: { name?: { in?: string[] } } } | undefined)
+      ?.where?.name?.in;
+    return names ? new Set(names) : undefined;
   };
 
   const db: SyncDb = {
     exercise: {
-      findMany: async () => {
+      findMany: async (args?: unknown) => {
         activeSnapshot = snapshots[Math.min(exerciseReadIndex, snapshots.length - 1)]!;
         exerciseReadIndex++;
-        return activeSnapshot.exercises;
+        const names = requestedNames(args);
+        return names
+          ? activeSnapshot.exercises.filter((exercise) => names.has(exercise.name))
+          : activeSnapshot.exercises;
       },
       create: async (args) => {
         record("exercise.create", args);
@@ -203,10 +221,20 @@ function createSequencedTransactionalDb(
       },
     },
     muscle: {
-      findMany: async () => activeSnapshot.muscles,
+      findMany: async (args?: unknown) => {
+        const names = requestedNames(args);
+        return names
+          ? activeSnapshot.muscles.filter((muscle) => names.has(muscle.name))
+          : activeSnapshot.muscles;
+      },
     },
     equipment: {
-      findMany: async () => activeSnapshot.equipment,
+      findMany: async (args?: unknown) => {
+        const names = requestedNames(args);
+        return names
+          ? activeSnapshot.equipment.filter((equipment) => names.has(equipment.name))
+          : activeSnapshot.equipment;
+      },
     },
     exerciseMuscle: {
       deleteMany: async (args) => {
@@ -225,11 +253,31 @@ function createSequencedTransactionalDb(
       },
     },
     exerciseAlias: {
+      findMany: async (args?: unknown) => {
+        const aliases = new Set(
+          (args as { where?: { alias?: { in?: string[] } } } | undefined)
+            ?.where?.alias?.in ?? [],
+        );
+        return activeSnapshot.exercises.flatMap((exercise) =>
+          exercise.aliases
+            .filter((alias) => aliases.has(alias.alias))
+            .map((alias) => ({
+              alias: alias.alias,
+              exerciseId: alias.exerciseId,
+              exercise: { id: exercise.id, name: exercise.name },
+            })),
+        );
+      },
       upsert: async (args) => {
         record("exerciseAlias.upsert", args);
       },
     },
-    async $transaction<T>(operation: (tx: SyncTransactionDb) => Promise<T>): Promise<T> {
+    async $transaction<T>(
+      operation: (tx: SyncTransactionDb) => Promise<T>,
+      transactionOption?: unknown,
+    ): Promise<T> {
+      transactionAttempts++;
+      transactionOptions.push(transactionOption);
       transactionCalls = [];
       try {
         const result = await operation(db);
@@ -255,6 +303,10 @@ function createSequencedTransactionalDb(
     get rollbacks() {
       return rollbacks;
     },
+    get transactionAttempts() {
+      return transactionAttempts;
+    },
+    transactionOptions,
   };
 }
 
@@ -310,34 +362,184 @@ function buildCablePallofScenario() {
 }
 
 describe("catalog-only exercise library sync", () => {
-  it("parses exact repeatable catalog keys and rejects unsafe selectors", () => {
+  it("accepts only the complete documented CLI grammar and exact repeatable catalog keys", () => {
     const catalog = [
       machineHipThrust,
       { ...machineHipThrust, name: "Cable Pallof Press", catalogKey: "cable-pallof-press" },
     ];
     const aliases = [{ exerciseName: machineHipThrust.name, alias: "Glute Drive" }];
 
-    expect(parseCatalogKeySelectors([], catalog, aliases)).toBeUndefined();
+    expect(parseCatalogSyncCliArgs([], catalog, aliases)).toEqual({
+      apply: false,
+      catalogKeys: undefined,
+    });
     expect(
-      parseCatalogKeySelectors(
-        ["--catalog-key", "machine-hip-thrust", "--catalog-key=cable-pallof-press"],
+      parseCatalogSyncCliArgs(
+        [
+          "--apply",
+          "--confirm-remote-write",
+          "--env-file",
+          ".env.staging",
+          "--catalog-key",
+          "machine-hip-thrust",
+          "--catalog-key=cable-pallof-press",
+        ],
         catalog,
         aliases,
       ),
-    ).toEqual(["machine-hip-thrust", "cable-pallof-press"]);
+    ).toEqual({
+      apply: true,
+      catalogKeys: ["machine-hip-thrust", "cable-pallof-press"],
+    });
+    expect(
+      parseCatalogSyncCliArgs(["--env-file=.env.local"], catalog, aliases),
+    ).toEqual({ apply: false, catalogKeys: undefined });
 
     const rejected = [
+      ["--aply"],
+      ["--catalog-keys", "cable-pallof-press"],
+      ["--catalog-keyy", "cable-pallof-press"],
+      ["--unexpected"],
+      ["trailing-positional"],
+      ["--catalog-key", "cable-pallof-press", "unexpected"],
+      ["--"],
+      ["--write"],
       ["--catalog-key"],
       ["--catalog-key="],
       ["--catalog-key", ""],
+      ["--catalog-key", "   "],
+      ["--catalog-key", "--apply"],
       ["--catalog-key", "Machine Hip Thrust"],
       ["--catalog-key", "Glute Drive"],
       ["--catalog-key", "Machine-Hip-Thrust"],
       ["--catalog-key", "unknown-exercise"],
       ["--catalog-key", "machine-hip-thrust", "--catalog-key=machine-hip-thrust"],
+      ["--apply", "--apply"],
+      ["--confirm-remote-write", "--confirm-remote-write", "--apply"],
+      ["--confirm-remote-write"],
+      ["--env-file"],
+      ["--env-file="],
+      ["--env-file", "--apply"],
+      ["--env-file=.env", "--env-file", ".env.other"],
     ];
     for (const argv of rejected) {
-      expect(() => parseCatalogKeySelectors(argv, catalog, aliases)).toThrow();
+      expect(() => parseCatalogSyncCliArgs(argv, catalog, aliases)).toThrow();
+    }
+
+    expect(() =>
+      parseCatalogSyncCliArgs(
+        ["--catalog-key", "machine-hip-thrust"],
+        catalog,
+        aliases,
+        { allowCatalogKeySelectors: false },
+      ),
+    ).toThrow("Catalog key selectors are supported only by sync:exercise-library");
+  });
+
+  it("rejects invalid CLI arguments before environment or database initialization", async () => {
+    const runWithEnvironment = vi.fn(async () => undefined);
+    const runSync = vi.fn(async () => undefined);
+
+    await expect(
+      runExerciseLibrarySyncCli(["--apply", "--catalog-keey=machine-hip-thrust"], {}, {
+        runWithEnvironment,
+        runSync,
+      }),
+    ).rejects.toThrow("Unsupported catalog sync argument");
+
+    expect(runWithEnvironment).not.toHaveBeenCalled();
+    expect(runSync).not.toHaveBeenCalled();
+  });
+
+  it("routes valid CLI execution through the canonical environment and sync path", async () => {
+    const runSync = vi.fn(async () => ({ status: "complete" }));
+    const runWithEnvironment = vi.fn(async (
+      options: { argv: string[]; allowWrite: boolean; requiredVariables: string[] },
+      operation: (environment: { targetClass: string }) => Promise<unknown>,
+    ) => operation({ targetClass: "local" }));
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    await runExerciseLibrarySyncCli(["--apply", "--catalog-key=machine-hip-thrust"], {}, {
+      runWithEnvironment,
+      runSync,
+    });
+
+    expect(runWithEnvironment).toHaveBeenCalledWith(
+      {
+        argv: ["--apply", "--catalog-key=machine-hip-thrust", "--write"],
+        allowWrite: true,
+        requiredVariables: ["DATABASE_URL"],
+      },
+      expect.any(Function),
+    );
+    expect(runSync).toHaveBeenCalledWith({
+      apply: true,
+      catalogKeys: ["machine-hip-thrust"],
+    });
+    log.mockRestore();
+  });
+
+  it("fingerprints every selected scalar, relation, lookup id, and alias owner id", () => {
+    const alias = { exerciseName: machineHipThrust.name, alias: "Glute Drive" };
+    const selected = matchingSnapshotExercise(machineHipThrust, [
+      { alias: alias.alias, exerciseId: "exercise-machine-hip-thrust" },
+    ]);
+    const baseline = {
+      ...baseSnapshot,
+      exercises: [selected],
+    };
+    const fingerprint = buildSelectedCatalogStateFingerprint(
+      [machineHipThrust],
+      [alias],
+      baseline,
+    );
+    const variants: ExerciseLibrarySnapshot[] = [
+      {
+        ...baseline,
+        exercises: [{ ...selected, measurementProfile: "TIME_DURATION" }],
+      },
+      {
+        ...baseline,
+        exercises: [{
+          ...selected,
+          exerciseMuscles: selected.exerciseMuscles.map((relation, index) =>
+            index === 0 ? { ...relation, role: "SECONDARY" } : relation,
+          ),
+        }],
+      },
+      {
+        ...baseline,
+        exercises: [{
+          ...selected,
+          exerciseEquipment: [{
+            equipment: { ...selected.exerciseEquipment[0]!.equipment, id: "equipment-replaced" },
+          }],
+        }],
+      },
+      {
+        ...baseline,
+        muscles: baseline.muscles.map((muscle) =>
+          muscle.name === "Glutes" ? { ...muscle, id: "muscle-replaced" } : muscle,
+        ),
+      },
+      {
+        ...baseline,
+        exercises: [
+          { ...selected, aliases: [] },
+          {
+            ...snapshotExercise("Legacy Alias Owner", [
+              { alias: alias.alias, exerciseId: "exercise-legacy-alias-owner" },
+            ]),
+            id: "exercise-legacy-alias-owner",
+          },
+        ],
+      },
+    ];
+
+    for (const variant of variants) {
+      expect(
+        buildSelectedCatalogStateFingerprint([machineHipThrust], [alias], variant),
+      ).not.toEqual(fingerprint);
     }
   });
 
@@ -411,6 +613,8 @@ describe("catalog-only exercise library sync", () => {
     expect(isCatalogSyncPlanClean(applied.afterReport!.inScopePlan)).toBe(true);
     expect(applyDb.commits).toBe(1);
     expect(applyDb.rollbacks).toBe(0);
+    expect(applyDb.transactionAttempts).toBe(1);
+    expect(applyDb.transactionOptions).toEqual([{ isolationLevel: "Serializable" }]);
   });
 
   it("limits existing-identity updates and multiple selections to the exact selected keys", async () => {
@@ -513,7 +717,7 @@ describe("catalog-only exercise library sync", () => {
     expect(report.summary.deferredOutOfScopeOperations.operationCount).toBe(0);
   });
 
-  it("revalidates the selected plan inside the transaction before writing", async () => {
+  it("rejects a selected identity that appears after authorization", async () => {
     const scenario = buildCablePallofScenario();
     const changedTransactionSnapshot = {
       ...scenario.before,
@@ -532,9 +736,158 @@ describe("catalog-only exercise library sync", () => {
         scope: resolveCatalogSyncScope(scenario.catalog, ["cable-pallof-press"]),
         apply: true,
       }),
-    ).rejects.toThrow("Selected catalog mutation plan changed before apply");
+    ).rejects.toThrow("Selected catalog database state changed before apply");
     expect(transactionalDb.committedCalls).toEqual([]);
     expect(transactionalDb.writeArguments).toEqual([]);
+    expect(transactionalDb.commits).toBe(0);
+    expect(transactionalDb.rollbacks).toBe(1);
+  });
+
+  it("rejects selected scalar changes even when the lossy mutation plan is unchanged", async () => {
+    const classified = {
+      ...machineHipThrust,
+      measurementProfile: "REPS_EXTERNAL_LOAD",
+      loadConvention: "MACHINE_DISPLAYED",
+      repBasis: "TOTAL",
+    };
+    const beforeExercise = matchingSnapshotExercise(machineHipThrust);
+    const changedExercise = { ...beforeExercise, measurementProfile: "TIME_DURATION" };
+    const before = { ...baseSnapshot, exercises: [beforeExercise] };
+    const changed = { ...baseSnapshot, exercises: [changedExercise] };
+    const transactionalDb = createSequencedTransactionalDb([before, changed]);
+
+    await expect(
+      executeCatalogSync({
+        db: transactionalDb.db,
+        catalog: [classified],
+        aliases: [],
+        scope: resolveCatalogSyncScope([classified], [classified.catalogKey]),
+        apply: true,
+      }),
+    ).rejects.toThrow("Selected catalog database state changed before apply");
+    expect(transactionalDb.writeArguments).toEqual([]);
+    expect(transactionalDb.commits).toBe(0);
+    expect(transactionalDb.rollbacks).toBe(1);
+  });
+
+  it("rejects selected relation-id changes before writing", async () => {
+    const beforeExercise = matchingSnapshotExercise(machineHipThrust);
+    const relationVariants = [
+      {
+        ...beforeExercise,
+        exerciseMuscles: beforeExercise.exerciseMuscles.map((relation, index) =>
+          index === 0
+            ? { ...relation, muscle: { ...relation.muscle, id: "muscle-replaced" } }
+            : relation,
+        ),
+      },
+      {
+        ...beforeExercise,
+        exerciseEquipment: [{
+          equipment: {
+            ...beforeExercise.exerciseEquipment[0]!.equipment,
+            id: "equipment-replaced",
+          },
+        }],
+      },
+    ];
+
+    for (const changedExercise of relationVariants) {
+      const transactionalDb = createSequencedTransactionalDb([
+        { ...baseSnapshot, exercises: [beforeExercise] },
+        { ...baseSnapshot, exercises: [changedExercise] },
+      ]);
+
+      await expect(
+        executeCatalogSync({
+          db: transactionalDb.db,
+          catalog: [machineHipThrust],
+          aliases: [],
+          scope: resolveCatalogSyncScope([machineHipThrust], [machineHipThrust.catalogKey]),
+          apply: true,
+        }),
+      ).rejects.toThrow("Selected catalog database state changed before apply");
+      expect(transactionalDb.writeArguments).toEqual([]);
+    }
+  });
+
+  it("rejects selected alias-owner ID changes even when the mutation plan is unchanged", async () => {
+    const alias = { exerciseName: machineHipThrust.name, alias: "Glute Drive" };
+    const selected = matchingSnapshotExercise(machineHipThrust);
+    const legacyOwner = (id: string) => ({
+      ...snapshotExercise("Legacy Alias Owner", [{ alias: alias.alias, exerciseId: id }]),
+      id,
+    });
+    const before = {
+      ...baseSnapshot,
+      exercises: [selected, legacyOwner("legacy-owner-a")],
+    };
+    const changed = {
+      ...baseSnapshot,
+      exercises: [selected, legacyOwner("legacy-owner-b")],
+    };
+    const transactionalDb = createSequencedTransactionalDb([before, changed]);
+
+    await expect(
+      executeCatalogSync({
+        db: transactionalDb.db,
+        catalog: [machineHipThrust],
+        aliases: [alias],
+        scope: resolveCatalogSyncScope([machineHipThrust], [machineHipThrust.catalogKey]),
+        apply: true,
+      }),
+    ).rejects.toThrow("Selected catalog database state changed before apply");
+    expect(transactionalDb.writeArguments).toEqual([]);
+  });
+
+  it("does not include unselected exercise changes in the serializable transaction read set", async () => {
+    const scenario = buildCablePallofScenario();
+    const changedUnselected = {
+      ...scenario.before,
+      exercises: scenario.before.exercises.map((exercise) =>
+        exercise.name === scenario.unrelated[0]!.name
+          ? { ...exercise, fatigueCost: exercise.fatigueCost + 1 }
+          : exercise,
+      ),
+    };
+    const transactionalDb = createSequencedTransactionalDb([
+      scenario.before,
+      changedUnselected,
+      scenario.after,
+    ]);
+
+    const execution = await executeCatalogSync({
+      db: transactionalDb.db,
+      catalog: scenario.catalog,
+      aliases: scenario.aliases,
+      scope: resolveCatalogSyncScope(scenario.catalog, [scenario.cablePallofPress.catalogKey]),
+      apply: true,
+    });
+
+    expect(execution.mutationResult?.mutatedIdentities.exerciseCreates).toEqual([
+      "Cable Pallof Press",
+    ]);
+    expect(transactionalDb.commits).toBe(1);
+  });
+
+  it("propagates a serializable conflict without retrying a changed authorization", async () => {
+    const scenario = buildCablePallofScenario();
+    const transactionalDb = createSequencedTransactionalDb(
+      [scenario.before, scenario.before],
+      { failOn: "exercise.create", failureCode: "P2034" },
+    );
+
+    await expect(
+      executeCatalogSync({
+        db: transactionalDb.db,
+        catalog: scenario.catalog,
+        aliases: scenario.aliases,
+        scope: resolveCatalogSyncScope(scenario.catalog, ["cable-pallof-press"]),
+        apply: true,
+      }),
+    ).rejects.toMatchObject({ code: "P2034" });
+    expect(transactionalDb.transactionAttempts).toBe(1);
+    expect(transactionalDb.committedCalls).toEqual([]);
     expect(transactionalDb.commits).toBe(0);
     expect(transactionalDb.rollbacks).toBe(1);
   });

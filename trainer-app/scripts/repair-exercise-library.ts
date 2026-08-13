@@ -1,19 +1,9 @@
-import {
-  parseCatalogKeySelectors,
-  runExerciseLibrarySync,
-} from "./sync-exercise-library";
-import { assertOperationalProductionWriteAllowed } from "@/lib/operations/rollout-environment";
+import { runExerciseLibrarySyncCli } from "./sync-exercise-library";
 
 async function main() {
-  const argv = process.argv.slice(2);
-  const apply = argv.includes("--apply");
-  const catalogKeys = parseCatalogKeySelectors(argv);
-  assertOperationalProductionWriteAllowed({
-    argv,
-    writeRequested: apply,
+  await runExerciseLibrarySyncCli(process.argv.slice(2), {
+    allowCatalogKeySelectors: false,
   });
-
-  await runExerciseLibrarySync({ apply, catalogKeys });
 }
 
 main().catch((error) => {

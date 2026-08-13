@@ -42,6 +42,7 @@ const LANE_COMPATIBILITY: Record<AccessoryLaneMuscle, readonly SessionIntent[]> 
 
 const CORE_LOW_INTERFERENCE_PATTERNS = new Set<MovementPatternV2>([
   "anti_rotation",
+  "anti_extension",
   "rotation",
   "flexion",
   "extension",

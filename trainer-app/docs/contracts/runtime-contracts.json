@@ -8,6 +8,8 @@
   "WorkoutSelectionMode": ["AUTO", "MANUAL", "BONUS", "INTENT"],
   "WorkoutSessionIntent": ["PUSH", "PULL", "LEGS", "UPPER", "LOWER", "FULL_BODY", "BODY_PART"],
   "WorkoutExerciseSection": ["WARMUP", "MAIN", "ACCESSORY"],
+  "MovementPatternV2": ["HORIZONTAL_PUSH", "VERTICAL_PUSH", "HORIZONTAL_PULL", "VERTICAL_PULL", "SQUAT", "HINGE", "LUNGE", "CARRY", "ROTATION", "ANTI_ROTATION", "ANTI_EXTENSION", "FLEXION", "EXTENSION", "ABDUCTION", "ADDUCTION", "ISOLATION"],
+  "movementPatternV2": ["horizontal_push", "vertical_push", "horizontal_pull", "vertical_pull", "squat", "hinge", "lunge", "carry", "rotation", "anti_rotation", "anti_extension", "flexion", "extension", "abduction", "adduction", "isolation"],
   "MeasurementProfile": ["REPS_EXTERNAL_LOAD", "REPS_BODYWEIGHT", "REPS_BODYWEIGHT_PLUS_LOAD", "REPS_ASSISTED"],
   "LoadConvention": ["BARBELL_TOTAL", "IMPLEMENT_WEIGHT", "MACHINE_DISPLAYED", "ADDED_EXTERNAL_LOAD", "DISPLAYED_ASSISTANCE"],
   "RepBasis": ["TOTAL", "PER_SIDE"],

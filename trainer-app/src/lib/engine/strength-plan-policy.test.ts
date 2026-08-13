@@ -205,6 +205,33 @@ describe("strength plan policy", () => {
     ).toBe(true);
   });
 
+  it("keeps anti-extension exercises eligible for the Strength core lane by semantics", () => {
+    const antiExtensionCatalog = catalog.map((candidate) =>
+      candidate.id === "plank"
+        ? {
+            ...candidate,
+            id: "ab-wheel-rollout",
+            name: "Renamed Core Rollout",
+            movementPatterns: ["anti_extension" as const],
+            isCompound: true,
+            fatigueCost: 2,
+          }
+        : candidate,
+    );
+    const policy = buildStrengthPlanPolicy({
+      configuration: baseConfiguration,
+      trainingAge: "intermediate",
+      limitations: [],
+      exercises: antiExtensionCatalog,
+    });
+
+    expect(
+      policy.slots
+        .flatMap((slot) => slot.exercises)
+        .map((exercise) => exercise.exerciseId),
+    ).toContain("ab-wheel-rollout");
+  });
+
   it("substitutes equipment-incompatible and contraindicated preferences", () => {
     const policy = buildStrengthPlanPolicy({
       configuration: {

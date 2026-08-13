@@ -161,6 +161,7 @@ const PATTERN_MULTIPLIER: Partial<Record<MovementPatternV2, number>> = {
   carry: 1.1,
   rotation: 0.6,
   anti_rotation: 0.6,
+  anti_extension: 0.6,
 };
 
 const EQUIPMENT_DEFAULTS: Record<LoadEquipment, number> = {

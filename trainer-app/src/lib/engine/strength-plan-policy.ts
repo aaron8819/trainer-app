@@ -620,6 +620,7 @@ function matchesLane(
     case "core":
       return (
         patterns.has("anti_rotation") ||
+        patterns.has("anti_extension") ||
         name.includes("plank") ||
         name.includes("ab wheel") ||
         name.includes("pallof")

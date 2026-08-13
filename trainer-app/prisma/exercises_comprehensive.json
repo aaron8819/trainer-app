@@ -1,7 +1,7 @@
 {
   "_instructions": "Comprehensive evidence-based exercise database for hypertrophy and strength training. Each exercise carefully selected and classified based on biomechanics, muscle activation research, and practical effectiveness.",
   "_fieldGuide": {
-    "movementPatterns": "Array. Values: horizontal_push, vertical_push, horizontal_pull, vertical_pull, squat, hinge, lunge, carry, rotation, anti_rotation, flexion, extension, abduction, adduction, isolation (only for exercises that don't fit other patterns), calf_raise_extended (knee-extended calf raise — gastroc-dominant), calf_raise_flexed (knee-flexed calf raise — soleus-dominant)",
+    "movementPatterns": "Array. Values: horizontal_push, vertical_push, horizontal_pull, vertical_pull, squat, hinge, lunge, carry, rotation, anti_rotation, anti_extension, flexion, extension, abduction, adduction, isolation (only for exercises that don't fit other patterns), calf_raise_extended (knee-extended calf raise — gastroc-dominant), calf_raise_flexed (knee-flexed calf raise — soleus-dominant)",
     "splitTag": "Which PPL day. Values: push, pull, legs, core, conditioning",
     "isCompound": "Multi-joint movement (true) vs single-joint isolation (false)",
     "isMainLiftEligible": "Can be selected as the primary heavy lift for a session (1-6 reps, high mechanical tension)",
@@ -6252,7 +6252,7 @@
       "loadConvention": null,
       "repBasis": "TOTAL",
       "movementPatterns": [
-        "anti_rotation"
+        "anti_extension"
       ],
       "splitTag": "core",
       "isCompound": true,

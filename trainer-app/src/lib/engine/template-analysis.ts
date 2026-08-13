@@ -115,7 +115,7 @@ const CORE_PATTERNS: string[] = [
   "carry",
 ];
 
-const BONUS_PATTERNS: string[] = ["rotation", "anti_rotation"];
+const BONUS_PATTERNS: string[] = ["rotation", "anti_rotation", "anti_extension"];
 
 /** Muscles where MEV > 0; these are the primary coverage targets */
 const CRITICAL_MUSCLES = Object.entries(VOLUME_LANDMARKS)

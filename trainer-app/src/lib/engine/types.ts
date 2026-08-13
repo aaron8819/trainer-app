@@ -44,6 +44,7 @@ export const CANONICAL_MOVEMENT_PATTERN_VALUES = [
   "carry",
   "rotation",
   "anti_rotation",
+  "anti_extension",
   "flexion",
   "extension",
   "abduction",

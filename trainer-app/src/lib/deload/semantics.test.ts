@@ -162,6 +162,50 @@ describe("deload semantics", () => {
     );
   });
 
+  it("keeps anti-extension explicit and distinct from anti-rotation in core redundancy", () => {
+    const result = applyCanonicalDeloadStructurePolicy([
+      {
+        exerciseId: "anti-extension",
+        exerciseName: "Anti-Extension Core",
+        orderIndex: 0,
+        isMainLift: false,
+        mesocycleRole: "ACCESSORY",
+        isCompound: true,
+        movementPatterns: ["anti_extension"],
+        primaryMuscles: ["Core"],
+        secondaryMuscles: [],
+        fatigueCost: 2,
+        jointStress: "medium",
+        baselineSetCount: 3,
+        baselineRepAnchor: 12,
+      },
+      {
+        exerciseId: "anti-rotation",
+        exerciseName: "Anti-Rotation Core",
+        orderIndex: 1,
+        isMainLift: false,
+        mesocycleRole: "ACCESSORY",
+        isCompound: false,
+        movementPatterns: ["anti_rotation"],
+        primaryMuscles: ["Core"],
+        secondaryMuscles: [],
+        fatigueCost: 1,
+        jointStress: "low",
+        baselineSetCount: 3,
+        baselineRepAnchor: 12,
+      },
+    ]);
+
+    expect(
+      [...result.keptExercises, ...result.droppedExercises]
+        .map((exercise) => exercise.redundancyBucket)
+        .sort(),
+    ).toEqual(["anti_extension:core", "anti_rotation:core"]);
+    expect(
+      result.droppedExercises.map((exercise) => exercise.reasonCode),
+    ).not.toContain("trimmed_duplicate_bucket");
+  });
+
   it("centralizes deload wording so generator, audit, and UI surfaces can reuse the same semantics", () => {
     expect(getCanonicalDeloadReason("scheduled")).toContain("Scheduled deload week.");
     expect(getCanonicalDeloadReason("scheduled")).toContain(

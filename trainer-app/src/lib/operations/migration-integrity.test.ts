@@ -49,6 +49,14 @@ function addManifestObject(
     PENDING_ARCHITECTURE_MANIFEST[migrationIndex]?.objects[objectIndex];
   if (!object) return;
   if (object.kind === "table") catalog.tables.push(object.name);
+  if (object.kind === "enum_value") {
+    const existing = catalog.enums.find((entry) => entry.name === object.enumName);
+    if (existing) {
+      existing.values.push(object.name);
+    } else {
+      catalog.enums.push({ name: object.enumName!, values: [object.name] });
+    }
+  }
   if (object.kind === "column") {
     catalog.columns.push({
       table: object.table!,
@@ -185,17 +193,17 @@ describe("migration integrity", () => {
     );
   });
 
-  it("accepts the conventional chain with exercise measurement pending", () => {
+  it("accepts the conventional chain with anti-extension pending", () => {
     const result = report();
 
     expect(EXPECTED_MIGRATION_CHAIN.at(-1)).toBe(
-      "20260807120000_add_exercise_measurement_foundation",
+      "20260813120000_add_anti_extension_movement_pattern",
     );
     expect(result.chain).toMatchObject({
       checkedIn: EXPECTED_MIGRATION_CHAIN.length,
       applied: EXPECTED_MIGRATION_CHAIN.length - 1,
       pending: 1,
-      pendingNames: ["20260807120000_add_exercise_measurement_foundation"],
+      pendingNames: ["20260813120000_add_anti_extension_movement_pattern"],
       exactExpectedChain: true,
     });
     expect(result.migrationIntegrityValid).toBe(true);

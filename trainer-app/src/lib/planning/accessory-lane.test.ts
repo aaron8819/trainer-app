@@ -138,6 +138,31 @@ describe("selectAccessoryLaneInsertion", () => {
     expect(fullSlot).toEqual({ insert: false, reason: "session_cap_reached" });
   });
 
+  it("recognizes anti-extension as low-interference core work without relaxing the compound gate", () => {
+    const antiExtension = makeExercise({
+      id: "anti-extension",
+      name: "Anti-Extension Core",
+      movementPatterns: ["anti_extension"],
+      primaryMuscles: ["Core"],
+      stimulusProfile: { core: 1 },
+    });
+    const compoundAntiExtension = {
+      ...antiExtension,
+      id: "compound-anti-extension",
+      isCompound: true,
+    };
+
+    expect(
+      decide({ exerciseLibrary: [...baseExercises, antiExtension] }),
+    ).toMatchObject({
+      insert: true,
+      insertion: { exercise: { id: "anti-extension" } },
+    });
+    expect(
+      decide({ exerciseLibrary: [...baseExercises, compoundAntiExtension] }),
+    ).toEqual({ insert: false, reason: "no_reasonable_candidate" });
+  });
+
   it("allows no more than one accessory-lane insertion per slot", () => {
     expect(decide({ slotInsertionCount: 1 })).toEqual({
       insert: false,

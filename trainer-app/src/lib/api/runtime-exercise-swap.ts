@@ -133,6 +133,7 @@ const MOVEMENT_FAMILY_BY_PATTERN: Record<string, string> = {
   carry: "carry",
   rotation: "trunk",
   anti_rotation: "trunk",
+  anti_extension: "trunk",
   flexion: "trunk",
   extension: "trunk",
   abduction: "frontal_plane",

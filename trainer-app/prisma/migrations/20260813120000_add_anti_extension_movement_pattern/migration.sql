@@ -1,0 +1,1 @@
+ALTER TYPE "MovementPatternV2" ADD VALUE 'ANTI_EXTENSION';

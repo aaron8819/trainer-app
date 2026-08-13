@@ -118,6 +118,7 @@ type DbAliasOwnership = {
 type SelectedCatalogDatabaseState = {
   snapshot: ExerciseLibrarySnapshot;
   aliasOwnership: DbAliasOwnership[];
+  aliasCanonicalNameConflicts: Array<{ id: string; name: string }>;
 };
 
 export type SelectedCatalogStateFingerprint = {
@@ -158,6 +159,9 @@ export type SelectedCatalogStateFingerprint = {
     alias: string;
     canonicalExerciseName: string;
     databaseOwner: { exerciseId: string; exerciseName: string } | null;
+    canonicalNameConflict:
+      | { state: "absent" }
+      | { state: "present"; exerciseId: string; exerciseName: string };
   }>;
   lookups: {
     muscles: Array<{ name: string; id: string | null }>;
@@ -697,6 +701,12 @@ function selectedStateFromSnapshot(
       ),
     },
     aliasOwnership,
+    aliasCanonicalNameConflicts: snapshot.exercises
+      .filter((exercise) => selectedAliasNames.has(exercise.name))
+      .map((exercise) => ({ id: exercise.id, name: exercise.name }))
+      .sort((a, b) =>
+        `${a.name}\u0000${a.id}`.localeCompare(`${b.name}\u0000${b.id}`),
+      ),
   };
 }
 
@@ -773,17 +783,31 @@ function buildSelectedCatalogStateFingerprintFromState(
       `${a.alias}\u0000${a.exerciseName}`.localeCompare(`${b.alias}\u0000${b.exerciseName}`),
     )
     .map((alias) => {
-      const matches = state.aliasOwnership.filter((row) => row.alias === alias.alias);
-      if (matches.length > 1) {
+      const ownershipMatches = state.aliasOwnership.filter((row) => row.alias === alias.alias);
+      if (ownershipMatches.length > 1) {
         throw new Error(`Selected catalog alias is not unique: ${alias.alias}`);
       }
-      const owner = matches[0];
+      const conflictMatches = state.aliasCanonicalNameConflicts.filter(
+        (exercise) => exercise.name === alias.alias,
+      );
+      if (conflictMatches.length > 1) {
+        throw new Error(`Selected catalog alias-name conflict is not unique: ${alias.alias}`);
+      }
+      const owner = ownershipMatches[0];
+      const conflict = conflictMatches[0];
       return {
         alias: alias.alias,
         canonicalExerciseName: alias.exerciseName,
         databaseOwner: owner
           ? { exerciseId: owner.exerciseId, exerciseName: owner.exerciseName }
           : null,
+        canonicalNameConflict: conflict
+          ? {
+              state: "present" as const,
+              exerciseId: conflict.id,
+              exerciseName: conflict.name,
+            }
+          : { state: "absent" as const },
       };
     });
 
@@ -1165,14 +1189,17 @@ async function loadSelectedCatalogDatabaseState(
   );
   const equipmentNames = uniqueSorted(catalog.flatMap((exercise) => exercise.equipment));
   const aliasNames = uniqueSorted(aliases.map((alias) => alias.alias));
+  const selectedExerciseNames = new Set(exerciseNames);
+  const selectedAliasNames = new Set(aliasNames);
+  const authorizedExerciseNames = uniqueSorted([...exerciseNames, ...aliasNames]);
 
   const exercises = await db.exercise.findMany({
-    where: { name: { in: exerciseNames } },
+    where: { name: { in: authorizedExerciseNames } },
     include: {
       exerciseEquipment: { include: { equipment: true } },
       exerciseMuscles: { include: { muscle: true } },
     },
-    orderBy: { name: "asc" },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
   });
   const [muscles, equipment, aliasRows] = await Promise.all([
     db.muscle.findMany({ where: { name: { in: muscleNames } }, orderBy: { name: "asc" } }),
@@ -1189,7 +1216,9 @@ async function loadSelectedCatalogDatabaseState(
 
   return {
     snapshot: {
-      exercises: exercises.map((exercise) => ({ ...exercise, aliases: [] })),
+      exercises: exercises
+        .filter((exercise) => selectedExerciseNames.has(exercise.name))
+        .map((exercise) => ({ ...exercise, aliases: [] })),
       muscles,
       equipment,
     },
@@ -1198,6 +1227,9 @@ async function loadSelectedCatalogDatabaseState(
       exerciseId: row.exerciseId,
       exerciseName: row.exercise.name,
     })),
+    aliasCanonicalNameConflicts: exercises
+      .filter((exercise) => selectedAliasNames.has(exercise.name))
+      .map((exercise) => ({ id: exercise.id, name: exercise.name })),
   };
 }
 
@@ -1219,18 +1251,34 @@ export async function executeCatalogSync(input: {
   const selectedCatalog = selectedCatalogForScope(input.catalog, input.scope);
   const selectedNames = new Set(selectedCatalog.map((exercise) => exercise.name));
   const selectedAliases = input.aliases.filter((alias) => selectedNames.has(alias.exerciseName));
-  const authorizedFingerprint = buildSelectedCatalogStateFingerprintFromState(
+  const plannedFingerprint = buildSelectedCatalogStateFingerprintFromState(
     selectedCatalog,
     selectedAliases,
     selectedStateFromSnapshot(selectedCatalog, selectedAliases, beforeSnapshot),
   );
-  if (!input.apply) return { beforeReport, authorizedFingerprint };
+  if (!input.apply) return { beforeReport, authorizedFingerprint: plannedFingerprint };
 
   if (beforeReport.inScopePlan.plannedExerciseDeletes.length > 0) {
     throw new Error("Catalog sync does not delete exercises.");
   }
 
   assertPlanWithinCatalog(selectedCatalog, selectedAliases, beforeReport.inScopePlan);
+
+  const authorizedState = await loadSelectedCatalogDatabaseState(
+    input.db,
+    selectedCatalog,
+    selectedAliases,
+  );
+  const authorizedFingerprint = buildSelectedCatalogStateFingerprintFromState(
+    selectedCatalog,
+    selectedAliases,
+    authorizedState,
+  );
+  if (JSON.stringify(authorizedFingerprint) !== JSON.stringify(plannedFingerprint)) {
+    throw new Error(
+      "Selected catalog database state changed during authorization; apply aborted before transaction.",
+    );
+  }
 
   const mutationResult = await input.db.$transaction(async (tx) => {
     const transactionState = await loadSelectedCatalogDatabaseState(

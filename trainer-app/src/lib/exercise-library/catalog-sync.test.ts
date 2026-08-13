@@ -184,6 +184,7 @@ function createSequencedTransactionalDb(
   let rollbacks = 0;
   let transactionAttempts = 0;
   const transactionOptions: unknown[] = [];
+  const exerciseReadArguments: unknown[] = [];
 
   const record = (call: string, args: unknown) => {
     if (!transactionCalls) throw new Error(`Write outside transaction: ${call}`);
@@ -205,6 +206,7 @@ function createSequencedTransactionalDb(
   const db: SyncDb = {
     exercise: {
       findMany: async (args?: unknown) => {
+        exerciseReadArguments.push(args);
         activeSnapshot = snapshots[Math.min(exerciseReadIndex, snapshots.length - 1)]!;
         exerciseReadIndex++;
         const names = requestedNames(args);
@@ -307,6 +309,7 @@ function createSequencedTransactionalDb(
       return transactionAttempts;
     },
     transactionOptions,
+    exerciseReadArguments,
   };
 }
 
@@ -479,7 +482,7 @@ describe("catalog-only exercise library sync", () => {
     log.mockRestore();
   });
 
-  it("fingerprints every selected scalar, relation, lookup id, and alias owner id", () => {
+  it("fingerprints representative selected scalar, relation, lookup, and alias-owner changes", () => {
     const alias = { exerciseName: machineHipThrust.name, alias: "Glute Drive" };
     const selected = matchingSnapshotExercise(machineHipThrust, [
       { alias: alias.alias, exerciseId: "exercise-machine-hip-thrust" },
@@ -543,6 +546,79 @@ describe("catalog-only exercise library sync", () => {
     }
   });
 
+  it("fingerprints selected alias canonical-name conflicts as explicit absence or exact presence", () => {
+    const alias = { exerciseName: machineHipThrust.name, alias: "Glute Drive" };
+    const selected = matchingSnapshotExercise(machineHipThrust);
+    const absent = buildSelectedCatalogStateFingerprint(
+      [machineHipThrust],
+      [alias],
+      { ...baseSnapshot, exercises: [selected] },
+    );
+    const conflict = {
+      ...snapshotExercise(alias.alias),
+      id: "exercise-alias-name-conflict",
+    };
+    const presentSnapshot = { ...baseSnapshot, exercises: [selected, conflict] };
+    const present = buildSelectedCatalogStateFingerprint(
+      [machineHipThrust],
+      [alias],
+      presentSnapshot,
+    );
+
+    expect(absent.aliases).toEqual([{
+      alias: alias.alias,
+      canonicalExerciseName: machineHipThrust.name,
+      databaseOwner: null,
+      canonicalNameConflict: { state: "absent" },
+    }]);
+    expect(present.aliases[0]?.canonicalNameConflict).toEqual({
+      state: "present",
+      exerciseId: conflict.id,
+      exerciseName: alias.alias,
+    });
+    expect(
+      buildCatalogSyncPlan([machineHipThrust], [alias], presentSnapshot).skippedAliases,
+    ).toContainEqual({
+      ...alias,
+      reason: "alias matches a canonical exercise name",
+    });
+  });
+
+  it("keeps unselected alias-name collisions outside the selected fingerprint", async () => {
+    const selectedAlias = { exerciseName: machineHipThrust.name, alias: "Glute Drive" };
+    const deferred = {
+      ...machineHipThrust,
+      name: "Deferred Exercise",
+      catalogKey: "deferred-exercise",
+    };
+    const deferredAlias = { exerciseName: deferred.name, alias: "Deferred Alias" };
+    const snapshot = {
+      ...baseSnapshot,
+      exercises: [
+        matchingSnapshotExercise(machineHipThrust),
+        matchingSnapshotExercise(deferred),
+        snapshotExercise(deferredAlias.alias),
+      ],
+    };
+    const execution = await executeCatalogSync({
+      db: createSequencedTransactionalDb([snapshot]).db,
+      catalog: [machineHipThrust, deferred],
+      aliases: [selectedAlias, deferredAlias],
+      scope: resolveCatalogSyncScope(
+        [machineHipThrust, deferred],
+        [machineHipThrust.catalogKey],
+      ),
+      apply: false,
+    });
+
+    expect(execution.authorizedFingerprint.aliases).toEqual([{
+      alias: selectedAlias.alias,
+      canonicalExerciseName: machineHipThrust.name,
+      databaseOwner: null,
+      canonicalNameConflict: { state: "absent" },
+    }]);
+  });
+
   it("reports one Cable Pallof Press create and defers 39 unrelated measurement updates", () => {
     const scenario = buildCablePallofScenario();
     const scope = resolveCatalogSyncScope(scenario.catalog, ["cable-pallof-press"]);
@@ -569,6 +645,7 @@ describe("catalog-only exercise library sync", () => {
     const scope = resolveCatalogSyncScope(scenario.catalog, ["cable-pallof-press"]);
     const dryRunDb = createSequencedTransactionalDb([scenario.before]);
     const applyDb = createSequencedTransactionalDb([
+      scenario.before,
       scenario.before,
       scenario.before,
       scenario.after,
@@ -643,7 +720,7 @@ describe("catalog-only exercise library sync", () => {
     const before = { ...baseSnapshot, exercises: beforeExercises };
     const after = { ...baseSnapshot, exercises: afterExercises };
     const scope = resolveCatalogSyncScope(catalog, ["selected-one", "selected-two"]);
-    const transactionalDb = createSequencedTransactionalDb([before, before, after]);
+    const transactionalDb = createSequencedTransactionalDb([before, before, before, after]);
 
     const execution = await executeCatalogSync({
       db: transactionalDb.db,
@@ -681,7 +758,12 @@ describe("catalog-only exercise library sync", () => {
     const aliases = [{ exerciseName: deferred.name, alias: "Managed Deferred Alias" }];
     const scope = resolveCatalogSyncScope([selected, deferred], [selected.catalogKey]);
     const report = buildCatalogSyncReport([selected, deferred], aliases, snapshot, scope);
-    const transactionalDb = createSequencedTransactionalDb([snapshot, snapshot, snapshot]);
+    const transactionalDb = createSequencedTransactionalDb([
+      snapshot,
+      snapshot,
+      snapshot,
+      snapshot,
+    ]);
     const execution = await executeCatalogSync({
       db: transactionalDb.db,
       catalog: [selected, deferred],
@@ -725,6 +807,7 @@ describe("catalog-only exercise library sync", () => {
     };
     const transactionalDb = createSequencedTransactionalDb([
       scenario.before,
+      scenario.before,
       changedTransactionSnapshot,
     ]);
 
@@ -754,7 +837,7 @@ describe("catalog-only exercise library sync", () => {
     const changedExercise = { ...beforeExercise, measurementProfile: "TIME_DURATION" };
     const before = { ...baseSnapshot, exercises: [beforeExercise] };
     const changed = { ...baseSnapshot, exercises: [changedExercise] };
-    const transactionalDb = createSequencedTransactionalDb([before, changed]);
+    const transactionalDb = createSequencedTransactionalDb([before, before, changed]);
 
     await expect(
       executeCatalogSync({
@@ -795,6 +878,7 @@ describe("catalog-only exercise library sync", () => {
     for (const changedExercise of relationVariants) {
       const transactionalDb = createSequencedTransactionalDb([
         { ...baseSnapshot, exercises: [beforeExercise] },
+        { ...baseSnapshot, exercises: [beforeExercise] },
         { ...baseSnapshot, exercises: [changedExercise] },
       ]);
 
@@ -826,7 +910,7 @@ describe("catalog-only exercise library sync", () => {
       ...baseSnapshot,
       exercises: [selected, legacyOwner("legacy-owner-b")],
     };
-    const transactionalDb = createSequencedTransactionalDb([before, changed]);
+    const transactionalDb = createSequencedTransactionalDb([before, before, changed]);
 
     await expect(
       executeCatalogSync({
@@ -840,17 +924,149 @@ describe("catalog-only exercise library sync", () => {
     expect(transactionalDb.writeArguments).toEqual([]);
   });
 
-  it("does not include unselected exercise changes in the serializable transaction read set", async () => {
+  it("aborts every selected write when an alias-name conflict appears after authorization", async () => {
+    const alias = { exerciseName: machineHipThrust.name, alias: "Glute Drive" };
+    const before = {
+      ...baseSnapshot,
+      exercises: [matchingSnapshotExercise(machineHipThrust)],
+    };
+    const changed = {
+      ...baseSnapshot,
+      exercises: [
+        matchingSnapshotExercise(machineHipThrust),
+        { ...snapshotExercise(alias.alias), id: "exercise-alias-name-conflict" },
+      ],
+    };
+    const transactionalDb = createSequencedTransactionalDb([before, before, changed]);
+
+    await expect(
+      executeCatalogSync({
+        db: transactionalDb.db,
+        catalog: [machineHipThrust],
+        aliases: [alias],
+        scope: resolveCatalogSyncScope([machineHipThrust], [machineHipThrust.catalogKey]),
+        apply: true,
+      }),
+    ).rejects.toThrow("Selected catalog database state changed before apply");
+
+    expect(transactionalDb.writeArguments).toEqual([]);
+    for (const writePrefix of [
+      "exercise.",
+      "exerciseMuscle.",
+      "exerciseEquipment.",
+      "exerciseAlias.",
+    ]) {
+      expect(
+        transactionalDb.writeArguments.some((entry) => entry.call.startsWith(writePrefix)),
+      ).toBe(false);
+    }
+    expect(transactionalDb.commits).toBe(0);
+    expect(transactionalDb.rollbacks).toBe(1);
+  });
+
+  it("aborts when an authorized alias-name conflict disappears or changes identity", async () => {
+    const alias = { exerciseName: machineHipThrust.name, alias: "Glute Drive" };
+    const selected = matchingSnapshotExercise(machineHipThrust);
+    const conflict = { ...snapshotExercise(alias.alias), id: "conflict-before" };
+    const before = { ...baseSnapshot, exercises: [selected, conflict] };
+    const changedStates = [
+      { ...baseSnapshot, exercises: [selected] },
+      {
+        ...baseSnapshot,
+        exercises: [selected, { ...conflict, id: "conflict-replaced" }],
+      },
+    ];
+
+    for (const changed of changedStates) {
+      const transactionalDb = createSequencedTransactionalDb([before, before, changed]);
+      await expect(
+        executeCatalogSync({
+          db: transactionalDb.db,
+          catalog: [machineHipThrust],
+          aliases: [alias],
+          scope: resolveCatalogSyncScope([machineHipThrust], [machineHipThrust.catalogKey]),
+          apply: true,
+        }),
+      ).rejects.toThrow("Selected catalog database state changed before apply");
+      expect(transactionalDb.writeArguments).toEqual([]);
+      expect(transactionalDb.commits).toBe(0);
+      expect(transactionalDb.rollbacks).toBe(1);
+    }
+  });
+
+  it("preserves selected alias creation and reassignment through the canonical mutation seam", async () => {
+    const alias = { exerciseName: machineHipThrust.name, alias: "Glute Drive" };
+    const selected = matchingSnapshotExercise(machineHipThrust);
+    const legacyOwner = {
+      ...snapshotExercise("Legacy Alias Owner", [
+        { alias: alias.alias, exerciseId: "exercise-legacy-alias-owner" },
+      ]),
+      id: "exercise-legacy-alias-owner",
+    };
+    const cases = [
+      {
+        before: { ...baseSnapshot, exercises: [selected] },
+        expected: { aliasCreates: [alias], aliasUpdates: [] },
+      },
+      {
+        before: { ...baseSnapshot, exercises: [selected, legacyOwner] },
+        expected: {
+          aliasCreates: [],
+          aliasUpdates: [{ ...alias, fromExerciseName: legacyOwner.name }],
+        },
+      },
+    ];
+
+    for (const scenario of cases) {
+      const after = {
+        ...baseSnapshot,
+        exercises: [
+          matchingSnapshotExercise(machineHipThrust, [
+            { alias: alias.alias, exerciseId: selected.id },
+          ]),
+          ...(scenario.before.exercises.length > 1
+            ? [{ ...legacyOwner, aliases: [] }]
+            : []),
+        ],
+      };
+      const transactionalDb = createSequencedTransactionalDb([
+        scenario.before,
+        scenario.before,
+        scenario.before,
+        after,
+      ]);
+      const execution = await executeCatalogSync({
+        db: transactionalDb.db,
+        catalog: [machineHipThrust],
+        aliases: [alias],
+        scope: resolveCatalogSyncScope([machineHipThrust], [machineHipThrust.catalogKey]),
+        apply: true,
+      });
+
+      expect(execution.mutationResult?.mutatedIdentities).toMatchObject(scenario.expected);
+      expect(transactionalDb.committedCalls).toEqual(["exerciseAlias.upsert"]);
+      expect(transactionalDb.exerciseReadArguments[1]).toEqual(
+        transactionalDb.exerciseReadArguments[2],
+      );
+      expect(transactionalDb.exerciseReadArguments[1]).toMatchObject({
+        where: { name: { in: [alias.alias, machineHipThrust.name] } },
+        orderBy: [{ name: "asc" }, { id: "asc" }],
+      });
+    }
+  });
+
+  it("does not include unrelated exercise-name changes in the selected transaction read set", async () => {
     const scenario = buildCablePallofScenario();
     const changedUnselected = {
       ...scenario.before,
       exercises: scenario.before.exercises.map((exercise) =>
         exercise.name === scenario.unrelated[0]!.name
-          ? { ...exercise, fatigueCost: exercise.fatigueCost + 1 }
+          ? { ...exercise, name: "Renamed Unselected Exercise" }
           : exercise,
       ),
     };
     const transactionalDb = createSequencedTransactionalDb([
+      scenario.before,
       scenario.before,
       changedUnselected,
       scenario.after,
@@ -873,7 +1089,7 @@ describe("catalog-only exercise library sync", () => {
   it("propagates a serializable conflict without retrying a changed authorization", async () => {
     const scenario = buildCablePallofScenario();
     const transactionalDb = createSequencedTransactionalDb(
-      [scenario.before, scenario.before],
+      [scenario.before, scenario.before, scenario.before],
       { failOn: "exercise.create", failureCode: "P2034" },
     );
 
@@ -895,7 +1111,7 @@ describe("catalog-only exercise library sync", () => {
   it("leaves transaction failure atomic", async () => {
     const scenario = buildCablePallofScenario();
     const transactionalDb = createSequencedTransactionalDb(
-      [scenario.before, scenario.before],
+      [scenario.before, scenario.before, scenario.before],
       { failOn: "exerciseEquipment.createMany" },
     );
 

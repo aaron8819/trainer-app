@@ -22,6 +22,7 @@ import {
   assertCatalogInvariants,
   type CatalogExerciseDefinition as CatalogExerciseSeed,
 } from "@/lib/exercise-library/catalog-invariants";
+import { CATALOG_KEY_GRAMMAR } from "@/lib/exercise-library/canonical-exercise-facts";
 
 export type { CatalogExerciseDefinition as CatalogExerciseSeed } from "@/lib/exercise-library/catalog-invariants";
 
@@ -76,6 +77,39 @@ export type CatalogSyncPlan = {
   missingReferencedEquipment: string[];
 };
 
+export type CatalogSyncScope = {
+  mode: "catalog-wide" | "identity-scoped";
+  catalogKeys: string[];
+  exerciseNames: string[];
+  databaseMatch: "exact-canonical-name";
+};
+
+export type CatalogSyncOperationSummary = {
+  operationCount: number;
+  exerciseCreates: string[];
+  exerciseUpdates: string[];
+  aliasCreates: Array<{ exerciseName: string; alias: string }>;
+  aliasUpdates: Array<{ exerciseName: string; alias: string; fromExerciseName: string }>;
+};
+
+export type CatalogSyncDriftSummary = CatalogSyncOperationSummary & {
+  extraInDb: string[];
+  skippedAliases: Array<{ exerciseName: string; alias: string; reason: string }>;
+  missingReferencedMuscles: string[];
+  missingReferencedEquipment: string[];
+};
+
+export type CatalogSyncReport = {
+  scope: CatalogSyncScope;
+  totalPlan: CatalogSyncPlan;
+  inScopePlan: CatalogSyncPlan;
+  summary: {
+    totalCatalogDrift: CatalogSyncDriftSummary;
+    selectedInScopeOperations: CatalogSyncOperationSummary;
+    deferredOutOfScopeOperations: CatalogSyncOperationSummary;
+  };
+};
+
 type CatalogOnlyDb = {
   exercise: {
     findMany(args?: unknown): Promise<DbExercise[]>;
@@ -107,6 +141,10 @@ type CatalogOnlyDb = {
       create: { alias: string; exerciseId: string };
     }): Promise<unknown>;
   };
+};
+
+type CatalogTransactionalDb = CatalogOnlyDb & {
+  $transaction<T>(operation: (tx: CatalogOnlyDb) => Promise<T>): Promise<T>;
 };
 
 function normalizeArray(values: string[] | undefined): string[] {
@@ -298,6 +336,125 @@ function uniqueSorted(values: Iterable<string>): string[] {
   return [...new Set(values)].sort((a, b) => a.localeCompare(b));
 }
 
+const CATALOG_KEY_SELECTOR = "--catalog-key";
+
+export function parseCatalogKeySelectors(
+  argv: string[],
+  catalog: CatalogExerciseSeed[] = catalogExercises,
+  aliases: ExerciseAliasSeed[] = exerciseAliases,
+): string[] | undefined {
+  const selectors: string[] = [];
+
+  for (let index = 0; index < argv.length; index++) {
+    const argument = argv[index]!;
+    if (argument === CATALOG_KEY_SELECTOR) {
+      const value = argv[index + 1];
+      if (value === undefined || value.startsWith("--")) {
+        throw new Error(`Missing value for ${CATALOG_KEY_SELECTOR}.`);
+      }
+      selectors.push(value);
+      index++;
+      continue;
+    }
+    if (argument.startsWith(`${CATALOG_KEY_SELECTOR}=`)) {
+      selectors.push(argument.slice(CATALOG_KEY_SELECTOR.length + 1));
+    }
+  }
+
+  if (selectors.length === 0) return undefined;
+
+  const catalogByKey = new Map<string, CatalogExerciseSeed>();
+  const catalogByName = new Map(catalog.map((exercise) => [exercise.name, exercise]));
+  const aliasByName = new Map(aliases.map((alias) => [alias.alias, alias]));
+  for (const exercise of catalog) {
+    if (typeof exercise.catalogKey !== "string") continue;
+    if (catalogByKey.has(exercise.catalogKey)) {
+      throw new Error(`Catalog key is not uniquely owned: ${exercise.catalogKey}`);
+    }
+    catalogByKey.set(exercise.catalogKey, exercise);
+  }
+
+  const seen = new Set<string>();
+  for (const selector of selectors) {
+    if (selector.length === 0) {
+      throw new Error(`Missing value for ${CATALOG_KEY_SELECTOR}.`);
+    }
+    if (seen.has(selector)) {
+      throw new Error(`Duplicate ${CATALOG_KEY_SELECTOR} selector: ${selector}`);
+    }
+    seen.add(selector);
+
+    const namedExercise = catalogByName.get(selector);
+    if (namedExercise) {
+      throw new Error(
+        `${CATALOG_KEY_SELECTOR} requires a catalog key, not display name: ${selector}`,
+      );
+    }
+    const namedAlias = aliasByName.get(selector);
+    if (namedAlias) {
+      throw new Error(
+        `${CATALOG_KEY_SELECTOR} requires a catalog key, not alias: ${selector}`,
+      );
+    }
+    if (!CATALOG_KEY_GRAMMAR.test(selector)) {
+      throw new Error(`Malformed ${CATALOG_KEY_SELECTOR} selector: ${selector}`);
+    }
+    if (!catalogByKey.has(selector)) {
+      throw new Error(`Unknown ${CATALOG_KEY_SELECTOR} selector: ${selector}`);
+    }
+  }
+
+  return selectors;
+}
+
+export function resolveCatalogSyncScope(
+  catalog: CatalogExerciseSeed[],
+  catalogKeys: string[] | undefined,
+): CatalogSyncScope {
+  const catalogByKey = new Map<string, CatalogExerciseSeed>();
+  for (const exercise of catalog) {
+    if (typeof exercise.catalogKey !== "string") {
+      throw new Error(`Catalog exercise is missing a canonical key: ${exercise.name}`);
+    }
+    if (catalogByKey.has(exercise.catalogKey)) {
+      throw new Error(`Catalog key is not uniquely owned: ${exercise.catalogKey}`);
+    }
+    catalogByKey.set(exercise.catalogKey, exercise);
+  }
+
+  if (catalogKeys === undefined) {
+    return {
+      mode: "catalog-wide",
+      catalogKeys: catalog.map((exercise) => exercise.catalogKey!),
+      exerciseNames: catalog.map((exercise) => exercise.name),
+      databaseMatch: "exact-canonical-name",
+    };
+  }
+  if (catalogKeys.length === 0) {
+    throw new Error("Identity-scoped catalog synchronization requires at least one catalog key.");
+  }
+
+  const seen = new Set<string>();
+  const selected = catalogKeys.map((catalogKey) => {
+    if (seen.has(catalogKey)) {
+      throw new Error(`Duplicate ${CATALOG_KEY_SELECTOR} selector: ${catalogKey}`);
+    }
+    seen.add(catalogKey);
+    const exercise = catalogByKey.get(catalogKey);
+    if (!exercise) {
+      throw new Error(`Unknown ${CATALOG_KEY_SELECTOR} selector: ${catalogKey}`);
+    }
+    return exercise;
+  });
+
+  return {
+    mode: "identity-scoped",
+    catalogKeys: selected.map((exercise) => exercise.catalogKey!),
+    exerciseNames: selected.map((exercise) => exercise.name),
+    databaseMatch: "exact-canonical-name",
+  };
+}
+
 export function buildCatalogSyncPlan(
   catalog: CatalogExerciseSeed[],
   aliases: ExerciseAliasSeed[],
@@ -379,6 +536,133 @@ export function buildCatalogSyncPlan(
   };
 }
 
+function selectedCatalogForScope(
+  catalog: CatalogExerciseSeed[],
+  scope: CatalogSyncScope,
+): CatalogExerciseSeed[] {
+  const selectedNames = new Set(scope.exerciseNames);
+  const selectedCatalog = catalog.filter((exercise) => selectedNames.has(exercise.name));
+  if (selectedCatalog.length !== scope.exerciseNames.length) {
+    throw new Error("Catalog synchronization scope does not resolve to exact canonical identities.");
+  }
+  for (const exercise of selectedCatalog) {
+    if (!scope.catalogKeys.includes(exercise.catalogKey!)) {
+      throw new Error(`Catalog synchronization scope key/name mismatch: ${exercise.name}`);
+    }
+  }
+  return selectedCatalog;
+}
+
+function filterPlanToScope(
+  totalPlan: CatalogSyncPlan,
+  selectedCatalog: CatalogExerciseSeed[],
+  snapshot: ExerciseLibrarySnapshot,
+  catalogWide: boolean,
+): CatalogSyncPlan {
+  if (catalogWide) return totalPlan;
+
+  const selectedNames = new Set(selectedCatalog.map((exercise) => exercise.name));
+  const musclesByName = new Set(snapshot.muscles.map((muscle) => muscle.name));
+  const equipmentByName = new Set(snapshot.equipment.map((equipment) => equipment.name));
+  return {
+    missingInDb: totalPlan.missingInDb.filter((name) => selectedNames.has(name)),
+    extraInDb: [],
+    fieldMismatches: totalPlan.fieldMismatches.filter((entry) =>
+      selectedNames.has(entry.exerciseName),
+    ),
+    plannedExerciseCreates: totalPlan.plannedExerciseCreates.filter((name) =>
+      selectedNames.has(name),
+    ),
+    plannedExerciseUpdates: totalPlan.plannedExerciseUpdates.filter((name) =>
+      selectedNames.has(name),
+    ),
+    plannedExerciseDeletes: totalPlan.plannedExerciseDeletes.filter((name) =>
+      selectedNames.has(name),
+    ),
+    plannedAliasCreates: totalPlan.plannedAliasCreates.filter((entry) =>
+      selectedNames.has(entry.exerciseName),
+    ),
+    plannedAliasUpdates: totalPlan.plannedAliasUpdates.filter((entry) =>
+      selectedNames.has(entry.exerciseName),
+    ),
+    skippedAliases: totalPlan.skippedAliases.filter((entry) =>
+      selectedNames.has(entry.exerciseName),
+    ),
+    missingReferencedMuscles: uniqueSorted(
+      selectedCatalog
+        .flatMap((exercise) => [...exercise.primaryMuscles, ...exercise.secondaryMuscles])
+        .filter((name) => !musclesByName.has(name)),
+    ),
+    missingReferencedEquipment: uniqueSorted(
+      selectedCatalog
+        .flatMap((exercise) => exercise.equipment)
+        .filter((name) => !equipmentByName.has(name)),
+    ),
+  };
+}
+
+function summarizeOperations(
+  plan: CatalogSyncPlan,
+  includeExercise: (name: string) => boolean = () => true,
+): CatalogSyncOperationSummary {
+  const exerciseCreates = plan.plannedExerciseCreates.filter(includeExercise);
+  const exerciseUpdates = plan.plannedExerciseUpdates.filter(includeExercise);
+  const aliasCreates = plan.plannedAliasCreates.filter((entry) =>
+    includeExercise(entry.exerciseName),
+  );
+  const aliasUpdates = plan.plannedAliasUpdates.filter((entry) =>
+    includeExercise(entry.exerciseName),
+  );
+  return {
+    operationCount:
+      exerciseCreates.length + exerciseUpdates.length + aliasCreates.length + aliasUpdates.length,
+    exerciseCreates,
+    exerciseUpdates,
+    aliasCreates,
+    aliasUpdates,
+  };
+}
+
+function summarizeDrift(plan: CatalogSyncPlan): CatalogSyncDriftSummary {
+  return {
+    ...summarizeOperations(plan),
+    extraInDb: [...plan.extraInDb],
+    skippedAliases: plan.skippedAliases.map((entry) => ({ ...entry })),
+    missingReferencedMuscles: [...plan.missingReferencedMuscles],
+    missingReferencedEquipment: [...plan.missingReferencedEquipment],
+  };
+}
+
+export function buildCatalogSyncReport(
+  catalog: CatalogExerciseSeed[],
+  aliases: ExerciseAliasSeed[],
+  snapshot: ExerciseLibrarySnapshot,
+  scope: CatalogSyncScope,
+): CatalogSyncReport {
+  const selectedCatalog = selectedCatalogForScope(catalog, scope);
+  const selectedNames = new Set(selectedCatalog.map((exercise) => exercise.name));
+  const totalPlan = buildCatalogSyncPlan(catalog, aliases, snapshot);
+  const inScopePlan = filterPlanToScope(
+    totalPlan,
+    selectedCatalog,
+    snapshot,
+    scope.mode === "catalog-wide",
+  );
+  return {
+    scope,
+    totalPlan,
+    inScopePlan,
+    summary: {
+      totalCatalogDrift: summarizeDrift(totalPlan),
+      selectedInScopeOperations: summarizeOperations(inScopePlan),
+      deferredOutOfScopeOperations: summarizeOperations(
+        totalPlan,
+        (name) => !selectedNames.has(name),
+      ),
+    },
+  };
+}
+
 export function isCatalogSyncPlanClean(plan: CatalogSyncPlan): boolean {
   return (
     plan.missingInDb.length === 0 &&
@@ -424,6 +708,43 @@ async function replaceMappings(
   });
 }
 
+function assertPlanWithinCatalog(
+  catalog: CatalogExerciseSeed[],
+  aliases: ExerciseAliasSeed[],
+  plan: CatalogSyncPlan,
+) {
+  const allowedNames = new Set(catalog.map((exercise) => exercise.name));
+  const plannedNames = [
+    ...plan.plannedExerciseCreates,
+    ...plan.plannedExerciseUpdates,
+    ...plan.plannedExerciseDeletes,
+    ...plan.plannedAliasCreates.map((entry) => entry.exerciseName),
+    ...plan.plannedAliasUpdates.map((entry) => entry.exerciseName),
+  ];
+  const unexpectedName = plannedNames.find((name) => !allowedNames.has(name));
+  if (unexpectedName) {
+    throw new Error(`Catalog sync plan escaped the selected identities: ${unexpectedName}`);
+  }
+  const unexpectedAliasOwner = aliases.find((alias) => !allowedNames.has(alias.exerciseName));
+  if (unexpectedAliasOwner) {
+    throw new Error(
+      `Catalog sync aliases escaped the selected identities: ${unexpectedAliasOwner.alias}`,
+    );
+  }
+  const allowedAliases = new Set(
+    aliases.map((alias) => `${alias.exerciseName}\u0000${alias.alias}`),
+  );
+  const unexpectedPlannedAlias = [
+    ...plan.plannedAliasCreates,
+    ...plan.plannedAliasUpdates,
+  ].find((alias) => !allowedAliases.has(`${alias.exerciseName}\u0000${alias.alias}`));
+  if (unexpectedPlannedAlias) {
+    throw new Error(
+      `Catalog sync plan contains an unowned alias: ${unexpectedPlannedAlias.alias}`,
+    );
+  }
+}
+
 export async function applyCatalogSyncPlan(
   db: CatalogOnlyDb,
   catalog: CatalogExerciseSeed[],
@@ -451,6 +772,7 @@ export async function applyCatalogSyncPlan(
       ].join(" "),
     );
   }
+  assertPlanWithinCatalog(catalog, aliases, plan);
 
   const catalogByName = new Map(catalog.map((exercise) => [exercise.name, exercise]));
   const dbByName = new Map(
@@ -467,7 +789,7 @@ export async function applyCatalogSyncPlan(
 
   for (const name of plan.plannedExerciseCreates) {
     const exercise = catalogByName.get(name);
-    if (!exercise) continue;
+    if (!exercise) throw new Error(`Planned exercise create is outside the selected catalog: ${name}`);
     const created = await db.exercise.create({ data: { name, ...buildExerciseData(exercise) } });
     dbByName.set(name, created);
     await replaceMappings(db, created.id, exercise, musclesByName, equipmentByName);
@@ -478,7 +800,9 @@ export async function applyCatalogSyncPlan(
   for (const name of plan.plannedExerciseUpdates) {
     const exercise = catalogByName.get(name);
     const dbExercise = dbByName.get(name);
-    if (!exercise || !dbExercise) continue;
+    if (!exercise || !dbExercise) {
+      throw new Error(`Planned exercise update cannot be proven: ${name}`);
+    }
     await db.exercise.update({ where: { id: dbExercise.id }, data: buildExerciseData(exercise) });
     const changedFields = plan.fieldMismatches.find(
       (mismatch) => mismatch.exerciseName === name,
@@ -502,7 +826,9 @@ export async function applyCatalogSyncPlan(
   for (const alias of aliases) {
     if (!aliasesToUpsert.has(alias.alias)) continue;
     const dbExercise = dbByName.get(alias.exerciseName);
-    if (!dbExercise) continue;
+    if (!dbExercise) {
+      throw new Error(`Planned alias target cannot be proven: ${alias.alias}`);
+    }
     await db.exerciseAlias.upsert({
       where: { alias: alias.alias },
       update: { exerciseId: dbExercise.id },
@@ -518,6 +844,12 @@ export async function applyCatalogSyncPlan(
     exerciseMappingsReplaced,
     aliasesUpserted,
     scope: "Exercise, ExerciseMuscle, ExerciseEquipment, ExerciseAlias",
+    mutatedIdentities: {
+      exerciseCreates: [...plan.plannedExerciseCreates],
+      exerciseUpdates: [...plan.plannedExerciseUpdates],
+      aliasCreates: plan.plannedAliasCreates.map((entry) => ({ ...entry })),
+      aliasUpdates: plan.plannedAliasUpdates.map((entry) => ({ ...entry })),
+    },
   };
 }
 
@@ -556,6 +888,82 @@ async function loadSnapshot(db: CatalogOnlyDb): Promise<ExerciseLibrarySnapshot>
     db.equipment.findMany({ orderBy: { name: "asc" } }),
   ]);
   return { exercises, muscles, equipment };
+}
+
+export async function executeCatalogSync(input: {
+  db: CatalogTransactionalDb;
+  catalog: CatalogExerciseSeed[];
+  aliases: ExerciseAliasSeed[];
+  scope: CatalogSyncScope;
+  apply: boolean;
+}) {
+  const beforeSnapshot = await loadSnapshot(input.db);
+  const beforeReport = buildCatalogSyncReport(
+    input.catalog,
+    input.aliases,
+    beforeSnapshot,
+    input.scope,
+  );
+  if (!input.apply) return { beforeReport };
+
+  if (beforeReport.inScopePlan.plannedExerciseDeletes.length > 0) {
+    throw new Error("Catalog sync does not delete exercises.");
+  }
+
+  const selectedCatalog = selectedCatalogForScope(input.catalog, input.scope);
+  const selectedNames = new Set(selectedCatalog.map((exercise) => exercise.name));
+  const selectedAliases = input.aliases.filter((alias) => selectedNames.has(alias.exerciseName));
+  assertPlanWithinCatalog(selectedCatalog, selectedAliases, beforeReport.inScopePlan);
+
+  const mutationResult = await input.db.$transaction(async (tx) => {
+    const transactionSnapshot = await loadSnapshot(tx);
+    const transactionReport = buildCatalogSyncReport(
+      input.catalog,
+      input.aliases,
+      transactionSnapshot,
+      input.scope,
+    );
+    if (JSON.stringify(transactionReport.inScopePlan) !== JSON.stringify(beforeReport.inScopePlan)) {
+      throw new Error(
+        "Selected catalog mutation plan changed before apply; transaction aborted before writes.",
+      );
+    }
+    return applyCatalogSyncPlan(
+      tx,
+      selectedCatalog,
+      selectedAliases,
+      transactionSnapshot,
+      transactionReport.inScopePlan,
+    );
+  });
+
+  const afterSnapshot = await loadSnapshot(input.db);
+  const afterReport = buildCatalogSyncReport(
+    input.catalog,
+    input.aliases,
+    afterSnapshot,
+    input.scope,
+  );
+  return { beforeReport, mutationResult, afterReport };
+}
+
+export function printCatalogSyncReport(report: CatalogSyncReport) {
+  console.log("\n=== Catalog synchronization scope ===");
+  console.log(`Active scope: ${report.scope.mode}`);
+  console.log(`Database match boundary: ${report.scope.databaseMatch}`);
+  console.log(`Selected catalog keys (${report.scope.catalogKeys.length}): ${report.scope.catalogKeys.join(", ")}`);
+  console.log(`Selected canonical names (${report.scope.exerciseNames.length}): ${report.scope.exerciseNames.join(", ")}`);
+  console.log(
+    `Total catalog drift operations: ${report.summary.totalCatalogDrift.operationCount}`,
+  );
+  console.log(
+    `Selected in-scope operations: ${report.summary.selectedInScopeOperations.operationCount}`,
+  );
+  console.log(
+    `Deferred out-of-scope operations: ${report.summary.deferredOutOfScopeOperations.operationCount}`,
+  );
+  console.log(`Catalog sync structured summary: ${JSON.stringify({ scope: report.scope, ...report.summary })}`);
+  printCatalogSyncPlan(report.inScopePlan);
 }
 
 export function printCatalogSyncPlan(plan: CatalogSyncPlan) {
@@ -619,29 +1027,32 @@ export function printCatalogSyncPlan(plan: CatalogSyncPlan) {
   }
 }
 
-export async function runExerciseLibrarySync(options: { apply: boolean }) {
+export async function runExerciseLibrarySync(options: {
+  apply: boolean;
+  catalogKeys?: string[];
+}) {
   assertCatalogInvariants({ exercises: catalogExercises, aliases: exerciseAliases });
+  const scope = resolveCatalogSyncScope(catalogExercises, options.catalogKeys);
   const { prisma, pool } = createPrisma();
   try {
-    const snapshot = await loadSnapshot(prisma as unknown as CatalogOnlyDb);
-    const plan = buildCatalogSyncPlan(catalogExercises, exerciseAliases, snapshot);
-    printCatalogSyncPlan(plan);
+    const execution = await executeCatalogSync({
+      db: prisma as unknown as CatalogTransactionalDb,
+      catalog: catalogExercises,
+      aliases: exerciseAliases,
+      scope,
+      apply: options.apply,
+    });
+    printCatalogSyncReport(execution.beforeReport);
 
     if (!options.apply) {
       console.log("\nDry run mode. Re-run with --apply to sync catalog-only rows.");
-      if (!isCatalogSyncPlanClean(plan)) {
+      if (!isCatalogSyncPlanClean(execution.beforeReport.totalPlan)) {
         process.exitCode = 1;
       }
-      return plan;
+      return execution.beforeReport;
     }
 
-    if (plan.plannedExerciseDeletes.length > 0) {
-      throw new Error("Catalog sync does not delete exercises.");
-    }
-
-    const result = await prisma.$transaction((tx) =>
-      applyCatalogSyncPlan(tx as unknown as CatalogOnlyDb, catalogExercises, exerciseAliases, snapshot, plan),
-    );
+    const result = execution.mutationResult!;
 
     console.log("\nApply complete.");
     console.log(`Exercises created: ${result.exercisesCreated}`);
@@ -650,15 +1061,20 @@ export async function runExerciseLibrarySync(options: { apply: boolean }) {
     console.log(`Exercise mappings replaced: ${result.exerciseMappingsReplaced}`);
     console.log(`Aliases upserted: ${result.aliasesUpserted}`);
     console.log(`Mutation scope: ${result.scope}`);
+    console.log(`Catalog sync structured mutations: ${JSON.stringify(result.mutatedIdentities)}`);
 
-    const after = await loadSnapshot(prisma as unknown as CatalogOnlyDb);
-    const afterPlan = buildCatalogSyncPlan(catalogExercises, exerciseAliases, after);
-    if (!isCatalogSyncPlanClean(afterPlan)) {
-      console.error("Catalog sync completed but drift remains.");
-      printCatalogSyncPlan(afterPlan);
+    const afterReport = execution.afterReport!;
+    if (!isCatalogSyncPlanClean(afterReport.inScopePlan)) {
+      console.error("Catalog sync completed but selected-scope drift remains.");
+      printCatalogSyncReport(afterReport);
       process.exitCode = 1;
     }
-    return afterPlan;
+    if (afterReport.summary.deferredOutOfScopeOperations.operationCount > 0) {
+      console.log(
+        `Deferred out-of-scope operations remain: ${afterReport.summary.deferredOutOfScopeOperations.operationCount}`,
+      );
+    }
+    return afterReport;
   } finally {
     await prisma.$disconnect();
     await pool.end();
@@ -668,6 +1084,7 @@ export async function runExerciseLibrarySync(options: { apply: boolean }) {
 async function main() {
   const argv = process.argv.slice(2);
   const apply = argv.includes("--apply");
+  const catalogKeys = parseCatalogKeySelectors(argv);
   await runWithRolloutEnvironment({
     argv: apply ? [...argv, "--write"] : argv,
     allowWrite: apply,
@@ -676,7 +1093,7 @@ async function main() {
     console.log(
       `Catalog sync target: ${environment.targetClass}; mode: ${apply ? "apply" : "dry_run"}`,
     );
-    await runExerciseLibrarySync({ apply });
+    await runExerciseLibrarySync({ apply, catalogKeys });
   });
 }
 

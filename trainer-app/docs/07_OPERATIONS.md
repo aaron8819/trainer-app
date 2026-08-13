@@ -420,7 +420,7 @@ Migration hygiene:
   - `standard` / `supplemental` / `rescue`: inventory-layer usage and candidate summaries
   - `closure`: selected actions and, in debug mode, first-iteration candidate trace
   - `outcome`: deficit snapshots through base session, supplementation, and closure plus key tradeoffs
-- Run credential-free `npm run verify:exercise-catalog-invariants` before catalog synchronization. `npm run sync:exercise-library -- --env-file <path>` (and `npm run sync:exercise-library:apply -- --env-file <path> [--confirm-remote-write]`) also enforces those checked-in catalog and alias invariants before creating a database client. Both sync modes require an explicitly named environment file. The public `--apply` intent is classified as a production-capable database write and the script maps it to the rollout boundary's protected `--write` signal; remote apply also requires the normal verified write-pause state and explicit `--confirm-remote-write`. The dry run prints every planned alias create or reassignment, and apply replaces muscle/equipment mappings only when those mappings differ. It writes only `Exercise`, `ExerciseMuscle`, `ExerciseEquipment`, and `ExerciseAlias`; it does not run full `prisma/seed.ts`, seed owners, or seed workout templates.
+- Run credential-free `npm run verify:exercise-catalog-invariants` before catalog synchronization. See the catalog synchronization contract below.
 - `TRAINER_EXERCISE_MEASUREMENT_ROLLOUT=enabled` permits all-classified custom hypertrophy acceptance to emit accepted V3 after nullable readers and the additive migration are deployed. It is disabled for every other value. Disable it to stop new V3 emission; already accepted V3 seeds and snapshotted workouts remain readable and authoritative.
 - `npm run repair:exercise-library` (and `:apply`) for the repair workflow; apply delegates to the catalog-only sync path.
 - Keep `docs/contracts/runtime-contracts.json` aligned with `src/lib/validation.ts`
@@ -434,6 +434,23 @@ Migration hygiene:
   - `prisma/audit-mesocycle.ts`: diagnostic — prints active mesocycle state, lifecycle counters, and recent workout snapshots.
   - `prisma/fix-workout-388f.ts`: one-off data repair (corrects `mesocycleId` + snapshots after lifecycle counter backfill).
 - Generated local artifacts under `trainer-app/output/` are ignored via the repo root `.gitignore` and are not part of the operational source of truth.
+
+### Exercise catalog synchronization
+
+`scripts/sync-exercise-library.ts` is the authoritative catalog synchronization owner. It supports two explicit scopes:
+
+- Catalog-wide mode is the existing default when no selector is supplied: `npm run sync:exercise-library -- --env-file <path>`.
+- Identity-scoped mode accepts one or more exact, repeated repository catalog keys: `npm run sync:exercise-library -- --env-file <path> --catalog-key cable-pallof-press`. Repeat `--catalog-key <key>` to select more than one independently reviewed identity. Display names, aliases, unknown or malformed keys, missing values, and duplicate keys fail before a database client or transaction is created.
+
+Both modes require the explicitly named environment file and enforce the complete checked-in catalog and alias invariants before creating a database client. Dry-run remains the default. Apply uses `npm run sync:exercise-library:apply -- --env-file <path> [--catalog-key <key>] [--confirm-remote-write]`; the package wrapper supplies the public `--apply` intent, the synchronizer maps it to the rollout boundary's protected `--write` signal, and a remote apply still requires the verified write-pause state plus `--confirm-remote-write`. A reviewed dry run does not authorize apply.
+
+The structured summary always distinguishes total catalog drift, selected in-scope operations, and deferred out-of-scope operations. Identity-scoped apply re-reads and revalidates the exact selected plan inside the existing transaction before writing. It passes only selected canonical exercises and aliases owned by those exercises into mutation loops. Unrelated exercise field drift, muscle/equipment relation drift, and repository-managed alias drift remain visible as deferred work and are not reconciled. Catalog-wide behavior is unchanged when the selector is absent.
+
+Catalog keys select repository source objects only. The production schema has no `catalogKey` column, so database identity matching remains the existing exact canonical display-name boundary. For `cable-pallof-press`, the repository key resolves only to `Cable Pallof Press`; an absent row plans a create whose UUID comes from Prisma/database defaults. The separate exact-name `Pallof Press` row is neither selected nor modified, and the synchronizer does not create an alias relationship between those identities. This workflow does not add a persistent identifier, schema change, migration, or historical identity mapping.
+
+Apply writes only `Exercise`, `ExerciseMuscle`, `ExerciseEquipment`, and `ExerciseAlias`; it does not run full `prisma/seed.ts`, seed owners, or seed workout templates. Muscle and equipment mappings are replaced only for a selected create or a selected exercise whose relation fields differ. Alias reconciliation is create/upsert-only for checked-in aliases owned by selected identities. It never deletes aliases, so database-only aliases are preserved. The repository currently manages 54 aliases; a production total may be higher. The established observation of 61 consists of those 54 managed aliases plus seven preserved database-only aliases, not 61 repository-managed aliases.
+
+Identity-scoped mode is appropriate for an independently reviewed catalog addition because it can apply that exact addition without implicitly accepting unrelated catalog drift. It is not an identity-specific delete or rollback tool. Transaction failure remains atomic, and recovery remains the established paused roll-forward or reviewed backup/restore process described in this document; do not attempt object-by-object deletion as rollback. Production synchronization, backup creation, restore, deployment, and release verification each require their own later authorization.
 
 ## Week-close handoff workflow
 - `npm run audit:week-close-handoff -- --env-file .env.local --owner owner@local --target-week 3`: audit dry-run for one concrete owner/week. This reads canonical runtime state and writes a handoff artifact without mutating data.

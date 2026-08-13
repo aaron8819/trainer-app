@@ -107,7 +107,7 @@ const CORE_PATTERNS: string[] = [
   "carry",
 ];
 
-const BONUS_PATTERNS: string[] = ["rotation", "anti_rotation"];
+const BONUS_PATTERNS: string[] = ["rotation", "anti_rotation", "anti_extension"];
 const TARGET_WEEKLY_HITS = 2;
 const TARGET_PULL_TO_PUSH_RANGE: [number, number] = [1, 2];
 const TARGET_WEEKLY_HIT_PROFILES: Record<

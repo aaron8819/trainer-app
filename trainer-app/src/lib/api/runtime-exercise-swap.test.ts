@@ -117,6 +117,40 @@ const chestSupportedTBarRow: RuntimeExerciseSwapProfile = {
 };
 
 describe("runtime exercise swap constraints", () => {
+  it("maps anti-extension into the trunk family without treating patterns as exact identity", () => {
+    const result = evaluateRuntimeExerciseSwapEligibility({
+      current: {
+        id: "anti-extension-core",
+        name: "Anti-Extension Core Exercise",
+        fatigueCost: 2,
+        jointStress: "medium",
+        isMainLift: false,
+        isMainLiftEligible: false,
+        isCompound: true,
+        movementPatterns: ["anti_extension"],
+        primaryMuscles: ["core"],
+        equipment: ["bodyweight"],
+      },
+      candidate: {
+        id: "flexion-core",
+        name: "Flexion Core Exercise",
+        fatigueCost: 2,
+        jointStress: "medium",
+        isMainLiftEligible: false,
+        isCompound: true,
+        movementPatterns: ["flexion"],
+        primaryMuscles: ["core"],
+        equipment: ["bodyweight"],
+      },
+    });
+
+    expect(result).toMatchObject({
+      movementPatternOverlap: [],
+      movementFamilyOverlap: ["trunk"],
+      movementMatch: "family",
+    });
+  });
+
   it("marks open unlogged exercises with sufficient metadata as swap eligible", () => {
     expect(
       isSwapEligible(currentAccessory, {

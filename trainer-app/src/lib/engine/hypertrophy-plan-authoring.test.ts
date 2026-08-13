@@ -712,6 +712,73 @@ describe("custom hypertrophy authoring contracts", () => {
     ).toBe(true);
   });
 
+  it("accepts anti-extension intent and resolves Ab Wheel through the production authoring boundary", () => {
+    const abWheel = shippedCatalogExercise("Ab Wheel Rollout");
+    const cablePallof = shippedCatalogExercise("Cable Pallof Press");
+    const legacyPallof = shippedCatalogExercise("Pallof Press");
+    const authoringExercise = toConsumerReadyAuthoringExercise(abWheel);
+    const antiExtensionIntent = {
+      userRole: "ACCESSORY" as const,
+      target: {
+        kind: "movement_pattern" as const,
+        movementPattern: "anti_extension" as const,
+      },
+    };
+    const antiRotationIntent = {
+      userRole: "ACCESSORY" as const,
+      target: {
+        kind: "movement_pattern" as const,
+        movementPattern: "anti_rotation" as const,
+      },
+    };
+    const draft = buildManualHypertrophyDraft({
+      settings,
+      sessionsPerWeek: 4,
+      preset: "UPPER_LOWER_4",
+      createSlotId: (() => {
+        let index = 0;
+        return () => `anti-extension-${++index}`;
+      })(),
+    });
+    draft.sessions[0]!.exercises.push({
+      exerciseId: abWheel.catalogKey,
+      workingSets: 3,
+      intent: antiExtensionIntent,
+    });
+
+    expect(
+      parseHypertrophyPlanDraft(draft).sessions[0]!.exercises[0]!.intent,
+    ).toEqual(antiExtensionIntent);
+    expect(authoringExercise.movementPatterns).toEqual(["anti_extension"]);
+    expect(authoringExercise.measurement).toEqual({
+      profile: "REPS_BODYWEIGHT",
+      repBasis: "TOTAL",
+    });
+    expect(authoringExercise.stimulusByMuscleId).toEqual({ core: 1 });
+    expect(
+      evaluateHypertrophySemanticIntent({
+        exercise: toMaterializationExercise(abWheel),
+        intent: antiExtensionIntent,
+      }),
+    ).toEqual({ eligible: true });
+    expect(
+      isExerciseEligibleForIntent({
+        exercise: authoringExercise,
+        intent: antiExtensionIntent,
+        equipmentProfile: "FULL_GYM",
+        limitationKeys: [],
+      }),
+    ).toBe(true);
+    expect(
+      evaluateHypertrophySemanticIntent({
+        exercise: toMaterializationExercise(abWheel),
+        intent: antiRotationIntent,
+      }),
+    ).toEqual({ eligible: false, reasonCode: "MOVEMENT_TARGET_MISMATCH" });
+    expect(cablePallof.movementPatterns).toEqual(["anti_rotation"]);
+    expect(legacyPallof.movementPatterns).toEqual(["anti_rotation"]);
+  });
+
   it("rejects Cable Pallof Press when canonical stimulus readiness is absent or incomplete", () => {
     const missingFacts = structuredClone(
       shippedCatalogExercise("Cable Pallof Press"),

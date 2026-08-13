@@ -9,6 +9,7 @@ import {
   WORKOUT_SESSION_INTENT_DB_VALUES,
   WORKOUT_STATUS_VALUES,
 } from "../src/lib/validation";
+import { CANONICAL_MOVEMENT_PATTERN_VALUES } from "../src/lib/engine/types";
 
 type ContractsDoc = {
   workoutStatus: string[];
@@ -18,6 +19,8 @@ type ContractsDoc = {
   workoutExerciseSection: string[];
   finisherExecutionCommandAction: string[];
   finisherLibraryState: string[];
+  MovementPatternV2: string[];
+  movementPatternV2: string[];
 };
 
 function asSorted(values: readonly string[]): string[] {
@@ -50,6 +53,16 @@ function main() {
     ...compareContract("workoutSelectionMode", WORKOUT_SELECTION_MODE_VALUES, docs.workoutSelectionMode),
     ...compareContract("workoutSessionIntentDb", WORKOUT_SESSION_INTENT_DB_VALUES, docs.workoutSessionIntentDb),
     ...compareContract("workoutExerciseSection", WORKOUT_EXERCISE_SECTION_VALUES, docs.workoutExerciseSection),
+    ...compareContract(
+      "MovementPatternV2",
+      CANONICAL_MOVEMENT_PATTERN_VALUES.map((value) => value.toUpperCase()),
+      docs.MovementPatternV2,
+    ),
+    ...compareContract(
+      "movementPatternV2",
+      CANONICAL_MOVEMENT_PATTERN_VALUES,
+      docs.movementPatternV2,
+    ),
     ...compareContract(
       "finisherExecutionCommandAction",
       FINISHER_EXECUTION_COMMAND_ACTION_VALUES,

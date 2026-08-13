@@ -104,6 +104,7 @@ const CANONICAL_DELOAD_PATTERN_PRIORITY: readonly MovementPatternV2[] = [
   "extension",
   "rotation",
   "anti_rotation",
+  "anti_extension",
   "carry",
   "isolation",
   "calf_raise_extended",
@@ -195,6 +196,8 @@ function resolveMovementFamily(exercise: Pick<CanonicalDeloadStructureExercise, 
       return "rotation";
     case "anti_rotation":
       return "anti_rotation";
+    case "anti_extension":
+      return "anti_extension";
     case "carry":
       return "carry";
     case "calf_raise_extended":

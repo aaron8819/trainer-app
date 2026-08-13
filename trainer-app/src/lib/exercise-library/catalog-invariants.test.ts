@@ -12,6 +12,10 @@ import {
   type MeasurementSupportManifest,
 } from "./catalog-invariants";
 import { REVIEWED_STEP_2A_MEASUREMENT_MEMBERSHIP } from "./step-2a-measurement-membership";
+import {
+  ALL_MOVEMENT_PATTERNS,
+  MOVEMENT_PATTERN_LABELS,
+} from "./constants";
 
 function exercise(
   overrides: Partial<CatalogExerciseDefinition> = {},
@@ -201,7 +205,7 @@ describe("exercise catalog invariants", () => {
     },
     {
       label: "unknown movement patterns",
-      exercises: [exercise({ movementPatterns: ["anti_extension"] })],
+      exercises: [exercise({ movementPatterns: ["anti_flexion"] })],
       aliases: [],
       diagnostic: "CATALOG_MOVEMENT_PATTERN_UNKNOWN",
     },
@@ -384,5 +388,15 @@ describe("exercise catalog invariants", () => {
     );
     expect(exact?.exerciseName).toBe("Decline Barbell Bench Press");
     expect(normalized).toEqual(exact);
+  });
+
+  it("accepts anti-extension and exposes its library filter label", () => {
+    const abWheel = catalog.exercises.find(
+      ({ catalogKey }) => catalogKey === "ab-wheel-rollout",
+    );
+
+    expect(abWheel?.movementPatterns).toEqual(["anti_extension"]);
+    expect(ALL_MOVEMENT_PATTERNS).toContain("anti_extension");
+    expect(MOVEMENT_PATTERN_LABELS.anti_extension).toBe("Anti-Extension");
   });
 });

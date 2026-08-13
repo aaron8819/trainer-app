@@ -24,6 +24,7 @@ export const EXPECTED_MIGRATION_CHAIN = [
   "20260803120000_add_finisher_management",
   "20260804120000_add_custom_hypertrophy_plan_drafts",
   "20260807120000_add_exercise_measurement_foundation",
+  "20260813120000_add_anti_extension_movement_pattern",
 ] as const;
 
 export type LedgerRow = {
@@ -117,11 +118,19 @@ export const BASELINE_UNIQUENESS_EXPECTATIONS: readonly BaselineUniquenessExpect
   },
 ] as const;
 
-type ObjectKind = "table" | "column" | "index" | "constraint" | "trigger" | "function";
+type ObjectKind =
+  | "table"
+  | "column"
+  | "enum_value"
+  | "index"
+  | "constraint"
+  | "trigger"
+  | "function";
 type ObjectExpectation = {
   kind: ObjectKind;
   name: string;
   table?: string;
+  enumName?: string;
   column?: Pick<ColumnFact, "type" | "nullable" | "default">;
   index?: Pick<IndexFact, "unique" | "columns" | "predicate">;
   constraint?: Pick<ConstraintFact, "type" | "definition">;
@@ -419,6 +428,17 @@ export const PENDING_ARCHITECTURE_MANIFEST: readonly PendingMigrationExpectation
       },
     ],
   },
+  {
+    migration: "20260813120000_add_anti_extension_movement_pattern",
+    effect: "objects",
+    objects: [
+      {
+        kind: "enum_value",
+        enumName: "MovementPatternV2",
+        name: "ANTI_EXTENSION",
+      },
+    ],
+  },
 ] as const;
 
 type DefinitionExpectation =
@@ -609,12 +629,20 @@ function normalizeIndexPart(value: string | null): string | null {
 }
 
 function objectKey(object: ObjectExpectation): string {
+  if (object.kind === "enum_value") {
+    return `${object.kind}:${object.enumName}.${object.name}`;
+  }
   return `${object.kind}:${object.table ? `${object.table}.` : ""}${object.name}`;
 }
 
 function objectExists(snapshot: CatalogSnapshot, object: ObjectExpectation): boolean {
   if (object.kind === "table") return snapshot.tables.includes(object.name);
   if (object.kind === "column") return snapshot.columns.some((item) => item.table === object.table && item.name === object.name);
+  if (object.kind === "enum_value") {
+    return snapshot.enums.some(
+      (item) => item.name === object.enumName && item.values.includes(object.name),
+    );
+  }
   if (object.kind === "index") return snapshot.indexes.some((item) => item.table === object.table && item.name === object.name);
   if (object.kind === "constraint") return snapshot.constraints.some((item) => item.table === object.table && item.name === object.name);
   if (object.kind === "trigger") return snapshot.triggers.some((item) => item.table === object.table && item.name === object.name);
@@ -623,6 +651,7 @@ function objectExists(snapshot: CatalogSnapshot, object: ObjectExpectation): boo
 
 function pendingObjectCompatible(snapshot: CatalogSnapshot, object: ObjectExpectation): boolean {
   if (object.kind === "table") return true;
+  if (object.kind === "enum_value") return true;
   if (object.kind === "column") {
     const actual = snapshot.columns.find((item) => item.table === object.table && item.name === object.name);
     return Boolean(actual && object.column && actual.type === object.column.type && actual.nullable === object.column.nullable && normalize(actual.default) === normalize(object.column.default));

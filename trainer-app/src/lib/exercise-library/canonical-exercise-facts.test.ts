@@ -291,6 +291,46 @@ describe("canonical exercise authoring facts", () => {
     ).toEqual([]);
   });
 
+  it("reclassifies only Ab Wheel Rollout as anti-extension while preserving its full contract", () => {
+    const abWheel = catalogExercises.find(
+      ({ catalogKey }) => catalogKey === "ab-wheel-rollout",
+    );
+
+    expect(abWheel).toEqual({
+      name: "Ab Wheel Rollout",
+      catalogKey: "ab-wheel-rollout",
+      facts: {
+        version: 1,
+        stimulus: { disposition: "COMPLETE", profile: { core: 1 } },
+      },
+      measurementProfile: "REPS_BODYWEIGHT",
+      loadConvention: null,
+      repBasis: "TOTAL",
+      movementPatterns: ["anti_extension"],
+      splitTag: "core",
+      isCompound: true,
+      isMainLiftEligible: false,
+      jointStress: "medium",
+      equipment: ["Bodyweight"],
+      fatigueCost: 2,
+      sfrScore: 4,
+      lengthPositionScore: 4,
+      stimulusBias: ["stretch", "stability"],
+      contraindications: { low_back: true },
+      primaryMuscles: ["Abs", "Core"],
+      secondaryMuscles: ["Lats"],
+      difficulty: "advanced",
+      unilateral: false,
+      repRangeRecommendation: { min: 8, max: 20 },
+      timePerSetSec: 30,
+    });
+    expect(
+      catalogExercises.filter(({ movementPatterns }) =>
+        movementPatterns.includes("anti_extension"),
+      ),
+    ).toEqual([abWheel]);
+  });
+
   it("stores an explicit stimulus disposition for every identity", () => {
     const dispositions = catalogExercises.map(
       ({ facts }) => parseCanonicalExerciseFactsV1(facts).stimulus.disposition,

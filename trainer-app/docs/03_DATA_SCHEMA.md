@@ -239,12 +239,15 @@ Sources of truth:
 - `WorkoutSessionIntent`: `PUSH`, `PULL`, `LEGS`, `UPPER`, `LOWER`, `FULL_BODY`, `BODY_PART`
 - `WorkoutExerciseSection`: `WARMUP`, `MAIN`, `ACCESSORY`
 - `SetIntent`: `WORK`, `WARMUP`
+- `MovementPatternV2`: `HORIZONTAL_PUSH`, `VERTICAL_PUSH`, `HORIZONTAL_PULL`, `VERTICAL_PULL`, `SQUAT`, `HINGE`, `LUNGE`, `CARRY`, `ROTATION`, `ANTI_ROTATION`, `ANTI_EXTENSION`, `FLEXION`, `EXTENSION`, `ABDUCTION`, `ADDUCTION`, `ISOLATION`
 - `MeasurementProfile`: `REPS_EXTERNAL_LOAD`, `REPS_BODYWEIGHT`, `REPS_BODYWEIGHT_PLUS_LOAD`, `REPS_ASSISTED`
 - `LoadConvention`: `BARBELL_TOTAL`, `IMPLEMENT_WEIGHT`, `MACHINE_DISPLAYED`, `ADDED_EXTERNAL_LOAD`, `DISPLAYED_ASSISTANCE`
 - `RepBasis`: `TOTAL`, `PER_SIDE`
 - `MesocycleState`: `ACTIVE_ACCUMULATION`, `ACTIVE_DELOAD`, `AWAITING_HANDOFF`, `COMPLETED`
 
-Canonical machine-readable values in `docs/contracts/runtime-contracts.json` currently cover the validation-backed workout enums above. `SetIntent` and `MesocycleState` remain schema-owned in `prisma/schema.prisma`.
+Canonical machine-readable values in `docs/contracts/runtime-contracts.json` cover the validation-backed workout enums above plus the schema/engine `MovementPatternV2` vocabulary. `SetIntent` and `MesocycleState` remain schema-owned in `prisma/schema.prisma`.
+
+Migration `20260813120000_add_anti_extension_movement_pattern` adds only `ANTI_EXTENSION` to `MovementPatternV2`. Repository catalog projection reclassifies `ab-wheel-rollout` to `anti_extension`; applying the enum migration and synchronizing that identity to a database remain separate operational steps. The migration does not update exercise rows, accepted seeds, workouts, snapshots, drafts, or history.
 
 ## Behavioral schema notes
 - `Muscle` is shared catalog identity and relationship metadata. Its `mv`, `mev`, `mav`, `mrv`, and `sraHours` columns are materialized compatibility copies derived by `prisma/muscle-seed-data.ts` from the canonical code policy in `src/lib/engine/muscle-policy.ts`; runtime generation, recovery, selection, analytics, and explainability do not treat those columns as policy overrides.

@@ -208,8 +208,8 @@ describe("test-suite environment manifest", () => {
       manifest: currentManifest,
       discoveredTestFiles,
     });
-    expect(discoveredTestFiles).toHaveLength(355);
-    expect(selection.credentialFree).toHaveLength(316);
+    expect(discoveredTestFiles).toHaveLength(356);
+    expect(selection.credentialFree).toHaveLength(317);
     expect(selection.credentialFree).toContain(
       "src/lib/operations/credential-free-inventory-runner.test.ts"
     );
@@ -218,6 +218,9 @@ describe("test-suite environment manifest", () => {
     );
     expect(selection.credentialFree).toContain(
       "src/lib/exercise-library/catalog-invariants.test.ts"
+    );
+    expect(selection.credentialFree).toContain(
+      "src/lib/engine/movement-pattern-coverage.test.ts"
     );
     expect(selection.importOnlyPlaceholder).toHaveLength(34);
     expect(selection.databaseRequired).toHaveLength(5);

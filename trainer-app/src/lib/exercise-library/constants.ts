@@ -41,6 +41,7 @@ export const MOVEMENT_PATTERN_LABELS: Record<MovementPatternV2, string> = {
   carry: "Carry",
   rotation: "Rotation",
   anti_rotation: "Anti-Rotation",
+  anti_extension: "Anti-Extension",
   flexion: "Flexion",
   extension: "Extension",
   abduction: "Abduction",

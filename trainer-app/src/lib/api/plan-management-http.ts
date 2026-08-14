@@ -148,6 +148,15 @@ export function planManagementErrorResponse(
         },
         { status: 409 },
       );
+    case "PLAN_DRAFT_MEASUREMENT_PROVENANCE_INVALID":
+      return NextResponse.json(
+        {
+          error:
+            "The saved measurement snapshot is not trusted. Refresh the draft and try again.",
+          code: error.code,
+        },
+        { status: 409 },
+      );
     case "PLAN_PREVIEW_HASH_MISMATCH":
       return NextResponse.json(
         {
@@ -183,6 +192,16 @@ export function planManagementErrorResponse(
         { status: 409 },
       );
     case "PLAN_LIMITATION_UNRECOGNIZED":
+      if (error.details.scope === "custom_hypertrophy") {
+        return NextResponse.json(
+          {
+            error:
+              "An active exercise limitation is not recognized. Update or remove it before finalizing this plan.",
+            code: error.code,
+          },
+          { status: 409 },
+        );
+      }
       return NextResponse.json(
         {
           error:

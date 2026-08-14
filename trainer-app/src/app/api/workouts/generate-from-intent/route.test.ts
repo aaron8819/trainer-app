@@ -59,6 +59,75 @@ vi.mock("@/lib/api/autoregulation", () => ({
 
 import { POST } from "./route";
 
+const V4_HASH = "a".repeat(64);
+
+function exactV4Revision() {
+  return {
+    id: "revision-1",
+    revision: 1,
+    seedPayload: { version: 4 },
+    payloadHash: V4_HASH,
+    hashAlgorithm: "sha256",
+    provenanceStatus: "exact",
+  };
+}
+
+function exactV4Receipt(input: {
+  week: number;
+  phase: "accumulation" | "deload";
+  slotId: string;
+  intent: "pull" | "upper" | "lower";
+}) {
+  return {
+    version: 1 as const,
+    cycleContext: {
+      weekInMeso: input.week,
+      weekInBlock: input.phase === "deload" ? 1 : input.week,
+      mesocycleLength: 5,
+      phase: input.phase,
+      blockType: input.phase,
+      isDeload: input.phase === "deload",
+      source: "computed" as const,
+    },
+    lifecycleVolume: { source: "unknown" as const },
+    sorenessSuppressedMuscles: [],
+    deloadDecision: {
+      mode: "none" as const,
+      reason: [],
+      reductionPercent: 0,
+      appliedTo: "none" as const,
+    },
+    readiness: {
+      wasAutoregulated: false,
+      signalAgeHours: null,
+      fatigueScoreOverall: null,
+      intensityScaling: {
+        applied: false,
+        exerciseIds: [],
+        scaledUpCount: 0,
+        scaledDownCount: 0,
+      },
+    },
+    exceptions: [],
+    sessionSlot: {
+      slotId: input.slotId,
+      intent: input.intent,
+      sequenceIndex: 0,
+      sequenceLength: 4,
+      source: "mesocycle_slot_sequence" as const,
+    },
+    sessionProvenance: {
+      mesocycleId: "meso-1",
+      compositionSource: "persisted_slot_plan_seed" as const,
+      seedProvenance: {
+        revisionId: "revision-1",
+        revision: 1,
+        hash: V4_HASH,
+      },
+    },
+  };
+}
+
 describe("POST /api/workouts/generate-from-intent deload gate", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -302,12 +371,14 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
       state: "ACTIVE_DELOAD",
       durationWeeks: 5,
       slotPlanSeedJson: null,
-      currentSeedRevision: {
-        id: "revision-1",
-        revision: 1,
-        seedPayload: { version: 4 },
-        payloadHash: "a".repeat(64),
-      },
+      currentSeedRevision: exactV4Revision(),
+    });
+    mocks.loadRequestedAdvancingSlotSnapshot.mockResolvedValue({
+      slotId: "pull-a",
+      intent: "pull",
+      sequenceIndex: 0,
+      sequenceLength: 4,
+      source: "mesocycle_slot_sequence",
     });
     const exactWorkout = {
       id: "w-v4",
@@ -337,6 +408,12 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
         perExerciseSetTargets: { ex: 1 },
         rationale: {},
         volumePlanByMuscle: {},
+        sessionDecisionReceipt: exactV4Receipt({
+          week: 5,
+          phase: "deload",
+          slotId: "pull-a",
+          intent: "pull",
+        }),
       },
       filteredExercises: [],
     });
@@ -358,6 +435,133 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
       targetReps: 7,
       targetRpe: 5.5,
     });
+  });
+
+  it("suppresses autoregulation for exact V4 accumulation replay", async () => {
+    mocks.loadActiveMesocycle.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+      slotPlanSeedJson: null,
+      currentSeedRevision: exactV4Revision(),
+    });
+    mocks.loadRequestedAdvancingSlotSnapshot.mockResolvedValue({
+      slotId: "upper-a",
+      intent: "upper",
+      sequenceIndex: 0,
+      sequenceLength: 4,
+      source: "mesocycle_slot_sequence",
+    });
+    mocks.generateSessionFromIntent.mockResolvedValue({
+      workout: {
+        id: "w-v4-accumulation",
+        scheduledDate: new Date().toISOString(),
+        warmup: [],
+        mainLifts: [{
+          id: "ex",
+          exercise: { id: "ex", name: "Bench" },
+          isMainLift: true,
+          orderIndex: 0,
+          sets: [{ setIndex: 1, targetReps: 8, targetRpe: 7.5 }],
+        }],
+        accessories: [],
+        estimatedMinutes: 30,
+      },
+      selectionMode: "INTENT",
+      sessionIntent: "upper",
+      sraWarnings: [],
+      substitutions: [],
+      volumePlanByMuscle: {},
+      selection: {
+        selectedExerciseIds: ["ex"],
+        mainLiftIds: ["ex"],
+        accessoryIds: [],
+        perExerciseSetTargets: { ex: 1 },
+        rationale: {},
+        volumePlanByMuscle: {},
+        sessionDecisionReceipt: exactV4Receipt({
+          week: 3,
+          phase: "accumulation",
+          slotId: "upper-a",
+          intent: "upper",
+        }),
+      },
+      filteredExercises: [],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/generate-from-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intent: "upper" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.applyAutoregulation).not.toHaveBeenCalled();
+  });
+
+  it("keeps autoregulation for body-part fallback under an active V4 plan", async () => {
+    mocks.loadActiveMesocycle.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+      currentSeedRevision: exactV4Revision(),
+    });
+    mocks.generateSessionFromIntent.mockResolvedValue({
+      workout: {
+        id: "w-v4-body-part",
+        scheduledDate: new Date().toISOString(),
+        warmup: [{
+          id: "warmup",
+          exercise: { id: "warmup", name: "General warm-up" },
+          isMainLift: false,
+          orderIndex: 0,
+          sets: [],
+        }],
+        mainLifts: [{
+          id: "ex",
+          exercise: { id: "ex", name: "Cable Curl" },
+          isMainLift: true,
+          orderIndex: 0,
+          sets: [{ setIndex: 1, targetReps: 12 }],
+        }],
+        accessories: [],
+        estimatedMinutes: 30,
+      },
+      selectionMode: "INTENT",
+      sessionIntent: "body_part",
+      sraWarnings: [],
+      substitutions: [],
+      volumePlanByMuscle: {},
+      selection: {
+        selectedExerciseIds: ["ex"],
+        mainLiftIds: ["ex"],
+        accessoryIds: [],
+        perExerciseSetTargets: { ex: 1 },
+        rationale: {},
+        volumePlanByMuscle: {},
+      },
+      filteredExercises: [],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/generate-from-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          intent: "body_part",
+          targetMuscles: ["biceps"],
+        }),
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(mocks.applyAutoregulation).toHaveBeenCalledOnce();
+    expect(body.workout.warmup).toEqual([
+      expect.objectContaining({ id: "warmup" }),
+    ]);
   });
 
   it("persists the in-order advancing seeded session slot in receipt metadata", async () => {
@@ -719,6 +923,7 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
       id: "meso-1",
       state: "ACTIVE_ACCUMULATION",
       durationWeeks: 5,
+      currentSeedRevision: exactV4Revision(),
     });
     mocks.generateSessionFromIntent.mockResolvedValue({
       workout: {
@@ -816,10 +1021,16 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
       ])
     );
     expect(body.selectionMetadata.sessionDecisionReceipt.sessionSlot).toBeUndefined();
+    expect(mocks.applyAutoregulation).toHaveBeenCalledOnce();
   });
 
   it("pins receipt week from the pending week-close row and preserves marker + weekCloseId", async () => {
-    mocks.loadActiveMesocycle.mockResolvedValue({ id: "meso-1", state: "ACTIVE_ACCUMULATION", durationWeeks: 5 });
+    mocks.loadActiveMesocycle.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+      currentSeedRevision: exactV4Revision(),
+    });
     mocks.findPendingWeekCloseForUser.mockResolvedValue({
       id: "wc-1",
       mesocycleId: "meso-1",
@@ -968,6 +1179,7 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     );
     expect(body.selectionMetadata.sessionDecisionReceipt.targetMuscles).toEqual(["front delts"]);
     expect(body.selectionMetadata.weekCloseId).toBe("wc-1");
+    expect(mocks.applyAutoregulation).toHaveBeenCalledOnce();
   });
 
   it("bypasses deload route semantics for pending optional gap-fill after lifecycle advances", async () => {

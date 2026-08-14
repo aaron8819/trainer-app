@@ -30,4 +30,34 @@ describe("plan management HTTP errors", () => {
       error: "The generated plan is incomplete and cannot be finalized.",
     });
   });
+
+  it("returns a stable conflict for untrusted draft measurement snapshots", async () => {
+    const response = planManagementErrorResponse(
+      new PlanManagementError(
+        "PLAN_DRAFT_MEASUREMENT_PROVENANCE_INVALID",
+      ),
+    );
+
+    expect(response?.status).toBe(409);
+    await expect(response?.json()).resolves.toEqual({
+      code: "PLAN_DRAFT_MEASUREMENT_PROVENANCE_INVALID",
+      error:
+        "The saved measurement snapshot is not trusted. Refresh the draft and try again.",
+    });
+  });
+
+  it("does not expose unrecognized V4 limitation text", async () => {
+    const response = planManagementErrorResponse(
+      new PlanManagementError("PLAN_LIMITATION_UNRECOGNIZED", {
+        scope: "custom_hypertrophy",
+      }),
+    );
+
+    expect(response?.status).toBe(409);
+    await expect(response?.json()).resolves.toEqual({
+      code: "PLAN_LIMITATION_UNRECOGNIZED",
+      error:
+        "An active exercise limitation is not recognized. Update or remove it before finalizing this plan.",
+    });
+  });
 });

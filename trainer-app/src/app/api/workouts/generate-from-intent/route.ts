@@ -276,11 +276,11 @@ export async function POST(request: Request) {
             }
           : {}),
       };
-  const exactV4Replay = isAcceptedV4Seed(
+  const hasAcceptedV4Seed = isAcceptedV4Seed(
     activeMesocycle.currentSeedRevision?.seedPayload,
   );
   const result =
-    !exactV4Replay &&
+    !hasAcceptedV4Seed &&
     !shouldApplyOptionalGapFill && activeMesocycle?.state === "ACTIVE_DELOAD"
       ? await generateDeloadSessionFromIntent(user.id, generationInput)
       : await generateSessionFromIntent(user.id, generationInput);
@@ -289,6 +289,29 @@ export async function POST(request: Request) {
   }
 
   // Phase 3: Apply autoregulation
+  const generationReceipt = result.selection.sessionDecisionReceipt;
+  const receiptProvenance = generationReceipt?.sessionProvenance;
+  const seedProvenance = receiptProvenance?.seedProvenance;
+  const revision = activeMesocycle.currentSeedRevision;
+  const exactV4Replay = Boolean(
+    hasAcceptedV4Seed &&
+      !shouldApplyOptionalGapFill &&
+      !shouldApplySupplementalDeficitSession &&
+      parsed.data.intent !== "body_part" &&
+      advancingSlot &&
+      generationReceipt?.sessionSlot?.slotId === advancingSlot.slotId &&
+      generationReceipt.sessionSlot.intent === advancingSlot.intent &&
+      generationReceipt.sessionSlot.sequenceIndex === advancingSlot.sequenceIndex &&
+      generationReceipt.sessionSlot.sequenceLength === advancingSlot.sequenceLength &&
+      generationReceipt.sessionSlot.source === advancingSlot.source &&
+      receiptProvenance?.mesocycleId === activeMesocycle.id &&
+      receiptProvenance.compositionSource === "persisted_slot_plan_seed" &&
+      revision?.provenanceStatus === "exact" &&
+      revision.hashAlgorithm === "sha256" &&
+      seedProvenance?.revisionId === revision.id &&
+      seedProvenance.revision === revision.revision &&
+      seedProvenance.hash === revision.payloadHash
+  );
   const autoregulated = exactV4Replay
     ? unchangedAutoregulation(result.workout)
     : await applyAutoregulation(user.id, result.workout);

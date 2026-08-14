@@ -7,6 +7,9 @@ import { exampleExerciseLibrary, exampleGoals, exampleUser } from "../engine/sam
 import * as selectionV2 from "@/lib/engine/selection-v2";
 import type { Exercise } from "@/lib/engine/types";
 import { getEffectiveStimulusByMuscle, toMuscleId } from "@/lib/engine/stimulus";
+import { resolveAcceptedHypertrophySeedV4Week } from "@/lib/engine/hypertrophy-plan-authoring";
+import { buildV4CustomPlanReferenceAcceptedSeed } from "@/lib/engine/hypertrophy-plan-authoring-v4.fixture";
+import { normalizeAcceptedSeedPayload } from "@/lib/api/mesocycle-seed-revision";
 
 const mesocycleRoleFindManyMock = vi.fn();
 vi.mock("@/lib/db/prisma", () => ({
@@ -2555,6 +2558,167 @@ describe("generateSessionFromIntent", () => {
           hash: "b".repeat(64),
         },
       });
+    } finally {
+      selectSpy.mockRestore();
+    }
+  });
+
+  it("replays the exact 25-placement V4 reference across all 20 week-slot combinations", async () => {
+    const seed = buildV4CustomPlanReferenceAcceptedSeed();
+    const canonicalHash = normalizeAcceptedSeedPayload(seed).hash;
+    const referenceExercises = seed.slots.flatMap((slot) =>
+      slot.exercises.map((exercise) => ({ slot, exercise })),
+    );
+    const exerciseById = new Map<string, Exercise>();
+    for (const { slot, exercise } of referenceExercises) {
+      if (exerciseById.has(exercise.exerciseId)) continue;
+      const target = exercise.intent.target;
+      exerciseById.set(exercise.exerciseId, makeCustomExercise({
+        id: exercise.exerciseId,
+        name: exercise.exerciseId,
+        movementPatterns: target.kind === "movement_pattern"
+          ? [target.movementPattern]
+          : ["isolation"],
+        splitTags: slot.focus === "LOWER" ? ["legs"] : ["push"],
+        primaryMuscles: [slot.focus === "LOWER" ? "Quads" : "Chest"],
+        isMainLiftEligible: exercise.role === "CORE_COMPOUND",
+        isCompound: exercise.role === "CORE_COMPOUND",
+      }));
+    }
+    const library = [...exerciseById.values()];
+    mapExercisesMock.mockReturnValue(library);
+    mapConstraintsMock.mockReturnValue({
+      daysPerWeek: 4,
+      splitType: "upper_lower",
+      weeklySchedule: ["upper", "lower", "upper", "lower"],
+    });
+    loadWorkoutContextMock.mockResolvedValue({
+      profile: { id: "profile" },
+      goals: { primaryGoal: "HYPERTROPHY", secondaryGoal: "NONE" },
+      constraints: {
+        daysPerWeek: 4,
+        splitType: "UPPER_LOWER",
+        weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      },
+      injuries: [],
+      exercises: library.map((exercise) => ({ id: exercise.id })),
+      workouts: [],
+      preferences: null,
+      checkIns: [],
+    });
+
+    const slotSequenceJson = {
+      version: 1,
+      source: "handoff_draft",
+      sequenceMode: "ordered_flexible",
+      slots: seed.slots.map((slot) => ({
+        slotId: slot.slotId,
+        intent: slot.focus,
+      })),
+    };
+    const selectSpy = vi.spyOn(selectionV2, "selectExercisesOptimized");
+    try {
+      for (const week of seed.weeks) {
+        getCurrentMesoWeekMock.mockReturnValue(week.week);
+        const resolvedWeek = resolveAcceptedHypertrophySeedV4Week(seed, week.week);
+        for (const [slotIndex, slot] of seed.slots.entries()) {
+          loadActiveMesocycleMock.mockResolvedValue({
+            id: "meso-1",
+            state: week.phase === "DELOAD" ? "ACTIVE_DELOAD" : "ACTIVE_ACCUMULATION",
+            accumulationSessionsCompleted: week.phase === "DELOAD"
+              ? 16
+              : (week.week - 1) * seed.slots.length + slotIndex,
+            deloadSessionsCompleted: week.phase === "DELOAD" ? slotIndex : 0,
+            durationWeeks: 5,
+            sessionsPerWeek: 4,
+            slotSequenceJson,
+            slotPlanSeedJson: { version: 1, source: "handoff_slot_plan_projection", slots: [] },
+            currentSeedRevision: {
+              id: "v4-reference-revision-1",
+              revision: 1,
+              payloadHash: canonicalHash,
+              hashAlgorithm: "sha256",
+              provenanceStatus: "exact",
+              seedPayload: seed,
+            },
+          });
+
+          const result = await generateSessionFromIntent("user-1", {
+            intent: slot.focus.toLowerCase() as "upper" | "lower",
+            slotId: slot.slotId,
+          });
+          const label = `week=${week.week} slot=${slot.slotId}`;
+          expect("error" in result, label).toBe(false);
+          if ("error" in result) continue;
+
+          const expectedSlot = resolvedWeek.slots.find(
+            (candidate) => candidate.slotId === slot.slotId,
+          );
+          expect(expectedSlot, label).toBeDefined();
+          if (!expectedSlot) continue;
+          const authoredForWeek = slot.exercises.map((exercise) => ({
+            placementId: exercise.placementId,
+            exerciseId: exercise.exerciseId,
+            prescription: exercise.prescriptions.find(
+              (prescription) => prescription.week === week.week,
+            ),
+          }));
+          expect(expectedSlot.exercises.map((exercise) => exercise.placementId), label)
+            .toEqual(authoredForWeek
+              .filter(({ prescription }) => prescription?.status === "PRESCRIBE")
+              .map(({ placementId }) => placementId));
+          expect(expectedSlot.exercises.map((exercise) => exercise.exerciseId), label)
+            .toEqual(authoredForWeek
+              .filter(({ prescription }) => prescription?.status === "PRESCRIBE")
+              .map(({ exerciseId }) => exerciseId));
+          expect(authoredForWeek
+            .filter(({ prescription }) => prescription?.status === "OMIT")
+            .every(({ exerciseId }) => !expectedSlot.exercises.some(
+              (exercise) => exercise.exerciseId === exerciseId,
+            )), label).toBe(true);
+          const actual = [...result.workout.mainLifts, ...result.workout.accessories]
+            .sort((left, right) => left.orderIndex - right.orderIndex);
+          expect(actual, label).toHaveLength(expectedSlot.exercises.length);
+          expect(actual.map((exercise) => ({
+            exerciseId: exercise.exercise.id,
+            sets: exercise.sets.map((set) => ({
+              reps: set.targetRepRange ?? set.targetReps,
+              targetRpe: set.targetRpe,
+            })),
+            measurement: exercise.measurement,
+          })), label).toEqual(expectedSlot.exercises.map((exercise) => ({
+            exerciseId: exercise.exerciseId,
+            sets: Array.from({ length: exercise.setCount }, () => ({
+              reps: exercise.reps.kind === "RANGE"
+                ? { min: exercise.reps.min, max: exercise.reps.max }
+                : exercise.reps.reps,
+              targetRpe: exercise.targetRpe,
+            })),
+            measurement: exercise.measurement,
+          })));
+          expect(result.workout.warmup, label).toEqual([]);
+          expect(actual.every((exercise) => !("warmupSets" in exercise)), label).toBe(true);
+          expect(result.selection.sessionDecisionReceipt?.sessionSlot, label).toEqual({
+            slotId: slot.slotId,
+            intent: slot.focus.toLowerCase(),
+            sequenceIndex: slotIndex,
+            sequenceLength: seed.slots.length,
+            source: "mesocycle_slot_sequence",
+          });
+          expect(result.selection.sessionDecisionReceipt?.sessionProvenance, label).toEqual({
+            mesocycleId: "meso-1",
+            compositionSource: "persisted_slot_plan_seed",
+            seedProvenance: {
+              revisionId: "v4-reference-revision-1",
+              revision: 1,
+              hash: canonicalHash,
+            },
+          });
+        }
+      }
+      expect(selectSpy).not.toHaveBeenCalled();
+      expect(JSON.stringify(seed)).not.toContain("finisher");
+      expect(JSON.stringify(seed)).not.toContain("hip_flexor");
     } finally {
       selectSpy.mockRestore();
     }

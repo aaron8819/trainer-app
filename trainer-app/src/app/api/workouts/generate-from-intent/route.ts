@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { generateFromIntentSchema } from "@/lib/validation";
 import { provisionOwnerForMutation } from "@/lib/api/workout-context";
 import { generateDeloadSessionFromIntent, generateSessionFromIntent } from "@/lib/api/template-session";
-import { applyAutoregulation } from "@/lib/api/autoregulation";
+import {
+  applyAutoregulation,
+  type AutoregulationResult,
+} from "@/lib/api/autoregulation";
 import { loadActiveMesocycle } from "@/lib/api/mesocycle-lifecycle";
 import { loadPendingMesocycleHandoff } from "@/lib/api/mesocycle-handoff";
 import { findPendingWeekCloseForUser } from "@/lib/api/mesocycle-week-close";
@@ -24,7 +27,10 @@ import {
 } from "@/lib/ui/selection-metadata";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { applySessionCapacityReduction } from "@/lib/api/template-session/session-capacity-reduction";
-import { parseSlotPlanSeedJson } from "@/lib/api/slot-plan-seed-parser";
+import {
+  parseSlotPlanSeedJson,
+  resolveAcceptedSeedPayloadForWeek,
+} from "@/lib/api/slot-plan-seed-parser";
 import { readSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
 import { attachSessionCapacityReductionReconciliation } from "@/lib/api/runtime-edit-reconciliation";
 
@@ -33,6 +39,32 @@ type PlannedSet = PlannedExercise["sets"][number];
 
 const SUPPLEMENTAL_DEFAULT_MAX_EXERCISES = 4;
 const SUPPLEMENTAL_DEFAULT_MAX_HARD_SETS = 8;
+
+function isAcceptedV4Seed(value: unknown): boolean {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      (value as { version?: unknown }).version === 4,
+  );
+}
+
+function unchangedAutoregulation(
+  workout: GenerateFromIntentResponse["workout"],
+): AutoregulationResult {
+  const reason = "Accepted custom plan prescriptions replay exactly as planned.";
+  return {
+    original: workout,
+    adjusted: workout,
+    modifications: [],
+    fatigueScore: null,
+    rationale: reason,
+    wasAutoregulated: false,
+    applied: false,
+    reason,
+    signalAgeHours: null,
+  };
+}
 
 function applyGapFillCaps(input: {
   workout: GenerateFromIntentResponse["workout"];
@@ -244,7 +276,11 @@ export async function POST(request: Request) {
             }
           : {}),
       };
+  const hasAcceptedV4Seed = isAcceptedV4Seed(
+    activeMesocycle.currentSeedRevision?.seedPayload,
+  );
   const result =
+    !hasAcceptedV4Seed &&
     !shouldApplyOptionalGapFill && activeMesocycle?.state === "ACTIVE_DELOAD"
       ? await generateDeloadSessionFromIntent(user.id, generationInput)
       : await generateSessionFromIntent(user.id, generationInput);
@@ -253,7 +289,32 @@ export async function POST(request: Request) {
   }
 
   // Phase 3: Apply autoregulation
-  const autoregulated = await applyAutoregulation(user.id, result.workout);
+  const generationReceipt = result.selection.sessionDecisionReceipt;
+  const receiptProvenance = generationReceipt?.sessionProvenance;
+  const seedProvenance = receiptProvenance?.seedProvenance;
+  const revision = activeMesocycle.currentSeedRevision;
+  const exactV4Replay = Boolean(
+    hasAcceptedV4Seed &&
+      !shouldApplyOptionalGapFill &&
+      !shouldApplySupplementalDeficitSession &&
+      parsed.data.intent !== "body_part" &&
+      advancingSlot &&
+      generationReceipt?.sessionSlot?.slotId === advancingSlot.slotId &&
+      generationReceipt.sessionSlot.intent === advancingSlot.intent &&
+      generationReceipt.sessionSlot.sequenceIndex === advancingSlot.sequenceIndex &&
+      generationReceipt.sessionSlot.sequenceLength === advancingSlot.sequenceLength &&
+      generationReceipt.sessionSlot.source === advancingSlot.source &&
+      receiptProvenance?.mesocycleId === activeMesocycle.id &&
+      receiptProvenance.compositionSource === "persisted_slot_plan_seed" &&
+      revision?.provenanceStatus === "exact" &&
+      revision.hashAlgorithm === "sha256" &&
+      seedProvenance?.revisionId === revision.id &&
+      seedProvenance.revision === revision.revision &&
+      seedProvenance.hash === revision.payloadHash
+  );
+  const autoregulated = exactV4Replay
+    ? unchangedAutoregulation(result.workout)
+    : await applyAutoregulation(user.id, result.workout);
   const selectionMetadata = buildCanonicalSelectionMetadata(result.selection, autoregulated);
 
   const selectionSummary: GenerateFromIntentResponse["selectionSummary"] = {
@@ -314,9 +375,17 @@ export async function POST(request: Request) {
       { status: 409 }
     );
   }
-  const parsedSeed = activeMesocycle
-    ? parseSlotPlanSeedJson(activeMesocycle.slotPlanSeedJson)
-    : null;
+  let parsedSeed = null;
+  try {
+    parsedSeed = exactV4Replay && activeMesocycle.currentSeedRevision
+      ? resolveAcceptedSeedPayloadForWeek(
+          activeMesocycle.currentSeedRevision.seedPayload,
+          receipt?.cycleContext.weekInMeso ?? 1,
+        )
+      : parseSlotPlanSeedJson(activeMesocycle.slotPlanSeedJson);
+  } catch {
+    parsedSeed = null;
+  }
   const executableSeedSlots =
     parsedSeed &&
     parsedSeed.slots.every((slot) =>

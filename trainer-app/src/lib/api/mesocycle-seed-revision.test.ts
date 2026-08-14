@@ -5,6 +5,8 @@ import type {
   AcceptedHypertrophySeedV2,
   AcceptedHypertrophySeedV3,
 } from "@/lib/engine/hypertrophy-plan-authoring";
+import { compileAcceptedHypertrophySeedV4 } from "@/lib/engine/hypertrophy-plan-authoring";
+import { buildFourDayV4ExpressivenessFixture } from "@/lib/engine/hypertrophy-plan-authoring-v4.fixture";
 import {
   canonicalizeJson,
   createCorrectiveSeedRevisionInTransaction,
@@ -361,6 +363,58 @@ describe("accepted seed normalization and hashing", () => {
     expect(updateMany).toHaveBeenCalledWith({
       where: { id: "meso-1", currentSeedRevisionId: null },
       data: { currentSeedRevisionId: "revision-1" },
+    });
+  });
+
+  it("creates an exact V4 revision 1 and advances the pointer atomically", async () => {
+    const fixture = buildFourDayV4ExpressivenessFixture();
+    const accepted = compileAcceptedHypertrophySeedV4({
+      draft: fixture.draft,
+      measurementByExerciseId: fixture.measurementByExerciseId,
+    });
+    const normalized = normalizeAcceptedSeedPayload(accepted);
+    const create = vi.fn().mockResolvedValue({
+      id: "revision-v4-1",
+      mesocycleId: "meso-v4",
+      revision: 1,
+      seedPayload: normalized.canonicalPayload,
+      payloadHash: normalized.hash,
+      hashAlgorithm: "sha256",
+      provenanceStatus: "exact",
+      creationReason: "acceptance",
+      actorSource: "test",
+      sourceRevisionId: null,
+      activatedAt: new Date(),
+    });
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const tx = {
+      mesocycle: {
+        findUnique: vi.fn().mockResolvedValue({ currentSeedRevision: null }),
+        updateMany,
+      },
+      mesocycleSeedRevision: { create },
+    } as never;
+
+    await createInitialAcceptedSeedRevisionInTransaction(tx, {
+      mesocycleId: "meso-v4",
+      seedPayload: accepted,
+      creationReason: "acceptance",
+      actorSource: "test",
+    });
+
+    expect(normalized.payloadVersion).toBe(4);
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        mesocycleId: "meso-v4",
+        revision: 1,
+        seedPayload: accepted,
+        payloadHash: normalized.hash,
+        provenanceStatus: "exact",
+      }),
+    });
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: "meso-v4", currentSeedRevisionId: null },
+      data: { currentSeedRevisionId: "revision-v4-1" },
     });
   });
 

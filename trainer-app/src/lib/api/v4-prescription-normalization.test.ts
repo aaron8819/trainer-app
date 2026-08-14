@@ -16,6 +16,7 @@ import {
   AcceptedSeedParseError,
   parseAcceptedSeedPayload,
   parseSlotPlanSeedJson,
+  resolveAcceptedSeedPayloadForWeek,
 } from "./slot-plan-seed-parser";
 import { buildFourDayV4ExpressivenessFixture } from "@/lib/engine/hypertrophy-plan-authoring-v4.fixture";
 
@@ -316,7 +317,7 @@ describe("V4 prescription normalization boundary", () => {
     );
   });
 
-  it("leaves live V1, V2, and V3 parsing unchanged and keeps V4 gated", () => {
+  it("leaves V1, V2, and V3 parsing unchanged and admits strict V4", () => {
     const v2 = compileAcceptedHypertrophySeed(legacyDraft());
     const v3 = compileAcceptedHypertrophySeedV3({
       draft: legacyDraft(),
@@ -346,15 +347,26 @@ describe("V4 prescription normalization boundary", () => {
     ).toBeUndefined();
     expect(parseAcceptedSeedPayload(v2).acceptedVersion).toBe(2);
     expect(parseAcceptedSeedPayload(v3).acceptedVersion).toBe(3);
-    expect(() => parseAcceptedSeedPayload(v4)).toThrowError(
-      expect.objectContaining<Partial<AcceptedSeedParseError>>({
-        code: "ACCEPTED_SEED_VERSION_UNSUPPORTED",
-        version: 4,
+    expect(parseAcceptedSeedPayload(v4)).toMatchObject({
+      acceptedVersion: 4,
+      acceptedSeed: v4,
+    });
+    expect(normalizeAcceptedSeedPayload(v4)).toMatchObject({
+      payloadVersion: 4,
+      canonicalPayload: v4,
+      hash: normalizeAcceptedHypertrophySeedV4(v4).hash,
+    });
+    expect(resolveAcceptedSeedPayloadForWeek(v4, 3).slots).toEqual([
+      expect.objectContaining({
+        exercises: [expect.objectContaining({
+          placementId: "upper-bench",
+          setCount: 2,
+          reps: { kind: "EXACT", reps: 6 },
+          targetRpe: 5.5,
+        })],
       }),
-    );
-    expect(() => normalizeAcceptedSeedPayload(v4)).toThrow(
-      /ACCEPTED_SEED_VERSION_UNSUPPORTED/,
-    );
+      expect.objectContaining({ exercises: [] }),
+    ]);
   });
 
   it("keeps the actual Executable V3 projection out of both live parsers", () => {

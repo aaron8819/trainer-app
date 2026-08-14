@@ -7,6 +7,14 @@ import { exampleExerciseLibrary, exampleGoals, exampleUser } from "../engine/sam
 import * as selectionV2 from "@/lib/engine/selection-v2";
 import type { Exercise } from "@/lib/engine/types";
 import { getEffectiveStimulusByMuscle, toMuscleId } from "@/lib/engine/stimulus";
+import { buildV4CustomPlanReferenceAcceptedSeed } from "@/lib/engine/hypertrophy-plan-authoring-v4.fixture";
+import { resolveAcceptedSeedPayloadForWeek } from "@/lib/api/slot-plan-seed-parser";
+import {
+  EXPECTED_V4_REFERENCE_CASES,
+  V4_REFERENCE_CANONICAL_HASH,
+  V4_REFERENCE_PLACEMENT_IDS_BY_SLOT,
+  type ExpectedV4ReferenceCase,
+} from "@/lib/api/template-session-v4-reference.expected";
 
 const mesocycleRoleFindManyMock = vi.fn();
 vi.mock("@/lib/db/prisma", () => ({
@@ -223,6 +231,262 @@ function primeUpperLowerSlotGeneration(customLibrary: Exercise[]) {
       ],
     },
   });
+}
+
+const v4Rows = [
+  { exerciseId: "sldl", role: "CORE_COMPOUND" as const, setCount: 2, pattern: "hinge" as const },
+  { exerciseId: "leg-curl", role: "ACCESSORY" as const, setCount: 1, muscleId: "hamstrings" as const },
+  { exerciseId: "split-squat", role: "CORE_COMPOUND" as const, setCount: 4, pattern: "squat" as const },
+  { exerciseId: "calf-raise", role: "ACCESSORY" as const, setCount: 2, muscleId: "calves" as const },
+];
+
+function makeV4Exercise(
+  slotId: string,
+  row: (typeof v4Rows)[number],
+) {
+  return {
+    placementId: `${slotId}-${row.exerciseId}`,
+    exerciseId: row.exerciseId,
+    role: row.role,
+    intent: row.role === "CORE_COMPOUND"
+      ? {
+          userRole: "PRIMARY_LIFT" as const,
+          target: { kind: "movement_pattern" as const, movementPattern: row.pattern! },
+        }
+      : {
+          userRole: "MUSCLE_ISOLATION" as const,
+          target: { kind: "muscle" as const, muscleId: row.muscleId! },
+        },
+    measurement: {
+      profile: "REPS_EXTERNAL_LOAD" as const,
+      loadConvention: "MACHINE_DISPLAYED" as const,
+      repBasis: "TOTAL" as const,
+    },
+    prescriptions: [1, 2, 3, 4, 5].map((week) => ({
+      week,
+      status: "PRESCRIBE" as const,
+      setCount: row.setCount,
+      reps: row.exerciseId === "sldl"
+        ? { kind: "EXACT" as const, reps: 7 }
+        : { kind: "RANGE" as const, min: 10, max: 12 },
+      rir: { kind: "TARGET_RANGE" as const, min: 2, max: 2 },
+    })),
+  };
+}
+
+type V4ReferenceSeed = ReturnType<typeof buildV4CustomPlanReferenceAcceptedSeed>;
+type SuccessfulIntentSession = Exclude<
+  Awaited<ReturnType<typeof generateSessionFromIntent>>,
+  { error: string }
+>;
+
+function buildV4ReferenceExerciseLibrary(seed: V4ReferenceSeed): Exercise[] {
+  const exerciseById = new Map<string, Exercise>();
+  for (const slot of seed.slots) {
+    for (const exercise of slot.exercises) {
+      if (exerciseById.has(exercise.exerciseId)) continue;
+      const target = exercise.intent.target;
+      exerciseById.set(exercise.exerciseId, makeCustomExercise({
+        id: exercise.exerciseId,
+        name: exercise.exerciseId,
+        movementPatterns: target.kind === "movement_pattern"
+          ? [target.movementPattern]
+          : ["isolation"],
+        splitTags: slot.focus === "LOWER" ? ["legs"] : ["push"],
+        primaryMuscles: [slot.focus === "LOWER" ? "Quads" : "Chest"],
+        isMainLiftEligible: exercise.role === "CORE_COMPOUND",
+        isCompound: exercise.role === "CORE_COMPOUND",
+      }));
+    }
+  }
+  return [...exerciseById.values()];
+}
+
+function primeV4ReferenceGeneration(seed: V4ReferenceSeed, library: Exercise[]) {
+  mapExercisesMock.mockReturnValue(library);
+  mapConstraintsMock.mockReturnValue({
+    daysPerWeek: 4,
+    splitType: "upper_lower",
+    weeklySchedule: ["upper", "lower", "upper", "lower"],
+  });
+  loadWorkoutContextMock.mockResolvedValue({
+    profile: { id: "profile" },
+    goals: { primaryGoal: "HYPERTROPHY", secondaryGoal: "NONE" },
+    constraints: {
+      daysPerWeek: 4,
+      splitType: "UPPER_LOWER",
+      weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+    },
+    injuries: [],
+    exercises: library.map((exercise) => ({ id: exercise.id })),
+    workouts: [],
+    preferences: null,
+    checkIns: [],
+  });
+  return {
+    version: 1,
+    source: "handoff_draft",
+    sequenceMode: "ordered_flexible",
+    slots: seed.slots.map((slot) => ({
+      slotId: slot.slotId,
+      intent: slot.focus,
+    })),
+  };
+}
+
+function primeV4ReferenceWeek(expected: ExpectedV4ReferenceCase) {
+  const isDeload = expected.phase === "deload";
+  getCurrentMesoWeekMock.mockReturnValue(expected.week);
+  loadGenerationPhaseBlockContextMock.mockResolvedValue({
+    blockContext: {
+      block: {
+        id: `block-${expected.week}`,
+        mesocycleId: "meso-1",
+        blockNumber: 1,
+        blockType: expected.phase,
+        startWeek: 0,
+        durationWeeks: 5,
+        volumeTarget: "high",
+        intensityBias: "hypertrophy",
+        adaptationType: "myofibrillar_hypertrophy",
+      },
+      weekInBlock: expected.week,
+      weekInMeso: expected.week,
+      weekInMacro: expected.week,
+      mesocycle: {
+        id: "meso-1",
+        macroCycleId: "macro-1",
+        mesoNumber: 1,
+        startWeek: 0,
+        durationWeeks: 5,
+        focus: "Hypertrophy",
+        volumeTarget: "high",
+        intensityBias: "hypertrophy",
+        blocks: [],
+      },
+      macroCycle: {
+        id: "macro-1",
+        userId: "user-1",
+        startDate: new Date("2026-03-01T00:00:00.000Z"),
+        endDate: new Date("2026-04-05T00:00:00.000Z"),
+        durationWeeks: 5,
+        trainingAge: "intermediate",
+        primaryGoal: "hypertrophy",
+        mesocycles: [],
+      },
+    },
+    profile: {
+      blockType: expected.phase,
+      weekInBlock: expected.week,
+      blockDurationWeeks: 5,
+      isDeload,
+    },
+    cycleContext: {
+      weekInMeso: expected.week,
+      weekInBlock: expected.week,
+      mesocycleLength: 5,
+      phase: expected.phase,
+      blockType: expected.phase,
+      isDeload,
+      source: "computed",
+    },
+    weekInMeso: expected.week,
+    weekInBlock: expected.week,
+    mesocycleLength: 5,
+  });
+}
+
+function buildV4ReferenceMesocycle(
+  expected: ExpectedV4ReferenceCase,
+  seed: V4ReferenceSeed,
+  slotSequenceJson: ReturnType<typeof primeV4ReferenceGeneration>,
+) {
+  return {
+    id: "meso-1",
+    state: expected.phase === "deload" ? "ACTIVE_DELOAD" : "ACTIVE_ACCUMULATION",
+    accumulationSessionsCompleted: expected.phase === "deload"
+      ? 16
+      : (expected.week - 1) * 4 + expected.sequenceIndex,
+    deloadSessionsCompleted: expected.phase === "deload" ? expected.sequenceIndex : 0,
+    durationWeeks: 5,
+    sessionsPerWeek: 4,
+    slotSequenceJson,
+    slotPlanSeedJson: { version: 1, source: "handoff_slot_plan_projection", slots: [] },
+    currentSeedRevision: {
+      id: "v4-reference-revision-1",
+      revision: 1,
+      payloadHash: V4_REFERENCE_CANONICAL_HASH,
+      hashAlgorithm: "sha256",
+      provenanceStatus: "exact",
+      seedPayload: seed,
+    },
+  };
+}
+
+function buildActualV4ReferenceCase(input: {
+  expected: ExpectedV4ReferenceCase;
+  seed: V4ReferenceSeed;
+  result: SuccessfulIntentSession;
+  selectionFallbackUsed: boolean;
+}) {
+  const resolved = resolveAcceptedSeedPayloadForWeek(input.seed, input.expected.week);
+  const resolvedSlot = resolved.slots.find((slot) => slot.slotId === input.expected.slotId);
+  if (!resolvedSlot) {
+    throw new Error(`Missing resolved runtime slot ${input.expected.slotId}`);
+  }
+  const receipt = input.result.selection.sessionDecisionReceipt;
+  if (!receipt) {
+    throw new Error("Missing session decision receipt");
+  }
+  const orderedWorkout = [
+    ...input.result.workout.mainLifts,
+    ...input.result.workout.accessories,
+  ].sort((left, right) => left.orderIndex - right.orderIndex);
+  const prescribedPlacementIds = resolvedSlot.exercises.map((exercise) => exercise.placementId);
+  const allPlacementIds = V4_REFERENCE_PLACEMENT_IDS_BY_SLOT[input.expected.slotId];
+
+  return {
+    week: receipt.cycleContext.weekInMeso,
+    phase: receipt.cycleContext.phase,
+    slotId: receipt.sessionSlot?.slotId,
+    focus: receipt.sessionSlot?.intent,
+    sequenceIndex: receipt.sessionSlot?.sequenceIndex,
+    sequenceLength: receipt.sessionSlot?.sequenceLength,
+    exerciseCount: orderedWorkout.length,
+    exercises: orderedWorkout.map((exercise, index) => ({
+      placementId: resolvedSlot.exercises[index]?.placementId,
+      exerciseId: exercise.exercise.id,
+      setCount: exercise.sets.length,
+      sets: exercise.sets.map((set) => ({
+        reps: set.targetRepRange ?? set.targetReps,
+        targetRpe: set.targetRpe,
+      })),
+      measurement: exercise.measurement,
+    })),
+    omittedPlacementIds: allPlacementIds.filter(
+      (placementId) => !prescribedPlacementIds.includes(placementId),
+    ),
+    provenance: receipt.sessionProvenance?.seedProvenance,
+    composition: {
+      source: receipt.sessionProvenance?.compositionSource,
+      warmup: input.result.workout.warmup,
+      hasWarmupSets: orderedWorkout.some((exercise) => "warmupSets" in exercise),
+      hasHipFlexorPreparation: orderedWorkout.some((exercise) =>
+        /hip[-_ ]flexor/i.test(exercise.exercise.id),
+      ),
+      hasFinisherComposition:
+        "finisher" in input.result || "finisher" in input.result.workout,
+      selectionFallbackUsed: input.selectionFallbackUsed,
+    },
+  };
+}
+
+function assertV4ReferenceCase(
+  actual: ReturnType<typeof buildActualV4ReferenceCase>,
+  expected: ExpectedV4ReferenceCase,
+  label: string,
+) {
+  expect(actual, label).toEqual(expected);
 }
 
 describe("generateSessionFromIntent", () => {
@@ -2432,6 +2696,33 @@ describe("generateSessionFromIntent", () => {
           },
         ],
       },
+      currentSeedRevision: {
+        id: "v4-revision-1",
+        revision: 1,
+        payloadHash: "b".repeat(64),
+        hashAlgorithm: "sha256",
+        provenanceStatus: "exact",
+        seedPayload: {
+          version: 4,
+          source: "custom_hypertrophy_plan_v2",
+          settings: { equipmentProfile: "FULL_GYM", sessionDurationMinutes: 60 },
+          weeks: [1, 2, 3, 4, 5].map((week) => ({
+            week,
+            phase: week === 5 ? "DELOAD" as const : "ACCUMULATION" as const,
+          })),
+          slots: [
+            { slotId: "upper_a", name: "Upper A", focus: "UPPER" as const, rows: [v4Rows[0]!] },
+            { slotId: "lower_a", name: "Lower A", focus: "LOWER" as const, rows: [v4Rows[0]!] },
+            { slotId: "upper_b", name: "Upper B", focus: "UPPER" as const, rows: [v4Rows[2]!] },
+            { slotId: "lower_b", name: "Lower B", focus: "LOWER" as const, rows: v4Rows },
+          ].map((slot) => ({
+            slotId: slot.slotId,
+            name: slot.name,
+            focus: slot.focus,
+            exercises: slot.rows.map((row) => makeV4Exercise(slot.slotId, row)),
+          })),
+        },
+      },
     });
 
     const selectSpy = vi.spyOn(selectionV2, "selectExercisesOptimized");
@@ -2460,11 +2751,175 @@ describe("generateSessionFromIntent", () => {
         setCount: exercise.sets.length,
         section: exercise.isMainLift ? "main" : "accessory",
       })).sort((left, right) => left.orderIndex - right.orderIndex)).toEqual([
-        { exerciseId: "sldl", orderIndex: 0, setCount: 3, section: "main" },
-        { exerciseId: "leg-curl", orderIndex: 1, setCount: 3, section: "accessory" },
-        { exerciseId: "split-squat", orderIndex: 2, setCount: 3, section: "main" },
-        { exerciseId: "calf-raise", orderIndex: 3, setCount: 3, section: "accessory" },
+        { exerciseId: "sldl", orderIndex: 0, setCount: 2, section: "main" },
+        { exerciseId: "leg-curl", orderIndex: 1, setCount: 1, section: "accessory" },
+        { exerciseId: "split-squat", orderIndex: 2, setCount: 4, section: "main" },
+        { exerciseId: "calf-raise", orderIndex: 3, setCount: 2, section: "accessory" },
       ]);
+      const ordered = [...result.workout.mainLifts, ...result.workout.accessories]
+        .sort((left, right) => left.orderIndex - right.orderIndex);
+      expect(ordered[0]!.sets).toEqual([
+        expect.objectContaining({ setIndex: 1, targetReps: 7, targetRpe: 8 }),
+        expect.objectContaining({ setIndex: 2, targetReps: 7, targetRpe: 8 }),
+      ]);
+      expect(ordered[1]!.sets[0]).toMatchObject({
+        targetReps: 10,
+        targetRepRange: { min: 10, max: 12 },
+        targetRpe: 8,
+      });
+      expect(result.workout.warmup).toEqual([]);
+      expect(ordered.every((exercise) => !("warmupSets" in exercise))).toBe(true);
+      expect(result.selection.sessionDecisionReceipt?.sessionProvenance).toEqual({
+        mesocycleId: "meso-1",
+        compositionSource: "persisted_slot_plan_seed",
+        seedProvenance: {
+          revisionId: "v4-revision-1",
+          revision: 1,
+          hash: "b".repeat(64),
+        },
+      });
+    } finally {
+      selectSpy.mockRestore();
+    }
+  });
+
+  it("replays the exact 25-placement V4 reference across all 20 week-slot combinations", async () => {
+    const seed = buildV4CustomPlanReferenceAcceptedSeed();
+    const library = buildV4ReferenceExerciseLibrary(seed);
+    const slotSequenceJson = primeV4ReferenceGeneration(seed, library);
+    const selectSpy = vi.spyOn(selectionV2, "selectExercisesOptimized");
+    try {
+      expect(EXPECTED_V4_REFERENCE_CASES).toHaveLength(20);
+      expect(new Set(EXPECTED_V4_REFERENCE_CASES.map(({ week }) => week))).toEqual(
+        new Set([1, 2, 3, 4, 5]),
+      );
+      expect(new Set(EXPECTED_V4_REFERENCE_CASES.map(({ slotId }) => slotId))).toEqual(
+        new Set(["upper-a", "lower-a", "upper-b", "lower-b"]),
+      );
+      expect(new Set(EXPECTED_V4_REFERENCE_CASES.map(({ week, slotId }) => `${week}:${slotId}`)))
+        .toHaveLength(20);
+      expect(seed.slots.map((slot) => ({
+        slotId: slot.slotId,
+        placementIds: slot.exercises.map((exercise) => exercise.placementId),
+      }))).toEqual(Object.entries(V4_REFERENCE_PLACEMENT_IDS_BY_SLOT).map(
+        ([slotId, placementIds]) => ({ slotId, placementIds }),
+      ));
+
+      for (const expected of EXPECTED_V4_REFERENCE_CASES) {
+        primeV4ReferenceWeek(expected);
+        loadActiveMesocycleMock.mockResolvedValue(
+          buildV4ReferenceMesocycle(expected, seed, slotSequenceJson),
+        );
+        const fallbackCallsBefore = selectSpy.mock.calls.length;
+        const result = await generateSessionFromIntent("user-1", {
+          intent: expected.focus,
+          slotId: expected.slotId,
+        });
+        const label = `week=${expected.week} slot=${expected.slotId}`;
+        expect("error" in result, label).toBe(false);
+        if ("error" in result) continue;
+
+        const actual = buildActualV4ReferenceCase({
+          expected,
+          seed,
+          result,
+          selectionFallbackUsed: selectSpy.mock.calls.length > fallbackCallsBefore,
+        });
+        assertV4ReferenceCase(actual, expected, label);
+      }
+      expect(selectSpy).not.toHaveBeenCalled();
+    } finally {
+      selectSpy.mockRestore();
+    }
+  });
+
+  it("rejects meaningful mutations at the exhaustive V4 reference comparison boundary", async () => {
+    const expected = EXPECTED_V4_REFERENCE_CASES.find(
+      ({ week, slotId }) => week === 5 && slotId === "lower-a",
+    );
+    expect(expected).toBeDefined();
+    if (!expected) return;
+
+    const seed = buildV4CustomPlanReferenceAcceptedSeed();
+    const library = buildV4ReferenceExerciseLibrary(seed);
+    const slotSequenceJson = primeV4ReferenceGeneration(seed, library);
+    primeV4ReferenceWeek(expected);
+    loadActiveMesocycleMock.mockResolvedValue(
+      buildV4ReferenceMesocycle(expected, seed, slotSequenceJson),
+    );
+    const selectSpy = vi.spyOn(selectionV2, "selectExercisesOptimized");
+    try {
+      const fallbackCallsBefore = selectSpy.mock.calls.length;
+      const result = await generateSessionFromIntent("user-1", {
+        intent: expected.focus,
+        slotId: expected.slotId,
+      });
+      expect("error" in result).toBe(false);
+      if ("error" in result) return;
+
+      const validActual = buildActualV4ReferenceCase({
+        expected,
+        seed,
+        result,
+        selectionFallbackUsed: selectSpy.mock.calls.length > fallbackCallsBefore,
+      });
+      assertV4ReferenceCase(validActual, expected, "sentinel control");
+
+      const mutations: Array<{
+        name: string;
+        mutate: (value: typeof validActual) => void;
+      }> = [
+        {
+          name: "set count",
+          mutate: (value) => {
+            value.exercises[0]!.setCount += 1;
+          },
+        },
+        {
+          name: "rep range",
+          mutate: (value) => {
+            const reps = value.exercises[0]!.sets[0]!.reps;
+            if (typeof reps === "object") reps.min += 1;
+          },
+        },
+        {
+          name: "RPE",
+          mutate: (value) => {
+            value.exercises[0]!.sets[0]!.targetRpe! += 0.5;
+          },
+        },
+        {
+          name: "measurement field",
+          mutate: (value) => {
+            value.exercises[0]!.measurement = {
+              profile: "REPS_EXTERNAL_LOAD",
+              loadConvention: "BARBELL_TOTAL",
+              repBasis: "PER_SIDE",
+            };
+          },
+        },
+        {
+          name: "placement identity",
+          mutate: (value) => {
+            value.exercises[0]!.placementId = "mutated-placement";
+          },
+        },
+        {
+          name: "expected omission",
+          mutate: (value) => {
+            value.omittedPlacementIds = value.omittedPlacementIds.slice(1);
+          },
+        },
+      ];
+
+      for (const mutation of mutations) {
+        const mutated = structuredClone(validActual);
+        mutation.mutate(mutated);
+        expect(
+          () => assertV4ReferenceCase(mutated, expected, mutation.name),
+          mutation.name,
+        ).toThrowError();
+      }
     } finally {
       selectSpy.mockRestore();
     }

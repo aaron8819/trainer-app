@@ -452,8 +452,14 @@ describe("parseSlotPlanSeedJson", () => {
     }
     expect(() => parseAcceptedSeedPayload({ version: 4, slots: [] })).toThrowError(
       expect.objectContaining<Partial<AcceptedSeedParseError>>({
-        code: "ACCEPTED_SEED_VERSION_UNSUPPORTED",
+        code: "ACCEPTED_SEED_MALFORMED",
         version: 4,
+      }),
+    );
+    expect(() => parseAcceptedSeedPayload({ version: 5, slots: [] })).toThrowError(
+      expect.objectContaining<Partial<AcceptedSeedParseError>>({
+        code: "ACCEPTED_SEED_VERSION_UNSUPPORTED",
+        version: 5,
       }),
     );
   });

@@ -509,6 +509,7 @@ export const makeHypertrophyPlanReadySchema = z
   .object({
     expectedDraftRevision: z.number().int().min(1),
     warningsConfirmed: z.boolean().default(false),
+    confirmedPreviewHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   })
   .strict();
 

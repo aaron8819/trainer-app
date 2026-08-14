@@ -11,6 +11,7 @@ import {
   type HypertrophyPlanDraftV2,
   type WeeklyPrescriptionV4,
 } from "@/lib/engine/hypertrophy-plan-authoring";
+import { buildV4CustomPlanReferenceAcceptedSeed } from "@/lib/engine/hypertrophy-plan-authoring-v4.fixture";
 import { getMusclePolicyByDisplayName } from "@/lib/engine/muscle-policy";
 
 const originalMeasurementRollout = process.env.TRAINER_EXERCISE_MEASUREMENT_ROLLOUT;
@@ -297,21 +298,16 @@ const REFERENCE_PLAN_EXPECTATIONS: ReferenceSessionExpectation[] = [
 ];
 
 function expectedAcceptedReferencePlan(): AcceptedHypertrophySeedV4 {
-  return structuredClone({
-    version: 4,
-    source: "custom_hypertrophy_plan_v2",
-    settings: { equipmentProfile: "FULL_GYM", sessionDurationMinutes: 60 },
-    weeks: REFERENCE_WEEKS,
-    slots: REFERENCE_PLAN_EXPECTATIONS,
-  });
+  return buildV4CustomPlanReferenceAcceptedSeed();
 }
 
 function expectedExecutableReferencePlan(): ExecutableSeedProjectionV3 {
+  const accepted = expectedAcceptedReferencePlan();
   return structuredClone({
     version: 3,
-    weeks: REFERENCE_WEEKS,
+    weeks: accepted.weeks,
     // Executable V3 intentionally drops authoring-only session name and focus.
-    slots: REFERENCE_PLAN_EXPECTATIONS.map(({ slotId, exercises }) => ({
+    slots: accepted.slots.map(({ slotId, exercises }) => ({
       slotId,
       exercises,
     })),
@@ -850,6 +846,192 @@ describe("custom hypertrophy draft persistence", () => {
     expect(mocks.createRevision).not.toHaveBeenCalled();
   });
 
+  it("rejects a public PATCH-shaped client-introduced measurement before any save write", async () => {
+    const current = weeklyDraft();
+    const submitted = structuredClone(current);
+    submitted.sessions[0]!.exercises[0]!.preservedMeasurement = {
+      exerciseId: "bench",
+      measurement: BARBELL_TOTAL,
+    };
+    mocks.state.draft = { payload: current, revision: 3 };
+    mocks.tx.macroCycle.findFirst.mockResolvedValue({
+      id: "plan-1",
+      hypertrophyDraft: mocks.state.draft,
+      mesocycles: [],
+    });
+
+    await expect(
+      saveHypertrophyPlanDraft({
+        userId: "user-1",
+        planId: "plan-1",
+        expectedRevision: 3,
+        name: "Untrusted snapshot",
+        draft: submitted,
+      }),
+    ).rejects.toMatchObject({
+      code: "PLAN_DRAFT_MEASUREMENT_PROVENANCE_INVALID",
+    });
+    expect(mocks.tx.hypertrophyPlanDraft.updateMany).not.toHaveBeenCalled();
+    expect(mocks.tx.macroCycle.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      name: "modification",
+      mutate: (submitted: HypertrophyPlanDraftV2) => {
+        submitted.sessions[0]!.exercises[0]!.preservedMeasurement = {
+          exerciseId: "bench",
+          measurement: MACHINE_DISPLAYED,
+        };
+      },
+    },
+    {
+      name: "removal",
+      mutate: (submitted: HypertrophyPlanDraftV2) => {
+        delete submitted.sessions[0]!.exercises[0]!.preservedMeasurement;
+      },
+    },
+    {
+      name: "transfer to a replacement exercise",
+      mutate: (submitted: HypertrophyPlanDraftV2) => {
+        const exercise = submitted.sessions[0]!.exercises[0]!;
+        exercise.exerciseId = "curl";
+        exercise.preservedMeasurement = {
+          exerciseId: "curl",
+          measurement: BARBELL_TOTAL,
+        };
+      },
+    },
+  ])("rejects trusted snapshot $name before any save write", async ({ mutate }) => {
+    const current = weeklyDraft();
+    current.sessions[0]!.exercises[0]!.preservedMeasurement = {
+      exerciseId: "bench",
+      measurement: BARBELL_TOTAL,
+    };
+    const submitted = structuredClone(current);
+    mutate(submitted);
+    mocks.state.draft = { payload: current, revision: 3 };
+    mocks.tx.macroCycle.findFirst.mockResolvedValue({
+      id: "plan-1",
+      hypertrophyDraft: mocks.state.draft,
+      mesocycles: [],
+    });
+
+    await expect(
+      saveHypertrophyPlanDraft({
+        userId: "user-1",
+        planId: "plan-1",
+        expectedRevision: 3,
+        name: "Untrusted snapshot edit",
+        draft: submitted,
+      }),
+    ).rejects.toMatchObject({
+      code: "PLAN_DRAFT_MEASUREMENT_PROVENANCE_INVALID",
+    });
+    expect(mocks.tx.hypertrophyPlanDraft.updateMany).not.toHaveBeenCalled();
+    expect(mocks.tx.macroCycle.update).not.toHaveBeenCalled();
+  });
+
+  it("uses current catalog measurement when a copied placement changes exercise", async () => {
+    const current = weeklyDraft();
+    current.sessions[0]!.exercises[0]!.preservedMeasurement = {
+      exerciseId: "bench",
+      measurement: BARBELL_TOTAL,
+    };
+    const submitted = structuredClone(current);
+    const replacement = submitted.sessions[0]!.exercises[0]!;
+    replacement.exerciseId = "curl";
+    delete replacement.preservedMeasurement;
+    mocks.state.draft = { payload: current, revision: 3 };
+    mocks.tx.macroCycle.findFirst.mockResolvedValue({
+      id: "plan-1",
+      hypertrophyDraft: mocks.state.draft,
+      mesocycles: [],
+    });
+    mocks.tx.hypertrophyPlanDraft.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.hypertrophyPlanDraft.findUniqueOrThrow.mockResolvedValue({
+      revision: 4,
+      updatedAt: new Date("2026-08-07T12:00:00.000Z"),
+    });
+
+    const saved = await saveHypertrophyPlanDraft({
+      userId: "user-1",
+      planId: "plan-1",
+      expectedRevision: 3,
+      name: "Replacement",
+      draft: submitted,
+    });
+
+    expect(saved.preview).toMatchObject({
+      status: "ELIGIBLE",
+      normalizedPlan: {
+        slots: [
+          {
+            exercises: [
+              expect.objectContaining({
+                exerciseId: "curl",
+                measurement: MACHINE_DISPLAYED,
+              }),
+            ],
+          },
+          expect.anything(),
+        ],
+      },
+    });
+  });
+
+  it("keeps a server-copied measurement stable across catalog drift", async () => {
+    const current = weeklyDraft();
+    current.sessions[0]!.exercises[0]!.preservedMeasurement = {
+      exerciseId: "bench",
+      measurement: BARBELL_TOTAL,
+    };
+    const submitted = structuredClone(current);
+    mocks.state.draft = { payload: current, revision: 3 };
+    mocks.tx.macroCycle.findFirst.mockResolvedValue({
+      id: "plan-1",
+      hypertrophyDraft: mocks.state.draft,
+      mesocycles: [],
+    });
+    mocks.tx.exercise.findMany.mockResolvedValue(
+      exerciseRows.map((row) =>
+        row.id === "bench"
+          ? {
+              ...row,
+              loadConvention: "MACHINE_DISPLAYED",
+            }
+          : row,
+      ),
+    );
+    mocks.tx.hypertrophyPlanDraft.updateMany.mockResolvedValue({ count: 1 });
+    mocks.tx.hypertrophyPlanDraft.findUniqueOrThrow.mockResolvedValue({
+      revision: 4,
+      updatedAt: new Date("2026-08-07T12:00:00.000Z"),
+    });
+
+    const saved = await saveHypertrophyPlanDraft({
+      userId: "user-1",
+      planId: "plan-1",
+      expectedRevision: 3,
+      name: "Trusted copy",
+      draft: submitted,
+    });
+
+    expect(saved.preview).toMatchObject({
+      status: "ELIGIBLE",
+      normalizedPlan: {
+        slots: [
+          {
+            exercises: [
+              expect.objectContaining({ measurement: BARBELL_TOTAL }),
+            ],
+          },
+          expect.anything(),
+        ],
+      },
+    });
+  });
+
   it("rejects a malformed V4 placement before persistence", async () => {
     const malformed = weeklyDraft();
     const prescription = malformed.sessions[0]!.exercises[0]!.prescriptions[0];
@@ -1000,7 +1182,11 @@ describe("custom hypertrophy draft persistence", () => {
     if (preview.status !== "ELIGIBLE") {
       throw new Error("Reference plan is ineligible");
     }
-    return preview;
+    return {
+      ...preview,
+      draft: candidate,
+      rows: [...resolvedExercises.keys()].map(referenceExerciseRow),
+    };
   }
 
   it("materializes the complete four-day reference plan through the API adapter, recommendation, and both projections", () => {
@@ -1104,7 +1290,7 @@ describe("custom hypertrophy draft persistence", () => {
     }
   });
 
-  it("rejects V4 finalization before accepted-plan or materialization writes", async () => {
+  it("rejects unsupported V4 topology before accepted-plan or materialization writes", async () => {
     mocks.state.draft = { payload: weeklyDraft(), revision: 3 };
     mocks.tx.macroCycle.findFirst.mockResolvedValue({
       id: "plan-1",
@@ -1120,8 +1306,221 @@ describe("custom hypertrophy draft persistence", () => {
         expectedDraftRevision: 3,
         warningsConfirmed: true,
       }),
-    ).rejects.toMatchObject({ code: "PLAN_VERSION_NOT_EXECUTABLE" });
-    expect(mocks.tx.exercise.findMany).not.toHaveBeenCalled();
+    ).rejects.toMatchObject({ code: "PLAN_UNSUPPORTED_TOPOLOGY" });
+    expect(mocks.tx.mesocycle.create).not.toHaveBeenCalled();
+    expect(mocks.createRevision).not.toHaveBeenCalled();
+    expect(mocks.tx.hypertrophyPlanDraft.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.tx.macroCycle.update).not.toHaveBeenCalled();
+  });
+
+  it("atomically accepts the exact five-week reference preview as revision 1", async () => {
+    const fixture = buildReferencePlanPreview();
+    mocks.state.draft = { payload: fixture.draft, revision: 7 };
+    mocks.tx.exercise.findMany.mockResolvedValue(fixture.rows);
+    mocks.tx.macroCycle.findFirst.mockResolvedValue({
+      id: "plan-1",
+      trainingAge: "INTERMEDIATE",
+      hypertrophyDraft: mocks.state.draft,
+      mesocycles: [],
+    });
+
+    await expect(
+      makeHypertrophyPlanReady({
+        userId: "user-1",
+        planId: "plan-1",
+        expectedDraftRevision: 7,
+        warningsConfirmed: true,
+        confirmedPreviewHash: fixture.hash,
+      }),
+    ).resolves.toMatchObject({
+      planId: "plan-1",
+      revisionId: "revision-1",
+    });
+    expect(mocks.state.draft).toBeNull();
+    expect(mocks.state.mesocycles).toHaveLength(1);
+    expect(mocks.state.mesocycles[0]).toMatchObject({
+      durationWeeks: 5,
+      sessionsPerWeek: 4,
+      blocks: { create: [{ durationWeeks: 4 }, { durationWeeks: 1 }] },
+    });
+    expect(mocks.state.revisions).toEqual([
+      expect.objectContaining({
+        seedPayload: expect.objectContaining({
+          version: 4,
+          weeks: REFERENCE_WEEKS,
+          slots: fixture.normalizedPlan.slots,
+        }),
+      }),
+    ]);
+  });
+
+  it("compiles the same trusted copied measurement in preview and finalization after catalog drift", async () => {
+    const reference = buildReferencePlanPreview();
+    const draft = structuredClone(reference.draft);
+    const copied = draft.sessions[0]!.exercises[0]!;
+    copied.preservedMeasurement = {
+      exerciseId: copied.exerciseId,
+      measurement: BARBELL_TOTAL,
+    };
+    const driftedRows = reference.rows.map((row) =>
+      row.id === copied.exerciseId
+        ? { ...row, loadConvention: "MACHINE_DISPLAYED" as const }
+        : row,
+    );
+    const measurementByExerciseId = new Map(
+      driftedRows.map((row) => {
+        const exercise = toAuthoringExercise(row);
+        if (!exercise.measurement) throw new Error(`Missing measurement: ${row.id}`);
+        return [exercise.id, exercise.measurement] as const;
+      }),
+    );
+    const preview = deriveHypertrophyPlanV4Preview({
+      draft,
+      knownExerciseIds: new Set(driftedRows.map((row) => row.id)),
+      measurementByExerciseId,
+    });
+    expect(preview.status).toBe("ELIGIBLE");
+    if (preview.status !== "ELIGIBLE") return;
+    expect(preview.normalizedPlan.slots[0]!.exercises[0]!.measurement)
+      .toEqual(BARBELL_TOTAL);
+
+    mocks.state.draft = { payload: draft, revision: 8 };
+    mocks.tx.exercise.findMany.mockResolvedValue(driftedRows);
+    mocks.tx.macroCycle.findFirst.mockResolvedValue({
+      id: "plan-1",
+      trainingAge: "INTERMEDIATE",
+      hypertrophyDraft: mocks.state.draft,
+      mesocycles: [],
+    });
+
+    await expect(makeHypertrophyPlanReady({
+      userId: "user-1",
+      planId: "plan-1",
+      expectedDraftRevision: 8,
+      warningsConfirmed: true,
+      confirmedPreviewHash: preview.hash,
+    })).resolves.toMatchObject({ revisionId: "revision-1" });
+    expect(mocks.state.revisions).toEqual([
+      expect.objectContaining({
+        seedPayload: expect.objectContaining({
+          slots: preview.normalizedPlan.slots,
+        }),
+      }),
+    ]);
+  });
+
+  it("rejects a stale V4 preview hash without consuming the draft", async () => {
+    const fixture = buildReferencePlanPreview();
+    mocks.state.draft = { payload: fixture.draft, revision: 7 };
+    mocks.tx.exercise.findMany.mockResolvedValue(fixture.rows);
+    mocks.tx.macroCycle.findFirst.mockResolvedValue({
+      id: "plan-1",
+      trainingAge: "INTERMEDIATE",
+      hypertrophyDraft: mocks.state.draft,
+      mesocycles: [],
+    });
+
+    await expect(
+      makeHypertrophyPlanReady({
+        userId: "user-1",
+        planId: "plan-1",
+        expectedDraftRevision: 7,
+        warningsConfirmed: true,
+        confirmedPreviewHash: "0".repeat(64),
+      }),
+    ).rejects.toMatchObject({ code: "PLAN_PREVIEW_HASH_MISMATCH" });
+    expect(mocks.state.draft).not.toBeNull();
+    expect(mocks.state.mesocycles).toHaveLength(0);
+    expect(mocks.state.revisions).toHaveLength(0);
+  });
+
+  it("rolls back V4 mesocycle and revision writes when the final draft CAS misses", async () => {
+    const fixture = buildReferencePlanPreview();
+    const persistedDraft = { payload: fixture.draft, revision: 7 };
+    mocks.state.draft = structuredClone(persistedDraft);
+    mocks.tx.exercise.findMany.mockResolvedValue(fixture.rows);
+    mocks.tx.macroCycle.findFirst.mockResolvedValue({
+      id: "plan-1",
+      trainingAge: "INTERMEDIATE",
+      hypertrophyDraft: mocks.state.draft,
+      mesocycles: [],
+    });
+    mocks.tx.hypertrophyPlanDraft.deleteMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      makeHypertrophyPlanReady({
+        userId: "user-1",
+        planId: "plan-1",
+        expectedDraftRevision: 7,
+        warningsConfirmed: true,
+        confirmedPreviewHash: fixture.hash,
+      }),
+    ).rejects.toMatchObject({ code: "PLAN_MUTATION_CONFLICT" });
+    expect(mocks.state.draft).toEqual(persistedDraft);
+    expect(mocks.state.mesocycles).toHaveLength(0);
+    expect(mocks.state.revisions).toHaveLength(0);
+    expect(mocks.state.planUpdates).toHaveLength(0);
+  });
+
+  it("revalidates current limitations and blocks V4 acceptance before writes", async () => {
+    const fixture = buildReferencePlanPreview();
+    mocks.state.draft = { payload: fixture.draft, revision: 7 };
+    mocks.tx.exercise.findMany.mockResolvedValue(fixture.rows.map((row, index) =>
+      index === 0 ? { ...row, contraindications: { shoulder: true } } : row,
+    ));
+    mocks.tx.injury.findMany.mockResolvedValue([{ bodyPart: "shoulder" }]);
+    mocks.tx.macroCycle.findFirst.mockResolvedValue({
+      id: "plan-1",
+      trainingAge: "INTERMEDIATE",
+      hypertrophyDraft: mocks.state.draft,
+      mesocycles: [],
+    });
+
+    await expect(
+      makeHypertrophyPlanReady({
+        userId: "user-1",
+        planId: "plan-1",
+        expectedDraftRevision: 7,
+        warningsConfirmed: true,
+        confirmedPreviewHash: fixture.hash,
+      }),
+    ).rejects.toMatchObject({ code: "PLAN_DRAFT_BLOCKED" });
+    expect(mocks.state.mesocycles).toHaveLength(0);
+    expect(mocks.state.revisions).toHaveLength(0);
+    expect(mocks.tx.hypertrophyPlanDraft.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("fails V4 finalization closed on an unrecognized active limitation", async () => {
+    const fixture = buildReferencePlanPreview();
+    const persistedDraft = { payload: fixture.draft, revision: 7 };
+    mocks.state.draft = structuredClone(persistedDraft);
+    mocks.tx.exercise.findMany.mockResolvedValue(fixture.rows);
+    mocks.tx.injury.findMany.mockResolvedValue([
+      { bodyPart: "unsupported active area" },
+    ]);
+    mocks.tx.macroCycle.findFirst.mockResolvedValue({
+      id: "plan-1",
+      trainingAge: "INTERMEDIATE",
+      hypertrophyDraft: mocks.state.draft,
+      mesocycles: [],
+    });
+
+    await expect(
+      makeHypertrophyPlanReady({
+        userId: "user-1",
+        planId: "plan-1",
+        expectedDraftRevision: 7,
+        warningsConfirmed: true,
+        confirmedPreviewHash: fixture.hash,
+      }),
+    ).rejects.toMatchObject({
+      code: "PLAN_LIMITATION_UNRECOGNIZED",
+      details: { scope: "custom_hypertrophy" },
+    });
+    expect(mocks.state.draft).toEqual(persistedDraft);
+    expect(mocks.state.mesocycles).toEqual([]);
+    expect(mocks.state.revisions).toEqual([]);
+    expect(mocks.state.planUpdates).toEqual([]);
     expect(mocks.tx.mesocycle.create).not.toHaveBeenCalled();
     expect(mocks.createRevision).not.toHaveBeenCalled();
     expect(mocks.tx.hypertrophyPlanDraft.deleteMany).not.toHaveBeenCalled();

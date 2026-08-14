@@ -39,6 +39,95 @@ function makeMapped(slotPlanSeedJson: unknown): MappedGenerationContext {
 }
 
 describe("resolveRequiredSeededSlotPlan", () => {
+  it("prefers the current V4 revision and resolves the lifecycle week exactly", () => {
+    const prescriptions = [1, 2, 3, 4, 5].map((week) => ({
+      week,
+      status: "PRESCRIBE" as const,
+      setCount: week === 4 ? 2 : 3,
+      reps: week === 4
+        ? { kind: "EXACT" as const, reps: 7 }
+        : { kind: "RANGE" as const, min: 8, max: 10 },
+      rir: { kind: "TARGET_RANGE" as const, min: 1, max: 2 },
+    }));
+    const v4 = {
+      version: 4 as const,
+      source: "custom_hypertrophy_plan_v2" as const,
+      settings: { equipmentProfile: "FULL_GYM" as const, sessionDurationMinutes: 60 as const },
+      weeks: [1, 2, 3, 4, 5].map((week) => ({
+        week,
+        phase: week === 5 ? "DELOAD" as const : "ACCUMULATION" as const,
+      })),
+      slots: [
+        { slotId: "upper_a", name: "Upper", focus: "UPPER" as const, exerciseId: "bench" },
+        { slotId: "lower_a", name: "Lower", focus: "LOWER" as const, exerciseId: "row" },
+      ].map((slot) => ({
+        slotId: slot.slotId,
+        name: slot.name,
+        focus: slot.focus,
+        exercises: [{
+          placementId: `${slot.slotId}-placement`,
+          exerciseId: slot.exerciseId,
+          role: "CORE_COMPOUND" as const,
+          intent: {
+            userRole: "PRIMARY_LIFT" as const,
+            target: {
+              kind: "movement_pattern" as const,
+              movementPattern: slot.focus === "UPPER" ? "horizontal_push" as const : "hinge" as const,
+            },
+          },
+          measurement: {
+            profile: "REPS_EXTERNAL_LOAD" as const,
+            loadConvention: "BARBELL_TOTAL" as const,
+            repBasis: "TOTAL" as const,
+          },
+          prescriptions,
+        }],
+      })),
+    };
+    const mapped = makeMapped({
+      version: 1,
+      slots: [{
+        slotId: "upper_a",
+        exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND", setCount: 9 }],
+      }],
+    });
+    mapped.lifecycleWeek = 4;
+    mapped.activeMesocycle!.currentSeedRevision = { seedPayload: v4 } as never;
+    mapped.activeMesocycle!.slotSequenceJson = {
+      version: 1,
+      source: "custom_hypertrophy_plan_v2",
+      sequenceMode: "ordered_flexible",
+      slots: [
+        { slotId: "upper_a", intent: "UPPER" },
+        { slotId: "lower_a", intent: "LOWER" },
+      ],
+    };
+    mapped.exerciseLibrary.push({
+      ...mapped.exerciseLibrary[0]!,
+      id: "row",
+      name: "Barbell Row",
+    });
+
+    const resolved = resolveRequiredSeededSlotPlan({
+      mapped,
+      sessionIntent: "upper",
+      slotId: "upper_a",
+    });
+
+    expect(resolved).toMatchObject({
+      slotId: "upper_a",
+      hasExactWeeklyPrescriptions: true,
+      setCountOverrides: { bench: 2 },
+      exercises: [{
+        placementId: "upper_a-placement",
+        exerciseId: "bench",
+        setCount: 2,
+        reps: { kind: "EXACT", reps: 7 },
+        targetRpe: 8.5,
+      }],
+    });
+  });
+
   it("serializes acceptedPlannerIntent only when explicitly provided", () => {
     const seedWithoutMetadata = buildMesocycleSlotPlanSeed({
       slotSequence: {

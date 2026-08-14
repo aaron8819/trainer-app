@@ -28,6 +28,7 @@ import { createInitialAcceptedSeedRevisionInTransaction } from "./mesocycle-seed
 import {
   parseAcceptedSeedPayload,
   parseSlotPlanSeedJson,
+  resolveAcceptedSeedPayloadForWeek,
 } from "./slot-plan-seed-parser";
 import { strengthPlanConfigurationSchema } from "@/lib/validation";
 import type {
@@ -63,10 +64,8 @@ type PlanLifecycleRow = {
 
 function hasEditableCustomHypertrophySeed(value: unknown): boolean {
   try {
-    return (
-      parseAcceptedSeedPayload(value).acceptedSeed?.source ===
-      "custom_hypertrophy_plan_v1"
-    );
+    const source = parseAcceptedSeedPayload(value).acceptedSeed?.source;
+    return source === "custom_hypertrophy_plan_v1" || source === "custom_hypertrophy_plan_v2";
   } catch {
     return false;
   }
@@ -373,7 +372,7 @@ function readStrengthReview(input: {
         exerciseId: exercise.exerciseId,
         name,
         role: exercise.role,
-        setCount: exercise.setCount,
+        setCount: exercise.setCount!,
       });
     }
     seedBySlot.set(slot.slotId, exercises);
@@ -424,8 +423,12 @@ function readCustomHypertrophyReview(input: {
   exerciseNameById: ReadonlyMap<string, string>;
 }): Pick<PlanReview, "strengthConfiguration" | "weeklyStructure"> {
   let accepted;
+  let reviewSeed;
   try {
     accepted = parseAcceptedSeedPayload(input.acceptedSeedPayload).acceptedSeed;
+    reviewSeed = accepted?.version === 4
+      ? resolveAcceptedSeedPayloadForWeek(input.acceptedSeedPayload, 1)
+      : parseAcceptedSeedPayload(input.acceptedSeedPayload);
   } catch {
     return { strengthConfiguration: null, weeklyStructure: [] };
   }
@@ -434,19 +437,19 @@ function readCustomHypertrophyReview(input: {
   }
   return {
     strengthConfiguration: null,
-    weeklyStructure: accepted.slots.map((slot) => {
+    weeklyStructure: reviewSeed.slots.map((slot, slotIndex) => {
       const exercises = slot.exercises.map((exercise) => ({
         exerciseId: exercise.exerciseId,
         name:
           input.exerciseNameById.get(exercise.exerciseId) ??
           "Unavailable exercise",
         role: exercise.role,
-        setCount: exercise.setCount,
+        setCount: exercise.setCount!,
       }));
       return {
         slotId: slot.slotId,
-        label: slot.name,
-        intent: slot.focus,
+        label: accepted.slots[slotIndex]?.name ?? slot.slotId,
+        intent: accepted.slots[slotIndex]?.focus ?? "FULL_BODY",
         estimatedMinutes: null,
         primaryLifts: exercises.filter(
           (exercise) => exercise.role === "CORE_COMPOUND",

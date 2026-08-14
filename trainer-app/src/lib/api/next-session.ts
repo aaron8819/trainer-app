@@ -21,6 +21,7 @@ import type { SessionSlotSnapshot } from "@/lib/evidence/types";
 import {
   parseAcceptedSeedPayload,
   parseSlotPlanSeedJson,
+  resolveAcceptedSeedPayloadForWeek,
 } from "./slot-plan-seed-parser";
 import { normalizeAcceptedSeedPayload } from "./mesocycle-seed-revision";
 
@@ -366,12 +367,24 @@ export function resolveMaterializedSessionIdentity(input: {
 function readSeedSlotExercisePlan(input: {
   slotPlanSeedJson: unknown;
   slotId?: string | null;
+  week?: number | null;
 }): PlannedIncompleteExercise[] | null {
   if (!input.slotId) {
     return null;
   }
 
-  const seed = parseSlotPlanSeedJson(input.slotPlanSeedJson);
+  let seed;
+  try {
+    seed = input.week != null &&
+      input.slotPlanSeedJson != null &&
+      typeof input.slotPlanSeedJson === "object" &&
+      !Array.isArray(input.slotPlanSeedJson) &&
+      (input.slotPlanSeedJson as { version?: unknown }).version === 4
+      ? resolveAcceptedSeedPayloadForWeek(input.slotPlanSeedJson, input.week)
+      : parseSlotPlanSeedJson(input.slotPlanSeedJson);
+  } catch {
+    return null;
+  }
   const slot = seed?.slots.find((candidate) => candidate.slotId === input.slotId);
   if (!slot || slot.exercises.length === 0) {
     return null;
@@ -400,10 +413,12 @@ function plannedExercisesMatchSeed(input: {
   plannedExercises?: PlannedIncompleteExercise[];
   slotPlanSeedJson: unknown;
   slotId?: string | null;
+  week?: number | null;
 }): boolean {
   const seedExercises = readSeedSlotExercisePlan({
     slotPlanSeedJson: input.slotPlanSeedJson,
     slotId: input.slotId,
+    week: input.week,
   });
   const plannedExercises = input.plannedExercises ?? [];
 
@@ -474,6 +489,7 @@ function classifySelectedIncompleteWorkout(input: {
     plannedExercises: input.workout.plannedExercises,
     slotPlanSeedJson: input.activeMesocycleSlotPlanSeedJson,
     slotId: slot?.slotId,
+    week: input.workout.mesocycleWeekSnapshot ?? derived?.week,
   });
   const hasNoLoggedSets =
     (input.workout.performedSetLogCount ?? 0) === 0 &&

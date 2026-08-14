@@ -15,6 +15,7 @@ import {
   planMutationSchema,
 } from "@/lib/validation";
 import { isCustomHypertrophyPlanRolloutEnabled } from "@/lib/operations/custom-hypertrophy-plan-rollout";
+import { customHypertrophyPlanRolloutUnavailableResponse } from "@/lib/operations/custom-hypertrophy-plan-rollout-http";
 
 export async function POST(
   request: Request,
@@ -27,28 +28,32 @@ export async function POST(
   if (paused) return paused;
 
   const { id } = await context.params;
-  const readOnlyOwner = await findOwnerReadOnly();
-  try {
-    if (readOnlyOwner) {
-      await assertPlanVersionFinalizable({
-        userId: readOnlyOwner.id,
-        planId: id,
-      });
-    }
-  } catch (error) {
-    const response = planManagementErrorResponse(error);
-    if (response) return response;
-    throw error;
-  }
-
   const body = await request.json().catch(() => null);
   const customEnabled = isCustomHypertrophyPlanRolloutEnabled();
-  const isCustomRequest =
-    customEnabled &&
+  const hasCustomShape =
     body != null &&
     typeof body === "object" &&
     !Array.isArray(body) &&
     "expectedDraftRevision" in body;
+  if (hasCustomShape && !customEnabled) {
+    return customHypertrophyPlanRolloutUnavailableResponse()!;
+  }
+  const isCustomRequest = customEnabled && hasCustomShape;
+  if (!isCustomRequest) {
+    const readOnlyOwner = await findOwnerReadOnly();
+    try {
+      if (readOnlyOwner) {
+        await assertPlanVersionFinalizable({
+          userId: readOnlyOwner.id,
+          planId: id,
+        });
+      }
+    } catch (error) {
+      const response = planManagementErrorResponse(error);
+      if (response) return response;
+      throw error;
+    }
+  }
   const parsed = (isCustomRequest
     ? makeHypertrophyPlanReadySchema
     : planMutationSchema

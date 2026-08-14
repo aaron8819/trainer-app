@@ -110,9 +110,12 @@ export function normalizeAcceptedSeedPayload(seed: unknown): {
   executablePayload: Prisma.InputJsonValue;
   hash: string;
   hashAlgorithm: typeof SEED_PAYLOAD_HASH_ALGORITHM;
-  payloadVersion: 1 | 2 | 3;
+  payloadVersion: 1 | 2 | 3 | 4;
 } {
   const parsed = parseAcceptedSeedPayload(seed);
+  if (parsed.acceptedSeed?.version === 4) {
+    return normalizeAcceptedHypertrophySeedV4(parsed.acceptedSeed);
+  }
   if (parsed.acceptedSeed?.version === 3) {
     const canonicalPayload = parsed.acceptedSeed;
     const executablePayload = projectExecutableSeedV3(canonicalPayload);
@@ -302,7 +305,11 @@ export async function createCorrectiveSeedRevisionInTransaction(
   }
 
   const currentNormalized = normalizeAcceptedSeedPayload(current.seedPayload);
-  if (currentNormalized.payloadVersion === 2 || currentNormalized.payloadVersion === 3) {
+  if (
+    currentNormalized.payloadVersion === 2 ||
+    currentNormalized.payloadVersion === 3 ||
+    currentNormalized.payloadVersion === 4
+  ) {
     if (normalized.payloadVersion !== currentNormalized.payloadVersion) {
       throw new Error("ACCEPTED_SEED_CORRECTION_INTENT_REQUIRED");
     }

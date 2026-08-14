@@ -245,7 +245,7 @@ describe("mesocycle-lifecycle", () => {
     expect(mesocycle?.slotPlanSeedJson).not.toEqual(compatibilitySeed);
   });
 
-  it("preserves the accepted V2 envelope and projects only accepted V3 for runtime", async () => {
+  it("preserves accepted V2/V4 envelopes and projects only accepted V3 for runtime", async () => {
     const intent = {
       userRole: "PRIMARY_LIFT",
       target: { kind: "movement_pattern", movementPattern: "squat" },
@@ -318,6 +318,44 @@ describe("mesocycle-lifecycle", () => {
         ],
       })),
     });
+
+    const acceptedV4 = {
+      version: 4,
+      source: "custom_hypertrophy_plan_v2",
+      settings: acceptedV2.settings,
+      weeks: [{ week: 1, phase: "ACCUMULATION" }],
+      slots: acceptedV3.slots.map((slot) => ({
+        slotId: slot.slotId,
+        name: slot.name,
+        focus: slot.focus,
+        exercises: slot.exercises.map((exercise) => ({
+          placementId: `${slot.slotId}-${exercise.exerciseId}`,
+          exerciseId: exercise.exerciseId,
+          role: exercise.role,
+          intent: exercise.intent,
+          measurement: exercise.measurement,
+          prescriptions: [{
+            week: 1,
+            status: "PRESCRIBE",
+            setCount: exercise.setCount,
+            reps: { kind: "RANGE", min: 6, max: 8 },
+            rir: { kind: "TARGET_RANGE", min: 2, max: 3 },
+          }],
+        })),
+      })),
+    };
+    mocks.resolveActivePlanContext.mockResolvedValue({
+      status: "READY",
+      activeMesocycle: {
+        id: "hypertrophy-meso",
+        slotPlanSeedJson: { version: 1, slots: [] },
+        currentSeedRevision: { seedPayload: acceptedV4 },
+      },
+    });
+
+    expect((await loadActiveMesocycle("user-1"))?.slotPlanSeedJson).toEqual(
+      acceptedV4,
+    );
   });
 
   it.each([

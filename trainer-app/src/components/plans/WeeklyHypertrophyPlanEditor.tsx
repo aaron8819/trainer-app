@@ -248,6 +248,7 @@ export function WeeklyHypertrophyPlanEditor({
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [leaveState, setLeaveState] = useState<LeaveState>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [finalizing, setFinalizing] = useState(false);
   const [invalidFields, setInvalidFields] = useState<Set<string>>(new Set());
   const [weekCountInput, setWeekCountInput] = useState(
     String(
@@ -549,6 +550,52 @@ export function WeeklyHypertrophyPlanEditor({
 
   const previewCurrent =
     !unsaved && invalidFieldCount === 0 && displayedSaveState === "saved";
+  const supportedTopology =
+    draft.sessions.length === 4 &&
+    draft.sessions.every((entry) => entry.exercises.length > 0) &&
+    draft.weeks.length === 5 &&
+    draft.weeks.every((week, index) =>
+      week.week === index + 1 &&
+      week.phase === (index === 4 ? "DELOAD" : "ACCUMULATION"),
+    );
+
+  const finalize = async (warningsConfirmed = false): Promise<void> => {
+    if (!previewCurrent || preview.status !== "ELIGIBLE" || !supportedTopology) return;
+    setFinalizing(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/plans/${initialData.planId}/finalize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expectedDraftRevision: revision,
+          warningsConfirmed,
+          confirmedPreviewHash: preview.hash,
+        }),
+      });
+      const body = await responseBody(response);
+      if (
+        !response.ok &&
+        body.code === "PLAN_WARNING_CONFIRMATION_REQUIRED" &&
+        !warningsConfirmed &&
+        window.confirm("This plan has safety or coverage warnings. Finalize it anyway?")
+      ) {
+        setFinalizing(false);
+        await finalize(true);
+        return;
+      }
+      if (!response.ok) {
+        setError(body.error ?? "Could not finalize the weekly plan.");
+        return;
+      }
+      router.push("/plans");
+      router.refresh();
+    } catch {
+      setError("Could not finalize the weekly plan.");
+    } finally {
+      setFinalizing(false);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
@@ -587,7 +634,7 @@ export function WeeklyHypertrophyPlanEditor({
           </div>
         </div>
         <p className="mt-2 text-sm text-slate-600">
-          Draft and preview only. Weekly plans cannot be finalized, activated, or used for workouts.
+          The supported four-session, five-week profile can be finalized after its saved preview is confirmed.
         </p>
         <div className="mt-3 flex gap-2 overflow-x-auto pb-1 lg:hidden">
           {draft.sessions.map((entry) => (
@@ -1093,6 +1140,19 @@ export function WeeklyHypertrophyPlanEditor({
               <p className="break-all text-[11px] text-slate-500">
                 SHA-256 {preview.hash}
               </p>
+              <Button
+                className="w-full"
+                size="touch"
+                disabled={!supportedTopology || finalizing}
+                onClick={() => void finalize()}
+              >
+                {finalizing ? "Finalizing…" : "Finalize plan"}
+              </Button>
+              {!supportedTopology ? (
+                <p className="text-xs text-amber-800">
+                  Finalization currently supports exactly four sessions, four accumulation weeks, and one final deload week.
+                </p>
+              ) : null}
             </div>
           )}
         </aside>

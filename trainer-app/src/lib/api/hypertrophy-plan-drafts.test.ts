@@ -1000,7 +1000,11 @@ describe("custom hypertrophy draft persistence", () => {
     if (preview.status !== "ELIGIBLE") {
       throw new Error("Reference plan is ineligible");
     }
-    return preview;
+    return {
+      ...preview,
+      draft: candidate,
+      rows: [...resolvedExercises.keys()].map(referenceExerciseRow),
+    };
   }
 
   it("materializes the complete four-day reference plan through the API adapter, recommendation, and both projections", () => {
@@ -1104,7 +1108,7 @@ describe("custom hypertrophy draft persistence", () => {
     }
   });
 
-  it("rejects V4 finalization before accepted-plan or materialization writes", async () => {
+  it("rejects unsupported V4 topology before accepted-plan or materialization writes", async () => {
     mocks.state.draft = { payload: weeklyDraft(), revision: 3 };
     mocks.tx.macroCycle.findFirst.mockResolvedValue({
       id: "plan-1",
@@ -1120,12 +1124,133 @@ describe("custom hypertrophy draft persistence", () => {
         expectedDraftRevision: 3,
         warningsConfirmed: true,
       }),
-    ).rejects.toMatchObject({ code: "PLAN_VERSION_NOT_EXECUTABLE" });
-    expect(mocks.tx.exercise.findMany).not.toHaveBeenCalled();
+    ).rejects.toMatchObject({ code: "PLAN_UNSUPPORTED_TOPOLOGY" });
     expect(mocks.tx.mesocycle.create).not.toHaveBeenCalled();
     expect(mocks.createRevision).not.toHaveBeenCalled();
     expect(mocks.tx.hypertrophyPlanDraft.deleteMany).not.toHaveBeenCalled();
     expect(mocks.tx.macroCycle.update).not.toHaveBeenCalled();
+  });
+
+  it("atomically accepts the exact five-week reference preview as revision 1", async () => {
+    const fixture = buildReferencePlanPreview();
+    mocks.state.draft = { payload: fixture.draft, revision: 7 };
+    mocks.tx.exercise.findMany.mockResolvedValue(fixture.rows);
+    mocks.tx.macroCycle.findFirst.mockResolvedValue({
+      id: "plan-1",
+      trainingAge: "INTERMEDIATE",
+      hypertrophyDraft: mocks.state.draft,
+      mesocycles: [],
+    });
+
+    await expect(
+      makeHypertrophyPlanReady({
+        userId: "user-1",
+        planId: "plan-1",
+        expectedDraftRevision: 7,
+        warningsConfirmed: true,
+        confirmedPreviewHash: fixture.hash,
+      }),
+    ).resolves.toMatchObject({
+      planId: "plan-1",
+      revisionId: "revision-1",
+    });
+    expect(mocks.state.draft).toBeNull();
+    expect(mocks.state.mesocycles).toHaveLength(1);
+    expect(mocks.state.mesocycles[0]).toMatchObject({
+      durationWeeks: 5,
+      sessionsPerWeek: 4,
+      blocks: { create: [{ durationWeeks: 4 }, { durationWeeks: 1 }] },
+    });
+    expect(mocks.state.revisions).toEqual([
+      expect.objectContaining({
+        seedPayload: expect.objectContaining({
+          version: 4,
+          weeks: REFERENCE_WEEKS,
+          slots: fixture.normalizedPlan.slots,
+        }),
+      }),
+    ]);
+  });
+
+  it("rejects a stale V4 preview hash without consuming the draft", async () => {
+    const fixture = buildReferencePlanPreview();
+    mocks.state.draft = { payload: fixture.draft, revision: 7 };
+    mocks.tx.exercise.findMany.mockResolvedValue(fixture.rows);
+    mocks.tx.macroCycle.findFirst.mockResolvedValue({
+      id: "plan-1",
+      trainingAge: "INTERMEDIATE",
+      hypertrophyDraft: mocks.state.draft,
+      mesocycles: [],
+    });
+
+    await expect(
+      makeHypertrophyPlanReady({
+        userId: "user-1",
+        planId: "plan-1",
+        expectedDraftRevision: 7,
+        warningsConfirmed: true,
+        confirmedPreviewHash: "0".repeat(64),
+      }),
+    ).rejects.toMatchObject({ code: "PLAN_PREVIEW_HASH_MISMATCH" });
+    expect(mocks.state.draft).not.toBeNull();
+    expect(mocks.state.mesocycles).toHaveLength(0);
+    expect(mocks.state.revisions).toHaveLength(0);
+  });
+
+  it("rolls back V4 mesocycle and revision writes when the final draft CAS misses", async () => {
+    const fixture = buildReferencePlanPreview();
+    const persistedDraft = { payload: fixture.draft, revision: 7 };
+    mocks.state.draft = structuredClone(persistedDraft);
+    mocks.tx.exercise.findMany.mockResolvedValue(fixture.rows);
+    mocks.tx.macroCycle.findFirst.mockResolvedValue({
+      id: "plan-1",
+      trainingAge: "INTERMEDIATE",
+      hypertrophyDraft: mocks.state.draft,
+      mesocycles: [],
+    });
+    mocks.tx.hypertrophyPlanDraft.deleteMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      makeHypertrophyPlanReady({
+        userId: "user-1",
+        planId: "plan-1",
+        expectedDraftRevision: 7,
+        warningsConfirmed: true,
+        confirmedPreviewHash: fixture.hash,
+      }),
+    ).rejects.toMatchObject({ code: "PLAN_MUTATION_CONFLICT" });
+    expect(mocks.state.draft).toEqual(persistedDraft);
+    expect(mocks.state.mesocycles).toHaveLength(0);
+    expect(mocks.state.revisions).toHaveLength(0);
+    expect(mocks.state.planUpdates).toHaveLength(0);
+  });
+
+  it("revalidates current limitations and blocks V4 acceptance before writes", async () => {
+    const fixture = buildReferencePlanPreview();
+    mocks.state.draft = { payload: fixture.draft, revision: 7 };
+    mocks.tx.exercise.findMany.mockResolvedValue(fixture.rows.map((row, index) =>
+      index === 0 ? { ...row, contraindications: { shoulder: true } } : row,
+    ));
+    mocks.tx.injury.findMany.mockResolvedValue([{ bodyPart: "shoulder" }]);
+    mocks.tx.macroCycle.findFirst.mockResolvedValue({
+      id: "plan-1",
+      trainingAge: "INTERMEDIATE",
+      hypertrophyDraft: mocks.state.draft,
+      mesocycles: [],
+    });
+
+    await expect(
+      makeHypertrophyPlanReady({
+        userId: "user-1",
+        planId: "plan-1",
+        expectedDraftRevision: 7,
+        warningsConfirmed: true,
+        confirmedPreviewHash: fixture.hash,
+      }),
+    ).rejects.toMatchObject({ code: "PLAN_DRAFT_BLOCKED" });
+    expect(mocks.state.mesocycles).toHaveLength(0);
+    expect(mocks.state.revisions).toHaveLength(0);
+    expect(mocks.tx.hypertrophyPlanDraft.deleteMany).not.toHaveBeenCalled();
   });
 
   it("preserves the low-axial semantic through draft validation and autosave", async () => {

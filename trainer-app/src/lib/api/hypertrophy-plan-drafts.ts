@@ -19,6 +19,7 @@ import {
   compileAcceptedHypertrophySeed,
   compileAcceptedHypertrophySeedV3,
   compileAcceptedHypertrophySeedV4,
+  copyAcceptedHypertrophySeedV4ToDraft,
   equipmentForCustomHypertrophyProfile,
   evaluateHypertrophyPlanHealth,
   getHypertrophyAuthoringStimulus,
@@ -635,11 +636,89 @@ function splitTypeFromProjection(value: unknown): SplitType {
     : SplitType.CUSTOM;
 }
 
+function assertSupportedV4Topology(draft: HypertrophyPlanDraftV2): void {
+  const supportedWeeks = [
+    "1:ACCUMULATION",
+    "2:ACCUMULATION",
+    "3:ACCUMULATION",
+    "4:ACCUMULATION",
+    "5:DELOAD",
+  ];
+  const actualWeeks = draft.weeks.map((week) => `${week.week}:${week.phase}`);
+  if (
+    draft.sessions.length !== 4 ||
+    draft.sessions.some((session) => session.exercises.length === 0) ||
+    draft.weeks.some((week) =>
+      draft.sessions.some((session) =>
+        session.exercises.every((exercise) =>
+          exercise.prescriptions.find((entry) => entry.week === week.week)
+            ?.status === "OMIT",
+        ),
+      ),
+    ) ||
+    actualWeeks.length !== supportedWeeks.length ||
+    actualWeeks.some((week, index) => week !== supportedWeeks[index])
+  ) {
+    throw new PlanManagementError("PLAN_UNSUPPORTED_TOPOLOGY");
+  }
+}
+
+function projectV4DraftWeekToHealthDraft(
+  draft: HypertrophyPlanDraftV2,
+  week: number,
+): HypertrophyPlanDraftV1 {
+  return parseHypertrophyPlanDraft({
+    version: 1,
+    settings: draft.settings,
+    sessions: draft.sessions.map((session) => ({
+      slotId: session.slotId,
+      name: session.name,
+      focus: session.focus,
+      exercises: session.exercises.flatMap((exercise) => {
+        const prescription = exercise.prescriptions.find(
+          (entry) => entry.week === week,
+        );
+        if (!prescription || prescription.status === "OMIT") return [];
+        return [{
+          exerciseId: exercise.exerciseId,
+          workingSets: prescription.setCount,
+          intent: exercise.intent,
+        }];
+      }),
+    })),
+  });
+}
+
+function evaluateV4Health(input: {
+  draft: HypertrophyPlanDraftV2;
+  exercises: HypertrophyAuthoringExercise[];
+  limitationKeys: string[];
+}): HypertrophyPlanHealth {
+  const results = input.draft.weeks.map((week) =>
+    evaluateHypertrophyPlanHealth({
+      draft: projectV4DraftWeekToHealthDraft(input.draft, week.week),
+      exercises: input.exercises,
+      limitationKeys: input.limitationKeys,
+    }),
+  );
+  const unique = <T extends { code: string; message: string }>(entries: T[]) =>
+    Array.from(
+      new Map(entries.map((entry) => [`${entry.code}:${entry.message}`, entry])).values(),
+    );
+  return {
+    blockers: unique(results.flatMap((result) => result.blockers)),
+    warnings: unique(results.flatMap((result) => result.warnings)),
+    muscles: results[0]?.muscles ?? [],
+    sessions: results[0]?.sessions ?? [],
+  };
+}
+
 export async function makeHypertrophyPlanReady(input: {
   userId: string;
   planId: string;
   expectedDraftRevision: number;
   warningsConfirmed: boolean;
+  confirmedPreviewHash?: string;
 }): Promise<{ planId: string; mesocycleId: string; revisionId: string }> {
   try {
     return await prisma.$transaction(
@@ -674,23 +753,22 @@ export async function makeHypertrophyPlanReady(input: {
         if (plan.mesocycles.length !== 0) {
           throw new PlanManagementError("PLAN_NOT_PREPARING");
         }
-        if (
-          isRecord(plan.hypertrophyDraft.payload) &&
-          plan.hypertrophyDraft.payload.version === 2
-        ) {
-          throw new PlanManagementError("PLAN_VERSION_NOT_EXECUTABLE");
-        }
-
         const [rows, limitationKeys] = await Promise.all([
           loadExerciseRows(tx),
           loadLimitations(tx, input.userId),
         ]);
-        const draft = parseHypertrophyPlanDraft(plan.hypertrophyDraft.payload);
-        const health = evaluateHypertrophyPlanHealth({
-          draft,
-          exercises: rows.map((row) => toAuthoringExercise(row)),
-          limitationKeys,
-        });
+        const draft = parsePersistedHypertrophyPlanDraft(
+          plan.hypertrophyDraft.payload,
+        );
+        if (draft.version === 2) assertSupportedV4Topology(draft);
+        const exercises = rows.map((row) => toAuthoringExercise(row));
+        const health = draft.version === 2
+          ? evaluateV4Health({ draft, exercises, limitationKeys })
+          : evaluateHypertrophyPlanHealth({
+              draft,
+              exercises,
+              limitationKeys,
+            });
         if (health.blockers.length > 0) {
           throw new PlanManagementError("PLAN_DRAFT_BLOCKED", {
             blockerCount: String(health.blockers.length),
@@ -714,10 +792,29 @@ export async function makeHypertrophyPlanReady(input: {
             measurementByExerciseId.has(exercise.exerciseId),
           ),
         );
-        const acceptedSeed =
-          isExerciseMeasurementRolloutEnabled() && allSelectedExercisesClassified
-            ? compileAcceptedHypertrophySeedV3({ draft, measurementByExerciseId })
-            : compileAcceptedHypertrophySeed(draft);
+        let acceptedSeed;
+        if (draft.version === 2) {
+          const preview = deriveHypertrophyPlanV4Preview({
+            draft,
+            knownExerciseIds: new Set(rows.map((row) => row.id)),
+            measurementByExerciseId,
+          });
+          if (preview.status !== "ELIGIBLE") {
+            throw new PlanManagementError("PLAN_DRAFT_BLOCKED", {
+              blockerCount: String(preview.reasons.length),
+              firstBlocker: preview.reasons[0]?.message ?? null,
+            });
+          }
+          if (!input.confirmedPreviewHash || input.confirmedPreviewHash !== preview.hash) {
+            throw new PlanManagementError("PLAN_PREVIEW_HASH_MISMATCH");
+          }
+          acceptedSeed = preview.normalizedPlan;
+        } else {
+          acceptedSeed =
+            isExerciseMeasurementRolloutEnabled() && allSelectedExercisesClassified
+              ? compileAcceptedHypertrophySeedV3({ draft, measurementByExerciseId })
+              : compileAcceptedHypertrophySeed(draft);
+        }
         const projections = buildAcceptedCompatibilityProjections(acceptedSeed);
         assertAcceptedCompatibilityAlignment({
           acceptedSeed,
@@ -835,20 +932,22 @@ export async function createEditableHypertrophyPlanCopy(input: {
     throw new PlanManagementError("PLAN_COPY_UNAVAILABLE");
   }
   if (!accepted) throw new PlanManagementError("PLAN_COPY_UNAVAILABLE");
-  const draft = parseHypertrophyPlanDraft({
-    version: 1,
-    settings: accepted.settings,
-    sessions: accepted.slots.map((slot) => ({
-      slotId: slot.slotId,
-      name: slot.name,
-      focus: slot.focus,
-      exercises: slot.exercises.map((exercise) => ({
-        exerciseId: exercise.exerciseId,
-        workingSets: exercise.setCount,
-        intent: exercise.intent,
-      })),
-    })),
-  });
+  const draft = accepted.version === 4
+    ? copyAcceptedHypertrophySeedV4ToDraft(accepted)
+    : parseHypertrophyPlanDraft({
+        version: 1,
+        settings: accepted.settings,
+        sessions: accepted.slots.map((slot) => ({
+          slotId: slot.slotId,
+          name: slot.name,
+          focus: slot.focus,
+          exercises: slot.exercises.map((exercise) => ({
+            exerciseId: exercise.exerciseId,
+            workingSets: exercise.setCount,
+            intent: exercise.intent,
+          })),
+        })),
+      });
   const schedule = placeholderSchedule();
   const planId = randomUUID();
   await prisma.macroCycle.create({

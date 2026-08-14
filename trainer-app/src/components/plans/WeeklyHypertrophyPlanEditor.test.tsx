@@ -2,6 +2,10 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HypertrophyPlanEditorDataV2 } from "@/lib/api/hypertrophy-plan-drafts";
+import {
+  compileAcceptedHypertrophySeedV4,
+  projectExecutableSeedV4,
+} from "@/lib/engine/hypertrophy-plan-authoring";
 import { WeeklyHypertrophyPlanEditor } from "./WeeklyHypertrophyPlanEditor";
 
 const reactEffectControl = vi.hoisted(() => ({
@@ -209,6 +213,35 @@ function fiveWeekData(options?: {
   return data;
 }
 
+function finalizableFiveWeekData(): HypertrophyPlanEditorDataV2 {
+  const data = fiveWeekData({ recommendedBench: true });
+  const baseExercise = data.draft.sessions[0]!.exercises[0]!;
+  data.draft.sessions = ["upper-a", "lower-a", "upper-b", "lower-b"].map(
+    (slotId, index) => ({
+      slotId,
+      name: slotId,
+      focus: index % 2 === 0 ? "UPPER" as const : "LOWER" as const,
+      exercises: [{
+        ...structuredClone(baseExercise),
+        placementId: `${slotId}-bench`,
+      }],
+    }),
+  );
+  const accepted = compileAcceptedHypertrophySeedV4({
+    draft: data.draft,
+    measurementByExerciseId: new Map([["bench", exercises[0]!.measurement!]]),
+  });
+  data.preview = {
+    status: "ELIGIBLE",
+    reasons: [],
+    hash: "a".repeat(64),
+    hashAlgorithm: "sha256",
+    normalizedPlan: accepted,
+    executablePlan: projectExecutableSeedV4(accepted),
+  };
+  return data;
+}
+
 describe("WeeklyHypertrophyPlanEditor", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -235,6 +268,38 @@ describe("WeeklyHypertrophyPlanEditor", () => {
     cleanup();
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it("finalizes only the saved supported preview and returns to plan activation", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ ok: true, result: { planId: "plan-v4" } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    render(
+      <WeeklyHypertrophyPlanEditor initialData={finalizableFiveWeekData()} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Finalize plan" }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/plans/plan-v4/finalize",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          expectedDraftRevision: 1,
+          warningsConfirmed: false,
+          confirmedPreviewHash: "a".repeat(64),
+        }),
+      }),
+    );
+    expect(router.push).toHaveBeenCalledWith("/plans");
+    expect(router.refresh).toHaveBeenCalled();
   });
 
   it("keeps malformed placement text local and resumes autosave when valid", async () => {

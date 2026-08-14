@@ -52,34 +52,63 @@ describe("POST /api/plans/[id]/finalize", () => {
     }
   });
 
-  it.each([
-    ["empty object", {}],
-    ["expected draft revision", { expectedDraftRevision: 3 }],
-    ["expected timestamp", { expectedUpdatedAt: "2026-08-06T00:00:00.000Z" }],
-    ["alternate object", { warningsConfirmed: true }],
-  ])("returns the V4 non-executable contract for %s", async (_label, body) => {
-    mocks.assertPlanVersionFinalizable.mockRejectedValue(
-      new PlanManagementError("PLAN_VERSION_NOT_EXECUTABLE"),
-    );
-
+  it("forwards the confirmed V4 preview to atomic make-ready acceptance", async () => {
+    const hash = "a".repeat(64);
     const response = await POST(
       new Request("http://localhost/api/plans/weekly-plan/finalize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          expectedDraftRevision: 3,
+          warningsConfirmed: true,
+          confirmedPreviewHash: hash,
+        }),
       }),
       context,
     );
 
-    expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toEqual({
-      error:
-        "Weekly prescription drafts can be saved and previewed, but cannot be finalized or activated yet.",
-      code: "PLAN_VERSION_NOT_EXECUTABLE",
+    expect(response.status).toBe(200);
+    expect(mocks.assertPlanVersionFinalizable).not.toHaveBeenCalled();
+    expect(mocks.makeHypertrophyPlanReady).toHaveBeenCalledWith({
+      userId: "user-1",
+      planId: "weekly-plan",
+      expectedDraftRevision: 3,
+      warningsConfirmed: true,
+      confirmedPreviewHash: hash,
     });
-    expect(mocks.provisionOwnerForMutation).not.toHaveBeenCalled();
     expect(mocks.finalizePlan).not.toHaveBeenCalled();
+  });
+
+  it("rejects a custom finalize request explicitly when rollout is disabled", async () => {
+    delete process.env.TRAINER_CUSTOM_HYPERTROPHY_PLANS_ROLLOUT;
+    const response = await POST(
+      new Request("http://localhost/api/plans/weekly-plan/finalize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedDraftRevision: 3 }),
+      }),
+      context,
+    );
+
+    expect(response.status).toBe(503);
+    expect(mocks.provisionOwnerForMutation).not.toHaveBeenCalled();
     expect(mocks.makeHypertrophyPlanReady).not.toHaveBeenCalled();
+  });
+
+  it("keeps the legacy non-executable guard on legacy finalize requests", async () => {
+    mocks.assertPlanVersionFinalizable.mockRejectedValue(
+      new PlanManagementError("PLAN_VERSION_NOT_EXECUTABLE"),
+    );
+    const response = await POST(
+      new Request("http://localhost/api/plans/weekly-plan/finalize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedUpdatedAt: "2026-08-06T00:00:00.000Z" }),
+      }),
+      context,
+    );
+    expect(response.status).toBe(409);
+    expect(mocks.provisionOwnerForMutation).not.toHaveBeenCalled();
   });
 
   it("preserves legacy expectedUpdatedAt finalization", async () => {

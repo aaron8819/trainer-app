@@ -6,8 +6,10 @@ import {
 } from "@/lib/api/mesocycle-slot-runtime";
 import {
   parseSlotPlanSeedJson,
+  resolveAcceptedSeedPayloadForWeek,
   type SlotPlanSeedRole,
 } from "@/lib/api/slot-plan-seed-parser";
+import type { RepTargetV4 } from "@/lib/engine/hypertrophy-plan-authoring";
 import type { MappedGenerationContext } from "./types";
 import type { MeasurementSemantics } from "@/lib/exercise-measurement/semantics";
 
@@ -19,6 +21,9 @@ export type NormalizedSeededSlotExercise = {
   hasExplicitName: boolean;
   hasExplicitSetCount: boolean;
   measurement?: MeasurementSemantics;
+  placementId?: string;
+  reps?: RepTargetV4;
+  targetRpe?: number;
 };
 
 export type NormalizedSeededSlot = {
@@ -36,6 +41,7 @@ export type ResolvedSeededSlotPlan = {
   templateExercises: TemplateExerciseInput[];
   setCountOverrides?: Record<string, number>;
   usesLegacySetCountFallback: boolean;
+  hasExactWeeklyPrescriptions: boolean;
 };
 
 function buildUnresolvableSeededSlotPlanError(input: {
@@ -71,7 +77,18 @@ export function readPersistedSeedSlots(input: {
     return null;
   }
 
-  const seed = parseSlotPlanSeedJson(input.slotPlanSeedJson);
+  const revisionSeed = activeMesocycle.currentSeedRevision?.seedPayload;
+  let seed;
+  try {
+    seed = revisionSeed &&
+      typeof revisionSeed === "object" &&
+      !Array.isArray(revisionSeed) &&
+      (revisionSeed as { version?: unknown }).version === 4
+      ? resolveAcceptedSeedPayloadForWeek(revisionSeed, input.mapped.lifecycleWeek)
+      : parseSlotPlanSeedJson(input.slotPlanSeedJson);
+  } catch {
+    return null;
+  }
   if (!seed) {
     return null;
   }
@@ -242,6 +259,9 @@ function resolveSeededSlotPlan(input: {
         }
       : {}),
     usesLegacySetCountFallback: seedHasMissingSetCounts,
+    hasExactWeeklyPrescriptions: selectedSlot.exercises.every(
+      (exercise) => exercise.placementId != null && exercise.reps != null,
+    ),
   };
 }
 

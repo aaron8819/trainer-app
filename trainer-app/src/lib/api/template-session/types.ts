@@ -137,6 +137,7 @@ export type IntentSessionCompositionResult = {
   compositionSource: SessionCompositionSource;
   filteredExercises: FilteredExerciseSummary[];
   intentionallyDroppedAccessoryRoleIds: string[];
+  suppressWarmups?: boolean;
 };
 
 export type WorkoutGenerationSelectionSummary = {

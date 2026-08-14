@@ -4,8 +4,11 @@ import { sanitizeSessionCapacityReductionManifest } from "@/lib/engine/planning/
 import {
   executableSeedProjectionV2Schema,
   parseAcceptedHypertrophySeed,
+  resolveAcceptedHypertrophySeedV4Week,
   type AcceptedHypertrophySeed,
   type AcceptedExerciseIntentV2,
+  type RepTargetV4,
+  type WeeklyPrescriptionV4,
 } from "@/lib/engine/hypertrophy-plan-authoring";
 import type { MeasurementSemantics } from "@/lib/exercise-measurement/semantics";
 
@@ -20,6 +23,10 @@ export type ParsedSlotPlanSeedExercise = {
   hasExplicitSetCount: boolean;
   intent?: AcceptedExerciseIntentV2;
   measurement?: MeasurementSemantics;
+  placementId?: string;
+  prescriptions?: WeeklyPrescriptionV4[];
+  reps?: RepTargetV4;
+  targetRpe?: number;
 };
 
 export type ParsedSlotPlanSeedSlot = {
@@ -29,7 +36,7 @@ export type ParsedSlotPlanSeedSlot = {
 
 export type ParsedSlotPlanSeed = {
   version: 1;
-  acceptedVersion?: 2 | 3;
+  acceptedVersion?: 2 | 3 | 4;
   acceptedSeed?: AcceptedHypertrophySeed;
   source?: string;
   acceptedPlannerIntent?: V2AcceptedPlannerIntentDto;
@@ -642,6 +649,27 @@ export function sanitizeAcceptedPlannerIntent(
 function toParsedAcceptedSeed(
   accepted: AcceptedHypertrophySeed,
 ): ParsedSlotPlanSeed {
+  if (accepted.version === 4) {
+    return {
+      version: 1,
+      acceptedVersion: 4,
+      acceptedSeed: accepted,
+      source: accepted.source,
+      slots: accepted.slots.map((slot) => ({
+        slotId: slot.slotId,
+        exercises: slot.exercises.map((exercise) => ({
+          placementId: exercise.placementId,
+          exerciseId: exercise.exerciseId,
+          role: exercise.role,
+          hasExplicitName: false,
+          hasExplicitSetCount: false,
+          intent: exercise.intent,
+          measurement: exercise.measurement,
+          prescriptions: exercise.prescriptions,
+        })),
+      })),
+    };
+  }
   return {
     version: 1,
     acceptedVersion: accepted.version,
@@ -666,7 +694,7 @@ function toParsedAcceptedSeed(
 
 export function parseSlotPlanSeedJson(slotPlanSeedJson: unknown): ParsedSlotPlanSeed | null {
   const record = isRecord(slotPlanSeedJson) ? slotPlanSeedJson : null;
-  if (record?.version === 2 || record?.version === 3) {
+  if (record?.version === 2 || record?.version === 3 || record?.version === 4) {
     try {
       return parseAcceptedSeedPayload(record);
     } catch {
@@ -782,7 +810,8 @@ export function parseAcceptedSeedPayload(value: unknown): ParsedSlotPlanSeed {
   if (
     record?.version !== 1 &&
     record?.version !== 2 &&
-    record?.version !== 3
+    record?.version !== 3 &&
+    record?.version !== 4
   ) {
     throw new AcceptedSeedParseError(
       "ACCEPTED_SEED_VERSION_UNSUPPORTED",
@@ -813,7 +842,10 @@ export function parseAcceptedSeedPayload(value: unknown): ParsedSlotPlanSeed {
       );
     }
     for (const exercise of slot.exercises) {
-      if (!exercise.hasExplicitSetCount || exercise.setCount == null) {
+      if (
+        parsed.acceptedVersion !== 4 &&
+        (!exercise.hasExplicitSetCount || exercise.setCount == null)
+      ) {
         throw new AcceptedSeedParseError(
           "ACCEPTED_SEED_SET_COUNT_MISSING",
           record.version,
@@ -823,4 +855,37 @@ export function parseAcceptedSeedPayload(value: unknown): ParsedSlotPlanSeed {
     }
   }
   return parsed;
+}
+
+export function resolveAcceptedSeedPayloadForWeek(
+  value: unknown,
+  week: number,
+): ParsedSlotPlanSeed {
+  const parsed = parseAcceptedSeedPayload(value);
+  if (parsed.acceptedSeed?.version !== 4) return parsed;
+  const resolved = resolveAcceptedHypertrophySeedV4Week(
+    parsed.acceptedSeed,
+    week,
+  );
+  return {
+    version: 1,
+    acceptedVersion: 4,
+    acceptedSeed: parsed.acceptedSeed,
+    source: parsed.source,
+    slots: resolved.slots.map((slot) => ({
+      slotId: slot.slotId,
+      exercises: slot.exercises.map((exercise) => ({
+        placementId: exercise.placementId,
+        exerciseId: exercise.exerciseId,
+        role: exercise.role,
+        setCount: exercise.setCount,
+        hasExplicitName: false,
+        hasExplicitSetCount: true,
+        intent: exercise.intent,
+        measurement: exercise.measurement,
+        reps: exercise.reps,
+        ...(exercise.targetRpe == null ? {} : { targetRpe: exercise.targetRpe }),
+      })),
+    })),
+  };
 }

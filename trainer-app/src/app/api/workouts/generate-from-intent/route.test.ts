@@ -296,6 +296,70 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     expect(body.workout.mainLifts[0].sets[0].targetRpe).toBe(5);
   });
 
+  it("replays accepted V4 Week 5 through the exact seeded path without autoregulation", async () => {
+    mocks.loadActiveMesocycle.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_DELOAD",
+      durationWeeks: 5,
+      slotPlanSeedJson: null,
+      currentSeedRevision: {
+        id: "revision-1",
+        revision: 1,
+        seedPayload: { version: 4 },
+        payloadHash: "a".repeat(64),
+      },
+    });
+    const exactWorkout = {
+      id: "w-v4",
+      scheduledDate: new Date().toISOString(),
+      warmup: [],
+      mainLifts: [{
+        id: "ex",
+        exercise: { id: "ex", name: "Row" },
+        isMainLift: true,
+        orderIndex: 0,
+        sets: [{ setIndex: 1, targetReps: 7, targetLoad: 60, targetRpe: 5.5 }],
+      }],
+      accessories: [],
+      estimatedMinutes: 30,
+    };
+    mocks.generateSessionFromIntent.mockResolvedValue({
+      workout: exactWorkout,
+      selectionMode: "INTENT",
+      sessionIntent: "pull",
+      sraWarnings: [],
+      substitutions: [],
+      volumePlanByMuscle: {},
+      selection: {
+        selectedExerciseIds: ["ex"],
+        mainLiftIds: ["ex"],
+        accessoryIds: [],
+        perExerciseSetTargets: { ex: 1 },
+        rationale: {},
+        volumePlanByMuscle: {},
+      },
+      filteredExercises: [],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/generate-from-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intent: "pull" }),
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(mocks.generateSessionFromIntent).toHaveBeenCalledOnce();
+    expect(mocks.generateDeloadSessionFromIntent).not.toHaveBeenCalled();
+    expect(mocks.applyAutoregulation).not.toHaveBeenCalled();
+    expect(body.workout.mainLifts[0].sets[0]).toMatchObject({
+      targetReps: 7,
+      targetRpe: 5.5,
+    });
+  });
+
   it("persists the in-order advancing seeded session slot in receipt metadata", async () => {
     mocks.loadActiveMesocycle.mockResolvedValue({
       id: "meso-1",

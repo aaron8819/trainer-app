@@ -140,6 +140,22 @@ export function planManagementErrorResponse(
         },
         { status: 409 },
       );
+    case "PLAN_UNSUPPORTED_TOPOLOGY":
+      return NextResponse.json(
+        {
+          error: "This weekly plan does not match the supported four-session, five-week profile.",
+          code: error.code,
+        },
+        { status: 409 },
+      );
+    case "PLAN_PREVIEW_HASH_MISMATCH":
+      return NextResponse.json(
+        {
+          error: "The saved plan no longer matches the confirmed preview. Review the latest preview and try again.",
+          code: error.code,
+        },
+        { status: 409 },
+      );
     case "PLAN_WARNING_CONFIRMATION_REQUIRED":
       return NextResponse.json(
         {

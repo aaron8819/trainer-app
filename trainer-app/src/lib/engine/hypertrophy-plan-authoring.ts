@@ -207,7 +207,30 @@ export type AcceptedHypertrophySeedV4 = {
 
 export type AcceptedHypertrophySeed =
   | AcceptedHypertrophySeedV2
-  | AcceptedHypertrophySeedV3;
+  | AcceptedHypertrophySeedV3
+  | AcceptedHypertrophySeedV4;
+
+export type ResolvedHypertrophySeedExerciseV4 = {
+  placementId: string;
+  exerciseId: string;
+  role: "CORE_COMPOUND" | "ACCESSORY";
+  intent: AcceptedExerciseIntentV2;
+  measurement: MeasurementSemantics;
+  setCount: number;
+  reps: RepTargetV4;
+  targetRpe?: number;
+};
+
+export type ResolvedHypertrophySeedWeekV4 = {
+  week: number;
+  phase: HypertrophyPlanWeekV4["phase"];
+  slots: Array<{
+    slotId: string;
+    name: string;
+    focus: HypertrophySessionFocus;
+    exercises: ResolvedHypertrophySeedExerciseV4[];
+  }>;
+};
 
 export type ExecutableSeedProjection = {
   version: 1;
@@ -922,10 +945,12 @@ export function parseAcceptedHypertrophySeedV4(
 export function parseAcceptedHypertrophySeed(
   value: unknown,
 ): AcceptedHypertrophySeed {
-  return value && typeof value === "object" && !Array.isArray(value) &&
-    (value as { version?: unknown }).version === 3
-    ? parseAcceptedHypertrophySeedV3(value)
-    : parseAcceptedHypertrophySeedV2(value);
+  const version = value && typeof value === "object" && !Array.isArray(value)
+    ? (value as { version?: unknown }).version
+    : undefined;
+  if (version === 4) return parseAcceptedHypertrophySeedV4(value);
+  if (version === 3) return parseAcceptedHypertrophySeedV3(value);
+  return parseAcceptedHypertrophySeedV2(value);
 }
 
 export function isAcceptedHypertrophySeedV2(
@@ -1129,6 +1154,54 @@ export function projectExecutableSeedV4(
   });
 }
 
+export function resolveRirTargetRpeV4(rir: RirTargetV4): number | undefined {
+  if (rir.kind === "NOT_APPLICABLE") return undefined;
+  const midpoint = (rir.min + rir.max) / 2;
+  return Number((10 - midpoint).toFixed(1));
+}
+
+export function resolveAcceptedHypertrophySeedV4Week(
+  seed: AcceptedHypertrophySeedV4,
+  week: number,
+): ResolvedHypertrophySeedWeekV4 {
+  const accepted = parseAcceptedHypertrophySeedV4(seed);
+  const weekDefinition = accepted.weeks.find((entry) => entry.week === week);
+  if (!weekDefinition) {
+    throw new Error(`ACCEPTED_SEED_WEEK_NOT_FOUND:${week}`);
+  }
+  return {
+    week,
+    phase: weekDefinition.phase,
+    slots: accepted.slots.map((slot) => ({
+      slotId: slot.slotId,
+      name: slot.name,
+      focus: slot.focus,
+      exercises: slot.exercises.flatMap((exercise) => {
+        const prescription = exercise.prescriptions.find(
+          (entry) => entry.week === week,
+        );
+        if (!prescription) {
+          throw new Error(
+            `ACCEPTED_SEED_PRESCRIPTION_NOT_FOUND:${week}:${exercise.placementId}`,
+          );
+        }
+        if (prescription.status === "OMIT") return [];
+        const targetRpe = resolveRirTargetRpeV4(prescription.rir);
+        return [{
+          placementId: exercise.placementId,
+          exerciseId: exercise.exerciseId,
+          role: exercise.role,
+          intent: exercise.intent,
+          measurement: exercise.measurement,
+          setCount: prescription.setCount,
+          reps: prescription.reps,
+          ...(targetRpe == null ? {} : { targetRpe }),
+        }];
+      }),
+    })),
+  };
+}
+
 export function buildAcceptedCompatibilityProjections(
   seed: AcceptedHypertrophySeed,
 ): {
@@ -1136,10 +1209,13 @@ export function buildAcceptedCompatibilityProjections(
   slotPlanSeedJson: AuthoringJsonValue;
 } {
   const accepted = parseAcceptedHypertrophySeed(seed);
+  const compatibilitySlots = accepted.version === 4
+    ? resolveAcceptedHypertrophySeedV4Week(accepted, 1).slots
+    : accepted.slots;
   return {
     slotSequenceJson: {
       version: 1,
-      source: "custom_hypertrophy_plan_v1",
+      source: accepted.source,
       sequenceMode: "ordered_flexible",
       sessionsPerWeek: accepted.slots.length,
       daysPerWeek: accepted.slots.length,
@@ -1152,8 +1228,8 @@ export function buildAcceptedCompatibilityProjections(
     },
     slotPlanSeedJson: {
       version: 1,
-      source: "custom_hypertrophy_plan_v1",
-      slots: accepted.slots.map((slot) => ({
+      source: accepted.source,
+      slots: compatibilitySlots.map((slot) => ({
         slotId: slot.slotId,
         exercises: slot.exercises.map(({ exerciseId, role, setCount }) => ({
           exerciseId,
@@ -1177,13 +1253,16 @@ export function assertAcceptedCompatibilityAlignment(input: {
   slotPlanSeedJson: unknown;
 }): void {
   const accepted = parseAcceptedHypertrophySeed(input.acceptedSeed);
+  const compatibilitySlots = accepted.version === 4
+    ? resolveAcceptedHypertrophySeedV4Week(accepted, 1).slots
+    : accepted.slots;
   const sequence = record(input.slotSequenceJson);
   const sequenceSlots = Array.isArray(sequence?.slots) ? sequence.slots : [];
   const seed = record(input.slotPlanSeedJson);
   const seedSlots = Array.isArray(seed?.slots) ? seed.slots : [];
   if (
     sequenceSlots.length !== accepted.slots.length ||
-    seedSlots.length !== accepted.slots.length ||
+    seedSlots.length !== compatibilitySlots.length ||
     sequence?.sessionsPerWeek !== accepted.slots.length ||
     sequence?.daysPerWeek !== accepted.slots.length
   ) {
@@ -1204,10 +1283,11 @@ export function assertAcceptedCompatibilityAlignment(input: {
     const exercises = Array.isArray(projectedSeed.exercises)
       ? projectedSeed.exercises
       : [];
-    if (exercises.length !== slot.exercises.length) {
+    const expectedExercises = compatibilitySlots[index]?.exercises ?? [];
+    if (exercises.length !== expectedExercises.length) {
       throw new Error("CUSTOM_PLAN_COMPATIBILITY_EXERCISE_COUNT_MISMATCH");
     }
-    slot.exercises.forEach((exercise, exerciseIndex) => {
+    expectedExercises.forEach((exercise, exerciseIndex) => {
       const projected = record(exercises[exerciseIndex]);
       if (
         projected?.exerciseId !== exercise.exerciseId ||

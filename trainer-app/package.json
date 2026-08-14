@@ -20,6 +20,7 @@
         "preview:plan-specification-v0": "tsx scripts/preview-plan-specification-v0.ts",
         "test:db:workout-mutations": "tsx scripts/test-workout-mutations-postgres.ts",
         "test:db:multi-plan": "tsx scripts/test-multi-plan-foundation-postgres.ts",
+        "test:db:v4-custom-plan": "tsx scripts/test-v4-custom-plan-postgres.ts",
         "test:db:historical-snapshots": "npm run test:db:workout-mutations",
         "test:db:rollout-tooling": "tsx scripts/test-rollout-tooling-postgres.ts",
         "test:readiness-integrity": "vitest run src/lib/operations/readiness-integrity.test.ts src/lib/operations/readiness-integrity-postgres.test.ts src/lib/operations/readiness-integrity-cli.test.ts",

@@ -6,6 +6,7 @@ import type {
   MovementPatternV2,
   Muscle,
   MuscleId,
+  WorkoutPlan,
 } from "@/lib/engine/types";
 import { summarizeFilteredExercises } from "@/lib/engine/explainability";
 import type { FilteredExerciseSummary } from "@/lib/engine/explainability";
@@ -72,7 +73,10 @@ import {
   mapTemplateExercises,
   resolveTemplateSessionIntent,
 } from "./template-session/plan-assembly";
-import { resolveRequiredSeededSlotPlan } from "./template-session/slot-plan-seed";
+import {
+  resolveRequiredSeededSlotPlan,
+  type NormalizedSeededSlotExercise,
+} from "./template-session/slot-plan-seed";
 import type {
   GenerateIntentSessionInput,
   GenerateTemplateSessionParams,
@@ -183,6 +187,64 @@ function buildSeededSelectionFromWorkout(input: {
   };
 }
 
+function applyExactSeededPrescriptions(
+  workout: WorkoutPlan,
+  seededExercises: NormalizedSeededSlotExercise[],
+): WorkoutPlan | null {
+  const apply = (exercise: WorkoutPlan["mainLifts"][number]) => {
+    const prescription = seededExercises[exercise.orderIndex];
+    if (
+      !prescription ||
+      prescription.exerciseId !== exercise.exercise.id ||
+      prescription.setCount == null ||
+      !prescription.reps
+    ) {
+      return null;
+    }
+    const exerciseWithoutWarmups = { ...exercise };
+    delete exerciseWithoutWarmups.warmupSets;
+    return {
+      ...exerciseWithoutWarmups,
+      sets: Array.from({ length: prescription.setCount }, (_, index) => {
+        const existing = exercise.sets[index] ?? exercise.sets[0];
+        return {
+          setIndex: index + 1,
+          targetReps:
+            prescription.reps!.kind === "EXACT"
+              ? prescription.reps!.reps
+              : prescription.reps!.min,
+          ...(prescription.reps!.kind === "RANGE"
+            ? {
+                targetRepRange: {
+                  min: prescription.reps!.min,
+                  max: prescription.reps!.max,
+                },
+              }
+            : {}),
+          ...(prescription.targetRpe == null
+            ? {}
+            : { targetRpe: prescription.targetRpe }),
+          ...(existing?.role ? { role: existing.role } : {}),
+          ...(existing?.restSeconds == null
+            ? {}
+            : { restSeconds: existing.restSeconds }),
+        };
+      }),
+    };
+  };
+  const mainLifts = workout.mainLifts.map(apply);
+  const accessories = workout.accessories.map(apply);
+  if (mainLifts.some((exercise) => exercise == null) || accessories.some((exercise) => exercise == null)) {
+    return null;
+  }
+  return {
+    ...workout,
+    warmup: [],
+    mainLifts: mainLifts as WorkoutPlan["mainLifts"],
+    accessories: accessories as WorkoutPlan["accessories"],
+  };
+}
+
 function composeSeededIntentSessionFromMappedContext(
   mapped: MappedGenerationContext,
   input: GenerateIntentSessionInput
@@ -225,15 +287,25 @@ function composeSeededIntentSessionFromMappedContext(
   if ("error" in generation) {
     return generation;
   }
+  const exactWorkout = seededSlotPlan.hasExactWeeklyPrescriptions
+    ? applyExactSeededPrescriptions(generation.workout, seededSlotPlan.exercises)
+    : generation.workout;
+  if (!exactWorkout) {
+    return { error: "Persisted slot plan seed prescriptions could not be resolved exactly." };
+  }
+  const exactGeneration = {
+    ...generation,
+    workout: exactWorkout,
+  };
 
   return {
     generation: {
-      ...generation,
+      ...exactGeneration,
       selection: buildSeededSelectionFromWorkout({
         sessionIntent: seededSlotPlan.intent,
         templateExercises: seededSlotPlan.templateExercises,
         seededSetCountOverrides: seededSlotPlan.setCountOverrides,
-        workout: generation.workout,
+        workout: exactGeneration.workout,
         targetMuscles: input.targetMuscles,
       }),
     },
@@ -242,6 +314,27 @@ function composeSeededIntentSessionFromMappedContext(
       : "persisted_slot_plan_seed",
     filteredExercises: [],
     intentionallyDroppedAccessoryRoleIds: [],
+    suppressWarmups: seededSlotPlan.hasExactWeeklyPrescriptions,
+  };
+}
+
+function suppressSessionWarmups(result: SessionGenerationResult): SessionGenerationResult {
+  if ("error" in result) return result;
+  const withoutWarmups = (
+    exercise: WorkoutPlan["mainLifts"][number],
+  ): WorkoutPlan["mainLifts"][number] => {
+    const result = { ...exercise };
+    delete result.warmupSets;
+    return result;
+  };
+  return {
+    ...result,
+    workout: {
+      ...result.workout,
+      warmup: [],
+      mainLifts: result.workout.mainLifts.map(withoutWarmups),
+      accessories: result.workout.accessories.map(withoutWarmups),
+    },
   };
 }
 
@@ -3189,6 +3282,7 @@ type FinalizablePostLoadSession = {
   filteredExercises: FilteredExerciseSummary[];
   resolvedSessionSlot?: SessionSlotSnapshot;
   compositionSource: SessionCompositionSource;
+  suppressWarmups: boolean;
 };
 
 function composePostLoadSessionFromMappedContext(
@@ -3237,6 +3331,7 @@ function composePostLoadSessionFromMappedContext(
     filteredExercises,
     resolvedSessionSlot,
     compositionSource: composed.compositionSource,
+    suppressWarmups: composed.suppressWarmups === true,
   };
 }
 
@@ -3256,7 +3351,7 @@ async function generateSessionFromMappedContextWithPrescriptionAnchors(
     workout: composed.result.workout,
   });
 
-  return finalizePostLoadResult(
+  const finalized = finalizePostLoadResult(
     composed.result,
     mapped,
     composed.filteredExercises,
@@ -3265,6 +3360,7 @@ async function generateSessionFromMappedContextWithPrescriptionAnchors(
     composed.compositionSource,
     selectedAnchorEvidence
   );
+  return composed.suppressWarmups ? suppressSessionWarmups(finalized) : finalized;
 }
 
 export function generateSessionFromMappedContext(
@@ -3276,7 +3372,7 @@ export function generateSessionFromMappedContext(
     return composed;
   }
 
-  return finalizePostLoadResult(
+  const finalized = finalizePostLoadResult(
     composed.result,
     mapped,
     composed.filteredExercises,
@@ -3284,6 +3380,7 @@ export function generateSessionFromMappedContext(
     composed.resolvedSessionSlot,
     composed.compositionSource
   );
+  return composed.suppressWarmups ? suppressSessionWarmups(finalized) : finalized;
 }
 
 export async function generateDeloadSessionFromIntent(

@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { MeasurementSemantics } from "@/lib/exercise-measurement/semantics";
 import {
   compileAcceptedHypertrophySeedV4,
+  assertAcceptedCompatibilityAlignment,
+  buildAcceptedCompatibilityProjections,
   copyAcceptedHypertrophySeedV4ToDraft,
   parseAcceptedHypertrophySeedV4,
   parseHypertrophyPlanDraftV2,
   projectExecutableSeedV4,
+  resolveAcceptedHypertrophySeedV4Week,
   type HypertrophyPlanDraftV2,
   type HypertrophyPlanWeekV4,
   type WeeklyPrescriptionV4,
@@ -198,6 +201,67 @@ describe("V4 custom-plan prescription foundation", () => {
         ),
       })),
     });
+  });
+
+  it("resolves each accepted week to exact ordered executable prescriptions", () => {
+    const accepted = compileAcceptedHypertrophySeedV4({
+      draft: draft(),
+      measurementByExerciseId: measurements,
+    });
+
+    expect(resolveAcceptedHypertrophySeedV4Week(accepted, 1).slots).toEqual([
+      expect.objectContaining({
+        slotId: "upper",
+        exercises: [expect.objectContaining({
+          placementId: "upper-bench",
+          exerciseId: "bench",
+          setCount: 4,
+          reps: { kind: "RANGE", min: 6, max: 8 },
+          targetRpe: 6.5,
+          measurement,
+        })],
+      }),
+      expect.objectContaining({
+        slotId: "lower",
+        exercises: [expect.objectContaining({
+          placementId: "lower-core",
+          setCount: 3,
+          reps: { kind: "EXACT", reps: 10 },
+        })],
+      }),
+    ]);
+    expect(
+      resolveAcceptedHypertrophySeedV4Week(accepted, 1).slots[1]!.exercises[0],
+    ).not.toHaveProperty("targetRpe");
+    expect(resolveAcceptedHypertrophySeedV4Week(accepted, 5)).toMatchObject({
+      week: 5,
+      phase: "DELOAD",
+      slots: [
+        { exercises: [expect.objectContaining({ setCount: 4, targetRpe: 5.5 })] },
+        { exercises: [] },
+      ],
+    });
+  });
+
+  it("derives the compatibility snapshot from the same Week 1 resolver", () => {
+    const accepted = compileAcceptedHypertrophySeedV4({
+      draft: draft(),
+      measurementByExerciseId: measurements,
+    });
+    const projections = buildAcceptedCompatibilityProjections(accepted);
+
+    expect(projections.slotPlanSeedJson).toMatchObject({
+      version: 1,
+      source: "custom_hypertrophy_plan_v2",
+      slots: [
+        { exercises: [{ exerciseId: "bench", setCount: 4 }] },
+        { exercises: [{ exerciseId: "core", setCount: 3 }] },
+      ],
+    });
+    expect(() => assertAcceptedCompatibilityAlignment({
+      acceptedSeed: accepted,
+      ...projections,
+    })).not.toThrow();
   });
 
   it("persists recommendation provenance only in the editable draft boundary", () => {

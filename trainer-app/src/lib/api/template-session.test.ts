@@ -225,6 +225,47 @@ function primeUpperLowerSlotGeneration(customLibrary: Exercise[]) {
   });
 }
 
+const v4Rows = [
+  { exerciseId: "sldl", role: "CORE_COMPOUND" as const, setCount: 2, pattern: "hinge" as const },
+  { exerciseId: "leg-curl", role: "ACCESSORY" as const, setCount: 1, muscleId: "hamstrings" as const },
+  { exerciseId: "split-squat", role: "CORE_COMPOUND" as const, setCount: 4, pattern: "squat" as const },
+  { exerciseId: "calf-raise", role: "ACCESSORY" as const, setCount: 2, muscleId: "calves" as const },
+];
+
+function makeV4Exercise(
+  slotId: string,
+  row: (typeof v4Rows)[number],
+) {
+  return {
+    placementId: `${slotId}-${row.exerciseId}`,
+    exerciseId: row.exerciseId,
+    role: row.role,
+    intent: row.role === "CORE_COMPOUND"
+      ? {
+          userRole: "PRIMARY_LIFT" as const,
+          target: { kind: "movement_pattern" as const, movementPattern: row.pattern! },
+        }
+      : {
+          userRole: "MUSCLE_ISOLATION" as const,
+          target: { kind: "muscle" as const, muscleId: row.muscleId! },
+        },
+    measurement: {
+      profile: "REPS_EXTERNAL_LOAD" as const,
+      loadConvention: "MACHINE_DISPLAYED" as const,
+      repBasis: "TOTAL" as const,
+    },
+    prescriptions: [1, 2, 3, 4, 5].map((week) => ({
+      week,
+      status: "PRESCRIBE" as const,
+      setCount: row.setCount,
+      reps: row.exerciseId === "sldl"
+        ? { kind: "EXACT" as const, reps: 7 }
+        : { kind: "RANGE" as const, min: 10, max: 12 },
+      rir: { kind: "TARGET_RANGE" as const, min: 2, max: 2 },
+    })),
+  };
+}
+
 describe("generateSessionFromIntent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -2432,6 +2473,33 @@ describe("generateSessionFromIntent", () => {
           },
         ],
       },
+      currentSeedRevision: {
+        id: "v4-revision-1",
+        revision: 1,
+        payloadHash: "b".repeat(64),
+        hashAlgorithm: "sha256",
+        provenanceStatus: "exact",
+        seedPayload: {
+          version: 4,
+          source: "custom_hypertrophy_plan_v2",
+          settings: { equipmentProfile: "FULL_GYM", sessionDurationMinutes: 60 },
+          weeks: [1, 2, 3, 4, 5].map((week) => ({
+            week,
+            phase: week === 5 ? "DELOAD" as const : "ACCUMULATION" as const,
+          })),
+          slots: [
+            { slotId: "upper_a", name: "Upper A", focus: "UPPER" as const, rows: [v4Rows[0]!] },
+            { slotId: "lower_a", name: "Lower A", focus: "LOWER" as const, rows: [v4Rows[0]!] },
+            { slotId: "upper_b", name: "Upper B", focus: "UPPER" as const, rows: [v4Rows[2]!] },
+            { slotId: "lower_b", name: "Lower B", focus: "LOWER" as const, rows: v4Rows },
+          ].map((slot) => ({
+            slotId: slot.slotId,
+            name: slot.name,
+            focus: slot.focus,
+            exercises: slot.rows.map((row) => makeV4Exercise(slot.slotId, row)),
+          })),
+        },
+      },
     });
 
     const selectSpy = vi.spyOn(selectionV2, "selectExercisesOptimized");
@@ -2460,11 +2528,33 @@ describe("generateSessionFromIntent", () => {
         setCount: exercise.sets.length,
         section: exercise.isMainLift ? "main" : "accessory",
       })).sort((left, right) => left.orderIndex - right.orderIndex)).toEqual([
-        { exerciseId: "sldl", orderIndex: 0, setCount: 3, section: "main" },
-        { exerciseId: "leg-curl", orderIndex: 1, setCount: 3, section: "accessory" },
-        { exerciseId: "split-squat", orderIndex: 2, setCount: 3, section: "main" },
-        { exerciseId: "calf-raise", orderIndex: 3, setCount: 3, section: "accessory" },
+        { exerciseId: "sldl", orderIndex: 0, setCount: 2, section: "main" },
+        { exerciseId: "leg-curl", orderIndex: 1, setCount: 1, section: "accessory" },
+        { exerciseId: "split-squat", orderIndex: 2, setCount: 4, section: "main" },
+        { exerciseId: "calf-raise", orderIndex: 3, setCount: 2, section: "accessory" },
       ]);
+      const ordered = [...result.workout.mainLifts, ...result.workout.accessories]
+        .sort((left, right) => left.orderIndex - right.orderIndex);
+      expect(ordered[0]!.sets).toEqual([
+        expect.objectContaining({ setIndex: 1, targetReps: 7, targetRpe: 8 }),
+        expect.objectContaining({ setIndex: 2, targetReps: 7, targetRpe: 8 }),
+      ]);
+      expect(ordered[1]!.sets[0]).toMatchObject({
+        targetReps: 10,
+        targetRepRange: { min: 10, max: 12 },
+        targetRpe: 8,
+      });
+      expect(result.workout.warmup).toEqual([]);
+      expect(ordered.every((exercise) => !("warmupSets" in exercise))).toBe(true);
+      expect(result.selection.sessionDecisionReceipt?.sessionProvenance).toEqual({
+        mesocycleId: "meso-1",
+        compositionSource: "persisted_slot_plan_seed",
+        seedProvenance: {
+          revisionId: "v4-revision-1",
+          revision: 1,
+          hash: "b".repeat(64),
+        },
+      });
     } finally {
       selectSpy.mockRestore();
     }

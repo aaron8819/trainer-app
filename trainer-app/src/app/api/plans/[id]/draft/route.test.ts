@@ -43,9 +43,10 @@ describe("PATCH /api/plans/[id]/draft", () => {
       updatedAt: "2026-08-15T12:00:00.000Z",
       health: {
         status: "AVAILABLE",
-        policyVersion: "draft-plan-health.v1",
+        policyVersion: "draft-plan-health.v2",
         draftId: "plan-1",
         draftRevision: 2,
+        confirmationScope: `plan-health-confirmation.v1.${"2".repeat(64)}`,
         evaluatedWeek: 1,
         summary: {
           blockingSafety: 2,

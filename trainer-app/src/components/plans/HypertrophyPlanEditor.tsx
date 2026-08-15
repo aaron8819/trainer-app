@@ -32,6 +32,10 @@ import {
 } from "@/lib/engine/hypertrophy-plan-health";
 import { WeeklyHypertrophyPlanEditor } from "./WeeklyHypertrophyPlanEditor";
 import { PlanHealthPanel } from "./PlanHealthPanel";
+import {
+  importantWarningConfirmationPrompt,
+  planHealthContextKey,
+} from "./plan-health-client";
 
 type SaveState = "saved" | "saving" | "failed";
 
@@ -92,6 +96,7 @@ async function responseBody(response: Response) {
     revision?: number;
     draft?: HypertrophyPlanDraftV1;
     health?: HypertrophyPlanHealthResult;
+    confirmationStatus?: "MISSING" | "MISMATCH";
   }>;
 }
 
@@ -101,9 +106,9 @@ export function HypertrophyPlanEditor({
   initialData: HypertrophyPlanEditorData;
 }) {
   return isWeeklyEditorData(initialData) ? (
-    <WeeklyHypertrophyPlanEditor initialData={initialData} />
+    <WeeklyHypertrophyPlanEditor key={initialData.planId} initialData={initialData} />
   ) : (
-    <LegacyHypertrophyPlanEditor initialData={initialData} />
+    <LegacyHypertrophyPlanEditor key={initialData.planId} initialData={initialData} />
   );
 }
 
@@ -119,10 +124,17 @@ function LegacyHypertrophyPlanEditor({
   initialData: HypertrophyPlanEditorDataV1;
 }) {
   const router = useRouter();
+  const currentHealthContextKey = useMemo(
+    () => planHealthContextKey(initialData),
+    [initialData],
+  );
   const [name, setName] = useState(initialData.name);
   const [draft, setDraft] = useState(initialData.draft);
   const [revision, setRevision] = useState(initialData.revision);
   const [health, setHealth] = useState(initialData.health);
+  const [installedHealthContextKey, setInstalledHealthContextKey] = useState(
+    currentHealthContextKey,
+  );
   const [selectedSlotId, setSelectedSlotId] = useState(
     initialData.draft.sessions[0]!.slotId,
   );
@@ -146,7 +158,32 @@ function LegacyHypertrophyPlanEditor({
   const queued = useRef(false);
   const latest = useRef({ name, draft, revision });
   const healthRef = useRef(initialData.health);
+  const installedHealthContextKeyRef = useRef(currentHealthContextKey);
+  const healthContextGeneration = useRef(0);
+  const lastPropsContextKey = useRef(currentHealthContextKey);
+  const initialHealthIdentity =
+    initialData.health.status === "AVAILABLE"
+      ? initialData.health.confirmationScope
+      : `${initialData.health.policyVersion}:${initialData.health.draftId}:${initialData.health.draftRevision}:${initialData.health.reason}`;
+  const lastInitialHealthIdentity = useRef(initialHealthIdentity);
   latest.current = { name, draft, revision };
+
+  useEffect(() => {
+    const contextChanged = lastPropsContextKey.current !== currentHealthContextKey;
+    const assessmentChanged =
+      lastInitialHealthIdentity.current !== initialHealthIdentity;
+    if (contextChanged) {
+      healthContextGeneration.current += 1;
+      lastPropsContextKey.current = currentHealthContextKey;
+    }
+    if (assessmentChanged) {
+      lastInitialHealthIdentity.current = initialHealthIdentity;
+      healthRef.current = initialData.health;
+      installedHealthContextKeyRef.current = currentHealthContextKey;
+      setHealth(initialData.health);
+      setInstalledHealthContextKey(currentHealthContextKey);
+    }
+  }, [currentHealthContextKey, initialData.health, initialHealthIdentity]);
   const selectedIndex = Math.max(
     0,
     draft.sessions.findIndex((session) => session.slotId === selectedSlotId),
@@ -174,6 +211,8 @@ function LegacyHypertrophyPlanEditor({
     inFlight.current = true;
     setSaveState("saving");
     setError(null);
+    const requestContextGeneration = healthContextGeneration.current;
+    const requestHealthContextKey = currentHealthContextKey;
     try {
       const response = await fetch(`/api/plans/${initialData.planId}/draft`, {
         method: "PATCH",
@@ -205,8 +244,12 @@ function LegacyHypertrophyPlanEditor({
               draftRevision: body.revision,
               reason: "RESULT_INVALID" as const,
             };
-      healthRef.current = nextHealth;
-      setHealth(nextHealth);
+      if (requestContextGeneration === healthContextGeneration.current) {
+        healthRef.current = nextHealth;
+        installedHealthContextKeyRef.current = requestHealthContextKey;
+        setHealth(nextHealth);
+        setInstalledHealthContextKey(requestHealthContextKey);
+      }
       setSaveState("saved");
       return true;
     } catch {
@@ -220,7 +263,7 @@ function LegacyHypertrophyPlanEditor({
         window.setTimeout(() => void save(), 0);
       }
     }
-  }, [initialData.planId]);
+  }, [currentHealthContextKey, initialData.planId]);
 
   useEffect(() => {
     if (!unsaved || saveState === "failed") return;
@@ -350,6 +393,14 @@ function LegacyHypertrophyPlanEditor({
     const saved = await flushSave();
     if (!saved) return;
     const currentHealth = healthRef.current;
+    if (
+      installedHealthContextKeyRef.current !== currentHealthContextKey ||
+      currentHealth.draftRevision !== latest.current.revision
+    ) {
+      setShowHealth(true);
+      setError("Plan Health is stale. Wait for the current authoritative context before making the plan ready.");
+      return;
+    }
     if (currentHealth.status === "UNAVAILABLE") {
       setShowHealth(true);
       setError("Plan Health must refresh successfully before making the plan ready.");
@@ -360,16 +411,27 @@ function LegacyHypertrophyPlanEditor({
       setError("Resolve the Plan Health blockers before making it ready.");
       return;
     }
-    const warningText = currentHealth.summary.importantWarnings
-      ? ` This plan has ${currentHealth.summary.importantWarnings} important warnings; confirm that you reviewed them.`
-      : "";
-    if (
+    if (currentHealth.summary.importantWarnings > 0) {
+      if (
+        !window.confirm(
+          importantWarningConfirmationPrompt(
+            currentHealth,
+            "Confirm these exact warnings and make the plan ready? This freezes the initial block and will not activate it.",
+          ),
+        )
+      ) {
+        return;
+      }
+    } else if (
       !window.confirm(
-        `Make this plan ready? This freezes the initial block and will not activate it.${warningText}`,
+        "Make this plan ready? This freezes the initial block and will not activate it.",
       )
     ) {
       return;
     }
+    const requestRevision = latest.current.revision;
+    const requestContextGeneration = healthContextGeneration.current;
+    const requestHealthContextKey = currentHealthContextKey;
     setMakingReady(true);
     setError(null);
     try {
@@ -378,11 +440,33 @@ function LegacyHypertrophyPlanEditor({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           expectedDraftRevision: latest.current.revision,
-          warningsConfirmed: currentHealth.summary.importantWarnings > 0,
+          ...(currentHealth.summary.importantWarnings > 0
+            ? { warningConfirmationScope: currentHealth.confirmationScope }
+            : {}),
         }),
       });
       const body = await responseBody(response);
       if (!response.ok) {
+        if (
+          body.code === "PLAN_WARNING_CONFIRMATION_REQUIRED" &&
+          requestContextGeneration === healthContextGeneration.current &&
+          latest.current.revision === requestRevision &&
+          isHypertrophyPlanHealthResult(body.health) &&
+          body.health.draftId === initialData.planId &&
+          body.health.draftRevision === requestRevision
+        ) {
+          healthRef.current = body.health;
+          installedHealthContextKeyRef.current = requestHealthContextKey;
+          setHealth(body.health);
+          setInstalledHealthContextKey(requestHealthContextKey);
+          setShowHealth(true);
+          setError(
+            body.confirmationStatus === "MISMATCH"
+              ? "The plan or its authoritative context changed. Review the current Plan Health warnings and confirm again."
+              : body.error ?? "Review the current warnings before making the plan ready.",
+          );
+          return;
+        }
         setError(body.error ?? "The plan wasn’t made ready. Your draft is unchanged.");
         return;
       }
@@ -884,7 +968,12 @@ function LegacyHypertrophyPlanEditor({
         <aside className={`${showHealth ? "block" : "hidden"} lg:block`}>
           <PlanHealthPanel
             health={health}
-            stale={unsaved || saveState !== "saved" || health.draftRevision !== revision}
+            stale={
+              unsaved ||
+              saveState !== "saved" ||
+              health.draftRevision !== revision ||
+              installedHealthContextKey !== currentHealthContextKey
+            }
             updating={unsaved && saveState === "saving"}
           />
         </aside>

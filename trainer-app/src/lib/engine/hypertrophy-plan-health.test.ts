@@ -111,7 +111,7 @@ describe("draft Plan Health classification", () => {
   it("keeps volume neutral and approximate without mutating evaluator output", () => {
     const health = rawHealth({
       muscles: [
-        { muscleId: "upper_back", directSets: 5, effectiveSets: 7.6, frequency: 2 },
+        { muscleId: "upper_back", directSets: 24, effectiveSets: 30, frequency: 4 },
       ],
     });
     const before = structuredClone(health);
@@ -122,13 +122,15 @@ describe("draft Plan Health classification", () => {
       {
         tier: "INFORMATIONAL_ESTIMATE",
         muscle: "Upper Back",
-        directSets: 5,
-        effectiveSets: 7.6,
-        frequency: 2,
+        directSets: 24,
+        effectiveSets: 30,
+        frequency: 4,
         referenceRange: { min: 6, max: 22 },
       },
     ]);
     expect(assessment.issues).toEqual([]);
+    expect(assessment.summary.importantWarnings).toBe(0);
+    expect(healthRequiresWarningConfirmation(assessment)).toBe(false);
     expect(health).toEqual(before);
   });
 

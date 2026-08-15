@@ -33,9 +33,11 @@ import {
   type ExecutableSeedProjectionV3,
 } from "@/lib/engine/hypertrophy-plan-authoring";
 import {
+  HYPERTROPHY_PLAN_HEALTH_CONFIRMATION_SCOPE_VERSION,
   HYPERTROPHY_PLAN_HEALTH_POLICY_VERSION,
   buildHypertrophyPlanHealthAssessment,
   healthRequiresWarningConfirmation,
+  type ClassifiedHypertrophyPlanHealthIssue,
   type HypertrophyPlanHealth,
   type HypertrophyPlanHealthAssessment,
   type HypertrophyPlanHealthResult,
@@ -549,6 +551,96 @@ function v4PreviewFromRows(
   });
 }
 
+function sha256(value: unknown): string {
+  return createHash("sha256").update(stableStringify(value)).digest("hex");
+}
+
+function canonicalHealthCatalog(
+  exercises: readonly HypertrophyAuthoringExercise[],
+): unknown[] {
+  const sorted = (values: readonly string[] | undefined) =>
+    [...(values ?? [])].sort();
+  return [...exercises]
+    .sort((left, right) => left.id.localeCompare(right.id))
+    .map((exercise) => ({
+      id: exercise.id,
+      name: exercise.name,
+      aliases: sorted(exercise.aliases),
+      movementPatterns: sorted(exercise.movementPatterns),
+      primaryMuscleIds: sorted(exercise.primaryMuscleIds),
+      secondaryMuscleIds: sorted(exercise.secondaryMuscleIds),
+      stimulusByMuscleId: exercise.stimulusByMuscleId ?? null,
+      equipment: sorted(exercise.equipment),
+      contraindicationKeys: sorted(exercise.contraindicationKeys),
+      isCompound: exercise.isCompound,
+      isMainLiftEligible: exercise.isMainLiftEligible,
+      measurement: exercise.measurement ?? null,
+      timePerSetSec: exercise.timePerSetSec,
+    }));
+}
+
+export function buildHypertrophyPlanHealthConfirmationScope(input: {
+  policyVersion: string;
+  draftId: string;
+  draftRevision: number;
+  draft: HypertrophyPlanDraft;
+  preview: HypertrophyPlanV4Preview | null;
+  importantWarnings: readonly ClassifiedHypertrophyPlanHealthIssue[];
+  exercises: readonly HypertrophyAuthoringExercise[];
+  limitations: ResolvedLimitations;
+}): string {
+  const payload = {
+    scopeVersion: HYPERTROPHY_PLAN_HEALTH_CONFIRMATION_SCOPE_VERSION,
+    healthPolicyVersion: input.policyVersion,
+    draft: {
+      id: input.draftId,
+      revision: input.draftRevision,
+      prescriptionHash: sha256(input.draft),
+      settings: input.draft.settings,
+    },
+    preview:
+      input.preview?.status === "ELIGIBLE"
+        ? {
+            status: input.preview.status,
+            hashAlgorithm: input.preview.hashAlgorithm,
+            hash: input.preview.hash,
+          }
+        : input.preview == null
+          ? { status: "NOT_APPLICABLE" }
+          : {
+              status: input.preview.status,
+              reasons: [...input.preview.reasons].sort(
+                (left, right) =>
+                  left.code.localeCompare(right.code) ||
+                  left.slotId.localeCompare(right.slotId) ||
+                  (left.placementId ?? "").localeCompare(
+                    right.placementId ?? "",
+                  ) ||
+                  left.message.localeCompare(right.message),
+              ),
+            },
+    importantWarnings: input.importantWarnings.map((warning) => ({
+      code: warning.code,
+      tier: warning.tier,
+      title: warning.title,
+      explanation: warning.explanation,
+      suggestedAction: warning.suggestedAction,
+      affected: warning.affected ?? null,
+      blocksFinalization: warning.blocksFinalization,
+      requiresAcknowledgment: warning.requiresAcknowledgment,
+    })),
+    authoritativeContext: {
+      catalog: canonicalHealthCatalog(input.exercises),
+      equipmentProfile: input.draft.settings.equipmentProfile,
+      limitations: {
+        recognizedTags: [...input.limitations.recognizedTags].sort(),
+        unrecognizedTexts: [...input.limitations.unrecognizedTexts].sort(),
+      },
+    },
+  };
+  return `${HYPERTROPHY_PLAN_HEALTH_CONFIRMATION_SCOPE_VERSION}.${sha256(payload)}`;
+}
+
 class InvalidPlanHealthResultError extends Error {}
 
 function assertValidHealthResult(health: HypertrophyPlanHealth): void {
@@ -646,7 +738,7 @@ export function deriveDraftHealthAssessment(input: {
     }
   }
 
-  return buildHypertrophyPlanHealthAssessment({
+  const assessment = buildHypertrophyPlanHealthAssessment({
     draftId: input.draftId,
     draftRevision: input.draftRevision,
     evaluatedWeek: input.draft.version === 2 ? input.draft.weeks[0]?.week ?? null : 1,
@@ -663,6 +755,21 @@ export function deriveDraftHealthAssessment(input: {
       input.exercises.map((exercise) => [exercise.id, exercise.name]),
     ),
   });
+  return {
+    ...assessment,
+    confirmationScope: buildHypertrophyPlanHealthConfirmationScope({
+      policyVersion: assessment.policyVersion,
+      draftId: input.draftId,
+      draftRevision: input.draftRevision,
+      draft: input.draft,
+      preview: input.preview,
+      importantWarnings: assessment.issues.filter(
+        (issue) => issue.tier === "IMPORTANT_WARNING",
+      ),
+      exercises: input.exercises,
+      limitations: input.limitations,
+    }),
+  };
 }
 
 export function safeDraftHealthAssessment(
@@ -948,7 +1055,7 @@ export async function makeHypertrophyPlanReady(input: {
   userId: string;
   planId: string;
   expectedDraftRevision: number;
-  warningsConfirmed: boolean;
+  warningConfirmationScope?: string;
   confirmedPreviewHash?: string;
 }): Promise<{ planId: string; mesocycleId: string; revisionId: string }> {
   try {
@@ -991,15 +1098,6 @@ export async function makeHypertrophyPlanReady(input: {
         const draft = parsePersistedHypertrophyPlanDraft(
           plan.hypertrophyDraft.payload,
         );
-        if (draft.version === 2) assertSupportedV4Topology(draft);
-        if (
-          draft.version === 2 &&
-          limitations.unrecognizedTexts.length > 0
-        ) {
-          throw new PlanManagementError("PLAN_LIMITATION_UNRECOGNIZED", {
-            scope: "custom_hypertrophy",
-          });
-        }
         const exercises = rows.map((row) => toAuthoringExercise(row));
         const preview = draft.version === 2 ? v4PreviewFromRows(draft, rows) : null;
         let health: HypertrophyPlanHealthAssessment;
@@ -1016,6 +1114,15 @@ export async function makeHypertrophyPlanReady(input: {
         } catch {
           throw new PlanManagementError("PLAN_HEALTH_EVALUATION_FAILED");
         }
+        if (draft.version === 2) assertSupportedV4Topology(draft);
+        if (
+          draft.version === 2 &&
+          limitations.unrecognizedTexts.length > 0
+        ) {
+          throw new PlanManagementError("PLAN_LIMITATION_UNRECOGNIZED", {
+            scope: "custom_hypertrophy",
+          });
+        }
         if (health.summary.blockingSafety > 0) {
           const firstBlocker = health.issues.find(
             (issue) => issue.tier === "BLOCKING_SAFETY",
@@ -1025,10 +1132,20 @@ export async function makeHypertrophyPlanReady(input: {
             firstBlocker: firstBlocker?.explanation ?? null,
           });
         }
-        if (healthRequiresWarningConfirmation(health) && !input.warningsConfirmed) {
-          throw new PlanManagementError("PLAN_WARNING_CONFIRMATION_REQUIRED", {
-            warningCount: String(health.summary.importantWarnings),
-          });
+        if (
+          healthRequiresWarningConfirmation(health) &&
+          input.warningConfirmationScope !== health.confirmationScope
+        ) {
+          throw new PlanManagementError(
+            "PLAN_WARNING_CONFIRMATION_REQUIRED",
+            {
+              warningCount: String(health.summary.importantWarnings),
+              confirmationStatus: input.warningConfirmationScope
+                ? "MISMATCH"
+                : "MISSING",
+            },
+            { health },
+          );
         }
 
         const measurementByExerciseId = new Map(

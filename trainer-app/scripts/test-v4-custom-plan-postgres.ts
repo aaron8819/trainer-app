@@ -293,6 +293,10 @@ async function main(): Promise<void> {
   assert.equal(saved.health.draftRevision, saved.revision);
   assert.equal(saved.health.summary.blockingSafety, 0);
   assert.equal(saved.health.summary.importantWarnings, 0);
+  assert.match(
+    saved.health.confirmationScope,
+    /^plan-health-confirmation\.v1\.[a-f0-9]{64}$/,
+  );
   const coachingMuscles = new Set(
     saved.health.issues
       .filter((issue) => issue.tier === "COACHING_OBSERVATION")
@@ -342,7 +346,6 @@ async function main(): Promise<void> {
         userId: user.id,
         planId: created.planId,
         expectedDraftRevision: blocked.revision,
-        warningsConfirmed: true,
       }),
     (error: unknown) =>
       typeof error === "object" &&
@@ -377,7 +380,6 @@ async function main(): Promise<void> {
     userId: user.id,
     planId: created.planId,
     expectedDraftRevision: restored.revision,
-    warningsConfirmed: false,
     confirmedPreviewHash: restored.preview.hash,
   });
   const target = await planModule.loadPlanActivationTarget(user.id, created.planId);

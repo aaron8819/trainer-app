@@ -9,9 +9,10 @@ vi.mock("next/navigation", () => ({ useRouter: () => router }));
 function availableHealth(revision: number) {
   return {
     status: "AVAILABLE" as const,
-    policyVersion: "draft-plan-health.v1" as const,
+    policyVersion: "draft-plan-health.v2" as const,
     draftId: "plan-1",
     draftRevision: revision,
+    confirmationScope: `plan-health-confirmation.v1.${revision.toString(16).padStart(64, "0")}`,
     evaluatedWeek: 1,
     summary: {
       blockingSafety: 0,

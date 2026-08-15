@@ -100,12 +100,13 @@ const exercises = [
   },
 ];
 
-function availableHealth(revision: number) {
+function availableHealth(revision: number, planId = "plan-v4", scopeSeed?: string) {
   return {
     status: "AVAILABLE" as const,
-    policyVersion: "draft-plan-health.v1" as const,
-    draftId: "plan-v4",
+    policyVersion: "draft-plan-health.v2" as const,
+    draftId: planId,
     draftRevision: revision,
+    confirmationScope: `plan-health-confirmation.v1.${scopeSeed ?? revision.toString(16).padStart(64, "0")}`,
     evaluatedWeek: 1,
     summary: {
       blockingSafety: 0,
@@ -134,6 +135,31 @@ function availableHealth(revision: number) {
       recognizedLimitationCount: 0,
       unrecognizedLimitationsPresent: false,
     },
+  };
+}
+
+function warningHealth(
+  revision: number,
+  scopeSeed: string,
+  code = "DUPLICATE_EXERCISE",
+  explanation = "Bench Press appears more than once in Upper.",
+) {
+  const health = availableHealth(revision, "plan-v4", scopeSeed);
+  return {
+    ...health,
+    summary: { ...health.summary, importantWarnings: 1 },
+    issues: [
+      {
+        code,
+        tier: "IMPORTANT_WARNING" as const,
+        title: code === "DUPLICATE_EXERCISE" ? "Duplicate exercise" : "Session may run long",
+        explanation,
+        suggestedAction: "Review whether this is deliberate before finalizing.",
+        affected: { session: "Upper" },
+        blocksFinalization: false,
+        requiresAcknowledgment: true,
+      },
+    ],
   };
 }
 
@@ -367,7 +393,6 @@ describe("WeeklyHypertrophyPlanEditor", () => {
         method: "POST",
         body: JSON.stringify({
           expectedDraftRevision: 1,
-          warningsConfirmed: false,
           confirmedPreviewHash: "a".repeat(64),
         }),
       }),
@@ -392,6 +417,135 @@ describe("WeeklyHypertrophyPlanEditor", () => {
     await act(() => vi.advanceTimersByTimeAsync(800));
     expect(screen.getByText("Current for saved revision 2.")).toBeVisible();
     expect(screen.getByText("Saved revision 2")).toBeVisible();
+  });
+
+  it.each(["catalog", "equipment", "limitations"] as const)(
+    "marks Health stale after %s context props drift even when the local prescription is unchanged",
+    (contextKind) => {
+      const data = finalizableFiveWeekData();
+      const { rerender } = render(
+        <WeeklyHypertrophyPlanEditor initialData={data} />,
+      );
+      const changed = structuredClone(data);
+      if (contextKind === "catalog") {
+        changed.exercises[0]!.timePerSetSec += 1;
+      } else if (contextKind === "equipment") {
+        changed.draft.settings.equipmentProfile = "BARBELL_HOME";
+      } else {
+        changed.limitationKeys = ["wrist"];
+      }
+
+      rerender(<WeeklyHypertrophyPlanEditor initialData={changed} />);
+
+      expect(
+        screen.getByText("Based on the last saved version. Local edits are not included yet."),
+      ).toBeVisible();
+      expect(screen.getByRole("button", { name: "Finalize plan" })).toBeDisabled();
+    },
+  );
+
+  it("does not let a stale save response replace Health after authoritative context changes", async () => {
+    const pending = deferredResponse();
+    vi.mocked(fetch).mockReturnValueOnce(pending.promise);
+    const { rerender } = render(
+      <WeeklyHypertrophyPlanEditor initialData={initialData} />,
+    );
+    fireEvent.change(screen.getByDisplayValue("Weekly plan"), {
+      target: { value: "Saving under old context" },
+    });
+    await act(() => vi.advanceTimersByTimeAsync(800));
+    const changed = structuredClone(initialData) as HypertrophyPlanEditorDataV2;
+    changed.limitationKeys = ["wrist"];
+    rerender(<WeeklyHypertrophyPlanEditor initialData={changed} />);
+
+    pending.resolve(savedResponse(2));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("Current for saved revision 2.")).toBeNull();
+    expect(
+      screen.getByText("Based on the last saved version. Local edits are not included yet."),
+    ).toBeVisible();
+  });
+
+  it("remounts assessment state when navigation changes draft IDs", () => {
+    const first = finalizableFiveWeekData();
+    first.health = warningHealth(1, "a".repeat(64));
+    const { rerender } = render(
+      <WeeklyHypertrophyPlanEditor initialData={first} />,
+    );
+    expect(screen.getByText("Duplicate exercise")).toBeInTheDocument();
+
+    const second = finalizableFiveWeekData();
+    second.planId = "plan-v4-next";
+    second.name = "Next plan";
+    second.health = availableHealth(1, second.planId, "b".repeat(64));
+    rerender(<WeeklyHypertrophyPlanEditor initialData={second} />);
+
+    expect(screen.getByDisplayValue("Next plan")).toBeVisible();
+    expect(screen.queryByText("Duplicate exercise")).toBeNull();
+    expect(screen.getByText("Current for saved revision 1.")).toBeVisible();
+  });
+
+  it("installs stale-scope Health without auto-confirming and submits only the newly reviewed scope", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    const data = finalizableFiveWeekData();
+    data.health = warningHealth(1, "a".repeat(64));
+    const refreshedHealth = warningHealth(
+      1,
+      "b".repeat(64),
+      "SESSION_DURATION_HIGH",
+      "Upper is estimated at about 91 minutes.",
+    );
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: "Review and confirm the current warnings before making this plan ready.",
+            code: "PLAN_WARNING_CONFIRMATION_REQUIRED",
+            confirmationStatus: "MISMATCH",
+            health: refreshedHealth,
+          }),
+          { status: 409, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    render(<WeeklyHypertrophyPlanEditor initialData={data} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Finalize plan" }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Session may run long")).toBeInTheDocument();
+    expect(
+      screen.getByText(/authoritative context changed/i),
+    ).toBeVisible();
+    expect(vi.mocked(window.confirm)).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Finalize plan" }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(vi.mocked(window.confirm)).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenLastCalledWith(
+      "/api/plans/plan-v4/finalize",
+      expect.objectContaining({
+        body: expect.stringContaining(refreshedHealth.confirmationScope),
+      }),
+    );
   });
 
   it("keeps an older save assessment stale when a newer local edit exists", async () => {

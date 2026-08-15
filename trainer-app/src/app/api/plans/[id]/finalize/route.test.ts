@@ -54,13 +54,14 @@ describe("POST /api/plans/[id]/finalize", () => {
 
   it("forwards the confirmed V4 preview to atomic make-ready acceptance", async () => {
     const hash = "a".repeat(64);
+    const warningConfirmationScope = `plan-health-confirmation.v1.${"b".repeat(64)}`;
     const response = await POST(
       new Request("http://localhost/api/plans/weekly-plan/finalize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           expectedDraftRevision: 3,
-          warningsConfirmed: true,
+          warningConfirmationScope,
           confirmedPreviewHash: hash,
         }),
       }),
@@ -73,21 +74,40 @@ describe("POST /api/plans/[id]/finalize", () => {
       userId: "user-1",
       planId: "weekly-plan",
       expectedDraftRevision: 3,
-      warningsConfirmed: true,
+      warningConfirmationScope,
       confirmedPreviewHash: hash,
     });
     expect(mocks.finalizePlan).not.toHaveBeenCalled();
   });
 
-  it("rejects client-supplied Health severity claims", async () => {
+  it.each([
+    { warningsConfirmed: true },
+    { acknowledgedSeverities: ["COACHING_OBSERVATION"] },
+    { importantWarningCount: 1 },
+    { health: { summary: { importantWarnings: 0 } } },
+    { warningConfirmationScopeContents: { warningCodes: ["DUPLICATE_EXERCISE"] } },
+  ])("rejects client-authored Health authority %#", async (claim) => {
+    const response = await POST(
+      new Request("http://localhost/api/plans/weekly-plan/finalize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedDraftRevision: 3, ...claim }),
+      }),
+      context,
+    );
+
+    expect(response.status).toBe(400);
+    expect(mocks.makeHypertrophyPlanReady).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed opaque confirmation scope", async () => {
     const response = await POST(
       new Request("http://localhost/api/plans/weekly-plan/finalize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           expectedDraftRevision: 3,
-          warningsConfirmed: true,
-          acknowledgedSeverities: ["COACHING_OBSERVATION"],
+          warningConfirmationScope: "client-authored-warning-a",
         }),
       }),
       context,

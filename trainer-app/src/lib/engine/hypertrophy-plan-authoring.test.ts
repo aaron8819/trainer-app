@@ -1105,4 +1105,54 @@ describe("custom hypertrophy authoring contracts", () => {
       slots: projectionView.slotPlanSeedJson.slots,
     });
   });
+
+  it("keeps above-reference effective volume informational and runtime-inert", () => {
+    const highVolumeDraft = draft();
+    highVolumeDraft.settings.sessionDurationMinutes = 90;
+    const chestExercises = ["bench-a", "bench-b", "bench-c"].map(
+      (id, index) => ({
+        ...catalog[0]!,
+        id,
+        name: `Bench variation ${index + 1}`,
+        timePerSetSec: 0,
+      }),
+    );
+    highVolumeDraft.sessions[0]!.exercises = chestExercises.map((exercise) => ({
+      exerciseId: exercise.id,
+      workingSets: 10,
+      intent: {
+        userRole: "PRIMARY_LIFT" as const,
+        target: {
+          kind: "movement_pattern" as const,
+          movementPattern: "horizontal_push" as const,
+        },
+      },
+    }));
+    const highVolumeCatalog = [...chestExercises, ...catalog.slice(1)];
+    const draftBefore = structuredClone(highVolumeDraft);
+    const catalogBefore = structuredClone(highVolumeCatalog);
+    const acceptedBefore = compileAcceptedHypertrophySeed(highVolumeDraft);
+
+    const health = evaluateHypertrophyPlanHealth({
+      draft: highVolumeDraft,
+      exercises: highVolumeCatalog,
+      limitationKeys: [],
+    });
+
+    expect(
+      health.muscles.find((muscle) => muscle.muscleId === "chest")
+        ?.effectiveSets,
+    ).toBeGreaterThan(22);
+    expect(health.warnings.map((warning) => warning.code)).not.toContain(
+      "VOLUME_HIGH",
+    );
+    expect(health.warnings.map((warning) => warning.code)).not.toContain(
+      "SESSION_DURATION_HIGH",
+    );
+    expect(highVolumeDraft).toEqual(draftBefore);
+    expect(highVolumeCatalog).toEqual(catalogBefore);
+    expect(compileAcceptedHypertrophySeed(highVolumeDraft)).toEqual(
+      acceptedBefore,
+    );
+  });
 });

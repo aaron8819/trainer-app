@@ -37,6 +37,10 @@ import {
   type HypertrophyPlanHealthResult,
 } from "@/lib/engine/hypertrophy-plan-health";
 import { PlanHealthPanel } from "./PlanHealthPanel";
+import {
+  importantWarningConfirmationPrompt,
+  planHealthContextKey,
+} from "./plan-health-client";
 
 type WeeklyEditorData = HypertrophyPlanEditorDataV2;
 type SaveState = "saved" | "saving" | "failed" | "incomplete";
@@ -253,6 +257,7 @@ async function responseBody(response: Response) {
     revision?: number;
     preview?: HypertrophyPlanV4Preview;
     health?: HypertrophyPlanHealthResult;
+    confirmationStatus?: "MISSING" | "MISMATCH";
   }>;
 }
 
@@ -273,12 +278,32 @@ export function WeeklyHypertrophyPlanEditor({
 }: {
   initialData: WeeklyEditorData;
 }) {
+  return (
+    <WeeklyHypertrophyPlanEditorStateful
+      key={initialData.planId}
+      initialData={initialData}
+    />
+  );
+}
+
+function WeeklyHypertrophyPlanEditorStateful({
+  initialData,
+}: {
+  initialData: WeeklyEditorData;
+}) {
   const router = useRouter();
+  const currentHealthContextKey = useMemo(
+    () => planHealthContextKey(initialData),
+    [initialData],
+  );
   const [name, setName] = useState(initialData.name);
   const [draft, setDraft] = useState(initialData.draft);
   const [revision, setRevision] = useState(initialData.revision);
   const [preview, setPreview] = useState(initialData.preview);
   const [health, setHealth] = useState(initialData.health);
+  const [installedHealthContextKey, setInstalledHealthContextKey] = useState(
+    currentHealthContextKey,
+  );
   const [selectedSlotId, setSelectedSlotId] = useState(
     initialData.draft.sessions[0]!.slotId,
   );
@@ -325,6 +350,29 @@ export function WeeklyHypertrophyPlanEditor({
   const invalidFieldCountRef = useRef(invalidFieldCount);
   const latest = useRef({ name, draft, revision });
   const latestHealthRevision = useRef(initialData.health.draftRevision);
+  const healthContextGeneration = useRef(0);
+  const lastPropsContextKey = useRef(currentHealthContextKey);
+  const initialHealthIdentity =
+    initialData.health.status === "AVAILABLE"
+      ? initialData.health.confirmationScope
+      : `${initialData.health.policyVersion}:${initialData.health.draftId}:${initialData.health.draftRevision}:${initialData.health.reason}`;
+  const lastInitialHealthIdentity = useRef(initialHealthIdentity);
+
+  useLayoutEffect(() => {
+    const contextChanged = lastPropsContextKey.current !== currentHealthContextKey;
+    const assessmentChanged =
+      lastInitialHealthIdentity.current !== initialHealthIdentity;
+    if (contextChanged) {
+      healthContextGeneration.current += 1;
+      lastPropsContextKey.current = currentHealthContextKey;
+    }
+    if (assessmentChanged) {
+      lastInitialHealthIdentity.current = initialHealthIdentity;
+      latestHealthRevision.current = initialData.health.draftRevision;
+      setHealth(initialData.health);
+      setInstalledHealthContextKey(currentHealthContextKey);
+    }
+  }, [currentHealthContextKey, initialData.health, initialHealthIdentity]);
 
   useLayoutEffect(() => {
     invalidFieldCountRef.current = invalidFieldCount;
@@ -376,6 +424,8 @@ export function WeeklyHypertrophyPlanEditor({
       }
       setSaveState("saving");
       setError(null);
+      const requestContextGeneration = healthContextGeneration.current;
+      const requestHealthContextKey = currentHealthContextKey;
       try {
         const response = await fetch(`/api/plans/${initialData.planId}/draft`, {
           method: "PATCH",
@@ -397,7 +447,10 @@ export function WeeklyHypertrophyPlanEditor({
         lastSavedSignature.current = signature;
         setSavedSignature(signature);
         setPreview(body.preview);
-        if (body.revision >= latestHealthRevision.current) {
+        if (
+          requestContextGeneration === healthContextGeneration.current &&
+          body.revision >= latestHealthRevision.current
+        ) {
           const nextHealth = matchingHealthResult(
             body.health,
             initialData.planId,
@@ -413,6 +466,7 @@ export function WeeklyHypertrophyPlanEditor({
               };
           latestHealthRevision.current = body.revision;
           setHealth(nextHealth);
+          setInstalledHealthContextKey(requestHealthContextKey);
         }
       } catch {
         setError("Could not save the weekly draft.");
@@ -430,7 +484,7 @@ export function WeeklyHypertrophyPlanEditor({
       setSaveState("saved");
       return true;
     }
-  }, [initialData.planId]);
+  }, [currentHealthContextKey, initialData.planId]);
 
   const save = useCallback(() => {
     if (activeSave.current) return activeSave.current;
@@ -664,13 +718,16 @@ export function WeeklyHypertrophyPlanEditor({
   const previewCurrent =
     !unsaved && invalidFieldCount === 0 && displayedSaveState === "saved";
   const healthCurrent =
-    previewCurrent && health.draftRevision === revision;
+    previewCurrent &&
+    health.draftRevision === revision &&
+    installedHealthContextKey === currentHealthContextKey;
   const healthStale = !healthCurrent;
   const healthUpdating =
     healthStale && invalidFieldCount === 0 && displayedSaveState === "saving";
   const healthBlocksFinalization =
-    healthCurrent &&
-    (health.status === "UNAVAILABLE" || health.summary.blockingSafety > 0);
+    !healthCurrent ||
+    health.status === "UNAVAILABLE" ||
+    health.summary.blockingSafety > 0;
   const supportedTopology =
     draft.sessions.length === 4 &&
     draft.sessions.every((entry) => entry.exercises.length > 0) &&
@@ -693,8 +750,34 @@ export function WeeklyHypertrophyPlanEditor({
         : [],
   );
 
-  const finalize = async (warningsConfirmed = false): Promise<void> => {
-    if (!previewCurrent || preview.status !== "ELIGIBLE" || !supportedTopology) return;
+  const finalize = async (): Promise<void> => {
+    if (
+      !previewCurrent ||
+      !healthCurrent ||
+      health.status !== "AVAILABLE" ||
+      preview.status !== "ELIGIBLE" ||
+      !supportedTopology
+    ) {
+      return;
+    }
+    const warningConfirmationScope =
+      health.summary.importantWarnings > 0
+        ? health.confirmationScope
+        : undefined;
+    if (
+      warningConfirmationScope &&
+      !window.confirm(
+        importantWarningConfirmationPrompt(
+          health,
+          "Confirm these exact warnings and finalize the plan?",
+        ),
+      )
+    ) {
+      return;
+    }
+    const requestRevision = revision;
+    const requestContextGeneration = healthContextGeneration.current;
+    const requestHealthContextKey = currentHealthContextKey;
     setFinalizing(true);
     setError(null);
     try {
@@ -703,22 +786,28 @@ export function WeeklyHypertrophyPlanEditor({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           expectedDraftRevision: revision,
-          warningsConfirmed,
+          ...(warningConfirmationScope ? { warningConfirmationScope } : {}),
           confirmedPreviewHash: preview.hash,
         }),
       });
       const body = await responseBody(response);
-      if (
-        !response.ok &&
-        body.code === "PLAN_WARNING_CONFIRMATION_REQUIRED" &&
-        !warningsConfirmed &&
-        window.confirm("This plan has important warnings to review. Acknowledge them and finalize?")
-      ) {
-        setFinalizing(false);
-        await finalize(true);
-        return;
-      }
       if (!response.ok) {
+        if (
+          body.code === "PLAN_WARNING_CONFIRMATION_REQUIRED" &&
+          requestContextGeneration === healthContextGeneration.current &&
+          latest.current.revision === requestRevision &&
+          matchingHealthResult(body.health, initialData.planId, requestRevision)
+        ) {
+          latestHealthRevision.current = requestRevision;
+          setHealth(body.health);
+          setInstalledHealthContextKey(requestHealthContextKey);
+          setError(
+            body.confirmationStatus === "MISMATCH"
+              ? "The plan or its authoritative context changed. Review the current Plan Health warnings and confirm again."
+              : body.error ?? "Review the current warnings before finalizing.",
+          );
+          return;
+        }
         setError(body.error ?? "Could not finalize the weekly plan.");
         return;
       }

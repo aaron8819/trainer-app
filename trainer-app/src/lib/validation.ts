@@ -18,6 +18,7 @@ import {
   hypertrophyPlanDraftSchema,
   hypertrophyPlanDraftV2Schema,
 } from "@/lib/engine/hypertrophy-plan-authoring";
+import { isHypertrophyPlanHealthConfirmationScope } from "@/lib/engine/hypertrophy-plan-health";
 import { EQUIPMENT_PROFILE_VALUES } from "@/lib/engine/equipment-profile";
 
 export const WORKOUT_STATUS_VALUES = ["PLANNED", "IN_PROGRESS", "PARTIAL", "COMPLETED", "SKIPPED"] as const;
@@ -508,7 +509,10 @@ export const regenerateHypertrophyPlanDraftSchema = z
 export const makeHypertrophyPlanReadySchema = z
   .object({
     expectedDraftRevision: z.number().int().min(1),
-    warningsConfirmed: z.boolean().default(false),
+    warningConfirmationScope: z
+      .string()
+      .refine(isHypertrophyPlanHealthConfirmationScope)
+      .optional(),
     confirmedPreviewHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   })
   .strict();

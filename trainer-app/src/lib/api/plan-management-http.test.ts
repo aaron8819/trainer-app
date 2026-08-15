@@ -61,6 +61,31 @@ describe("plan management HTTP errors", () => {
     });
   });
 
+  it("returns the server-authored current Health when warning confirmation is stale", async () => {
+    const health = {
+      status: "AVAILABLE",
+      policyVersion: "draft-plan-health.v2",
+      draftId: "plan-1",
+      draftRevision: 3,
+      confirmationScope: `plan-health-confirmation.v1.${"a".repeat(64)}`,
+    };
+    const response = planManagementErrorResponse(
+      new PlanManagementError(
+        "PLAN_WARNING_CONFIRMATION_REQUIRED",
+        { warningCount: "1", confirmationStatus: "MISMATCH" },
+        { health },
+      ),
+    );
+
+    expect(response?.status).toBe(409);
+    await expect(response?.json()).resolves.toMatchObject({
+      code: "PLAN_WARNING_CONFIRMATION_REQUIRED",
+      confirmationStatus: "MISMATCH",
+      warningCount: "1",
+      health,
+    });
+  });
+
   it("fails closed when finalization-time Health evaluation is unavailable", async () => {
     const response = planManagementErrorResponse(
       new PlanManagementError("PLAN_HEALTH_EVALUATION_FAILED"),

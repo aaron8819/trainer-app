@@ -171,6 +171,7 @@ export function planManagementErrorResponse(
           error: "Review and confirm the current warnings before making this plan ready.",
           code: error.code,
           ...error.details,
+          ...error.responseData,
         },
         { status: 409 },
       );

@@ -2161,13 +2161,6 @@ export function evaluateHypertrophyPlanHealth(input: {
         muscleId: muscle.muscleId,
       });
     }
-    if (muscle.effectiveSets > policy.volume.mrv) {
-      warnings.push({
-        code: "VOLUME_HIGH",
-        message: `${policy.displayName} volume is unusually high.`,
-        muscleId: muscle.muscleId,
-      });
-    }
   }
 
   return { blockers, warnings, muscles, sessions };

@@ -4,7 +4,10 @@ import {
 } from "./muscle-policy";
 
 export const HYPERTROPHY_PLAN_HEALTH_POLICY_VERSION =
-  "draft-plan-health.v1" as const;
+  "draft-plan-health.v2" as const;
+
+export const HYPERTROPHY_PLAN_HEALTH_CONFIRMATION_SCOPE_VERSION =
+  "plan-health-confirmation.v1" as const;
 
 export const HYPERTROPHY_PLAN_HEALTH_TIERS = [
   "BLOCKING_SAFETY",
@@ -28,7 +31,6 @@ export const HYPERTROPHY_PLAN_HEALTH_ISSUE_CODES = [
   "UNSUPPORTED_TOPOLOGY",
   "DUPLICATE_EXERCISE",
   "SESSION_DURATION_HIGH",
-  "VOLUME_HIGH",
   "MOVEMENT_REDUNDANCY",
   "MISSING_COVERAGE",
   "THIN_COVERAGE",
@@ -122,11 +124,6 @@ export const HYPERTROPHY_PLAN_HEALTH_ISSUE_POLICY = {
     title: "Session may run long",
     suggestedAction: "Review whether the estimated duration is practical before finalizing.",
   },
-  VOLUME_HIGH: {
-    tier: "IMPORTANT_WARNING",
-    title: "Unusually high estimated workload",
-    suggestedAction: "Review whether this workload is intentional and recoverable.",
-  },
   MOVEMENT_REDUNDANCY: {
     tier: "COACHING_OBSERVATION",
     title: "Similar movement patterns",
@@ -173,7 +170,7 @@ export type ClassifiedHypertrophyPlanHealthIssue = {
   requiresAcknowledgment: boolean;
 };
 
-export type HypertrophyPlanHealthAssessment = {
+export type HypertrophyPlanHealthAssessmentCore = {
   status: "AVAILABLE";
   policyVersion: typeof HYPERTROPHY_PLAN_HEALTH_POLICY_VERSION;
   draftId: string;
@@ -206,6 +203,11 @@ export type HypertrophyPlanHealthAssessment = {
   };
 };
 
+export type HypertrophyPlanHealthAssessment =
+  HypertrophyPlanHealthAssessmentCore & {
+    confirmationScope: string;
+  };
+
 export type HypertrophyPlanHealthUnavailable = {
   status: "UNAVAILABLE";
   policyVersion: typeof HYPERTROPHY_PLAN_HEALTH_POLICY_VERSION;
@@ -224,6 +226,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isFiniteNonnegative(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+export function isHypertrophyPlanHealthConfirmationScope(
+  value: unknown,
+): value is string {
+  return (
+    typeof value === "string" &&
+    new RegExp(
+      `^${HYPERTROPHY_PLAN_HEALTH_CONFIRMATION_SCOPE_VERSION.replaceAll(".", "\\.")}\\.[a-f0-9]{64}$`,
+    ).test(value)
+  );
 }
 
 export function isHypertrophyPlanHealthResult(
@@ -252,7 +265,8 @@ export function isHypertrophyPlanHealthResult(
     !Array.isArray(value.issues) ||
     !Array.isArray(value.volumeEstimates) ||
     !Array.isArray(value.sessionEstimates) ||
-    !isRecord(value.evaluatedFacts)
+    !isRecord(value.evaluatedFacts) ||
+    !isHypertrophyPlanHealthConfirmationScope(value.confirmationScope)
   ) {
     return false;
   }
@@ -363,7 +377,7 @@ export function buildHypertrophyPlanHealthAssessment(input: {
   unrecognizedLimitationsPresent: boolean;
   sessionNameBySlotId: ReadonlyMap<string, string>;
   exerciseNameById: ReadonlyMap<string, string>;
-}): HypertrophyPlanHealthAssessment {
+}): HypertrophyPlanHealthAssessmentCore {
   const classified = [
     ...input.health.blockers.map((finding) => ({ finding, existingBlocking: true })),
     ...input.health.warnings.map((finding) => ({ finding, existingBlocking: false })),
@@ -458,7 +472,7 @@ export function buildHypertrophyPlanHealthAssessment(input: {
 }
 
 export function healthRequiresWarningConfirmation(
-  health: HypertrophyPlanHealthAssessment,
+  health: Pick<HypertrophyPlanHealthAssessmentCore, "summary">,
 ): boolean {
   return health.summary.importantWarnings > 0;
 }

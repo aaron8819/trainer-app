@@ -155,6 +155,12 @@ export function PlanHealthPanel({
         </div>
       ) : (
         <>
+          {health.summary.importantWarnings > 0 ? (
+            <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-950">
+              These warnings belong to this exact saved prescription and authoritative catalog,
+              equipment, and limitation context. Any change requires a new explicit confirmation.
+            </p>
+          ) : null}
           <dl className="mt-4 grid grid-cols-2 gap-2 text-center text-xs">
             <div className="rounded-lg border border-slate-200 p-2">
               <dt className="text-slate-600">Blocking</dt>

@@ -45,9 +45,10 @@ function assessment(issueCount = 3): HypertrophyPlanHealthResult {
   }));
   return {
     status: "AVAILABLE",
-    policyVersion: "draft-plan-health.v1",
+    policyVersion: "draft-plan-health.v2",
     draftId: "plan-1",
     draftRevision: 9,
+    confirmationScope: `plan-health-confirmation.v1.${"9".repeat(64)}`,
     evaluatedWeek: 1,
     summary: {
       blockingSafety: issues.filter((issue) => issue.tier === "BLOCKING_SAFETY").length,
@@ -113,7 +114,7 @@ describe("PlanHealthPanel", () => {
       <PlanHealthPanel
         health={{
           status: "UNAVAILABLE",
-          policyVersion: "draft-plan-health.v1",
+          policyVersion: "draft-plan-health.v2",
           draftId: "plan-1",
           draftRevision: 10,
           reason: "EVALUATION_FAILED",

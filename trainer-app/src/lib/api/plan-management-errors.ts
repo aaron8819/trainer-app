@@ -23,6 +23,7 @@ export class PlanManagementError extends Error {
   constructor(
     readonly code: PlanManagementErrorCode,
     readonly details: Record<string, string | null> = {},
+    readonly responseData: Record<string, unknown> = {},
   ) {
     super(code);
     this.name = "PlanManagementError";

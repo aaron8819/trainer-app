@@ -11,6 +11,11 @@ import {
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import {
+  HypertrophyBulkProgressionEditor,
+  HypertrophyProgressionEditor,
+  type BulkProgressionCandidate,
+} from "./HypertrophyProgressionEditor";
+import {
   inferHypertrophyExerciseIntent,
   isExerciseEligibleForIntent,
   isHypertrophyRecommendationCustomized,
@@ -21,6 +26,7 @@ import {
   type HypertrophySessionFocus,
   type WeeklyPrescriptionV4,
 } from "@/lib/engine/hypertrophy-plan-authoring";
+import { recognizeHypertrophyPrescriptionPattern } from "@/lib/engine/hypertrophy-prescription-patterns";
 import type {
   HypertrophyPlanEditorDataV2,
   HypertrophyPlanV4Preview,
@@ -159,6 +165,17 @@ function compactPrescriptionSummary(input: {
   ].join(" · ");
 }
 
+function supportsProgressionPatterns(draft: HypertrophyPlanDraftV2): boolean {
+  return (
+    draft.weeks.length === 5 &&
+    draft.weeks.every(
+      (week, index) =>
+        week.week === index + 1 &&
+        week.phase === (index === 4 ? "DELOAD" : "ACCUMULATION"),
+    )
+  );
+}
+
 function draftSignature(value: {
   name: string;
   draft: HypertrophyPlanDraftV2;
@@ -259,6 +276,12 @@ export function WeeklyHypertrophyPlanEditor({
   );
   const [showAdd, setShowAdd] = useState(false);
   const [newExerciseId, setNewExerciseId] = useState("");
+  const [editingPlacementId, setEditingPlacementId] = useState<string | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedPlacementIds, setSelectedPlacementIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [bulkEditorOpen, setBulkEditorOpen] = useState(false);
   const [prescriptionResetRevision, setPrescriptionResetRevision] = useState<
     Record<string, number>
   >({});
@@ -293,6 +316,7 @@ export function WeeklyHypertrophyPlanEditor({
   );
   const session = draft.sessions[selectedIndex]!;
   const includeDeload = draft.weeks.at(-1)?.phase === "DELOAD";
+  const progressionPatternsSupported = supportsProgressionPatterns(draft);
   const maxAccumulationWeeks = includeDeload ? 51 : 52;
   const exerciseById = useMemo(
     () => new Map(initialData.exercises.map((exercise) => [exercise.id, exercise])),
@@ -480,6 +504,13 @@ export function WeeklyHypertrophyPlanEditor({
     setSelectedSlotId(slotId);
   };
 
+  useEffect(() => {
+    setSelectionMode(false);
+    setSelectedPlacementIds(new Set());
+    setBulkEditorOpen(false);
+    setEditingPlacementId(null);
+  }, [selectedSlotId]);
+
   const removeSession = () => {
     if (draft.sessions.length <= 2) return;
     if (
@@ -508,6 +539,50 @@ export function WeeklyHypertrophyPlanEditor({
     }));
     setNewExerciseId("");
     setShowAdd(false);
+  };
+
+  const applyPlacementProgression = (
+    placementId: string,
+    prescriptions: WeeklyPrescriptionV4[],
+  ) => {
+    setDraft((current) => ({
+      ...current,
+      sessions: current.sessions.map((currentSession) =>
+        currentSession.slotId !== selectedSlotId
+          ? currentSession
+          : {
+              ...currentSession,
+              exercises: currentSession.exercises.map((exercise) =>
+                exercise.placementId === placementId
+                  ? { ...exercise, prescriptions }
+                  : exercise,
+              ),
+            },
+      ),
+    }));
+    remountPrescriptionFields(placementId);
+  };
+
+  const applyBulkProgression = (
+    changes: Map<string, WeeklyPrescriptionV4[]>,
+  ) => {
+    setDraft((current) => ({
+      ...current,
+      sessions: current.sessions.map((currentSession) =>
+        currentSession.slotId !== selectedSlotId
+          ? currentSession
+          : {
+              ...currentSession,
+              exercises: currentSession.exercises.map((exercise) => {
+                const prescriptions = changes.get(exercise.placementId);
+                return prescriptions ? { ...exercise, prescriptions } : exercise;
+              }),
+            },
+      ),
+    }));
+    for (const placementId of changes.keys()) remountPrescriptionFields(placementId);
+    setSelectionMode(false);
+    setSelectedPlacementIds(new Set());
   };
 
   const discardAndLeave = () => {
@@ -558,6 +633,19 @@ export function WeeklyHypertrophyPlanEditor({
       week.week === index + 1 &&
       week.phase === (index === 4 ? "DELOAD" : "ACCUMULATION"),
     );
+  const editingRow = editingPlacementId
+    ? session.exercises.find((entry) => entry.placementId === editingPlacementId)
+    : undefined;
+  const bulkCandidates: BulkProgressionCandidate[] = session.exercises.flatMap(
+    (entry) =>
+      selectedPlacementIds.has(entry.placementId)
+        ? [{
+            placementId: entry.placementId,
+            exerciseName: exerciseById.get(entry.exerciseId)?.name ?? "Unavailable exercise",
+            prescriptions: entry.prescriptions,
+          }]
+        : [],
+  );
 
   const finalize = async (warningsConfirmed = false): Promise<void> => {
     if (!previewCurrent || preview.status !== "ELIGIBLE" || !supportedTopology) return;
@@ -636,13 +724,13 @@ export function WeeklyHypertrophyPlanEditor({
         <p className="mt-2 text-sm text-slate-600">
           The supported four-session, five-week profile can be finalized after its saved preview is confirmed.
         </p>
-        <div className="mt-3 flex gap-2 overflow-x-auto pb-1 lg:hidden">
+        <nav aria-label="Session navigation" className="mt-3 flex snap-x gap-2 overflow-x-auto pb-1 lg:hidden">
           {draft.sessions.map((entry) => (
             <button
               key={entry.slotId}
               type="button"
               onClick={() => setSelectedSlotId(entry.slotId)}
-              className={`min-h-11 shrink-0 rounded-full border px-4 text-sm font-medium ${
+              className={`min-h-11 shrink-0 snap-start rounded-full border px-4 text-sm font-medium ${
                 entry.slotId === session.slotId
                   ? "border-blue-500 bg-blue-50 text-blue-800"
                   : "border-slate-300 bg-white text-slate-700"
@@ -651,7 +739,7 @@ export function WeeklyHypertrophyPlanEditor({
               {entry.name}
             </button>
           ))}
-        </div>
+        </nav>
       </header>
 
       {error ? (
@@ -816,37 +904,121 @@ export function WeeklyHypertrophyPlanEditor({
             </Button>
           </div>
 
-          <div className="mt-5 space-y-4">
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 p-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">Exercise progressions</p>
+              <p className="mt-1 text-xs text-slate-600">
+                {progressionPatternsSupported
+                  ? "Edit one exercise or select placements for a session-only effort and deload update."
+                  : "Progression commands require four accumulation weeks and a final Week 5 deload. Exact weekly editing remains available."}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {selectionMode ? (
+                <>
+                  <Button
+                    size="touch"
+                    disabled={selectedPlacementIds.size === 0 || !progressionPatternsSupported}
+                    onClick={() => setBulkEditorOpen(true)}
+                  >
+                    Preview bulk ({selectedPlacementIds.size})
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="touch"
+                    onClick={() => {
+                      setSelectionMode(false);
+                      setSelectedPlacementIds(new Set());
+                    }}
+                  >
+                    Cancel selection
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="touch"
+                  disabled={session.exercises.length === 0 || !progressionPatternsSupported}
+                  onClick={() => setSelectionMode(true)}
+                >
+                  Select for bulk edit
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-3">
             {session.exercises.map((row, exerciseIndex) => {
               const exercise = exerciseById.get(row.exerciseId);
               const customized = isHypertrophyRecommendationCustomized(row);
               const hasBaseline =
                 row.recommendationBaseline?.exerciseId === row.exerciseId;
+              const pattern = progressionPatternsSupported
+                ? recognizeHypertrophyPrescriptionPattern({
+                    weeks: draft.weeks,
+                    prescriptions: row.prescriptions,
+                  })
+                : null;
               return (
                 <article key={row.placementId} className="rounded-xl border border-slate-200 p-3 sm:p-4">
                   <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
+                    <div className="flex min-w-0 flex-1 items-start gap-3">
+                      {selectionMode ? (
+                        <label className="flex min-h-11 shrink-0 items-center gap-2 text-sm font-medium text-slate-700">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${exercise?.name ?? "exercise"} for bulk progression`}
+                            checked={selectedPlacementIds.has(row.placementId)}
+                            onChange={(event) =>
+                              setSelectedPlacementIds((current) => {
+                                const next = new Set(current);
+                                if (event.target.checked) next.add(row.placementId);
+                                else next.delete(row.placementId);
+                                return next;
+                              })
+                            }
+                          />
+                          <span className="sr-only">Select</span>
+                        </label>
+                      ) : null}
+                      <div className="min-w-0">
                       <h3 className="font-semibold text-slate-950">
                         {exercise?.name ?? "Unavailable exercise"}
                       </h3>
-                      <p className="mt-1 text-xs text-slate-500">
-                        {compactPrescriptionSummary({
-                          intent: row.intent,
-                          prescriptions: row.prescriptions,
-                          weeks: draft.weeks,
-                        })}
+                      <p className="mt-1 text-sm text-slate-700">
+                        {pattern?.summary ?? compactPrescriptionSummary({
+                            intent: row.intent,
+                            prescriptions: row.prescriptions,
+                            weeks: draft.weeks,
+                          })}
                       </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {ROLE_LABEL[row.intent.userRole]} · {pattern?.deloadSummary ?? "Exact weekly prescription"}
+                      </p>
+                      {pattern ? (
+                        <span className={`mt-2 inline-flex rounded-full px-2 py-1 text-xs font-medium ${pattern.isCustom ? "bg-amber-100 text-amber-900" : "bg-blue-50 text-blue-800"}`}>
+                          {pattern.classificationLabel}
+                        </span>
+                      ) : null}
                       {customized ? (
-                        <span className="mt-2 inline-flex rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900">
-                          Customized
+                        <span className="ml-2 mt-2 inline-flex rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900">
+                          Recommendation customized
                         </span>
                       ) : !hasBaseline ? (
-                        <span className="mt-2 inline-flex rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
+                        <span className="ml-2 mt-2 inline-flex rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
                           Manual
                         </span>
                       ) : null}
+                      </div>
                     </div>
-                    <div className="flex gap-1">
+                    <div className="flex flex-wrap justify-end gap-1">
+                      <Button
+                        size="touch"
+                        disabled={!progressionPatternsSupported}
+                        onClick={() => setEditingPlacementId(row.placementId)}
+                      >
+                        Edit progression
+                      </Button>
                       <Button
                         variant="secondary"
                         size="touch"
@@ -876,8 +1048,11 @@ export function WeeklyHypertrophyPlanEditor({
 
                   <details className="mt-3">
                     <summary className="flex min-h-11 cursor-pointer items-center rounded-lg px-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
-                      Review or edit weekly prescription
+                      Advanced weekly exceptions
                     </summary>
+                    <p className="mt-2 text-xs text-slate-600">
+                      Exact stored rows. Changes here immediately update the derived progression summary; opening or closing this section changes nothing.
+                    </p>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     <label className="text-sm font-medium text-slate-700">
                       Exercise
@@ -939,6 +1114,7 @@ export function WeeklyHypertrophyPlanEditor({
                         fieldKey={`${row.placementId}-${prescription.week}-${draft.weeks[prescriptionIndex]!.phase}`}
                         phase={draft.weeks[prescriptionIndex]!.phase}
                         prescription={prescription}
+                        isException={Boolean(pattern?.exceptionWeeks.includes(prescription.week))}
                         onValidityChange={setFieldValidity}
                         onChange={(next) =>
                           updateSession((current) => {
@@ -965,6 +1141,14 @@ export function WeeklyHypertrophyPlanEditor({
                     </div>
 
                     <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        variant="secondary"
+                        size="touch"
+                        disabled={!progressionPatternsSupported}
+                        onClick={() => setEditingPlacementId(row.placementId)}
+                      >
+                        Edit and reapply progression
+                      </Button>
                     {hasBaseline ? (
                       <Button
                         variant="secondary"
@@ -1158,6 +1342,28 @@ export function WeeklyHypertrophyPlanEditor({
         </aside>
       </div>
 
+      {editingRow && progressionPatternsSupported ? (
+        <HypertrophyProgressionEditor
+          key={editingRow.placementId}
+          exerciseName={exerciseById.get(editingRow.exerciseId)?.name ?? "Unavailable exercise"}
+          weeks={draft.weeks}
+          prescriptions={editingRow.prescriptions}
+          onApply={(prescriptions) =>
+            applyPlacementProgression(editingRow.placementId, prescriptions)
+          }
+          onClose={() => setEditingPlacementId(null)}
+        />
+      ) : null}
+
+      {bulkEditorOpen && progressionPatternsSupported ? (
+        <HypertrophyBulkProgressionEditor
+          weeks={draft.weeks}
+          candidates={bulkCandidates}
+          onApply={applyBulkProgression}
+          onClose={() => setBulkEditorOpen(false)}
+        />
+      ) : null}
+
       {leaveState === "save_failed" ? (
         <section role="alert" className="mt-5 rounded-xl border border-rose-200 bg-rose-50 p-4">
           <p className="font-semibold text-rose-900">The latest changes could not be saved.</p>
@@ -1324,12 +1530,14 @@ function PrescriptionFields({
   fieldKey,
   phase,
   prescription,
+  isException,
   onChange,
   onValidityChange,
 }: {
   fieldKey: string;
   phase: "ACCUMULATION" | "DELOAD";
   prescription: WeeklyPrescriptionV4;
+  isException: boolean;
   onChange: (prescription: WeeklyPrescriptionV4) => void;
   onValidityChange: (key: string, valid: boolean) => void;
 }) {
@@ -1351,6 +1559,9 @@ function PrescriptionFields({
       <section className="rounded-lg border border-slate-200 bg-slate-50 p-3">
         <div className="flex items-center justify-between gap-2">
           <h4 className="text-sm font-semibold text-slate-900">Week {prescription.week} · Deload</h4>
+          {isException ? (
+            <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900">Pattern exception</span>
+          ) : null}
           <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
             <input
               type="checkbox"
@@ -1371,9 +1582,14 @@ function PrescriptionFields({
   return (
     <section className="rounded-lg border border-slate-200 p-3">
       <div className="flex items-center justify-between gap-2">
-        <h4 className="text-sm font-semibold text-slate-900">
-          Week {prescription.week} · {phase === "DELOAD" ? "Deload" : "Accumulation"}
-        </h4>
+        <div>
+          <h4 className="text-sm font-semibold text-slate-900">
+            Week {prescription.week} · {phase === "DELOAD" ? "Deload" : "Accumulation"}
+          </h4>
+          {isException ? (
+            <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900">Pattern exception</span>
+          ) : null}
+        </div>
         {phase === "DELOAD" ? (
           <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
             <input
@@ -1398,7 +1614,7 @@ function PrescriptionFields({
             max={10}
             value={input.sets}
             onChange={(event) => update({ ...input, sets: event.target.value })}
-            className="mt-1 min-h-10 w-full rounded-md border border-slate-300 px-2"
+            className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-2"
           />
         </label>
         <label className="text-xs font-medium text-slate-700">
@@ -1407,7 +1623,7 @@ function PrescriptionFields({
             aria-label={`Week ${prescription.week} rep format`}
             value={input.repKind}
             onChange={(event) => update({ ...input, repKind: event.target.value as "EXACT" | "RANGE" })}
-            className="mt-1 min-h-10 w-full rounded-md border border-slate-300 px-2"
+            className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-2"
           >
             <option value="EXACT">Exact</option>
             <option value="RANGE">Range</option>
@@ -1423,7 +1639,7 @@ function PrescriptionFields({
               max={100}
               value={input.exactReps}
               onChange={(event) => update({ ...input, exactReps: event.target.value })}
-              className="mt-1 min-h-10 w-full rounded-md border border-slate-300 px-2"
+              className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-2"
             />
           </label>
         ) : (
@@ -1437,7 +1653,7 @@ function PrescriptionFields({
                 max={100}
                 value={input.minReps}
                 onChange={(event) => update({ ...input, minReps: event.target.value })}
-                className="mt-1 min-h-10 w-full rounded-md border border-slate-300 px-2"
+                className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-2"
               />
             </label>
             <label className="text-xs font-medium text-slate-700">
@@ -1449,7 +1665,7 @@ function PrescriptionFields({
                 max={100}
                 value={input.maxReps}
                 onChange={(event) => update({ ...input, maxReps: event.target.value })}
-                className="mt-1 min-h-10 w-full rounded-md border border-slate-300 px-2"
+                className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-2"
               />
             </label>
           </>
@@ -1460,7 +1676,7 @@ function PrescriptionFields({
             aria-label={`Week ${prescription.week} RIR format`}
             value={input.rirKind}
             onChange={(event) => update({ ...input, rirKind: event.target.value as "TARGET_RANGE" | "NOT_APPLICABLE" })}
-            className="mt-1 min-h-10 w-full rounded-md border border-slate-300 px-2"
+            className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-2"
           >
             <option value="TARGET_RANGE">Range</option>
             <option value="NOT_APPLICABLE">Not applicable</option>
@@ -1478,7 +1694,7 @@ function PrescriptionFields({
                 step={0.5}
                 value={input.minRir}
                 onChange={(event) => update({ ...input, minRir: event.target.value })}
-                className="mt-1 min-h-10 w-full rounded-md border border-slate-300 px-2"
+                className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-2"
               />
             </label>
             <label className="text-xs font-medium text-slate-700">
@@ -1491,7 +1707,7 @@ function PrescriptionFields({
                 step={0.5}
                 value={input.maxRir}
                 onChange={(event) => update({ ...input, maxRir: event.target.value })}
-                className="mt-1 min-h-10 w-full rounded-md border border-slate-300 px-2"
+                className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-2"
               />
             </label>
           </>

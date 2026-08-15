@@ -13,7 +13,6 @@ import {
   type CanonicalMuscleId,
 } from "@/lib/engine/muscle-policy";
 import {
-  evaluateHypertrophyPlanHealth,
   isExerciseAvailableForHypertrophyPlan,
   isExerciseEligibleForIntent,
   type AcceptedExerciseIntentV2,
@@ -26,7 +25,13 @@ import type {
   HypertrophyPlanEditorDataV1,
   HypertrophyPlanEditorDataV2,
 } from "@/lib/api/hypertrophy-plan-drafts";
+import {
+  HYPERTROPHY_PLAN_HEALTH_POLICY_VERSION,
+  isHypertrophyPlanHealthResult,
+  type HypertrophyPlanHealthResult,
+} from "@/lib/engine/hypertrophy-plan-health";
 import { WeeklyHypertrophyPlanEditor } from "./WeeklyHypertrophyPlanEditor";
+import { PlanHealthPanel } from "./PlanHealthPanel";
 
 type SaveState = "saved" | "saving" | "failed";
 
@@ -86,6 +91,7 @@ async function responseBody(response: Response) {
     code?: string;
     revision?: number;
     draft?: HypertrophyPlanDraftV1;
+    health?: HypertrophyPlanHealthResult;
   }>;
 }
 
@@ -116,6 +122,7 @@ function LegacyHypertrophyPlanEditor({
   const [name, setName] = useState(initialData.name);
   const [draft, setDraft] = useState(initialData.draft);
   const [revision, setRevision] = useState(initialData.revision);
+  const [health, setHealth] = useState(initialData.health);
   const [selectedSlotId, setSelectedSlotId] = useState(
     initialData.draft.sessions[0]!.slotId,
   );
@@ -138,25 +145,17 @@ function LegacyHypertrophyPlanEditor({
   const inFlight = useRef(false);
   const queued = useRef(false);
   const latest = useRef({ name, draft, revision });
+  const healthRef = useRef(initialData.health);
   latest.current = { name, draft, revision };
-
-  const health = useMemo(
-    () =>
-      evaluateHypertrophyPlanHealth({
-        draft,
-        exercises: initialData.exercises,
-        limitationKeys: initialData.limitationKeys,
-      }),
-    [draft, initialData.exercises, initialData.limitationKeys],
-  );
   const selectedIndex = Math.max(
     0,
     draft.sessions.findIndex((session) => session.slotId === selectedSlotId),
   );
   const session = draft.sessions[selectedIndex]!;
-  const duration = health.sessions.find(
-    (entry) => entry.slotId === session.slotId,
-  )?.estimatedMinutes;
+  const duration =
+    health.status === "AVAILABLE"
+      ? health.sessionEstimates[selectedIndex]?.estimatedMinutes
+      : undefined;
 
   const save = useCallback(async () => {
     if (inFlight.current) {
@@ -194,6 +193,20 @@ function LegacyHypertrophyPlanEditor({
       setRevision(body.revision);
       latest.current.revision = body.revision;
       lastSavedSignature.current = signature;
+      const nextHealth =
+        isHypertrophyPlanHealthResult(body.health) &&
+        body.health.draftId === initialData.planId &&
+        body.health.draftRevision === body.revision
+          ? body.health
+          : {
+              status: "UNAVAILABLE" as const,
+              policyVersion: HYPERTROPHY_PLAN_HEALTH_POLICY_VERSION,
+              draftId: initialData.planId,
+              draftRevision: body.revision,
+              reason: "RESULT_INVALID" as const,
+            };
+      healthRef.current = nextHealth;
+      setHealth(nextHealth);
       setSaveState("saved");
       return true;
     } catch {
@@ -334,15 +347,21 @@ function LegacyHypertrophyPlanEditor({
   };
 
   const makeReady = async () => {
-    if (health.blockers.length > 0) {
-      setShowHealth(true);
-      setError("Resolve the plan blockers before making it ready.");
-      return;
-    }
     const saved = await flushSave();
     if (!saved) return;
-    const warningText = health.warnings.length
-      ? ` This plan has ${health.warnings.length} warnings; confirm that you reviewed them.`
+    const currentHealth = healthRef.current;
+    if (currentHealth.status === "UNAVAILABLE") {
+      setShowHealth(true);
+      setError("Plan Health must refresh successfully before making the plan ready.");
+      return;
+    }
+    if (currentHealth.summary.blockingSafety > 0) {
+      setShowHealth(true);
+      setError("Resolve the Plan Health blockers before making it ready.");
+      return;
+    }
+    const warningText = currentHealth.summary.importantWarnings
+      ? ` This plan has ${currentHealth.summary.importantWarnings} important warnings; confirm that you reviewed them.`
       : "";
     if (
       !window.confirm(
@@ -359,7 +378,7 @@ function LegacyHypertrophyPlanEditor({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           expectedDraftRevision: latest.current.revision,
-          warningsConfirmed: health.warnings.length > 0,
+          warningsConfirmed: currentHealth.summary.importantWarnings > 0,
         }),
       });
       const body = await responseBody(response);
@@ -404,6 +423,20 @@ function LegacyHypertrophyPlanEditor({
     setRevision(body.revision);
     latest.current = { name, draft: body.draft, revision: body.revision };
     lastSavedSignature.current = JSON.stringify({ name, draft: body.draft });
+    const nextHealth =
+      isHypertrophyPlanHealthResult(body.health) &&
+      body.health.draftId === initialData.planId &&
+      body.health.draftRevision === body.revision
+        ? body.health
+        : {
+            status: "UNAVAILABLE" as const,
+            policyVersion: HYPERTROPHY_PLAN_HEALTH_POLICY_VERSION,
+            draftId: initialData.planId,
+            draftRevision: body.revision,
+            reason: "RESULT_INVALID" as const,
+          };
+    healthRef.current = nextHealth;
+    setHealth(nextHealth);
     setSelectedSlotId(body.draft.sessions[0]!.slotId);
     setSaveState("saved");
   };
@@ -848,43 +881,12 @@ function LegacyHypertrophyPlanEditor({
           </div>
         </main>
 
-        <aside className={`${showHealth ? "block" : "hidden"} rounded-2xl border border-slate-200 bg-white p-4 lg:block`}>
-          <h2 className="font-semibold text-slate-900">Plan health</h2>
-          <p className="mt-2 text-sm text-slate-600">
-            {health.blockers.length} blockers · {health.warnings.length} warnings
-          </p>
-          {health.blockers.length ? (
-            <div className="mt-3 space-y-2">
-              {health.blockers.map((finding, index) => (
-                <p key={`${finding.code}-${index}`} className="rounded-lg bg-rose-50 p-2 text-xs text-rose-800">
-                  {finding.message}
-                </p>
-              ))}
-            </div>
-          ) : null}
-          {health.warnings.length ? (
-            <div className="mt-3 space-y-2">
-              {health.warnings.map((finding, index) => (
-                <p key={`${finding.code}-${index}`} className="rounded-lg bg-amber-50 p-2 text-xs text-amber-800">
-                  {finding.message}
-                </p>
-              ))}
-            </div>
-          ) : null}
-          <details className="mt-4">
-            <summary className="cursor-pointer text-sm font-semibold text-slate-800">
-              Volume and frequency
-            </summary>
-            <div className="mt-2 space-y-1 text-xs text-slate-600">
-              {health.muscles
-                .filter((muscle) => muscle.effectiveSets > 0)
-                .map((muscle) => (
-                  <p key={muscle.muscleId}>
-                    {MUSCLE_POLICY_BY_ID[muscle.muscleId].displayName}: {muscle.directSets} direct · ~{muscle.effectiveSets} effective · {muscle.frequency}×
-                  </p>
-                ))}
-            </div>
-          </details>
+        <aside className={`${showHealth ? "block" : "hidden"} lg:block`}>
+          <PlanHealthPanel
+            health={health}
+            stale={unsaved || saveState !== "saved" || health.draftRevision !== revision}
+            updating={unsaved && saveState === "saving"}
+          />
         </aside>
       </div>
 

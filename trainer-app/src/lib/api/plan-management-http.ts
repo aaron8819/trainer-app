@@ -174,6 +174,15 @@ export function planManagementErrorResponse(
         },
         { status: 409 },
       );
+    case "PLAN_HEALTH_EVALUATION_FAILED":
+      return NextResponse.json(
+        {
+          error:
+            "Plan Health could not be refreshed. Keep editing and try again; finalization remains unavailable until the current plan can be checked.",
+          code: error.code,
+        },
+        { status: 503 },
+      );
     case "PLAN_COPY_UNAVAILABLE":
       return NextResponse.json(
         {

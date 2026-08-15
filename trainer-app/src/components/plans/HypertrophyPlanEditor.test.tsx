@@ -6,6 +6,34 @@ import { HypertrophyPlanEditor } from "./HypertrophyPlanEditor";
 const router = { push: vi.fn(), refresh: vi.fn() };
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 
+function availableHealth(revision: number) {
+  return {
+    status: "AVAILABLE" as const,
+    policyVersion: "draft-plan-health.v1" as const,
+    draftId: "plan-1",
+    draftRevision: revision,
+    evaluatedWeek: 1,
+    summary: {
+      blockingSafety: 0,
+      importantWarnings: 0,
+      coachingObservations: 0,
+      informationalVolumeAvailable: false,
+    },
+    issues: [],
+    volumeEstimates: [],
+    sessionEstimates: [
+      { session: "Upper", estimatedMinutes: 21 },
+      { session: "Lower", estimatedMinutes: 11 },
+    ],
+    evaluatedFacts: {
+      catalogExerciseCount: 3,
+      equipmentProfile: "FULL_GYM",
+      recognizedLimitationCount: 0,
+      unrecognizedLimitationsPresent: false,
+    },
+  };
+}
+
 const initialData = {
   planId: "plan-1",
   name: "Custom plan",
@@ -53,7 +81,7 @@ const initialData = {
       },
     ],
   },
-  health: { blockers: [], warnings: [], muscles: [], sessions: [] },
+  health: availableHealth(1),
   exercises: [
     {
       id: "bench",
@@ -104,7 +132,7 @@ describe("HypertrophyPlanEditor", () => {
     vi.clearAllMocks();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ revision: 2 }),
+      json: async () => ({ revision: 2, health: availableHealth(2) }),
     }));
     vi.stubGlobal("confirm", vi.fn(() => true));
   });

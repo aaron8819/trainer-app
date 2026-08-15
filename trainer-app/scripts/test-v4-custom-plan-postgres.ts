@@ -179,6 +179,11 @@ async function main(): Promise<void> {
     created.planId,
   );
   assert(loaded?.draft.version === 2, "V4_REFERENCE_DRAFT_NOT_LOADED");
+  assert(
+    loaded.health.draftId === created.planId &&
+      loaded.health.draftRevision === created.draftRevision,
+    "V4_REFERENCE_INITIAL_HEALTH_REVISION_MISMATCH",
+  );
 
   const sessionDefinitions = [
     {
@@ -284,6 +289,28 @@ async function main(): Promise<void> {
     draft,
   });
   assert(saved.preview?.status === "ELIGIBLE", "V4_REFERENCE_PREVIEW_INELIGIBLE");
+  assert(saved.health.status === "AVAILABLE", "V4_REFERENCE_HEALTH_UNAVAILABLE");
+  assert.equal(saved.health.draftRevision, saved.revision);
+  assert.equal(saved.health.summary.blockingSafety, 0);
+  assert.equal(saved.health.summary.importantWarnings, 0);
+  const coachingMuscles = new Set(
+    saved.health.issues
+      .filter((issue) => issue.tier === "COACHING_OBSERVATION")
+      .map((issue) => issue.affected?.muscle)
+      .filter((muscle): muscle is string => Boolean(muscle)),
+  );
+  for (const muscle of [
+    "Chest",
+    "Side Delts",
+    "Lats",
+    "Upper Back",
+    "Rear Delts",
+    "Biceps",
+    "Triceps",
+    "Calves",
+  ]) {
+    assert(coachingMuscles.has(muscle), `V4_REFERENCE_COACHING_MISSING:${muscle}`);
+  }
   const reloaded = await draftsModule.loadHypertrophyPlanEditorData(
     user.id,
     created.planId,
@@ -298,12 +325,60 @@ async function main(): Promise<void> {
     "V4_REFERENCE_RELOAD_MISMATCH",
   );
 
+  const blockedDraft = structuredClone(draft);
+  blockedDraft.sessions[3]!.exercises = [];
+  const blocked = await draftsModule.saveHypertrophyPlanDraft({
+    userId: user.id,
+    planId: created.planId,
+    expectedRevision: saved.revision,
+    name: "Five-week V4 reference",
+    draft: blockedDraft,
+  });
+  assert(blocked.health.status === "AVAILABLE", "V4_REFERENCE_BLOCKER_HEALTH_UNAVAILABLE");
+  assert(blocked.health.summary.blockingSafety > 0, "V4_REFERENCE_BLOCKER_NOT_FOUND");
+  await assert.rejects(
+    () =>
+      draftsModule.makeHypertrophyPlanReady({
+        userId: user.id,
+        planId: created.planId,
+        expectedDraftRevision: blocked.revision,
+        warningsConfirmed: true,
+      }),
+    (error: unknown) =>
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      (error.code === "PLAN_UNSUPPORTED_TOPOLOGY" || error.code === "PLAN_DRAFT_BLOCKED"),
+    "V4_REFERENCE_BLOCKER_FINALIZATION_DID_NOT_FAIL",
+  );
+
+  const restored = await draftsModule.saveHypertrophyPlanDraft({
+    userId: user.id,
+    planId: created.planId,
+    expectedRevision: blocked.revision,
+    name: "Five-week V4 reference",
+    draft,
+  });
+  assert(restored.preview?.status === "ELIGIBLE", "V4_REFERENCE_RESTORE_INELIGIBLE");
+  assert(restored.health.status === "AVAILABLE", "V4_REFERENCE_RESTORE_HEALTH_UNAVAILABLE");
+  assert.equal(restored.health.summary.blockingSafety, 0);
+  assert.equal(restored.health.summary.importantWarnings, 0);
+  assert.deepEqual(restored.preview.normalizedPlan, saved.preview.normalizedPlan);
+  assert.equal(restored.preview.hash, saved.preview.hash);
+  const restoredDraft = await draftsModule.loadHypertrophyPlanEditorData(
+    user.id,
+    created.planId,
+  );
+  assert(restoredDraft?.draft.version === 2, "V4_REFERENCE_RESTORED_DRAFT_NOT_LOADED");
+  assert.deepEqual(restoredDraft.draft, draft);
+  assert.equal(restoredDraft.health.draftRevision, restored.revision);
+
   const ready = await draftsModule.makeHypertrophyPlanReady({
     userId: user.id,
     planId: created.planId,
-    expectedDraftRevision: saved.revision,
-    warningsConfirmed: true,
-    confirmedPreviewHash: saved.preview.hash,
+    expectedDraftRevision: restored.revision,
+    warningsConfirmed: false,
+    confirmedPreviewHash: restored.preview.hash,
   });
   const target = await planModule.loadPlanActivationTarget(user.id, created.planId);
   assert(target.status === "READY", "V4_REFERENCE_PLAN_NOT_READY");
@@ -322,7 +397,7 @@ async function main(): Promise<void> {
     { intent: sessionIntentSchema.parse(scheduled.intent), slotId: scheduled.slotId },
   );
   assert(!("error" in materialized), "V4_REFERENCE_MATERIALIZATION_FAILED");
-  const accepted = saved.preview.normalizedPlan;
+  const accepted = restored.preview.normalizedPlan;
   const expectedSlot = authoringModule
     .resolveAcceptedHypertrophySeedV4Week(accepted, 1)
     .slots.find((slot) => slot.slotId === scheduled.slotId);
@@ -362,7 +437,7 @@ async function main(): Promise<void> {
 
   console.log(JSON.stringify({
     status: "PASS",
-    path: ["create", "load", "save", "preview", "finalize", "activate", "schedule", "materialize"],
+    path: ["create", "load", "save", "health", "block", "reject", "restore", "finalize", "activate", "schedule", "materialize"],
     planId: created.planId,
     mesocycleId: ready.mesocycleId,
     revisionId: ready.revisionId,

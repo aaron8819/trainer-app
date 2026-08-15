@@ -79,6 +79,24 @@ describe("POST /api/plans/[id]/finalize", () => {
     expect(mocks.finalizePlan).not.toHaveBeenCalled();
   });
 
+  it("rejects client-supplied Health severity claims", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/plans/weekly-plan/finalize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expectedDraftRevision: 3,
+          warningsConfirmed: true,
+          acknowledgedSeverities: ["COACHING_OBSERVATION"],
+        }),
+      }),
+      context,
+    );
+
+    expect(response.status).toBe(400);
+    expect(mocks.makeHypertrophyPlanReady).not.toHaveBeenCalled();
+  });
+
   it("rejects a custom finalize request explicitly when rollout is disabled", async () => {
     delete process.env.TRAINER_CUSTOM_HYPERTROPHY_PLANS_ROLLOUT;
     const response = await POST(

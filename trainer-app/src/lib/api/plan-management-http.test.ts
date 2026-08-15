@@ -60,4 +60,17 @@ describe("plan management HTTP errors", () => {
         "An active exercise limitation is not recognized. Update or remove it before finalizing this plan.",
     });
   });
+
+  it("fails closed when finalization-time Health evaluation is unavailable", async () => {
+    const response = planManagementErrorResponse(
+      new PlanManagementError("PLAN_HEALTH_EVALUATION_FAILED"),
+    );
+
+    expect(response?.status).toBe(503);
+    await expect(response?.json()).resolves.toEqual({
+      code: "PLAN_HEALTH_EVALUATION_FAILED",
+      error:
+        "Plan Health could not be refreshed. Keep editing and try again; finalization remains unavailable until the current plan can be checked.",
+    });
+  });
 });

@@ -31,6 +31,12 @@ import type {
   HypertrophyPlanEditorDataV2,
   HypertrophyPlanV4Preview,
 } from "@/lib/api/hypertrophy-plan-drafts";
+import {
+  HYPERTROPHY_PLAN_HEALTH_POLICY_VERSION,
+  isHypertrophyPlanHealthResult,
+  type HypertrophyPlanHealthResult,
+} from "@/lib/engine/hypertrophy-plan-health";
+import { PlanHealthPanel } from "./PlanHealthPanel";
 
 type WeeklyEditorData = HypertrophyPlanEditorDataV2;
 type SaveState = "saved" | "saving" | "failed" | "incomplete";
@@ -246,7 +252,20 @@ async function responseBody(response: Response) {
     code?: string;
     revision?: number;
     preview?: HypertrophyPlanV4Preview;
+    health?: HypertrophyPlanHealthResult;
   }>;
+}
+
+function matchingHealthResult(
+  health: HypertrophyPlanHealthResult | undefined,
+  planId: string,
+  revision: number,
+): health is HypertrophyPlanHealthResult {
+  return Boolean(
+    isHypertrophyPlanHealthResult(health) &&
+      health.draftId === planId &&
+      health.draftRevision === revision,
+  );
 }
 
 export function WeeklyHypertrophyPlanEditor({
@@ -259,6 +278,7 @@ export function WeeklyHypertrophyPlanEditor({
   const [draft, setDraft] = useState(initialData.draft);
   const [revision, setRevision] = useState(initialData.revision);
   const [preview, setPreview] = useState(initialData.preview);
+  const [health, setHealth] = useState(initialData.health);
   const [selectedSlotId, setSelectedSlotId] = useState(
     initialData.draft.sessions[0]!.slotId,
   );
@@ -304,6 +324,7 @@ export function WeeklyHypertrophyPlanEditor({
         : saveState;
   const invalidFieldCountRef = useRef(invalidFieldCount);
   const latest = useRef({ name, draft, revision });
+  const latestHealthRevision = useRef(initialData.health.draftRevision);
 
   useLayoutEffect(() => {
     invalidFieldCountRef.current = invalidFieldCount;
@@ -376,6 +397,23 @@ export function WeeklyHypertrophyPlanEditor({
         lastSavedSignature.current = signature;
         setSavedSignature(signature);
         setPreview(body.preview);
+        if (body.revision >= latestHealthRevision.current) {
+          const nextHealth = matchingHealthResult(
+            body.health,
+            initialData.planId,
+            body.revision,
+          )
+            ? body.health
+            : {
+                status: "UNAVAILABLE" as const,
+                policyVersion: HYPERTROPHY_PLAN_HEALTH_POLICY_VERSION,
+                draftId: initialData.planId,
+                draftRevision: body.revision,
+                reason: "RESULT_INVALID" as const,
+              };
+          latestHealthRevision.current = body.revision;
+          setHealth(nextHealth);
+        }
       } catch {
         setError("Could not save the weekly draft.");
         setSaveState("failed");
@@ -625,6 +663,14 @@ export function WeeklyHypertrophyPlanEditor({
 
   const previewCurrent =
     !unsaved && invalidFieldCount === 0 && displayedSaveState === "saved";
+  const healthCurrent =
+    previewCurrent && health.draftRevision === revision;
+  const healthStale = !healthCurrent;
+  const healthUpdating =
+    healthStale && invalidFieldCount === 0 && displayedSaveState === "saving";
+  const healthBlocksFinalization =
+    healthCurrent &&
+    (health.status === "UNAVAILABLE" || health.summary.blockingSafety > 0);
   const supportedTopology =
     draft.sessions.length === 4 &&
     draft.sessions.every((entry) => entry.exercises.length > 0) &&
@@ -666,7 +712,7 @@ export function WeeklyHypertrophyPlanEditor({
         !response.ok &&
         body.code === "PLAN_WARNING_CONFIRMATION_REQUIRED" &&
         !warningsConfirmed &&
-        window.confirm("This plan has safety or coverage warnings. Finalize it anyway?")
+        window.confirm("This plan has important warnings to review. Acknowledge them and finalize?")
       ) {
         setFinalizing(false);
         await finalize(true);
@@ -1282,8 +1328,14 @@ export function WeeklyHypertrophyPlanEditor({
           </Button>
         </main>
 
-        <aside className="rounded-2xl border border-slate-200 bg-white p-4">
-          <h2 className="font-semibold text-slate-950">Normalized preview</h2>
+        <aside className="min-w-0 space-y-5">
+          <PlanHealthPanel
+            health={health}
+            stale={healthStale}
+            updating={healthUpdating}
+          />
+          <section className="rounded-2xl border border-slate-200 bg-white p-4" aria-labelledby="normalized-preview-heading">
+          <h2 id="normalized-preview-heading" className="font-semibold text-slate-950">Normalized preview</h2>
           {!previewCurrent ? (
             <p className="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
               Finish the current fields and wait for them to save before previewing.
@@ -1327,7 +1379,7 @@ export function WeeklyHypertrophyPlanEditor({
               <Button
                 className="w-full"
                 size="touch"
-                disabled={!supportedTopology || finalizing}
+                disabled={!supportedTopology || healthBlocksFinalization || finalizing}
                 onClick={() => void finalize()}
               >
                 {finalizing ? "Finalizing…" : "Finalize plan"}
@@ -1339,6 +1391,7 @@ export function WeeklyHypertrophyPlanEditor({
               ) : null}
             </div>
           )}
+          </section>
         </aside>
       </div>
 

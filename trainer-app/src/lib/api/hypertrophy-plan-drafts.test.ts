@@ -91,6 +91,7 @@ import {
   createCustomHypertrophyPlan,
   createEditableHypertrophyPlanCopy,
   deriveHypertrophyPlanV4Preview,
+  safeDraftHealthAssessment,
   loadHypertrophyPlanEditorData,
   makeHypertrophyPlanReady,
   saveHypertrophyPlanDraft,
@@ -832,6 +833,12 @@ describe("custom hypertrophy draft persistence", () => {
       }),
     ).resolves.toMatchObject({
       revision: 4,
+      health: {
+        status: "AVAILABLE",
+        draftId: "plan-1",
+        draftRevision: 4,
+        summary: { blockingSafety: 3 },
+      },
       preview: {
         status: "INELIGIBLE",
         reasons: [expect.objectContaining({ code: "EMPTY_SESSION", slotId: "upper" })],
@@ -1068,11 +1075,56 @@ describe("custom hypertrophy draft persistence", () => {
     expect(restored).toMatchObject({
       draft: saved,
       revision: 7,
+      health: {
+        status: "AVAILABLE",
+        draftId: "plan-1",
+        draftRevision: 7,
+        evaluatedFacts: {
+          catalogExerciseCount: exerciseRows.length,
+          equipmentProfile: "FULL_GYM",
+          recognizedLimitationCount: 0,
+          unrecognizedLimitationsPresent: false,
+        },
+      },
       preview: { status: "ELIGIBLE", hash: expect.stringMatching(/^[a-f0-9]{64}$/) },
     });
     expect(mocks.tx.mesocycle.create).not.toHaveBeenCalled();
     expect(mocks.createRevision).not.toHaveBeenCalled();
     expect(mocks.tx.hypertrophyPlanDraft.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("surfaces an unrecognized current limitation as a generic saved-revision blocker", async () => {
+    const saved = weeklyDraft();
+    mocks.prisma.macroCycle.findFirst.mockResolvedValueOnce({
+      id: "plan-1",
+      name: "Weekly draft",
+      hypertrophyDraft: {
+        payload: saved,
+        revision: 9,
+        updatedAt: new Date("2026-08-06T12:00:00.000Z"),
+      },
+    });
+    mocks.prisma.injury.findMany.mockResolvedValueOnce([
+      { bodyPart: "private unsupported limitation text" },
+    ]);
+
+    const restored = await loadHypertrophyPlanEditorData("user-1", "plan-1");
+
+    expect(restored?.health).toMatchObject({
+      status: "AVAILABLE",
+      draftRevision: 9,
+      summary: { blockingSafety: 3 },
+      evaluatedFacts: { unrecognizedLimitationsPresent: true },
+    });
+    if (restored?.health.status !== "AVAILABLE") throw new Error("Health unavailable");
+    const limitationIssue = restored.health.issues.find(
+      (issue) => issue.code === "LIMITATION_UNRECOGNIZED",
+    );
+    expect(limitationIssue).toMatchObject({
+      tier: "BLOCKING_SAFETY",
+      blocksFinalization: true,
+    });
+    expect(JSON.stringify(limitationIssue)).not.toContain("private unsupported");
   });
 
   it("returns clear deterministic preview reasons for unresolved measurement identity", () => {
@@ -1315,6 +1367,7 @@ describe("custom hypertrophy draft persistence", () => {
 
   it("atomically accepts the exact five-week reference preview as revision 1", async () => {
     const fixture = buildReferencePlanPreview();
+    const prescriptionBeforeHealth = structuredClone(fixture.draft);
     mocks.state.draft = { payload: fixture.draft, revision: 7 };
     mocks.tx.exercise.findMany.mockResolvedValue(fixture.rows);
     mocks.tx.macroCycle.findFirst.mockResolvedValue({
@@ -1323,13 +1376,49 @@ describe("custom hypertrophy draft persistence", () => {
       hypertrophyDraft: mocks.state.draft,
       mesocycles: [],
     });
+    mocks.prisma.macroCycle.findFirst.mockResolvedValueOnce({
+      id: "plan-1",
+      name: "Five-week V4 reference",
+      hypertrophyDraft: {
+        payload: fixture.draft,
+        revision: 7,
+        updatedAt: new Date("2026-08-15T12:00:00.000Z"),
+      },
+    });
+    mocks.prisma.exercise.findMany.mockResolvedValueOnce(fixture.rows);
+
+    const loaded = await loadHypertrophyPlanEditorData("user-1", "plan-1");
+    expect(loaded?.health).toMatchObject({
+      status: "AVAILABLE",
+      draftRevision: 7,
+      summary: {
+        blockingSafety: 0,
+        importantWarnings: 0,
+      },
+    });
+    if (loaded?.health.status !== "AVAILABLE") throw new Error("Health unavailable");
+    expect(
+      loaded.health.issues
+        .filter((issue) => issue.tier === "COACHING_OBSERVATION")
+        .map((issue) => issue.affected?.muscle),
+    ).toEqual(expect.arrayContaining([
+      "Chest",
+      "Side Delts",
+      "Lats",
+      "Upper Back",
+      "Rear Delts",
+      "Biceps",
+      "Triceps",
+      "Calves",
+    ]));
+    expect(fixture.draft).toEqual(prescriptionBeforeHealth);
 
     await expect(
       makeHypertrophyPlanReady({
         userId: "user-1",
         planId: "plan-1",
         expectedDraftRevision: 7,
-        warningsConfirmed: true,
+        warningsConfirmed: false,
         confirmedPreviewHash: fixture.hash,
       }),
     ).resolves.toMatchObject({
@@ -1543,9 +1632,14 @@ describe("custom hypertrophy draft persistence", () => {
         name: "Low axial plan",
         draft: constrainedDraft,
       }),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       revision: 4,
       updatedAt: "2026-08-05T12:00:00.000Z",
+      health: {
+        status: "AVAILABLE",
+        draftId: "plan-1",
+        draftRevision: 4,
+      },
     });
     expect(mocks.tx.hypertrophyPlanDraft.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1559,7 +1653,7 @@ describe("custom hypertrophy draft persistence", () => {
       userId: "user-1",
       planId: "plan-1",
       expectedDraftRevision: 3,
-      warningsConfirmed: true,
+      warningsConfirmed: false,
     });
     expect(result).toEqual({
       planId: "plan-1",
@@ -1602,6 +1696,80 @@ describe("custom hypertrophy draft persistence", () => {
         ],
       },
     });
+  });
+
+  it("degrades explicitly when the evaluator throws or returns a malformed result", () => {
+    const candidate = draft();
+    const typedRows = exerciseRows as HypertrophyPlanDraftExerciseRow[];
+    const exercises = typedRows.map((row) => toAuthoringExercise(row));
+    const base: Omit<
+      Parameters<typeof safeDraftHealthAssessment>[0],
+      "evaluateHealth"
+    > = {
+      draftId: "plan-1",
+      draftRevision: 8,
+      draft: candidate,
+      rows: typedRows,
+      exercises,
+      limitations: { recognizedTags: [], unrecognizedTexts: [] },
+      preview: null,
+    };
+
+    expect(
+      safeDraftHealthAssessment({
+        ...base,
+        evaluateHealth: () => {
+          throw new Error("fixture evaluator failure");
+        },
+      }),
+    ).toEqual({
+      status: "UNAVAILABLE",
+      policyVersion: "draft-plan-health.v1",
+      draftId: "plan-1",
+      draftRevision: 8,
+      reason: "EVALUATION_FAILED",
+    });
+    expect(
+      safeDraftHealthAssessment({
+        ...base,
+        evaluateHealth: () =>
+          ({ blockers: null, warnings: [], muscles: [], sessions: [] }) as never,
+      }),
+    ).toMatchObject({
+      status: "UNAVAILABLE",
+      draftRevision: 8,
+      reason: "RESULT_INVALID",
+    });
+    expect(candidate).toEqual(draft());
+  });
+
+  it("requires deliberate confirmation for an important duplicate warning", async () => {
+    const duplicateDraft = draft();
+    duplicateDraft.sessions[0]!.exercises.push(
+      structuredClone(duplicateDraft.sessions[0]!.exercises[0]!),
+    );
+    mocks.state.draft = { payload: duplicateDraft, revision: 3 };
+    mocks.tx.macroCycle.findFirst.mockResolvedValue({
+      id: "plan-1",
+      trainingAge: "INTERMEDIATE",
+      hypertrophyDraft: mocks.state.draft,
+      mesocycles: [],
+    });
+
+    await expect(
+      makeHypertrophyPlanReady({
+        userId: "user-1",
+        planId: "plan-1",
+        expectedDraftRevision: 3,
+        warningsConfirmed: false,
+      }),
+    ).rejects.toMatchObject({
+      code: "PLAN_WARNING_CONFIRMATION_REQUIRED",
+      details: { warningCount: "1" },
+    });
+    expect(mocks.state.draft).toEqual({ payload: duplicateDraft, revision: 3 });
+    expect(mocks.state.mesocycles).toEqual([]);
+    expect(mocks.state.revisions).toEqual([]);
   });
 
   it("emits V3 only when the gate is enabled and every selected exercise is classified", async () => {

@@ -206,26 +206,117 @@ describe("hypertrophy prescription patterns", () => {
     expect(operation).toThrow(/PRESCRIPTION_PATTERN_/);
   });
 
-  it("bulk materialization preserves each row's own base sets and reps", () => {
-    const first = materialize();
-    const second = materialize({
-      base: { setCount: 2, reps: { kind: "EXACT", reps: 10 } },
-      deload: { kind: "OMIT" },
+  it("bulk effort preserves adversarial weekly set/rep exceptions and KEEP preserves Week 5 exactly", () => {
+    const source: WeeklyPrescriptionV4[] = [
+      { week: 1, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 5, max: 8 }, rir: { kind: "TARGET_RANGE", min: 4, max: 4 } },
+      { week: 2, status: "PRESCRIBE", setCount: 4, reps: { kind: "RANGE", min: 5, max: 8 }, rir: { kind: "TARGET_RANGE", min: 3.5, max: 4 } },
+      { week: 3, status: "PRESCRIBE", setCount: 3, reps: { kind: "EXACT", reps: 6 }, rir: { kind: "TARGET_RANGE", min: 2.5, max: 3 } },
+      { week: 4, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 5, max: 8 }, rir: { kind: "TARGET_RANGE", min: 1.5, max: 2 } },
+      { week: 5, status: "PRESCRIBE", setCount: 1, reps: { kind: "EXACT", reps: 11 }, rir: { kind: "TARGET_RANGE", min: 5.5, max: 6 } },
+    ];
+    const snapshot = structuredClone(source);
+    const after = materializeBulkHypertrophyPrescriptionPattern({
+      weeks,
+      prescriptions: source,
+      effort: { kind: "STABLE", rir: { kind: "TARGET_RANGE", min: 2.5, max: 3 } },
+      deload: { kind: "KEEP" },
     });
-    const transform = (prescriptions: WeeklyPrescriptionV4[]) =>
+
+    expect(after.slice(0, 4).map((row) => row.status === "PRESCRIBE" && row.setCount)).toEqual([3, 4, 3, 3]);
+    expect(JSON.stringify(after.slice(0, 4).map((row) => row.status === "PRESCRIBE" && row.reps))).toBe(
+      JSON.stringify(source.slice(0, 4).map((row) => row.status === "PRESCRIBE" && row.reps)),
+    );
+    expect(after.slice(0, 4).map((row) => row.status === "PRESCRIBE" && row.reps.kind)).toEqual([
+      "RANGE",
+      "RANGE",
+      "EXACT",
+      "RANGE",
+    ]);
+    after.slice(0, 4).forEach((row, index) => {
+      const before = source[index]!;
+      if (row.status !== "PRESCRIBE" || before.status !== "PRESCRIBE") throw new Error("fixture");
+      expect(row).toEqual({
+        ...structuredClone(before),
+        rir: { kind: "TARGET_RANGE", min: 2.5, max: 3 },
+      });
+    });
+    expect(JSON.stringify(after[4])).toBe(JSON.stringify(source[4]));
+    expect(source).toEqual(snapshot);
+  });
+
+  it("isolates every explicit bulk Week 5 policy to its authorized fields", () => {
+    const source: WeeklyPrescriptionV4[] = [
+      ...materialize().slice(0, 4),
+      { week: 5, status: "PRESCRIBE", setCount: 1, reps: { kind: "EXACT", reps: 11 }, rir: { kind: "TARGET_RANGE", min: 5.5, max: 6 } },
+    ];
+    const expectedByPolicy = {
+      KEEP: structuredClone(source[4]!),
+      REDUCE_BY_ONE: { ...structuredClone(source[4]!), setCount: 2 },
+      MAINTAIN: { ...structuredClone(source[4]!), setCount: 3 },
+      OMIT: { week: 5, status: "OMIT" as const },
+    };
+
+    for (const kind of ["KEEP", "REDUCE_BY_ONE", "MAINTAIN", "OMIT"] as const) {
+      const after = materializeBulkHypertrophyPrescriptionPattern({
+        weeks,
+        prescriptions: source,
+        effort: { kind: "STANDARD" },
+        deload: { kind },
+      });
+      expect(after[4]).toEqual(expectedByPolicy[kind]);
+      if (after[4]!.status === "PRESCRIBE") {
+        expect(after[4]!.reps).toEqual(
+          source[4]!.status === "PRESCRIBE" ? source[4]!.reps : null,
+        );
+        expect(after[4]!.rir).toEqual(
+          source[4]!.status === "PRESCRIBE" ? source[4]!.rir : null,
+        );
+      }
+    }
+  });
+
+  it("initializes only missing fields when an explicit Week 5 policy replaces omission", () => {
+    const source = materialize({ deload: { kind: "OMIT" } });
+    expect(
       materializeBulkHypertrophyPrescriptionPattern({
         weeks,
-        prescriptions,
-        effort: { kind: "STABLE", rir: { kind: "TARGET_RANGE", min: 2.5, max: 3 } },
+        prescriptions: source,
+        effort: { kind: "STANDARD" },
         deload: { kind: "MAINTAIN" },
-      });
-    const [afterFirst, afterSecond] = [transform(first), transform(second)];
-    expect(afterFirst.slice(0, 4).map((row) => row.status === "PRESCRIBE" && [row.setCount, row.reps])).toEqual(
-      Array(4).fill([3, { kind: "RANGE", min: 5, max: 8 }]),
-    );
-    expect(afterSecond.slice(0, 4).map((row) => row.status === "PRESCRIBE" && [row.setCount, row.reps])).toEqual(
-      Array(4).fill([2, { kind: "EXACT", reps: 10 }]),
-    );
+      })[4],
+    ).toEqual({
+      week: 5,
+      status: "PRESCRIBE",
+      setCount: 3,
+      reps: { kind: "RANGE", min: 5, max: 8 },
+      rir: { kind: "TARGET_RANGE", min: 4, max: 5 },
+    });
+  });
+
+  it("fails invalid bulk materialization before mutating authoritative rows", () => {
+    const source = materialize();
+    const snapshot = structuredClone(source);
+    expect(() =>
+      materializeBulkHypertrophyPrescriptionPattern({
+        weeks,
+        prescriptions: source,
+        effort: { kind: "STABLE", rir: { kind: "TARGET_RANGE", min: 2.25, max: 3 } },
+        deload: { kind: "KEEP" },
+      }),
+    ).toThrow("PRESCRIPTION_PATTERN_INVALID_RIR");
+
+    const oneSetBase = structuredClone(source);
+    if (oneSetBase[0]!.status !== "PRESCRIBE") throw new Error("fixture");
+    oneSetBase[0]!.setCount = 1;
+    expect(() =>
+      materializeBulkHypertrophyPrescriptionPattern({
+        weeks,
+        prescriptions: oneSetBase,
+        effort: { kind: "STANDARD" },
+        deload: { kind: "REDUCE_BY_ONE" },
+      }),
+    ).toThrow("PRESCRIPTION_PATTERN_DELOAD_NOT_REDUCED");
+    expect(source).toEqual(snapshot);
   });
 
   it("reproduces the 25-placement reference draft, accepted V4 payload, hash, and runtime weeks exactly", () => {

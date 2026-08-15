@@ -180,6 +180,44 @@ export function formatProgressionResult(prescription: WeeklyPrescriptionV4): str
   return `${prescription.setCount} × ${formatReps(prescription.reps)} · RIR ${formatRir(prescription.rir)}`;
 }
 
+function formatBulkProgressionDelta(
+  before: WeeklyPrescriptionV4,
+  after: WeeklyPrescriptionV4,
+): string {
+  if (JSON.stringify(before) === JSON.stringify(after)) {
+    return "No fields change · sets/reps preserved.";
+  }
+  if (before.status !== after.status) {
+    return after.status === "OMIT"
+      ? "Status: prescribed → omitted · sets/reps removed by omit policy."
+      : "Status: omitted → prescribed · sets/reps initialized for the selected policy.";
+  }
+  if (before.status === "OMIT" || after.status === "OMIT") {
+    return "No fields change.";
+  }
+
+  const changes: string[] = [];
+  if (before.setCount !== after.setCount) {
+    changes.push(`Sets: ${before.setCount} → ${after.setCount}`);
+  }
+  if (JSON.stringify(before.reps) !== JSON.stringify(after.reps)) {
+    changes.push(`Reps: ${formatReps(before.reps)} → ${formatReps(after.reps)}`);
+  }
+  if (JSON.stringify(before.rir) !== JSON.stringify(after.rir)) {
+    changes.push(`RIR: ${formatRir(before.rir)} → ${formatRir(after.rir)}`);
+  }
+  const setsPreserved = before.setCount === after.setCount;
+  const repsPreserved = JSON.stringify(before.reps) === JSON.stringify(after.reps);
+  const preserved = setsPreserved && repsPreserved
+    ? "Sets/reps preserved."
+    : repsPreserved
+      ? "Reps preserved."
+      : setsPreserved
+        ? "Sets preserved."
+        : null;
+  return [...changes, preserved].filter(Boolean).join(" · ");
+}
+
 function RirFields({
   label,
   value,
@@ -555,7 +593,7 @@ export function HypertrophyBulkProgressionEditor({
     <SlideUpSheet isOpen onClose={onClose} title="Preview session progression">
       <div className="space-y-5">
         <p className="text-sm text-slate-600">
-          This command changes only effort and deload rows for selected placements in the current session. Each exercise keeps its own base sets and reps.
+          Accumulation effort changes only RIR. Every Week 1–4 row keeps its own sets and exact/range reps. The selected Week 5 policy changes only its stated fields.
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-sm font-medium text-slate-700">
@@ -600,11 +638,31 @@ export function HypertrophyBulkProgressionEditor({
                       {entry.error ? "Cannot apply" : skipped ? "Custom · skipped" : "Will apply"}
                     </span>
                   </div>
-                  <dl className="mt-2 grid gap-2 sm:grid-cols-2">
-                    <div><dt className="text-xs font-semibold text-slate-500">Before</dt><dd className="mt-1 text-slate-700">{entry.before.summary}</dd></div>
-                    <div><dt className="text-xs font-semibold text-slate-500">After</dt><dd className="mt-1 text-slate-700">{entry.after?.summary ?? entry.error}</dd></div>
-                  </dl>
-                </li>
+                   <dl className="mt-2 grid gap-2 sm:grid-cols-2">
+                     <div><dt className="text-xs font-semibold text-slate-500">Before</dt><dd className="mt-1 text-slate-700">{entry.before.summary}</dd></div>
+                     <div><dt className="text-xs font-semibold text-slate-500">After</dt><dd className="mt-1 text-slate-700">{entry.after?.summary ?? entry.error}</dd></div>
+                   </dl>
+                   {entry.afterRows ? (
+                     <ul
+                       className="mt-3 space-y-2 border-t border-slate-100 pt-3"
+                       aria-label={`${entry.candidate.exerciseName} exact weekly changes`}
+                     >
+                       {entry.candidate.prescriptions.map((beforeRow, index) => {
+                         const afterRow = entry.afterRows![index]!;
+                         return (
+                           <li key={beforeRow.week} className="rounded-md bg-slate-50 p-2">
+                             <p className="font-medium text-slate-900">Week {beforeRow.week}</p>
+                             <p className="mt-1 text-xs text-slate-600">Before: {formatProgressionResult(beforeRow)}</p>
+                             <p className="text-xs text-slate-600">After: {formatProgressionResult(afterRow)}</p>
+                             <p className="mt-1 text-xs font-medium text-slate-800">
+                               {formatBulkProgressionDelta(beforeRow, afterRow)}
+                             </p>
+                           </li>
+                         );
+                       })}
+                     </ul>
+                   ) : null}
+                 </li>
               );
             })}
           </ul>

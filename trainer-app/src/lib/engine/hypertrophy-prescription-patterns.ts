@@ -391,19 +391,70 @@ export function materializeBulkHypertrophyPrescriptionPattern(input: {
     | { kind: "MAINTAIN" }
     | { kind: "OMIT" };
 }): WeeklyPrescriptionV4[] {
-  const recognized = recognizeHypertrophyPrescriptionPattern(input);
-  const base = recognized.base;
-  const currentDeload = input.prescriptions[4]!;
-  const deload: DeloadPrescriptionPattern =
-    input.deload.kind === "KEEP"
-      ? { kind: "CUSTOM", prescription: structuredClone(currentDeload) }
-      : input.deload.kind === "REDUCE_BY_ONE"
-        ? { kind: "REDUCED_SETS", setCount: Math.max(1, base.setCount - 1) }
-        : input.deload.kind === "MAINTAIN"
-          ? { kind: "MAINTAIN" }
-          : { kind: "OMIT" };
-  return materializeHypertrophyPrescriptionPattern({
-    weeks: input.weeks,
-    pattern: { base, effort: input.effort, deload },
+  assertFiveWeekTopology(input.weeks);
+  if (input.prescriptions.length !== 5) {
+    throw new Error("PRESCRIPTION_PATTERN_REQUIRES_FIVE_ROWS");
+  }
+  input.prescriptions.forEach((entry, index) =>
+    assertPrescription(entry, index + 1, index === 4),
+  );
+  if (input.effort.kind === "STABLE") assertRirTarget(input.effort.rir);
+
+  const accumulation = input.prescriptions.slice(0, 4).map((entry, index) => {
+    if (entry.status !== "PRESCRIBE") {
+      throw new Error("PRESCRIPTION_PATTERN_ACCUMULATION_OMIT");
+    }
+    return {
+      ...structuredClone(entry),
+      rir: cloneRir(
+        input.effort.kind === "STANDARD"
+          ? STANDARD_ACCUMULATION_RIR[index]!
+          : input.effort.rir,
+      ),
+    };
   });
+
+  const base = input.prescriptions[0]!;
+  if (base.status !== "PRESCRIBE") {
+    throw new Error("PRESCRIPTION_PATTERN_ACCUMULATION_OMIT");
+  }
+  const currentDeload = input.prescriptions[4]!;
+  let deload: WeeklyPrescriptionV4;
+  switch (input.deload.kind) {
+    case "KEEP":
+      deload = structuredClone(currentDeload);
+      break;
+    case "OMIT":
+      deload = { week: currentDeload.week, status: "OMIT" };
+      break;
+    case "REDUCE_BY_ONE": {
+      const setCount = base.setCount - 1;
+      if (setCount < 1) {
+        throw new Error("PRESCRIPTION_PATTERN_DELOAD_NOT_REDUCED");
+      }
+      deload = currentDeload.status === "PRESCRIBE"
+        ? { ...structuredClone(currentDeload), setCount }
+        : {
+            week: currentDeload.week,
+            status: "PRESCRIBE",
+            setCount,
+            reps: structuredClone(base.reps),
+            rir: structuredClone(STANDARD_DELOAD_RIR),
+          };
+      break;
+    }
+    case "MAINTAIN":
+      deload = currentDeload.status === "PRESCRIBE"
+        ? { ...structuredClone(currentDeload), setCount: base.setCount }
+        : {
+            week: currentDeload.week,
+            status: "PRESCRIBE",
+            setCount: base.setCount,
+            reps: structuredClone(base.reps),
+            rir: structuredClone(STANDARD_DELOAD_RIR),
+          };
+      break;
+  }
+
+  return [...accumulation, deload];
 }

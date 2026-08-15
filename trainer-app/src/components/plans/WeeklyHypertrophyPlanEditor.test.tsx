@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HypertrophyPlanEditorDataV2 } from "@/lib/api/hypertrophy-plan-drafts";
@@ -255,9 +255,13 @@ function twoExerciseFiveWeekData(options?: {
     recommendationBaseline: undefined,
   };
   if (options?.secondCustom) {
-    const weekThree = second.prescriptions[2]!;
-    if (weekThree.status !== "PRESCRIBE") throw new Error("fixture");
-    second.prescriptions[2] = { ...weekThree, setCount: 4 };
+    second.prescriptions = [
+      { week: 1, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 5, max: 8 }, rir: { kind: "TARGET_RANGE", min: 4, max: 4 } },
+      { week: 2, status: "PRESCRIBE", setCount: 4, reps: { kind: "RANGE", min: 5, max: 8 }, rir: { kind: "TARGET_RANGE", min: 3.5, max: 4 } },
+      { week: 3, status: "PRESCRIBE", setCount: 3, reps: { kind: "EXACT", reps: 6 }, rir: { kind: "TARGET_RANGE", min: 2.5, max: 3 } },
+      { week: 4, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 5, max: 8 }, rir: { kind: "TARGET_RANGE", min: 1.5, max: 2 } },
+      { week: 5, status: "PRESCRIBE", setCount: 1, reps: { kind: "EXACT", reps: 11 }, rir: { kind: "TARGET_RANGE", min: 5.5, max: 6 } },
+    ];
   }
   data.draft.sessions[0]!.exercises.push(second);
   return data;
@@ -587,6 +591,10 @@ describe("WeeklyHypertrophyPlanEditor", () => {
     fireEvent.change(screen.getByLabelText("Bulk stable effort minimum RIR"), { target: { value: "2.5" } });
     fireEvent.change(screen.getByLabelText("Bulk stable effort maximum RIR"), { target: { value: "3" } });
     fireEvent.change(screen.getByLabelText("Bulk deload policy"), { target: { value: "MAINTAIN" } });
+    const benchPreview = screen.getByRole("list", { name: "Bench Press exact weekly changes" });
+    expect(within(benchPreview).getByText("Before: 2 × 5–8 · RIR 4–5")).toBeVisible();
+    expect(within(benchPreview).getByText("After: 3 × 5–8 · RIR 4–5")).toBeVisible();
+    expect(within(benchPreview).getByText("Sets: 2 → 3 · Reps preserved.")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Apply eligible" }));
 
     await act(() => vi.advanceTimersByTimeAsync(800));
@@ -612,7 +620,7 @@ describe("WeeklyHypertrophyPlanEditor", () => {
     expect(second).toEqual(data.draft.sessions[0]!.exercises[1]);
   });
 
-  it("keeps bulk selection inside the current session and requires a separate custom overwrite confirmation", () => {
+  it("keeps bulk selection inside the current session and requires a separate custom overwrite confirmation", async () => {
     vi.stubGlobal("confirm", vi.fn(() => false));
     render(
       <WeeklyHypertrophyPlanEditor
@@ -629,33 +637,87 @@ describe("WeeklyHypertrophyPlanEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     fireEvent.click(screen.getByRole("button", { name: "Lower" }));
     expect(screen.queryByLabelText(/Select .* for bulk progression/)).toBeNull();
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("overwrites selected custom rows only after confirmation and saves the batch once", async () => {
+  it("previews and applies the same adversarial custom rows in one transition and one autosave", async () => {
     vi.stubGlobal("confirm", vi.fn(() => true));
     const data = twoExerciseFiveWeekData({ secondCustom: true });
+    const expectedDraft = structuredClone(data.draft);
     render(<WeeklyHypertrophyPlanEditor initialData={data} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Select for bulk edit" }));
+    fireEvent.click(screen.getByLabelText("Select Bench Press for bulk progression"));
     fireEvent.click(screen.getByLabelText("Select Machine Chest Press for bulk progression"));
-    fireEvent.click(screen.getByRole("button", { name: "Preview bulk (1)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview bulk (2)" }));
     fireEvent.change(screen.getByLabelText("Bulk effort progression"), { target: { value: "STABLE" } });
+    fireEvent.change(screen.getByLabelText("Bulk stable effort minimum RIR"), { target: { value: "2.5" } });
+    fireEvent.change(screen.getByLabelText("Bulk stable effort maximum RIR"), { target: { value: "3" } });
+
+    const preview = screen.getByRole("list", { name: "Machine Chest Press exact weekly changes" });
+    expect(within(preview).getByText("Before: 4 × 5–8 · RIR 3.5–4")).toBeVisible();
+    expect(within(preview).getByText("After: 4 × 5–8 · RIR 2.5–3")).toBeVisible();
+    expect(within(preview).getByText("RIR: 3.5–4 → 2.5–3 · Sets/reps preserved.")).toBeVisible();
+    expect(within(preview).getByText("Before: 3 × 6 · RIR 2.5–3")).toBeVisible();
+    expect(within(preview).getByText("After: 3 × 6 · RIR 2.5–3")).toBeVisible();
+    expect(within(preview).getByText("Before: 1 × 11 · RIR 5.5–6")).toBeVisible();
+    expect(within(preview).getByText("After: 1 × 11 · RIR 5.5–6")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Overwrite custom and apply all" }));
 
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining("Overwrite custom weekly rows"));
     await act(() => vi.advanceTimersByTimeAsync(800));
     expect(fetch).toHaveBeenCalledTimes(1);
     const body = JSON.parse(String(vi.mocked(fetch).mock.calls[0]![1]!.body));
+    for (const exercise of expectedDraft.sessions[0]!.exercises) {
+      exercise.prescriptions = exercise.prescriptions.map((row, index) =>
+        index < 4 && row.status === "PRESCRIBE"
+          ? { ...row, rir: { kind: "TARGET_RANGE", min: 2.5, max: 3 } }
+          : row,
+      );
+    }
+    expect(body.draft).toEqual(expectedDraft);
     const changed = body.draft.sessions[0].exercises[1];
-    expect(changed.placementId).toBe("placement-b");
-    expect(changed.exerciseId).toBe("bench-alt");
-    expect(changed.prescriptions.slice(0, 4).map((entry: { setCount: number; reps: unknown }) => ({
-      setCount: entry.setCount,
-      reps: entry.reps,
-    }))).toEqual(Array(4).fill({
-      setCount: 3,
-      reps: { kind: "RANGE", min: 5, max: 8 },
-    }));
+    expect(changed.prescriptions.slice(0, 4).map((entry: { setCount: number }) => entry.setCount)).toEqual([3, 4, 3, 3]);
+    expect(changed.prescriptions.slice(0, 4).map((entry: { reps: { kind: string } }) => entry.reps.kind)).toEqual([
+      "RANGE",
+      "RANGE",
+      "EXACT",
+      "RANGE",
+    ]);
+    expect(JSON.stringify(changed.prescriptions[4])).toBe(
+      JSON.stringify(data.draft.sessions[0]!.exercises[1]!.prescriptions[4]),
+    );
+  });
+
+  it("does not autosave an equivalent bulk application", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    render(<WeeklyHypertrophyPlanEditor initialData={fiveWeekData({ recommendedBench: true })} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Select for bulk edit" }));
+    fireEvent.click(screen.getByLabelText("Select Bench Press for bulk progression"));
+    fireEvent.click(screen.getByRole("button", { name: "Preview bulk (1)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply eligible" }));
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("blocks invalid bulk materialization before confirmation or mutation", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    render(<WeeklyHypertrophyPlanEditor initialData={fiveWeekData({ recommendedBench: true })} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Select for bulk edit" }));
+    fireEvent.click(screen.getByLabelText("Select Bench Press for bulk progression"));
+    fireEvent.click(screen.getByRole("button", { name: "Preview bulk (1)" }));
+    fireEvent.change(screen.getByLabelText("Bulk effort progression"), { target: { value: "STABLE" } });
+    fireEvent.change(screen.getByLabelText("Bulk stable effort minimum RIR"), { target: { value: "2.25" } });
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Correct the bulk effort values");
+    expect(screen.getByRole("button", { name: "Apply eligible" })).toBeDisabled();
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("marks direct edits customized and resets the entire exercise to its frozen recommendation", async () => {

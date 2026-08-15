@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HypertrophyPlanEditorDataV2 } from "@/lib/api/hypertrophy-plan-drafts";
@@ -242,6 +242,31 @@ function finalizableFiveWeekData(): HypertrophyPlanEditorDataV2 {
   return data;
 }
 
+function twoExerciseFiveWeekData(options?: {
+  secondCustom?: boolean;
+}): HypertrophyPlanEditorDataV2 {
+  const data = fiveWeekData({ recommendedBench: true });
+  const source = data.draft.sessions[0]!.exercises[0]!;
+  const second = {
+    ...structuredClone(source),
+    placementId: "placement-b",
+    exerciseId: "bench-alt",
+    intent: { ...intent, userRole: "SECONDARY_LIFT" as const },
+    recommendationBaseline: undefined,
+  };
+  if (options?.secondCustom) {
+    second.prescriptions = [
+      { week: 1, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 5, max: 8 }, rir: { kind: "TARGET_RANGE", min: 4, max: 4 } },
+      { week: 2, status: "PRESCRIBE", setCount: 4, reps: { kind: "RANGE", min: 5, max: 8 }, rir: { kind: "TARGET_RANGE", min: 3.5, max: 4 } },
+      { week: 3, status: "PRESCRIBE", setCount: 3, reps: { kind: "EXACT", reps: 6 }, rir: { kind: "TARGET_RANGE", min: 2.5, max: 3 } },
+      { week: 4, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 5, max: 8 }, rir: { kind: "TARGET_RANGE", min: 1.5, max: 2 } },
+      { week: 5, status: "PRESCRIBE", setCount: 1, reps: { kind: "EXACT", reps: 11 }, rir: { kind: "TARGET_RANGE", min: 5.5, max: 6 } },
+    ];
+  }
+  data.draft.sessions[0]!.exercises.push(second);
+  return data;
+}
+
 describe("WeeklyHypertrophyPlanEditor", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -261,6 +286,13 @@ describe("WeeklyHypertrophyPlanEditor", () => {
         }),
       }),
     );
+    HTMLDialogElement.prototype.showModal = vi.fn(function showModal(this: HTMLDialogElement) {
+      this.open = true;
+    });
+    HTMLDialogElement.prototype.close = vi.fn(function close(this: HTMLDialogElement) {
+      this.open = false;
+      this.dispatchEvent(new Event("close"));
+    });
   });
 
   afterEach(() => {
@@ -365,6 +397,329 @@ describe("WeeklyHypertrophyPlanEditor", () => {
     });
   });
 
+  it("renders compact recognized summaries and cancels progression editing without mutation or autosave", async () => {
+    render(
+      <WeeklyHypertrophyPlanEditor
+        initialData={fiveWeekData({ recommendedBench: true })}
+      />,
+    );
+
+    expect(screen.getByText("3 × 5–8 · RIR 3–4 → 1–2 · 2-set deload")).toBeVisible();
+    expect(screen.getByText("Reduced deload")).toBeVisible();
+    expect(screen.getByLabelText("Week 1 sets")).not.toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit progression" }));
+    expect(screen.getByRole("dialog", { name: "Edit progression · Bench Press" })).toBeVisible();
+    expect(screen.getByLabelText("Base sets")).toHaveValue(3);
+    expect(screen.getByLabelText("Base minimum reps")).toHaveValue(5);
+    expect(screen.getByText("W1 · Accumulation")).toBeVisible();
+    expect(screen.getByText("W5 · Deload")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("applies one progression as exact rows and uses one normal autosave", async () => {
+    render(
+      <WeeklyHypertrophyPlanEditor
+        initialData={fiveWeekData({ recommendedBench: true })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Edit progression" }));
+    fireEvent.change(screen.getByLabelText("Base sets"), { target: { value: "4" } });
+    fireEvent.change(screen.getByLabelText("Base rep format"), { target: { value: "EXACT" } });
+    fireEvent.change(screen.getByLabelText("Base exact reps"), { target: { value: "7" } });
+    fireEvent.change(screen.getByLabelText("Accumulation effort progression"), { target: { value: "STABLE" } });
+    fireEvent.change(screen.getByLabelText("Stable accumulation minimum RIR"), { target: { value: "2.5" } });
+    fireEvent.change(screen.getByLabelText("Stable accumulation maximum RIR"), { target: { value: "2.5" } });
+    fireEvent.change(screen.getByLabelText("Deload behavior"), { target: { value: "MAINTAIN" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply progression" }));
+
+    await act(() => vi.advanceTimersByTimeAsync(800));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(String(vi.mocked(fetch).mock.calls[0]![1]!.body));
+    const row = body.draft.sessions[0].exercises[0];
+    expect(row.placementId).toBe("placement-a");
+    expect(row.prescriptions).toEqual([
+      ...[1, 2, 3, 4].map((week) => ({
+        week,
+        status: "PRESCRIBE",
+        setCount: 4,
+        reps: { kind: "EXACT", reps: 7 },
+        rir: { kind: "TARGET_RANGE", min: 2.5, max: 2.5 },
+      })),
+      {
+        week: 5,
+        status: "PRESCRIBE",
+        setCount: 4,
+        reps: { kind: "EXACT", reps: 7 },
+        rir: { kind: "TARGET_RANGE", min: 4, max: 5 },
+      },
+    ]);
+  });
+
+  it("preserves applied local rows when the existing CAS save reports a stale revision", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: "The plan changed in another request. Refresh and try again.",
+          code: "PLAN_MUTATION_CONFLICT",
+        }),
+        { status: 409, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    render(
+      <WeeklyHypertrophyPlanEditor
+        initialData={fiveWeekData({ recommendedBench: true })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Edit progression" }));
+    fireEvent.change(screen.getByLabelText("Base sets"), { target: { value: "4" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply progression" }));
+    await act(() => vi.advanceTimersByTimeAsync(800));
+
+    expect(screen.getByText("Save failed")).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent("changed in another request");
+    fireEvent.click(screen.getByText("Advanced weekly exceptions"));
+    expect(screen.getByLabelText("Week 1 sets")).toHaveValue(4);
+  });
+
+  it("keeps a semantically identical apply byte-for-byte equal without scheduling a save", async () => {
+    const data = fiveWeekData({ recommendedBench: true });
+    const before = structuredClone(data.draft.sessions[0]!.exercises[0]!.prescriptions);
+    render(<WeeklyHypertrophyPlanEditor initialData={data} />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit progression" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply progression" }));
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+
+    expect(fetch).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("Advanced weekly exceptions"));
+    expect(screen.getByLabelText("Week 1 sets")).toHaveValue(
+      before[0]!.status === "PRESCRIBE" ? before[0]!.setCount : 0,
+    );
+  });
+
+  it("requires explicit confirmation before a progression overwrites custom weekly rows", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => false));
+    const data = fiveWeekData({ recommendedBench: true });
+    const weekThree = data.draft.sessions[0]!.exercises[0]!.prescriptions[2]!;
+    if (weekThree.status !== "PRESCRIBE") throw new Error("fixture");
+    data.draft.sessions[0]!.exercises[0]!.prescriptions[2] = { ...weekThree, setCount: 4 };
+    render(<WeeklyHypertrophyPlanEditor initialData={data} />);
+
+    expect(screen.getByText("Custom · Week 3 differs")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Edit progression" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply and overwrite custom weeks" }));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("overwrite its custom weekly rows"));
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(fetch).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Edit progression · Bench Press" })).toBeVisible();
+  });
+
+  it("updates the derived classification after an advanced week exception without discarding exact values", () => {
+    render(
+      <WeeklyHypertrophyPlanEditor
+        initialData={fiveWeekData({ recommendedBench: true })}
+      />,
+    );
+    fireEvent.click(screen.getByText("Advanced weekly exceptions"));
+    fireEvent.change(screen.getByLabelText("Week 3 sets"), { target: { value: "4" } });
+
+    expect(screen.getByText("Custom · Week 3 differs")).toBeVisible();
+    expect(screen.getByText("Week 3 exception")).toBeVisible();
+    expect(screen.getByText("Pattern exception")).toBeVisible();
+    expect(screen.getByLabelText("Week 3 sets")).toHaveValue(4);
+  });
+
+  it("shows an associated validation summary and keeps invalid progression text local", async () => {
+    render(
+      <WeeklyHypertrophyPlanEditor
+        initialData={fiveWeekData({ recommendedBench: true })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Edit progression" }));
+    fireEvent.change(screen.getByLabelText("Base sets"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply progression" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Base sets must be a whole number");
+    const baseSets = screen.getByLabelText("Base sets");
+    const describedBy = baseSets.getAttribute("aria-describedby");
+    expect(describedBy).toMatch(/-base-sets$/);
+    expect(document.getElementById(describedBy!)).toHaveTextContent("Base sets must");
+    expect(baseSets).toHaveAttribute("aria-invalid", "true");
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("materializes Week 5 omission through the compact progression editor", async () => {
+    render(
+      <WeeklyHypertrophyPlanEditor
+        initialData={fiveWeekData({ recommendedBench: true })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Edit progression" }));
+    fireEvent.change(screen.getByLabelText("Deload behavior"), { target: { value: "OMIT" } });
+    expect(screen.getByText("Omitted")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Apply progression" }));
+    await act(() => vi.advanceTimersByTimeAsync(800));
+
+    const body = JSON.parse(String(vi.mocked(fetch).mock.calls[0]![1]!.body));
+    expect(body.draft.sessions[0].exercises[0].prescriptions[4]).toEqual({
+      week: 5,
+      status: "OMIT",
+    });
+  });
+
+  it("bulk previews before/after, skips custom rows, preserves base identity fields, and saves once", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    const data = twoExerciseFiveWeekData({ secondCustom: true });
+    data.draft.sessions[0]!.exercises[0]!.preservedMeasurement = {
+      exerciseId: "bench",
+      measurement: structuredClone(exercises[0]!.measurement!),
+    };
+    render(<WeeklyHypertrophyPlanEditor initialData={data} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Select for bulk edit" }));
+    fireEvent.click(screen.getByLabelText("Select Bench Press for bulk progression"));
+    fireEvent.click(screen.getByLabelText("Select Machine Chest Press for bulk progression"));
+    fireEvent.click(screen.getByRole("button", { name: "Preview bulk (2)" }));
+    expect(screen.getByRole("dialog", { name: "Preview session progression" })).toBeVisible();
+    expect(screen.getByText("Custom · skipped")).toBeVisible();
+    expect(screen.getByText("1 will apply · 1 custom row skips by default")).toBeVisible();
+    fireEvent.change(screen.getByLabelText("Bulk effort progression"), { target: { value: "STABLE" } });
+    fireEvent.change(screen.getByLabelText("Bulk stable effort minimum RIR"), { target: { value: "2.5" } });
+    fireEvent.change(screen.getByLabelText("Bulk stable effort maximum RIR"), { target: { value: "3" } });
+    fireEvent.change(screen.getByLabelText("Bulk deload policy"), { target: { value: "MAINTAIN" } });
+    const benchPreview = screen.getByRole("list", { name: "Bench Press exact weekly changes" });
+    expect(within(benchPreview).getByText("Before: 2 × 5–8 · RIR 4–5")).toBeVisible();
+    expect(within(benchPreview).getByText("After: 3 × 5–8 · RIR 4–5")).toBeVisible();
+    expect(within(benchPreview).getByText("Sets: 2 → 3 · Reps preserved.")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Apply eligible" }));
+
+    await act(() => vi.advanceTimersByTimeAsync(800));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(String(vi.mocked(fetch).mock.calls[0]![1]!.body));
+    const [first, second] = body.draft.sessions[0].exercises;
+    expect(first).toMatchObject({
+      placementId: "placement-a",
+      exerciseId: "bench",
+      intent,
+      preservedMeasurement: data.draft.sessions[0]!.exercises[0]!.preservedMeasurement,
+      recommendationBaseline: data.draft.sessions[0]!.exercises[0]!.recommendationBaseline,
+    });
+    expect(first.prescriptions.slice(0, 4).map((entry: { setCount: number; reps: unknown; rir: unknown }) => ({
+      setCount: entry.setCount,
+      reps: entry.reps,
+      rir: entry.rir,
+    }))).toEqual(Array(4).fill({
+      setCount: 3,
+      reps: { kind: "RANGE", min: 5, max: 8 },
+      rir: { kind: "TARGET_RANGE", min: 2.5, max: 3 },
+    }));
+    expect(second).toEqual(data.draft.sessions[0]!.exercises[1]);
+  });
+
+  it("keeps bulk selection inside the current session and requires a separate custom overwrite confirmation", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => false));
+    render(
+      <WeeklyHypertrophyPlanEditor
+        initialData={twoExerciseFiveWeekData({ secondCustom: true })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Select for bulk edit" }));
+    fireEvent.click(screen.getByLabelText("Select Machine Chest Press for bulk progression"));
+    fireEvent.click(screen.getByRole("button", { name: "Preview bulk (1)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Overwrite custom and apply all" }));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("Overwrite custom weekly rows"));
+    expect(fetch).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lower" }));
+    expect(screen.queryByLabelText(/Select .* for bulk progression/)).toBeNull();
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("previews and applies the same adversarial custom rows in one transition and one autosave", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    const data = twoExerciseFiveWeekData({ secondCustom: true });
+    const expectedDraft = structuredClone(data.draft);
+    render(<WeeklyHypertrophyPlanEditor initialData={data} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Select for bulk edit" }));
+    fireEvent.click(screen.getByLabelText("Select Bench Press for bulk progression"));
+    fireEvent.click(screen.getByLabelText("Select Machine Chest Press for bulk progression"));
+    fireEvent.click(screen.getByRole("button", { name: "Preview bulk (2)" }));
+    fireEvent.change(screen.getByLabelText("Bulk effort progression"), { target: { value: "STABLE" } });
+    fireEvent.change(screen.getByLabelText("Bulk stable effort minimum RIR"), { target: { value: "2.5" } });
+    fireEvent.change(screen.getByLabelText("Bulk stable effort maximum RIR"), { target: { value: "3" } });
+
+    const preview = screen.getByRole("list", { name: "Machine Chest Press exact weekly changes" });
+    expect(within(preview).getByText("Before: 4 × 5–8 · RIR 3.5–4")).toBeVisible();
+    expect(within(preview).getByText("After: 4 × 5–8 · RIR 2.5–3")).toBeVisible();
+    expect(within(preview).getByText("RIR: 3.5–4 → 2.5–3 · Sets/reps preserved.")).toBeVisible();
+    expect(within(preview).getByText("Before: 3 × 6 · RIR 2.5–3")).toBeVisible();
+    expect(within(preview).getByText("After: 3 × 6 · RIR 2.5–3")).toBeVisible();
+    expect(within(preview).getByText("Before: 1 × 11 · RIR 5.5–6")).toBeVisible();
+    expect(within(preview).getByText("After: 1 × 11 · RIR 5.5–6")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Overwrite custom and apply all" }));
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("Overwrite custom weekly rows"));
+    await act(() => vi.advanceTimersByTimeAsync(800));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(String(vi.mocked(fetch).mock.calls[0]![1]!.body));
+    for (const exercise of expectedDraft.sessions[0]!.exercises) {
+      exercise.prescriptions = exercise.prescriptions.map((row, index) =>
+        index < 4 && row.status === "PRESCRIBE"
+          ? { ...row, rir: { kind: "TARGET_RANGE", min: 2.5, max: 3 } }
+          : row,
+      );
+    }
+    expect(body.draft).toEqual(expectedDraft);
+    const changed = body.draft.sessions[0].exercises[1];
+    expect(changed.prescriptions.slice(0, 4).map((entry: { setCount: number }) => entry.setCount)).toEqual([3, 4, 3, 3]);
+    expect(changed.prescriptions.slice(0, 4).map((entry: { reps: { kind: string } }) => entry.reps.kind)).toEqual([
+      "RANGE",
+      "RANGE",
+      "EXACT",
+      "RANGE",
+    ]);
+    expect(JSON.stringify(changed.prescriptions[4])).toBe(
+      JSON.stringify(data.draft.sessions[0]!.exercises[1]!.prescriptions[4]),
+    );
+  });
+
+  it("does not autosave an equivalent bulk application", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    render(<WeeklyHypertrophyPlanEditor initialData={fiveWeekData({ recommendedBench: true })} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Select for bulk edit" }));
+    fireEvent.click(screen.getByLabelText("Select Bench Press for bulk progression"));
+    fireEvent.click(screen.getByRole("button", { name: "Preview bulk (1)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply eligible" }));
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("blocks invalid bulk materialization before confirmation or mutation", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    render(<WeeklyHypertrophyPlanEditor initialData={fiveWeekData({ recommendedBench: true })} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Select for bulk edit" }));
+    fireEvent.click(screen.getByLabelText("Select Bench Press for bulk progression"));
+    fireEvent.click(screen.getByRole("button", { name: "Preview bulk (1)" }));
+    fireEvent.change(screen.getByLabelText("Bulk effort progression"), { target: { value: "STABLE" } });
+    fireEvent.change(screen.getByLabelText("Bulk stable effort minimum RIR"), { target: { value: "2.25" } });
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Correct the bulk effort values");
+    expect(screen.getByRole("button", { name: "Apply eligible" })).toBeDisabled();
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("marks direct edits customized and resets the entire exercise to its frozen recommendation", async () => {
     vi.stubGlobal("confirm", vi.fn(() => true));
     const data = fiveWeekData({ recommendedBench: true });
@@ -378,9 +733,9 @@ describe("WeeklyHypertrophyPlanEditor", () => {
       />,
     );
     fireEvent.click(
-      screen.getByText("Review or edit weekly prescription"),
+      screen.getByText("Advanced weekly exceptions"),
     );
-    expect(screen.getByText("Customized")).toBeVisible();
+    expect(screen.getByText("Recommendation customized")).toBeVisible();
     fireEvent.click(
       screen.getByRole("button", { name: "Reset to recommended" }),
     );
@@ -404,7 +759,7 @@ describe("WeeklyHypertrophyPlanEditor", () => {
       />,
     );
     fireEvent.click(
-      screen.getByText("Review or edit weekly prescription"),
+      screen.getByText("Advanced weekly exceptions"),
     );
     fireEvent.change(
       screen.getByLabelText("Swap Bench Press and keep placement identity"),
@@ -431,7 +786,7 @@ describe("WeeklyHypertrophyPlanEditor", () => {
 
   it("allows another compound placement to be promoted to Primary", () => {
     render(<WeeklyHypertrophyPlanEditor initialData={initialData} />);
-    const expanders = screen.getAllByText("Review or edit weekly prescription");
+    const expanders = screen.getAllByText("Advanced weekly exceptions");
     fireEvent.click(expanders[0]!);
     fireEvent.click(expanders[1]!);
     const intents = screen.getAllByLabelText("Intent");
@@ -439,7 +794,7 @@ describe("WeeklyHypertrophyPlanEditor", () => {
 
     expect(intents[0]).toHaveValue("PRIMARY");
     expect(intents[1]).toHaveValue("PRIMARY");
-    expect(screen.getAllByText(/^Primary ·/)).toHaveLength(2);
+    expect(screen.getAllByText("Primary · Exact weekly prescription")).toHaveLength(2);
   });
 
   it("preserves placement identity through reorder and swap and creates a new identity only on add", async () => {
@@ -729,7 +1084,7 @@ describe("WeeklyHypertrophyPlanEditor", () => {
     expect(screen.getByRole("heading", { name: "Plan weeks" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Lower" })).toBeVisible();
     fireEvent.click(
-      screen.getAllByText("Review or edit weekly prescription")[0]!,
+      screen.getAllByText("Advanced weekly exceptions")[0]!,
     );
     expect(screen.getAllByLabelText("Week 1 sets")[0]).toBeVisible();
     expect(screen.getByRole("heading", { name: "Normalized preview" })).toBeVisible();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useId, useRef, useCallback } from "react";
 import { useVisualViewportMetrics } from "@/lib/ui/use-visual-viewport-metrics";
 
 type SlideUpSheetProps = {
@@ -12,8 +12,15 @@ type SlideUpSheetProps = {
 
 export function SlideUpSheet({ isOpen, onClose, title, children }: SlideUpSheetProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const titleId = useId();
 
   const handleClose = useCallback(() => {
+    const dialog = dialogRef.current;
+    if (dialog?.open) {
+      dialog.close();
+      return;
+    }
     onClose();
   }, [onClose]);
 
@@ -22,10 +29,22 @@ export function SlideUpSheet({ isOpen, onClose, title, children }: SlideUpSheetP
     if (!dialog) return;
 
     if (isOpen && !dialog.open) {
+      restoreFocusRef.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
       dialog.showModal();
     } else if (!isOpen && dialog.open) {
       dialog.close();
     }
+    return () => {
+      const restoreTarget = restoreFocusRef.current;
+      restoreTarget?.focus();
+      if (restoreTarget) {
+        window.requestAnimationFrame(() => {
+          if (restoreTarget.isConnected) restoreTarget.focus();
+        });
+      }
+      restoreFocusRef.current = null;
+    };
   }, [isOpen]);
 
   useEffect(() => {
@@ -61,6 +80,7 @@ export function SlideUpSheet({ isOpen, onClose, title, children }: SlideUpSheetP
       handleBackdropClick={handleBackdropClick}
       handleClose={handleClose}
       title={title}
+      titleId={title ? titleId : undefined}
     >
       {children}
     </OpenSlideUpSheet>
@@ -72,12 +92,14 @@ function OpenSlideUpSheet({
   handleBackdropClick,
   handleClose,
   title,
+  titleId,
   children,
 }: {
   dialogRef: React.RefObject<HTMLDialogElement | null>;
   handleBackdropClick: (event: React.MouseEvent<HTMLDialogElement>) => void;
   handleClose: () => void;
   title?: string;
+  titleId?: string;
   children: React.ReactNode;
 }) {
   const { bottomOffset } = useVisualViewportMetrics();
@@ -85,6 +107,7 @@ function OpenSlideUpSheet({
   return (
     <dialog
       ref={dialogRef}
+      aria-labelledby={titleId}
       onClick={handleBackdropClick}
       className={
         "fixed inset-0 z-[60] m-0 h-full w-full max-h-full max-w-full bg-transparent p-0 " +
@@ -109,7 +132,7 @@ function OpenSlideUpSheet({
               data-testid="slide-up-sheet-header"
               className="z-10 flex items-center justify-between gap-3 rounded-t-2xl border-b border-slate-100 bg-white px-4 py-2.5 sm:px-5 sm:py-4"
             >
-              <h2 className="min-w-0 text-base font-semibold leading-tight text-slate-900 sm:text-lg">{title}</h2>
+              <h2 id={titleId} className="min-w-0 text-base font-semibold leading-tight text-slate-900 sm:text-lg">{title}</h2>
               <button
                 onClick={handleClose}
                 className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"

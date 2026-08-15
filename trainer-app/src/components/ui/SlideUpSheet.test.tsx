@@ -91,6 +91,29 @@ describe("SlideUpSheet", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("names the dialog and restores focus when it closes", () => {
+    const trigger = document.createElement("button");
+    trigger.textContent = "Open sheet";
+    document.body.appendChild(trigger);
+    trigger.focus();
+    const { rerender } = render(
+      <SlideUpSheet isOpen={true} onClose={vi.fn()} title="Sheet title">
+        <button>Inside</button>
+      </SlideUpSheet>,
+    );
+
+    expect(screen.getByRole("dialog", { name: "Sheet title" })).toBeVisible();
+    screen.getByRole("button", { name: "Inside" }).focus();
+    rerender(
+      <SlideUpSheet isOpen={false} onClose={vi.fn()} title="Sheet title">
+        <button>Inside</button>
+      </SlideUpSheet>,
+    );
+
+    expect(trigger).toHaveFocus();
+    trigger.remove();
+  });
+
   it("applies visual viewport bottom offset only for chrome drift, not keyboard height", async () => {
     const viewport = setupVisualViewport();
 

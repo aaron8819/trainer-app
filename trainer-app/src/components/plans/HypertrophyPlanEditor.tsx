@@ -26,6 +26,7 @@ import type {
   HypertrophyPlanEditorDataV2,
 } from "@/lib/api/hypertrophy-plan-drafts";
 import {
+  displayAssessmentIdentity,
   HYPERTROPHY_PLAN_HEALTH_POLICY_VERSION,
   isHypertrophyPlanHealthResult,
   type HypertrophyPlanHealthResult,
@@ -165,11 +166,19 @@ function LegacyHypertrophyPlanEditor({
   const mountedRef = useRef(true);
   const regeneratingRef = useRef(false);
   const lastPropsContextKey = useRef(currentHealthContextKey);
-  const initialHealthIdentity =
+  const initialDisplayAssessmentIdentity = displayAssessmentIdentity(
+    initialData.health,
+  );
+  const lastInitialDisplayAssessmentIdentity = useRef(
+    initialDisplayAssessmentIdentity,
+  );
+  const initialWarningConfirmationScope =
     initialData.health.status === "AVAILABLE"
       ? initialData.health.confirmationScope
-      : `${initialData.health.policyVersion}:${initialData.health.draftId}:${initialData.health.draftRevision}:${initialData.health.reason}`;
-  const lastInitialHealthIdentity = useRef(initialHealthIdentity);
+      : null;
+  const lastInitialWarningConfirmationScope = useRef(
+    initialWarningConfirmationScope,
+  );
   latest.current = { name, draft, revision };
   currentHealthContextKeyRef.current = currentHealthContextKey;
 
@@ -183,19 +192,31 @@ function LegacyHypertrophyPlanEditor({
   useEffect(() => {
     const contextChanged = lastPropsContextKey.current !== currentHealthContextKey;
     const assessmentChanged =
-      lastInitialHealthIdentity.current !== initialHealthIdentity;
+      lastInitialDisplayAssessmentIdentity.current !==
+      initialDisplayAssessmentIdentity;
+    const warningAuthorityChanged =
+      lastInitialWarningConfirmationScope.current !==
+      initialWarningConfirmationScope;
     if (contextChanged) {
       healthContextGeneration.current += 1;
       lastPropsContextKey.current = currentHealthContextKey;
     }
-    if (assessmentChanged) {
-      lastInitialHealthIdentity.current = initialHealthIdentity;
+    if (assessmentChanged || warningAuthorityChanged) {
+      lastInitialDisplayAssessmentIdentity.current =
+        initialDisplayAssessmentIdentity;
+      lastInitialWarningConfirmationScope.current =
+        initialWarningConfirmationScope;
       healthRef.current = initialData.health;
       installedHealthContextKeyRef.current = currentHealthContextKey;
       setHealth(initialData.health);
       setInstalledHealthContextKey(currentHealthContextKey);
     }
-  }, [currentHealthContextKey, initialData.health, initialHealthIdentity]);
+  }, [
+    currentHealthContextKey,
+    initialData.health,
+    initialDisplayAssessmentIdentity,
+    initialWarningConfirmationScope,
+  ]);
   const selectedIndex = Math.max(
     0,
     draft.sessions.findIndex((session) => session.slotId === selectedSlotId),
@@ -392,7 +413,8 @@ function LegacyHypertrophyPlanEditor({
   const updateExerciseIntent = (
     exerciseIndex: number,
     intent: AcceptedExerciseIntentV2,
-  ) =>
+  ) => {
+    if (regeneratingRef.current) return;
     updateSession((current) => ({
       ...current,
       exercises: replaceAt(current.exercises, exerciseIndex, {
@@ -400,6 +422,21 @@ function LegacyHypertrophyPlanEditor({
         intent,
       }),
     }));
+  };
+
+  const updateName = (value: string) => {
+    if (regeneratingRef.current) return;
+    setName(value);
+  };
+
+  const moveSession = (nextIndex: number) => {
+    if (regeneratingRef.current) return;
+    if (nextIndex < 0 || nextIndex >= draft.sessions.length) return;
+    setDraft((current) => ({
+      ...current,
+      sessions: move(current.sessions, selectedIndex, nextIndex),
+    }));
+  };
 
   const flushSave = async () => {
     if (!unsaved && saveState === "saved") return true;
@@ -619,7 +656,7 @@ function LegacyHypertrophyPlanEditor({
             <input
               value={name}
               maxLength={60}
-              onChange={(event) => setName(event.target.value)}
+              onChange={(event) => updateName(event.target.value)}
               className="w-full max-w-xl border-0 bg-transparent p-0 text-xl font-semibold text-slate-950 outline-none focus:ring-0 sm:text-2xl"
             />
           </label>
@@ -740,14 +777,7 @@ function LegacyHypertrophyPlanEditor({
               <Button
                 variant="secondary"
                 size="touch"
-                onClick={() => {
-                  const nextIndex = selectedIndex - 1;
-                  if (nextIndex < 0) return;
-                  setDraft((current) => ({
-                    ...current,
-                    sessions: move(current.sessions, selectedIndex, nextIndex),
-                  }));
-                }}
+                onClick={() => moveSession(selectedIndex - 1)}
                 disabled={selectedIndex === 0}
                 aria-label="Move session up"
               >
@@ -756,14 +786,7 @@ function LegacyHypertrophyPlanEditor({
               <Button
                 variant="secondary"
                 size="touch"
-                onClick={() => {
-                  const nextIndex = selectedIndex + 1;
-                  if (nextIndex >= draft.sessions.length) return;
-                  setDraft((current) => ({
-                    ...current,
-                    sessions: move(current.sessions, selectedIndex, nextIndex),
-                  }));
-                }}
+                onClick={() => moveSession(selectedIndex + 1)}
                 disabled={selectedIndex === draft.sessions.length - 1}
                 aria-label="Move session down"
               >

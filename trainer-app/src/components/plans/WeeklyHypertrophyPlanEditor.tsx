@@ -32,6 +32,7 @@ import type {
   HypertrophyPlanV4Preview,
 } from "@/lib/api/hypertrophy-plan-drafts";
 import {
+  displayAssessmentIdentity,
   HYPERTROPHY_PLAN_HEALTH_POLICY_VERSION,
   isHypertrophyPlanHealthResult,
   type HypertrophyPlanHealthResult,
@@ -352,27 +353,47 @@ function WeeklyHypertrophyPlanEditorStateful({
   const latestHealthRevision = useRef(initialData.health.draftRevision);
   const healthContextGeneration = useRef(0);
   const lastPropsContextKey = useRef(currentHealthContextKey);
-  const initialHealthIdentity =
+  const initialDisplayAssessmentIdentity = displayAssessmentIdentity(
+    initialData.health,
+  );
+  const lastInitialDisplayAssessmentIdentity = useRef(
+    initialDisplayAssessmentIdentity,
+  );
+  const initialWarningConfirmationScope =
     initialData.health.status === "AVAILABLE"
       ? initialData.health.confirmationScope
-      : `${initialData.health.policyVersion}:${initialData.health.draftId}:${initialData.health.draftRevision}:${initialData.health.reason}`;
-  const lastInitialHealthIdentity = useRef(initialHealthIdentity);
+      : null;
+  const lastInitialWarningConfirmationScope = useRef(
+    initialWarningConfirmationScope,
+  );
 
   useLayoutEffect(() => {
     const contextChanged = lastPropsContextKey.current !== currentHealthContextKey;
     const assessmentChanged =
-      lastInitialHealthIdentity.current !== initialHealthIdentity;
+      lastInitialDisplayAssessmentIdentity.current !==
+      initialDisplayAssessmentIdentity;
+    const warningAuthorityChanged =
+      lastInitialWarningConfirmationScope.current !==
+      initialWarningConfirmationScope;
     if (contextChanged) {
       healthContextGeneration.current += 1;
       lastPropsContextKey.current = currentHealthContextKey;
     }
-    if (assessmentChanged) {
-      lastInitialHealthIdentity.current = initialHealthIdentity;
+    if (assessmentChanged || warningAuthorityChanged) {
+      lastInitialDisplayAssessmentIdentity.current =
+        initialDisplayAssessmentIdentity;
+      lastInitialWarningConfirmationScope.current =
+        initialWarningConfirmationScope;
       latestHealthRevision.current = initialData.health.draftRevision;
       setHealth(initialData.health);
       setInstalledHealthContextKey(currentHealthContextKey);
     }
-  }, [currentHealthContextKey, initialData.health, initialHealthIdentity]);
+  }, [
+    currentHealthContextKey,
+    initialData.health,
+    initialDisplayAssessmentIdentity,
+    initialWarningConfirmationScope,
+  ]);
 
   useLayoutEffect(() => {
     invalidFieldCountRef.current = invalidFieldCount;

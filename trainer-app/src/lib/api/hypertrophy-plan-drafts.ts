@@ -38,7 +38,7 @@ import {
   buildHypertrophyPlanHealthAssessment,
   comparePlanHealthCodeUnits,
   healthRequiresWarningConfirmation,
-  projectHypertrophyPlanHealthSemantics,
+  projectHypertrophyPlanImportantWarningSemantics,
   type HypertrophyPlanHealth,
   type HypertrophyPlanHealthAssessment,
   type HypertrophyPlanHealthAssessmentCore,
@@ -597,7 +597,9 @@ export function buildHypertrophyPlanHealthConfirmationScope(input: {
                   comparePlanHealthCodeUnits(left.message, right.message),
               ),
             },
-    evaluatedHealth: projectHypertrophyPlanHealthSemantics(input.assessment),
+    importantWarnings: projectHypertrophyPlanImportantWarningSemantics(
+      input.assessment,
+    ),
     authoritativeContext: {
       equipmentProfile: input.draft.settings.equipmentProfile,
       limitations: {
@@ -913,12 +915,21 @@ export async function saveHypertrophyPlanDraft(input: {
   );
 }
 
-export async function regenerateHypertrophyPlanDraft(input: {
-  userId: string;
-  planId: string;
-  expectedRevision: number;
-  replaceConfirmed: true;
-}): Promise<{
+export async function regenerateHypertrophyPlanDraft(
+  input: {
+    userId: string;
+    planId: string;
+    expectedRevision: number;
+    replaceConfirmed: true;
+  },
+  dependencies: {
+    generateDraft?: typeof generateV2Draft;
+    loadEditorData?: (
+      userId: string,
+      planId: string,
+    ) => Promise<Pick<HypertrophyPlanEditorData, "revision" | "health"> | null>;
+  } = {},
+): Promise<{
   revision: number;
   draft: HypertrophyPlanDraftV1;
   health: HypertrophyPlanHealthResult;
@@ -950,7 +961,7 @@ export async function regenerateHypertrophyPlanDraft(input: {
   if (existing.sessions.length !== 4) throw new PlanManagementError("PLAN_INVALID");
   let generated: HypertrophyPlanDraftV1;
   try {
-    generated = await generateV2Draft({
+    generated = await (dependencies.generateDraft ?? generateV2Draft)({
       reader: prisma,
       userId: input.userId,
       settings: existing.settings,
@@ -967,7 +978,9 @@ export async function regenerateHypertrophyPlanDraft(input: {
   });
   if (saved.count !== 1) throw new PlanManagementError("PLAN_MUTATION_CONFLICT");
   const revision = input.expectedRevision + 1;
-  const reloaded = await loadHypertrophyPlanEditorData(input.userId, input.planId);
+  const reloaded = await (
+    dependencies.loadEditorData ?? loadHypertrophyPlanEditorData
+  )(input.userId, input.planId);
   const health =
     reloaded?.revision === revision
       ? reloaded.health

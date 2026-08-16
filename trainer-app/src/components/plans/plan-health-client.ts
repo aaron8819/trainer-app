@@ -4,7 +4,7 @@ import type {
 } from "@/lib/api/hypertrophy-plan-drafts";
 import {
   comparePlanHealthCodeUnits,
-  projectHypertrophyPlanHealthSemantics,
+  displayAssessmentIdentity,
   type HypertrophyPlanHealthAssessment,
 } from "@/lib/engine/hypertrophy-plan-health";
 
@@ -17,16 +17,7 @@ export function planHealthContextKey(
   return JSON.stringify({
     planId: data.planId,
     settings: data.draft.settings,
-    health:
-      data.health.status === "AVAILABLE"
-        ? {
-            status: data.health.status,
-            policyVersion: data.health.policyVersion,
-            draftId: data.health.draftId,
-            draftRevision: data.health.draftRevision,
-            semantics: projectHypertrophyPlanHealthSemantics(data.health),
-          }
-        : data.health,
+    displayAssessmentIdentity: displayAssessmentIdentity(data.health),
     limitationKeys: [...data.limitationKeys].sort(comparePlanHealthCodeUnits),
     preview:
       data.preview?.status === "ELIGIBLE"

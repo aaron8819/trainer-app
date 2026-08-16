@@ -224,7 +224,7 @@ export type HypertrophyPlanHealthResult =
   | HypertrophyPlanHealthAssessment
   | HypertrophyPlanHealthUnavailable;
 
-export function projectHypertrophyPlanHealthSemantics(
+function projectHypertrophyPlanHealthPresentedSemantics(
   health: Pick<
     HypertrophyPlanHealthAssessmentCore,
     "evaluatedWeek" | "issues" | "volumeEstimates" | "sessionEstimates"
@@ -269,6 +269,60 @@ export function projectHypertrophyPlanHealthSemantics(
       }))
       .sort(compareCanonical),
   };
+}
+
+export function projectHypertrophyPlanHealthDisplayAssessment(
+  health: HypertrophyPlanHealthResult,
+) {
+  if (health.status === "UNAVAILABLE") {
+    return {
+      status: health.status,
+      policyVersion: health.policyVersion,
+      draftId: health.draftId,
+      draftRevision: health.draftRevision,
+      reason: health.reason,
+    };
+  }
+  return {
+    status: health.status,
+    policyVersion: health.policyVersion,
+    draftId: health.draftId,
+    draftRevision: health.draftRevision,
+    summary: health.summary,
+    ...projectHypertrophyPlanHealthPresentedSemantics(health),
+  };
+}
+
+export function displayAssessmentIdentity(
+  health: HypertrophyPlanHealthResult,
+): string {
+  return JSON.stringify(projectHypertrophyPlanHealthDisplayAssessment(health));
+}
+
+export function projectHypertrophyPlanImportantWarningSemantics(
+  health: Pick<HypertrophyPlanHealthAssessmentCore, "issues">,
+) {
+  const compareCanonical = (left: unknown, right: unknown) =>
+    comparePlanHealthCodeUnits(JSON.stringify(left), JSON.stringify(right));
+  return health.issues
+    .filter((issue) => issue.tier === "IMPORTANT_WARNING")
+    .map((issue) => ({
+      code: issue.code,
+      tier: issue.tier,
+      title: issue.title,
+      explanation: issue.explanation,
+      suggestedAction: issue.suggestedAction,
+      affected: issue.affected
+        ? {
+            session: issue.affected.session ?? null,
+            exercise: issue.affected.exercise ?? null,
+            muscle: issue.affected.muscle ?? null,
+          }
+        : null,
+      blocksFinalization: issue.blocksFinalization,
+      requiresAcknowledgment: issue.requiresAcknowledgment,
+    }))
+    .sort(compareCanonical);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

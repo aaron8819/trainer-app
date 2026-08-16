@@ -419,7 +419,7 @@ describe("WeeklyHypertrophyPlanEditor", () => {
     expect(screen.getByText("Saved revision 2")).toBeVisible();
   });
 
-  it.each(["catalog", "equipment", "limitations"] as const)(
+  it.each(["equipment", "limitations"] as const)(
     "marks Health stale after %s context props drift even when the local prescription is unchanged",
     (contextKind) => {
       const data = finalizableFiveWeekData();
@@ -427,12 +427,7 @@ describe("WeeklyHypertrophyPlanEditor", () => {
         <WeeklyHypertrophyPlanEditor initialData={data} />,
       );
       const changed = structuredClone(data);
-      if (contextKind === "catalog") {
-        changed.exercises[0]!.timePerSetSec += 1_800;
-        if (changed.health.status === "AVAILABLE") {
-          changed.health.sessionEstimates[0]!.estimatedMinutes += 30;
-        }
-      } else if (contextKind === "equipment") {
+      if (contextKind === "equipment") {
         changed.draft.settings.equipmentProfile = "BARBELL_HOME";
       } else {
         changed.limitationKeys = ["wrist"];
@@ -446,6 +441,40 @@ describe("WeeklyHypertrophyPlanEditor", () => {
       expect(screen.getByRole("button", { name: "Finalize plan" })).toBeDisabled();
     },
   );
+
+  it("installs a refreshed catalog-derived display assessment without a stale loop", () => {
+    const data = finalizableFiveWeekData();
+    const { rerender } = render(
+      <WeeklyHypertrophyPlanEditor initialData={data} />,
+    );
+    const changed = structuredClone(data);
+    changed.exercises[0]!.timePerSetSec += 1_800;
+    if (changed.health.status === "AVAILABLE") {
+      changed.health.sessionEstimates[0]!.estimatedMinutes += 30;
+    }
+
+    rerender(<WeeklyHypertrophyPlanEditor initialData={changed} />);
+
+    expect(screen.getByText("Current for saved revision 1.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Finalize plan" })).toBeEnabled();
+  });
+
+  it("installs refreshed warning authority separately from unchanged display freshness", () => {
+    const data = finalizableFiveWeekData();
+    const { rerender } = render(
+      <WeeklyHypertrophyPlanEditor initialData={data} />,
+    );
+    const changed = structuredClone(data);
+    changed.limitationKeys = ["wrist"];
+    if (changed.health.status !== "AVAILABLE") throw new Error("Expected Health");
+    changed.health.confirmationScope = `plan-health-confirmation.v1.${"a".repeat(64)}`;
+    changed.health.evaluatedFacts.recognizedLimitationCount = 1;
+
+    rerender(<WeeklyHypertrophyPlanEditor initialData={changed} />);
+
+    expect(screen.getByText("Current for saved revision 1.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Finalize plan" })).toBeEnabled();
+  });
 
   it("does not let a stale save response replace Health after authoritative context changes", async () => {
     const pending = deferredResponse();
@@ -490,6 +519,36 @@ describe("WeeklyHypertrophyPlanEditor", () => {
     expect(screen.getByDisplayValue("Next plan")).toBeVisible();
     expect(screen.queryByText("Duplicate exercise")).toBeNull();
     expect(screen.getByText("Current for saved revision 1.")).toBeVisible();
+  });
+
+  it("installs display-only Health refreshes without using confirmation scope as freshness", () => {
+    const data = finalizableFiveWeekData();
+    data.health = warningHealth(1, "a".repeat(64));
+    const { rerender } = render(
+      <WeeklyHypertrophyPlanEditor initialData={data} />,
+    );
+    const refreshed = structuredClone(data);
+    if (refreshed.health.status !== "AVAILABLE") throw new Error("Expected Health");
+    refreshed.health.summary.coachingObservations = 1;
+    refreshed.health.issues.push({
+      code: "COACHING_ONLY_CHANGE",
+      tier: "COACHING_OBSERVATION",
+      title: "Updated weekly coaching",
+      explanation: "Visible coaching changed without changing the warning decision.",
+      suggestedAction: "No warning confirmation is required.",
+      blocksFinalization: false,
+      requiresAcknowledgment: false,
+    });
+    refreshed.health.volumeEstimates[0]!.effectiveSets = 7;
+    refreshed.health.sessionEstimates[0]!.estimatedMinutes = 29;
+    expect(refreshed.health.confirmationScope).toBe(
+      (data.health as typeof refreshed.health).confirmationScope,
+    );
+
+    rerender(<WeeklyHypertrophyPlanEditor initialData={refreshed} />);
+
+    expect(screen.getByText("Updated weekly coaching")).toBeInTheDocument();
+    expect(screen.getByText(/7 effective sets/)).toBeInTheDocument();
   });
 
   it("installs stale-scope Health without auto-confirming and submits only the newly reviewed scope", async () => {

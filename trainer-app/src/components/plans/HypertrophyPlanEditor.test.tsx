@@ -321,6 +321,47 @@ describe("HypertrophyPlanEditor", () => {
     expect(router.refresh).not.toHaveBeenCalled();
   });
 
+  it("installs refreshed visible Health when warning confirmation scope is unchanged", () => {
+    const data = fourSessionData();
+    const view = render(<HypertrophyPlanEditor initialData={data} />);
+    const refreshed = structuredClone(data);
+    if (refreshed.health.status !== "AVAILABLE") throw new Error("Expected Health");
+    refreshed.health.summary.coachingObservations = 1;
+    refreshed.health.issues.push({
+      code: "COACHING_ONLY_CHANGE",
+      tier: "COACHING_OBSERVATION",
+      title: "Updated coaching",
+      explanation: "The visible coaching assessment changed.",
+      suggestedAction: "No confirmation is required.",
+      blocksFinalization: false,
+      requiresAcknowledgment: false,
+    });
+    refreshed.health.sessionEstimates[0]!.estimatedMinutes = 37;
+    expect(refreshed.health.confirmationScope).toBe(
+      (data.health as typeof refreshed.health).confirmationScope,
+    );
+
+    view.rerender(<HypertrophyPlanEditor initialData={refreshed} />);
+
+    expect(screen.getByText("Updated coaching")).toBeInTheDocument();
+    expect(screen.getByText(/about 37 min/)).toBeInTheDocument();
+  });
+
+  it("installs refreshed warning authority separately when visible Health is unchanged", () => {
+    const data = fourSessionData();
+    const view = render(<HypertrophyPlanEditor initialData={data} />);
+    const refreshed = structuredClone(data);
+    refreshed.limitationKeys = ["wrist"];
+    if (refreshed.health.status !== "AVAILABLE") throw new Error("Expected Health");
+    refreshed.health.confirmationScope = `plan-health-confirmation.v1.${"a".repeat(64)}`;
+    refreshed.health.evaluatedFacts.recognizedLimitationCount = 1;
+
+    view.rerender(<HypertrophyPlanEditor initialData={refreshed} />);
+
+    expect(screen.getByText("Current for saved revision 1.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Make plan ready" })).toBeEnabled();
+  });
+
   it("locks every V1 draft mutation and installs the authoritative regenerated draft exactly", async () => {
     const regeneration = deferred<Response>();
     vi.mocked(fetch).mockImplementation((url) =>
@@ -345,9 +386,14 @@ describe("HypertrophyPlanEditor", () => {
       structuredClone(authoritative.sessions[1]!.exercises[0]!),
       structuredClone(authoritative.sessions[1]!.exercises[0]!),
     ];
+    const data = fourSessionData();
+    data.draft.sessions[1]!.exercises.push(
+      structuredClone(data.draft.sessions[0]!.exercises[0]!),
+    );
     const user = userEvent.setup();
-    render(<HypertrophyPlanEditor initialData={fourSessionData()} />);
+    render(<HypertrophyPlanEditor initialData={data} />);
 
+    await user.click(screen.getByRole("button", { name: "Lower" }));
     await user.click(screen.getByRole("button", { name: "+ Add exercise" }));
     await user.selectOptions(screen.getByLabelText("Exercise"), "dumbbell-bench");
 
@@ -357,36 +403,64 @@ describe("HypertrophyPlanEditor", () => {
     expect(screen.getByLabelText("Plan name")).toBeDisabled();
     expect(screen.getByLabelText("Session name")).toBeDisabled();
     expect(screen.getByLabelText("Focus")).toBeDisabled();
-    expect(screen.getByLabelText("Working sets")).toBeDisabled();
+    for (const workingSets of screen.getAllByLabelText("Working sets")) {
+      expect(workingSets).toBeDisabled();
+    }
     for (const role of screen.getAllByLabelText("Role")) expect(role).toBeDisabled();
     for (const target of screen.getAllByLabelText("Target")) expect(target).toBeDisabled();
-    const swap = screen.getByLabelText(
+    const swaps = screen.getAllByLabelText(
       /Swap exercise \(keeps role, target, sets, and order\)/,
     );
-    expect(swap).toBeDisabled();
+    for (const swap of swaps) expect(swap).toBeDisabled();
     expect(screen.getByRole("button", { name: "Add exercise" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Remove session" })).toBeDisabled();
-    const moveExercise = screen.getByRole("button", {
-      name: "Move Barbell Bench Press down",
-    });
-    expect(moveExercise).toBeDisabled();
-    const removeExercise = screen.getByRole("button", { name: "Remove" });
-    expect(removeExercise).toBeDisabled();
+    const moveExerciseDown = screen.getByRole("button", { name: "Move Leg Curl down" });
+    const moveExerciseUp = screen.getByRole("button", { name: "Move Barbell Bench Press up" });
+    expect(moveExerciseDown).toBeDisabled();
+    expect(moveExerciseUp).toBeDisabled();
+    const removeExercises = screen.getAllByRole("button", { name: "Remove" });
+    for (const removeExercise of removeExercises) expect(removeExercise).toBeDisabled();
 
+    const fieldset = screen.getByLabelText("Plan name").closest("fieldset");
+    if (!fieldset) throw new Error("Expected regeneration fieldset");
+    fieldset.disabled = false;
+
+    fireEvent.change(screen.getByLabelText("Plan name"), {
+      target: { value: "Forbidden plan name" },
+    });
     fireEvent.change(screen.getByLabelText("Session name"), {
       target: { value: "Forbidden local name" },
     });
-    fireEvent.change(screen.getByLabelText("Working sets"), {
+    fireEvent.change(screen.getByLabelText("Focus"), { target: { value: "PULL" } });
+    fireEvent.click(screen.getByRole("button", { name: "Move session up" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move session down" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "+ Session" })[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "Remove session" }));
+    fireEvent.change(screen.getAllByLabelText("Working sets")[0]!, {
       target: { value: "9" },
     });
-    fireEvent.change(swap, { target: { value: "dumbbell-bench" } });
-    fireEvent.click(moveExercise);
-    fireEvent.click(removeExercise);
+    fireEvent.change(screen.getAllByLabelText("Role")[0]!, {
+      target: { value: "ACCESSORY" },
+    });
+    fireEvent.change(screen.getAllByLabelText("Target")[0]!, {
+      target: { value: "movement:vertical_push" },
+    });
+    fireEvent.change(swaps[1]!, { target: { value: "dumbbell-bench" } });
+    fireEvent.click(moveExerciseDown);
+    fireEvent.click(moveExerciseUp);
+    fireEvent.click(removeExercises[0]!);
     fireEvent.click(screen.getByRole("button", { name: "Add exercise" }));
-    expect(screen.getByDisplayValue("Upper")).toBeVisible();
+    expect(screen.getByDisplayValue("Custom plan")).toBeVisible();
+    expect(screen.getByDisplayValue("Lower")).toBeVisible();
+    expect(screen.getByDisplayValue("3")).toBeVisible();
     expect(screen.getByDisplayValue("4")).toBeVisible();
+    expect(screen.getByLabelText("Focus")).toHaveValue("LOWER");
+    expect(screen.getAllByLabelText("Role")[0]).toHaveValue("MUSCLE_ISOLATION");
+    expect(screen.getAllByLabelText("Target")[0]).toHaveValue("muscle:hamstrings");
+    expect(screen.getByRole("heading", { name: "Leg Curl" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Barbell Bench Press" })).toBeVisible();
     expect(screen.queryByRole("heading", { name: "Dumbbell Bench Press" })).not.toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       regeneration.resolve(
@@ -396,6 +470,7 @@ describe("HypertrophyPlanEditor", () => {
     });
 
     expect(screen.getByDisplayValue("Regenerated Upper")).toBeVisible();
+    expect(screen.getByDisplayValue("Custom plan")).toBeVisible();
     expect(screen.getByDisplayValue("6")).toBeVisible();
     expect(screen.getAllByRole("heading", { name: "Leg Curl" })).toHaveLength(2);
     expect(screen.queryByDisplayValue("Forbidden local name")).not.toBeInTheDocument();
@@ -421,6 +496,62 @@ describe("HypertrophyPlanEditor", () => {
           : session,
       ),
     });
+  });
+
+  it("drops a pre-lock delayed autosave callback after the synchronous regeneration lock", async () => {
+    vi.useFakeTimers();
+    try {
+      const firstSave = deferred<Response>();
+      const regeneration = deferred<Response>();
+      const timeoutSpy = vi.spyOn(window, "setTimeout");
+      vi.mocked(fetch).mockImplementation((url) =>
+        String(url).endsWith("/regenerate") ? regeneration.promise : firstSave.promise,
+      );
+      render(<HypertrophyPlanEditor initialData={fourSessionData()} />);
+
+      fireEvent.change(screen.getByLabelText("Session name"), {
+        target: { value: "Saved edit" },
+      });
+      const scheduledAutosave = timeoutSpy.mock.calls.find(
+        ([, delay]) => delay === 750,
+      )?.[0];
+      if (typeof scheduledAutosave !== "function") {
+        throw new Error("Expected scheduled autosave callback");
+      }
+      await act(async () => {
+        scheduledAutosave();
+        await Promise.resolve();
+      });
+      expect(fetch).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        firstSave.resolve(response({ revision: 2, health: availableHealth(2) }));
+        await firstSave.promise;
+      });
+      const generate = screen.getByRole("button", {
+        name: "Generate a new starting plan",
+      });
+      expect(generate).toBeEnabled();
+      fireEvent.click(generate);
+      expect(fetch).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        scheduledAutosave();
+        await Promise.resolve();
+      });
+      expect(fetch).toHaveBeenCalledTimes(2);
+      await act(async () => {
+        regeneration.resolve(
+          response({ draft: regeneratedDraft(), revision: 3, health: availableHealth(3) }),
+        );
+        await regeneration.promise;
+      });
+      await act(() => vi.advanceTimersByTimeAsync(1_000));
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(screen.getByDisplayValue("Regenerated Upper")).toBeVisible();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("does not start regeneration during in-flight or queued autosaves", async () => {
@@ -466,8 +597,10 @@ describe("HypertrophyPlanEditor", () => {
   });
 
   it("preserves the saved draft after regeneration failure and re-enables editing", async () => {
-    vi.mocked(fetch).mockResolvedValue(
-      failedResponse({ error: "Regeneration conflict" }),
+    vi.mocked(fetch).mockImplementation((url) =>
+      String(url).endsWith("/regenerate")
+        ? Promise.resolve(failedResponse({ error: "Regeneration conflict" }))
+        : Promise.resolve(response({ revision: 2, health: availableHealth(2) })),
     );
     render(<HypertrophyPlanEditor initialData={fourSessionData()} />);
 
@@ -475,8 +608,81 @@ describe("HypertrophyPlanEditor", () => {
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Regeneration conflict"));
     expect(screen.getByDisplayValue("Upper")).toBeVisible();
     expect(screen.getByDisplayValue("4")).toBeVisible();
+    expect(screen.getByDisplayValue("Custom plan")).toBeVisible();
     expect(screen.getByLabelText("Session name")).toBeEnabled();
     expect(screen.getByRole("button", { name: "Generate a new starting plan" })).toBeEnabled();
+
+    fireEvent.change(screen.getByLabelText("Plan name"), {
+      target: { value: "Editable after failure" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Move session down" }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    const [, request] = vi.mocked(fetch).mock.calls[1]!;
+    expect(JSON.parse(String(request?.body))).toMatchObject({
+      expectedRevision: 1,
+      name: "Editable after failure",
+      draft: {
+        sessions: [
+          expect.objectContaining({ slotId: "lower" }),
+          expect.objectContaining({ slotId: "upper" }),
+          expect.objectContaining({ slotId: "upper-2" }),
+          expect.objectContaining({ slotId: "lower-2" }),
+        ],
+      },
+    });
+  });
+
+  it("recovers a committed regeneration lost to the network through stale CAS and refresh", async () => {
+    const authoritative = regeneratedDraft();
+    let serverWrites = 0;
+    vi.mocked(fetch).mockImplementation((url) => {
+      if (String(url).endsWith("/regenerate")) {
+        serverWrites += 1;
+        return Promise.reject(new TypeError("network response lost after commit"));
+      }
+      return Promise.resolve(
+        failedResponse({
+          error: "This plan changed on the server. Refresh to load the current draft.",
+          code: "PLAN_MUTATION_CONFLICT",
+          currentRevision: 2,
+        }),
+      );
+    });
+    const view = render(<HypertrophyPlanEditor initialData={fourSessionData()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate a new starting plan" }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Generation failed. Your draft is unchanged.",
+      ),
+    );
+    expect(serverWrites).toBe(1);
+    expect(screen.getByDisplayValue("Upper")).toBeVisible();
+    fireEvent.change(screen.getByLabelText("Plan name"), {
+      target: { value: "Stale later edit" },
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "This plan changed on the server. Refresh to load the current draft.",
+      ),
+    );
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(String(vi.mocked(fetch).mock.calls[1]![1]?.body))).toMatchObject({
+      expectedRevision: 1,
+    });
+    expect(serverWrites).toBe(1);
+
+    view.unmount();
+    const refreshed = fourSessionData();
+    refreshed.revision = 2;
+    refreshed.draft = authoritative;
+    refreshed.health = availableHealth(2);
+    render(<HypertrophyPlanEditor initialData={refreshed} />);
+
+    expect(screen.getByDisplayValue("Regenerated Upper")).toBeVisible();
+    expect(screen.getByText("Current for saved revision 2.")).toBeVisible();
+    expect(serverWrites).toBe(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it("requires a failed CAS autosave to be retried before regeneration", async () => {

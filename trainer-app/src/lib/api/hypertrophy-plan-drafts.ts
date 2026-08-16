@@ -38,9 +38,10 @@ import {
   buildHypertrophyPlanHealthAssessment,
   comparePlanHealthCodeUnits,
   healthRequiresWarningConfirmation,
-  type ClassifiedHypertrophyPlanHealthIssue,
+  projectHypertrophyPlanHealthSemantics,
   type HypertrophyPlanHealth,
   type HypertrophyPlanHealthAssessment,
+  type HypertrophyPlanHealthAssessmentCore,
   type HypertrophyPlanHealthResult,
 } from "@/lib/engine/hypertrophy-plan-health";
 import {
@@ -556,55 +557,13 @@ function sha256(value: unknown): string {
   return createHash("sha256").update(stableStringify(value)).digest("hex");
 }
 
-export function projectSelectedPlanHealthCatalog(
-  draft: HypertrophyPlanDraft,
-  exercises: readonly HypertrophyAuthoringExercise[],
-): unknown[] {
-  const sorted = (values: readonly string[] | undefined) =>
-    [...(values ?? [])].sort(comparePlanHealthCodeUnits);
-  const catalogById = new Map(
-    exercises.map((exercise) => [exercise.id, exercise]),
-  );
-  const selectedExerciseIds = [
-    ...new Set(
-      draft.sessions.flatMap((session) =>
-        session.exercises.map((exercise) => exercise.exerciseId),
-      ),
-    ),
-  ].sort(comparePlanHealthCodeUnits);
-
-  return selectedExerciseIds.map((exerciseId) => {
-    const exercise = catalogById.get(exerciseId);
-    if (!exercise) return { exerciseId, availability: "MISSING" };
-    return {
-      exerciseId,
-      availability: "PRESENT",
-      facts: {
-        name: exercise.name,
-        aliases: sorted(exercise.aliases),
-        movementPatterns: sorted(exercise.movementPatterns),
-        primaryMuscleIds: sorted(exercise.primaryMuscleIds),
-        secondaryMuscleIds: sorted(exercise.secondaryMuscleIds),
-        stimulusByMuscleId: exercise.stimulusByMuscleId ?? null,
-        equipment: sorted(exercise.equipment),
-        contraindicationKeys: sorted(exercise.contraindicationKeys),
-        isCompound: exercise.isCompound,
-        isMainLiftEligible: exercise.isMainLiftEligible,
-        measurement: exercise.measurement ?? null,
-        timePerSetSec: exercise.timePerSetSec,
-      },
-    };
-  });
-}
-
 export function buildHypertrophyPlanHealthConfirmationScope(input: {
   policyVersion: string;
   draftId: string;
   draftRevision: number;
   draft: HypertrophyPlanDraft;
   preview: HypertrophyPlanV4Preview | null;
-  importantWarnings: readonly ClassifiedHypertrophyPlanHealthIssue[];
-  exercises: readonly HypertrophyAuthoringExercise[];
+  assessment: HypertrophyPlanHealthAssessmentCore;
   limitations: ResolvedLimitations;
 }): string {
   const payload = {
@@ -638,25 +597,8 @@ export function buildHypertrophyPlanHealthConfirmationScope(input: {
                   comparePlanHealthCodeUnits(left.message, right.message),
               ),
             },
-    importantWarnings: input.importantWarnings
-      .map((warning) => ({
-        code: warning.code,
-        tier: warning.tier,
-        title: warning.title,
-        explanation: warning.explanation,
-        suggestedAction: warning.suggestedAction,
-        affected: warning.affected ?? null,
-        blocksFinalization: warning.blocksFinalization,
-        requiresAcknowledgment: warning.requiresAcknowledgment,
-      }))
-      .sort((left, right) =>
-        comparePlanHealthCodeUnits(stableStringify(left), stableStringify(right)),
-      ),
+    evaluatedHealth: projectHypertrophyPlanHealthSemantics(input.assessment),
     authoritativeContext: {
-      selectedCatalog: projectSelectedPlanHealthCatalog(
-        input.draft,
-        input.exercises,
-      ),
       equipmentProfile: input.draft.settings.equipmentProfile,
       limitations: {
         recognizedTags: [...input.limitations.recognizedTags].sort(
@@ -793,10 +735,7 @@ export function deriveDraftHealthAssessment(input: {
       draftRevision: input.draftRevision,
       draft: input.draft,
       preview: input.preview,
-      importantWarnings: assessment.issues.filter(
-        (issue) => issue.tier === "IMPORTANT_WARNING",
-      ),
-      exercises: input.exercises,
+      assessment,
       limitations: input.limitations,
     }),
   };

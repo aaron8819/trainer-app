@@ -4,58 +4,29 @@ import type {
 } from "@/lib/api/hypertrophy-plan-drafts";
 import {
   comparePlanHealthCodeUnits,
+  projectHypertrophyPlanHealthSemantics,
   type HypertrophyPlanHealthAssessment,
 } from "@/lib/engine/hypertrophy-plan-health";
 
 export function planHealthContextKey(
   data: Pick<
     HypertrophyPlanEditorData,
-    "planId" | "draft" | "exercises" | "limitationKeys"
+    "planId" | "draft" | "health" | "limitationKeys"
   > & { preview?: HypertrophyPlanV4Preview | null },
 ): string {
-  const catalogById = new Map(
-    data.exercises.map((exercise) => [exercise.id, exercise]),
-  );
-  const selectedExerciseIds = [
-    ...new Set(
-      data.draft.sessions.flatMap((session) =>
-        session.exercises.map((exercise) => exercise.exerciseId),
-      ),
-    ),
-  ].sort(comparePlanHealthCodeUnits);
   return JSON.stringify({
     planId: data.planId,
     settings: data.draft.settings,
-    selectedCatalog: selectedExerciseIds.map((exerciseId) => {
-      const exercise = catalogById.get(exerciseId);
-      if (!exercise) return { exerciseId, availability: "MISSING" };
-      return {
-        exerciseId,
-        availability: "PRESENT",
-        facts: {
-          name: exercise.name,
-          aliases: [...(exercise.aliases ?? [])].sort(comparePlanHealthCodeUnits),
-          movementPatterns: [...exercise.movementPatterns].sort(
-            comparePlanHealthCodeUnits,
-          ),
-          primaryMuscleIds: [...exercise.primaryMuscleIds].sort(
-            comparePlanHealthCodeUnits,
-          ),
-          secondaryMuscleIds: [...exercise.secondaryMuscleIds].sort(
-            comparePlanHealthCodeUnits,
-          ),
-          stimulusByMuscleId: exercise.stimulusByMuscleId ?? null,
-          equipment: [...exercise.equipment].sort(comparePlanHealthCodeUnits),
-          contraindicationKeys: [...exercise.contraindicationKeys].sort(
-            comparePlanHealthCodeUnits,
-          ),
-          isCompound: exercise.isCompound,
-          isMainLiftEligible: exercise.isMainLiftEligible,
-          measurement: exercise.measurement ?? null,
-          timePerSetSec: exercise.timePerSetSec,
-        },
-      };
-    }),
+    health:
+      data.health.status === "AVAILABLE"
+        ? {
+            status: data.health.status,
+            policyVersion: data.health.policyVersion,
+            draftId: data.health.draftId,
+            draftRevision: data.health.draftRevision,
+            semantics: projectHypertrophyPlanHealthSemantics(data.health),
+          }
+        : data.health,
     limitationKeys: [...data.limitationKeys].sort(comparePlanHealthCodeUnits),
     preview:
       data.preview?.status === "ELIGIBLE"

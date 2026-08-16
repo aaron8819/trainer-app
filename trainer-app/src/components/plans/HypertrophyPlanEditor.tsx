@@ -89,83 +89,6 @@ function move<T>(values: T[], from: number, to: number): T[] {
   return next;
 }
 
-function mergeRegeneratedWithLocalChanges<T>(
-  requestDraft: T,
-  regeneratedDraft: T,
-  localDraft: T,
-): T {
-  if (JSON.stringify(localDraft) === JSON.stringify(requestDraft)) {
-    return regeneratedDraft;
-  }
-  if (
-    Array.isArray(requestDraft) &&
-    Array.isArray(regeneratedDraft) &&
-    Array.isArray(localDraft)
-  ) {
-    const merged: unknown[] = [];
-    const length = Math.max(
-      requestDraft.length,
-      regeneratedDraft.length,
-      localDraft.length,
-    );
-    for (let index = 0; index < length; index += 1) {
-      if (index < localDraft.length) {
-        if (index < requestDraft.length) {
-          merged.push(
-            mergeRegeneratedWithLocalChanges(
-              requestDraft[index],
-              regeneratedDraft[index],
-              localDraft[index],
-            ),
-          );
-        } else {
-          merged.push(localDraft[index]);
-        }
-      } else if (index >= requestDraft.length && index < regeneratedDraft.length) {
-        merged.push(regeneratedDraft[index]);
-      }
-    }
-    return merged as T;
-  }
-  if (
-    requestDraft != null &&
-    regeneratedDraft != null &&
-    localDraft != null &&
-    typeof requestDraft === "object" &&
-    typeof regeneratedDraft === "object" &&
-    typeof localDraft === "object"
-  ) {
-    const requestRecord = requestDraft as Record<string, unknown>;
-    const regeneratedRecord = regeneratedDraft as Record<string, unknown>;
-    const localRecord = localDraft as Record<string, unknown>;
-    const merged: Record<string, unknown> = {};
-    for (const key of new Set([
-      ...Object.keys(requestRecord),
-      ...Object.keys(regeneratedRecord),
-      ...Object.keys(localRecord),
-    ])) {
-      if (!(key in localRecord)) {
-        if (!(key in requestRecord) && key in regeneratedRecord) {
-          merged[key] = regeneratedRecord[key];
-        }
-        continue;
-      }
-      if (!(key in requestRecord)) {
-        merged[key] = localRecord[key];
-        continue;
-      }
-      const value = mergeRegeneratedWithLocalChanges(
-        requestRecord[key],
-        regeneratedRecord[key],
-        localRecord[key],
-      );
-      if (value !== undefined) merged[key] = value;
-    }
-    return merged as T;
-  }
-  return localDraft;
-}
-
 async function responseBody(response: Response) {
   return response.json().catch(() => ({})) as Promise<{
     error?: string;
@@ -226,6 +149,7 @@ function LegacyHypertrophyPlanEditor({
   );
   const [newExerciseId, setNewExerciseId] = useState("");
   const [makingReady, setMakingReady] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const lastSavedSignature = useRef(
     JSON.stringify({ name: initialData.name, draft: initialData.draft }),
   );
@@ -239,6 +163,7 @@ function LegacyHypertrophyPlanEditor({
   const currentHealthContextKeyRef = useRef(currentHealthContextKey);
   const healthContextGeneration = useRef(0);
   const mountedRef = useRef(true);
+  const regeneratingRef = useRef(false);
   const lastPropsContextKey = useRef(currentHealthContextKey);
   const initialHealthIdentity =
     initialData.health.status === "AVAILABLE"
@@ -282,6 +207,7 @@ function LegacyHypertrophyPlanEditor({
       : undefined;
 
   const save = useCallback(async () => {
+    if (regeneratingRef.current) return false;
     if (inFlight.current) {
       queued.current = true;
       return false;
@@ -373,6 +299,7 @@ function LegacyHypertrophyPlanEditor({
     updater: (value: HypertrophyPlanDraftV1["sessions"][number]) =>
       HypertrophyPlanDraftV1["sessions"][number],
   ) => {
+    if (regeneratingRef.current) return;
     setDraft((current) => ({
       ...current,
       sessions: replaceAt(
@@ -412,6 +339,7 @@ function LegacyHypertrophyPlanEditor({
   ]);
 
   const addSession = () => {
+    if (regeneratingRef.current) return;
     if (draft.sessions.length >= 6) return;
     const slotId = crypto.randomUUID();
     setDraft((current) => ({
@@ -430,6 +358,7 @@ function LegacyHypertrophyPlanEditor({
   };
 
   const removeSession = () => {
+    if (regeneratingRef.current) return;
     if (draft.sessions.length <= 2) return;
     if (
       session.exercises.length > 0 &&
@@ -445,6 +374,7 @@ function LegacyHypertrophyPlanEditor({
   };
 
   const addExercise = () => {
+    if (regeneratingRef.current) return;
     if (!newExerciseId) return;
     updateSession((current) => ({
       ...current,
@@ -477,6 +407,7 @@ function LegacyHypertrophyPlanEditor({
   };
 
   const makeReady = async () => {
+    if (regeneratingRef.current) return;
     const saved = await flushSave();
     if (!saved) return;
     const currentHealth = healthRef.current;
@@ -568,6 +499,25 @@ function LegacyHypertrophyPlanEditor({
   };
 
   const regenerate = async () => {
+    if (regeneratingRef.current) return;
+    const requestSnapshot = latest.current;
+    const requestSignature = JSON.stringify({
+      name: requestSnapshot.name,
+      draft: requestSnapshot.draft,
+    });
+    if (
+      inFlight.current ||
+      queued.current ||
+      saveState !== "saved" ||
+      requestSignature !== lastSavedSignature.current
+    ) {
+      setError(
+        saveState === "failed"
+          ? "Retry the failed save before generating a new starting plan."
+          : "Wait for the current draft to finish saving before generating a new starting plan.",
+      );
+      return;
+    }
     if (
       !window.confirm(
         "Replace this draft with a new generated starting plan? Your current sessions, exercises, roles, order, and sets will be replaced.",
@@ -575,40 +525,30 @@ function LegacyHypertrophyPlanEditor({
     ) {
       return;
     }
-    if (!(await flushSave())) return;
+    regeneratingRef.current = true;
+    setRegenerating(true);
     setError(null);
     const requestContextGeneration = healthContextGeneration.current;
     const requestHealthContextKey = currentHealthContextKeyRef.current;
-    const requestSnapshot = latest.current;
-    const requestSignature = JSON.stringify({
-      name: requestSnapshot.name,
-      draft: requestSnapshot.draft,
-    });
-    const response = await fetch(`/api/plans/${initialData.planId}/regenerate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        expectedRevision: requestSnapshot.revision,
-        replaceConfirmed: true,
-      }),
-    });
-    const body = await responseBody(response);
-    if (!mountedRef.current) return;
-    if (!response.ok || !body.draft || body.revision == null) {
-      setError(body.error ?? "Generation failed. Your draft is unchanged.");
-      return;
-    }
-    const currentSnapshot = latest.current;
-    const currentSignature = JSON.stringify({
-      name: currentSnapshot.name,
-      draft: currentSnapshot.draft,
-    });
-    const hasNewerLocalEdits = currentSignature !== requestSignature;
-    const serverSignature = JSON.stringify({
-      name: requestSnapshot.name,
-      draft: body.draft,
-    });
-    if (!hasNewerLocalEdits) {
+    try {
+      const response = await fetch(`/api/plans/${initialData.planId}/regenerate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expectedRevision: requestSnapshot.revision,
+          replaceConfirmed: true,
+        }),
+      });
+      const body = await responseBody(response);
+      if (!mountedRef.current) return;
+      if (!response.ok || !body.draft || body.revision == null) {
+        setError(body.error ?? "Generation failed. Your draft is unchanged.");
+        return;
+      }
+      const serverSignature = JSON.stringify({
+        name: requestSnapshot.name,
+        draft: body.draft,
+      });
       setDraft(body.draft);
       latest.current = {
         name: requestSnapshot.name,
@@ -616,67 +556,62 @@ function LegacyHypertrophyPlanEditor({
         revision: body.revision,
       };
       setSelectedSlotId(body.draft.sessions[0]!.slotId);
-    } else {
-      const mergedDraft = mergeRegeneratedWithLocalChanges(
-        requestSnapshot.draft,
-        body.draft,
-        currentSnapshot.draft,
-      );
-      setDraft(mergedDraft);
-      latest.current = {
-        name: currentSnapshot.name,
-        draft: mergedDraft,
-        revision: body.revision,
-      };
-    }
-    setRevision(body.revision);
-    lastSavedSignature.current = serverSignature;
-    const nextHealth =
-      isHypertrophyPlanHealthResult(body.health) &&
-      body.health.draftId === initialData.planId &&
-      body.health.draftRevision === body.revision
-        ? body.health
-        : {
-            status: "UNAVAILABLE" as const,
-            policyVersion: HYPERTROPHY_PLAN_HEALTH_POLICY_VERSION,
-            draftId: initialData.planId,
-            draftRevision: body.revision,
-            reason: "RESULT_INVALID" as const,
-          };
-    const currentContextKey = currentHealthContextKeyRef.current;
-    const responseContextIsCurrent =
-      requestContextGeneration === healthContextGeneration.current &&
-      requestHealthContextKey === currentContextKey;
-    const installedHealthIsCurrent =
-      !hasNewerLocalEdits &&
-      installedHealthContextKeyRef.current === currentContextKey &&
-      healthRef.current.draftId === initialData.planId &&
-      healthRef.current.draftRevision === body.revision;
+      setRevision(body.revision);
+      lastSavedSignature.current = serverSignature;
+      const nextHealth =
+        isHypertrophyPlanHealthResult(body.health) &&
+        body.health.draftId === initialData.planId &&
+        body.health.draftRevision === body.revision
+          ? body.health
+          : {
+              status: "UNAVAILABLE" as const,
+              policyVersion: HYPERTROPHY_PLAN_HEALTH_POLICY_VERSION,
+              draftId: initialData.planId,
+              draftRevision: body.revision,
+              reason: "RESULT_INVALID" as const,
+            };
+      const currentContextKey = currentHealthContextKeyRef.current;
+      const responseContextIsCurrent =
+        requestContextGeneration === healthContextGeneration.current &&
+        requestHealthContextKey === currentContextKey;
+      const installedHealthIsCurrent =
+        installedHealthContextKeyRef.current === currentContextKey &&
+        healthRef.current.draftId === initialData.planId &&
+        healthRef.current.draftRevision === body.revision;
 
-    if (responseContextIsCurrent && !hasNewerLocalEdits) {
-      healthRef.current = nextHealth;
-      installedHealthContextKeyRef.current = requestHealthContextKey;
-      setHealth(nextHealth);
-      setInstalledHealthContextKey(requestHealthContextKey);
-    } else if (!installedHealthIsCurrent) {
-      const unavailableHealth = {
-        status: "UNAVAILABLE" as const,
-        policyVersion: HYPERTROPHY_PLAN_HEALTH_POLICY_VERSION,
-        draftId: initialData.planId,
-        draftRevision: body.revision,
-        reason: "RESULT_INVALID" as const,
-      };
-      healthRef.current = unavailableHealth;
-      installedHealthContextKeyRef.current = currentContextKey;
-      setHealth(unavailableHealth);
-      setInstalledHealthContextKey(currentContextKey);
+      if (responseContextIsCurrent) {
+        healthRef.current = nextHealth;
+        installedHealthContextKeyRef.current = requestHealthContextKey;
+        setHealth(nextHealth);
+        setInstalledHealthContextKey(requestHealthContextKey);
+      } else if (!installedHealthIsCurrent) {
+        const unavailableHealth = {
+          status: "UNAVAILABLE" as const,
+          policyVersion: HYPERTROPHY_PLAN_HEALTH_POLICY_VERSION,
+          draftId: initialData.planId,
+          draftRevision: body.revision,
+          reason: "RESULT_INVALID" as const,
+        };
+        healthRef.current = unavailableHealth;
+        installedHealthContextKeyRef.current = currentContextKey;
+        setHealth(unavailableHealth);
+        setInstalledHealthContextKey(currentContextKey);
+      }
+      setSaveState("saved");
+      if (!responseContextIsCurrent && !installedHealthIsCurrent) router.refresh();
+    } catch {
+      if (mountedRef.current) {
+        setError("Generation failed. Your draft is unchanged.");
+      }
+    } finally {
+      regeneratingRef.current = false;
+      if (mountedRef.current) setRegenerating(false);
     }
-    setSaveState(hasNewerLocalEdits ? "saving" : "saved");
-    if (!responseContextIsCurrent && !installedHealthIsCurrent) router.refresh();
   };
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
+      <fieldset disabled={regenerating} className="contents">
       <header className="sticky top-0 z-20 -mx-4 border-b border-slate-200 bg-white/95 px-4 pb-4 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <label className="min-w-0 flex-1 text-sm font-medium text-slate-700">
@@ -694,7 +629,9 @@ function LegacyHypertrophyPlanEditor({
                 saveState === "failed" ? "text-rose-700" : "text-slate-600"
               }
             >
-              {saveState === "saving"
+              {regenerating
+                ? "Regenerating…"
+                : saveState === "saving"
                 ? "Saving…"
                 : saveState === "failed"
                   ? "Save failed — Retry"
@@ -1128,6 +1065,7 @@ function LegacyHypertrophyPlanEditor({
           />
         </aside>
       </div>
+      </fieldset>
 
       <footer className="sticky bottom-0 z-20 -mx-4 mt-5 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2">
@@ -1135,15 +1073,22 @@ function LegacyHypertrophyPlanEditor({
             variant="secondary"
             size="touch"
             onClick={() => void regenerate()}
-            disabled={draft.sessions.length !== 4 || makingReady}
+            disabled={
+              draft.sessions.length !== 4 ||
+              makingReady ||
+              regenerating ||
+              unsaved ||
+              saveState !== "saved"
+            }
           >
-            Generate a new starting plan
+            {regenerating ? "Regenerating…" : "Generate a new starting plan"}
           </Button>
           <Button
             size="touch"
             onClick={() => void makeReady()}
             disabled={
               makingReady ||
+              regenerating ||
               unsaved ||
               saveState !== "saved" ||
               health.status !== "AVAILABLE" ||

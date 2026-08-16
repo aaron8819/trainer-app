@@ -428,7 +428,10 @@ describe("WeeklyHypertrophyPlanEditor", () => {
       );
       const changed = structuredClone(data);
       if (contextKind === "catalog") {
-        changed.exercises[0]!.timePerSetSec += 1;
+        changed.exercises[0]!.timePerSetSec += 1_800;
+        if (changed.health.status === "AVAILABLE") {
+          changed.health.sessionEstimates[0]!.estimatedMinutes += 30;
+        }
       } else if (contextKind === "equipment") {
         changed.draft.settings.equipmentProfile = "BARBELL_HOME";
       } else {

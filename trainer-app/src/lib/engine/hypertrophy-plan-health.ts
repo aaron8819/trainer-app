@@ -224,6 +224,53 @@ export type HypertrophyPlanHealthResult =
   | HypertrophyPlanHealthAssessment
   | HypertrophyPlanHealthUnavailable;
 
+export function projectHypertrophyPlanHealthSemantics(
+  health: Pick<
+    HypertrophyPlanHealthAssessmentCore,
+    "evaluatedWeek" | "issues" | "volumeEstimates" | "sessionEstimates"
+  >,
+) {
+  const compareCanonical = (left: unknown, right: unknown) =>
+    comparePlanHealthCodeUnits(JSON.stringify(left), JSON.stringify(right));
+  return {
+    evaluatedWeek: health.evaluatedWeek,
+    issues: health.issues
+      .map((issue) => ({
+        code: issue.code,
+        tier: issue.tier,
+        title: issue.title,
+        explanation: issue.explanation,
+        suggestedAction: issue.suggestedAction,
+        affected: issue.affected
+          ? {
+              session: issue.affected.session ?? null,
+              exercise: issue.affected.exercise ?? null,
+              muscle: issue.affected.muscle ?? null,
+            }
+          : null,
+        blocksFinalization: issue.blocksFinalization,
+        requiresAcknowledgment: issue.requiresAcknowledgment,
+      }))
+      .sort(compareCanonical),
+    volumeEstimates: health.volumeEstimates
+      .map((estimate) => ({
+        tier: estimate.tier,
+        muscle: estimate.muscle,
+        directSets: estimate.directSets,
+        effectiveSets: estimate.effectiveSets,
+        frequency: estimate.frequency,
+        referenceRange: estimate.referenceRange,
+      }))
+      .sort(compareCanonical),
+    sessionEstimates: health.sessionEstimates
+      .map((estimate) => ({
+        session: estimate.session,
+        estimatedMinutes: estimate.estimatedMinutes,
+      }))
+      .sort(compareCanonical),
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }

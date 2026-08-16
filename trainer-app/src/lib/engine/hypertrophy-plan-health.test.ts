@@ -4,6 +4,7 @@ import {
   HYPERTROPHY_PLAN_HEALTH_ISSUE_POLICY,
   buildHypertrophyPlanHealthAssessment,
   classifyHypertrophyPlanHealthIssue,
+  comparePlanHealthCodeUnits,
   healthRequiresWarningConfirmation,
   type HypertrophyPlanHealth,
 } from "./hypertrophy-plan-health";
@@ -34,6 +35,14 @@ function assess(health: HypertrophyPlanHealth) {
 }
 
 describe("draft Plan Health classification", () => {
+  it("uses deterministic UTF-16 code-unit ordering for scope-relevant text", () => {
+    expect(
+      ["é", "a", "A", "10", "2", "_", "-", "Z", "A"].sort(
+        comparePlanHealthCodeUnits,
+      ),
+    ).toEqual(["-", "10", "2", "A", "A", "Z", "_", "a", "é"]);
+  });
+
   it("exhaustively classifies every current issue code", () => {
     expect(Object.keys(HYPERTROPHY_PLAN_HEALTH_ISSUE_POLICY).sort()).toEqual(
       [...HYPERTROPHY_PLAN_HEALTH_ISSUE_CODES].sort(),

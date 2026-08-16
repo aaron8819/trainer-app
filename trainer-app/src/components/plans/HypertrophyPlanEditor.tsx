@@ -89,6 +89,83 @@ function move<T>(values: T[], from: number, to: number): T[] {
   return next;
 }
 
+function mergeRegeneratedWithLocalChanges<T>(
+  requestDraft: T,
+  regeneratedDraft: T,
+  localDraft: T,
+): T {
+  if (JSON.stringify(localDraft) === JSON.stringify(requestDraft)) {
+    return regeneratedDraft;
+  }
+  if (
+    Array.isArray(requestDraft) &&
+    Array.isArray(regeneratedDraft) &&
+    Array.isArray(localDraft)
+  ) {
+    const merged: unknown[] = [];
+    const length = Math.max(
+      requestDraft.length,
+      regeneratedDraft.length,
+      localDraft.length,
+    );
+    for (let index = 0; index < length; index += 1) {
+      if (index < localDraft.length) {
+        if (index < requestDraft.length) {
+          merged.push(
+            mergeRegeneratedWithLocalChanges(
+              requestDraft[index],
+              regeneratedDraft[index],
+              localDraft[index],
+            ),
+          );
+        } else {
+          merged.push(localDraft[index]);
+        }
+      } else if (index >= requestDraft.length && index < regeneratedDraft.length) {
+        merged.push(regeneratedDraft[index]);
+      }
+    }
+    return merged as T;
+  }
+  if (
+    requestDraft != null &&
+    regeneratedDraft != null &&
+    localDraft != null &&
+    typeof requestDraft === "object" &&
+    typeof regeneratedDraft === "object" &&
+    typeof localDraft === "object"
+  ) {
+    const requestRecord = requestDraft as Record<string, unknown>;
+    const regeneratedRecord = regeneratedDraft as Record<string, unknown>;
+    const localRecord = localDraft as Record<string, unknown>;
+    const merged: Record<string, unknown> = {};
+    for (const key of new Set([
+      ...Object.keys(requestRecord),
+      ...Object.keys(regeneratedRecord),
+      ...Object.keys(localRecord),
+    ])) {
+      if (!(key in localRecord)) {
+        if (!(key in requestRecord) && key in regeneratedRecord) {
+          merged[key] = regeneratedRecord[key];
+        }
+        continue;
+      }
+      if (!(key in requestRecord)) {
+        merged[key] = localRecord[key];
+        continue;
+      }
+      const value = mergeRegeneratedWithLocalChanges(
+        requestRecord[key],
+        regeneratedRecord[key],
+        localRecord[key],
+      );
+      if (value !== undefined) merged[key] = value;
+    }
+    return merged as T;
+  }
+  return localDraft;
+}
+
 async function responseBody(response: Response) {
   return response.json().catch(() => ({})) as Promise<{
     error?: string;
@@ -159,7 +236,9 @@ function LegacyHypertrophyPlanEditor({
   const latest = useRef({ name, draft, revision });
   const healthRef = useRef(initialData.health);
   const installedHealthContextKeyRef = useRef(currentHealthContextKey);
+  const currentHealthContextKeyRef = useRef(currentHealthContextKey);
   const healthContextGeneration = useRef(0);
+  const mountedRef = useRef(true);
   const lastPropsContextKey = useRef(currentHealthContextKey);
   const initialHealthIdentity =
     initialData.health.status === "AVAILABLE"
@@ -167,6 +246,14 @@ function LegacyHypertrophyPlanEditor({
       : `${initialData.health.policyVersion}:${initialData.health.draftId}:${initialData.health.draftRevision}:${initialData.health.reason}`;
   const lastInitialHealthIdentity = useRef(initialHealthIdentity);
   latest.current = { name, draft, revision };
+  currentHealthContextKeyRef.current = currentHealthContextKey;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     const contextChanged = lastPropsContextKey.current !== currentHealthContextKey;
@@ -490,23 +577,60 @@ function LegacyHypertrophyPlanEditor({
     }
     if (!(await flushSave())) return;
     setError(null);
+    const requestContextGeneration = healthContextGeneration.current;
+    const requestHealthContextKey = currentHealthContextKeyRef.current;
+    const requestSnapshot = latest.current;
+    const requestSignature = JSON.stringify({
+      name: requestSnapshot.name,
+      draft: requestSnapshot.draft,
+    });
     const response = await fetch(`/api/plans/${initialData.planId}/regenerate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        expectedRevision: latest.current.revision,
+        expectedRevision: requestSnapshot.revision,
         replaceConfirmed: true,
       }),
     });
     const body = await responseBody(response);
+    if (!mountedRef.current) return;
     if (!response.ok || !body.draft || body.revision == null) {
       setError(body.error ?? "Generation failed. Your draft is unchanged.");
       return;
     }
-    setDraft(body.draft);
+    const currentSnapshot = latest.current;
+    const currentSignature = JSON.stringify({
+      name: currentSnapshot.name,
+      draft: currentSnapshot.draft,
+    });
+    const hasNewerLocalEdits = currentSignature !== requestSignature;
+    const serverSignature = JSON.stringify({
+      name: requestSnapshot.name,
+      draft: body.draft,
+    });
+    if (!hasNewerLocalEdits) {
+      setDraft(body.draft);
+      latest.current = {
+        name: requestSnapshot.name,
+        draft: body.draft,
+        revision: body.revision,
+      };
+      setSelectedSlotId(body.draft.sessions[0]!.slotId);
+    } else {
+      const mergedDraft = mergeRegeneratedWithLocalChanges(
+        requestSnapshot.draft,
+        body.draft,
+        currentSnapshot.draft,
+      );
+      setDraft(mergedDraft);
+      latest.current = {
+        name: currentSnapshot.name,
+        draft: mergedDraft,
+        revision: body.revision,
+      };
+    }
     setRevision(body.revision);
-    latest.current = { name, draft: body.draft, revision: body.revision };
-    lastSavedSignature.current = JSON.stringify({ name, draft: body.draft });
+    lastSavedSignature.current = serverSignature;
     const nextHealth =
       isHypertrophyPlanHealthResult(body.health) &&
       body.health.draftId === initialData.planId &&
@@ -519,10 +643,36 @@ function LegacyHypertrophyPlanEditor({
             draftRevision: body.revision,
             reason: "RESULT_INVALID" as const,
           };
-    healthRef.current = nextHealth;
-    setHealth(nextHealth);
-    setSelectedSlotId(body.draft.sessions[0]!.slotId);
-    setSaveState("saved");
+    const currentContextKey = currentHealthContextKeyRef.current;
+    const responseContextIsCurrent =
+      requestContextGeneration === healthContextGeneration.current &&
+      requestHealthContextKey === currentContextKey;
+    const installedHealthIsCurrent =
+      !hasNewerLocalEdits &&
+      installedHealthContextKeyRef.current === currentContextKey &&
+      healthRef.current.draftId === initialData.planId &&
+      healthRef.current.draftRevision === body.revision;
+
+    if (responseContextIsCurrent && !hasNewerLocalEdits) {
+      healthRef.current = nextHealth;
+      installedHealthContextKeyRef.current = requestHealthContextKey;
+      setHealth(nextHealth);
+      setInstalledHealthContextKey(requestHealthContextKey);
+    } else if (!installedHealthIsCurrent) {
+      const unavailableHealth = {
+        status: "UNAVAILABLE" as const,
+        policyVersion: HYPERTROPHY_PLAN_HEALTH_POLICY_VERSION,
+        draftId: initialData.planId,
+        draftRevision: body.revision,
+        reason: "RESULT_INVALID" as const,
+      };
+      healthRef.current = unavailableHealth;
+      installedHealthContextKeyRef.current = currentContextKey;
+      setHealth(unavailableHealth);
+      setInstalledHealthContextKey(currentContextKey);
+    }
+    setSaveState(hasNewerLocalEdits ? "saving" : "saved");
+    if (!responseContextIsCurrent && !installedHealthIsCurrent) router.refresh();
   };
 
   return (
@@ -989,7 +1139,18 @@ function LegacyHypertrophyPlanEditor({
           >
             Generate a new starting plan
           </Button>
-          <Button size="touch" onClick={() => void makeReady()} disabled={makingReady || saveState === "saving"}>
+          <Button
+            size="touch"
+            onClick={() => void makeReady()}
+            disabled={
+              makingReady ||
+              unsaved ||
+              saveState !== "saved" ||
+              health.status !== "AVAILABLE" ||
+              health.draftRevision !== revision ||
+              installedHealthContextKey !== currentHealthContextKey
+            }
+          >
             {makingReady ? "Making ready…" : "Make plan ready"}
           </Button>
         </div>

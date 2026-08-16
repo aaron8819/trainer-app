@@ -16,6 +16,7 @@ import {
 } from "@/lib/engine/hypertrophy-plan-authoring";
 import { buildV4CustomPlanReferenceAcceptedSeed } from "@/lib/engine/hypertrophy-plan-authoring-v4.fixture";
 import { getMusclePolicyByDisplayName } from "@/lib/engine/muscle-policy";
+import { buildHypertrophyPlanHealthAssessment } from "@/lib/engine/hypertrophy-plan-health";
 
 const originalMeasurementRollout = process.env.TRAINER_EXERCISE_MEASUREMENT_ROLLOUT;
 
@@ -98,6 +99,7 @@ import {
   safeDraftHealthAssessment,
   loadHypertrophyPlanEditorData,
   makeHypertrophyPlanReady,
+  projectSelectedPlanHealthCatalog,
   saveHypertrophyPlanDraft,
   toAuthoringExercise,
   type HypertrophyPlanDraftExerciseRow,
@@ -1895,6 +1897,322 @@ describe("custom hypertrophy draft persistence", () => {
     expect([changedWarning]).toHaveLength(base.importantWarnings.length);
   });
 
+  it("projects only selected Health-relevant catalog facts with explicit absence", () => {
+    const candidate = draft();
+    const exercises = (exerciseRows as HypertrophyPlanDraftExerciseRow[]).map((row) =>
+      toAuthoringExercise(row),
+    );
+
+    expect(projectSelectedPlanHealthCatalog(candidate, exercises)).toEqual([
+      {
+        exerciseId: "bench",
+        availability: "PRESENT",
+        facts: expect.objectContaining({
+          name: "Bench Press",
+          aliases: [],
+          movementPatterns: ["horizontal_push"],
+          primaryMuscleIds: ["chest"],
+          equipment: ["barbell"],
+          contraindicationKeys: [],
+          isCompound: true,
+          isMainLiftEligible: true,
+          timePerSetSec: 180,
+        }),
+      },
+      {
+        exerciseId: "curl",
+        availability: "PRESENT",
+        facts: expect.objectContaining({
+          name: "Leg Curl",
+          movementPatterns: ["flexion"],
+          primaryMuscleIds: ["hamstrings"],
+          equipment: ["machine"],
+          timePerSetSec: 90,
+        }),
+      },
+    ]);
+    expect(
+      projectSelectedPlanHealthCatalog(
+        candidate,
+        exercises.filter((exercise) => exercise.id !== "curl"),
+      ),
+    ).toEqual([
+      expect.objectContaining({ exerciseId: "bench", availability: "PRESENT" }),
+      { exerciseId: "curl", availability: "MISSING" },
+    ]);
+  });
+
+  it("keeps confirmation stable across unused catalog changes and reordered inputs", () => {
+    const candidate = draft();
+    candidate.sessions[0]!.exercises.push(
+      structuredClone(candidate.sessions[0]!.exercises[0]!),
+    );
+    const exercises = (exerciseRows as HypertrophyPlanDraftExerciseRow[]).map((row) =>
+      toAuthoringExercise(row),
+    );
+    const health = availableHealthFor(candidate);
+    const warning = health.issues.find((issue) => issue.tier === "IMPORTANT_WARNING")!;
+    const input = {
+      policyVersion: health.policyVersion,
+      draftId: health.draftId,
+      draftRevision: health.draftRevision,
+      draft: candidate,
+      preview: null,
+      importantWarnings: [warning],
+      exercises,
+      limitations: {
+        recognizedTags: ["wrist", "ankle", "lower_back"],
+        unrecognizedTexts: ["é", "A", "10", "-", "2", "_", "a", "A"],
+      },
+    } satisfies Parameters<typeof buildHypertrophyPlanHealthConfirmationScope>[0];
+    const original = buildHypertrophyPlanHealthConfirmationScope(input);
+    const secondWarning = {
+      ...warning,
+      code: "SESSION_DURATION_HIGH",
+      title: "É duration",
+      explanation: "10 minutes over.",
+    };
+    expect(
+      buildHypertrophyPlanHealthConfirmationScope({
+        ...input,
+        importantWarnings: [warning, secondWarning],
+      }),
+    ).toBe(
+      buildHypertrophyPlanHealthConfirmationScope({
+        ...input,
+        importantWarnings: [secondWarning, warning],
+      }),
+    );
+    const unusedIndex = exercises.findIndex((exercise) => exercise.id === "hip-thrust");
+    expect(unusedIndex).toBeGreaterThanOrEqual(0);
+    const mutateUnused = (
+      update: (exercise: (typeof exercises)[number]) => (typeof exercises)[number],
+    ) => exercises.map((exercise, index) => (index === unusedIndex ? update(exercise) : exercise));
+    const unusedChanges = [
+      mutateUnused((exercise) => ({ ...exercise, name: "Unused renamed" })),
+      mutateUnused((exercise) => ({ ...exercise, aliases: ["unused alias"] })),
+      mutateUnused((exercise) => ({ ...exercise, movementPatterns: ["squat"] })),
+      mutateUnused((exercise) => ({ ...exercise, primaryMuscleIds: ["quads"] })),
+      mutateUnused((exercise) => ({ ...exercise, secondaryMuscleIds: ["calves"] })),
+      mutateUnused((exercise) => ({ ...exercise, stimulusByMuscleId: { quads: 0.25 } })),
+      mutateUnused((exercise) => ({ ...exercise, equipment: ["band"] })),
+      mutateUnused((exercise) => ({ ...exercise, contraindicationKeys: ["wrist"] })),
+      mutateUnused((exercise) => ({ ...exercise, isCompound: !exercise.isCompound })),
+      mutateUnused((exercise) => ({
+        ...exercise,
+        isMainLiftEligible: !exercise.isMainLiftEligible,
+      })),
+      mutateUnused((exercise) => ({ ...exercise, measurement: null })),
+      mutateUnused((exercise) => ({ ...exercise, timePerSetSec: exercise.timePerSetSec + 1 })),
+      exercises.filter((exercise) => exercise.id !== "hip-thrust"),
+      [
+        ...exercises,
+        { ...exercises[unusedIndex]!, id: "unrelated-added", name: "Unrelated added" },
+      ],
+    ];
+
+    for (const changedExercises of unusedChanges) {
+      expect(
+        buildHypertrophyPlanHealthConfirmationScope({
+          ...input,
+          exercises: [...changedExercises].reverse(),
+          limitations: {
+            recognizedTags: [...input.limitations.recognizedTags].reverse(),
+            unrecognizedTexts: [...input.limitations.unrecognizedTexts].reverse(),
+          },
+        }),
+      ).toBe(original);
+    }
+  });
+
+  it("changes confirmation for each selected evaluator-consumed catalog fact", () => {
+    const candidate = draft();
+    candidate.sessions[0]!.exercises.push(
+      structuredClone(candidate.sessions[0]!.exercises[0]!),
+    );
+    const exercises = (exerciseRows as HypertrophyPlanDraftExerciseRow[]).map((row) =>
+      toAuthoringExercise(row),
+    );
+    const health = availableHealthFor(candidate);
+    const warning = health.issues.find((issue) => issue.tier === "IMPORTANT_WARNING")!;
+    const input = {
+      policyVersion: health.policyVersion,
+      draftId: health.draftId,
+      draftRevision: health.draftRevision,
+      draft: candidate,
+      preview: null,
+      importantWarnings: [warning],
+      exercises,
+      limitations: { recognizedTags: [], unrecognizedTexts: [] },
+    } satisfies Parameters<typeof buildHypertrophyPlanHealthConfirmationScope>[0];
+    const original = buildHypertrophyPlanHealthConfirmationScope(input);
+    const changeSelected = (
+      update: (exercise: (typeof exercises)[number]) => (typeof exercises)[number],
+    ) => exercises.map((exercise) => (exercise.id === "bench" ? update(exercise) : exercise));
+    const changes = [
+      exercises.filter((exercise) => exercise.id !== "bench"),
+      changeSelected((exercise) => ({ ...exercise, name: "Selected renamed" })),
+      changeSelected((exercise) => ({ ...exercise, aliases: ["selected alias"] })),
+      changeSelected((exercise) => ({ ...exercise, movementPatterns: ["vertical_push"] })),
+      changeSelected((exercise) => ({ ...exercise, primaryMuscleIds: ["side_delts"] })),
+      changeSelected((exercise) => ({ ...exercise, secondaryMuscleIds: ["triceps"] })),
+      changeSelected((exercise) => ({ ...exercise, stimulusByMuscleId: { chest: 0.75 } })),
+      changeSelected((exercise) => ({ ...exercise, equipment: ["dumbbell"] })),
+      changeSelected((exercise) => ({ ...exercise, contraindicationKeys: ["shoulder"] })),
+      changeSelected((exercise) => ({ ...exercise, isCompound: false })),
+      changeSelected((exercise) => ({ ...exercise, isMainLiftEligible: false })),
+      changeSelected((exercise) => ({ ...exercise, measurement: null })),
+      changeSelected((exercise) => ({ ...exercise, timePerSetSec: 181 })),
+    ];
+
+    expect(new Set(changes.map((changedExercises) =>
+      buildHypertrophyPlanHealthConfirmationScope({ ...input, exercises: changedExercises }),
+    ))).toHaveLength(changes.length);
+    for (const changedExercises of changes) {
+      expect(
+        buildHypertrophyPlanHealthConfirmationScope({ ...input, exercises: changedExercises }),
+      ).not.toBe(original);
+    }
+  });
+
+  it("independently binds every warning, identity, preview, policy, and context field", () => {
+    const candidate = draft();
+    candidate.sessions[0]!.exercises.push(
+      structuredClone(candidate.sessions[0]!.exercises[0]!),
+    );
+    const exercises = (exerciseRows as HypertrophyPlanDraftExerciseRow[]).map((row) =>
+      toAuthoringExercise(row),
+    );
+    const health = availableHealthFor(candidate);
+    const warning = health.issues.find((issue) => issue.tier === "IMPORTANT_WARNING")!;
+    const eligiblePreview = {
+      status: "ELIGIBLE" as const,
+      reasons: [] as [],
+      hash: "a".repeat(64),
+      hashAlgorithm: "sha256" as const,
+      normalizedPlan: {} as never,
+      executablePlan: {} as never,
+    };
+    const base: Parameters<typeof buildHypertrophyPlanHealthConfirmationScope>[0] = {
+      policyVersion: health.policyVersion as string,
+      draftId: "plan-1",
+      draftRevision: 3,
+      draft: candidate,
+      preview: eligiblePreview,
+      importantWarnings: [warning],
+      exercises,
+      limitations: { recognizedTags: [], unrecognizedTexts: [] },
+    };
+    const original = buildHypertrophyPlanHealthConfirmationScope(base);
+    const warningChange = (
+      update: Partial<(typeof base.importantWarnings)[number]>,
+    ) => [{ ...warning, ...update }];
+    const changedDraft = structuredClone(candidate);
+    changedDraft.sessions[0]!.exercises[0]!.workingSets += 1;
+    const changedSettings = structuredClone(candidate);
+    changedSettings.settings.sessionDurationMinutes = 75;
+    const selectedCatalog = exercises.map((exercise) =>
+      exercise.id === "bench" ? { ...exercise, timePerSetSec: 181 } : exercise,
+    );
+    const cases: Array<[string, Partial<typeof base>]> = [
+      ["warning code", { importantWarnings: warningChange({ code: "OTHER_WARNING" }) }],
+      ["warning tier", { importantWarnings: warningChange({ tier: "COACHING_OBSERVATION" }) }],
+      ["warning title", { importantWarnings: warningChange({ title: "Other title" }) }],
+      ["warning explanation", { importantWarnings: warningChange({ explanation: "Other explanation" }) }],
+      ["recommended action", { importantWarnings: warningChange({ suggestedAction: "Other action" }) }],
+      ["affected session", { importantWarnings: warningChange({ affected: { session: "Lower" } }) }],
+      ["affected exercise", { importantWarnings: warningChange({ affected: { exercise: "Leg Curl" } }) }],
+      ["affected muscle", { importantWarnings: warningChange({ affected: { muscle: "Chest" } }) }],
+      ["blocks flag", { importantWarnings: warningChange({ blocksFinalization: true }) }],
+      ["acknowledgment flag", { importantWarnings: warningChange({ requiresAcknowledgment: false }) }],
+      ["plan identity / cross-plan replay", { draftId: "plan-2" }],
+      ["persisted revision", { draftRevision: 4 }],
+      ["prescription hash", { draft: changedDraft }],
+      ["settings hash", { draft: changedSettings }],
+      ["preview eligibility", { preview: { status: "INELIGIBLE", reasons: [{ code: "MEASUREMENT_UNRESOLVED", message: "x", slotId: "upper" }] } }],
+      ["preview hash", { preview: { ...eligiblePreview, hash: "b".repeat(64) } }],
+      ["preview algorithm", { preview: { ...eligiblePreview, hashAlgorithm: "sha512" } as never }],
+      ["policy version", { policyVersion: "draft-plan-health.v3" }],
+      ["equipment", { draft: { ...candidate, settings: { ...candidate.settings, equipmentProfile: "BARBELL_HOME" } } }],
+      ["recognized limitations", { limitations: { recognizedTags: ["wrist"], unrecognizedTexts: [] } }],
+      ["unrecognized limitations", { limitations: { recognizedTags: [], unrecognizedTexts: ["private free text"] } }],
+      ["selected catalog", { exercises: selectedCatalog }],
+      ["same warning count, different content", { importantWarnings: warningChange({ code: "SAME_COUNT_OTHER" }) }],
+    ];
+
+    for (const [label, change] of cases) {
+      expect(
+        buildHypertrophyPlanHealthConfirmationScope({ ...base, ...change }),
+        label,
+      ).not.toBe(original);
+    }
+
+    const ineligibleReason = {
+      code: "MEASUREMENT_UNRESOLVED" as const,
+      message: "x",
+      slotId: "upper",
+      placementId: "placement-a",
+    };
+    const ineligibleBase: Parameters<
+      typeof buildHypertrophyPlanHealthConfirmationScope
+    >[0] = {
+      ...base,
+      preview: {
+        status: "INELIGIBLE" as const,
+        reasons: [ineligibleReason],
+      },
+    };
+    expect(
+      buildHypertrophyPlanHealthConfirmationScope({
+        ...ineligibleBase,
+        preview: {
+          status: "INELIGIBLE",
+          reasons: [{ ...ineligibleReason, placementId: "placement-b" }],
+        },
+      }),
+    ).not.toBe(buildHypertrophyPlanHealthConfirmationScope(ineligibleBase));
+  });
+
+  it("keeps fallback warning scopes distinct across muscle identities", () => {
+    const candidate = draft();
+    const exercises = (exerciseRows as HypertrophyPlanDraftExerciseRow[]).map((row) =>
+      toAuthoringExercise(row),
+    );
+    const warningFor = (muscleId: "chest" | "triceps") => {
+      const assessment = buildHypertrophyPlanHealthAssessment({
+        draftId: "plan-1",
+        draftRevision: 3,
+        evaluatedWeek: 1,
+        health: {
+          blockers: [],
+          warnings: [{ code: "UNKNOWN_ADVISORY", message: "Review coverage.", muscleId }],
+          muscles: [],
+          sessions: [],
+        },
+        catalogExerciseCount: exercises.length,
+        equipmentProfile: candidate.settings.equipmentProfile,
+        recognizedLimitationCount: 0,
+        unrecognizedLimitationsPresent: false,
+        sessionNameBySlotId: new Map(),
+        exerciseNameById: new Map(),
+      });
+      return assessment.issues.filter((issue) => issue.tier === "IMPORTANT_WARNING");
+    };
+    const scopeFor = (muscleId: "chest" | "triceps") =>
+      buildHypertrophyPlanHealthConfirmationScope({
+        policyVersion: "draft-plan-health.v2",
+        draftId: "plan-1",
+        draftRevision: 3,
+        draft: candidate,
+        preview: null,
+        importantWarnings: warningFor(muscleId),
+        exercises,
+        limitations: { recognizedTags: [], unrecognizedTexts: [] },
+      });
+
+    expect(scopeFor("chest")).not.toBe(scopeFor("triceps"));
+  });
+
   it("rejects a missing warning scope with zero writes and returns current Health", async () => {
     const duplicateDraft = draft();
     duplicateDraft.sessions[0]!.exercises.push(
@@ -2003,6 +2321,82 @@ describe("custom hypertrophy draft persistence", () => {
       expect(mocks.state.revisions).toEqual([]);
       expect(mocks.state.planUpdates).toEqual([]);
       expect(mocks.state.draft).toEqual({ payload: duplicateDraft, revision: 3 });
+    }
+  });
+
+  it("rejects each independently stale scope through finalization with current Health and zero writes", async () => {
+    const duplicateDraft = draft();
+    duplicateDraft.sessions[0]!.exercises.push(
+      structuredClone(duplicateDraft.sessions[0]!.exercises[0]!),
+    );
+    mocks.state.draft = { payload: duplicateDraft, revision: 3 };
+    mocks.tx.macroCycle.findFirst.mockResolvedValue({
+      id: "plan-1",
+      trainingAge: "INTERMEDIATE",
+      hypertrophyDraft: mocks.state.draft,
+      mesocycles: [],
+    });
+    const rows = exerciseRows as HypertrophyPlanDraftExerciseRow[];
+    const exercises = rows.map((row) => toAuthoringExercise(row));
+    const current = availableHealthFor(duplicateDraft);
+    const warning = current.issues.find((issue) => issue.tier === "IMPORTANT_WARNING")!;
+    const base = {
+      policyVersion: current.policyVersion as string,
+      draftId: "plan-1",
+      draftRevision: 3,
+      draft: duplicateDraft,
+      preview: null,
+      importantWarnings: [warning],
+      exercises,
+      limitations: { recognizedTags: [], unrecognizedTexts: [] },
+    } satisfies Parameters<typeof buildHypertrophyPlanHealthConfirmationScope>[0];
+    const changedDraft = structuredClone(duplicateDraft);
+    changedDraft.sessions[0]!.exercises[0]!.workingSets += 1;
+    const changedWarning = [{ ...warning, explanation: "Stale warning explanation" }];
+    const changedCatalog = exercises.map((exercise) =>
+      exercise.id === "bench" ? { ...exercise, timePerSetSec: 181 } : exercise,
+    );
+    const staleScopes = [
+      buildHypertrophyPlanHealthConfirmationScope({ ...base, policyVersion: "draft-plan-health.v1" }),
+      buildHypertrophyPlanHealthConfirmationScope({ ...base, draftId: "plan-2" }),
+      buildHypertrophyPlanHealthConfirmationScope({ ...base, draftRevision: 2 }),
+      buildHypertrophyPlanHealthConfirmationScope({ ...base, draft: changedDraft }),
+      buildHypertrophyPlanHealthConfirmationScope({ ...base, importantWarnings: changedWarning }),
+      buildHypertrophyPlanHealthConfirmationScope({ ...base, exercises: changedCatalog }),
+      buildHypertrophyPlanHealthConfirmationScope({
+        ...base,
+        limitations: { recognizedTags: ["wrist"], unrecognizedTexts: [] },
+      }),
+      buildHypertrophyPlanHealthConfirmationScope({
+        ...base,
+        limitations: { recognizedTags: [], unrecognizedTexts: ["stale private text"] },
+      }),
+    ];
+
+    for (const warningConfirmationScope of staleScopes) {
+      expect(warningConfirmationScope).not.toBe(current.confirmationScope);
+      await expect(
+        makeHypertrophyPlanReady({
+          userId: "user-1",
+          planId: "plan-1",
+          expectedDraftRevision: 3,
+          warningConfirmationScope,
+        }),
+      ).rejects.toMatchObject({
+        code: "PLAN_WARNING_CONFIRMATION_REQUIRED",
+        details: { confirmationStatus: "MISMATCH" },
+        responseData: {
+          health: {
+            draftId: "plan-1",
+            draftRevision: 3,
+            confirmationScope: current.confirmationScope,
+          },
+        },
+      });
+      expect(mocks.state.draft).toEqual({ payload: duplicateDraft, revision: 3 });
+      expect(mocks.state.mesocycles).toEqual([]);
+      expect(mocks.state.revisions).toEqual([]);
+      expect(mocks.state.planUpdates).toEqual([]);
     }
   });
 

@@ -2214,19 +2214,33 @@ export function evaluatePersistedHypertrophyPlanHealth(input: {
       limitationKeys: input.limitationKeys,
     }),
   );
-  const unique = <T extends { code: string; message: string }>(entries: T[]) =>
-    Array.from(
-      new Map(
-        entries.map((entry) => [
-          `${entry.code}:${entry.message}:${"slotId" in entry ? entry.slotId ?? "" : ""}:${"exerciseId" in entry ? entry.exerciseId ?? "" : ""}`,
-          entry,
-        ]),
-      ).values(),
-    );
   return {
-    blockers: unique(results.flatMap((result) => result.blockers)),
-    warnings: unique(results.flatMap((result) => result.warnings)),
+    blockers: deduplicateHypertrophyPlanHealthFindings(
+      results.flatMap((result) => result.blockers),
+    ),
+    warnings: deduplicateHypertrophyPlanHealthFindings(
+      results.flatMap((result) => result.warnings),
+    ),
     muscles: results[0]?.muscles ?? [],
     sessions: results[0]?.sessions ?? [],
   };
+}
+
+export function deduplicateHypertrophyPlanHealthFindings<
+  T extends HypertrophyPlanHealth["warnings"][number],
+>(entries: readonly T[]): T[] {
+  return Array.from(
+    new Map(
+      entries.map((entry) => [
+        JSON.stringify([
+          entry.code,
+          entry.message,
+          entry.slotId ?? null,
+          entry.exerciseId ?? null,
+          entry.muscleId ?? null,
+        ]),
+        entry,
+      ]),
+    ).values(),
+  );
 }

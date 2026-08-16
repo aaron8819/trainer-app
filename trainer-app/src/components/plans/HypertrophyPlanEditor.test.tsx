@@ -1,16 +1,17 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { HypertrophyPlanEditorDataV1 } from "@/lib/api/hypertrophy-plan-drafts";
 import { HypertrophyPlanEditor } from "./HypertrophyPlanEditor";
 
 const router = { push: vi.fn(), refresh: vi.fn() };
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 
-function availableHealth(revision: number) {
+function availableHealth(revision: number, draftId = "plan-1") {
   return {
     status: "AVAILABLE" as const,
     policyVersion: "draft-plan-health.v2" as const,
-    draftId: "plan-1",
+    draftId,
     draftRevision: revision,
     confirmationScope: `plan-health-confirmation.v1.${revision.toString(16).padStart(64, "0")}`,
     evaluatedWeek: 1,
@@ -35,7 +36,7 @@ function availableHealth(revision: number) {
   };
 }
 
-const initialData = {
+const initialData: HypertrophyPlanEditorDataV1 = {
   planId: "plan-1",
   name: "Custom plan",
   revision: 1,
@@ -128,6 +129,45 @@ const initialData = {
   limitationKeys: [],
 };
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+function fourSessionData() {
+  const data = structuredClone(initialData);
+  data.draft.sessions.push(
+    {
+      ...structuredClone(data.draft.sessions[0]!),
+      slotId: "upper-2",
+      name: "Upper 2",
+    },
+    {
+      ...structuredClone(data.draft.sessions[1]!),
+      slotId: "lower-2",
+      name: "Lower 2",
+    },
+  );
+  return data;
+}
+
+function regeneratedDraft() {
+  const next = fourSessionData().draft;
+  next.sessions[0]!.name = "Regenerated Upper";
+  next.sessions[1]!.name = "Regenerated Lower";
+  return next;
+}
+
+function response(body: unknown) {
+  return {
+    ok: true,
+    json: async () => body,
+  } as Response;
+}
+
 describe("HypertrophyPlanEditor", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -170,5 +210,137 @@ describe("HypertrophyPlanEditor", () => {
     expect(
       screen.getAllByRole("button", { name: "+ Session" }).length,
     ).toBeGreaterThan(0);
+  });
+
+  it.each([
+    {
+      context: "selected catalog",
+      change: (data: ReturnType<typeof fourSessionData>) => {
+        data.exercises[0]!.name = "Changed catalog name";
+      },
+    },
+    {
+      context: "equipment",
+      change: (data: ReturnType<typeof fourSessionData>) => {
+        data.draft.settings.equipmentProfile = "BARBELL_HOME";
+      },
+    },
+    {
+      context: "limitations",
+      change: (data: ReturnType<typeof fourSessionData>) => {
+        data.limitationKeys = ["wrist"];
+      },
+    },
+  ])("does not install deferred regeneration Health after $context drift", async ({ change }) => {
+    const regeneration = deferred<Response>();
+    vi.mocked(fetch).mockImplementation((url) =>
+      String(url).endsWith("/regenerate")
+        ? regeneration.promise
+        : Promise.resolve(response({ revision: 3, health: availableHealth(3) })),
+    );
+    const data = fourSessionData();
+    const view = render(<HypertrophyPlanEditor initialData={data} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate a new starting plan" }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    const changed = structuredClone(data);
+    change(changed);
+    view.rerender(<HypertrophyPlanEditor initialData={changed} />);
+
+    await act(async () => {
+      regeneration.resolve(
+        response({ draft: regeneratedDraft(), revision: 2, health: availableHealth(2) }),
+      );
+      await regeneration.promise;
+    });
+
+    expect(screen.getByDisplayValue("Regenerated Upper")).toBeVisible();
+    expect(screen.getByText("Unavailable for saved revision 2.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Make plan ready" })).toBeDisabled();
+    expect(router.refresh).toHaveBeenCalled();
+  });
+
+  it("preserves newer compatible Health instead of installing an older-context regeneration result", async () => {
+    const regeneration = deferred<Response>();
+    vi.mocked(fetch).mockReturnValue(regeneration.promise);
+    const data = fourSessionData();
+    const nextDraft = regeneratedDraft();
+    const view = render(<HypertrophyPlanEditor initialData={data} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate a new starting plan" }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    const current = structuredClone(data);
+    current.revision = 2;
+    current.draft = nextDraft;
+    current.exercises[0]!.name = "Current catalog name";
+    current.health = availableHealth(2);
+    view.rerender(<HypertrophyPlanEditor initialData={current} />);
+
+    await act(async () => {
+      regeneration.resolve(
+        response({ draft: nextDraft, revision: 2, health: availableHealth(2) }),
+      );
+      await regeneration.promise;
+    });
+
+    expect(screen.getByText("Current for saved revision 2.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Make plan ready" })).toBeEnabled();
+    expect(router.refresh).not.toHaveBeenCalled();
+  });
+
+  it("retains local edits made while regeneration is in flight", async () => {
+    const regeneration = deferred<Response>();
+    vi.mocked(fetch).mockImplementation((url) =>
+      String(url).endsWith("/regenerate")
+        ? regeneration.promise
+        : Promise.resolve(response({ revision: 3, health: availableHealth(3) })),
+    );
+    render(<HypertrophyPlanEditor initialData={fourSessionData()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate a new starting plan" }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    fireEvent.change(screen.getByLabelText("Session name"), {
+      target: { value: "Unsaved local name" },
+    });
+
+    await act(async () => {
+      regeneration.resolve(
+        response({ draft: regeneratedDraft(), revision: 2, health: availableHealth(2) }),
+      );
+      await regeneration.promise;
+    });
+
+    expect(screen.getByDisplayValue("Unsaved local name")).toBeVisible();
+    expect(screen.queryByDisplayValue("Regenerated Upper")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Regenerated Lower" }));
+    expect(screen.getByDisplayValue("Regenerated Lower")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Make plan ready" })).toBeDisabled();
+  });
+
+  it("does not let a completed regeneration response cross draft navigation", async () => {
+    const regeneration = deferred<Response>();
+    vi.mocked(fetch).mockReturnValue(regeneration.promise);
+    const view = render(<HypertrophyPlanEditor initialData={fourSessionData()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate a new starting plan" }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    const other = fourSessionData();
+    other.planId = "plan-2";
+    other.name = "Other draft";
+    other.draft.sessions[0]!.name = "Other Upper";
+    other.health = availableHealth(1, "plan-2");
+    view.rerender(<HypertrophyPlanEditor initialData={other} />);
+
+    await act(async () => {
+      regeneration.resolve(
+        response({ draft: regeneratedDraft(), revision: 2, health: availableHealth(2) }),
+      );
+      await regeneration.promise;
+    });
+
+    expect(screen.getByDisplayValue("Other draft")).toBeVisible();
+    expect(screen.getByDisplayValue("Other Upper")).toBeVisible();
+    expect(screen.queryByDisplayValue("Regenerated Upper")).not.toBeInTheDocument();
+    expect(screen.getByText("Current for saved revision 1.")).toBeVisible();
   });
 });

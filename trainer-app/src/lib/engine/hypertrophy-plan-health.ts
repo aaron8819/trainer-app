@@ -9,6 +9,10 @@ export const HYPERTROPHY_PLAN_HEALTH_POLICY_VERSION =
 export const HYPERTROPHY_PLAN_HEALTH_CONFIRMATION_SCOPE_VERSION =
   "plan-health-confirmation.v1" as const;
 
+export function comparePlanHealthCodeUnits(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 export const HYPERTROPHY_PLAN_HEALTH_TIERS = [
   "BLOCKING_SAFETY",
   "IMPORTANT_WARNING",
@@ -419,10 +423,20 @@ export function buildHypertrophyPlanHealthAssessment(input: {
     (left, right) =>
       (TIER_ORDER.get(left.tier) ?? Number.MAX_SAFE_INTEGER) -
         (TIER_ORDER.get(right.tier) ?? Number.MAX_SAFE_INTEGER) ||
-      left.code.localeCompare(right.code) ||
-      (left.affected?.session ?? "").localeCompare(right.affected?.session ?? "") ||
-      (left.affected?.exercise ?? "").localeCompare(right.affected?.exercise ?? "") ||
-      left.explanation.localeCompare(right.explanation),
+      comparePlanHealthCodeUnits(left.code, right.code) ||
+      comparePlanHealthCodeUnits(
+        left.affected?.session ?? "",
+        right.affected?.session ?? "",
+      ) ||
+      comparePlanHealthCodeUnits(
+        left.affected?.exercise ?? "",
+        right.affected?.exercise ?? "",
+      ) ||
+      comparePlanHealthCodeUnits(
+        left.affected?.muscle ?? "",
+        right.affected?.muscle ?? "",
+      ) ||
+      comparePlanHealthCodeUnits(left.explanation, right.explanation),
   );
 
   const volumeEstimates = input.health.muscles

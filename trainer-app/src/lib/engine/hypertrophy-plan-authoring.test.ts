@@ -16,6 +16,7 @@ import {
   buildManualHypertrophyDraft,
   compileAcceptedHypertrophySeed,
   compileAcceptedHypertrophySeedV3,
+  deduplicateHypertrophyPlanHealthFindings,
   equipmentForCustomHypertrophyProfile,
   evaluateHypertrophyPlanHealth,
   evaluateHypertrophySemanticIntent,
@@ -335,6 +336,28 @@ const romanianDeadlift: HypertrophyAuthoringExercise = {
 };
 
 describe("custom hypertrophy authoring contracts", () => {
+  it("deduplicates findings by muscle identity with explicit absence", () => {
+    const base = {
+      code: "UNKNOWN_ADVISORY",
+      message: "Review coverage.",
+      slotId: "upper",
+      exerciseId: "bench",
+    };
+    const chest = { ...base, muscleId: "chest" as const };
+    const triceps = { ...base, muscleId: "triceps" as const };
+    const withoutMuscle = { ...base };
+
+    expect(
+      deduplicateHypertrophyPlanHealthFindings([
+        chest,
+        triceps,
+        chest,
+        withoutMuscle,
+        withoutMuscle,
+      ]),
+    ).toEqual([chest, triceps, withoutMuscle]);
+  });
+
   it("normalizes manual and V2 authoring into the same minimal draft contract", () => {
     const manual = buildManualHypertrophyDraft({
       settings,

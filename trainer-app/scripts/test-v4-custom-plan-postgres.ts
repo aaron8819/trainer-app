@@ -376,6 +376,109 @@ async function main(): Promise<void> {
   assert.deepEqual(restoredDraft.draft, draft);
   assert.equal(restoredDraft.health.draftRevision, restored.revision);
 
+  const warningPlan = await draftsModule.createCustomHypertrophyPlan({
+    userId: user.id,
+    name: "V4 warning-scope transaction proof",
+    sessionsPerWeek: 4,
+    equipmentProfile: "FULL_GYM",
+    sessionDurationMinutes: 60,
+    authorMethod: "WEEKLY",
+    preset: "UPPER_LOWER_4",
+  });
+  const warningDraft = structuredClone(draft);
+  warningDraft.sessions[0]!.exercises.push({
+    ...structuredClone(warningDraft.sessions[0]!.exercises[0]!),
+    placementId: "upper-a-warning-duplicate",
+  });
+  const warningSaved = await draftsModule.saveHypertrophyPlanDraft({
+    userId: user.id,
+    planId: warningPlan.planId,
+    expectedRevision: warningPlan.draftRevision,
+    name: "V4 warning-scope transaction proof",
+    draft: warningDraft,
+  });
+  if (warningSaved.preview?.status !== "ELIGIBLE") {
+    throw new Error("V4_WARNING_SCOPE_PREVIEW_INELIGIBLE");
+  }
+  if (
+    warningSaved.health.status !== "AVAILABLE" ||
+    warningSaved.health.summary.importantWarnings !== 1
+  ) {
+    throw new Error("V4_WARNING_SCOPE_IMPORTANT_WARNING_MISSING");
+  }
+  const warningPreview = warningSaved.preview;
+  const warningHealth = warningSaved.health;
+  const warningState = async () => ({
+    plan: await prisma.macroCycle.findUniqueOrThrow({
+      where: { id: warningPlan.planId },
+      select: { name: true, updatedAt: true },
+    }),
+    draft: await prisma.hypertrophyPlanDraft.findUnique({
+      where: { macroCycleId: warningPlan.planId },
+      select: { revision: true, payload: true, updatedAt: true },
+    }),
+    mesocycles: await prisma.mesocycle.count({
+      where: { macroCycleId: warningPlan.planId },
+    }),
+    revisions: await prisma.mesocycleSeedRevision.count({
+      where: { mesocycle: { macroCycleId: warningPlan.planId } },
+    }),
+  });
+  const beforeWarningRejections = await warningState();
+  const rejectWarningScope = async (
+    confirmationStatus: "MISSING" | "MISMATCH",
+    warningConfirmationScope?: string,
+  ) => {
+    try {
+      await draftsModule.makeHypertrophyPlanReady({
+        userId: user.id,
+        planId: warningPlan.planId,
+        expectedDraftRevision: warningSaved.revision,
+        confirmedPreviewHash: warningPreview.hash,
+        ...(warningConfirmationScope ? { warningConfirmationScope } : {}),
+      });
+      assert.fail(`V4_WARNING_SCOPE_${confirmationStatus}_DID_NOT_REJECT`);
+    } catch (error) {
+      const failure = error as {
+        code?: string;
+        details?: { confirmationStatus?: string };
+        responseData?: { health?: typeof warningHealth };
+      };
+      assert.equal(failure.code, "PLAN_WARNING_CONFIRMATION_REQUIRED");
+      assert.equal(failure.details?.confirmationStatus, confirmationStatus);
+      assert(
+        failure.responseData?.health?.status === "AVAILABLE",
+        `V4_WARNING_SCOPE_${confirmationStatus}_CURRENT_HEALTH_MISSING`,
+      );
+      return failure.responseData.health;
+    }
+  };
+  const missingHealth = await rejectWarningScope("MISSING");
+  assert.deepEqual(await warningState(), beforeWarningRejections);
+  const mismatchHealth = await rejectWarningScope(
+    "MISMATCH",
+    `plan-health-confirmation.v1.${"f".repeat(64)}`,
+  );
+  assert.deepEqual(await warningState(), beforeWarningRejections);
+  assert.equal(missingHealth.confirmationScope, warningHealth.confirmationScope);
+  assert.equal(mismatchHealth.confirmationScope, warningHealth.confirmationScope);
+  const warningReady = await draftsModule.makeHypertrophyPlanReady({
+    userId: user.id,
+    planId: warningPlan.planId,
+    expectedDraftRevision: warningSaved.revision,
+    confirmedPreviewHash: warningPreview.hash,
+    warningConfirmationScope: mismatchHealth.confirmationScope,
+  });
+  const afterWarningReady = await warningState();
+  const warningTarget = await planModule.loadPlanActivationTarget(
+    user.id,
+    warningPlan.planId,
+  );
+  assert.equal(warningTarget.status, "READY");
+  assert.equal(afterWarningReady.draft, null);
+  assert.equal(afterWarningReady.mesocycles, 1);
+  assert.equal(afterWarningReady.revisions, 1);
+
   const ready = await draftsModule.makeHypertrophyPlanReady({
     userId: user.id,
     planId: created.planId,
@@ -439,10 +542,11 @@ async function main(): Promise<void> {
 
   console.log(JSON.stringify({
     status: "PASS",
-    path: ["create", "load", "save", "health", "block", "reject", "restore", "finalize", "activate", "schedule", "materialize"],
+    path: ["create", "load", "save", "health", "block", "reject", "restore", "warning-missing-zero-write", "warning-mismatch-zero-write", "warning-exact-finalize", "finalize", "activate", "schedule", "materialize"],
     planId: created.planId,
     mesocycleId: ready.mesocycleId,
     revisionId: ready.revisionId,
+    warningRevisionId: warningReady.revisionId,
     slotId: scheduled.slotId,
     exerciseCount: actualExercises.length,
   }));

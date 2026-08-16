@@ -81,7 +81,6 @@ describe("POST /api/plans/[id]/finalize", () => {
   });
 
   it.each([
-    { warningsConfirmed: true },
     { acknowledgedSeverities: ["COACHING_OBSERVATION"] },
     { importantWarningCount: 1 },
     { health: { summary: { importantWarnings: 0 } } },
@@ -98,6 +97,50 @@ describe("POST /api/plans/[id]/finalize", () => {
 
     expect(response.status).toBe(400);
     expect(mocks.makeHypertrophyPlanReady).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      label: "true with current fields on a warning plan",
+      body: {
+        expectedDraftRevision: 3,
+        warningsConfirmed: true,
+        warningConfirmationScope: `plan-health-confirmation.v1.${"a".repeat(64)}`,
+      },
+    },
+    {
+      label: "false with current fields on a no-warning plan",
+      body: { expectedDraftRevision: 3, warningsConfirmed: false },
+    },
+    {
+      label: "true without revision/version fields",
+      body: { warningsConfirmed: true },
+    },
+    {
+      label: "false without revision/version fields",
+      body: { warningsConfirmed: false },
+    },
+  ])("returns explicit stale-client guidance for $label", async ({ body }) => {
+    const response = await POST(
+      new Request("http://localhost/api/plans/weekly-plan/finalize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+      context,
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "This plan editor is out of date. Refresh or reload the page before finalizing.",
+      code: "PLAN_FINALIZE_CLIENT_STALE",
+    });
+    expect(mocks.findOwnerReadOnly).not.toHaveBeenCalled();
+    expect(mocks.assertPlanVersionFinalizable).not.toHaveBeenCalled();
+    expect(mocks.provisionOwnerForMutation).not.toHaveBeenCalled();
+    expect(mocks.makeHypertrophyPlanReady).not.toHaveBeenCalled();
+    expect(mocks.finalizePlan).not.toHaveBeenCalled();
   });
 
   it("rejects a malformed opaque confirmation scope", async () => {

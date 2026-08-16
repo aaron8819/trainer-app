@@ -36,6 +36,7 @@ import {
   HYPERTROPHY_PLAN_HEALTH_CONFIRMATION_SCOPE_VERSION,
   HYPERTROPHY_PLAN_HEALTH_POLICY_VERSION,
   buildHypertrophyPlanHealthAssessment,
+  comparePlanHealthCodeUnits,
   healthRequiresWarningConfirmation,
   type ClassifiedHypertrophyPlanHealthIssue,
   type HypertrophyPlanHealth,
@@ -318,7 +319,7 @@ function stableStringify(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
   if (isRecord(value)) {
     return `{${Object.keys(value)
-      .sort()
+      .sort(comparePlanHealthCodeUnits)
       .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
       .join(",")}}`;
   }
@@ -555,28 +556,45 @@ function sha256(value: unknown): string {
   return createHash("sha256").update(stableStringify(value)).digest("hex");
 }
 
-function canonicalHealthCatalog(
+export function projectSelectedPlanHealthCatalog(
+  draft: HypertrophyPlanDraft,
   exercises: readonly HypertrophyAuthoringExercise[],
 ): unknown[] {
   const sorted = (values: readonly string[] | undefined) =>
-    [...(values ?? [])].sort();
-  return [...exercises]
-    .sort((left, right) => left.id.localeCompare(right.id))
-    .map((exercise) => ({
-      id: exercise.id,
-      name: exercise.name,
-      aliases: sorted(exercise.aliases),
-      movementPatterns: sorted(exercise.movementPatterns),
-      primaryMuscleIds: sorted(exercise.primaryMuscleIds),
-      secondaryMuscleIds: sorted(exercise.secondaryMuscleIds),
-      stimulusByMuscleId: exercise.stimulusByMuscleId ?? null,
-      equipment: sorted(exercise.equipment),
-      contraindicationKeys: sorted(exercise.contraindicationKeys),
-      isCompound: exercise.isCompound,
-      isMainLiftEligible: exercise.isMainLiftEligible,
-      measurement: exercise.measurement ?? null,
-      timePerSetSec: exercise.timePerSetSec,
-    }));
+    [...(values ?? [])].sort(comparePlanHealthCodeUnits);
+  const catalogById = new Map(
+    exercises.map((exercise) => [exercise.id, exercise]),
+  );
+  const selectedExerciseIds = [
+    ...new Set(
+      draft.sessions.flatMap((session) =>
+        session.exercises.map((exercise) => exercise.exerciseId),
+      ),
+    ),
+  ].sort(comparePlanHealthCodeUnits);
+
+  return selectedExerciseIds.map((exerciseId) => {
+    const exercise = catalogById.get(exerciseId);
+    if (!exercise) return { exerciseId, availability: "MISSING" };
+    return {
+      exerciseId,
+      availability: "PRESENT",
+      facts: {
+        name: exercise.name,
+        aliases: sorted(exercise.aliases),
+        movementPatterns: sorted(exercise.movementPatterns),
+        primaryMuscleIds: sorted(exercise.primaryMuscleIds),
+        secondaryMuscleIds: sorted(exercise.secondaryMuscleIds),
+        stimulusByMuscleId: exercise.stimulusByMuscleId ?? null,
+        equipment: sorted(exercise.equipment),
+        contraindicationKeys: sorted(exercise.contraindicationKeys),
+        isCompound: exercise.isCompound,
+        isMainLiftEligible: exercise.isMainLiftEligible,
+        measurement: exercise.measurement ?? null,
+        timePerSetSec: exercise.timePerSetSec,
+      },
+    };
+  });
 }
 
 export function buildHypertrophyPlanHealthConfirmationScope(input: {
@@ -611,30 +629,42 @@ export function buildHypertrophyPlanHealthConfirmationScope(input: {
               status: input.preview.status,
               reasons: [...input.preview.reasons].sort(
                 (left, right) =>
-                  left.code.localeCompare(right.code) ||
-                  left.slotId.localeCompare(right.slotId) ||
-                  (left.placementId ?? "").localeCompare(
+                  comparePlanHealthCodeUnits(left.code, right.code) ||
+                  comparePlanHealthCodeUnits(left.slotId, right.slotId) ||
+                  comparePlanHealthCodeUnits(
+                    left.placementId ?? "",
                     right.placementId ?? "",
                   ) ||
-                  left.message.localeCompare(right.message),
+                  comparePlanHealthCodeUnits(left.message, right.message),
               ),
             },
-    importantWarnings: input.importantWarnings.map((warning) => ({
-      code: warning.code,
-      tier: warning.tier,
-      title: warning.title,
-      explanation: warning.explanation,
-      suggestedAction: warning.suggestedAction,
-      affected: warning.affected ?? null,
-      blocksFinalization: warning.blocksFinalization,
-      requiresAcknowledgment: warning.requiresAcknowledgment,
-    })),
+    importantWarnings: input.importantWarnings
+      .map((warning) => ({
+        code: warning.code,
+        tier: warning.tier,
+        title: warning.title,
+        explanation: warning.explanation,
+        suggestedAction: warning.suggestedAction,
+        affected: warning.affected ?? null,
+        blocksFinalization: warning.blocksFinalization,
+        requiresAcknowledgment: warning.requiresAcknowledgment,
+      }))
+      .sort((left, right) =>
+        comparePlanHealthCodeUnits(stableStringify(left), stableStringify(right)),
+      ),
     authoritativeContext: {
-      catalog: canonicalHealthCatalog(input.exercises),
+      selectedCatalog: projectSelectedPlanHealthCatalog(
+        input.draft,
+        input.exercises,
+      ),
       equipmentProfile: input.draft.settings.equipmentProfile,
       limitations: {
-        recognizedTags: [...input.limitations.recognizedTags].sort(),
-        unrecognizedTexts: [...input.limitations.unrecognizedTexts].sort(),
+        recognizedTags: [...input.limitations.recognizedTags].sort(
+          comparePlanHealthCodeUnits,
+        ),
+        unrecognizedTexts: [...input.limitations.unrecognizedTexts].sort(
+          comparePlanHealthCodeUnits,
+        ),
       },
     },
   };

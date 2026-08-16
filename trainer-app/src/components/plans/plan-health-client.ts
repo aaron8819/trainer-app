@@ -2,7 +2,10 @@ import type {
   HypertrophyPlanEditorData,
   HypertrophyPlanV4Preview,
 } from "@/lib/api/hypertrophy-plan-drafts";
-import type { HypertrophyPlanHealthAssessment } from "@/lib/engine/hypertrophy-plan-health";
+import {
+  comparePlanHealthCodeUnits,
+  type HypertrophyPlanHealthAssessment,
+} from "@/lib/engine/hypertrophy-plan-health";
 
 export function planHealthContextKey(
   data: Pick<
@@ -10,21 +13,50 @@ export function planHealthContextKey(
     "planId" | "draft" | "exercises" | "limitationKeys"
   > & { preview?: HypertrophyPlanV4Preview | null },
 ): string {
+  const catalogById = new Map(
+    data.exercises.map((exercise) => [exercise.id, exercise]),
+  );
+  const selectedExerciseIds = [
+    ...new Set(
+      data.draft.sessions.flatMap((session) =>
+        session.exercises.map((exercise) => exercise.exerciseId),
+      ),
+    ),
+  ].sort(comparePlanHealthCodeUnits);
   return JSON.stringify({
     planId: data.planId,
     settings: data.draft.settings,
-    exercises: [...data.exercises]
-      .sort((left, right) => left.id.localeCompare(right.id))
-      .map((exercise) => ({
-        ...exercise,
-        aliases: [...(exercise.aliases ?? [])].sort(),
-        movementPatterns: [...exercise.movementPatterns].sort(),
-        primaryMuscleIds: [...exercise.primaryMuscleIds].sort(),
-        secondaryMuscleIds: [...exercise.secondaryMuscleIds].sort(),
-        equipment: [...exercise.equipment].sort(),
-        contraindicationKeys: [...exercise.contraindicationKeys].sort(),
-      })),
-    limitationKeys: [...data.limitationKeys].sort(),
+    selectedCatalog: selectedExerciseIds.map((exerciseId) => {
+      const exercise = catalogById.get(exerciseId);
+      if (!exercise) return { exerciseId, availability: "MISSING" };
+      return {
+        exerciseId,
+        availability: "PRESENT",
+        facts: {
+          name: exercise.name,
+          aliases: [...(exercise.aliases ?? [])].sort(comparePlanHealthCodeUnits),
+          movementPatterns: [...exercise.movementPatterns].sort(
+            comparePlanHealthCodeUnits,
+          ),
+          primaryMuscleIds: [...exercise.primaryMuscleIds].sort(
+            comparePlanHealthCodeUnits,
+          ),
+          secondaryMuscleIds: [...exercise.secondaryMuscleIds].sort(
+            comparePlanHealthCodeUnits,
+          ),
+          stimulusByMuscleId: exercise.stimulusByMuscleId ?? null,
+          equipment: [...exercise.equipment].sort(comparePlanHealthCodeUnits),
+          contraindicationKeys: [...exercise.contraindicationKeys].sort(
+            comparePlanHealthCodeUnits,
+          ),
+          isCompound: exercise.isCompound,
+          isMainLiftEligible: exercise.isMainLiftEligible,
+          measurement: exercise.measurement ?? null,
+          timePerSetSec: exercise.timePerSetSec,
+        },
+      };
+    }),
+    limitationKeys: [...data.limitationKeys].sort(comparePlanHealthCodeUnits),
     preview:
       data.preview?.status === "ELIGIBLE"
         ? { status: data.preview.status, hash: data.preview.hash }

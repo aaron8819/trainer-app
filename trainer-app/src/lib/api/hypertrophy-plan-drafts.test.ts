@@ -21,11 +21,14 @@ import {
   buildHypertrophyPlanHealthAssessment,
   displayAssessmentIdentity,
   projectHypertrophyPlanHealthDisplayAssessment,
+  type HypertrophyPlanHealth,
+  type HypertrophyPlanHealthAssessment,
 } from "@/lib/engine/hypertrophy-plan-health";
 
 const originalMeasurementRollout = process.env.TRAINER_EXERCISE_MEASUREMENT_ROLLOUT;
 
 afterEach(() => {
+  vi.restoreAllMocks();
   if (originalMeasurementRollout === undefined) {
     delete process.env.TRAINER_EXERCISE_MEASUREMENT_ROLLOUT;
   } else {
@@ -1975,6 +1978,78 @@ describe("custom hypertrophy draft persistence", () => {
     return health;
   }
 
+  function authoritativeWarningEvaluation(): HypertrophyPlanHealth {
+    return {
+      blockers: [],
+      warnings: [
+        {
+          code: "UNKNOWN_ADVISORY",
+          message: "Review the selected exercise.",
+          slotId: "upper",
+          exerciseId: "bench",
+          muscleId: "chest",
+        },
+      ],
+      muscles: [
+        {
+          muscleId: "chest",
+          directSets: 4,
+          effectiveSets: 4,
+          frequency: 1,
+        },
+      ],
+      sessions: [
+        { slotId: "upper", estimatedMinutes: 20 },
+        { slotId: "lower", estimatedMinutes: 12 },
+      ],
+    };
+  }
+
+  function assessmentForAuthoritativeEvaluation(
+    evaluation: HypertrophyPlanHealth,
+  ): HypertrophyPlanHealthAssessment {
+    const assessment = safeDraftHealthAssessment({
+      draftId: "plan-1",
+      draftRevision: 3,
+      draft: draft(),
+      rows: exerciseRows as HypertrophyPlanDraftExerciseRow[],
+      exercises: (exerciseRows as HypertrophyPlanDraftExerciseRow[]).map((row) =>
+        toAuthoringExercise(row),
+      ),
+      limitations: { recognizedTags: [], unrecognizedTexts: [] },
+      preview: null,
+      evaluateHealth: () => evaluation,
+    });
+    if (assessment.status !== "AVAILABLE") {
+      throw new Error("Expected authoritative Health assessment");
+    }
+    return assessment;
+  }
+
+  async function installAuthoritativeEvaluation(
+    evaluation: HypertrophyPlanHealth,
+  ) {
+    const authoring = await import("@/lib/engine/hypertrophy-plan-authoring");
+    return vi
+      .spyOn(authoring, "evaluatePersistedHypertrophyPlanHealth")
+      .mockReturnValue(evaluation);
+  }
+
+  function importantWarningPresentation(
+    assessment: HypertrophyPlanHealthAssessment,
+  ) {
+    return assessment.issues.filter(
+      (issue) => issue.tier === "IMPORTANT_WARNING",
+    );
+  }
+
+  function expectNoFinalizationWrites() {
+    expect(mocks.state.draft).toEqual({ payload: draft(), revision: 3 });
+    expect(mocks.state.mesocycles).toEqual([]);
+    expect(mocks.state.revisions).toEqual([]);
+    expect(mocks.state.planUpdates).toEqual([]);
+  }
+
   it("binds confirmation scope to authoritative context and materially presented important warnings", () => {
     const duplicateDraft = draft();
     duplicateDraft.sessions[0]!.exercises.push(
@@ -2377,7 +2452,7 @@ describe("custom hypertrophy draft persistence", () => {
     expect(changedPrescriptionScope).not.toBe(before.confirmationScope);
   });
 
-  it("independently binds every warning, identity, preview, policy, and context field", () => {
+  it("canonically binds every warning, identity, preview, policy, and context field", () => {
     const candidate = draft();
     candidate.sessions[0]!.exercises.push(
       structuredClone(candidate.sessions[0]!.exercises[0]!),
@@ -2414,6 +2489,11 @@ describe("custom hypertrophy draft persistence", () => {
     changedDraft.sessions[0]!.exercises[0]!.workingSets += 1;
     const changedSettings = structuredClone(candidate);
     changedSettings.settings.sessionDurationMinutes = 75;
+    // Tier, title, suggested action, and both flags are policy-derived from the
+    // finding code (and, for unknown findings, the blocker/warning source lane)
+    // and cannot vary independently in a production assessment.
+    // These direct canonical-scope assertions prove those coupled presentation
+    // fields remain bound; reachable evaluator fields cross real finalization below.
     const cases: Array<[string, Partial<typeof base>]> = [
       ["warning code", { assessment: warningChange({ code: "OTHER_WARNING" }) }],
       ["warning tier", { assessment: warningChange({ tier: "COACHING_OBSERVATION" }) }],
@@ -2452,6 +2532,8 @@ describe("custom hypertrophy draft persistence", () => {
       slotId: "upper",
       placementId: "placement-a",
     };
+    // Warning presentation has no placement field. V2 placement identity is
+    // replay-bound through the canonical draft/preview context instead.
     const ineligibleBase: Parameters<
       typeof buildHypertrophyPlanHealthConfirmationScope
     >[0] = {
@@ -2574,61 +2656,106 @@ describe("custom hypertrophy draft persistence", () => {
     ).resolves.toMatchObject({ revisionId: "revision-1" });
   });
 
-  it("accepts an unchanged warning scope after coaching and informational Health refresh", async () => {
-    const duplicateDraft = draft();
-    duplicateDraft.sessions[0]!.exercises.push(
-      structuredClone(duplicateDraft.sessions[0]!.exercises[0]!),
-    );
-    mocks.state.draft = { payload: duplicateDraft, revision: 3 };
-    mocks.tx.macroCycle.findFirst.mockResolvedValue({
-      id: "plan-1",
-      trainingAge: "INTERMEDIATE",
-      hypertrophyDraft: mocks.state.draft,
-      mesocycles: [],
-    });
-    const presented = availableHealthFor(duplicateDraft);
-    const changedRows = (exerciseRows as HypertrophyPlanDraftExerciseRow[]).map(
-      (row) =>
-        row.id === "bench"
-          ? {
-              ...row,
-              timePerSetSec: row.timePerSetSec + 60,
-            }
-          : row,
-    ) as HypertrophyPlanDraftExerciseRow[];
-    const refreshed = availableHealthFor(duplicateDraft, changedRows);
-    expect(displayAssessmentIdentity(refreshed)).not.toBe(
-      displayAssessmentIdentity(presented),
-    );
-    expect(refreshed.confirmationScope).toBe(presented.confirmationScope);
-    mocks.tx.exercise.findMany.mockResolvedValue(changedRows);
+  it.each([
+    {
+      label: "coaching observation only",
+      mutate: (evaluation: HypertrophyPlanHealth) => {
+        evaluation.warnings.push({
+          code: "THIN_COVERAGE",
+          message: "Chest coverage is thin.",
+          muscleId: "chest",
+        });
+      },
+      assertChanged: (health: HypertrophyPlanHealthAssessment) => {
+        expect(health.issues).toContainEqual(
+          expect.objectContaining({
+            code: "THIN_COVERAGE",
+            tier: "COACHING_OBSERVATION",
+          }),
+        );
+      },
+    },
+    {
+      label: "neutral volume estimate only",
+      mutate: (evaluation: HypertrophyPlanHealth) => {
+        evaluation.muscles[0]!.effectiveSets = 4.5;
+      },
+      assertChanged: (health: HypertrophyPlanHealthAssessment) => {
+        expect(health.volumeEstimates).toContainEqual(
+          expect.objectContaining({ muscle: "Chest", effectiveSets: 4.5 }),
+        );
+      },
+    },
+    {
+      label: "non-gating session estimate only",
+      mutate: (evaluation: HypertrophyPlanHealth) => {
+        evaluation.sessions[0]!.estimatedMinutes = 21;
+      },
+      assertChanged: (health: HypertrophyPlanHealthAssessment) => {
+        expect(health.sessionEstimates).toContainEqual({
+          session: "Upper",
+          estimatedMinutes: 21,
+        });
+      },
+    },
+  ])(
+    "accepts the same warning scope through real finalization after $label changes",
+    async ({ mutate, assertChanged }) => {
+      const authoritative = authoritativeWarningEvaluation();
+      const evaluator = await installAuthoritativeEvaluation(authoritative);
+      const presented = assessmentForAuthoritativeEvaluation(authoritative);
+      const changed = structuredClone(authoritative);
+      mutate(changed);
+      const refreshed = assessmentForAuthoritativeEvaluation(changed);
 
-    await expect(
-      makeHypertrophyPlanReady({
-        userId: "user-1",
-        planId: "plan-1",
-        expectedDraftRevision: 3,
-        warningConfirmationScope: presented.confirmationScope,
-      }),
-    ).resolves.toMatchObject({ revisionId: "revision-1" });
-  });
+      expect(refreshed.summary.importantWarnings).toBe(1);
+      expect(importantWarningPresentation(refreshed)).toEqual(
+        importantWarningPresentation(presented),
+      );
+      expect(displayAssessmentIdentity(refreshed)).not.toBe(
+        displayAssessmentIdentity(presented),
+      );
+      expect(refreshed.confirmationScope).toBe(presented.confirmationScope);
+      assertChanged(refreshed);
+      evaluator.mockReturnValue(changed);
 
-  it("blocks transactionally introduced safety issues regardless of a presented warning scope", async () => {
-    const duplicateDraft = draft();
-    duplicateDraft.sessions[0]!.exercises.push(
-      structuredClone(duplicateDraft.sessions[0]!.exercises[0]!),
-    );
-    mocks.state.draft = { payload: duplicateDraft, revision: 3 };
-    mocks.tx.macroCycle.findFirst.mockResolvedValue({
-      id: "plan-1",
-      trainingAge: "INTERMEDIATE",
-      hypertrophyDraft: mocks.state.draft,
-      mesocycles: [],
+      await expect(
+        makeHypertrophyPlanReady({
+          userId: "user-1",
+          planId: "plan-1",
+          expectedDraftRevision: 3,
+          warningConfirmationScope: presented.confirmationScope,
+        }),
+      ).resolves.toMatchObject({ revisionId: "revision-1" });
+      expect(evaluator).toHaveBeenCalled();
+      expect(mocks.state.draft).toBeNull();
+      expect(mocks.state.revisions).toHaveLength(1);
+    },
+  );
+
+  it("blocks a newly introduced blocker with the same otherwise-valid scope and zero writes", async () => {
+    const authoritative = authoritativeWarningEvaluation();
+    const evaluator = await installAuthoritativeEvaluation(authoritative);
+    const presented = assessmentForAuthoritativeEvaluation(authoritative);
+    const blocked = structuredClone(authoritative);
+    blocked.blockers.push({
+      code: "EXERCISE_UNAVAILABLE",
+      message: "The selected exercise is no longer available.",
+      slotId: "upper",
+      exerciseId: "bench",
     });
-    const presented = availableHealthFor(duplicateDraft);
-    mocks.tx.exercise.findMany.mockResolvedValue(
-      exerciseRows.filter((row) => row.id !== "bench"),
-    );
+    const refreshed = assessmentForAuthoritativeEvaluation(blocked);
+    expect(refreshed.issues).toContainEqual({
+      code: "EXERCISE_UNAVAILABLE",
+      tier: "BLOCKING_SAFETY",
+      title: "Exercise unavailable",
+      explanation: "The selected exercise is no longer available.",
+      suggestedAction: "Choose an available exercise manually.",
+      affected: { session: "Upper", exercise: "Bench Press" },
+      blocksFinalization: true,
+      requiresAcknowledgment: false,
+    });
+    evaluator.mockReturnValue(blocked);
 
     await expect(
       makeHypertrophyPlanReady({
@@ -2638,11 +2765,116 @@ describe("custom hypertrophy draft persistence", () => {
         warningConfirmationScope: presented.confirmationScope,
       }),
     ).rejects.toMatchObject({ code: "PLAN_DRAFT_BLOCKED" });
-    expect(mocks.state.draft).toEqual({ payload: duplicateDraft, revision: 3 });
-    expect(mocks.state.mesocycles).toEqual([]);
-    expect(mocks.state.revisions).toEqual([]);
-    expect(mocks.state.planUpdates).toEqual([]);
+    expectNoFinalizationWrites();
   });
+
+  it.each([
+    {
+      label: "warning code",
+      mutate: (evaluation: HypertrophyPlanHealth) => {
+        evaluation.warnings[0]!.code = "SESSION_DURATION_HIGH";
+      },
+      assertChanged: (health: HypertrophyPlanHealthAssessment) => {
+        expect(importantWarningPresentation(health)[0]).toMatchObject({
+          code: "SESSION_DURATION_HIGH",
+          tier: "IMPORTANT_WARNING",
+          title: "Session may run long",
+          suggestedAction:
+            "Review whether the estimated duration is practical before finalizing.",
+          blocksFinalization: false,
+          requiresAcknowledgment: true,
+        });
+      },
+    },
+    {
+      label: "warning explanation",
+      mutate: (evaluation: HypertrophyPlanHealth) => {
+        evaluation.warnings[0]!.message = "Review the changed explanation.";
+      },
+      assertChanged: (health: HypertrophyPlanHealthAssessment) => {
+        expect(importantWarningPresentation(health)[0]!.explanation).toBe(
+          "Review the changed explanation.",
+        );
+      },
+    },
+    {
+      label: "affected session",
+      mutate: (evaluation: HypertrophyPlanHealth) => {
+        evaluation.warnings[0]!.slotId = "lower";
+      },
+      assertChanged: (health: HypertrophyPlanHealthAssessment) => {
+        expect(importantWarningPresentation(health)[0]!.affected?.session).toBe(
+          "Lower",
+        );
+      },
+    },
+    {
+      label: "affected exercise",
+      mutate: (evaluation: HypertrophyPlanHealth) => {
+        evaluation.warnings[0]!.exerciseId = "curl";
+      },
+      assertChanged: (health: HypertrophyPlanHealthAssessment) => {
+        expect(importantWarningPresentation(health)[0]!.affected?.exercise).toBe(
+          "Leg Curl",
+        );
+      },
+    },
+    {
+      label: "affected muscle",
+      mutate: (evaluation: HypertrophyPlanHealth) => {
+        evaluation.warnings[0]!.muscleId = "hamstrings";
+      },
+      assertChanged: (health: HypertrophyPlanHealthAssessment) => {
+        expect(importantWarningPresentation(health)[0]!.affected?.muscle).toBe(
+          "Hamstrings",
+        );
+      },
+    },
+  ])(
+    "returns MISMATCH with current Health and zero writes after changing only $label",
+    async ({ mutate, assertChanged }) => {
+      const authoritative = authoritativeWarningEvaluation();
+      const evaluator = await installAuthoritativeEvaluation(authoritative);
+      const presented = assessmentForAuthoritativeEvaluation(authoritative);
+      const changed = structuredClone(authoritative);
+      mutate(changed);
+      const refreshed = assessmentForAuthoritativeEvaluation(changed);
+      assertChanged(refreshed);
+      expect(refreshed.summary.importantWarnings).toBe(1);
+      expect(refreshed.confirmationScope).not.toBe(presented.confirmationScope);
+      evaluator.mockReturnValue(changed);
+
+      let failure: unknown;
+      try {
+        await makeHypertrophyPlanReady({
+          userId: "user-1",
+          planId: "plan-1",
+          expectedDraftRevision: 3,
+          warningConfirmationScope: presented.confirmationScope,
+        });
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toMatchObject({
+        code: "PLAN_WARNING_CONFIRMATION_REQUIRED",
+        details: { confirmationStatus: "MISMATCH", warningCount: "1" },
+        responseData: {
+          health: {
+            draftId: "plan-1",
+            draftRevision: 3,
+            confirmationScope: refreshed.confirmationScope,
+          },
+        },
+      });
+      const responseHealth = (
+        failure as { responseData: { health: HypertrophyPlanHealthAssessment } }
+      ).responseData.health;
+      expect(displayAssessmentIdentity(responseHealth)).toBe(
+        displayAssessmentIdentity(refreshed),
+      );
+      expectNoFinalizationWrites();
+    },
+  );
 
   it("rejects random and catalog-stale warning scopes with current Health and zero writes", async () => {
     const duplicateDraft = draft();

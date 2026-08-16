@@ -459,21 +459,48 @@ describe("WeeklyHypertrophyPlanEditor", () => {
     expect(screen.getByRole("button", { name: "Finalize plan" })).toBeEnabled();
   });
 
-  it("installs refreshed warning authority separately from unchanged display freshness", () => {
+  it("submits refreshed V2 warning authority when display freshness is unchanged", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
     const data = finalizableFiveWeekData();
+    const firstScopeSeed = "1".repeat(64);
+    const secondScopeSeed = "2".repeat(64);
+    data.health = warningHealth(1, firstScopeSeed);
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ ok: true, result: { planId: "plan-v4" } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
     const { rerender } = render(
       <WeeklyHypertrophyPlanEditor initialData={data} />,
     );
     const changed = structuredClone(data);
-    changed.limitationKeys = ["wrist"];
     if (changed.health.status !== "AVAILABLE") throw new Error("Expected Health");
-    changed.health.confirmationScope = `plan-health-confirmation.v1.${"a".repeat(64)}`;
-    changed.health.evaluatedFacts.recognizedLimitationCount = 1;
+    changed.health.confirmationScope = `plan-health-confirmation.v1.${secondScopeSeed}`;
 
     rerender(<WeeklyHypertrophyPlanEditor initialData={changed} />);
 
     expect(screen.getByText("Current for saved revision 1.")).toBeVisible();
     expect(screen.getByRole("button", { name: "Finalize plan" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Finalize plan" }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(window.confirm).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [url, request] = vi.mocked(fetch).mock.calls[0]!;
+    expect(String(url)).toContain("/finalize");
+    const body = JSON.parse(String(request?.body));
+    expect(body).toEqual({
+      expectedDraftRevision: 1,
+      warningConfirmationScope: changed.health.confirmationScope,
+      confirmedPreviewHash: "a".repeat(64),
+    });
+    expect(JSON.stringify(body)).not.toContain(firstScopeSeed);
+    expect(body).not.toHaveProperty("displayAssessmentIdentity");
+    expect(body).not.toHaveProperty("warningsConfirmed");
   });
 
   it("does not let a stale save response replace Health after authoritative context changes", async () => {

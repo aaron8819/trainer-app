@@ -36,6 +36,27 @@ function availableHealth(revision: number, draftId = "plan-1") {
   };
 }
 
+function warningHealth(revision: number, scopeSeed: string) {
+  const health = availableHealth(revision);
+  return {
+    ...health,
+    confirmationScope: `plan-health-confirmation.v1.${scopeSeed}`,
+    summary: { ...health.summary, importantWarnings: 1 },
+    issues: [
+      {
+        code: "DUPLICATE_EXERCISE",
+        tier: "IMPORTANT_WARNING" as const,
+        title: "Duplicate exercise",
+        explanation: "Barbell Bench Press appears more than once in Upper.",
+        suggestedAction: "Remove the duplicate exercise or confirm the warning.",
+        affected: { session: "Upper", exercise: "Barbell Bench Press" },
+        blocksFinalization: false,
+        requiresAcknowledgment: true,
+      },
+    ],
+  };
+}
+
 const initialData: HypertrophyPlanEditorDataV1 = {
   planId: "plan-1",
   name: "Custom plan",
@@ -347,19 +368,36 @@ describe("HypertrophyPlanEditor", () => {
     expect(screen.getByText(/about 37 min/)).toBeInTheDocument();
   });
 
-  it("installs refreshed warning authority separately when visible Health is unchanged", () => {
+  it("submits refreshed V1 warning authority when visible Health is unchanged", async () => {
     const data = fourSessionData();
+    const firstScopeSeed = "1".repeat(64);
+    const secondScopeSeed = "2".repeat(64);
+    data.health = warningHealth(1, firstScopeSeed);
+    vi.mocked(fetch).mockResolvedValueOnce(response({ ok: true }));
     const view = render(<HypertrophyPlanEditor initialData={data} />);
     const refreshed = structuredClone(data);
-    refreshed.limitationKeys = ["wrist"];
     if (refreshed.health.status !== "AVAILABLE") throw new Error("Expected Health");
-    refreshed.health.confirmationScope = `plan-health-confirmation.v1.${"a".repeat(64)}`;
-    refreshed.health.evaluatedFacts.recognizedLimitationCount = 1;
+    refreshed.health.confirmationScope = `plan-health-confirmation.v1.${secondScopeSeed}`;
 
     view.rerender(<HypertrophyPlanEditor initialData={refreshed} />);
 
     expect(screen.getByText("Current for saved revision 1.")).toBeVisible();
     expect(screen.getByRole("button", { name: "Make plan ready" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Make plan ready" }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+
+    expect(window.confirm).toHaveBeenCalledTimes(1);
+    const [url, request] = vi.mocked(fetch).mock.calls[0]!;
+    expect(String(url)).toContain("/finalize");
+    const body = JSON.parse(String(request?.body));
+    expect(body).toEqual({
+      expectedDraftRevision: 1,
+      warningConfirmationScope: refreshed.health.confirmationScope,
+    });
+    expect(JSON.stringify(body)).not.toContain(firstScopeSeed);
+    expect(body).not.toHaveProperty("displayAssessmentIdentity");
+    expect(body).not.toHaveProperty("warningsConfirmed");
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it("locks every V1 draft mutation and installs the authoritative regenerated draft exactly", async () => {
@@ -633,22 +671,44 @@ describe("HypertrophyPlanEditor", () => {
   });
 
   it("recovers a committed regeneration lost to the network through stale CAS and refresh", async () => {
+    const initial = fourSessionData();
     const authoritative = regeneratedDraft();
-    let serverWrites = 0;
-    vi.mocked(fetch).mockImplementation((url) => {
+    const server = {
+      draft: initial.draft,
+      revision: initial.revision,
+      regenerationWrites: 0,
+      refreshReads: 0,
+    };
+    const readAuthoritativeState = () => {
+      server.refreshReads += 1;
+      const data = fourSessionData();
+      data.revision = server.revision;
+      data.draft = server.draft;
+      data.health = availableHealth(server.revision);
+      return data;
+    };
+    vi.mocked(fetch).mockImplementation((url, request) => {
       if (String(url).endsWith("/regenerate")) {
-        serverWrites += 1;
+        const body = JSON.parse(String(request?.body));
+        expect(body.expectedRevision).toBe(server.revision);
+        server.draft = authoritative;
+        server.revision += 1;
+        server.regenerationWrites += 1;
         return Promise.reject(new TypeError("network response lost after commit"));
       }
+      const body = JSON.parse(String(request?.body));
+      expect(String(url)).toContain("/draft");
+      expect(body.expectedRevision).toBe(initial.revision);
+      expect(body.expectedRevision).not.toBe(server.revision);
       return Promise.resolve(
         failedResponse({
           error: "This plan changed on the server. Refresh to load the current draft.",
           code: "PLAN_MUTATION_CONFLICT",
-          currentRevision: 2,
+          currentRevision: server.revision,
         }),
       );
     });
-    const view = render(<HypertrophyPlanEditor initialData={fourSessionData()} />);
+    const view = render(<HypertrophyPlanEditor initialData={initial} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Generate a new starting plan" }));
     await waitFor(() =>
@@ -656,7 +716,9 @@ describe("HypertrophyPlanEditor", () => {
         "Generation failed. Your draft is unchanged.",
       ),
     );
-    expect(serverWrites).toBe(1);
+    expect(server.regenerationWrites).toBe(1);
+    expect(server.revision).toBe(2);
+    expect(server.draft).toBe(authoritative);
     expect(screen.getByDisplayValue("Upper")).toBeVisible();
     fireEvent.change(screen.getByLabelText("Plan name"), {
       target: { value: "Stale later edit" },
@@ -670,18 +732,19 @@ describe("HypertrophyPlanEditor", () => {
     expect(JSON.parse(String(vi.mocked(fetch).mock.calls[1]![1]?.body))).toMatchObject({
       expectedRevision: 1,
     });
-    expect(serverWrites).toBe(1);
+    expect(server.regenerationWrites).toBe(1);
+    expect(server.draft).toBe(authoritative);
 
     view.unmount();
-    const refreshed = fourSessionData();
-    refreshed.revision = 2;
-    refreshed.draft = authoritative;
-    refreshed.health = availableHealth(2);
+    const refreshed = readAuthoritativeState();
+    expect(refreshed.draft).toBe(server.draft);
     render(<HypertrophyPlanEditor initialData={refreshed} />);
 
     expect(screen.getByDisplayValue("Regenerated Upper")).toBeVisible();
     expect(screen.getByText("Current for saved revision 2.")).toBeVisible();
-    expect(serverWrites).toBe(1);
+    expect(server.refreshReads).toBe(1);
+    expect(server.regenerationWrites).toBe(1);
+    expect(server.draft).toBe(authoritative);
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 

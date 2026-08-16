@@ -182,6 +182,12 @@ function regeneratedDraft() {
   return next;
 }
 
+function renderedSessionOrder() {
+  return screen
+    .getAllByRole("button", { name: /^\d+\. / })
+    .map((button) => button.textContent?.replace(/^\d+\. /, ""));
+}
+
 function response(body: unknown) {
   return {
     ok: true,
@@ -470,8 +476,6 @@ describe("HypertrophyPlanEditor", () => {
       target: { value: "Forbidden local name" },
     });
     fireEvent.change(screen.getByLabelText("Focus"), { target: { value: "PULL" } });
-    fireEvent.click(screen.getByRole("button", { name: "Move session up" }));
-    fireEvent.click(screen.getByRole("button", { name: "Move session down" }));
     fireEvent.click(screen.getAllByRole("button", { name: "+ Session" })[0]!);
     fireEvent.click(screen.getByRole("button", { name: "Remove session" }));
     fireEvent.change(screen.getAllByLabelText("Working sets")[0]!, {
@@ -535,6 +539,81 @@ describe("HypertrophyPlanEditor", () => {
       ),
     });
   });
+
+  it.each([
+    {
+      direction: "up",
+      buttonName: "Move session up",
+      expectedMovedSlotIds: ["lower", "upper", "upper-2", "lower-2"],
+    },
+    {
+      direction: "down",
+      buttonName: "Move session down",
+      expectedMovedSlotIds: ["upper", "upper-2", "lower", "lower-2"],
+    },
+  ])(
+    "blocks one session move $direction during regeneration and permits it after unlock",
+    async ({ buttonName, expectedMovedSlotIds }) => {
+      const regeneration = deferred<Response>();
+      vi.mocked(fetch).mockImplementation((url) =>
+        String(url).endsWith("/regenerate")
+          ? regeneration.promise
+          : Promise.resolve(response({ revision: 3, health: availableHealth(3) })),
+      );
+      const authoritative = regeneratedDraft();
+      render(<HypertrophyPlanEditor initialData={fourSessionData()} />);
+
+      fireEvent.click(screen.getByRole("button", { name: "Lower" }));
+      fireEvent.click(
+        screen.getByRole("button", { name: "Generate a new starting plan" }),
+      );
+      await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+      const moveButton = screen.getByRole("button", { name: buttonName });
+      expect(moveButton).toBeDisabled();
+
+      const fieldset = screen.getByLabelText("Plan name").closest("fieldset");
+      if (!fieldset) throw new Error("Expected regeneration fieldset");
+      fieldset.disabled = false;
+      fireEvent.click(moveButton);
+
+      expect(renderedSessionOrder()).toEqual([
+        "Upper",
+        "Lower",
+        "Upper 2",
+        "Lower 2",
+      ]);
+      expect(screen.getByDisplayValue("Lower")).toBeVisible();
+      expect(fetch).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        regeneration.resolve(
+          response({ draft: authoritative, revision: 2, health: availableHealth(2) }),
+        );
+        await regeneration.promise;
+      });
+
+      expect(renderedSessionOrder()).toEqual([
+        "Regenerated Upper",
+        "Regenerated Lower",
+        "Upper 2",
+        "Lower 2",
+      ]);
+      expect(screen.getByDisplayValue("Regenerated Upper")).toBeVisible();
+      expect(fetch).toHaveBeenCalledTimes(1);
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Regenerated Lower" }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: buttonName }));
+      await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+      const [, request] = vi.mocked(fetch).mock.calls[1]!;
+      const saved = JSON.parse(String(request?.body));
+      expect(saved.expectedRevision).toBe(2);
+      expect(
+        saved.draft.sessions.map((session: { slotId: string }) => session.slotId),
+      ).toEqual(expectedMovedSlotIds);
+    },
+  );
 
   it("drops a pre-lock delayed autosave callback after the synchronous regeneration lock", async () => {
     vi.useFakeTimers();

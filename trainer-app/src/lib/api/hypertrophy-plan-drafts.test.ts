@@ -2043,12 +2043,32 @@ describe("custom hypertrophy draft persistence", () => {
     );
   }
 
-  function expectNoFinalizationWrites() {
-    expect(mocks.state.draft).toEqual({ payload: draft(), revision: 3 });
+  function expectNoFinalizationWriteAttempts(
+    expectedDraft: HypertrophyPlanDraftV1 = draft(),
+  ) {
+    // mesocycle.create includes the nested block creates. createRevision owns
+    // both the accepted-seed create and current-revision pointer promotion.
+    expect(mocks.tx.mesocycle.create).not.toHaveBeenCalled();
+    expect(mocks.createRevision).not.toHaveBeenCalled();
+    expect(mocks.tx.hypertrophyPlanDraft.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.tx.macroCycle.update).not.toHaveBeenCalled();
+    expect(mocks.state.draft).toEqual({ payload: expectedDraft, revision: 3 });
     expect(mocks.state.mesocycles).toEqual([]);
     expect(mocks.state.revisions).toEqual([]);
     expect(mocks.state.planUpdates).toEqual([]);
   }
+
+  it("negative control detects a finalization write attempt after rollback restores state", async () => {
+    await expect(
+      mocks.prisma.$transaction(async (tx) => {
+        await tx.mesocycle.create({ data: { id: "negative-control" } });
+        throw new Error("ROLL_BACK_NEGATIVE_CONTROL");
+      }),
+    ).rejects.toThrow("ROLL_BACK_NEGATIVE_CONTROL");
+
+    expect(mocks.state.mesocycles).toEqual([]);
+    expect(() => expectNoFinalizationWriteAttempts()).toThrow();
+  });
 
   it("binds confirmation scope to authoritative context and materially presented important warnings", () => {
     const duplicateDraft = draft();
@@ -2626,10 +2646,7 @@ describe("custom hypertrophy draft persistence", () => {
         },
       },
     });
-    expect(mocks.state.draft).toEqual({ payload: duplicateDraft, revision: 3 });
-    expect(mocks.state.mesocycles).toEqual([]);
-    expect(mocks.state.revisions).toEqual([]);
-    expect(mocks.state.planUpdates).toEqual([]);
+    expectNoFinalizationWriteAttempts(duplicateDraft);
   });
 
   it("accepts only the matching authoritative warning scope", async () => {
@@ -2765,7 +2782,7 @@ describe("custom hypertrophy draft persistence", () => {
         warningConfirmationScope: presented.confirmationScope,
       }),
     ).rejects.toMatchObject({ code: "PLAN_DRAFT_BLOCKED" });
-    expectNoFinalizationWrites();
+    expectNoFinalizationWriteAttempts();
   });
 
   it.each([
@@ -2872,7 +2889,7 @@ describe("custom hypertrophy draft persistence", () => {
       expect(displayAssessmentIdentity(responseHealth)).toBe(
         displayAssessmentIdentity(refreshed),
       );
-      expectNoFinalizationWrites();
+      expectNoFinalizationWriteAttempts();
     },
   );
 
@@ -2917,10 +2934,7 @@ describe("custom hypertrophy draft persistence", () => {
           },
         },
       });
-      expect(mocks.state.mesocycles).toEqual([]);
-      expect(mocks.state.revisions).toEqual([]);
-      expect(mocks.state.planUpdates).toEqual([]);
-      expect(mocks.state.draft).toEqual({ payload: duplicateDraft, revision: 3 });
+      expectNoFinalizationWriteAttempts(duplicateDraft);
     }
   });
 
@@ -3008,10 +3022,7 @@ describe("custom hypertrophy draft persistence", () => {
           },
         },
       });
-      expect(mocks.state.draft).toEqual({ payload: duplicateDraft, revision: 3 });
-      expect(mocks.state.mesocycles).toEqual([]);
-      expect(mocks.state.revisions).toEqual([]);
-      expect(mocks.state.planUpdates).toEqual([]);
+      expectNoFinalizationWriteAttempts(duplicateDraft);
     }
   });
 
@@ -3049,10 +3060,7 @@ describe("custom hypertrophy draft persistence", () => {
         },
       },
     });
-    expect(mocks.state.mesocycles).toEqual([]);
-    expect(mocks.state.revisions).toEqual([]);
-    expect(mocks.state.planUpdates).toEqual([]);
-    expect(mocks.state.draft).toEqual({ payload: duplicateDraft, revision: 3 });
+    expectNoFinalizationWriteAttempts(duplicateDraft);
   });
 
   it("emits V3 only when the gate is enabled and every selected exercise is classified", async () => {

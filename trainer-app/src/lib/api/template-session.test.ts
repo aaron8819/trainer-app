@@ -8,6 +8,7 @@ import * as selectionV2 from "@/lib/engine/selection-v2";
 import type { Exercise } from "@/lib/engine/types";
 import { getEffectiveStimulusByMuscle, toMuscleId } from "@/lib/engine/stimulus";
 import { buildV4CustomPlanReferenceAcceptedSeed } from "@/lib/engine/hypertrophy-plan-authoring-v4.fixture";
+import { buildRevisedFourDayPlanAcceptedSeed } from "@/lib/engine/hypertrophy-plan-authoring-v4-revised.fixture";
 import { resolveAcceptedSeedPayloadForWeek } from "@/lib/api/slot-plan-seed-parser";
 import {
   EXPECTED_V4_REFERENCE_CASES,
@@ -15,6 +16,12 @@ import {
   V4_REFERENCE_PLACEMENT_IDS_BY_SLOT,
   type ExpectedV4ReferenceCase,
 } from "@/lib/api/template-session-v4-reference.expected";
+import {
+  EXPECTED_V4_REVISED_REFERENCE_CASES,
+  V4_REVISED_REFERENCE_CANONICAL_HASH,
+  V4_REVISED_REFERENCE_PLACEMENT_IDS_BY_SLOT,
+  type ExpectedV4RevisedReferenceCase,
+} from "@/lib/api/template-session-v4-revised-reference.expected";
 
 const mesocycleRoleFindManyMock = vi.fn();
 vi.mock("@/lib/db/prisma", () => ({
@@ -275,6 +282,9 @@ function makeV4Exercise(
 }
 
 type V4ReferenceSeed = ReturnType<typeof buildV4CustomPlanReferenceAcceptedSeed>;
+type V4ReferenceRuntimeCase =
+  | ExpectedV4ReferenceCase
+  | ExpectedV4RevisedReferenceCase;
 type SuccessfulIntentSession = Exclude<
   Awaited<ReturnType<typeof generateSessionFromIntent>>,
   { error: string }
@@ -334,7 +344,7 @@ function primeV4ReferenceGeneration(seed: V4ReferenceSeed, library: Exercise[]) 
   };
 }
 
-function primeV4ReferenceWeek(expected: ExpectedV4ReferenceCase) {
+function primeV4ReferenceWeek(expected: V4ReferenceRuntimeCase) {
   const isDeload = expected.phase === "deload";
   getCurrentMesoWeekMock.mockReturnValue(expected.week);
   loadGenerationPhaseBlockContextMock.mockResolvedValue({
@@ -397,9 +407,10 @@ function primeV4ReferenceWeek(expected: ExpectedV4ReferenceCase) {
 }
 
 function buildV4ReferenceMesocycle(
-  expected: ExpectedV4ReferenceCase,
+  expected: V4ReferenceRuntimeCase,
   seed: V4ReferenceSeed,
   slotSequenceJson: ReturnType<typeof primeV4ReferenceGeneration>,
+  provenance: { revisionId: string; hash: string },
 ) {
   return {
     id: "meso-1",
@@ -413,9 +424,9 @@ function buildV4ReferenceMesocycle(
     slotSequenceJson,
     slotPlanSeedJson: { version: 1, source: "handoff_slot_plan_projection", slots: [] },
     currentSeedRevision: {
-      id: "v4-reference-revision-1",
+      id: provenance.revisionId,
       revision: 1,
-      payloadHash: V4_REFERENCE_CANONICAL_HASH,
+      payloadHash: provenance.hash,
       hashAlgorithm: "sha256",
       provenanceStatus: "exact",
       seedPayload: seed,
@@ -424,10 +435,14 @@ function buildV4ReferenceMesocycle(
 }
 
 function buildActualV4ReferenceCase(input: {
-  expected: ExpectedV4ReferenceCase;
+  expected: V4ReferenceRuntimeCase;
   seed: V4ReferenceSeed;
   result: SuccessfulIntentSession;
   selectionFallbackUsed: boolean;
+  placementIdsBySlot: Record<
+    V4ReferenceRuntimeCase["slotId"],
+    readonly string[]
+  >;
 }) {
   const resolved = resolveAcceptedSeedPayloadForWeek(input.seed, input.expected.week);
   const resolvedSlot = resolved.slots.find((slot) => slot.slotId === input.expected.slotId);
@@ -443,7 +458,7 @@ function buildActualV4ReferenceCase(input: {
     ...input.result.workout.accessories,
   ].sort((left, right) => left.orderIndex - right.orderIndex);
   const prescribedPlacementIds = resolvedSlot.exercises.map((exercise) => exercise.placementId);
-  const allPlacementIds = V4_REFERENCE_PLACEMENT_IDS_BY_SLOT[input.expected.slotId];
+  const allPlacementIds = input.placementIdsBySlot[input.expected.slotId];
 
   return {
     week: receipt.cycleContext.weekInMeso,
@@ -483,7 +498,7 @@ function buildActualV4ReferenceCase(input: {
 
 function assertV4ReferenceCase(
   actual: ReturnType<typeof buildActualV4ReferenceCase>,
-  expected: ExpectedV4ReferenceCase,
+  expected: V4ReferenceRuntimeCase,
   label: string,
 ) {
   expect(actual, label).toEqual(expected);
@@ -2783,7 +2798,7 @@ describe("generateSessionFromIntent", () => {
     }
   });
 
-  it("replays the exact 26-placement revised V4 reference across all 20 week-slot combinations", async () => {
+  it("replays the exact 25-placement V4 reference across all 20 week-slot combinations", async () => {
     const seed = buildV4CustomPlanReferenceAcceptedSeed();
     const library = buildV4ReferenceExerciseLibrary(seed);
     const slotSequenceJson = primeV4ReferenceGeneration(seed, library);
@@ -2808,7 +2823,10 @@ describe("generateSessionFromIntent", () => {
       for (const expected of EXPECTED_V4_REFERENCE_CASES) {
         primeV4ReferenceWeek(expected);
         loadActiveMesocycleMock.mockResolvedValue(
-          buildV4ReferenceMesocycle(expected, seed, slotSequenceJson),
+          buildV4ReferenceMesocycle(expected, seed, slotSequenceJson, {
+            revisionId: "v4-reference-revision-1",
+            hash: V4_REFERENCE_CANONICAL_HASH,
+          }),
         );
         const fallbackCallsBefore = selectSpy.mock.calls.length;
         const result = await generateSessionFromIntent("user-1", {
@@ -2824,6 +2842,7 @@ describe("generateSessionFromIntent", () => {
           seed,
           result,
           selectionFallbackUsed: selectSpy.mock.calls.length > fallbackCallsBefore,
+          placementIdsBySlot: V4_REFERENCE_PLACEMENT_IDS_BY_SLOT,
         });
         assertV4ReferenceCase(actual, expected, label);
       }
@@ -2845,7 +2864,10 @@ describe("generateSessionFromIntent", () => {
     const slotSequenceJson = primeV4ReferenceGeneration(seed, library);
     primeV4ReferenceWeek(expected);
     loadActiveMesocycleMock.mockResolvedValue(
-      buildV4ReferenceMesocycle(expected, seed, slotSequenceJson),
+      buildV4ReferenceMesocycle(expected, seed, slotSequenceJson, {
+        revisionId: "v4-reference-revision-1",
+        hash: V4_REFERENCE_CANONICAL_HASH,
+      }),
     );
     const selectSpy = vi.spyOn(selectionV2, "selectExercisesOptimized");
     try {
@@ -2862,6 +2884,7 @@ describe("generateSessionFromIntent", () => {
         seed,
         result,
         selectionFallbackUsed: selectSpy.mock.calls.length > fallbackCallsBefore,
+        placementIdsBySlot: V4_REFERENCE_PLACEMENT_IDS_BY_SLOT,
       });
       assertV4ReferenceCase(validActual, expected, "sentinel control");
 
@@ -2908,6 +2931,188 @@ describe("generateSessionFromIntent", () => {
           name: "expected omission",
           mutate: (value) => {
             value.omittedPlacementIds = value.omittedPlacementIds.slice(1);
+          },
+        },
+      ];
+
+      for (const mutation of mutations) {
+        const mutated = structuredClone(validActual);
+        mutation.mutate(mutated);
+        expect(
+          () => assertV4ReferenceCase(mutated, expected, mutation.name),
+          mutation.name,
+        ).toThrowError();
+      }
+    } finally {
+      selectSpy.mockRestore();
+    }
+  });
+
+  it("replays the exact independent 26-placement revised V4 reference across all 20 week-slot combinations", async () => {
+    const seed = buildRevisedFourDayPlanAcceptedSeed();
+    const library = buildV4ReferenceExerciseLibrary(seed);
+    const slotSequenceJson = primeV4ReferenceGeneration(seed, library);
+    const selectSpy = vi.spyOn(selectionV2, "selectExercisesOptimized");
+    try {
+      expect(EXPECTED_V4_REVISED_REFERENCE_CASES).toHaveLength(20);
+      expect(
+        new Set(EXPECTED_V4_REVISED_REFERENCE_CASES.map(({ week }) => week)),
+      ).toEqual(new Set([1, 2, 3, 4, 5]));
+      expect(
+        new Set(EXPECTED_V4_REVISED_REFERENCE_CASES.map(({ slotId }) => slotId)),
+      ).toEqual(new Set(["lower-a", "upper-a", "lower-b", "upper-b"]));
+      expect(
+        new Set(
+          EXPECTED_V4_REVISED_REFERENCE_CASES.map(
+            ({ week, slotId }) => `${week}:${slotId}`,
+          ),
+        ),
+      ).toHaveLength(20);
+      expect(
+        seed.slots.map((slot) => ({
+          slotId: slot.slotId,
+          placementIds: slot.exercises.map((exercise) => exercise.placementId),
+        })),
+      ).toEqual(
+        Object.entries(V4_REVISED_REFERENCE_PLACEMENT_IDS_BY_SLOT).map(
+          ([slotId, placementIds]) => ({ slotId, placementIds }),
+        ),
+      );
+
+      for (const expected of EXPECTED_V4_REVISED_REFERENCE_CASES) {
+        primeV4ReferenceWeek(expected);
+        loadActiveMesocycleMock.mockResolvedValue(
+          buildV4ReferenceMesocycle(expected, seed, slotSequenceJson, {
+            revisionId: "v4-revised-reference-revision-1",
+            hash: V4_REVISED_REFERENCE_CANONICAL_HASH,
+          }),
+        );
+        const fallbackCallsBefore = selectSpy.mock.calls.length;
+        const result = await generateSessionFromIntent("user-1", {
+          intent: expected.focus,
+          slotId: expected.slotId,
+        });
+        const label = `revised week=${expected.week} slot=${expected.slotId}`;
+        expect("error" in result, label).toBe(false);
+        if ("error" in result) continue;
+
+        const actual = buildActualV4ReferenceCase({
+          expected,
+          seed,
+          result,
+          selectionFallbackUsed:
+            selectSpy.mock.calls.length > fallbackCallsBefore,
+          placementIdsBySlot: V4_REVISED_REFERENCE_PLACEMENT_IDS_BY_SLOT,
+        });
+        assertV4ReferenceCase(actual, expected, label);
+      }
+      expect(selectSpy).not.toHaveBeenCalled();
+    } finally {
+      selectSpy.mockRestore();
+    }
+  });
+
+  it("rejects independent actual-side mutations at the revised V4 comparison boundary", async () => {
+    const expected = EXPECTED_V4_REVISED_REFERENCE_CASES.find(
+      ({ week, slotId }) => week === 5 && slotId === "lower-a",
+    );
+    expect(expected).toBeDefined();
+    if (!expected) return;
+
+    const seed = buildRevisedFourDayPlanAcceptedSeed();
+    const library = buildV4ReferenceExerciseLibrary(seed);
+    const slotSequenceJson = primeV4ReferenceGeneration(seed, library);
+    primeV4ReferenceWeek(expected);
+    loadActiveMesocycleMock.mockResolvedValue(
+      buildV4ReferenceMesocycle(expected, seed, slotSequenceJson, {
+        revisionId: "v4-revised-reference-revision-1",
+        hash: V4_REVISED_REFERENCE_CANONICAL_HASH,
+      }),
+    );
+    const selectSpy = vi.spyOn(selectionV2, "selectExercisesOptimized");
+    try {
+      const fallbackCallsBefore = selectSpy.mock.calls.length;
+      const result = await generateSessionFromIntent("user-1", {
+        intent: expected.focus,
+        slotId: expected.slotId,
+      });
+      expect("error" in result).toBe(false);
+      if ("error" in result) return;
+
+      const validActual = buildActualV4ReferenceCase({
+        expected,
+        seed,
+        result,
+        selectionFallbackUsed: selectSpy.mock.calls.length > fallbackCallsBefore,
+        placementIdsBySlot: V4_REVISED_REFERENCE_PLACEMENT_IDS_BY_SLOT,
+      });
+      assertV4ReferenceCase(validActual, expected, "revised sentinel control");
+
+      const mutations: Array<{
+        name: string;
+        mutate: (value: typeof validActual) => void;
+      }> = [
+        {
+          name: "set count",
+          mutate: (value) => {
+            value.exercises[0]!.setCount += 1;
+          },
+        },
+        {
+          name: "rep range",
+          mutate: (value) => {
+            const reps = value.exercises[0]!.sets[0]!.reps;
+            if (typeof reps === "object") reps.min += 1;
+          },
+        },
+        {
+          name: "derived RPE",
+          mutate: (value) => {
+            value.exercises[0]!.sets[0]!.targetRpe! += 0.5;
+          },
+        },
+        {
+          name: "exercise order",
+          mutate: (value) => {
+            [value.exercises[0], value.exercises[1]] = [
+              value.exercises[1]!,
+              value.exercises[0]!,
+            ];
+          },
+        },
+        {
+          name: "exercise identity",
+          mutate: (value) => {
+            value.exercises[0]!.exerciseId = "mutated-exercise";
+          },
+        },
+        {
+          name: "placement identity",
+          mutate: (value) => {
+            value.exercises[0]!.placementId = "mutated-placement";
+          },
+        },
+        {
+          name: "Week 5 omission",
+          mutate: (value) => {
+            value.omittedPlacementIds = value.omittedPlacementIds.slice(1);
+          },
+        },
+        {
+          name: "measurement tuple",
+          mutate: (value) => {
+            value.exercises[0]!.measurement = {
+              profile: "REPS_EXTERNAL_LOAD",
+              loadConvention: "BARBELL_TOTAL",
+              repBasis: "PER_SIDE",
+            };
+          },
+        },
+        {
+          name: "provenance",
+          mutate: (value) => {
+            if (!value.provenance) throw new Error("Missing provenance");
+            value.provenance.hash = "f".repeat(64);
           },
         },
       ];

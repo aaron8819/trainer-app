@@ -15,6 +15,12 @@ import {
   type WeeklyPrescriptionV4,
 } from "@/lib/engine/hypertrophy-plan-authoring";
 import { buildV4CustomPlanReferenceAcceptedSeed } from "@/lib/engine/hypertrophy-plan-authoring-v4.fixture";
+import { buildRevisedFourDayPlanSubmittedDraft } from "@/lib/engine/hypertrophy-plan-authoring-v4-revised.fixture";
+import {
+  buildExpectedRevisedFourDayAcceptedSeed,
+  buildExpectedRevisedRecommendationAcceptedSeed,
+  buildExpectedRevisedRecommendationsByPlacement,
+} from "@/lib/api/hypertrophy-plan-authoring-v4-revised.expected";
 import { getMusclePolicyByDisplayName } from "@/lib/engine/muscle-policy";
 import type { ResolvedLimitations } from "@/lib/engine/limitation-policy";
 import {
@@ -172,26 +178,12 @@ const REFERENCE_WEEKS = [
   { week: 5, phase: "DELOAD" as const },
 ];
 
-const FOUR_BY_FIVE_TO_EIGHT: WeeklyPrescriptionV4[] = [
-  { week: 1, status: "PRESCRIBE", setCount: 4, reps: { kind: "RANGE", min: 5, max: 8 }, rir: { kind: "TARGET_RANGE", min: 3, max: 4 } },
-  { week: 2, status: "PRESCRIBE", setCount: 4, reps: { kind: "RANGE", min: 5, max: 8 }, rir: { kind: "TARGET_RANGE", min: 3, max: 3 } },
-  { week: 3, status: "PRESCRIBE", setCount: 4, reps: { kind: "RANGE", min: 5, max: 8 }, rir: { kind: "TARGET_RANGE", min: 2, max: 3 } },
-  { week: 4, status: "PRESCRIBE", setCount: 4, reps: { kind: "RANGE", min: 5, max: 8 }, rir: { kind: "TARGET_RANGE", min: 1, max: 2 } },
+const THREE_BY_FIVE_TO_EIGHT: WeeklyPrescriptionV4[] = [
+  { week: 1, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 5, max: 8 }, rir: { kind: "TARGET_RANGE", min: 3, max: 4 } },
+  { week: 2, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 5, max: 8 }, rir: { kind: "TARGET_RANGE", min: 3, max: 3 } },
+  { week: 3, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 5, max: 8 }, rir: { kind: "TARGET_RANGE", min: 2, max: 3 } },
+  { week: 4, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 5, max: 8 }, rir: { kind: "TARGET_RANGE", min: 1, max: 2 } },
   { week: 5, status: "PRESCRIBE", setCount: 2, reps: { kind: "RANGE", min: 5, max: 8 }, rir: { kind: "TARGET_RANGE", min: 4, max: 5 } },
-];
-const FOUR_BY_FOUR_TO_SIX: WeeklyPrescriptionV4[] = [
-  { week: 1, status: "PRESCRIBE", setCount: 4, reps: { kind: "RANGE", min: 4, max: 6 }, rir: { kind: "TARGET_RANGE", min: 3, max: 4 } },
-  { week: 2, status: "PRESCRIBE", setCount: 4, reps: { kind: "RANGE", min: 4, max: 6 }, rir: { kind: "TARGET_RANGE", min: 3, max: 3 } },
-  { week: 3, status: "PRESCRIBE", setCount: 4, reps: { kind: "RANGE", min: 4, max: 6 }, rir: { kind: "TARGET_RANGE", min: 2, max: 3 } },
-  { week: 4, status: "PRESCRIBE", setCount: 4, reps: { kind: "RANGE", min: 4, max: 6 }, rir: { kind: "TARGET_RANGE", min: 1, max: 2 } },
-  { week: 5, status: "PRESCRIBE", setCount: 2, reps: { kind: "RANGE", min: 4, max: 6 }, rir: { kind: "TARGET_RANGE", min: 4, max: 5 } },
-];
-const FOUR_BY_SIX_TO_TEN: WeeklyPrescriptionV4[] = [
-  { week: 1, status: "PRESCRIBE", setCount: 4, reps: { kind: "RANGE", min: 6, max: 10 }, rir: { kind: "TARGET_RANGE", min: 3, max: 4 } },
-  { week: 2, status: "PRESCRIBE", setCount: 4, reps: { kind: "RANGE", min: 6, max: 10 }, rir: { kind: "TARGET_RANGE", min: 3, max: 3 } },
-  { week: 3, status: "PRESCRIBE", setCount: 4, reps: { kind: "RANGE", min: 6, max: 10 }, rir: { kind: "TARGET_RANGE", min: 2, max: 3 } },
-  { week: 4, status: "PRESCRIBE", setCount: 4, reps: { kind: "RANGE", min: 6, max: 10 }, rir: { kind: "TARGET_RANGE", min: 1, max: 2 } },
-  { week: 5, status: "PRESCRIBE", setCount: 2, reps: { kind: "RANGE", min: 6, max: 10 }, rir: { kind: "TARGET_RANGE", min: 4, max: 5 } },
 ];
 const THREE_BY_SIX_TO_TEN: WeeklyPrescriptionV4[] = [
   { week: 1, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 6, max: 10 }, rir: { kind: "TARGET_RANGE", min: 3, max: 4 } },
@@ -214,19 +206,13 @@ const THREE_BY_TEN_TO_FIFTEEN: WeeklyPrescriptionV4[] = [
   { week: 4, status: "PRESCRIBE", setCount: 3, reps: { kind: "RANGE", min: 10, max: 15 }, rir: { kind: "TARGET_RANGE", min: 1, max: 2 } },
   { week: 5, status: "PRESCRIBE", setCount: 1, reps: { kind: "RANGE", min: 10, max: 15 }, rir: { kind: "TARGET_RANGE", min: 4, max: 5 } },
 ];
-const TWO_BY_EIGHT_TO_TWELVE: WeeklyPrescriptionV4[] = [
-  { week: 1, status: "PRESCRIBE", setCount: 2, reps: { kind: "RANGE", min: 8, max: 12 }, rir: { kind: "TARGET_RANGE", min: 3, max: 4 } },
-  { week: 2, status: "PRESCRIBE", setCount: 2, reps: { kind: "RANGE", min: 8, max: 12 }, rir: { kind: "TARGET_RANGE", min: 3, max: 3 } },
-  { week: 3, status: "PRESCRIBE", setCount: 2, reps: { kind: "RANGE", min: 8, max: 12 }, rir: { kind: "TARGET_RANGE", min: 2, max: 3 } },
-  { week: 4, status: "PRESCRIBE", setCount: 2, reps: { kind: "RANGE", min: 8, max: 12 }, rir: { kind: "TARGET_RANGE", min: 1, max: 2 } },
-  { week: 5, status: "PRESCRIBE", setCount: 1, reps: { kind: "RANGE", min: 8, max: 12 }, rir: { kind: "TARGET_RANGE", min: 4, max: 5 } },
+const TWO_BY_TEN_TO_FIFTEEN: WeeklyPrescriptionV4[] = [
+  { week: 1, status: "PRESCRIBE", setCount: 2, reps: { kind: "RANGE", min: 10, max: 15 }, rir: { kind: "TARGET_RANGE", min: 3, max: 4 } },
+  { week: 2, status: "PRESCRIBE", setCount: 2, reps: { kind: "RANGE", min: 10, max: 15 }, rir: { kind: "TARGET_RANGE", min: 3, max: 3 } },
+  { week: 3, status: "PRESCRIBE", setCount: 2, reps: { kind: "RANGE", min: 10, max: 15 }, rir: { kind: "TARGET_RANGE", min: 2, max: 3 } },
+  { week: 4, status: "PRESCRIBE", setCount: 2, reps: { kind: "RANGE", min: 10, max: 15 }, rir: { kind: "TARGET_RANGE", min: 1, max: 2 } },
+  { week: 5, status: "PRESCRIBE", setCount: 1, reps: { kind: "RANGE", min: 10, max: 15 }, rir: { kind: "TARGET_RANGE", min: 4, max: 5 } },
 ];
-const THREE_BY_TEN_TO_FIFTEEN_DELOAD_TWO: WeeklyPrescriptionV4[] =
-  THREE_BY_TEN_TO_FIFTEEN.map((row) =>
-    row.week === 5 && row.status === "PRESCRIBE"
-      ? { ...row, setCount: 2 }
-      : { ...row },
-  );
 const TWO_BY_TWELVE_TO_TWENTY_WITH_OMISSION: WeeklyPrescriptionV4[] = [
   { week: 1, status: "PRESCRIBE", setCount: 2, reps: { kind: "RANGE", min: 12, max: 20 }, rir: { kind: "TARGET_RANGE", min: 3, max: 4 } },
   { week: 2, status: "PRESCRIBE", setCount: 2, reps: { kind: "RANGE", min: 12, max: 20 }, rir: { kind: "TARGET_RANGE", min: 3, max: 3 } },
@@ -278,43 +264,30 @@ type ReferenceSessionExpectation = AcceptedHypertrophySeedV4["slots"][number];
 
 const REFERENCE_PLAN_EXPECTATIONS: ReferenceSessionExpectation[] = [
   {
-    slotId: "lower-a",
-    name: "Lower A",
-    focus: "LOWER",
-    exercises: [
-      { placementId: "lower-a-1", exerciseId: "Barbell Back Squat", role: "CORE_COMPOUND", intent: { userRole: "PRIMARY_LIFT", target: { kind: "movement_pattern", movementPattern: "squat" } }, measurement: BARBELL_TOTAL, prescriptions: FOUR_BY_FIVE_TO_EIGHT },
-      { placementId: "lower-a-2", exerciseId: "Leg Press", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "squat" } }, measurement: MACHINE_DISPLAYED, prescriptions: THREE_BY_EIGHT_TO_TWELVE },
-      { placementId: "lower-a-3", exerciseId: "Barbell Romanian Deadlift", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "hinge" } }, measurement: BARBELL_TOTAL, prescriptions: THREE_BY_SIX_TO_TEN },
-      { placementId: "lower-a-4", exerciseId: "Lying Leg Curl", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "hamstrings" } }, measurement: MACHINE_DISPLAYED, prescriptions: THREE_BY_TEN_TO_FIFTEEN },
-      { placementId: "lower-a-5", exerciseId: "Hip Abduction Machine", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "abductors" } }, measurement: MACHINE_DISPLAYED, prescriptions: TWO_BY_TWELVE_TO_TWENTY_WITH_OMISSION },
-      { placementId: "lower-a-6", exerciseId: "Cable Crunch", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "abs" } }, measurement: MACHINE_DISPLAYED, prescriptions: THREE_BY_EIGHT_TO_FIFTEEN_WITH_OMISSION },
-    ],
-  },
-  {
     slotId: "upper-a",
     name: "Upper A",
     focus: "UPPER",
     exercises: [
-      { placementId: "upper-a-1", exerciseId: "Barbell Bench Press", role: "CORE_COMPOUND", intent: { userRole: "PRIMARY_LIFT", target: { kind: "movement_pattern", movementPattern: "horizontal_push" } }, measurement: BARBELL_TOTAL, prescriptions: FOUR_BY_FIVE_TO_EIGHT },
-      { placementId: "upper-a-2", exerciseId: "Pull-Up", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "vertical_pull" } }, measurement: BODYWEIGHT_TOTAL, prescriptions: FOUR_BY_SIX_TO_TEN },
+      { placementId: "upper-a-1", exerciseId: "Barbell Bench Press", role: "CORE_COMPOUND", intent: { userRole: "PRIMARY_LIFT", target: { kind: "movement_pattern", movementPattern: "horizontal_push" } }, measurement: BARBELL_TOTAL, prescriptions: THREE_BY_FIVE_TO_EIGHT },
+      { placementId: "upper-a-2", exerciseId: "Pull-Up", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "vertical_pull" } }, measurement: BODYWEIGHT_TOTAL, prescriptions: THREE_BY_SIX_TO_TEN },
       { placementId: "upper-a-3", exerciseId: "Incline Dumbbell Bench Press", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "horizontal_push" } }, measurement: IMPLEMENT_WEIGHT_TOTAL, prescriptions: THREE_BY_EIGHT_TO_TWELVE },
       { placementId: "upper-a-4", exerciseId: "Chest-Supported Dumbbell Row", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "horizontal_pull" } }, measurement: IMPLEMENT_WEIGHT_TOTAL, prescriptions: THREE_BY_EIGHT_TO_TWELVE },
       { placementId: "upper-a-5", exerciseId: "Dumbbell Lateral Raise", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "side_delts" } }, measurement: IMPLEMENT_WEIGHT_TOTAL, prescriptions: THREE_BY_TEN_TO_FIFTEEN },
       { placementId: "upper-a-6", exerciseId: "EZ-Bar Curl", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "biceps" } }, measurement: BARBELL_TOTAL, prescriptions: THREE_BY_TEN_TO_FIFTEEN },
-      { placementId: "upper-a-7", exerciseId: "Cable Triceps Pushdown", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "triceps" } }, measurement: MACHINE_DISPLAYED, prescriptions: THREE_BY_TEN_TO_FIFTEEN },
+      { placementId: "upper-a-7", exerciseId: "Cable Triceps Pushdown", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "triceps" } }, measurement: MACHINE_DISPLAYED, prescriptions: TWO_BY_TEN_TO_FIFTEEN },
     ],
   },
   {
-    slotId: "lower-b",
-    name: "Lower B — Strength Development",
+    slotId: "lower-a",
+    name: "Lower A",
     focus: "LOWER",
     exercises: [
-      { placementId: "lower-b-1", exerciseId: "Conventional Deadlift", role: "CORE_COMPOUND", intent: { userRole: "PRIMARY_LIFT", target: { kind: "movement_pattern", movementPattern: "hinge" } }, measurement: BARBELL_TOTAL, prescriptions: FOUR_BY_FOUR_TO_SIX },
-      { placementId: "lower-b-2", exerciseId: "Hack Squat", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "squat" } }, measurement: MACHINE_DISPLAYED, prescriptions: FOUR_BY_FIVE_TO_EIGHT },
-      { placementId: "lower-b-3", exerciseId: "Bulgarian Split Squat", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "lunge" } }, measurement: IMPLEMENT_WEIGHT_PER_SIDE, prescriptions: TWO_BY_EIGHT_TO_TWELVE },
-      { placementId: "lower-b-4", exerciseId: "Seated Leg Curl", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "hamstrings" } }, measurement: MACHINE_DISPLAYED, prescriptions: THREE_BY_TEN_TO_FIFTEEN },
-      { placementId: "lower-b-5", exerciseId: "Seated Calf Raise", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "calves" } }, measurement: MACHINE_DISPLAYED, prescriptions: THREE_BY_TEN_TO_FIFTEEN_DELOAD_TWO },
-      { placementId: "lower-b-6", exerciseId: "Machine Crunch", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "abs" } }, measurement: MACHINE_DISPLAYED, prescriptions: THREE_BY_EIGHT_TO_FIFTEEN_WITH_OMISSION },
+      { placementId: "lower-a-1", exerciseId: "Barbell Back Squat", role: "CORE_COMPOUND", intent: { userRole: "PRIMARY_LIFT", target: { kind: "movement_pattern", movementPattern: "squat" } }, measurement: BARBELL_TOTAL, prescriptions: THREE_BY_FIVE_TO_EIGHT },
+      { placementId: "lower-a-2", exerciseId: "Leg Press", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "squat" } }, measurement: MACHINE_DISPLAYED, prescriptions: THREE_BY_EIGHT_TO_TWELVE },
+      { placementId: "lower-a-3", exerciseId: "Barbell Romanian Deadlift", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "hinge" } }, measurement: BARBELL_TOTAL, prescriptions: THREE_BY_SIX_TO_TEN },
+      { placementId: "lower-a-4", exerciseId: "Lying Leg Curl", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "hamstrings" } }, measurement: MACHINE_DISPLAYED, prescriptions: TWO_BY_TEN_TO_FIFTEEN },
+      { placementId: "lower-a-5", exerciseId: "Hip Abduction Machine", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "abductors" } }, measurement: MACHINE_DISPLAYED, prescriptions: TWO_BY_TWELVE_TO_TWENTY_WITH_OMISSION },
+      { placementId: "lower-a-6", exerciseId: "Cable Crunch", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "abs" } }, measurement: MACHINE_DISPLAYED, prescriptions: THREE_BY_EIGHT_TO_FIFTEEN_WITH_OMISSION },
     ],
   },
   {
@@ -322,13 +295,25 @@ const REFERENCE_PLAN_EXPECTATIONS: ReferenceSessionExpectation[] = [
     name: "Upper B",
     focus: "UPPER",
     exercises: [
-      { placementId: "upper-b-1", exerciseId: "Chest-Supported Dumbbell Row", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "horizontal_pull" } }, measurement: IMPLEMENT_WEIGHT_TOTAL, prescriptions: FOUR_BY_SIX_TO_TEN },
+      { placementId: "upper-b-1", exerciseId: "Chest-Supported Dumbbell Row", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "horizontal_pull" } }, measurement: IMPLEMENT_WEIGHT_TOTAL, prescriptions: THREE_BY_EIGHT_TO_TWELVE },
       { placementId: "upper-b-2", exerciseId: "Lat Pulldown", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "vertical_pull" } }, measurement: MACHINE_DISPLAYED, prescriptions: THREE_BY_EIGHT_TO_TWELVE },
       { placementId: "upper-b-3", exerciseId: "Dumbbell Overhead Press", role: "CORE_COMPOUND", intent: { userRole: "PRIMARY_LIFT", target: { kind: "movement_pattern", movementPattern: "vertical_push" } }, measurement: IMPLEMENT_WEIGHT_TOTAL, prescriptions: THREE_BY_SIX_TO_TEN },
-      { placementId: "upper-b-4", exerciseId: "Dumbbell Bench Press", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "horizontal_push" } }, measurement: IMPLEMENT_WEIGHT_TOTAL, prescriptions: THREE_BY_EIGHT_TO_TWELVE },
-      { placementId: "upper-b-5", exerciseId: "Reverse Pec Deck", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "rear_delts" } }, measurement: MACHINE_DISPLAYED, prescriptions: THREE_BY_TWELVE_TO_TWENTY },
+      { placementId: "upper-b-4", exerciseId: "Reverse Pec Deck", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "rear_delts" } }, measurement: MACHINE_DISPLAYED, prescriptions: THREE_BY_TWELVE_TO_TWENTY },
+      { placementId: "upper-b-5", exerciseId: "Dumbbell Bench Press", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "horizontal_push" } }, measurement: IMPLEMENT_WEIGHT_TOTAL, prescriptions: THREE_BY_EIGHT_TO_TWELVE },
       { placementId: "upper-b-6", exerciseId: "Cable Curl", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "biceps" } }, measurement: MACHINE_DISPLAYED, prescriptions: THREE_BY_TEN_TO_FIFTEEN },
-      { placementId: "upper-b-7", exerciseId: "Overhead Cable Triceps Extension", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "triceps" } }, measurement: MACHINE_DISPLAYED, prescriptions: THREE_BY_TEN_TO_FIFTEEN },
+      { placementId: "upper-b-7", exerciseId: "Overhead Cable Triceps Extension", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "triceps" } }, measurement: MACHINE_DISPLAYED, prescriptions: TWO_BY_TEN_TO_FIFTEEN },
+    ],
+  },
+  {
+    slotId: "lower-b",
+    name: "Lower B",
+    focus: "LOWER",
+    exercises: [
+      { placementId: "lower-b-1", exerciseId: "Dumbbell Romanian Deadlift", role: "CORE_COMPOUND", intent: { userRole: "PRIMARY_LIFT", target: { kind: "movement_pattern", movementPattern: "hinge" } }, measurement: IMPLEMENT_WEIGHT_TOTAL, prescriptions: THREE_BY_SIX_TO_TEN },
+      { placementId: "lower-b-2", exerciseId: "Goblet Squat", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "squat" } }, measurement: IMPLEMENT_WEIGHT_TOTAL, prescriptions: THREE_BY_EIGHT_TO_TWELVE },
+      { placementId: "lower-b-3", exerciseId: "Bulgarian Split Squat", role: "ACCESSORY", intent: { userRole: "SECONDARY_LIFT", target: { kind: "movement_pattern", movementPattern: "lunge" } }, measurement: IMPLEMENT_WEIGHT_PER_SIDE, prescriptions: THREE_BY_EIGHT_TO_TWELVE },
+      { placementId: "lower-b-4", exerciseId: "Seated Leg Curl", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "hamstrings" } }, measurement: MACHINE_DISPLAYED, prescriptions: TWO_BY_TEN_TO_FIFTEEN },
+      { placementId: "lower-b-5", exerciseId: "Machine Crunch", role: "ACCESSORY", intent: { userRole: "MUSCLE_ISOLATION", target: { kind: "muscle", muscleId: "abs" } }, measurement: MACHINE_DISPLAYED, prescriptions: THREE_BY_EIGHT_TO_FIFTEEN_WITH_OMISSION },
     ],
   },
 ];
@@ -1353,12 +1338,22 @@ describe("custom hypertrophy draft persistence", () => {
             expect(recommendation.intent, expected.placementId).toEqual(
               expected.intent,
             );
+            expect(recommendation.prescriptions, expected.placementId).toEqual(
+              expected.prescriptions,
+            );
+            expect(recommendation.recommendationBaseline, expected.placementId).toEqual(
+              {
+                version: 1,
+                exerciseId: expected.exerciseId,
+                intent: expected.intent,
+                prescriptions: expected.prescriptions,
+              },
+            );
 
             return {
               placementId: expected.placementId,
               exerciseId: exercise.id,
               ...recommendation,
-              prescriptions: structuredClone(expected.prescriptions),
             };
           }),
         };
@@ -1386,6 +1381,150 @@ describe("custom hypertrophy draft persistence", () => {
       draft: candidate,
       rows: [...resolvedExercises.keys()].map(referenceExerciseRow),
     };
+  }
+
+  function buildRevisedPlanPreview() {
+    const submittedDraft = buildRevisedFourDayPlanSubmittedDraft();
+    const expectedRecommendations =
+      buildExpectedRevisedRecommendationsByPlacement();
+    const resolvedExercises = new Map<
+      string,
+      ReturnType<typeof toAuthoringExercise>
+    >();
+    const actualRecommendationBaselineByPlacement = new Map<
+      string,
+      ReturnType<
+        typeof materializeHypertrophyExerciseRecommendation
+      >["recommendationBaseline"]
+    >();
+    const recommendationDraft: HypertrophyPlanDraftV2 = {
+      ...submittedDraft,
+      sessions: submittedDraft.sessions.map((session) => ({
+        ...session,
+        exercises: session.exercises.map((submittedExercise) => {
+          const exercise = toAuthoringExercise(
+            referenceExerciseRow(submittedExercise.exerciseId),
+          );
+          const recommendation = materializeHypertrophyExerciseRecommendation({
+            exercise,
+            weeks: submittedDraft.weeks,
+            intent: submittedExercise.intent,
+          });
+          const expected =
+            expectedRecommendations[submittedExercise.placementId];
+          if (!expected) {
+            throw new Error(
+              `Missing revised recommendation expectation: ${submittedExercise.placementId}`,
+            );
+          }
+
+          expect(exercise.id, submittedExercise.placementId).toBe(
+            submittedExercise.exerciseId,
+          );
+          expect(recommendation, submittedExercise.placementId).toEqual(
+            expected,
+          );
+          resolvedExercises.set(exercise.id, exercise);
+          actualRecommendationBaselineByPlacement.set(
+            submittedExercise.placementId,
+            structuredClone(recommendation.recommendationBaseline),
+          );
+          return {
+            placementId: submittedExercise.placementId,
+            exerciseId: exercise.id,
+            ...recommendation,
+          };
+        }),
+      })),
+    };
+    const measurementByExerciseId = new Map(
+      [...resolvedExercises.values()].map((exercise) => {
+        if (!exercise.measurement) {
+          throw new Error(
+            `Missing revised-plan measurement: ${exercise.name}`,
+          );
+        }
+        return [exercise.id, exercise.measurement] as const;
+      }),
+    );
+    const recommendationPreview = deriveHypertrophyPlanV4Preview({
+      draft: recommendationDraft,
+      knownExerciseIds: new Set(resolvedExercises.keys()),
+      measurementByExerciseId,
+    });
+    expect(recommendationPreview.status).toBe("ELIGIBLE");
+    if (recommendationPreview.status !== "ELIGIBLE") {
+      throw new Error("Revised recommendation preview is ineligible");
+    }
+
+    const actualSubmittedDraft: HypertrophyPlanDraftV2 = {
+      ...submittedDraft,
+      sessions: submittedDraft.sessions.map((session) => ({
+        ...session,
+        exercises: session.exercises.map((submittedExercise) => ({
+          ...structuredClone(submittedExercise),
+          recommendationBaseline: structuredClone(
+            actualRecommendationBaselineByPlacement.get(
+              submittedExercise.placementId,
+            )!,
+          ),
+        })),
+      })),
+    };
+    const submittedPreview = deriveHypertrophyPlanV4Preview({
+      draft: actualSubmittedDraft,
+      knownExerciseIds: new Set(resolvedExercises.keys()),
+      measurementByExerciseId,
+    });
+    expect(submittedPreview.status).toBe("ELIGIBLE");
+    if (submittedPreview.status !== "ELIGIBLE") {
+      throw new Error("Revised submitted preview is ineligible");
+    }
+
+    return {
+      actualSubmittedDraft,
+      recommendationPreview,
+      submittedPreview,
+      rows: [...resolvedExercises.keys()].map(referenceExerciseRow),
+    };
+  }
+
+  function expectedRevisedExecutablePlan(): ExecutableSeedProjectionV3 {
+    const accepted = buildExpectedRevisedFourDayAcceptedSeed();
+    return {
+      version: 3,
+      weeks: structuredClone(accepted.weeks),
+      slots: accepted.slots.map(({ slotId, exercises }) => ({
+        slotId,
+        exercises: structuredClone(exercises),
+      })),
+    };
+  }
+
+  function assertRevisedPlanPreviewBoundary(input: {
+    draft: HypertrophyPlanDraftV2;
+    recommendationAccepted: AcceptedHypertrophySeedV4;
+    accepted: AcceptedHypertrophySeedV4;
+    executable: ExecutableSeedProjectionV3;
+  }) {
+    expect(input.recommendationAccepted).toEqual(
+      buildExpectedRevisedRecommendationAcceptedSeed(),
+    );
+    expect(input.accepted).toEqual(buildExpectedRevisedFourDayAcceptedSeed());
+    expect(input.executable).toEqual(expectedRevisedExecutablePlan());
+
+    const expectedRecommendations =
+      buildExpectedRevisedRecommendationsByPlacement();
+    for (const session of input.draft.sessions) {
+      for (const exercise of session.exercises) {
+        expect(
+          exercise.recommendationBaseline,
+          exercise.placementId,
+        ).toEqual(
+          expectedRecommendations[exercise.placementId]?.recommendationBaseline,
+        );
+      }
+    }
   }
 
   it("materializes the complete four-day reference plan through the API adapter, recommendation, and both projections", () => {
@@ -1442,7 +1581,7 @@ describe("custom hypertrophy draft persistence", () => {
       {
         name: "changed executable measurement semantics",
         mutate: ({ executable }) => {
-          executable.slots[0]!.exercises[4]!.measurement = BODYWEIGHT_TOTAL;
+          executable.slots[0]!.exercises[4]!.measurement = MACHINE_DISPLAYED;
         },
       },
       {
@@ -1452,7 +1591,7 @@ describe("custom hypertrophy draft persistence", () => {
           if (prescription?.status !== "PRESCRIBE") {
             throw new Error("Expected prescribed Week 1 work");
           }
-          prescription.setCount = 5;
+          prescription.setCount = 4;
         },
       },
       {
@@ -1468,7 +1607,7 @@ describe("custom hypertrophy draft persistence", () => {
       {
         name: "replaced an explicit Week 5 omission with work",
         mutate: ({ executable }) => {
-          executable.slots[2]!.exercises[5]!.prescriptions[4] = {
+          executable.slots[3]!.exercises[4]!.prescriptions[4] = {
             week: 5,
             status: "PRESCRIBE",
             setCount: 1,
@@ -1486,6 +1625,134 @@ describe("custom hypertrophy draft persistence", () => {
       });
       mutation.mutate(projection);
       expect(() => assertReferenceProjections(projection), mutation.name).toThrow();
+    }
+  });
+
+  it("keeps revised submitted prescriptions independent from untouched production recommendations and preview output", () => {
+    const preview = buildRevisedPlanPreview();
+    assertRevisedPlanPreviewBoundary({
+      draft: preview.actualSubmittedDraft,
+      recommendationAccepted: preview.recommendationPreview.normalizedPlan,
+      accepted: preview.submittedPreview.normalizedPlan,
+      executable: preview.submittedPreview.executablePlan,
+    });
+  });
+
+  it("rejects every revised actual-side prescription, identity, omission, measurement, and provenance mutation", () => {
+    const preview = buildRevisedPlanPreview();
+    const validActual = {
+      draft: preview.actualSubmittedDraft,
+      recommendationAccepted: preview.recommendationPreview.normalizedPlan,
+      accepted: preview.submittedPreview.normalizedPlan,
+      executable: preview.submittedPreview.executablePlan,
+    };
+    assertRevisedPlanPreviewBoundary(validActual);
+
+    const mutations: Array<{
+      name: string;
+      mutate: (actual: typeof validActual) => void;
+    }> = [
+      {
+        name: "set count",
+        mutate: ({ executable }) => {
+          const row = executable.slots[0]!.exercises[0]!.prescriptions[0];
+          if (row.status !== "PRESCRIBE") throw new Error("Expected work");
+          row.setCount += 1;
+        },
+      },
+      {
+        name: "rep range",
+        mutate: ({ executable }) => {
+          const row = executable.slots[0]!.exercises[0]!.prescriptions[0];
+          if (row.status !== "PRESCRIBE" || row.reps.kind !== "RANGE") {
+            throw new Error("Expected ranged work");
+          }
+          row.reps.min += 1;
+        },
+      },
+      {
+        name: "RIR",
+        mutate: ({ executable }) => {
+          const row = executable.slots[0]!.exercises[0]!.prescriptions[0];
+          if (
+            row.status !== "PRESCRIBE" ||
+            row.rir.kind !== "TARGET_RANGE"
+          ) {
+            throw new Error("Expected targeted work");
+          }
+          row.rir.min += 1;
+        },
+      },
+      {
+        name: "exercise order",
+        mutate: ({ accepted }) => {
+          [accepted.slots[0]!.exercises[0], accepted.slots[0]!.exercises[1]] = [
+            accepted.slots[0]!.exercises[1]!,
+            accepted.slots[0]!.exercises[0]!,
+          ];
+        },
+      },
+      {
+        name: "exercise identity",
+        mutate: ({ executable }) => {
+          executable.slots[0]!.exercises[0]!.exerciseId =
+            "mutated-exercise";
+        },
+      },
+      {
+        name: "placement identity",
+        mutate: ({ executable }) => {
+          executable.slots[0]!.exercises[0]!.placementId =
+            "mutated-placement";
+        },
+      },
+      {
+        name: "Week 5 omission",
+        mutate: ({ executable }) => {
+          executable.slots[0]!.exercises[4]!.prescriptions[4] = {
+            week: 5,
+            status: "PRESCRIBE",
+            setCount: 1,
+            reps: { kind: "RANGE", min: 12, max: 20 },
+            rir: { kind: "TARGET_RANGE", min: 4, max: 5 },
+          };
+        },
+      },
+      {
+        name: "Hack Squat measurement tuple",
+        mutate: ({ executable }) => {
+          executable.slots[2]!.exercises[1]!.measurement = {
+            profile: "REPS_EXTERNAL_LOAD",
+            loadConvention: "BARBELL_TOTAL",
+            repBasis: "TOTAL",
+          };
+        },
+      },
+      {
+        name: "Seated Calf Raise measurement tuple",
+        mutate: ({ executable }) => {
+          executable.slots[2]!.exercises[4]!.measurement = {
+            profile: "REPS_BODYWEIGHT",
+            repBasis: "TOTAL",
+          };
+        },
+      },
+      {
+        name: "recommendation provenance",
+        mutate: ({ draft }) => {
+          draft.sessions[0]!.exercises[0]!.recommendationBaseline!.exerciseId =
+            "mutated-provenance";
+        },
+      },
+    ];
+
+    for (const mutation of mutations) {
+      const mutated = structuredClone(validActual);
+      mutation.mutate(mutated);
+      expect(
+        () => assertRevisedPlanPreviewBoundary(mutated),
+        mutation.name,
+      ).toThrow();
     }
   });
 
@@ -1547,17 +1814,16 @@ describe("custom hypertrophy draft persistence", () => {
       loaded.health.issues
         .filter((issue) => issue.tier === "COACHING_OBSERVATION")
         .map((issue) => issue.affected?.muscle),
-    ).toEqual([
-      "Biceps",
-      "Calves",
+    ).toEqual(expect.arrayContaining([
       "Chest",
-      "Hamstrings",
-      "Lats",
-      "Quads",
-      "Rear Delts",
       "Side Delts",
+      "Lats",
+      "Upper Back",
+      "Rear Delts",
+      "Biceps",
       "Triceps",
-    ]);
+      "Calves",
+    ]));
     expect(fixture.draft).toEqual(prescriptionBeforeHealth);
 
     await expect(

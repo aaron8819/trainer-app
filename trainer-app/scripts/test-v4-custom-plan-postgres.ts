@@ -185,145 +185,61 @@ async function main(): Promise<void> {
     "V4_REFERENCE_INITIAL_HEALTH_REVISION_MISMATCH",
   );
 
-  const sessionDefinitions = [
-    {
-      slotId: "upper-a",
-      name: "Upper A",
-      focus: "UPPER" as const,
-      exercises: [
-        "Barbell Bench Press",
-        "Pull-Up",
-        "Incline Dumbbell Bench Press",
-        "Chest-Supported Dumbbell Row",
-        "Dumbbell Lateral Raise",
-        "EZ-Bar Curl",
-        "Cable Triceps Pushdown",
-      ],
-    },
-    {
-      slotId: "lower-a",
-      name: "Lower A",
-      focus: "LOWER" as const,
-      exercises: [
-        "Barbell Back Squat",
-        "Leg Press",
-        "Barbell Romanian Deadlift",
-        "Lying Leg Curl",
-        "Hip Abduction Machine",
-        "Cable Crunch",
-      ],
-    },
-    {
-      slotId: "upper-b",
-      name: "Upper B",
-      focus: "UPPER" as const,
-      exercises: [
-        "Chest-Supported Dumbbell Row",
-        "Lat Pulldown",
-        "Dumbbell Overhead Press",
-        "Reverse Pec Deck",
-        "Dumbbell Bench Press",
-        "Cable Curl",
-        "Overhead Cable Triceps Extension",
-      ],
-    },
-    {
-      slotId: "lower-b",
-      name: "Lower B",
-      focus: "LOWER" as const,
-      exercises: [
-        "Dumbbell Romanian Deadlift",
-        "Goblet Squat",
-        "Bulgarian Split Squat",
-        "Seated Leg Curl",
-        "Machine Crunch",
-      ],
-    },
-  ];
+  const submittedFixtureModule = await import(
+    "@/lib/engine/hypertrophy-plan-authoring-v4-revised.fixture"
+  );
+  const expectedModule = await import(
+    "@/lib/api/hypertrophy-plan-authoring-v4-revised.expected"
+  );
+  const { normalizeAcceptedHypertrophySeedV4 } = await import(
+    "@/lib/api/mesocycle-seed-revision"
+  );
   const exerciseByName = new Map(
     loaded.exercises.map((exercise) => [exercise.name, exercise]),
   );
-  const recommendationDraft = {
-    version: 2 as const,
-    settings: loaded.draft.settings,
-    weeks: [1, 2, 3, 4, 5].map((week) => ({
-      week,
-      phase: week === 5 ? "DELOAD" as const : "ACCUMULATION" as const,
-    })),
-    sessions: sessionDefinitions.map((session) => {
-      const existingIntents: Array<
-        import("@/lib/engine/hypertrophy-plan-authoring").AcceptedExerciseIntentV2
-      > = [];
-      return {
-        slotId: session.slotId,
-        name: session.name,
-        focus: session.focus,
-        exercises: session.exercises.map((name, index) => {
-          const exercise = exerciseByName.get(name);
-          assert(exercise, `V4_REFERENCE_EXERCISE_NOT_FOUND:${name}`);
-          const recommendation =
-            authoringModule.materializeHypertrophyExerciseRecommendation({
-              exercise,
-              weeks: [1, 2, 3, 4, 5].map((week) => ({
-                week,
-                phase: week === 5 ? "DELOAD" as const : "ACCUMULATION" as const,
-              })),
-              existingIntents,
-            });
-          existingIntents.push(recommendation.intent);
-          return {
-            placementId: `${session.slotId}-${index + 1}`,
-            exerciseId: exercise.id,
-            ...recommendation,
-          };
-        }),
-      };
-    }),
-  };
 
-  const referenceFixtureModule = await import(
-    "@/lib/engine/hypertrophy-plan-authoring-v4.fixture"
+  const draft = submittedFixtureModule.buildRevisedFourDayPlanSubmittedDraft();
+  for (const session of draft.sessions) {
+    for (const exercise of session.exercises) {
+      const catalogExercise = exerciseByName.get(exercise.exerciseId);
+      assert(
+        catalogExercise,
+        `V4_REVISED_INPUT_EXERCISE_NOT_FOUND:${exercise.exerciseId}`,
+      );
+      exercise.exerciseId = catalogExercise.id;
+    }
+  }
+
+  const stableExpected =
+    expectedModule.buildExpectedRevisedFourDayAcceptedSeed();
+  assert.equal(
+    normalizeAcceptedHypertrophySeedV4(stableExpected).hash,
+    expectedModule.REVISED_FOUR_DAY_STABLE_CANONICAL_HASH,
+    "V4_REVISED_STABLE_LITERAL_HASH_MISMATCH",
   );
-  const referenceSeed =
-    referenceFixtureModule.buildV4CustomPlanReferenceAcceptedSeed();
-  const expectedAccepted = structuredClone(referenceSeed);
+  const expectedAccepted =
+    expectedModule.buildExpectedRevisedFourDayAcceptedSeed();
   for (const slot of expectedAccepted.slots) {
     for (const exercise of slot.exercises) {
       const catalogExercise = exerciseByName.get(exercise.exerciseId);
       assert(
         catalogExercise,
-        `V4_EXACT_REFERENCE_EXERCISE_NOT_FOUND:${exercise.exerciseId}`,
+        `V4_REVISED_EXPECTED_EXERCISE_NOT_FOUND:${exercise.exerciseId}`,
       );
       exercise.exerciseId = catalogExercise.id;
     }
   }
-  const exactDraft = {
-    version: 2 as const,
-    settings: recommendationDraft.settings,
-    weeks: structuredClone(expectedAccepted.weeks),
-    sessions: expectedAccepted.slots.map((slot) => ({
-      slotId: slot.slotId,
-      name: slot.name,
-      focus: slot.focus,
-      exercises: slot.exercises.map((exercise) => ({
-        placementId: exercise.placementId,
-        exerciseId: exercise.exerciseId,
-        intent: structuredClone(exercise.intent),
-        prescriptions: structuredClone(exercise.prescriptions),
-      })),
-    })),
-  };
-  assert.deepEqual(
-    exactDraft.sessions.map((session) => ({
-      name: session.name,
-      placements: session.exercises.length,
-    })),
-    [
-      { name: "Lower A", placements: 6 },
-      { name: "Upper A", placements: 7 },
-      { name: "Lower B — Strength Development", placements: 6 },
-      { name: "Upper B", placements: 7 },
-    ],
+  const expectedBoundHash =
+    normalizeAcceptedHypertrophySeedV4(expectedAccepted).hash;
+  const materiallyChangedExpected = structuredClone(expectedAccepted);
+  const changedRow =
+    materiallyChangedExpected.slots[0]!.exercises[0]!.prescriptions[0]!;
+  assert(changedRow.status === "PRESCRIBE");
+  changedRow.setCount += 1;
+  assert.notEqual(
+    normalizeAcceptedHypertrophySeedV4(materiallyChangedExpected).hash,
+    expectedBoundHash,
+    "V4_REVISED_HASH_IGNORED_MATERIAL_CHANGE",
   );
 
   const saved = await draftsModule.saveHypertrophyPlanDraft({
@@ -331,24 +247,22 @@ async function main(): Promise<void> {
     planId: created.planId,
     expectedRevision: created.draftRevision,
     name: "Five-week V4 reference",
-    draft: exactDraft,
+    draft,
   });
   assert(saved.preview?.status === "ELIGIBLE", "V4_REFERENCE_PREVIEW_INELIGIBLE");
   assert(saved.health.status === "AVAILABLE", "V4_REFERENCE_HEALTH_UNAVAILABLE");
   assert.equal(saved.health.draftRevision, saved.revision);
   assert.equal(saved.health.summary.blockingSafety, 0);
   assert.equal(saved.health.summary.importantWarnings, 0);
-  assert(
-    !saved.health.issues.some((issue) => issue.code === "LIMITATION_UNRECOGNIZED"),
-    "V4_REFERENCE_UNRECOGNIZED_LIMITATION",
-  );
-  assert.deepEqual(saved.preview.normalizedPlan, expectedAccepted);
-  const { normalizeAcceptedHypertrophySeedV4 } = await import(
-    "@/lib/api/mesocycle-seed-revision"
+  assert.deepEqual(
+    saved.preview.normalizedPlan,
+    expectedAccepted,
+    "V4_REVISED_PREVIEW_DID_NOT_MATCH_INDEPENDENT_EXPECTED",
   );
   assert.equal(
     saved.preview.hash,
-    normalizeAcceptedHypertrophySeedV4(expectedAccepted).hash,
+    expectedBoundHash,
+    "V4_REVISED_DIRECT_AND_PERSISTED_HASH_MISMATCH",
   );
   assert.match(
     saved.health.confirmationScope,
@@ -386,8 +300,13 @@ async function main(): Promise<void> {
       reloaded.preview.hash === saved.preview.hash,
     "V4_REFERENCE_RELOAD_MISMATCH",
   );
+  assert.deepEqual(
+    reloaded.preview.normalizedPlan,
+    expectedAccepted,
+    "V4_REVISED_RELOAD_DID_NOT_PRESERVE_EXPECTED",
+  );
 
-  const blockedDraft = structuredClone(exactDraft);
+  const blockedDraft = structuredClone(draft);
   blockedDraft.sessions[3]!.exercises = [];
   const blocked = await draftsModule.saveHypertrophyPlanDraft({
     userId: user.id,
@@ -418,7 +337,7 @@ async function main(): Promise<void> {
     planId: created.planId,
     expectedRevision: blocked.revision,
     name: "Five-week V4 reference",
-    draft: exactDraft,
+    draft,
   });
   assert(restored.preview?.status === "ELIGIBLE", "V4_REFERENCE_RESTORE_INELIGIBLE");
   assert(restored.health.status === "AVAILABLE", "V4_REFERENCE_RESTORE_HEALTH_UNAVAILABLE");
@@ -431,7 +350,7 @@ async function main(): Promise<void> {
     created.planId,
   );
   assert(restoredDraft?.draft.version === 2, "V4_REFERENCE_RESTORED_DRAFT_NOT_LOADED");
-  assert.deepEqual(restoredDraft.draft, exactDraft);
+  assert.deepEqual(restoredDraft.draft, draft);
   assert.equal(restoredDraft.health.draftRevision, restored.revision);
 
   const warningPlan = await draftsModule.createCustomHypertrophyPlan({
@@ -443,7 +362,7 @@ async function main(): Promise<void> {
     authorMethod: "WEEKLY",
     preset: "UPPER_LOWER_4",
   });
-  const warningDraft = structuredClone(exactDraft);
+  const warningDraft = structuredClone(draft);
   warningDraft.sessions[0]!.exercises.push({
     ...structuredClone(warningDraft.sessions[0]!.exercises[0]!),
     placementId: "lower-a-warning-duplicate",
@@ -543,6 +462,25 @@ async function main(): Promise<void> {
     expectedDraftRevision: restored.revision,
     confirmedPreviewHash: restored.preview.hash,
   });
+  const acceptedRevision = await prisma.mesocycleSeedRevision.findUniqueOrThrow({
+    where: { id: ready.revisionId },
+    select: {
+      revision: true,
+      payloadHash: true,
+      seedPayload: true,
+    },
+  });
+  assert.equal(acceptedRevision.revision, 1);
+  assert.equal(
+    acceptedRevision.payloadHash,
+    expectedBoundHash,
+    "V4_REVISED_FINALIZATION_HASH_DRIFT",
+  );
+  assert.deepEqual(
+    acceptedRevision.seedPayload,
+    expectedAccepted,
+    "V4_REVISED_IMMUTABLE_REVISION_PAYLOAD_MISMATCH",
+  );
   const target = await planModule.loadPlanActivationTarget(user.id, created.planId);
   assert(target.status === "READY", "V4_REFERENCE_PLAN_NOT_READY");
   await activePlanModule.selectActivePlan({
@@ -554,16 +492,19 @@ async function main(): Promise<void> {
 
   const scheduled = await nextSessionModule.loadNextWorkoutContext(user.id);
   assert(scheduled.intent && scheduled.slotId, "V4_REFERENCE_SESSION_NOT_SCHEDULED");
-  assert.equal(scheduled.slotId, "lower-a", "V4_REFERENCE_FIRST_SLOT_NOT_LOWER_A");
+  assert.equal(
+    scheduled.slotId,
+    "lower-a",
+    "V4_REVISED_FIRST_SCHEDULED_SLOT_NOT_LOWER_A",
+  );
   const { sessionIntentSchema } = await import("@/lib/validation");
   const materialized = await templateSessionModule.generateSessionFromIntent(
     user.id,
     { intent: sessionIntentSchema.parse(scheduled.intent), slotId: scheduled.slotId },
   );
   assert(!("error" in materialized), "V4_REFERENCE_MATERIALIZATION_FAILED");
-  const accepted = restored.preview.normalizedPlan;
   const expectedSlot = authoringModule
-    .resolveAcceptedHypertrophySeedV4Week(accepted, 1)
+    .resolveAcceptedHypertrophySeedV4Week(expectedAccepted, 1)
     .slots.find((slot) => slot.slotId === scheduled.slotId);
   assert(expectedSlot, "V4_REFERENCE_ACCEPTED_SLOT_NOT_FOUND");
   const actualExercises = [
@@ -598,6 +539,16 @@ async function main(): Promise<void> {
       ?.seedProvenance?.revisionId,
     ready.revisionId,
   );
+  assert.equal(
+    materialized.selection.sessionDecisionReceipt?.sessionProvenance
+      ?.compositionSource,
+    "persisted_slot_plan_seed",
+  );
+  assert(
+    !("finisher" in materialized) &&
+      !("finisher" in materialized.workout),
+    "V4_REVISED_UNINTENDED_FINISHER_COMPOSITION",
+  );
 
   console.log(JSON.stringify({
     status: "PASS",
@@ -608,8 +559,9 @@ async function main(): Promise<void> {
     warningRevisionId: warningReady.revisionId,
     slotId: scheduled.slotId,
     exerciseCount: actualExercises.length,
-    previewHash: saved.preview.hash,
-    placementCounts: exactDraft.sessions.map((session) => session.exercises.length),
+    stableFixtureHash: expectedModule.REVISED_FOUR_DAY_STABLE_CANONICAL_HASH,
+    databaseBoundHash: saved.preview.hash,
+    placementCounts: draft.sessions.map((session) => session.exercises.length),
   }));
   } finally {
     await closeAppResources?.();

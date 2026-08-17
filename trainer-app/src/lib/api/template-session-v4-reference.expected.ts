@@ -17,8 +17,8 @@ export type ExpectedV4ReferenceExercise = {
 export type ExpectedV4ReferenceCase = {
   week: number;
   phase: "accumulation" | "deload";
-  slotId: "lower-a" | "upper-a" | "lower-b" | "upper-b";
-  focus: "lower" | "upper";
+  slotId: "upper-a" | "lower-a" | "upper-b" | "lower-b";
+  focus: "upper" | "lower";
   sequenceIndex: number;
   sequenceLength: 4;
   exerciseCount: number;
@@ -39,24 +39,24 @@ export type ExpectedV4ReferenceCase = {
   };
 };
 
-type ExpectedPlacement = {
-  placementId: string;
-  exerciseId: string;
-  setCount: number;
-  deloadSetCount?: number;
-  omitDeload?: true;
-  reps: ExpectedReps;
-  measurement: ExpectedMeasurement;
-};
-
-type ExpectedSession = {
-  slotId: ExpectedV4ReferenceCase["slotId"];
-  focus: ExpectedV4ReferenceCase["focus"];
-  placements: ExpectedPlacement[];
-};
-
 export const V4_REFERENCE_CANONICAL_HASH =
-  "48d34eb7e950a6d0fa564a234ed7e257a8d30681519ba52c019fe47a6066dfef";
+  "3d4e807cbafdb89bd52dc0fb475842b8c18761e2212967614e41acf5e22913b9";
+
+export const V4_REFERENCE_PLACEMENT_IDS_BY_SLOT = {
+  "upper-a": [
+    "upper-a-1", "upper-a-2", "upper-a-3", "upper-a-4",
+    "upper-a-5", "upper-a-6", "upper-a-7",
+  ],
+  "lower-a": [
+    "lower-a-1", "lower-a-2", "lower-a-3",
+    "lower-a-4", "lower-a-5", "lower-a-6",
+  ],
+  "upper-b": [
+    "upper-b-1", "upper-b-2", "upper-b-3", "upper-b-4",
+    "upper-b-5", "upper-b-6", "upper-b-7",
+  ],
+  "lower-b": ["lower-b-1", "lower-b-2", "lower-b-3", "lower-b-4", "lower-b-5"],
+} as const;
 
 const barbell: ExpectedMeasurement = {
   profile: "REPS_EXTERNAL_LOAD",
@@ -83,125 +83,291 @@ const bodyweight: ExpectedMeasurement = {
   repBasis: "TOTAL",
 };
 
-const expectedSessions: ExpectedSession[] = [
-  {
-    slotId: "lower-a",
-    focus: "lower",
-    placements: [
-      { placementId: "lower-a-1", exerciseId: "Barbell Back Squat", setCount: 4, deloadSetCount: 2, reps: { min: 5, max: 8 }, measurement: barbell },
-      { placementId: "lower-a-2", exerciseId: "Leg Press", setCount: 3, deloadSetCount: 2, reps: { min: 8, max: 12 }, measurement: machine },
-      { placementId: "lower-a-3", exerciseId: "Barbell Romanian Deadlift", setCount: 3, deloadSetCount: 2, reps: { min: 6, max: 10 }, measurement: barbell },
-      { placementId: "lower-a-4", exerciseId: "Lying Leg Curl", setCount: 3, deloadSetCount: 1, reps: { min: 10, max: 15 }, measurement: machine },
-      { placementId: "lower-a-5", exerciseId: "Hip Abduction Machine", setCount: 2, omitDeload: true, reps: { min: 12, max: 20 }, measurement: machine },
-      { placementId: "lower-a-6", exerciseId: "Cable Crunch", setCount: 3, omitDeload: true, reps: { min: 8, max: 15 }, measurement: machine },
+function exercise(
+  placementId: string,
+  exerciseId: string,
+  setCount: number,
+  reps: ExpectedReps,
+  targetRpe: number,
+  measurement: ExpectedMeasurement,
+): ExpectedV4ReferenceExercise {
+  return {
+    placementId,
+    exerciseId,
+    setCount,
+    sets: Array.from({ length: setCount }, () => ({ reps: { ...reps }, targetRpe })),
+    measurement,
+  };
+}
+
+function referenceCase(
+  input: Omit<ExpectedV4ReferenceCase, "provenance" | "composition">,
+): ExpectedV4ReferenceCase {
+  return {
+    ...input,
+    provenance: {
+      revisionId: "v4-reference-revision-1",
+      revision: 1,
+      hash: V4_REFERENCE_CANONICAL_HASH,
+    },
+    composition: {
+      source: "persisted_slot_plan_seed",
+      warmup: [],
+      hasWarmupSets: false,
+      hasHipFlexorPreparation: false,
+      hasFinisherComposition: false,
+      selectionFallbackUsed: false,
+    },
+  };
+}
+
+export const EXPECTED_V4_REFERENCE_CASES: ExpectedV4ReferenceCase[] = [
+  referenceCase({
+    week: 1, phase: "accumulation", slotId: "upper-a", focus: "upper",
+    sequenceIndex: 0, sequenceLength: 4, exerciseCount: 7, omittedPlacementIds: [],
+    exercises: [
+      exercise("upper-a-1", "Barbell Bench Press", 3, { min: 5, max: 8 }, 6.5, barbell),
+      exercise("upper-a-2", "Pull-Up", 3, { min: 6, max: 10 }, 6.5, bodyweight),
+      exercise("upper-a-3", "Incline Dumbbell Bench Press", 3, { min: 8, max: 12 }, 6.5, implement),
+      exercise("upper-a-4", "Chest-Supported Dumbbell Row", 3, { min: 8, max: 12 }, 6.5, implement),
+      exercise("upper-a-5", "Dumbbell Lateral Raise", 3, { min: 10, max: 15 }, 6.5, implement),
+      exercise("upper-a-6", "EZ-Bar Curl", 3, { min: 10, max: 15 }, 6.5, barbell),
+      exercise("upper-a-7", "Cable Triceps Pushdown", 2, { min: 10, max: 15 }, 6.5, machine),
     ],
-  },
-  {
-    slotId: "upper-a",
-    focus: "upper",
-    placements: [
-      { placementId: "upper-a-1", exerciseId: "Barbell Bench Press", setCount: 4, deloadSetCount: 2, reps: { min: 5, max: 8 }, measurement: barbell },
-      { placementId: "upper-a-2", exerciseId: "Pull-Up", setCount: 4, deloadSetCount: 2, reps: { min: 6, max: 10 }, measurement: bodyweight },
-      { placementId: "upper-a-3", exerciseId: "Incline Dumbbell Bench Press", setCount: 3, deloadSetCount: 2, reps: { min: 8, max: 12 }, measurement: implement },
-      { placementId: "upper-a-4", exerciseId: "Chest-Supported Dumbbell Row", setCount: 3, deloadSetCount: 2, reps: { min: 8, max: 12 }, measurement: implement },
-      { placementId: "upper-a-5", exerciseId: "Dumbbell Lateral Raise", setCount: 3, deloadSetCount: 1, reps: { min: 10, max: 15 }, measurement: implement },
-      { placementId: "upper-a-6", exerciseId: "EZ-Bar Curl", setCount: 3, deloadSetCount: 1, reps: { min: 10, max: 15 }, measurement: barbell },
-      { placementId: "upper-a-7", exerciseId: "Cable Triceps Pushdown", setCount: 3, deloadSetCount: 1, reps: { min: 10, max: 15 }, measurement: machine },
+  }),
+  referenceCase({
+    week: 1, phase: "accumulation", slotId: "lower-a", focus: "lower",
+    sequenceIndex: 1, sequenceLength: 4, exerciseCount: 6, omittedPlacementIds: [],
+    exercises: [
+      exercise("lower-a-1", "Barbell Back Squat", 3, { min: 5, max: 8 }, 6.5, barbell),
+      exercise("lower-a-2", "Leg Press", 3, { min: 8, max: 12 }, 6.5, machine),
+      exercise("lower-a-3", "Barbell Romanian Deadlift", 3, { min: 6, max: 10 }, 6.5, barbell),
+      exercise("lower-a-4", "Lying Leg Curl", 2, { min: 10, max: 15 }, 6.5, machine),
+      exercise("lower-a-5", "Hip Abduction Machine", 2, { min: 12, max: 20 }, 6.5, machine),
+      exercise("lower-a-6", "Cable Crunch", 3, { min: 8, max: 15 }, 6.5, machine),
     ],
-  },
-  {
-    slotId: "lower-b",
-    focus: "lower",
-    placements: [
-      { placementId: "lower-b-1", exerciseId: "Conventional Deadlift", setCount: 4, deloadSetCount: 2, reps: { min: 4, max: 6 }, measurement: barbell },
-      { placementId: "lower-b-2", exerciseId: "Hack Squat", setCount: 4, deloadSetCount: 2, reps: { min: 5, max: 8 }, measurement: machine },
-      { placementId: "lower-b-3", exerciseId: "Bulgarian Split Squat", setCount: 2, deloadSetCount: 1, reps: { min: 8, max: 12 }, measurement: implementPerSide },
-      { placementId: "lower-b-4", exerciseId: "Seated Leg Curl", setCount: 3, deloadSetCount: 1, reps: { min: 10, max: 15 }, measurement: machine },
-      { placementId: "lower-b-5", exerciseId: "Seated Calf Raise", setCount: 3, deloadSetCount: 2, reps: { min: 10, max: 15 }, measurement: machine },
-      { placementId: "lower-b-6", exerciseId: "Machine Crunch", setCount: 3, omitDeload: true, reps: { min: 8, max: 15 }, measurement: machine },
+  }),
+  referenceCase({
+    week: 1, phase: "accumulation", slotId: "upper-b", focus: "upper",
+    sequenceIndex: 2, sequenceLength: 4, exerciseCount: 7, omittedPlacementIds: [],
+    exercises: [
+      exercise("upper-b-1", "Chest-Supported Dumbbell Row", 3, { min: 8, max: 12 }, 6.5, implement),
+      exercise("upper-b-2", "Lat Pulldown", 3, { min: 8, max: 12 }, 6.5, machine),
+      exercise("upper-b-3", "Dumbbell Overhead Press", 3, { min: 6, max: 10 }, 6.5, implement),
+      exercise("upper-b-4", "Reverse Pec Deck", 3, { min: 12, max: 20 }, 6.5, machine),
+      exercise("upper-b-5", "Dumbbell Bench Press", 3, { min: 8, max: 12 }, 6.5, implement),
+      exercise("upper-b-6", "Cable Curl", 3, { min: 10, max: 15 }, 6.5, machine),
+      exercise("upper-b-7", "Overhead Cable Triceps Extension", 2, { min: 10, max: 15 }, 6.5, machine),
     ],
-  },
-  {
-    slotId: "upper-b",
-    focus: "upper",
-    placements: [
-      { placementId: "upper-b-1", exerciseId: "Chest-Supported Dumbbell Row", setCount: 4, deloadSetCount: 2, reps: { min: 6, max: 10 }, measurement: implement },
-      { placementId: "upper-b-2", exerciseId: "Lat Pulldown", setCount: 3, deloadSetCount: 2, reps: { min: 8, max: 12 }, measurement: machine },
-      { placementId: "upper-b-3", exerciseId: "Dumbbell Overhead Press", setCount: 3, deloadSetCount: 2, reps: { min: 6, max: 10 }, measurement: implement },
-      { placementId: "upper-b-4", exerciseId: "Dumbbell Bench Press", setCount: 3, deloadSetCount: 2, reps: { min: 8, max: 12 }, measurement: implement },
-      { placementId: "upper-b-5", exerciseId: "Reverse Pec Deck", setCount: 3, deloadSetCount: 1, reps: { min: 12, max: 20 }, measurement: machine },
-      { placementId: "upper-b-6", exerciseId: "Cable Curl", setCount: 3, deloadSetCount: 1, reps: { min: 10, max: 15 }, measurement: machine },
-      { placementId: "upper-b-7", exerciseId: "Overhead Cable Triceps Extension", setCount: 3, deloadSetCount: 1, reps: { min: 10, max: 15 }, measurement: machine },
+  }),
+  referenceCase({
+    week: 1, phase: "accumulation", slotId: "lower-b", focus: "lower",
+    sequenceIndex: 3, sequenceLength: 4, exerciseCount: 5, omittedPlacementIds: [],
+    exercises: [
+      exercise("lower-b-1", "Dumbbell Romanian Deadlift", 3, { min: 6, max: 10 }, 6.5, implement),
+      exercise("lower-b-2", "Goblet Squat", 3, { min: 8, max: 12 }, 6.5, implement),
+      exercise("lower-b-3", "Bulgarian Split Squat", 3, { min: 8, max: 12 }, 6.5, implementPerSide),
+      exercise("lower-b-4", "Seated Leg Curl", 2, { min: 10, max: 15 }, 6.5, machine),
+      exercise("lower-b-5", "Machine Crunch", 3, { min: 8, max: 15 }, 6.5, machine),
     ],
-  },
+  }),
+
+  referenceCase({
+    week: 2, phase: "accumulation", slotId: "upper-a", focus: "upper",
+    sequenceIndex: 0, sequenceLength: 4, exerciseCount: 7, omittedPlacementIds: [],
+    exercises: [
+      exercise("upper-a-1", "Barbell Bench Press", 3, { min: 5, max: 8 }, 7, barbell),
+      exercise("upper-a-2", "Pull-Up", 3, { min: 6, max: 10 }, 7, bodyweight),
+      exercise("upper-a-3", "Incline Dumbbell Bench Press", 3, { min: 8, max: 12 }, 7, implement),
+      exercise("upper-a-4", "Chest-Supported Dumbbell Row", 3, { min: 8, max: 12 }, 7, implement),
+      exercise("upper-a-5", "Dumbbell Lateral Raise", 3, { min: 10, max: 15 }, 7, implement),
+      exercise("upper-a-6", "EZ-Bar Curl", 3, { min: 10, max: 15 }, 7, barbell),
+      exercise("upper-a-7", "Cable Triceps Pushdown", 2, { min: 10, max: 15 }, 7, machine),
+    ],
+  }),
+  referenceCase({
+    week: 2, phase: "accumulation", slotId: "lower-a", focus: "lower",
+    sequenceIndex: 1, sequenceLength: 4, exerciseCount: 6, omittedPlacementIds: [],
+    exercises: [
+      exercise("lower-a-1", "Barbell Back Squat", 3, { min: 5, max: 8 }, 7, barbell),
+      exercise("lower-a-2", "Leg Press", 3, { min: 8, max: 12 }, 7, machine),
+      exercise("lower-a-3", "Barbell Romanian Deadlift", 3, { min: 6, max: 10 }, 7, barbell),
+      exercise("lower-a-4", "Lying Leg Curl", 2, { min: 10, max: 15 }, 7, machine),
+      exercise("lower-a-5", "Hip Abduction Machine", 2, { min: 12, max: 20 }, 7, machine),
+      exercise("lower-a-6", "Cable Crunch", 3, { min: 8, max: 15 }, 7, machine),
+    ],
+  }),
+  referenceCase({
+    week: 2, phase: "accumulation", slotId: "upper-b", focus: "upper",
+    sequenceIndex: 2, sequenceLength: 4, exerciseCount: 7, omittedPlacementIds: [],
+    exercises: [
+      exercise("upper-b-1", "Chest-Supported Dumbbell Row", 3, { min: 8, max: 12 }, 7, implement),
+      exercise("upper-b-2", "Lat Pulldown", 3, { min: 8, max: 12 }, 7, machine),
+      exercise("upper-b-3", "Dumbbell Overhead Press", 3, { min: 6, max: 10 }, 7, implement),
+      exercise("upper-b-4", "Reverse Pec Deck", 3, { min: 12, max: 20 }, 7, machine),
+      exercise("upper-b-5", "Dumbbell Bench Press", 3, { min: 8, max: 12 }, 7, implement),
+      exercise("upper-b-6", "Cable Curl", 3, { min: 10, max: 15 }, 7, machine),
+      exercise("upper-b-7", "Overhead Cable Triceps Extension", 2, { min: 10, max: 15 }, 7, machine),
+    ],
+  }),
+  referenceCase({
+    week: 2, phase: "accumulation", slotId: "lower-b", focus: "lower",
+    sequenceIndex: 3, sequenceLength: 4, exerciseCount: 5, omittedPlacementIds: [],
+    exercises: [
+      exercise("lower-b-1", "Dumbbell Romanian Deadlift", 3, { min: 6, max: 10 }, 7, implement),
+      exercise("lower-b-2", "Goblet Squat", 3, { min: 8, max: 12 }, 7, implement),
+      exercise("lower-b-3", "Bulgarian Split Squat", 3, { min: 8, max: 12 }, 7, implementPerSide),
+      exercise("lower-b-4", "Seated Leg Curl", 2, { min: 10, max: 15 }, 7, machine),
+      exercise("lower-b-5", "Machine Crunch", 3, { min: 8, max: 15 }, 7, machine),
+    ],
+  }),
+
+  referenceCase({
+    week: 3, phase: "accumulation", slotId: "upper-a", focus: "upper",
+    sequenceIndex: 0, sequenceLength: 4, exerciseCount: 7, omittedPlacementIds: [],
+    exercises: [
+      exercise("upper-a-1", "Barbell Bench Press", 3, { min: 5, max: 8 }, 7.5, barbell),
+      exercise("upper-a-2", "Pull-Up", 3, { min: 6, max: 10 }, 7.5, bodyweight),
+      exercise("upper-a-3", "Incline Dumbbell Bench Press", 3, { min: 8, max: 12 }, 7.5, implement),
+      exercise("upper-a-4", "Chest-Supported Dumbbell Row", 3, { min: 8, max: 12 }, 7.5, implement),
+      exercise("upper-a-5", "Dumbbell Lateral Raise", 3, { min: 10, max: 15 }, 7.5, implement),
+      exercise("upper-a-6", "EZ-Bar Curl", 3, { min: 10, max: 15 }, 7.5, barbell),
+      exercise("upper-a-7", "Cable Triceps Pushdown", 2, { min: 10, max: 15 }, 7.5, machine),
+    ],
+  }),
+  referenceCase({
+    week: 3, phase: "accumulation", slotId: "lower-a", focus: "lower",
+    sequenceIndex: 1, sequenceLength: 4, exerciseCount: 6, omittedPlacementIds: [],
+    exercises: [
+      exercise("lower-a-1", "Barbell Back Squat", 3, { min: 5, max: 8 }, 7.5, barbell),
+      exercise("lower-a-2", "Leg Press", 3, { min: 8, max: 12 }, 7.5, machine),
+      exercise("lower-a-3", "Barbell Romanian Deadlift", 3, { min: 6, max: 10 }, 7.5, barbell),
+      exercise("lower-a-4", "Lying Leg Curl", 2, { min: 10, max: 15 }, 7.5, machine),
+      exercise("lower-a-5", "Hip Abduction Machine", 2, { min: 12, max: 20 }, 7.5, machine),
+      exercise("lower-a-6", "Cable Crunch", 3, { min: 8, max: 15 }, 7.5, machine),
+    ],
+  }),
+  referenceCase({
+    week: 3, phase: "accumulation", slotId: "upper-b", focus: "upper",
+    sequenceIndex: 2, sequenceLength: 4, exerciseCount: 7, omittedPlacementIds: [],
+    exercises: [
+      exercise("upper-b-1", "Chest-Supported Dumbbell Row", 3, { min: 8, max: 12 }, 7.5, implement),
+      exercise("upper-b-2", "Lat Pulldown", 3, { min: 8, max: 12 }, 7.5, machine),
+      exercise("upper-b-3", "Dumbbell Overhead Press", 3, { min: 6, max: 10 }, 7.5, implement),
+      exercise("upper-b-4", "Reverse Pec Deck", 3, { min: 12, max: 20 }, 7.5, machine),
+      exercise("upper-b-5", "Dumbbell Bench Press", 3, { min: 8, max: 12 }, 7.5, implement),
+      exercise("upper-b-6", "Cable Curl", 3, { min: 10, max: 15 }, 7.5, machine),
+      exercise("upper-b-7", "Overhead Cable Triceps Extension", 2, { min: 10, max: 15 }, 7.5, machine),
+    ],
+  }),
+  referenceCase({
+    week: 3, phase: "accumulation", slotId: "lower-b", focus: "lower",
+    sequenceIndex: 3, sequenceLength: 4, exerciseCount: 5, omittedPlacementIds: [],
+    exercises: [
+      exercise("lower-b-1", "Dumbbell Romanian Deadlift", 3, { min: 6, max: 10 }, 7.5, implement),
+      exercise("lower-b-2", "Goblet Squat", 3, { min: 8, max: 12 }, 7.5, implement),
+      exercise("lower-b-3", "Bulgarian Split Squat", 3, { min: 8, max: 12 }, 7.5, implementPerSide),
+      exercise("lower-b-4", "Seated Leg Curl", 2, { min: 10, max: 15 }, 7.5, machine),
+      exercise("lower-b-5", "Machine Crunch", 3, { min: 8, max: 15 }, 7.5, machine),
+    ],
+  }),
+
+  referenceCase({
+    week: 4, phase: "accumulation", slotId: "upper-a", focus: "upper",
+    sequenceIndex: 0, sequenceLength: 4, exerciseCount: 7, omittedPlacementIds: [],
+    exercises: [
+      exercise("upper-a-1", "Barbell Bench Press", 3, { min: 5, max: 8 }, 8.5, barbell),
+      exercise("upper-a-2", "Pull-Up", 3, { min: 6, max: 10 }, 8.5, bodyweight),
+      exercise("upper-a-3", "Incline Dumbbell Bench Press", 3, { min: 8, max: 12 }, 8.5, implement),
+      exercise("upper-a-4", "Chest-Supported Dumbbell Row", 3, { min: 8, max: 12 }, 8.5, implement),
+      exercise("upper-a-5", "Dumbbell Lateral Raise", 3, { min: 10, max: 15 }, 8.5, implement),
+      exercise("upper-a-6", "EZ-Bar Curl", 3, { min: 10, max: 15 }, 8.5, barbell),
+      exercise("upper-a-7", "Cable Triceps Pushdown", 2, { min: 10, max: 15 }, 8.5, machine),
+    ],
+  }),
+  referenceCase({
+    week: 4, phase: "accumulation", slotId: "lower-a", focus: "lower",
+    sequenceIndex: 1, sequenceLength: 4, exerciseCount: 6, omittedPlacementIds: [],
+    exercises: [
+      exercise("lower-a-1", "Barbell Back Squat", 3, { min: 5, max: 8 }, 8.5, barbell),
+      exercise("lower-a-2", "Leg Press", 3, { min: 8, max: 12 }, 8.5, machine),
+      exercise("lower-a-3", "Barbell Romanian Deadlift", 3, { min: 6, max: 10 }, 8.5, barbell),
+      exercise("lower-a-4", "Lying Leg Curl", 2, { min: 10, max: 15 }, 8.5, machine),
+      exercise("lower-a-5", "Hip Abduction Machine", 2, { min: 12, max: 20 }, 8.5, machine),
+      exercise("lower-a-6", "Cable Crunch", 3, { min: 8, max: 15 }, 8.5, machine),
+    ],
+  }),
+  referenceCase({
+    week: 4, phase: "accumulation", slotId: "upper-b", focus: "upper",
+    sequenceIndex: 2, sequenceLength: 4, exerciseCount: 7, omittedPlacementIds: [],
+    exercises: [
+      exercise("upper-b-1", "Chest-Supported Dumbbell Row", 3, { min: 8, max: 12 }, 8.5, implement),
+      exercise("upper-b-2", "Lat Pulldown", 3, { min: 8, max: 12 }, 8.5, machine),
+      exercise("upper-b-3", "Dumbbell Overhead Press", 3, { min: 6, max: 10 }, 8.5, implement),
+      exercise("upper-b-4", "Reverse Pec Deck", 3, { min: 12, max: 20 }, 8.5, machine),
+      exercise("upper-b-5", "Dumbbell Bench Press", 3, { min: 8, max: 12 }, 8.5, implement),
+      exercise("upper-b-6", "Cable Curl", 3, { min: 10, max: 15 }, 8.5, machine),
+      exercise("upper-b-7", "Overhead Cable Triceps Extension", 2, { min: 10, max: 15 }, 8.5, machine),
+    ],
+  }),
+  referenceCase({
+    week: 4, phase: "accumulation", slotId: "lower-b", focus: "lower",
+    sequenceIndex: 3, sequenceLength: 4, exerciseCount: 5, omittedPlacementIds: [],
+    exercises: [
+      exercise("lower-b-1", "Dumbbell Romanian Deadlift", 3, { min: 6, max: 10 }, 8.5, implement),
+      exercise("lower-b-2", "Goblet Squat", 3, { min: 8, max: 12 }, 8.5, implement),
+      exercise("lower-b-3", "Bulgarian Split Squat", 3, { min: 8, max: 12 }, 8.5, implementPerSide),
+      exercise("lower-b-4", "Seated Leg Curl", 2, { min: 10, max: 15 }, 8.5, machine),
+      exercise("lower-b-5", "Machine Crunch", 3, { min: 8, max: 15 }, 8.5, machine),
+    ],
+  }),
+
+  referenceCase({
+    week: 5, phase: "deload", slotId: "upper-a", focus: "upper",
+    sequenceIndex: 0, sequenceLength: 4, exerciseCount: 7, omittedPlacementIds: [],
+    exercises: [
+      exercise("upper-a-1", "Barbell Bench Press", 2, { min: 5, max: 8 }, 5.5, barbell),
+      exercise("upper-a-2", "Pull-Up", 2, { min: 6, max: 10 }, 5.5, bodyweight),
+      exercise("upper-a-3", "Incline Dumbbell Bench Press", 2, { min: 8, max: 12 }, 5.5, implement),
+      exercise("upper-a-4", "Chest-Supported Dumbbell Row", 2, { min: 8, max: 12 }, 5.5, implement),
+      exercise("upper-a-5", "Dumbbell Lateral Raise", 1, { min: 10, max: 15 }, 5.5, implement),
+      exercise("upper-a-6", "EZ-Bar Curl", 1, { min: 10, max: 15 }, 5.5, barbell),
+      exercise("upper-a-7", "Cable Triceps Pushdown", 1, { min: 10, max: 15 }, 5.5, machine),
+    ],
+  }),
+  referenceCase({
+    week: 5, phase: "deload", slotId: "lower-a", focus: "lower",
+    sequenceIndex: 1, sequenceLength: 4, exerciseCount: 4,
+    omittedPlacementIds: ["lower-a-5", "lower-a-6"],
+    exercises: [
+      exercise("lower-a-1", "Barbell Back Squat", 2, { min: 5, max: 8 }, 5.5, barbell),
+      exercise("lower-a-2", "Leg Press", 2, { min: 8, max: 12 }, 5.5, machine),
+      exercise("lower-a-3", "Barbell Romanian Deadlift", 2, { min: 6, max: 10 }, 5.5, barbell),
+      exercise("lower-a-4", "Lying Leg Curl", 1, { min: 10, max: 15 }, 5.5, machine),
+    ],
+  }),
+  referenceCase({
+    week: 5, phase: "deload", slotId: "upper-b", focus: "upper",
+    sequenceIndex: 2, sequenceLength: 4, exerciseCount: 7, omittedPlacementIds: [],
+    exercises: [
+      exercise("upper-b-1", "Chest-Supported Dumbbell Row", 2, { min: 8, max: 12 }, 5.5, implement),
+      exercise("upper-b-2", "Lat Pulldown", 2, { min: 8, max: 12 }, 5.5, machine),
+      exercise("upper-b-3", "Dumbbell Overhead Press", 2, { min: 6, max: 10 }, 5.5, implement),
+      exercise("upper-b-4", "Reverse Pec Deck", 1, { min: 12, max: 20 }, 5.5, machine),
+      exercise("upper-b-5", "Dumbbell Bench Press", 2, { min: 8, max: 12 }, 5.5, implement),
+      exercise("upper-b-6", "Cable Curl", 1, { min: 10, max: 15 }, 5.5, machine),
+      exercise("upper-b-7", "Overhead Cable Triceps Extension", 1, { min: 10, max: 15 }, 5.5, machine),
+    ],
+  }),
+  referenceCase({
+    week: 5, phase: "deload", slotId: "lower-b", focus: "lower",
+    sequenceIndex: 3, sequenceLength: 4, exerciseCount: 4,
+    omittedPlacementIds: ["lower-b-5"],
+    exercises: [
+      exercise("lower-b-1", "Dumbbell Romanian Deadlift", 2, { min: 6, max: 10 }, 5.5, implement),
+      exercise("lower-b-2", "Goblet Squat", 2, { min: 8, max: 12 }, 5.5, implement),
+      exercise("lower-b-3", "Bulgarian Split Squat", 2, { min: 8, max: 12 }, 5.5, implementPerSide),
+      exercise("lower-b-4", "Seated Leg Curl", 1, { min: 10, max: 15 }, 5.5, machine),
+    ],
+  }),
 ];
-
-export const V4_REFERENCE_PLACEMENT_IDS_BY_SLOT = Object.fromEntries(
-  expectedSessions.map((session) => [
-    session.slotId,
-    session.placements.map((placement) => placement.placementId),
-  ]),
-) as Record<ExpectedV4ReferenceCase["slotId"], string[]>;
-
-const targetRpeByWeek = {
-  1: 6.5,
-  2: 7,
-  3: 7.5,
-  4: 8.5,
-  5: 5.5,
-} as const;
-
-export const EXPECTED_V4_REFERENCE_CASES: ExpectedV4ReferenceCase[] = [1, 2, 3, 4, 5]
-  .flatMap((week) =>
-    expectedSessions.map((session, sequenceIndex) => {
-      const omittedPlacementIds =
-        week === 5
-          ? session.placements
-              .filter((placement) => placement.omitDeload)
-              .map((placement) => placement.placementId)
-          : [];
-      const included = session.placements.filter(
-        (placement) => week !== 5 || !placement.omitDeload,
-      );
-      const exercises = included.map((placement) => {
-        const setCount =
-          week === 5
-            ? placement.deloadSetCount ?? Math.max(1, placement.setCount - 1)
-            : placement.setCount;
-        return {
-          placementId: placement.placementId,
-          exerciseId: placement.exerciseId,
-          setCount,
-          sets: Array.from({ length: setCount }, () => ({
-            reps: { ...placement.reps },
-            targetRpe: targetRpeByWeek[week as keyof typeof targetRpeByWeek],
-          })),
-          measurement: { ...placement.measurement },
-        };
-      });
-      return {
-        week,
-        phase: week === 5 ? "deload" as const : "accumulation" as const,
-        slotId: session.slotId,
-        focus: session.focus,
-        sequenceIndex,
-        sequenceLength: 4 as const,
-        exerciseCount: exercises.length,
-        exercises,
-        omittedPlacementIds,
-        provenance: {
-          revisionId: "v4-reference-revision-1" as const,
-          revision: 1 as const,
-          hash: V4_REFERENCE_CANONICAL_HASH,
-        },
-        composition: {
-          source: "persisted_slot_plan_seed" as const,
-          warmup: [] as [],
-          hasWarmupSets: false as const,
-          hasHipFlexorPreparation: false as const,
-          hasFinisherComposition: false as const,
-          selectionFallbackUsed: false as const,
-        },
-      };
-    }),
-  );

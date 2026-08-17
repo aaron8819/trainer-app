@@ -17,6 +17,11 @@ import {
 import { isCustomHypertrophyPlanRolloutEnabled } from "@/lib/operations/custom-hypertrophy-plan-rollout";
 import { customHypertrophyPlanRolloutUnavailableResponse } from "@/lib/operations/custom-hypertrophy-plan-rollout-http";
 
+const STALE_FINALIZE_CLIENT_RESPONSE = {
+  error: "This plan editor is out of date. Refresh or reload the page before finalizing.",
+  code: "PLAN_FINALIZE_CLIENT_STALE",
+} as const;
+
 export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
@@ -29,6 +34,14 @@ export async function POST(
 
   const { id } = await context.params;
   const body = await request.json().catch(() => null);
+  if (
+    body != null &&
+    typeof body === "object" &&
+    !Array.isArray(body) &&
+    Object.prototype.hasOwnProperty.call(body, "warningsConfirmed")
+  ) {
+    return NextResponse.json(STALE_FINALIZE_CLIENT_RESPONSE, { status: 409 });
+  }
   const customEnabled = isCustomHypertrophyPlanRolloutEnabled();
   const hasCustomShape =
     body != null &&

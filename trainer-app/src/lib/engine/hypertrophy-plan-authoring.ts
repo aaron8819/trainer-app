@@ -36,6 +36,12 @@ import {
 } from "@/lib/exercise-measurement/semantics";
 import { getEffectiveStimulusByMuscleId } from "./stimulus";
 import { addStimulusContribution } from "./stimulus-accounting-policy";
+import type { HypertrophyPlanHealth } from "./hypertrophy-plan-health";
+
+export type {
+  HypertrophyPlanHealth,
+  HypertrophyPlanHealthFinding,
+} from "./hypertrophy-plan-health";
 
 export const HYPERTROPHY_SESSION_FOCUS_VALUES = [
   "PUSH",
@@ -1977,28 +1983,6 @@ export function evaluateHypertrophySemanticIntent(input: {
   return { eligible: true };
 }
 
-export type HypertrophyPlanHealth = {
-  blockers: Array<{
-    code: string;
-    message: string;
-    slotId?: string;
-    exerciseId?: string;
-  }>;
-  warnings: Array<{
-    code: string;
-    message: string;
-    slotId?: string;
-    exerciseId?: string;
-  }>;
-  muscles: Array<{
-    muscleId: CanonicalMuscleId;
-    directSets: number;
-    effectiveSets: number;
-    frequency: number;
-  }>;
-  sessions: Array<{ slotId: string; estimatedMinutes: number }>;
-};
-
 export function isExerciseEligibleForIntent(input: {
   exercise: HypertrophyAuthoringExercise;
   intent: AcceptedExerciseIntentV2;
@@ -2174,15 +2158,89 @@ export function evaluateHypertrophyPlanHealth(input: {
       warnings.push({
         code: muscle.effectiveSets === 0 ? "MISSING_COVERAGE" : "THIN_COVERAGE",
         message: `${policy.displayName} coverage is ${muscle.effectiveSets === 0 ? "missing" : "thin"}.`,
-      });
-    }
-    if (muscle.effectiveSets > policy.volume.mrv) {
-      warnings.push({
-        code: "VOLUME_HIGH",
-        message: `${policy.displayName} volume is unusually high.`,
+        muscleId: muscle.muscleId,
       });
     }
   }
 
   return { blockers, warnings, muscles, sessions };
+}
+
+function projectWeeklyDraftToHealthDraft(
+  draft: HypertrophyPlanDraftV2,
+  week: number,
+): HypertrophyPlanDraftV1 {
+  return parseHypertrophyPlanDraft({
+    version: 1,
+    settings: draft.settings,
+    sessions: draft.sessions.map((session) => ({
+      slotId: session.slotId,
+      name: session.name,
+      focus: session.focus,
+      exercises: session.exercises.flatMap((exercise) => {
+        const prescription = exercise.prescriptions.find(
+          (entry) => entry.week === week,
+        );
+        if (!prescription || prescription.status === "OMIT") return [];
+        return [
+          {
+            exerciseId: exercise.exerciseId,
+            workingSets: prescription.setCount,
+            intent: exercise.intent,
+          },
+        ];
+      }),
+    })),
+  });
+}
+
+export function evaluatePersistedHypertrophyPlanHealth(input: {
+  draft: HypertrophyPlanDraft;
+  exercises: HypertrophyAuthoringExercise[];
+  limitationKeys: readonly string[];
+}): HypertrophyPlanHealth {
+  if (input.draft.version === 1) {
+    return evaluateHypertrophyPlanHealth({
+      draft: input.draft,
+      exercises: input.exercises,
+      limitationKeys: input.limitationKeys,
+    });
+  }
+  const draft = input.draft;
+  const results = draft.weeks.map((week) =>
+    evaluateHypertrophyPlanHealth({
+      draft: projectWeeklyDraftToHealthDraft(draft, week.week),
+      exercises: input.exercises,
+      limitationKeys: input.limitationKeys,
+    }),
+  );
+  return {
+    blockers: deduplicateHypertrophyPlanHealthFindings(
+      results.flatMap((result) => result.blockers),
+    ),
+    warnings: deduplicateHypertrophyPlanHealthFindings(
+      results.flatMap((result) => result.warnings),
+    ),
+    muscles: results[0]?.muscles ?? [],
+    sessions: results[0]?.sessions ?? [],
+  };
+}
+
+export function deduplicateHypertrophyPlanHealthFindings<
+  T extends HypertrophyPlanHealth["warnings"][number],
+>(entries: readonly T[]): T[] {
+  return Array.from(
+    new Map(
+      entries.map((entry) => [
+        JSON.stringify([
+          entry.code,
+          entry.message,
+          entry.slotId ?? null,
+          entry.exerciseId ?? null,
+          entry.muscleId ?? null,
+        ]),
+        entry,
+      ]),
+    ).values(),
+  );
 }

@@ -60,4 +60,42 @@ describe("plan management HTTP errors", () => {
         "An active exercise limitation is not recognized. Update or remove it before finalizing this plan.",
     });
   });
+
+  it("returns the server-authored current Health when warning confirmation is stale", async () => {
+    const health = {
+      status: "AVAILABLE",
+      policyVersion: "draft-plan-health.v2",
+      draftId: "plan-1",
+      draftRevision: 3,
+      confirmationScope: `plan-health-confirmation.v1.${"a".repeat(64)}`,
+    };
+    const response = planManagementErrorResponse(
+      new PlanManagementError(
+        "PLAN_WARNING_CONFIRMATION_REQUIRED",
+        { warningCount: "1", confirmationStatus: "MISMATCH" },
+        { health },
+      ),
+    );
+
+    expect(response?.status).toBe(409);
+    await expect(response?.json()).resolves.toMatchObject({
+      code: "PLAN_WARNING_CONFIRMATION_REQUIRED",
+      confirmationStatus: "MISMATCH",
+      warningCount: "1",
+      health,
+    });
+  });
+
+  it("fails closed when finalization-time Health evaluation is unavailable", async () => {
+    const response = planManagementErrorResponse(
+      new PlanManagementError("PLAN_HEALTH_EVALUATION_FAILED"),
+    );
+
+    expect(response?.status).toBe(503);
+    await expect(response?.json()).resolves.toEqual({
+      code: "PLAN_HEALTH_EVALUATION_FAILED",
+      error:
+        "Plan Health could not be refreshed. Keep editing and try again; finalization remains unavailable until the current plan can be checked.",
+    });
+  });
 });

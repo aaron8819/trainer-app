@@ -12,6 +12,7 @@ export type PlanManagementErrorCode =
   | "PLAN_UNSUPPORTED_TOPOLOGY"
   | "PLAN_PREVIEW_HASH_MISMATCH"
   | "PLAN_WARNING_CONFIRMATION_REQUIRED"
+  | "PLAN_HEALTH_EVALUATION_FAILED"
   | "PLAN_COPY_UNAVAILABLE"
   | "PLAN_LIMITATION_UNRECOGNIZED"
   | "PLAN_MUTATION_CONFLICT"
@@ -22,6 +23,7 @@ export class PlanManagementError extends Error {
   constructor(
     readonly code: PlanManagementErrorCode,
     readonly details: Record<string, string | null> = {},
+    readonly responseData: Record<string, unknown> = {},
   ) {
     super(code);
     this.name = "PlanManagementError";

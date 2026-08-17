@@ -171,8 +171,18 @@ export function planManagementErrorResponse(
           error: "Review and confirm the current warnings before making this plan ready.",
           code: error.code,
           ...error.details,
+          ...error.responseData,
         },
         { status: 409 },
+      );
+    case "PLAN_HEALTH_EVALUATION_FAILED":
+      return NextResponse.json(
+        {
+          error:
+            "Plan Health could not be refreshed. Keep editing and try again; finalization remains unavailable until the current plan can be checked.",
+          code: error.code,
+        },
+        { status: 503 },
       );
     case "PLAN_COPY_UNAVAILABLE":
       return NextResponse.json(

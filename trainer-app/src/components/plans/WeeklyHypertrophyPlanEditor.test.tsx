@@ -100,6 +100,69 @@ const exercises = [
   },
 ];
 
+function availableHealth(revision: number, planId = "plan-v4", scopeSeed?: string) {
+  return {
+    status: "AVAILABLE" as const,
+    policyVersion: "draft-plan-health.v2" as const,
+    draftId: planId,
+    draftRevision: revision,
+    confirmationScope: `plan-health-confirmation.v1.${scopeSeed ?? revision.toString(16).padStart(64, "0")}`,
+    evaluatedWeek: 1,
+    summary: {
+      blockingSafety: 0,
+      importantWarnings: 0,
+      coachingObservations: 0,
+      informationalVolumeAvailable: true,
+    },
+    issues: [],
+    volumeEstimates: [
+      {
+        tier: "INFORMATIONAL_ESTIMATE" as const,
+        muscle: "Chest",
+        directSets: 6,
+        effectiveSets: 6,
+        frequency: 1,
+        referenceRange: { min: 10, max: 22 },
+      },
+    ],
+    sessionEstimates: [
+      { session: "Upper", estimatedMinutes: 24 },
+      { session: "Lower", estimatedMinutes: 5 },
+    ],
+    evaluatedFacts: {
+      catalogExerciseCount: exercises.length,
+      equipmentProfile: "FULL_GYM",
+      recognizedLimitationCount: 0,
+      unrecognizedLimitationsPresent: false,
+    },
+  };
+}
+
+function warningHealth(
+  revision: number,
+  scopeSeed: string,
+  code = "DUPLICATE_EXERCISE",
+  explanation = "Bench Press appears more than once in Upper.",
+) {
+  const health = availableHealth(revision, "plan-v4", scopeSeed);
+  return {
+    ...health,
+    summary: { ...health.summary, importantWarnings: 1 },
+    issues: [
+      {
+        code,
+        tier: "IMPORTANT_WARNING" as const,
+        title: code === "DUPLICATE_EXERCISE" ? "Duplicate exercise" : "Session may run long",
+        explanation,
+        suggestedAction: "Review whether this is deliberate before finalizing.",
+        affected: { session: "Upper" },
+        blocksFinalization: false,
+        requiresAcknowledgment: true,
+      },
+    ],
+  };
+}
+
 const initialData = {
   planId: "plan-v4",
   name: "Weekly plan",
@@ -143,7 +206,7 @@ const initialData = {
       },
     ],
   },
-  health: null,
+  health: availableHealth(1),
   preview: {
     status: "INELIGIBLE" as const,
     reasons: [
@@ -168,7 +231,11 @@ function deferredResponse() {
 
 function savedResponse(revision: number) {
   return new Response(
-    JSON.stringify({ revision, preview: initialData.preview }),
+    JSON.stringify({
+      revision,
+      preview: initialData.preview,
+      health: availableHealth(revision),
+    }),
     { status: 200, headers: { "Content-Type": "application/json" } },
   );
 }
@@ -283,6 +350,7 @@ describe("WeeklyHypertrophyPlanEditor", () => {
         json: async () => ({
           revision: 2,
           preview: initialData.preview,
+          health: availableHealth(2),
         }),
       }),
     );
@@ -325,13 +393,313 @@ describe("WeeklyHypertrophyPlanEditor", () => {
         method: "POST",
         body: JSON.stringify({
           expectedDraftRevision: 1,
-          warningsConfirmed: false,
           confirmedPreviewHash: "a".repeat(64),
         }),
       }),
     );
     expect(router.push).toHaveBeenCalledWith("/plans");
     expect(router.refresh).toHaveBeenCalled();
+  });
+
+  it("shows saved-revision Health, marks it stale for local edits, and refreshes on the matching save", async () => {
+    render(<WeeklyHypertrophyPlanEditor initialData={initialData} />);
+
+    expect(screen.getByText("Current for saved revision 1.")).toBeVisible();
+    expect(screen.getByText("Saved revision 1")).toBeVisible();
+
+    fireEvent.change(screen.getByDisplayValue("Weekly plan"), {
+      target: { value: "Weekly plan edited" },
+    });
+    expect(
+      screen.getByText("Updating after save… Based on the last saved version."),
+    ).toBeVisible();
+
+    await act(() => vi.advanceTimersByTimeAsync(800));
+    expect(screen.getByText("Current for saved revision 2.")).toBeVisible();
+    expect(screen.getByText("Saved revision 2")).toBeVisible();
+  });
+
+  it.each(["equipment", "limitations"] as const)(
+    "marks Health stale after %s context props drift even when the local prescription is unchanged",
+    (contextKind) => {
+      const data = finalizableFiveWeekData();
+      const { rerender } = render(
+        <WeeklyHypertrophyPlanEditor initialData={data} />,
+      );
+      const changed = structuredClone(data);
+      if (contextKind === "equipment") {
+        changed.draft.settings.equipmentProfile = "BARBELL_HOME";
+      } else {
+        changed.limitationKeys = ["wrist"];
+      }
+
+      rerender(<WeeklyHypertrophyPlanEditor initialData={changed} />);
+
+      expect(
+        screen.getByText("Based on the last saved version. Local edits are not included yet."),
+      ).toBeVisible();
+      expect(screen.getByRole("button", { name: "Finalize plan" })).toBeDisabled();
+    },
+  );
+
+  it("installs a refreshed catalog-derived display assessment without a stale loop", () => {
+    const data = finalizableFiveWeekData();
+    const { rerender } = render(
+      <WeeklyHypertrophyPlanEditor initialData={data} />,
+    );
+    const changed = structuredClone(data);
+    changed.exercises[0]!.timePerSetSec += 1_800;
+    if (changed.health.status === "AVAILABLE") {
+      changed.health.sessionEstimates[0]!.estimatedMinutes += 30;
+    }
+
+    rerender(<WeeklyHypertrophyPlanEditor initialData={changed} />);
+
+    expect(screen.getByText("Current for saved revision 1.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Finalize plan" })).toBeEnabled();
+  });
+
+  it("submits refreshed V2 warning authority when display freshness is unchanged", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    const data = finalizableFiveWeekData();
+    const firstScopeSeed = "1".repeat(64);
+    const secondScopeSeed = "2".repeat(64);
+    data.health = warningHealth(1, firstScopeSeed);
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ ok: true, result: { planId: "plan-v4" } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const { rerender } = render(
+      <WeeklyHypertrophyPlanEditor initialData={data} />,
+    );
+    const changed = structuredClone(data);
+    if (changed.health.status !== "AVAILABLE") throw new Error("Expected Health");
+    changed.health.confirmationScope = `plan-health-confirmation.v1.${secondScopeSeed}`;
+
+    rerender(<WeeklyHypertrophyPlanEditor initialData={changed} />);
+
+    expect(screen.getByText("Current for saved revision 1.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Finalize plan" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Finalize plan" }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(window.confirm).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [url, request] = vi.mocked(fetch).mock.calls[0]!;
+    expect(String(url)).toContain("/finalize");
+    const body = JSON.parse(String(request?.body));
+    expect(body).toEqual({
+      expectedDraftRevision: 1,
+      warningConfirmationScope: changed.health.confirmationScope,
+      confirmedPreviewHash: "a".repeat(64),
+    });
+    expect(JSON.stringify(body)).not.toContain(firstScopeSeed);
+    expect(body).not.toHaveProperty("displayAssessmentIdentity");
+    expect(body).not.toHaveProperty("warningsConfirmed");
+  });
+
+  it("does not let a stale save response replace Health after authoritative context changes", async () => {
+    const pending = deferredResponse();
+    vi.mocked(fetch).mockReturnValueOnce(pending.promise);
+    const { rerender } = render(
+      <WeeklyHypertrophyPlanEditor initialData={initialData} />,
+    );
+    fireEvent.change(screen.getByDisplayValue("Weekly plan"), {
+      target: { value: "Saving under old context" },
+    });
+    await act(() => vi.advanceTimersByTimeAsync(800));
+    const changed = structuredClone(initialData) as HypertrophyPlanEditorDataV2;
+    changed.limitationKeys = ["wrist"];
+    rerender(<WeeklyHypertrophyPlanEditor initialData={changed} />);
+
+    pending.resolve(savedResponse(2));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("Current for saved revision 2.")).toBeNull();
+    expect(
+      screen.getByText("Based on the last saved version. Local edits are not included yet."),
+    ).toBeVisible();
+  });
+
+  it("remounts assessment state when navigation changes draft IDs", () => {
+    const first = finalizableFiveWeekData();
+    first.health = warningHealth(1, "a".repeat(64));
+    const { rerender } = render(
+      <WeeklyHypertrophyPlanEditor initialData={first} />,
+    );
+    expect(screen.getByText("Duplicate exercise")).toBeInTheDocument();
+
+    const second = finalizableFiveWeekData();
+    second.planId = "plan-v4-next";
+    second.name = "Next plan";
+    second.health = availableHealth(1, second.planId, "b".repeat(64));
+    rerender(<WeeklyHypertrophyPlanEditor initialData={second} />);
+
+    expect(screen.getByDisplayValue("Next plan")).toBeVisible();
+    expect(screen.queryByText("Duplicate exercise")).toBeNull();
+    expect(screen.getByText("Current for saved revision 1.")).toBeVisible();
+  });
+
+  it("installs display-only Health refreshes without using confirmation scope as freshness", () => {
+    const data = finalizableFiveWeekData();
+    data.health = warningHealth(1, "a".repeat(64));
+    const { rerender } = render(
+      <WeeklyHypertrophyPlanEditor initialData={data} />,
+    );
+    const refreshed = structuredClone(data);
+    if (refreshed.health.status !== "AVAILABLE") throw new Error("Expected Health");
+    refreshed.health.summary.coachingObservations = 1;
+    refreshed.health.issues.push({
+      code: "COACHING_ONLY_CHANGE",
+      tier: "COACHING_OBSERVATION",
+      title: "Updated weekly coaching",
+      explanation: "Visible coaching changed without changing the warning decision.",
+      suggestedAction: "No warning confirmation is required.",
+      blocksFinalization: false,
+      requiresAcknowledgment: false,
+    });
+    refreshed.health.volumeEstimates[0]!.effectiveSets = 7;
+    refreshed.health.sessionEstimates[0]!.estimatedMinutes = 29;
+    expect(refreshed.health.confirmationScope).toBe(
+      (data.health as typeof refreshed.health).confirmationScope,
+    );
+
+    rerender(<WeeklyHypertrophyPlanEditor initialData={refreshed} />);
+
+    expect(screen.getByText("Updated weekly coaching")).toBeInTheDocument();
+    expect(screen.getByText(/7 effective sets/)).toBeInTheDocument();
+  });
+
+  it("installs stale-scope Health without auto-confirming and submits only the newly reviewed scope", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    const data = finalizableFiveWeekData();
+    data.health = warningHealth(1, "a".repeat(64));
+    const refreshedHealth = warningHealth(
+      1,
+      "b".repeat(64),
+      "SESSION_DURATION_HIGH",
+      "Upper is estimated at about 91 minutes.",
+    );
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: "Review and confirm the current warnings before making this plan ready.",
+            code: "PLAN_WARNING_CONFIRMATION_REQUIRED",
+            confirmationStatus: "MISMATCH",
+            health: refreshedHealth,
+          }),
+          { status: 409, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    render(<WeeklyHypertrophyPlanEditor initialData={data} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Finalize plan" }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Session may run long")).toBeInTheDocument();
+    expect(
+      screen.getByText(/authoritative context changed/i),
+    ).toBeVisible();
+    expect(vi.mocked(window.confirm)).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Finalize plan" }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(vi.mocked(window.confirm)).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenLastCalledWith(
+      "/api/plans/plan-v4/finalize",
+      expect.objectContaining({
+        body: expect.stringContaining(refreshedHealth.confirmationScope),
+      }),
+    );
+  });
+
+  it("keeps an older save assessment stale when a newer local edit exists", async () => {
+    const first = deferredResponse();
+    const second = deferredResponse();
+    vi.mocked(fetch)
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    render(<WeeklyHypertrophyPlanEditor initialData={initialData} />);
+
+    const name = screen.getByDisplayValue("Weekly plan");
+    fireEvent.change(name, { target: { value: "Edit A" } });
+    await act(() => vi.advanceTimersByTimeAsync(800));
+    fireEvent.change(name, { target: { value: "Edit B" } });
+
+    first.resolve(savedResponse(2));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(
+      screen.getByText("Updating after save… Based on the last saved version."),
+    ).toBeVisible();
+    expect(screen.queryByText("Current for saved revision 2.")).toBeNull();
+
+    second.resolve(savedResponse(3));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Current for saved revision 3.")).toBeVisible();
+  });
+
+  it("degrades explicitly when a save response carries mismatched Health", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          revision: 2,
+          preview: initialData.preview,
+          health: availableHealth(99),
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    render(<WeeklyHypertrophyPlanEditor initialData={initialData} />);
+    fireEvent.change(screen.getByDisplayValue("Weekly plan"), {
+      target: { value: "Mismatched Health" },
+    });
+    await act(() => vi.advanceTimersByTimeAsync(800));
+
+    expect(screen.getByText("Health is temporarily unavailable")).toBeVisible();
+    expect(screen.getByText("Unavailable for saved revision 2.")).toBeVisible();
+    expect(screen.queryByText("Current for saved revision 2.")).toBeNull();
+  });
+
+  it("preserves editing focus when Health refreshes", async () => {
+    render(<WeeklyHypertrophyPlanEditor initialData={initialData} />);
+    const name = screen.getByDisplayValue("Weekly plan");
+    name.focus();
+    fireEvent.change(name, { target: { value: "Focused edit" } });
+    await act(() => vi.advanceTimersByTimeAsync(800));
+
+    expect(document.activeElement).toBe(name);
+    expect(screen.getByText("Current for saved revision 2.")).toBeVisible();
   });
 
   it("keeps malformed placement text local and resumes autosave when valid", async () => {
@@ -481,6 +849,10 @@ describe("WeeklyHypertrophyPlanEditor", () => {
 
     expect(screen.getByText("Save failed")).toBeVisible();
     expect(screen.getByRole("alert")).toHaveTextContent("changed in another request");
+    expect(screen.getByText("Saved revision 1")).toBeVisible();
+    expect(
+      screen.getByText("Based on the last saved version. Local edits are not included yet."),
+    ).toBeVisible();
     fireEvent.click(screen.getByText("Advanced weekly exceptions"));
     expect(screen.getByLabelText("Week 1 sets")).toHaveValue(4);
   });

@@ -2627,11 +2627,11 @@ describe("generateSessionFromIntent", () => {
         if ("error" in result) continue;
 
         const actual = buildActualV4ReferenceCase({
-          expected,
+          week: expected.week,
+          slotId: expected.slotId,
           seed,
           result,
           selectionFallbackUsed: selectSpy.mock.calls.length > fallbackCallsBefore,
-          placementIdsBySlot: V4_REFERENCE_PLACEMENT_IDS_BY_SLOT,
         });
         assertV4ReferenceCase(actual, expected, label);
       }
@@ -2673,11 +2673,11 @@ describe("generateSessionFromIntent", () => {
       if ("error" in result) return;
 
       const validActual = buildActualV4ReferenceCase({
-        expected,
+        week: expected.week,
+        slotId: expected.slotId,
         seed,
         result,
         selectionFallbackUsed: selectSpy.mock.calls.length > fallbackCallsBefore,
-        placementIdsBySlot: V4_REFERENCE_PLACEMENT_IDS_BY_SLOT,
       });
       assertV4ReferenceCase(validActual, expected, "sentinel control");
 
@@ -2685,6 +2685,18 @@ describe("generateSessionFromIntent", () => {
         name: string;
         mutate: (value: typeof validActual) => void;
       }> = [
+        {
+          name: "wrong week",
+          mutate: (value) => {
+            value.week = 4;
+          },
+        },
+        {
+          name: "wrong slot",
+          mutate: (value) => {
+            value.slotId = "lower-b";
+          },
+        },
         {
           name: "set count",
           mutate: (value) => {
@@ -2715,6 +2727,21 @@ describe("generateSessionFromIntent", () => {
           },
         },
         {
+          name: "exercise order",
+          mutate: (value) => {
+            [value.exercises[0], value.exercises[1]] = [
+              value.exercises[1]!,
+              value.exercises[0]!,
+            ];
+          },
+        },
+        {
+          name: "exercise identity",
+          mutate: (value) => {
+            value.exercises[0]!.exerciseId = "mutated-exercise";
+          },
+        },
+        {
           name: "placement identity",
           mutate: (value) => {
             value.exercises[0]!.placementId = "mutated-placement";
@@ -2724,6 +2751,37 @@ describe("generateSessionFromIntent", () => {
           name: "expected omission",
           mutate: (value) => {
             value.omittedPlacementIds = value.omittedPlacementIds.slice(1);
+          },
+        },
+        {
+          name: "included omitted placement",
+          mutate: (value) => {
+            const omittedPlacementId = value.omittedPlacementIds[0];
+            if (!omittedPlacementId) throw new Error("Missing omission sentinel");
+            value.exercises.push({
+              ...structuredClone(value.exercises[0]!),
+              placementId: omittedPlacementId,
+            });
+            value.exerciseCount = value.exercises.length;
+          },
+        },
+        {
+          name: "omitted required placement",
+          mutate: (value) => {
+            value.exercises.splice(0, 1);
+            value.exerciseCount = value.exercises.length;
+          },
+        },
+        {
+          name: "selection fallback",
+          mutate: (value) => {
+            value.composition.selectionFallbackUsed = true;
+          },
+        },
+        {
+          name: "unintended composition",
+          mutate: (value) => {
+            value.composition.warmup.push({ source: "unintended" });
           },
         },
       ];

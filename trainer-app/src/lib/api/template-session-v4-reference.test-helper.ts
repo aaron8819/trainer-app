@@ -1,8 +1,6 @@
 import { expect } from "vitest";
 import type { Exercise } from "@/lib/engine/types";
-import { toMuscleId } from "@/lib/engine/stimulus";
 import type { AcceptedHypertrophySeedV4 } from "@/lib/engine/hypertrophy-plan-authoring";
-import { resolveAcceptedSeedPayloadForWeek } from "@/lib/api/slot-plan-seed-parser";
 import type { generateSessionFromIntent } from "./template-session";
 
 type MockController = {
@@ -58,14 +56,9 @@ type SuccessfulIntentSession = Exclude<
 >;
 
 function buildStimulusProfile(
-  primaryMuscles: string[],
+  primaryMuscleId: "chest" | "quads",
 ): Exercise["stimulusProfile"] {
-  const profile = new Map<string, number>();
-  for (const muscle of primaryMuscles) {
-    const muscleId = toMuscleId(muscle);
-    if (muscleId) profile.set(muscleId, 1);
-  }
-  return Object.fromEntries(profile) as Exercise["stimulusProfile"];
+  return { [primaryMuscleId]: 1 } as Exercise["stimulusProfile"];
 }
 
 function makeReferenceExercise(input: {
@@ -73,6 +66,7 @@ function makeReferenceExercise(input: {
   movementPatterns: Exercise["movementPatterns"];
   splitTags: Exercise["splitTags"];
   primaryMuscles: string[];
+  primaryMuscleId: "chest" | "quads";
   isMainLiftEligible: boolean;
   isCompound: boolean;
 }): Exercise {
@@ -88,7 +82,7 @@ function makeReferenceExercise(input: {
     equipment: ["machine"],
     primaryMuscles: input.primaryMuscles,
     secondaryMuscles: [],
-    stimulusProfile: buildStimulusProfile(input.primaryMuscles),
+    stimulusProfile: buildStimulusProfile(input.primaryMuscleId),
     sfrScore: 4,
     lengthPositionScore: 3,
   };
@@ -109,6 +103,7 @@ export function buildV4ReferenceExerciseLibrary(
           : ["isolation"],
         splitTags: slot.focus === "LOWER" ? ["legs"] : ["push"],
         primaryMuscles: [slot.focus === "LOWER" ? "Quads" : "Chest"],
+        primaryMuscleId: slot.focus === "LOWER" ? "quads" : "chest",
         isMainLiftEligible: exercise.role === "CORE_COMPOUND",
         isCompound: exercise.role === "CORE_COMPOUND",
       }));
@@ -247,17 +242,39 @@ export function buildV4ReferenceMesocycle(
 }
 
 export function buildActualV4ReferenceCase(input: {
-  expected: V4ReferenceRuntimeCase;
+  week: number;
+  slotId: string;
   seed: AcceptedHypertrophySeedV4;
   result: SuccessfulIntentSession;
   selectionFallbackUsed: boolean;
-  placementIdsBySlot: Record<string, readonly string[]>;
 }): V4ReferenceRuntimeCase {
-  const resolved = resolveAcceptedSeedPayloadForWeek(input.seed, input.expected.week);
-  const resolvedSlot = resolved.slots.find((slot) => slot.slotId === input.expected.slotId);
-  if (!resolvedSlot) {
-    throw new Error(`Missing resolved runtime slot ${input.expected.slotId}`);
+  const matchingWeeks = input.seed.weeks.filter((week) => week.week === input.week);
+  if (matchingWeeks.length !== 1) {
+    throw new Error(`Expected exactly one authored week ${input.week}`);
   }
+  const matchingSlots = input.seed.slots.filter((slot) => slot.slotId === input.slotId);
+  if (matchingSlots.length !== 1) {
+    throw new Error(`Expected exactly one authored slot ${input.slotId}`);
+  }
+  const selectedSlot = matchingSlots[0]!;
+  const prescribedPlacements: typeof selectedSlot.exercises = [];
+  const omittedPlacementIds: string[] = [];
+  for (const placement of selectedSlot.exercises) {
+    const matchingPrescriptions = placement.prescriptions.filter(
+      (prescription) => prescription.week === input.week,
+    );
+    if (matchingPrescriptions.length !== 1) {
+      throw new Error(
+        `Expected exactly one authored prescription for ${placement.placementId} week ${input.week}`,
+      );
+    }
+    if (matchingPrescriptions[0]!.status === "OMIT") {
+      omittedPlacementIds.push(placement.placementId);
+    } else {
+      prescribedPlacements.push(placement);
+    }
+  }
+
   const receipt = input.result.selection.sessionDecisionReceipt;
   if (!receipt) throw new Error("Missing session decision receipt");
   if (
@@ -266,16 +283,21 @@ export function buildActualV4ReferenceCase(input: {
   ) {
     throw new Error(`Unexpected V4 reference phase ${receipt.cycleContext.phase}`);
   }
-  const orderedWorkout = [
+  const generatedWorkout = [
     ...input.result.workout.mainLifts,
     ...input.result.workout.accessories,
-  ].sort((left, right) => left.orderIndex - right.orderIndex);
-  const prescribedPlacementIds = resolvedSlot.exercises.map(
-    (exercise) => exercise.placementId,
+  ];
+  const orderIndexes = generatedWorkout.map((exercise) => exercise.orderIndex);
+  if (new Set(orderIndexes).size !== orderIndexes.length) {
+    throw new Error("Generated runtime exercises have duplicate order indexes");
+  }
+  const orderedWorkout = [...generatedWorkout].sort(
+    (left, right) => left.orderIndex - right.orderIndex,
   );
-  const allPlacementIds = input.placementIdsBySlot[input.expected.slotId];
-  if (!allPlacementIds) {
-    throw new Error(`Missing placement identities for ${input.expected.slotId}`);
+  for (let index = 0; index < orderedWorkout.length; index += 1) {
+    if (orderedWorkout[index]!.orderIndex !== index) {
+      throw new Error("Generated runtime exercise order indexes are not contiguous");
+    }
   }
 
   return {
@@ -287,7 +309,7 @@ export function buildActualV4ReferenceCase(input: {
     sequenceLength: receipt.sessionSlot?.sequenceLength ?? -1,
     exerciseCount: orderedWorkout.length,
     exercises: orderedWorkout.map((exercise, index) => ({
-      placementId: resolvedSlot.exercises[index]?.placementId ?? "",
+      placementId: prescribedPlacements[index]?.placementId ?? "",
       exerciseId: exercise.exercise.id,
       setCount: exercise.sets.length,
       sets: exercise.sets.map((set) => ({
@@ -296,9 +318,7 @@ export function buildActualV4ReferenceCase(input: {
       })),
       measurement: exercise.measurement,
     })),
-    omittedPlacementIds: allPlacementIds.filter(
-      (placementId) => !prescribedPlacementIds.includes(placementId),
-    ),
+    omittedPlacementIds,
     provenance: receipt.sessionProvenance?.seedProvenance,
     composition: {
       source: receipt.sessionProvenance?.compositionSource,

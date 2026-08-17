@@ -718,6 +718,16 @@ side to disposable database IDs independently. Expected prescriptions are
 comparison-only data and must never be copied into a production recommendation
 or other actual-side object before assertion.
 
+The neutral runtime helper projects one caller-selected literal week and slot
+directly from the actual accepted V4 payload. It reads authored weekly
+`PRESCRIBE`/`OMIT` status and placement identity without calling production
+normalization, resolution, conversion, materialization, or fallback owners.
+`template-session-proof-boundary.test.ts` exact-allowlists every helper import
+and uses TypeScript syntax trees plus exact call locations and argument
+expressions for the PostgreSQL production boundary. Dependency sources,
+resolved local imports, and transitive graphs are process-cached and prepared
+once for the original and revised proofs.
+
 The stable-identity unit proof pins the original hash
 `3d4e807cbafdb89bd52dc0fb475842b8c18761e2212967614e41acf5e22913b9` and the
 revised hash

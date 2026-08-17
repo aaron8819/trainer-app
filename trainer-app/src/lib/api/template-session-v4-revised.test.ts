@@ -200,12 +200,12 @@ describe("generateSessionFromIntent revised V4 reference proof", () => {
         if ("error" in result) continue;
 
         const actual = buildActualV4ReferenceCase({
-          expected,
+          week: expected.week,
+          slotId: expected.slotId,
           seed,
           result,
           selectionFallbackUsed:
             selectSpy.mock.calls.length > fallbackCallsBefore,
-          placementIdsBySlot: V4_REVISED_REFERENCE_PLACEMENT_IDS_BY_SLOT,
         });
         assertV4ReferenceCase(actual, expected, label);
       }
@@ -247,11 +247,11 @@ describe("generateSessionFromIntent revised V4 reference proof", () => {
       if ("error" in result) return;
 
       const validActual = buildActualV4ReferenceCase({
-        expected,
+        week: expected.week,
+        slotId: expected.slotId,
         seed,
         result,
         selectionFallbackUsed: selectSpy.mock.calls.length > fallbackCallsBefore,
-        placementIdsBySlot: V4_REVISED_REFERENCE_PLACEMENT_IDS_BY_SLOT,
       });
       assertV4ReferenceCase(validActual, expected, "revised sentinel control");
 
@@ -259,6 +259,8 @@ describe("generateSessionFromIntent revised V4 reference proof", () => {
         name: string;
         mutate: (value: typeof validActual) => void;
       }> = [
+        { name: "wrong week", mutate: (value) => { value.week = 4; } },
+        { name: "wrong slot", mutate: (value) => { value.slotId = "lower-b"; } },
         { name: "set count", mutate: (value) => { value.exercises[0]!.setCount += 1; } },
         {
           name: "rep range",
@@ -295,6 +297,25 @@ describe("generateSessionFromIntent revised V4 reference proof", () => {
           },
         },
         {
+          name: "included omitted placement",
+          mutate: (value) => {
+            const omittedPlacementId = value.omittedPlacementIds[0];
+            if (!omittedPlacementId) throw new Error("Missing omission sentinel");
+            value.exercises.push({
+              ...structuredClone(value.exercises[0]!),
+              placementId: omittedPlacementId,
+            });
+            value.exerciseCount = value.exercises.length;
+          },
+        },
+        {
+          name: "omitted required placement",
+          mutate: (value) => {
+            value.exercises.splice(0, 1);
+            value.exerciseCount = value.exercises.length;
+          },
+        },
+        {
           name: "measurement tuple",
           mutate: (value) => {
             value.exercises[0]!.measurement = {
@@ -309,6 +330,16 @@ describe("generateSessionFromIntent revised V4 reference proof", () => {
           mutate: (value) => {
             if (!value.provenance) throw new Error("Missing provenance");
             value.provenance.hash = "f".repeat(64);
+          },
+        },
+        {
+          name: "selection fallback",
+          mutate: (value) => { value.composition.selectionFallbackUsed = true; },
+        },
+        {
+          name: "unintended composition",
+          mutate: (value) => {
+            value.composition.warmup.push({ source: "unintended" });
           },
         },
       ];

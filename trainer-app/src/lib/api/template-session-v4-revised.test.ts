@@ -147,6 +147,36 @@ describe("generateSessionFromIntent revised V4 reference proof", () => {
     mesocycleRoleFindManyMock.mockResolvedValue([]);
   });
 
+  async function generateRevisedReferenceCase() {
+    const expected = EXPECTED_V4_REVISED_REFERENCE_CASES.find(
+      ({ week, slotId }) => week === 5 && slotId === "lower-a",
+    );
+    if (!expected) throw new Error("Missing revised Week 5 Lower A reference case");
+
+    const seed = buildRevisedFourDayPlanAcceptedSeed();
+    const library = buildV4ReferenceExerciseLibrary(seed);
+    const slotSequenceJson = primeV4ReferenceGeneration(
+      seed,
+      library,
+      v4ReferenceMocks,
+    );
+    primeV4ReferenceWeek(expected, v4ReferenceMocks);
+    loadActiveMesocycleMock.mockResolvedValue(
+      buildV4ReferenceMesocycle(expected, seed, slotSequenceJson, {
+        revisionId: "v4-revised-reference-revision-1",
+        hash: V4_REVISED_REFERENCE_CANONICAL_HASH,
+      }),
+    );
+    const result = await generateSessionFromIntent("user-1", {
+      intent: expected.focus,
+      slotId: expected.slotId,
+    });
+    if ("error" in result) {
+      throw new Error(`Revised reference generation failed: ${result.error}`);
+    }
+    return { expected, result, seed };
+  }
+
   it("replays the exact independent 26-placement revised V4 reference across all 20 week-slot combinations", async () => {
     const seed = buildRevisedFourDayPlanAcceptedSeed();
     const library = buildV4ReferenceExerciseLibrary(seed);
@@ -213,6 +243,95 @@ describe("generateSessionFromIntent revised V4 reference proof", () => {
     } finally {
       selectSpy.mockRestore();
     }
+  });
+
+  it("preserves valid PRESCRIBE and OMIT projection behavior", async () => {
+    const { expected, result, seed } = await generateRevisedReferenceCase();
+    const actual = buildActualV4ReferenceCase({
+      week: expected.week,
+      slotId: expected.slotId,
+      seed,
+      result,
+      selectionFallbackUsed: false,
+    });
+
+    assertV4ReferenceCase(actual, expected, "valid status projection");
+    expect(actual.exercises.length).toBeGreaterThan(0);
+    expect(actual.omittedPlacementIds.length).toBeGreaterThan(0);
+  });
+
+  it("rejects a duplicate placement ID before comparison", async () => {
+    const { expected, result, seed } = await generateRevisedReferenceCase();
+    const malformedSeed = structuredClone(seed);
+    const slot = malformedSeed.slots.find(({ slotId }) => slotId === expected.slotId);
+    if (!slot || slot.exercises.length < 2) {
+      throw new Error("Missing duplicate-placement regression fixture rows");
+    }
+    slot.exercises[1]!.placementId = slot.exercises[0]!.placementId;
+
+    expect(() =>
+      buildActualV4ReferenceCase({
+        week: expected.week,
+        slotId: expected.slotId,
+        seed: malformedSeed,
+        result,
+        selectionFallbackUsed: false,
+      }),
+    ).toThrowError(`Duplicate authored placement ID ${slot.exercises[0]!.placementId}`);
+  });
+
+  it("rejects a missing weekly status", async () => {
+    const { expected, result, seed } = await generateRevisedReferenceCase();
+    const malformedSeed = structuredClone(seed);
+    const placement = malformedSeed.slots
+      .find(({ slotId }) => slotId === expected.slotId)
+      ?.exercises[0];
+    const prescription = placement?.prescriptions.find(
+      ({ week }) => week === expected.week,
+    );
+    if (!placement || !prescription) {
+      throw new Error("Missing status regression fixture row");
+    }
+    delete (prescription as { status?: unknown }).status;
+
+    expect(() =>
+      buildActualV4ReferenceCase({
+        week: expected.week,
+        slotId: expected.slotId,
+        seed: malformedSeed,
+        result,
+        selectionFallbackUsed: false,
+      }),
+    ).toThrowError(
+      `Unexpected authored prescription status for ${placement.placementId} week ${expected.week}: undefined`,
+    );
+  });
+
+  it("rejects an unknown weekly status", async () => {
+    const { expected, result, seed } = await generateRevisedReferenceCase();
+    const malformedSeed = structuredClone(seed);
+    const placement = malformedSeed.slots
+      .find(({ slotId }) => slotId === expected.slotId)
+      ?.exercises[0];
+    const prescription = placement?.prescriptions.find(
+      ({ week }) => week === expected.week,
+    );
+    if (!placement || !prescription) {
+      throw new Error("Missing status regression fixture row");
+    }
+    (prescription as { status: unknown }).status = "UNKNOWN";
+
+    expect(() =>
+      buildActualV4ReferenceCase({
+        week: expected.week,
+        slotId: expected.slotId,
+        seed: malformedSeed,
+        result,
+        selectionFallbackUsed: false,
+      }),
+    ).toThrowError(
+      `Unexpected authored prescription status for ${placement.placementId} week ${expected.week}: UNKNOWN`,
+    );
   });
 
   it("rejects independent actual-side mutations at the revised V4 comparison boundary", async () => {

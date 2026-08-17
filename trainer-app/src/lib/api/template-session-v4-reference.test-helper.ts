@@ -1,7 +1,7 @@
 import { expect } from "vitest";
-import type { Exercise } from "@/lib/engine/types";
+import type { Exercise, WorkoutPlan } from "@/lib/engine/types";
 import type { AcceptedHypertrophySeedV4 } from "@/lib/engine/hypertrophy-plan-authoring";
-import type { generateSessionFromIntent } from "./template-session";
+import type { SessionDecisionReceipt } from "@/lib/evidence/types";
 
 type MockController = {
   mockReturnValue(value: unknown): unknown;
@@ -50,10 +50,13 @@ export type V4ReferenceRuntimeCase = {
   };
 };
 
-type SuccessfulIntentSession = Exclude<
-  Awaited<ReturnType<typeof generateSessionFromIntent>>,
-  { error: string }
->;
+type SuccessfulIntentSession = {
+  workout: WorkoutPlan;
+  selection: {
+    sessionDecisionReceipt?: SessionDecisionReceipt;
+  };
+  finisher?: unknown;
+};
 
 function buildStimulusProfile(
   primaryMuscleId: "chest" | "quads",
@@ -257,6 +260,14 @@ export function buildActualV4ReferenceCase(input: {
     throw new Error(`Expected exactly one authored slot ${input.slotId}`);
   }
   const selectedSlot = matchingSlots[0]!;
+  const placementIds = new Set<string>();
+  for (const placement of selectedSlot.exercises) {
+    if (placementIds.has(placement.placementId)) {
+      throw new Error(`Duplicate authored placement ID ${placement.placementId}`);
+    }
+    placementIds.add(placement.placementId);
+  }
+
   const prescribedPlacements: typeof selectedSlot.exercises = [];
   const omittedPlacementIds: string[] = [];
   for (const placement of selectedSlot.exercises) {
@@ -268,10 +279,18 @@ export function buildActualV4ReferenceCase(input: {
         `Expected exactly one authored prescription for ${placement.placementId} week ${input.week}`,
       );
     }
-    if (matchingPrescriptions[0]!.status === "OMIT") {
-      omittedPlacementIds.push(placement.placementId);
-    } else {
-      prescribedPlacements.push(placement);
+    const status: unknown = matchingPrescriptions[0]!.status;
+    switch (status) {
+      case "PRESCRIBE":
+        prescribedPlacements.push(placement);
+        break;
+      case "OMIT":
+        omittedPlacementIds.push(placement.placementId);
+        break;
+      default:
+        throw new Error(
+          `Unexpected authored prescription status for ${placement.placementId} week ${input.week}: ${String(status)}`,
+        );
     }
   }
 

@@ -319,7 +319,7 @@ describe("hypertrophy prescription patterns", () => {
     expect(source).toEqual(snapshot);
   });
 
-  it("reproduces the 25-placement reference draft, accepted V4 payload, hash, and runtime weeks exactly", () => {
+  it("reproduces the 26-placement reference draft, accepted V4 payload, hash, and runtime weeks exactly", () => {
     const accepted = buildV4CustomPlanReferenceAcceptedSeed();
     const draft = copyAcceptedHypertrophySeedV4ToDraft(accepted);
     const before = structuredClone(draft);
@@ -351,12 +351,12 @@ describe("hypertrophy prescription patterns", () => {
       })),
     };
     expect(transformed).toEqual(before);
-    expect(transformed.sessions.map((session) => session.exercises.length)).toEqual([7, 6, 7, 5]);
+    expect(transformed.sessions.map((session) => session.exercises.length)).toEqual([6, 7, 6, 7]);
     expect(
       transformed.sessions.map((session) =>
         session.exercises.filter((exercise) => exercise.prescriptions[4]!.status !== "OMIT").length,
       ),
-    ).toEqual([7, 4, 7, 4]);
+    ).toEqual([4, 7, 5, 7]);
 
     const recompiled = compileAcceptedHypertrophySeedV4({
       draft: transformed,

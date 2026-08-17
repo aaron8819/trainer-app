@@ -123,11 +123,11 @@ describe("exercise measurement semantics", () => {
     ).toBe(label);
   });
 
-  it("matches the catalog to the production-owned 89-tuple complete manifest", () => {
-    expect(COMPLETE_SUPPORTED_MEASUREMENT_IDENTITIES).toHaveLength(89);
+  it("matches the catalog to the production-owned 91-tuple complete manifest", () => {
+    expect(COMPLETE_SUPPORTED_MEASUREMENT_IDENTITIES).toHaveLength(91);
     expect(
       new Set(COMPLETE_SUPPORTED_MEASUREMENT_IDENTITIES.map(([name]) => name)).size,
-    ).toBe(89);
+    ).toBe(91);
 
     const classified = catalog.exercises.filter(
       (exercise) => exercise.measurementProfile != null,
@@ -144,11 +144,11 @@ describe("exercise measurement semantics", () => {
       ([left], [right]) => left.localeCompare(right),
     );
 
-    expect(classified).toHaveLength(89);
+    expect(classified).toHaveLength(91);
     expect(actual).toEqual(expected);
   });
 
-  it("partitions all 150 canonical identities as 89 complete, 39 ambiguous, and 22 unsupported", () => {
+  it("partitions all 150 canonical identities as 91 complete, 37 ambiguous, and 22 unsupported", () => {
     const complete = new Set(
       COMPLETE_SUPPORTED_MEASUREMENT_IDENTITIES.map(([name]) => name),
     );
@@ -159,8 +159,8 @@ describe("exercise measurement semantics", () => {
       [complete, ambiguous, unsupported].filter((category) => category.has(name)).length,
     );
 
-    expect(complete.size).toBe(89);
-    expect(ambiguous.size).toBe(39);
+    expect(complete.size).toBe(91);
+    expect(ambiguous.size).toBe(37);
     expect(unsupported.size).toBe(22);
     expect(allNames).toHaveLength(150);
     expect(exerciseAliases).toHaveLength(54);
@@ -252,10 +252,63 @@ describe("exercise measurement semantics", () => {
       "Reverse Lunge",
       "Walking Lunge",
       "Standing Calf Raise",
-      "Seated Calf Raise",
-      "Hack Squat",
       "T-Bar Row",
     ]);
+  });
+
+  it("classifies Hack Squat and Seated Calf Raise as bilateral external-load machine work", () => {
+    for (const name of ["Hack Squat", "Seated Calf Raise"] as const) {
+      const exercise = byName.get(name);
+      const measurement = parseMeasurementColumns(exercise ?? {});
+
+      expect(exercise, name).toMatchObject({
+        equipment: ["Machine"],
+        unilateral: false,
+        measurementProfile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "MACHINE_DISPLAYED",
+        repBasis: "TOTAL",
+      });
+      expect(measurement, name).toEqual({
+        profile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "MACHINE_DISPLAYED",
+        repBasis: "TOTAL",
+      });
+      expect(measurementLoadLabel(measurement), name).toBe("Machine displayed value");
+      expect(measurementRepsLabel(measurement), name).toBe("Reps");
+      expect(permitsComputedLoadComparison(measurement), name).toBe(false);
+      expect(quantizesAsPounds(measurement), name).toBe(false);
+    }
+
+    expect(AMBIGUOUS_EXECUTION_IDENTITIES).not.toEqual(
+      expect.arrayContaining(["Hack Squat", "Seated Calf Raise"]),
+    );
+    expect(byName.get("Leg Press")).toMatchObject({
+      measurementProfile: "REPS_EXTERNAL_LOAD",
+      loadConvention: "MACHINE_DISPLAYED",
+      repBasis: "TOTAL",
+    });
+    expect(byName.get("Selectorized Standing Calf Raise")).toMatchObject({
+      measurementProfile: "REPS_EXTERNAL_LOAD",
+      loadConvention: "MACHINE_DISPLAYED",
+      repBasis: "TOTAL",
+    });
+    expect(byName.get("Standing Calf Raise")?.measurementProfile).toBeUndefined();
+  });
+
+  it("keeps persisted legacy null snapshots readable without retroactive classification", () => {
+    const persistedHistoryMeasurement = parseMeasurementColumns({
+      measurementProfile: null,
+      loadConvention: null,
+      repBasis: null,
+    });
+
+    expect(persistedHistoryMeasurement).toBeNull();
+    expect(
+      measurementComparisonKey({
+        exerciseId: "historical-seated-calf-raise",
+        measurement: persistedHistoryMeasurement,
+      }),
+    ).toBe("legacy:historical-seated-calf-raise");
   });
 
   it("keeps exact RDL identities and aliases distinct from the legacy generic identity", () => {

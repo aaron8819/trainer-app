@@ -243,7 +243,7 @@ async function main(): Promise<void> {
   const exerciseByName = new Map(
     loaded.exercises.map((exercise) => [exercise.name, exercise]),
   );
-  const draft = {
+  const recommendationDraft = {
     version: 2 as const,
     settings: loaded.draft.settings,
     weeks: [1, 2, 3, 4, 5].map((week) => ({
@@ -281,18 +281,75 @@ async function main(): Promise<void> {
     }),
   };
 
+  const referenceFixtureModule = await import(
+    "@/lib/engine/hypertrophy-plan-authoring-v4.fixture"
+  );
+  const referenceSeed =
+    referenceFixtureModule.buildV4CustomPlanReferenceAcceptedSeed();
+  const expectedAccepted = structuredClone(referenceSeed);
+  for (const slot of expectedAccepted.slots) {
+    for (const exercise of slot.exercises) {
+      const catalogExercise = exerciseByName.get(exercise.exerciseId);
+      assert(
+        catalogExercise,
+        `V4_EXACT_REFERENCE_EXERCISE_NOT_FOUND:${exercise.exerciseId}`,
+      );
+      exercise.exerciseId = catalogExercise.id;
+    }
+  }
+  const exactDraft = {
+    version: 2 as const,
+    settings: recommendationDraft.settings,
+    weeks: structuredClone(expectedAccepted.weeks),
+    sessions: expectedAccepted.slots.map((slot) => ({
+      slotId: slot.slotId,
+      name: slot.name,
+      focus: slot.focus,
+      exercises: slot.exercises.map((exercise) => ({
+        placementId: exercise.placementId,
+        exerciseId: exercise.exerciseId,
+        intent: structuredClone(exercise.intent),
+        prescriptions: structuredClone(exercise.prescriptions),
+      })),
+    })),
+  };
+  assert.deepEqual(
+    exactDraft.sessions.map((session) => ({
+      name: session.name,
+      placements: session.exercises.length,
+    })),
+    [
+      { name: "Lower A", placements: 6 },
+      { name: "Upper A", placements: 7 },
+      { name: "Lower B — Strength Development", placements: 6 },
+      { name: "Upper B", placements: 7 },
+    ],
+  );
+
   const saved = await draftsModule.saveHypertrophyPlanDraft({
     userId: user.id,
     planId: created.planId,
     expectedRevision: created.draftRevision,
     name: "Five-week V4 reference",
-    draft,
+    draft: exactDraft,
   });
   assert(saved.preview?.status === "ELIGIBLE", "V4_REFERENCE_PREVIEW_INELIGIBLE");
   assert(saved.health.status === "AVAILABLE", "V4_REFERENCE_HEALTH_UNAVAILABLE");
   assert.equal(saved.health.draftRevision, saved.revision);
   assert.equal(saved.health.summary.blockingSafety, 0);
   assert.equal(saved.health.summary.importantWarnings, 0);
+  assert(
+    !saved.health.issues.some((issue) => issue.code === "LIMITATION_UNRECOGNIZED"),
+    "V4_REFERENCE_UNRECOGNIZED_LIMITATION",
+  );
+  assert.deepEqual(saved.preview.normalizedPlan, expectedAccepted);
+  const { normalizeAcceptedHypertrophySeedV4 } = await import(
+    "@/lib/api/mesocycle-seed-revision"
+  );
+  assert.equal(
+    saved.preview.hash,
+    normalizeAcceptedHypertrophySeedV4(expectedAccepted).hash,
+  );
   assert.match(
     saved.health.confirmationScope,
     /^plan-health-confirmation\.v1\.[a-f0-9]{64}$/,
@@ -304,14 +361,15 @@ async function main(): Promise<void> {
       .filter((muscle): muscle is string => Boolean(muscle)),
   );
   for (const muscle of [
-    "Chest",
-    "Side Delts",
-    "Lats",
-    "Upper Back",
-    "Rear Delts",
     "Biceps",
-    "Triceps",
     "Calves",
+    "Chest",
+    "Hamstrings",
+    "Lats",
+    "Quads",
+    "Rear Delts",
+    "Side Delts",
+    "Triceps",
   ]) {
     assert(coachingMuscles.has(muscle), `V4_REFERENCE_COACHING_MISSING:${muscle}`);
   }
@@ -329,7 +387,7 @@ async function main(): Promise<void> {
     "V4_REFERENCE_RELOAD_MISMATCH",
   );
 
-  const blockedDraft = structuredClone(draft);
+  const blockedDraft = structuredClone(exactDraft);
   blockedDraft.sessions[3]!.exercises = [];
   const blocked = await draftsModule.saveHypertrophyPlanDraft({
     userId: user.id,
@@ -360,7 +418,7 @@ async function main(): Promise<void> {
     planId: created.planId,
     expectedRevision: blocked.revision,
     name: "Five-week V4 reference",
-    draft,
+    draft: exactDraft,
   });
   assert(restored.preview?.status === "ELIGIBLE", "V4_REFERENCE_RESTORE_INELIGIBLE");
   assert(restored.health.status === "AVAILABLE", "V4_REFERENCE_RESTORE_HEALTH_UNAVAILABLE");
@@ -373,7 +431,7 @@ async function main(): Promise<void> {
     created.planId,
   );
   assert(restoredDraft?.draft.version === 2, "V4_REFERENCE_RESTORED_DRAFT_NOT_LOADED");
-  assert.deepEqual(restoredDraft.draft, draft);
+  assert.deepEqual(restoredDraft.draft, exactDraft);
   assert.equal(restoredDraft.health.draftRevision, restored.revision);
 
   const warningPlan = await draftsModule.createCustomHypertrophyPlan({
@@ -385,10 +443,10 @@ async function main(): Promise<void> {
     authorMethod: "WEEKLY",
     preset: "UPPER_LOWER_4",
   });
-  const warningDraft = structuredClone(draft);
+  const warningDraft = structuredClone(exactDraft);
   warningDraft.sessions[0]!.exercises.push({
     ...structuredClone(warningDraft.sessions[0]!.exercises[0]!),
-    placementId: "upper-a-warning-duplicate",
+    placementId: "lower-a-warning-duplicate",
   });
   const warningSaved = await draftsModule.saveHypertrophyPlanDraft({
     userId: user.id,
@@ -496,6 +554,7 @@ async function main(): Promise<void> {
 
   const scheduled = await nextSessionModule.loadNextWorkoutContext(user.id);
   assert(scheduled.intent && scheduled.slotId, "V4_REFERENCE_SESSION_NOT_SCHEDULED");
+  assert.equal(scheduled.slotId, "lower-a", "V4_REFERENCE_FIRST_SLOT_NOT_LOWER_A");
   const { sessionIntentSchema } = await import("@/lib/validation");
   const materialized = await templateSessionModule.generateSessionFromIntent(
     user.id,
@@ -549,6 +608,8 @@ async function main(): Promise<void> {
     warningRevisionId: warningReady.revisionId,
     slotId: scheduled.slotId,
     exerciseCount: actualExercises.length,
+    previewHash: saved.preview.hash,
+    placementCounts: exactDraft.sessions.map((session) => session.exercises.length),
   }));
   } finally {
     await closeAppResources?.();

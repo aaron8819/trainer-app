@@ -2783,7 +2783,7 @@ describe("generateSessionFromIntent", () => {
     }
   });
 
-  it("replays the exact 25-placement V4 reference across all 20 week-slot combinations", async () => {
+  it("replays the exact 26-placement revised V4 reference across all 20 week-slot combinations", async () => {
     const seed = buildV4CustomPlanReferenceAcceptedSeed();
     const library = buildV4ReferenceExerciseLibrary(seed);
     const slotSequenceJson = primeV4ReferenceGeneration(seed, library);

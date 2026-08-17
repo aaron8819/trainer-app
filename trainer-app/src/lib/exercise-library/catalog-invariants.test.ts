@@ -125,8 +125,8 @@ describe("exercise catalog invariants", () => {
       catalog.exercises.map(({ name }) => name).sort(),
     );
     expect(counts).toEqual({
-      COMPLETE_SUPPORTED: 89,
-      AMBIGUOUS_EXECUTION_IDENTITY: 39,
+      COMPLETE_SUPPORTED: 91,
+      AMBIGUOUS_EXECUTION_IDENTITY: 37,
       UNSUPPORTED_MEASUREMENT_SEMANTICS: 22,
     });
   });

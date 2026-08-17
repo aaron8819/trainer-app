@@ -208,8 +208,8 @@ describe("test-suite environment manifest", () => {
       manifest: currentManifest,
       discoveredTestFiles,
     });
-    expect(discoveredTestFiles).toHaveLength(360);
-    expect(selection.credentialFree).toHaveLength(321);
+    expect(discoveredTestFiles).toHaveLength(362);
+    expect(selection.credentialFree).toHaveLength(323);
     expect(selection.credentialFree).toContain(
       "src/lib/operations/credential-free-inventory-runner.test.ts"
     );
@@ -224,6 +224,12 @@ describe("test-suite environment manifest", () => {
     );
     expect(selection.credentialFree).toContain(
       "src/lib/engine/movement-pattern-coverage.test.ts"
+    );
+    expect(selection.credentialFree).toContain(
+      "src/lib/api/template-session-proof-boundary.test.ts"
+    );
+    expect(selection.credentialFree).toContain(
+      "src/lib/api/template-session-v4-revised.test.ts"
     );
     expect(selection.importOnlyPlaceholder).toHaveLength(34);
     expect(selection.databaseRequired).toHaveLength(5);

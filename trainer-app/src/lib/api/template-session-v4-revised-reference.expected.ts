@@ -205,3 +205,120 @@ export const EXPECTED_V4_REVISED_REFERENCE_CASES: ExpectedV4RevisedReferenceCase
       };
     }),
   );
+
+// This row is intentionally authored independently of the accepted-seed fixture and
+// the 20-case generator above. The disposable PostgreSQL proof may replace only the
+// exercise identity placeholders with database-generated UUIDs.
+export const V4_REVISED_WEEK_1_LOWER_A_RUNTIME_LITERAL = {
+  week: 1,
+  phase: "accumulation",
+  slotId: "lower-a",
+  focus: "lower",
+  sequenceIndex: 0,
+  sequenceLength: 4,
+  exerciseCount: 6,
+  exercises: [
+    {
+      placementId: "lower-a-1",
+      exerciseId: "Barbell Back Squat",
+      setCount: 4,
+      sets: [
+        { reps: { min: 5, max: 8 }, targetRpe: 6.5 },
+        { reps: { min: 5, max: 8 }, targetRpe: 6.5 },
+        { reps: { min: 5, max: 8 }, targetRpe: 6.5 },
+        { reps: { min: 5, max: 8 }, targetRpe: 6.5 },
+      ],
+      measurement: {
+        profile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "BARBELL_TOTAL",
+        repBasis: "TOTAL",
+      },
+    },
+    {
+      placementId: "lower-a-2",
+      exerciseId: "Leg Press",
+      setCount: 3,
+      sets: [
+        { reps: { min: 8, max: 12 }, targetRpe: 6.5 },
+        { reps: { min: 8, max: 12 }, targetRpe: 6.5 },
+        { reps: { min: 8, max: 12 }, targetRpe: 6.5 },
+      ],
+      measurement: {
+        profile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "MACHINE_DISPLAYED",
+        repBasis: "TOTAL",
+      },
+    },
+    {
+      placementId: "lower-a-3",
+      exerciseId: "Barbell Romanian Deadlift",
+      setCount: 3,
+      sets: [
+        { reps: { min: 6, max: 10 }, targetRpe: 6.5 },
+        { reps: { min: 6, max: 10 }, targetRpe: 6.5 },
+        { reps: { min: 6, max: 10 }, targetRpe: 6.5 },
+      ],
+      measurement: {
+        profile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "BARBELL_TOTAL",
+        repBasis: "TOTAL",
+      },
+    },
+    {
+      placementId: "lower-a-4",
+      exerciseId: "Lying Leg Curl",
+      setCount: 3,
+      sets: [
+        { reps: { min: 10, max: 15 }, targetRpe: 6.5 },
+        { reps: { min: 10, max: 15 }, targetRpe: 6.5 },
+        { reps: { min: 10, max: 15 }, targetRpe: 6.5 },
+      ],
+      measurement: {
+        profile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "MACHINE_DISPLAYED",
+        repBasis: "TOTAL",
+      },
+    },
+    {
+      placementId: "lower-a-5",
+      exerciseId: "Hip Abduction Machine",
+      setCount: 2,
+      sets: [
+        { reps: { min: 12, max: 20 }, targetRpe: 6.5 },
+        { reps: { min: 12, max: 20 }, targetRpe: 6.5 },
+      ],
+      measurement: {
+        profile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "MACHINE_DISPLAYED",
+        repBasis: "TOTAL",
+      },
+    },
+    {
+      placementId: "lower-a-6",
+      exerciseId: "Cable Crunch",
+      setCount: 3,
+      sets: [
+        { reps: { min: 8, max: 15 }, targetRpe: 6.5 },
+        { reps: { min: 8, max: 15 }, targetRpe: 6.5 },
+        { reps: { min: 8, max: 15 }, targetRpe: 6.5 },
+      ],
+      measurement: {
+        profile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "MACHINE_DISPLAYED",
+        repBasis: "TOTAL",
+      },
+    },
+  ],
+  omittedPlacementIds: [],
+  provenance: {
+    revision: 1,
+  },
+  composition: {
+    source: "persisted_slot_plan_seed",
+    warmup: [],
+    hasWarmupSets: false,
+    hasHipFlexorPreparation: false,
+    hasFinisherComposition: false,
+    selectionFallbackUsed: false,
+  },
+} as const;

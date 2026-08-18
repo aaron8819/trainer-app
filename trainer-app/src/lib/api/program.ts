@@ -822,12 +822,11 @@ function buildHomeActiveWeekPlan(input: {
 
       return {
         slotId: slot.slotId,
-        label:
-          slot.label ??
-          formatSessionIdentityLabel({
-            intent: slot.intent,
-            slotId: slot.slotId,
-          }),
+        label: formatSessionIdentityLabel({
+          authoredLabel: slot.label,
+          intent: slot.intent,
+          slotId: slot.slotId,
+        }),
         status,
         statusLabel,
         href,
@@ -911,6 +910,9 @@ async function loadHomeWeekProgress(input: {
     latestIncomplete: input.latestIncomplete,
   });
   const performedAdvancingSlotsThisWeek = buildAdvancingPerformedSlots(performedWorkouts);
+  const activeWeekLabelBySlotId = new Map(
+    activeWeekPlan?.sessions.map((session) => [session.slotId, session.label]) ?? []
+  );
   const eligibleAlternativeSessions = listEligibleAdvancingSlotSnapshots({
     nextWorkoutSource: input.nextWorkoutSource,
     slotSequenceJson: input.activeMesocycle.slotSequenceJson,
@@ -922,6 +924,7 @@ async function loadHomeWeekProgress(input: {
       slotId: slot.slotId,
       intent: slot.intent as HomeEligibleSession["intent"],
       label: formatSessionIdentityLabel({
+        authoredLabel: activeWeekLabelBySlotId.get(slot.slotId),
         intent: slot.intent,
         slotId: slot.slotId,
       }),

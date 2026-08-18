@@ -75,7 +75,7 @@ function makeWorkoutRow(overrides: Record<string, unknown> = {}) {
     completedAt: new Date("2026-03-24T01:00:00.000Z"),
     status: "COMPLETED",
     selectionMode: "INTENT",
-    sessionIntent: "UPPER",
+    sessionIntent: "LOWER",
     mesocycleId: "meso-1",
     mesocycleWeekSnapshot: 2,
     mesoSessionSnapshot: 1,
@@ -92,9 +92,9 @@ function makeWorkoutRow(overrides: Record<string, unknown> = {}) {
           source: "computed",
         },
         sessionSlot: {
-          slotId: "upper_a",
-          intent: "upper",
-          sequenceIndex: 1,
+          slotId: "lower_a",
+          intent: "lower",
+          sequenceIndex: 0,
           sequenceLength: 4,
           source: "mesocycle_slot_sequence",
         },
@@ -362,8 +362,8 @@ describe("loadHomePageData", () => {
     });
     mocks.loadHomeProgramSupport.mockResolvedValue({
       nextSession: {
-        intent: "lower",
-        slotId: "lower_a",
+        intent: "upper",
+        slotId: "upper_a",
         slotSequenceIndex: 1,
         slotSequenceLength: 4,
         slotSource: "mesocycle_slot_sequence",
@@ -378,8 +378,8 @@ describe("loadHomePageData", () => {
         source: "mesocycle_slot_sequence",
         sessions: [
           {
-            slotId: "upper_a",
-            label: "Upper 1",
+            slotId: "lower_a",
+            label: "Lower A",
             status: "completed",
             statusLabel: "Completed",
             href: "/workout/workout-1",
@@ -387,8 +387,8 @@ describe("loadHomePageData", () => {
             sequenceIndex: 0,
           },
           {
-            slotId: "lower_a",
-            label: "Lower 1",
+            slotId: "upper_a",
+            label: "Upper A",
             status: "next",
             statusLabel: "Next",
             href: "#generate-workout",
@@ -396,8 +396,8 @@ describe("loadHomePageData", () => {
             sequenceIndex: 1,
           },
           {
-            slotId: "upper_b",
-            label: "Upper 2",
+            slotId: "lower_b",
+            label: "Lower B",
             status: "upcoming",
             statusLabel: "Upcoming",
             href: null,
@@ -405,8 +405,8 @@ describe("loadHomePageData", () => {
             sequenceIndex: 2,
           },
           {
-            slotId: "lower_b",
-            label: "Lower 2",
+            slotId: "upper_b",
+            label: "Upper B",
             status: "upcoming",
             statusLabel: "Upcoming",
             href: null,
@@ -467,21 +467,21 @@ describe("loadHomePageData", () => {
       mode: "generate",
       label: "Start workout",
       action: "generate-required-workout",
-      initialIntent: "lower",
-      initialSlotId: "lower_a",
+      initialIntent: "upper",
+      initialSlotId: "upper_a",
       reasonLabel: "Next in sequence",
-      reason: "Nothing earlier is still open, so Lower 1 is next this week.",
+      reason: "Nothing earlier is still open, so Upper A is next this week.",
     });
     expect(result.decision).toEqual({
-      nextSessionLabel: "Lower 1",
-      nextSessionDescription: "First lower session this week",
+      nextSessionLabel: "Upper A",
+      nextSessionDescription: "Upper A session this week",
       nextSessionReasonLabel: "Next in sequence",
-      nextSessionReason: "Nothing earlier is still open, so Lower 1 is next this week.",
+      nextSessionReason: "Nothing earlier is still open, so Upper A is next this week.",
       activeWeekLabel: "Week 2 - 1 of 4 sessions complete",
       activeWeekSessions: [
         {
-          slotId: "upper_a",
-          label: "Upper 1",
+          slotId: "lower_a",
+          label: "Lower A",
           status: "completed",
           statusLabel: "Completed",
           href: "/workout/workout-1",
@@ -489,8 +489,8 @@ describe("loadHomePageData", () => {
           sequenceIndex: 0,
         },
         {
-          slotId: "lower_a",
-          label: "Lower 1",
+          slotId: "upper_a",
+          label: "Upper A",
           status: "next",
           statusLabel: "Next",
           href: "#generate-workout",
@@ -498,8 +498,8 @@ describe("loadHomePageData", () => {
           sequenceIndex: 1,
         },
         {
-          slotId: "upper_b",
-          label: "Upper 2",
+          slotId: "lower_b",
+          label: "Lower B",
           status: "upcoming",
           statusLabel: "Upcoming",
           href: null,
@@ -507,8 +507,8 @@ describe("loadHomePageData", () => {
           sequenceIndex: 2,
         },
         {
-          slotId: "lower_b",
-          label: "Lower 2",
+          slotId: "upper_b",
+          label: "Upper B",
           status: "upcoming",
           statusLabel: "Upcoming",
           href: null,
@@ -521,11 +521,11 @@ describe("loadHomePageData", () => {
       totalAdvancingSessionsThisWeek: 4,
     });
     expect(result.continuity).toMatchObject({
-      nextDueLabel: "Lower 1",
-      lastCompletedDescriptor: "First upper session this week",
-      nextDueDescriptor: "First lower session this week",
+      nextDueLabel: "Upper A",
+      lastCompletedDescriptor: "First lower session this week",
+      nextDueDescriptor: "Upper A session this week",
       summary:
-        "Last completed: First upper session this week. Next due: Lower 1 (First lower session this week).",
+        "Last completed: First lower session this week. Next due: Upper A (Upper A session this week).",
     });
     expect(result.closeout).toBeNull();
     expect(result.recentActivity).toHaveLength(3);
@@ -661,10 +661,10 @@ describe("loadHomePageData", () => {
       mode: "generate",
       label: "Start workout",
       action: "generate-required-workout",
-      initialIntent: "lower",
-      initialSlotId: "lower_a",
+      initialIntent: "upper",
+      initialSlotId: "upper_a",
       reasonLabel: "Next in sequence",
-      reason: "Nothing earlier is still open, so Lower 1 is next this week.",
+      reason: "Nothing earlier is still open, so Upper A is next this week.",
     });
   });
 
@@ -683,10 +683,10 @@ describe("loadHomePageData", () => {
       mode: "generate",
       label: "Start workout",
       action: "generate-required-workout",
-      initialIntent: "lower",
-      initialSlotId: "lower_a",
+      initialIntent: "upper",
+      initialSlotId: "upper_a",
       reasonLabel: "Next in sequence",
-      reason: "Nothing earlier is still open, so Lower 1 is next this week.",
+      reason: "Nothing earlier is still open, so Upper A is next this week.",
     });
   });
 
@@ -746,10 +746,10 @@ describe("loadHomePageData", () => {
       mode: "generate",
       label: "Start workout",
       action: "generate-required-workout",
-      initialIntent: "lower",
-      initialSlotId: "lower_a",
+      initialIntent: "upper",
+      initialSlotId: "upper_a",
       reasonLabel: "Next in sequence",
-      reason: "Nothing earlier is still open, so Lower 1 is next this week.",
+      reason: "Nothing earlier is still open, so Upper A is next this week.",
     });
   });
 

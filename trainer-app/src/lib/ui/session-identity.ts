@@ -1,4 +1,5 @@
 type SessionIdentityInput = {
+  authoredLabel?: string | null;
   intent?: string | null;
   slotId?: string | null;
 };
@@ -85,6 +86,11 @@ export function formatSessionIntentLabel(intent?: string | null): string {
 }
 
 export function formatSessionIdentityLabel(input: SessionIdentityInput): string {
+  const authoredLabel = input.authoredLabel?.trim();
+  if (authoredLabel) {
+    return authoredLabel;
+  }
+
   const resolvedIntent = input.intent ?? inferIntentFromSlotId(input.slotId);
   const intentLabel = formatSessionIntentLabel(resolvedIntent);
   const slotOrdinal = parseSlotOrdinal(input.slotId);
@@ -97,6 +103,11 @@ export function formatSessionIdentityLabel(input: SessionIdentityInput): string 
 }
 
 export function formatSessionIdentityDescription(input: SessionIdentityInput): string | null {
+  const authoredLabel = input.authoredLabel?.trim();
+  if (authoredLabel) {
+    return `${authoredLabel} session in your current weekly order.`;
+  }
+
   const resolvedIntent = input.intent ?? inferIntentFromSlotId(input.slotId);
   if (!resolvedIntent || !input.slotId) {
     return null;

@@ -109,11 +109,17 @@ function makeSlotSelectionMetadata(input: {
 
 describe("buildProgramCurrentWeekPlan", () => {
   it("marks ordered slots as completed, next, and remaining from canonical runtime context", () => {
-    const slotSequenceJson = buildMesocycleSlotSequence([
-      { slotId: "upper_a", intent: "UPPER" },
-      { slotId: "lower_a", intent: "LOWER" },
-      { slotId: "upper_b", intent: "UPPER" },
-    ]);
+    const slotSequenceJson = {
+      version: 1,
+      source: "handoff_draft",
+      sequenceMode: "ordered_flexible",
+      slots: [
+        { slotId: "lower_a", intent: "LOWER", label: "Lower A" },
+        { slotId: "upper_a", intent: "UPPER", label: "Upper A" },
+        { slotId: "lower_b", intent: "LOWER", label: "Lower B" },
+        { slotId: "upper_b", intent: "UPPER", label: "Upper B" },
+      ],
+    };
 
     const result = buildProgramCurrentWeekPlan({
       week: 2,
@@ -121,22 +127,22 @@ describe("buildProgramCurrentWeekPlan", () => {
       weeklySchedule: [],
       currentWeekWorkouts: [
         {
-          id: "completed-upper",
+          id: "completed-lower",
           status: "COMPLETED",
           scheduledDate: new Date("2026-03-02T00:00:00.000Z"),
-          sessionIntent: "UPPER",
+          sessionIntent: "LOWER",
           selectionMode: "INTENT",
           selectionMetadata: null,
           advancesSplit: true,
         },
       ],
       nextWorkoutContext: {
-        intent: "lower",
-        slotId: "lower_a",
+        intent: "upper",
+        slotId: "upper_a",
         slotSequenceIndex: 1,
-        slotSequenceLength: 3,
+        slotSequenceLength: 4,
         slotSource: "mesocycle_slot_sequence",
-        existingWorkoutId: "planned-lower",
+        existingWorkoutId: "planned-upper",
         isExisting: true,
         source: "existing_incomplete",
         weekInMeso: null,
@@ -150,8 +156,8 @@ describe("buildProgramCurrentWeekPlan", () => {
       week: 2,
       slots: [
         {
-          slotId: "upper_a",
-          label: "Upper 1",
+          slotId: "lower_a",
+          label: "Lower A",
           sessionInWeek: 1,
           uiState: "completed",
           statusLabel: "Completed",
@@ -165,28 +171,43 @@ describe("buildProgramCurrentWeekPlan", () => {
           impact: null,
         },
         {
-          slotId: "lower_a",
-          label: "Lower 1",
+          slotId: "upper_a",
+          label: "Upper A",
           sessionInWeek: 2,
           uiState: "planned",
           statusLabel: "Planned next",
           statusDescription:
             "Session 2 already has a planned workout ready to log.",
           volumeBasis: "projected_next",
-          linkedWorkoutId: "planned-lower",
+          linkedWorkoutId: "planned-upper",
           linkedWorkoutStatus: "planned",
           exercises: [],
           exerciseSource: "unavailable",
           impact: null,
         },
         {
-          slotId: "upper_b",
-          label: "Upper 2",
+          slotId: "lower_b",
+          label: "Lower B",
           sessionInWeek: 3,
           uiState: "projected",
           statusLabel: "Projected",
           statusDescription:
             "Session 3 is unresolved; its volume is projected as remaining work.",
+          volumeBasis: "projected_remaining",
+          linkedWorkoutId: null,
+          linkedWorkoutStatus: null,
+          exercises: [],
+          exerciseSource: "unavailable",
+          impact: null,
+        },
+        {
+          slotId: "upper_b",
+          label: "Upper B",
+          sessionInWeek: 4,
+          uiState: "projected",
+          statusLabel: "Projected",
+          statusDescription:
+            "Session 4 is unresolved; its volume is projected as remaining work.",
           volumeBasis: "projected_remaining",
           linkedWorkoutId: null,
           linkedWorkoutStatus: null,

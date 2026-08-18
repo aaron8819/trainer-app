@@ -1216,6 +1216,7 @@ export function buildProgramCurrentWeekPlan(input: {
       return {
         slotId: slot.slotId,
         label: formatSessionIdentityLabel({
+          authoredLabel: slot.label,
           intent: slot.intent,
           slotId: slot.slotId,
         }),

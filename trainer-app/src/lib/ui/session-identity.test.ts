@@ -19,6 +19,23 @@ describe("session identity helpers", () => {
     expect(formatSessionIdentityLabel({ intent: "FULL_BODY", slotId: "full_body_c" })).toBe("Full Body 3");
   });
 
+  it("prefers a persisted authored label and keeps the legacy fallback", () => {
+    expect(
+      formatSessionIdentityLabel({
+        authoredLabel: " Upper B ",
+        intent: "UPPER",
+        slotId: "upper-b",
+      })
+    ).toBe("Upper B");
+    expect(
+      formatSessionIdentityLabel({
+        authoredLabel: "   ",
+        intent: "UPPER",
+        slotId: "upper_b",
+      })
+    ).toBe("Upper 2");
+  });
+
   it("builds plain-English slot descriptions", () => {
     expect(
       formatSessionIdentityDescription({ intent: "LOWER", slotId: "lower_a" })
@@ -26,6 +43,13 @@ describe("session identity helpers", () => {
     expect(
       formatSessionIdentityDescription({ intent: "UPPER", slotId: "upper_b" })
     ).toBe("Second upper session in your current weekly order.");
+    expect(
+      formatSessionIdentityDescription({
+        authoredLabel: "Upper B",
+        intent: "UPPER",
+        slotId: "upper-b",
+      })
+    ).toBe("Upper B session in your current weekly order.");
   });
 
   it("formats technical slot labels from canonical slot ids", () => {

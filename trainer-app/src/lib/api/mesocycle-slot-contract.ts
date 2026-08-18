@@ -67,6 +67,7 @@ export type MesocycleSlotSequence = {
   slots: Array<{
     slotId: string;
     intent: WorkoutSessionIntent;
+    label?: string;
     authoredSemantics?: MesocycleSlotAuthoredSemantics;
   }>;
 };
@@ -75,6 +76,7 @@ export type NormalizedMesocycleSlot = {
   slotId: string;
   intent: string;
   sequenceIndex: number;
+  label?: string;
   authoredSemantics?: MesocycleSlotAuthoredSemantics;
 };
 
@@ -581,12 +583,14 @@ export function resolveMesocycleSlotContract(input: {
           if (slot.slotId.trim().length === 0 || intent.length === 0) {
             return [];
           }
+          const label = typeof slot.label === "string" ? slot.label.trim() : "";
 
           return [
             {
               slotId: slot.slotId,
               intent,
               sequenceIndex,
+              ...(label ? { label } : {}),
               authoredSemantics: parseAuthoredSlotSemantics(slot.authoredSemantics),
             } satisfies NormalizedMesocycleSlot,
           ];

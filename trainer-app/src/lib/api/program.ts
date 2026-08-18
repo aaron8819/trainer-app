@@ -822,10 +822,12 @@ function buildHomeActiveWeekPlan(input: {
 
       return {
         slotId: slot.slotId,
-        label: formatSessionIdentityLabel({
-          intent: slot.intent,
-          slotId: slot.slotId,
-        }),
+        label:
+          slot.label ??
+          formatSessionIdentityLabel({
+            intent: slot.intent,
+            slotId: slot.slotId,
+          }),
         status,
         statusLabel,
         href,

@@ -215,9 +215,18 @@ function simplifyHomeSessionDescription(description: string | null): string | nu
     .replace(/\.$/, "");
 }
 
-function formatNextSessionLabel(nextSession: HomeProgramSupportData["nextSession"]): string | null {
+function findNextActiveWeekSession(homeProgram: HomeProgramSupportData) {
+  const slotId = homeProgram.nextSession.slotId;
+  return slotId
+    ? homeProgram.activeWeekPlan?.sessions.find((session) => session.slotId === slotId) ?? null
+    : null;
+}
+
+function formatNextSessionLabel(homeProgram: HomeProgramSupportData): string | null {
+  const { nextSession } = homeProgram;
   return nextSession.intent
     ? formatSessionIdentityLabel({
+        authoredLabel: findNextActiveWeekSession(homeProgram)?.label,
         intent: nextSession.intent,
         slotId: nextSession.slotId,
       })
@@ -229,7 +238,7 @@ function buildDecisionReason(homeProgram: HomeProgramSupportData): {
   detail: string;
 } {
   const latestIncompleteStatus = homeProgram.latestIncomplete?.status ?? null;
-  const nextSessionLabel = formatNextSessionLabel(homeProgram.nextSession);
+  const nextSessionLabel = formatNextSessionLabel(homeProgram);
 
   // IMPORTANT:
   // Reason labels must remain:
@@ -321,8 +330,12 @@ function buildSessionDescriptor(
   return intentLabel === "Workout" ? null : `${intentLabel} session`;
 }
 
-function buildNextSessionDescriptor(nextSession: HomeProgramSupportData["nextSession"]): string | null {
+function buildNextSessionDescriptor(
+  nextSession: HomeProgramSupportData["nextSession"],
+  authoredLabel?: string | null
+): string | null {
   const identityDescription = formatSessionIdentityDescription({
+    authoredLabel,
     intent: nextSession.intent,
     slotId: nextSession.slotId,
   });
@@ -357,8 +370,11 @@ function buildDecisionSummary(
   const reason = buildDecisionReason(homeProgram);
 
   return {
-    nextSessionLabel: formatNextSessionLabel(homeProgram.nextSession),
-    nextSessionDescription: buildNextSessionDescriptor(homeProgram.nextSession),
+    nextSessionLabel: formatNextSessionLabel(homeProgram),
+    nextSessionDescription: buildNextSessionDescriptor(
+      homeProgram.nextSession,
+      findNextActiveWeekSession(homeProgram)?.label
+    ),
     nextSessionReasonLabel: reason.label,
     nextSessionReason: reason.detail,
     activeWeekLabel: buildActiveWeekLabel(homeProgram),
@@ -379,7 +395,10 @@ function buildContinuitySummary(input: {
     : null;
   const nextDueLabel = input.decision?.nextSessionLabel ?? null;
   const nextDueDescriptor = input.homeProgram
-    ? buildNextSessionDescriptor(input.homeProgram.nextSession)
+    ? buildNextSessionDescriptor(
+        input.homeProgram.nextSession,
+        findNextActiveWeekSession(input.homeProgram)?.label
+      )
     : null;
 
   return {

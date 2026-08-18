@@ -139,15 +139,21 @@ function renderCard() {
       initialSlotId="upper_a"
       eligibleAlternativeSessions={[
         {
-          slotId: "lower_a",
+          slotId: "lower_b",
           intent: "lower",
-          label: "Lower 1",
-          sequenceIndex: 1,
+          label: "Lower B",
+          sequenceIndex: 2,
+        },
+        {
+          slotId: "upper_b",
+          intent: "upper",
+          label: "Upper B",
+          sequenceIndex: 3,
         },
       ]}
       primaryAction={{ label: "Start workout", state: "planned", mode: "generate" }}
-      nextSessionLabel="Upper 1"
-      nextSessionDescription="First upper session this week"
+      nextSessionLabel="Upper A"
+      nextSessionDescription="Upper A session this week"
     />
   );
 }
@@ -169,8 +175,8 @@ describe("IntentWorkoutCard", () => {
     expect(screen.getByRole("button", { name: "Start workout" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Preview / Customize" })).toBeInTheDocument();
     expect(screen.getByText("Recommended next session:")).toBeInTheDocument();
-    expect(screen.getByText("Upper 1")).toBeInTheDocument();
-    expect(screen.getByText("First upper session this week")).toBeInTheDocument();
+    expect(screen.getByText("Upper A")).toBeInTheDocument();
+    expect(screen.getByText("Upper A session this week")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save Workout" })).not.toBeInTheDocument();
   });
 
@@ -242,9 +248,9 @@ describe("IntentWorkoutCard", () => {
     const alternativeWorkout = makeGeneratedWorkout();
     alternativeWorkout.sessionIntent = "lower";
     alternativeWorkout.selectionMetadata.sessionDecisionReceipt.sessionSlot = {
-      slotId: "lower_a",
+      slotId: "lower_b",
       intent: "lower",
-      sequenceIndex: 1,
+      sequenceIndex: 2,
       sequenceLength: 4,
       source: "mesocycle_slot_sequence",
     };
@@ -258,7 +264,9 @@ describe("IntentWorkoutCard", () => {
 
     await user.click(screen.getByRole("button", { name: "Choose a different session" }));
     expect(screen.getByText("Recommended")).toBeInTheDocument();
-    await user.click(screen.getByRole("radio", { name: "Lower 1" }));
+    expect(screen.getByRole("radio", { name: "Lower B" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Upper B" })).toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: "Lower B" }));
     expect(screen.getByText("Selected for today:")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Start workout" }));
@@ -268,7 +276,7 @@ describe("IntentWorkoutCard", () => {
     });
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
       intent: "lower",
-      slotId: "lower_a",
+      slotId: "lower_b",
       sessionCapacity: "as_planned",
     });
   });

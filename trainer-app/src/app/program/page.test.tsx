@@ -227,8 +227,8 @@ describe("ProgramPage", () => {
         week: 2,
         slots: [
           {
-            slotId: "upper_a",
-            label: "Upper 1",
+            slotId: "lower_a",
+            label: "Lower A",
             sessionInWeek: 1,
             uiState: "completed",
             statusLabel: "Completed",
@@ -249,8 +249,8 @@ describe("ProgramPage", () => {
             impact: null,
           },
           {
-            slotId: "lower_a",
-            label: "Lower 1",
+            slotId: "upper_a",
+            label: "Upper A",
             sessionInWeek: 2,
             uiState: "planned",
             statusLabel: "Planned next",
@@ -286,8 +286,8 @@ describe("ProgramPage", () => {
             },
           },
           {
-            slotId: "upper_b",
-            label: "Upper 2",
+            slotId: "lower_b",
+            label: "Lower B",
             sessionInWeek: 3,
             uiState: "projected",
             statusLabel: "Projected",
@@ -300,6 +300,28 @@ describe("ProgramPage", () => {
               {
                 exerciseId: "cable-curl",
                 name: "Cable Curl",
+                setCount: 2,
+                role: "accessory",
+              },
+            ],
+            exerciseSource: "projected_week_volume",
+            impact: null,
+          },
+          {
+            slotId: "upper_b",
+            label: "Upper B",
+            sessionInWeek: 4,
+            uiState: "projected",
+            statusLabel: "Projected",
+            statusDescription:
+              "Session 4 is unresolved; its volume is projected as remaining work.",
+            volumeBasis: "projected_remaining",
+            linkedWorkoutId: null,
+            linkedWorkoutStatus: null,
+            exercises: [
+              {
+                exerciseId: "triceps-pushdown",
+                name: "Triceps Pushdown",
                 setCount: 2,
                 role: "accessory",
               },
@@ -479,13 +501,13 @@ describe("ProgramPage", () => {
       screen.getByRole("heading", { name: /Meso 2: Strength-Hypertrophy/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Train next: Lower 1" }),
+      screen.getByRole("heading", { name: "Train next: Upper A" }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("heading", { name: "Train next: Upper 1" }),
+      screen.queryByRole("heading", { name: "Train next: Lower A" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByText("Week 2 · Lower 1 · Target 2-3 RIR · 5 planned sets"),
+      screen.getByText("Week 2 · Upper A · Target 2-3 RIR · 5 planned sets"),
     ).toBeInTheDocument();
     expect(screen.getByText("T-Bar Row + Face Pull")).toBeInTheDocument();
     expect(screen.getByText("From your accepted plan")).toBeInTheDocument();
@@ -572,9 +594,10 @@ describe("ProgramPage", () => {
     expect(
       screen.queryByRole("button", { name: "0 slightly high" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByText("Upper 1")).toBeInTheDocument();
-    expect(screen.getByText("Lower 1")).toBeInTheDocument();
-    expect(screen.getByText("Upper 2")).toBeInTheDocument();
+    expect(screen.getByText("Lower A")).toBeInTheDocument();
+    expect(screen.getByText("Upper A")).toBeInTheDocument();
+    expect(screen.getByText("Lower B")).toBeInTheDocument();
+    expect(screen.getByText("Upper B")).toBeInTheDocument();
     expect(screen.getAllByText("Exercises").length).toBeGreaterThan(0);
     expect(screen.queryByText("Incline DB Bench")).not.toBeInTheDocument();
     expect(screen.getByText("Workout: Completed")).toBeInTheDocument();
@@ -586,7 +609,7 @@ describe("ProgramPage", () => {
     expect(
       screen.getByRole("link", { name: "Review workout" }),
     ).toHaveAttribute("href", "/workout/w-completed");
-    expect(screen.getByRole("link", { name: "Open Lower 1" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Open Upper A" })).toHaveAttribute(
       "href",
       "/workout/w-next",
     );

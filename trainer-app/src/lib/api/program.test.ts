@@ -1195,13 +1195,13 @@ describe("loadHomeProgramSupport", () => {
       {
         slotId: "lower-b",
         intent: "lower",
-        label: "Lower",
+        label: "Lower B",
         sequenceIndex: 2,
       },
       {
         slotId: "upper-b",
         intent: "upper",
-        label: "Upper",
+        label: "Upper B",
         sequenceIndex: 3,
       },
     ]);

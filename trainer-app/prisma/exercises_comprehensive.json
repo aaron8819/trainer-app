@@ -220,6 +220,9 @@
           }
         }
       },
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "squat"
       ],
@@ -1888,6 +1891,9 @@
           }
         }
       },
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
       "movementPatterns": [
         "isolation"
       ],

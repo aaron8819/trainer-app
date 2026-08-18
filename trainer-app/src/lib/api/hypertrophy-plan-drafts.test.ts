@@ -15,6 +15,12 @@ import {
   type WeeklyPrescriptionV4,
 } from "@/lib/engine/hypertrophy-plan-authoring";
 import { buildV4CustomPlanReferenceAcceptedSeed } from "@/lib/engine/hypertrophy-plan-authoring-v4.fixture";
+import { buildRevisedFourDayPlanSubmittedDraft } from "@/lib/engine/hypertrophy-plan-authoring-v4-revised.fixture";
+import {
+  buildExpectedRevisedFourDayAcceptedSeed,
+  buildExpectedRevisedRecommendationAcceptedSeed,
+  buildExpectedRevisedRecommendationsByPlacement,
+} from "@/lib/api/hypertrophy-plan-authoring-v4-revised.expected";
 import { getMusclePolicyByDisplayName } from "@/lib/engine/muscle-policy";
 import type { ResolvedLimitations } from "@/lib/engine/limitation-policy";
 import {
@@ -1377,6 +1383,150 @@ describe("custom hypertrophy draft persistence", () => {
     };
   }
 
+  function buildRevisedPlanPreview() {
+    const submittedDraft = buildRevisedFourDayPlanSubmittedDraft();
+    const expectedRecommendations =
+      buildExpectedRevisedRecommendationsByPlacement();
+    const resolvedExercises = new Map<
+      string,
+      ReturnType<typeof toAuthoringExercise>
+    >();
+    const actualRecommendationBaselineByPlacement = new Map<
+      string,
+      ReturnType<
+        typeof materializeHypertrophyExerciseRecommendation
+      >["recommendationBaseline"]
+    >();
+    const recommendationDraft: HypertrophyPlanDraftV2 = {
+      ...submittedDraft,
+      sessions: submittedDraft.sessions.map((session) => ({
+        ...session,
+        exercises: session.exercises.map((submittedExercise) => {
+          const exercise = toAuthoringExercise(
+            referenceExerciseRow(submittedExercise.exerciseId),
+          );
+          const recommendation = materializeHypertrophyExerciseRecommendation({
+            exercise,
+            weeks: submittedDraft.weeks,
+            intent: submittedExercise.intent,
+          });
+          const expected =
+            expectedRecommendations[submittedExercise.placementId];
+          if (!expected) {
+            throw new Error(
+              `Missing revised recommendation expectation: ${submittedExercise.placementId}`,
+            );
+          }
+
+          expect(exercise.id, submittedExercise.placementId).toBe(
+            submittedExercise.exerciseId,
+          );
+          expect(recommendation, submittedExercise.placementId).toEqual(
+            expected,
+          );
+          resolvedExercises.set(exercise.id, exercise);
+          actualRecommendationBaselineByPlacement.set(
+            submittedExercise.placementId,
+            structuredClone(recommendation.recommendationBaseline),
+          );
+          return {
+            placementId: submittedExercise.placementId,
+            exerciseId: exercise.id,
+            ...recommendation,
+          };
+        }),
+      })),
+    };
+    const measurementByExerciseId = new Map(
+      [...resolvedExercises.values()].map((exercise) => {
+        if (!exercise.measurement) {
+          throw new Error(
+            `Missing revised-plan measurement: ${exercise.name}`,
+          );
+        }
+        return [exercise.id, exercise.measurement] as const;
+      }),
+    );
+    const recommendationPreview = deriveHypertrophyPlanV4Preview({
+      draft: recommendationDraft,
+      knownExerciseIds: new Set(resolvedExercises.keys()),
+      measurementByExerciseId,
+    });
+    expect(recommendationPreview.status).toBe("ELIGIBLE");
+    if (recommendationPreview.status !== "ELIGIBLE") {
+      throw new Error("Revised recommendation preview is ineligible");
+    }
+
+    const actualSubmittedDraft: HypertrophyPlanDraftV2 = {
+      ...submittedDraft,
+      sessions: submittedDraft.sessions.map((session) => ({
+        ...session,
+        exercises: session.exercises.map((submittedExercise) => ({
+          ...structuredClone(submittedExercise),
+          recommendationBaseline: structuredClone(
+            actualRecommendationBaselineByPlacement.get(
+              submittedExercise.placementId,
+            )!,
+          ),
+        })),
+      })),
+    };
+    const submittedPreview = deriveHypertrophyPlanV4Preview({
+      draft: actualSubmittedDraft,
+      knownExerciseIds: new Set(resolvedExercises.keys()),
+      measurementByExerciseId,
+    });
+    expect(submittedPreview.status).toBe("ELIGIBLE");
+    if (submittedPreview.status !== "ELIGIBLE") {
+      throw new Error("Revised submitted preview is ineligible");
+    }
+
+    return {
+      actualSubmittedDraft,
+      recommendationPreview,
+      submittedPreview,
+      rows: [...resolvedExercises.keys()].map(referenceExerciseRow),
+    };
+  }
+
+  function expectedRevisedExecutablePlan(): ExecutableSeedProjectionV3 {
+    const accepted = buildExpectedRevisedFourDayAcceptedSeed();
+    return {
+      version: 3,
+      weeks: structuredClone(accepted.weeks),
+      slots: accepted.slots.map(({ slotId, exercises }) => ({
+        slotId,
+        exercises: structuredClone(exercises),
+      })),
+    };
+  }
+
+  function assertRevisedPlanPreviewBoundary(input: {
+    draft: HypertrophyPlanDraftV2;
+    recommendationAccepted: AcceptedHypertrophySeedV4;
+    accepted: AcceptedHypertrophySeedV4;
+    executable: ExecutableSeedProjectionV3;
+  }) {
+    expect(input.recommendationAccepted).toEqual(
+      buildExpectedRevisedRecommendationAcceptedSeed(),
+    );
+    expect(input.accepted).toEqual(buildExpectedRevisedFourDayAcceptedSeed());
+    expect(input.executable).toEqual(expectedRevisedExecutablePlan());
+
+    const expectedRecommendations =
+      buildExpectedRevisedRecommendationsByPlacement();
+    for (const session of input.draft.sessions) {
+      for (const exercise of session.exercises) {
+        expect(
+          exercise.recommendationBaseline,
+          exercise.placementId,
+        ).toEqual(
+          expectedRecommendations[exercise.placementId]?.recommendationBaseline,
+        );
+      }
+    }
+  }
+
   it("materializes the complete four-day reference plan through the API adapter, recommendation, and both projections", () => {
     const preview = buildReferencePlanPreview();
 
@@ -1475,6 +1625,134 @@ describe("custom hypertrophy draft persistence", () => {
       });
       mutation.mutate(projection);
       expect(() => assertReferenceProjections(projection), mutation.name).toThrow();
+    }
+  });
+
+  it("keeps revised submitted prescriptions independent from untouched production recommendations and preview output", () => {
+    const preview = buildRevisedPlanPreview();
+    assertRevisedPlanPreviewBoundary({
+      draft: preview.actualSubmittedDraft,
+      recommendationAccepted: preview.recommendationPreview.normalizedPlan,
+      accepted: preview.submittedPreview.normalizedPlan,
+      executable: preview.submittedPreview.executablePlan,
+    });
+  });
+
+  it("rejects every revised actual-side prescription, identity, omission, measurement, and provenance mutation", () => {
+    const preview = buildRevisedPlanPreview();
+    const validActual = {
+      draft: preview.actualSubmittedDraft,
+      recommendationAccepted: preview.recommendationPreview.normalizedPlan,
+      accepted: preview.submittedPreview.normalizedPlan,
+      executable: preview.submittedPreview.executablePlan,
+    };
+    assertRevisedPlanPreviewBoundary(validActual);
+
+    const mutations: Array<{
+      name: string;
+      mutate: (actual: typeof validActual) => void;
+    }> = [
+      {
+        name: "set count",
+        mutate: ({ executable }) => {
+          const row = executable.slots[0]!.exercises[0]!.prescriptions[0];
+          if (row.status !== "PRESCRIBE") throw new Error("Expected work");
+          row.setCount += 1;
+        },
+      },
+      {
+        name: "rep range",
+        mutate: ({ executable }) => {
+          const row = executable.slots[0]!.exercises[0]!.prescriptions[0];
+          if (row.status !== "PRESCRIBE" || row.reps.kind !== "RANGE") {
+            throw new Error("Expected ranged work");
+          }
+          row.reps.min += 1;
+        },
+      },
+      {
+        name: "RIR",
+        mutate: ({ executable }) => {
+          const row = executable.slots[0]!.exercises[0]!.prescriptions[0];
+          if (
+            row.status !== "PRESCRIBE" ||
+            row.rir.kind !== "TARGET_RANGE"
+          ) {
+            throw new Error("Expected targeted work");
+          }
+          row.rir.min += 1;
+        },
+      },
+      {
+        name: "exercise order",
+        mutate: ({ accepted }) => {
+          [accepted.slots[0]!.exercises[0], accepted.slots[0]!.exercises[1]] = [
+            accepted.slots[0]!.exercises[1]!,
+            accepted.slots[0]!.exercises[0]!,
+          ];
+        },
+      },
+      {
+        name: "exercise identity",
+        mutate: ({ executable }) => {
+          executable.slots[0]!.exercises[0]!.exerciseId =
+            "mutated-exercise";
+        },
+      },
+      {
+        name: "placement identity",
+        mutate: ({ executable }) => {
+          executable.slots[0]!.exercises[0]!.placementId =
+            "mutated-placement";
+        },
+      },
+      {
+        name: "Week 5 omission",
+        mutate: ({ executable }) => {
+          executable.slots[0]!.exercises[4]!.prescriptions[4] = {
+            week: 5,
+            status: "PRESCRIBE",
+            setCount: 1,
+            reps: { kind: "RANGE", min: 12, max: 20 },
+            rir: { kind: "TARGET_RANGE", min: 4, max: 5 },
+          };
+        },
+      },
+      {
+        name: "Hack Squat measurement tuple",
+        mutate: ({ executable }) => {
+          executable.slots[2]!.exercises[1]!.measurement = {
+            profile: "REPS_EXTERNAL_LOAD",
+            loadConvention: "BARBELL_TOTAL",
+            repBasis: "TOTAL",
+          };
+        },
+      },
+      {
+        name: "Seated Calf Raise measurement tuple",
+        mutate: ({ executable }) => {
+          executable.slots[2]!.exercises[4]!.measurement = {
+            profile: "REPS_BODYWEIGHT",
+            repBasis: "TOTAL",
+          };
+        },
+      },
+      {
+        name: "recommendation provenance",
+        mutate: ({ draft }) => {
+          draft.sessions[0]!.exercises[0]!.recommendationBaseline!.exerciseId =
+            "mutated-provenance";
+        },
+      },
+    ];
+
+    for (const mutation of mutations) {
+      const mutated = structuredClone(validActual);
+      mutation.mutate(mutated);
+      expect(
+        () => assertRevisedPlanPreviewBoundary(mutated),
+        mutation.name,
+      ).toThrow();
     }
   });
 

@@ -58,6 +58,54 @@ async function waitForPostgres(): Promise<void> {
   throw new Error("DISPOSABLE_POSTGRES_DID_NOT_BECOME_READY");
 }
 
+function bindAcceptedExerciseIdentityPlaceholders<
+  T extends {
+    slots: Array<{
+      exercises: Array<{ exerciseId: string }>;
+    }>;
+  },
+>(
+  expected: T,
+  exerciseByName: ReadonlyMap<string, { id: string }>,
+): T {
+  const rebound = structuredClone(expected);
+  for (const slot of rebound.slots) {
+    for (const exercise of slot.exercises) {
+      const catalogExercise = exerciseByName.get(exercise.exerciseId);
+      assert(
+        catalogExercise,
+        `V4_REVISED_EXPECTED_EXERCISE_NOT_FOUND:${exercise.exerciseId}`,
+      );
+      exercise.exerciseId = catalogExercise.id;
+    }
+  }
+  return rebound;
+}
+
+function bindRuntimeExerciseIdentityPlaceholders<
+  T extends {
+    exercises: readonly { exerciseId: string }[];
+  },
+>(
+  expected: T,
+  exerciseByName: ReadonlyMap<string, { id: string }>,
+) {
+  return {
+    ...structuredClone(expected),
+    exercises: expected.exercises.map((exercise) => {
+      const catalogExercise = exerciseByName.get(exercise.exerciseId);
+      assert(
+        catalogExercise,
+        `V4_REVISED_RUNTIME_EXERCISE_NOT_FOUND:${exercise.exerciseId}`,
+      );
+      return {
+        ...structuredClone(exercise),
+        exerciseId: catalogExercise.id,
+      };
+    }),
+  };
+}
+
 async function main(): Promise<void> {
   const invocation = parseExactDisposableConfirmationArgs(process.argv.slice(2));
   if (!invocation.valid) {
@@ -185,101 +233,42 @@ async function main(): Promise<void> {
     "V4_REFERENCE_INITIAL_HEALTH_REVISION_MISMATCH",
   );
 
-  const sessionDefinitions = [
-    {
-      slotId: "upper-a",
-      name: "Upper A",
-      focus: "UPPER" as const,
-      exercises: [
-        "Barbell Bench Press",
-        "Pull-Up",
-        "Incline Dumbbell Bench Press",
-        "Chest-Supported Dumbbell Row",
-        "Dumbbell Lateral Raise",
-        "EZ-Bar Curl",
-        "Cable Triceps Pushdown",
-      ],
-    },
-    {
-      slotId: "lower-a",
-      name: "Lower A",
-      focus: "LOWER" as const,
-      exercises: [
-        "Barbell Back Squat",
-        "Leg Press",
-        "Barbell Romanian Deadlift",
-        "Lying Leg Curl",
-        "Hip Abduction Machine",
-        "Cable Crunch",
-      ],
-    },
-    {
-      slotId: "upper-b",
-      name: "Upper B",
-      focus: "UPPER" as const,
-      exercises: [
-        "Chest-Supported Dumbbell Row",
-        "Lat Pulldown",
-        "Dumbbell Overhead Press",
-        "Reverse Pec Deck",
-        "Dumbbell Bench Press",
-        "Cable Curl",
-        "Overhead Cable Triceps Extension",
-      ],
-    },
-    {
-      slotId: "lower-b",
-      name: "Lower B",
-      focus: "LOWER" as const,
-      exercises: [
-        "Dumbbell Romanian Deadlift",
-        "Goblet Squat",
-        "Bulgarian Split Squat",
-        "Seated Leg Curl",
-        "Machine Crunch",
-      ],
-    },
-  ];
+  const submittedFixtureModule = await import(
+    "@/lib/engine/hypertrophy-plan-authoring-v4-revised.fixture"
+  );
+  const expectedModule = await import(
+    "@/lib/api/hypertrophy-plan-authoring-v4-revised.expected"
+  );
+  const runtimeExpectedModule = await import(
+    "@/lib/api/template-session-v4-revised-reference.expected"
+  );
+  const { normalizeAcceptedHypertrophySeedV4 } = await import(
+    "@/lib/api/mesocycle-seed-revision"
+  );
   const exerciseByName = new Map(
     loaded.exercises.map((exercise) => [exercise.name, exercise]),
   );
-  const draft = {
-    version: 2 as const,
-    settings: loaded.draft.settings,
-    weeks: [1, 2, 3, 4, 5].map((week) => ({
-      week,
-      phase: week === 5 ? "DELOAD" as const : "ACCUMULATION" as const,
-    })),
-    sessions: sessionDefinitions.map((session) => {
-      const existingIntents: Array<
-        import("@/lib/engine/hypertrophy-plan-authoring").AcceptedExerciseIntentV2
-      > = [];
-      return {
-        slotId: session.slotId,
-        name: session.name,
-        focus: session.focus,
-        exercises: session.exercises.map((name, index) => {
-          const exercise = exerciseByName.get(name);
-          assert(exercise, `V4_REFERENCE_EXERCISE_NOT_FOUND:${name}`);
-          const recommendation =
-            authoringModule.materializeHypertrophyExerciseRecommendation({
-              exercise,
-              weeks: [1, 2, 3, 4, 5].map((week) => ({
-                week,
-                phase: week === 5 ? "DELOAD" as const : "ACCUMULATION" as const,
-              })),
-              existingIntents,
-            });
-          existingIntents.push(recommendation.intent);
-          return {
-            placementId: `${session.slotId}-${index + 1}`,
-            exerciseId: exercise.id,
-            ...recommendation,
-          };
-        }),
-      };
-    }),
-  };
+
+  const draft = submittedFixtureModule.buildRevisedFourDayPlanSubmittedDraft();
+  for (const session of draft.sessions) {
+    for (const exercise of session.exercises) {
+      const catalogExercise = exerciseByName.get(exercise.exerciseId);
+      assert(
+        catalogExercise,
+        `V4_REVISED_INPUT_EXERCISE_NOT_FOUND:${exercise.exerciseId}`,
+      );
+      exercise.exerciseId = catalogExercise.id;
+    }
+  }
+
+  const expectedAccepted = bindAcceptedExerciseIdentityPlaceholders(
+    expectedModule.buildExpectedRevisedFourDayAcceptedSeed(),
+    exerciseByName,
+  );
+  const expectedRuntime = bindRuntimeExerciseIdentityPlaceholders(
+    runtimeExpectedModule.V4_REVISED_WEEK_1_LOWER_A_RUNTIME_LITERAL,
+    exerciseByName,
+  );
 
   const saved = await draftsModule.saveHypertrophyPlanDraft({
     userId: user.id,
@@ -289,10 +278,29 @@ async function main(): Promise<void> {
     draft,
   });
   assert(saved.preview?.status === "ELIGIBLE", "V4_REFERENCE_PREVIEW_INELIGIBLE");
+  const actualBoundHash = saved.preview.hash;
   assert(saved.health.status === "AVAILABLE", "V4_REFERENCE_HEALTH_UNAVAILABLE");
   assert.equal(saved.health.draftRevision, saved.revision);
   assert.equal(saved.health.summary.blockingSafety, 0);
   assert.equal(saved.health.summary.importantWarnings, 0);
+  assert.deepEqual(
+    saved.preview.normalizedPlan,
+    expectedAccepted,
+    "V4_REVISED_PREVIEW_DID_NOT_MATCH_INDEPENDENT_EXPECTED",
+  );
+  assert.equal(saved.preview.hashAlgorithm, "sha256");
+  const materiallyChangedActual = structuredClone(saved.preview.normalizedPlan);
+  const changedActualRow =
+    materiallyChangedActual.slots[0]!.exercises[0]!.prescriptions[0]!;
+  assert(changedActualRow.status === "PRESCRIBE");
+  changedActualRow.setCount += 1;
+  const materiallyChangedActualHash =
+    normalizeAcceptedHypertrophySeedV4(materiallyChangedActual).hash;
+  assert.notEqual(
+    materiallyChangedActualHash,
+    actualBoundHash,
+    "V4_REVISED_HASH_IGNORED_ACTUAL_MATERIAL_CHANGE",
+  );
   assert.match(
     saved.health.confirmationScope,
     /^plan-health-confirmation\.v1\.[a-f0-9]{64}$/,
@@ -304,14 +312,15 @@ async function main(): Promise<void> {
       .filter((muscle): muscle is string => Boolean(muscle)),
   );
   for (const muscle of [
-    "Chest",
-    "Side Delts",
-    "Lats",
-    "Upper Back",
-    "Rear Delts",
     "Biceps",
-    "Triceps",
     "Calves",
+    "Chest",
+    "Hamstrings",
+    "Lats",
+    "Quads",
+    "Rear Delts",
+    "Side Delts",
+    "Triceps",
   ]) {
     assert(coachingMuscles.has(muscle), `V4_REFERENCE_COACHING_MISSING:${muscle}`);
   }
@@ -325,8 +334,14 @@ async function main(): Promise<void> {
   );
   assert(
     reloaded.revision === saved.revision &&
-      reloaded.preview.hash === saved.preview.hash,
+      reloaded.preview.hash === actualBoundHash,
     "V4_REFERENCE_RELOAD_MISMATCH",
+  );
+  assert.equal(reloaded.preview.hashAlgorithm, "sha256");
+  assert.deepEqual(
+    reloaded.preview.normalizedPlan,
+    expectedAccepted,
+    "V4_REVISED_RELOAD_DID_NOT_PRESERVE_EXPECTED",
   );
 
   const blockedDraft = structuredClone(draft);
@@ -367,7 +382,8 @@ async function main(): Promise<void> {
   assert.equal(restored.health.summary.blockingSafety, 0);
   assert.equal(restored.health.summary.importantWarnings, 0);
   assert.deepEqual(restored.preview.normalizedPlan, saved.preview.normalizedPlan);
-  assert.equal(restored.preview.hash, saved.preview.hash);
+  assert.equal(restored.preview.hash, actualBoundHash);
+  assert.equal(restored.preview.hashAlgorithm, "sha256");
   const restoredDraft = await draftsModule.loadHypertrophyPlanEditorData(
     user.id,
     created.planId,
@@ -388,7 +404,7 @@ async function main(): Promise<void> {
   const warningDraft = structuredClone(draft);
   warningDraft.sessions[0]!.exercises.push({
     ...structuredClone(warningDraft.sessions[0]!.exercises[0]!),
-    placementId: "upper-a-warning-duplicate",
+    placementId: "lower-a-warning-duplicate",
   });
   const warningSaved = await draftsModule.saveHypertrophyPlanDraft({
     userId: user.id,
@@ -479,12 +495,50 @@ async function main(): Promise<void> {
   assert.equal(afterWarningReady.mesocycles, 1);
   assert.equal(afterWarningReady.revisions, 1);
 
+  const finalizationConfirmedHash = restored.preview.hash;
+  assert.equal(finalizationConfirmedHash, actualBoundHash);
   const ready = await draftsModule.makeHypertrophyPlanReady({
     userId: user.id,
     planId: created.planId,
     expectedDraftRevision: restored.revision,
-    confirmedPreviewHash: restored.preview.hash,
+    confirmedPreviewHash: finalizationConfirmedHash,
   });
+  const acceptedRevision = await prisma.mesocycleSeedRevision.findUniqueOrThrow({
+    where: { id: ready.revisionId },
+    select: {
+      id: true,
+      mesocycleId: true,
+      revision: true,
+      payloadHash: true,
+      hashAlgorithm: true,
+      provenanceStatus: true,
+      creationReason: true,
+      actorSource: true,
+      sourceRevisionId: true,
+      seedPayload: true,
+    },
+  });
+  assert.equal(acceptedRevision.id, ready.revisionId);
+  assert.equal(acceptedRevision.mesocycleId, ready.mesocycleId);
+  assert.equal(acceptedRevision.revision, 1);
+  assert.equal(
+    acceptedRevision.payloadHash,
+    actualBoundHash,
+    "V4_REVISED_FINALIZATION_HASH_DRIFT",
+  );
+  assert.equal(acceptedRevision.hashAlgorithm, "sha256");
+  assert.equal(acceptedRevision.provenanceStatus, "exact");
+  assert.equal(
+    acceptedRevision.creationReason,
+    "custom_hypertrophy_plan_make_ready",
+  );
+  assert.equal(acceptedRevision.actorSource, "plan_management");
+  assert.equal(acceptedRevision.sourceRevisionId, null);
+  assert.deepEqual(
+    acceptedRevision.seedPayload,
+    expectedAccepted,
+    "V4_REVISED_IMMUTABLE_REVISION_PAYLOAD_MISMATCH",
+  );
   const target = await planModule.loadPlanActivationTarget(user.id, created.planId);
   assert(target.status === "READY", "V4_REFERENCE_PLAN_NOT_READY");
   await activePlanModule.selectActivePlan({
@@ -493,52 +547,125 @@ async function main(): Promise<void> {
     targetMesocycleId: target.activeMesocycleId,
     expectedActiveMacroCycleId: null,
   });
+  const activeContext = await activePlanModule.resolveActivePlanContext(user.id);
+  assert(activeContext.status === "READY", "V4_REFERENCE_ACTIVE_CONTEXT_NOT_READY");
+  assert.equal(activeContext.activeMesocycle.id, ready.mesocycleId);
+  const activeRevision = activeContext.activeMesocycle.currentSeedRevision;
+  assert(activeRevision, "V4_REFERENCE_ACTIVE_REVISION_MISSING");
+  assert.equal(activeRevision.id, ready.revisionId);
+  assert.equal(activeRevision.revision, 1);
+  assert.equal(activeRevision.payloadHash, actualBoundHash);
+  assert.equal(activeRevision.hashAlgorithm, "sha256");
+  assert.equal(activeRevision.provenanceStatus, "exact");
 
   const scheduled = await nextSessionModule.loadNextWorkoutContext(user.id);
   assert(scheduled.intent && scheduled.slotId, "V4_REFERENCE_SESSION_NOT_SCHEDULED");
+  assert.equal(scheduled.activeMesocycleId, ready.mesocycleId);
+  assert.equal(
+    scheduled.slotId,
+    "lower-a",
+    "V4_REVISED_FIRST_SCHEDULED_SLOT_NOT_LOWER_A",
+  );
+  assert.equal(scheduled.intent, "lower");
+  assert.equal(scheduled.slotSequenceIndex, 0);
+  assert.equal(scheduled.slotSequenceLength, 4);
+  assert.equal(scheduled.slotSource, "mesocycle_slot_sequence");
   const { sessionIntentSchema } = await import("@/lib/validation");
   const materialized = await templateSessionModule.generateSessionFromIntent(
     user.id,
     { intent: sessionIntentSchema.parse(scheduled.intent), slotId: scheduled.slotId },
   );
   assert(!("error" in materialized), "V4_REFERENCE_MATERIALIZATION_FAILED");
-  const accepted = restored.preview.normalizedPlan;
-  const expectedSlot = authoringModule
-    .resolveAcceptedHypertrophySeedV4Week(accepted, 1)
+  const actualResolvedSlot = authoringModule
+    .resolveAcceptedHypertrophySeedV4Week(saved.preview.normalizedPlan, 1)
     .slots.find((slot) => slot.slotId === scheduled.slotId);
-  assert(expectedSlot, "V4_REFERENCE_ACCEPTED_SLOT_NOT_FOUND");
+  assert(actualResolvedSlot, "V4_REFERENCE_ACCEPTED_SLOT_NOT_FOUND");
+  const actualAcceptedSlot = saved.preview.normalizedPlan.slots.find(
+    (slot) => slot.slotId === scheduled.slotId,
+  );
+  assert(actualAcceptedSlot, "V4_REFERENCE_NORMALIZED_SLOT_NOT_FOUND");
   const actualExercises = [
     ...materialized.workout.mainLifts,
     ...materialized.workout.accessories,
   ].sort((left, right) => left.orderIndex - right.orderIndex);
-  assert.deepEqual(
-    actualExercises.map((exercise) => ({
+  const runtimeReceipt = materialized.selection.sessionDecisionReceipt;
+  assert(runtimeReceipt, "V4_REFERENCE_RUNTIME_RECEIPT_MISSING");
+  const runtimeSeedProvenance = runtimeReceipt.sessionProvenance?.seedProvenance;
+  assert(runtimeSeedProvenance, "V4_REFERENCE_RUNTIME_SEED_PROVENANCE_MISSING");
+  assert.equal(runtimeReceipt.sessionProvenance?.mesocycleId, ready.mesocycleId);
+  assert.equal(
+    runtimeReceipt.sessionProvenance?.compositionSource,
+    "persisted_slot_plan_seed",
+  );
+  assert.equal(runtimeSeedProvenance.revisionId, ready.revisionId);
+  assert.equal(runtimeSeedProvenance.revision, 1);
+  assert.equal(runtimeSeedProvenance.hash, actualBoundHash);
+  assert.equal(runtimeReceipt.sessionSlot?.slotId, scheduled.slotId);
+  assert.equal(runtimeReceipt.sessionSlot?.intent, "lower");
+  assert.equal(runtimeReceipt.sessionSlot?.sequenceIndex, 0);
+  assert.equal(runtimeReceipt.sessionSlot?.sequenceLength, 4);
+  assert.equal(runtimeReceipt.sessionSlot?.source, "mesocycle_slot_sequence");
+
+  const actualRuntime = {
+    week: runtimeReceipt.cycleContext.weekInMeso,
+    phase: runtimeReceipt.cycleContext.phase,
+    slotId: runtimeReceipt.sessionSlot?.slotId,
+    focus: runtimeReceipt.sessionSlot?.intent,
+    sequenceIndex: runtimeReceipt.sessionSlot?.sequenceIndex,
+    sequenceLength: runtimeReceipt.sessionSlot?.sequenceLength,
+    exerciseCount: actualExercises.length,
+    exercises: actualExercises.map((exercise, index) => ({
+      placementId: actualResolvedSlot.exercises[index]?.placementId,
       exerciseId: exercise.exercise.id,
       setCount: exercise.sets.length,
-      reps: exercise.sets[0]?.targetRepRange ?? exercise.sets[0]?.targetReps,
-      targetRpe: exercise.sets[0]?.targetRpe,
+      sets: exercise.sets.map((set) => ({
+        reps: set.targetRepRange ?? set.targetReps,
+        targetRpe: set.targetRpe,
+      })),
       measurement: exercise.measurement,
     })),
-    expectedSlot.exercises.map((exercise) => ({
-      exerciseId: exercise.exerciseId,
-      setCount: exercise.setCount,
-      reps: exercise.reps.kind === "RANGE"
-        ? { min: exercise.reps.min, max: exercise.reps.max }
-        : exercise.reps.reps,
-      targetRpe: exercise.targetRpe,
-      measurement: exercise.measurement,
-    })),
+    omittedPlacementIds: actualAcceptedSlot.exercises
+      .map((exercise) => exercise.placementId)
+      .filter(
+        (placementId) =>
+          !actualResolvedSlot.exercises.some(
+            (exercise) => exercise.placementId === placementId,
+          ),
+      ),
+    provenance: {
+      revision: runtimeSeedProvenance.revision,
+    },
+    composition: {
+      source: runtimeReceipt.sessionProvenance?.compositionSource,
+      warmup: materialized.workout.warmup,
+      hasWarmupSets: actualExercises.some((exercise) => "warmupSets" in exercise),
+      hasHipFlexorPreparation: actualExercises.some((exercise) =>
+        /hip[-_ ]flexor/i.test(exercise.exercise.id),
+      ),
+      hasFinisherComposition:
+        "finisher" in materialized || "finisher" in materialized.workout,
+      selectionFallbackUsed:
+        runtimeReceipt.sessionProvenance?.compositionSource !==
+        "persisted_slot_plan_seed",
+    },
+  };
+  assert.deepEqual(
+    actualRuntime,
+    expectedRuntime,
+    "V4_REVISED_RUNTIME_DID_NOT_MATCH_INDEPENDENT_LITERAL",
   );
-  assert.deepEqual(materialized.workout.warmup, []);
-  assert(
-    actualExercises.every((exercise) => !("warmupSets" in exercise)),
-    "V4_REFERENCE_WARMUP_WORK_PRESENT",
-  );
-  assert.equal(
-    materialized.selection.sessionDecisionReceipt?.sessionProvenance
-      ?.seedProvenance?.revisionId,
-    ready.revisionId,
-  );
+
+  const hashChain = {
+    savedPreview: saved.preview.hash,
+    reloadedPreview: reloaded.preview.hash,
+    finalizationConfirmation: finalizationConfirmedHash,
+    immutableRevision: acceptedRevision.payloadHash,
+    activeRevision: activeRevision.payloadHash,
+    runtimeReceipt: runtimeSeedProvenance.hash,
+  };
+  for (const [stage, hash] of Object.entries(hashChain)) {
+    assert.equal(hash, actualBoundHash, `V4_REVISED_HASH_CHAIN_DRIFT:${stage}`);
+  }
 
   console.log(JSON.stringify({
     status: "PASS",
@@ -549,6 +676,11 @@ async function main(): Promise<void> {
     warningRevisionId: warningReady.revisionId,
     slotId: scheduled.slotId,
     exerciseCount: actualExercises.length,
+    databaseBoundHash: actualBoundHash,
+    materiallyChangedActualHash,
+    hashChain,
+    runtimeLiteral: "V4_REVISED_WEEK_1_LOWER_A_RUNTIME_LITERAL",
+    placementCounts: draft.sessions.map((session) => session.exercises.length),
   }));
   } finally {
     await closeAppResources?.();

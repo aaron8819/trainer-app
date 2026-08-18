@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { normalizeAcceptedHypertrophySeedV4 } from "@/lib/api/mesocycle-seed-revision";
 import { V4_REFERENCE_CANONICAL_HASH } from "@/lib/api/template-session-v4-reference.expected";
+import { V4_REVISED_REFERENCE_CANONICAL_HASH } from "@/lib/api/template-session-v4-revised-reference.expected";
 import {
   compileAcceptedHypertrophySeedV4,
   copyAcceptedHypertrophySeedV4ToDraft,
@@ -10,6 +11,7 @@ import {
   type WeeklyPrescriptionV4,
 } from "./hypertrophy-plan-authoring";
 import { buildV4CustomPlanReferenceAcceptedSeed } from "./hypertrophy-plan-authoring-v4.fixture";
+import { buildRevisedFourDayPlanAcceptedSeed } from "./hypertrophy-plan-authoring-v4-revised.fixture";
 import {
   materializeBulkHypertrophyPrescriptionPattern,
   materializeHypertrophyPrescriptionPattern,
@@ -368,6 +370,68 @@ describe("hypertrophy prescription patterns", () => {
       expect(resolveAcceptedHypertrophySeedV4Week(recompiled, week.week)).toEqual(
         resolveAcceptedHypertrophySeedV4Week(accepted, week.week),
       );
+    }
+  });
+
+  it("independently reproduces the revised 26-placement draft, accepted V4 payload, hash, and runtime weeks exactly", () => {
+    const accepted = buildRevisedFourDayPlanAcceptedSeed();
+    const draft = copyAcceptedHypertrophySeedV4ToDraft(accepted);
+    const before = structuredClone(draft);
+    const transformed = {
+      ...draft,
+      sessions: draft.sessions.map((session) => ({
+        ...session,
+        exercises: session.exercises.map((exercise) => {
+          const recognized = recognizeHypertrophyPrescriptionPattern({
+            weeks: draft.weeks,
+            prescriptions: exercise.prescriptions,
+          });
+          if (
+            recognized.accumulation.kind === "CUSTOM" ||
+            recognized.deload.kind === "CUSTOM"
+          ) {
+            throw new Error("REVISED_REFERENCE_PATTERN_NOT_RECOGNIZED");
+          }
+          const deload: DeloadPrescriptionPattern = recognized.deload;
+          return {
+            ...exercise,
+            prescriptions: materializeHypertrophyPrescriptionPattern({
+              weeks: draft.weeks,
+              pattern: {
+                base: recognized.base,
+                effort: recognized.accumulation,
+                deload,
+              },
+            }),
+          };
+        }),
+      })),
+    };
+    expect(transformed).toEqual(before);
+    expect(
+      transformed.sessions.map((session) => session.exercises.length),
+    ).toEqual([6, 7, 6, 7]);
+    expect(
+      transformed.sessions.map(
+        (session) =>
+          session.exercises.filter(
+            (exercise) => exercise.prescriptions[4]!.status !== "OMIT",
+          ).length,
+      ),
+    ).toEqual([4, 7, 5, 7]);
+
+    const recompiled = compileAcceptedHypertrophySeedV4({
+      draft: transformed,
+      measurementByExerciseId: new Map(),
+    });
+    expect(recompiled).toEqual(accepted);
+    expect(normalizeAcceptedHypertrophySeedV4(recompiled).hash).toBe(
+      V4_REVISED_REFERENCE_CANONICAL_HASH,
+    );
+    for (const week of weeks) {
+      expect(
+        resolveAcceptedHypertrophySeedV4Week(recompiled, week.week),
+      ).toEqual(resolveAcceptedHypertrophySeedV4Week(accepted, week.week));
     }
   });
 });

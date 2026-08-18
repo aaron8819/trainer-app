@@ -72,7 +72,7 @@ export async function applyAcceptedMeasurementSnapshots(
   });
   if (!revision) throw new Error("WORKOUT_SEED_REVISION_MISSING");
   const normalized = normalizeAcceptedSeedPayload(revision.seedPayload);
-  if (normalized.payloadVersion !== 3) {
+  if (normalized.payloadVersion !== 3 && normalized.payloadVersion !== 4) {
     return input.exercises.map(stripMeasurementSnapshot);
   }
 

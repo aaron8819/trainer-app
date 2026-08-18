@@ -36,7 +36,10 @@ export type ProgressionDecision = {
 export type BoundProgressionExposure = {
   exposureId: string;
   date?: string;
-  source: "exact_exercise_history" | "runtime_added_same_exercise";
+  source:
+    | "exact_exercise_history"
+    | "legacy_measurement_bridge"
+    | "runtime_added_same_exercise";
   confidence: number;
   confidenceNotes: string[];
   selectionMode?: WorkoutHistoryEntry["selectionMode"];

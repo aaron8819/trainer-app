@@ -116,7 +116,10 @@ export type ProgressionDecisionTrace = {
     selectedExposureId: string;
     selectedExposureDate?: string;
     contextBound: true;
-    source: "exact_exercise_history" | "runtime_added_same_exercise";
+    source:
+      | "exact_exercise_history"
+      | "legacy_measurement_bridge"
+      | "runtime_added_same_exercise";
     confidence: number;
     progressionEligible: boolean;
     comparable: boolean;
@@ -164,6 +167,7 @@ export type DeloadExerciseTransformationTrace = {
     | "baseline"
     | "estimate"
     | "existing_target_load"
+    | "legacy_measurement_history"
     | "runtime_added_same_exercise_calibration_anchor"
     | "none";
   resolvedLoadSource?:
@@ -171,6 +175,7 @@ export type DeloadExerciseTransformationTrace = {
     | "baseline"
     | "estimate"
     | "existing_target_load"
+    | "legacy_measurement_history"
     | "runtime_added_same_exercise_calibration_anchor"
     | "none";
   resolvedTopSetLoad?: number | null;

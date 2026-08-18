@@ -139,6 +139,9 @@ export function buildPrescriptionConfidenceReadouts(input: {
           targetLoad: target.load,
           cautionReason: caution.reason,
         }),
+        ...(resolvedLoad?.historyEvidence
+          ? { historyEvidence: resolvedLoad.historyEvidence }
+          : {}),
         ...(selectedAnchorEvidence
           ? {
               selectedAnchorEvidence: {
@@ -212,6 +215,10 @@ function resolveConfidence(input: {
     return "high";
   }
 
+  if (input.loadSource === "legacy_measurement_history") {
+    return "medium";
+  }
+
   const combinedScale = input.trace?.confidence.combinedScale;
   if (Number.isFinite(combinedScale)) {
     if ((combinedScale as number) >= 0.85) {
@@ -229,6 +236,7 @@ function resolveConfidence(input: {
   if (input.loadSource === RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE) {
     return "medium";
   }
+
   if (input.loadSource === "baseline" || input.loadSource === "existing_target_load") {
     return "medium";
   }
@@ -261,6 +269,13 @@ function resolveCaution(input: {
     return {
       level: "notice",
       reason: RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE,
+    };
+  }
+
+  if (input.loadSource === "legacy_measurement_history") {
+    return {
+      level: "notice",
+      reason: "legacy_measurement_history",
     };
   }
 

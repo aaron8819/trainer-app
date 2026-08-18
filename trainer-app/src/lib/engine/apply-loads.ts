@@ -48,6 +48,7 @@ import {
 import {
   measurementComparisonKey,
   permitsComputedLoadComparison,
+  type MeasurementSemantics,
 } from "@/lib/exercise-measurement/semantics";
 import {
   applyCalibrationToEstimate,
@@ -82,14 +83,26 @@ export type ApplyLoadsOptions = {
   isFirstSessionInMesocycle?: boolean;
   selectedAnchorEvidence?: Record<string, SelectedAnchorLoadEvidence>;
   loadIncrementByExerciseId?: Record<string, number>;
+  acceptedV4Calibration?: boolean;
 };
 
 export type ApplyLoadsResolvedLoadSource =
   | "history"
   | "baseline"
   | "estimate"
+  | "none"
   | "existing_target_load"
+  | "legacy_measurement_history"
   | "runtime_added_same_exercise_calibration_anchor";
+
+export type ApplyLoadsHistoryEvidence = {
+  source: "exact_compatible_history" | "legacy_measurement_bridge";
+  confidence: "high" | "reduced";
+  date: string | null;
+  load: number;
+  reps: number;
+  rpe: number | null;
+};
 
 export type SelectedAnchorLoadEvidence = {
   selectedExerciseId: string;
@@ -114,6 +127,7 @@ export type ApplyLoadsAudit = {
       canonicalSourceLoad: number | null;
       resolvedTopSetLoad: number | null;
       resolvedSetLoads: number[];
+      historyEvidence?: ApplyLoadsHistoryEvidence;
     }
   >;
   selectedAnchorEvidence?: Record<string, SelectedAnchorLoadEvidence>;
@@ -227,6 +241,29 @@ export function applyLoadsWithAudit(
       exerciseId: exercise.id,
       measurement: exerciseEntry.measurement ?? null,
     });
+    const exactHistorySessions = historyIndex.get(historyKey);
+    const exactCrossIntentHistorySessions = crossIntentHistoryIndex.get(historyKey);
+    const hasUsableExactHistory = options.acceptedV4Calibration === true
+      ? hasUsableLoadHistory(exactHistorySessions)
+      : exactHistorySessions != null;
+    const hasUsableExactCrossIntentHistory = options.acceptedV4Calibration === true
+      ? hasUsableLoadHistory(exactCrossIntentHistorySessions)
+      : exactCrossIntentHistorySessions != null;
+    const canUseLegacyBridge =
+      options.acceptedV4Calibration === true &&
+      !hasUsableExactHistory &&
+      !hasUsableExactCrossIntentHistory &&
+      permitsLegacyMeasurementBridge(exerciseEntry.measurement ?? null);
+    const legacyHistoryKey = measurementComparisonKey({
+      exerciseId: exercise.id,
+      measurement: null,
+    });
+    const legacyHistorySessions = canUseLegacyBridge
+      ? buildLegacyMeasurementBridgeSessions(historyIndex.get(legacyHistoryKey))
+      : undefined;
+    const legacyCrossIntentHistorySessions = canUseLegacyBridge
+      ? buildLegacyMeasurementBridgeSessions(crossIntentHistoryIndex.get(legacyHistoryKey))
+      : undefined;
     const workingRole = exerciseEntry.isMainLift ? "main" : "accessory";
     const setsWithRole = exerciseEntry.sets.map((set) => ({
       ...set,
@@ -252,8 +289,10 @@ export function applyLoadsWithAudit(
     )
       ? resolveLoadForExercise(
         exercise,
-        historyIndex.get(historyKey),
-        crossIntentHistoryIndex.get(historyKey),
+        (hasUsableExactHistory ? exactHistorySessions : undefined) ?? legacyHistorySessions,
+        (hasUsableExactCrossIntentHistory ? exactCrossIntentHistorySessions : undefined) ??
+          legacyCrossIntentHistorySessions,
+        canUseLegacyBridge ? "legacy_measurement_bridge" : "exact_compatible_history",
         usesLegacyMeasurement ? baselineIndex.get(exercise.id) : undefined,
         usesLegacyMeasurement ? baselineLoadIndex : new Map<string, number>(),
         usesLegacyMeasurement ? historyTopLoadIndex : new Map<string, number>(),
@@ -270,9 +309,13 @@ export function applyLoadsWithAudit(
         preferredContext,
         options.sessionIntent,
         useNewMesocycleBaselineSource,
+        options.acceptedV4Calibration === true,
         options.loadIncrementByExerciseId?.[exercise.id]
       )
-      : { load: undefined, source: "estimate" as const };
+      : {
+          load: undefined,
+          source: options.acceptedV4Calibration === true ? "none" as const : "estimate" as const,
+        };
     if (resolvedLoad.progressionTrace) {
       progressionTraces[exercise.id] = resolvedLoad.progressionTrace;
     }
@@ -294,6 +337,17 @@ export function applyLoadsWithAudit(
       load === undefined ||
       (exerciseEntry.measurement != null && load <= 0)
     ) {
+      if (options.acceptedV4Calibration === true) {
+        resolvedLoads[exercise.id] = {
+          source: resolvedLoad.source,
+          canonicalSourceLoad: null,
+          resolvedTopSetLoad: null,
+          resolvedSetLoads: [],
+          ...(resolvedLoad.historyEvidence
+            ? { historyEvidence: resolvedLoad.historyEvidence }
+            : {}),
+        };
+      }
       return exerciseEntry.isMainLift
         ? { ...exerciseEntry, role: exerciseEntry.role ?? workingRole, sets: setsWithRole, warmupSets: undefined }
         : { ...exerciseEntry, role: exerciseEntry.role ?? workingRole, sets: setsWithRole };
@@ -322,6 +376,9 @@ export function applyLoadsWithAudit(
         resolvedSetLoads: deloadSets.flatMap((set) =>
           typeof set.targetLoad === "number" ? [set.targetLoad] : []
         ),
+        ...(resolvedLoad.historyEvidence
+          ? { historyEvidence: resolvedLoad.historyEvidence }
+          : {}),
       };
       return updatedEntry;
     }
@@ -356,6 +413,9 @@ export function applyLoadsWithAudit(
         resolvedSetLoads: updatedSets.flatMap((set) =>
           typeof set.targetLoad === "number" ? [set.targetLoad] : []
         ),
+        ...(resolvedLoad.historyEvidence
+          ? { historyEvidence: resolvedLoad.historyEvidence }
+          : {}),
       };
       return updatedEntry;
     }
@@ -376,6 +436,9 @@ export function applyLoadsWithAudit(
       resolvedSetLoads: updatedEntry.sets.flatMap((set) =>
         typeof set.targetLoad === "number" ? [set.targetLoad] : []
       ),
+      ...(resolvedLoad.historyEvidence
+        ? { historyEvidence: resolvedLoad.historyEvidence }
+        : {}),
     };
     return updatedEntry;
   };
@@ -520,6 +583,95 @@ function buildSessionHistoryIndex(
     }
   }
   return index;
+}
+
+function permitsLegacyMeasurementBridge(
+  measurement: MeasurementSemantics | null,
+): boolean {
+  return (
+    measurement?.profile === "REPS_EXTERNAL_LOAD" &&
+    measurement.loadConvention === "BARBELL_TOTAL" &&
+    measurement.repBasis === "TOTAL"
+  );
+}
+
+function hasUsableLoadHistory(
+  sessions: WorkoutSessionHistory[] | undefined,
+): boolean {
+  return Boolean(
+    sessions?.some((session) =>
+      session.sets.some(
+        (set) =>
+          Number.isFinite(set.load) &&
+          (set.load ?? 0) > 0 &&
+          Number.isFinite(set.reps) &&
+          set.reps > 0 &&
+          (set.rpe == null || set.rpe >= EFFECTIVE_RPE_MIN),
+      ),
+    ),
+  );
+}
+
+function buildLegacyMeasurementBridgeSessions(
+  sessions: WorkoutSessionHistory[] | undefined,
+): WorkoutSessionHistory[] | undefined {
+  const bridged = sessions?.flatMap((session) => {
+    const sets: WorkoutSetHistory = session.sets.filter(
+      (set): set is WorkoutSetHistory[number] =>
+        Number.isInteger(set.setIndex) &&
+        Number.isFinite(set.load) &&
+        (set.load ?? 0) > 0 &&
+        Number.isFinite(set.reps) &&
+        set.reps > 0 &&
+        (set.rpe == null || set.rpe >= EFFECTIVE_RPE_MIN),
+    );
+    if (sets.length === 0) {
+      return [];
+    }
+    return [{
+      ...session,
+      source: "legacy_measurement_bridge" as const,
+      sets,
+      confidenceNotes: [
+        ...session.confidenceNotes,
+        "Legacy-null same-exercise measurement evidence admitted at reduced confidence.",
+      ],
+    }];
+  });
+  return bridged && bridged.length > 0 ? bridged : undefined;
+}
+
+function buildHistoryEvidence(input: {
+  sessions: WorkoutSessionHistory[] | undefined;
+  source: ApplyLoadsHistoryEvidence["source"];
+  representativeLoad?: number;
+}): ApplyLoadsHistoryEvidence | undefined {
+  const selectedSession = input.sessions?.[0];
+  if (!selectedSession) {
+    return undefined;
+  }
+  const usableSets = [...selectedSession.sets]
+    .filter(
+      (set) =>
+        Number.isFinite(set.load) &&
+        (set.load ?? 0) > 0 &&
+        Number.isFinite(set.reps) &&
+        set.reps > 0,
+    )
+    .sort((left, right) => left.setIndex - right.setIndex);
+  const selectedSet =
+    usableSets.find((set) => set.load === input.representativeLoad) ?? usableSets[0];
+  if (!selectedSet || selectedSet.load == null) {
+    return undefined;
+  }
+  return {
+    source: input.source,
+    confidence: input.source === "legacy_measurement_bridge" ? "reduced" : "high",
+    date: selectedSession.date ?? null,
+    load: selectedSet.load,
+    reps: selectedSet.reps,
+    rpe: Number.isFinite(selectedSet.rpe) ? selectedSet.rpe as number : null,
+  };
 }
 
 function selectNewMesocycleBaselineHistory(
@@ -736,6 +888,7 @@ function resolveLoadForExercise(
   exercise: Exercise,
   historySessions: WorkoutSessionHistory[] | undefined,
   crossIntentHistorySessions: WorkoutSessionHistory[] | undefined,
+  historyEvidenceSource: ApplyLoadsHistoryEvidence["source"],
   baselineSelection: BaselineSelection | undefined,
   baselineLoadIndex: Map<string, number>,
   historyTopLoadIndex: Map<string, number>,
@@ -752,12 +905,24 @@ function resolveLoadForExercise(
   preferredContext: string,
   sessionIntent: SplitDay | undefined,
   useNewMesocycleBaselineSource: boolean,
+  acceptedV4Calibration: boolean,
   suppliedLoadIncrement?: number
 ): {
   load?: number;
   progressionTrace?: ProgressionDecisionTrace;
-  source: "history" | "baseline" | "estimate" | typeof RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE;
+  source:
+    | "history"
+    | "baseline"
+    | "estimate"
+    | "none"
+    | "legacy_measurement_history"
+    | typeof RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE;
+  historyEvidence?: ApplyLoadsHistoryEvidence;
 } {
+  const historyLoadSource =
+    historyEvidenceSource === "legacy_measurement_bridge"
+      ? "legacy_measurement_history" as const
+      : "history" as const;
   const selectedExposure = historySessions?.[0];
   const latestSetsRaw = selectedExposure?.sets;
   const useModalAnchoring = shouldUseModalAnchoring(exercise);
@@ -785,6 +950,24 @@ function resolveLoadForExercise(
         }) ?? undefined;
     if (selectedExposure && workingSetLoad != null) {
       selectedExposure.representativeLoad = workingSetLoad;
+    }
+    const historyEvidence = acceptedV4Calibration
+      ? buildHistoryEvidence({
+          sessions: historySessions,
+          source: historyEvidenceSource,
+          representativeLoad: workingSetLoad,
+        })
+      : undefined;
+    if (
+      historyEvidenceSource === "legacy_measurement_bridge" &&
+      workingSetLoad != null &&
+      !latestSetsForDecision.some((set) => Number.isFinite(set.rpe))
+    ) {
+      return {
+        load: quantizeLoad(workingSetLoad, loadIncrement),
+        source: historyLoadSource,
+        ...(historyEvidence ? { historyEvidence } : {}),
+      };
     }
     const progressionInput = buildCanonicalProgressionEvaluationInput({
       lastSets: latestSetsForDecision,
@@ -829,7 +1012,8 @@ function resolveLoadForExercise(
       return {
         load: exactHistoryContextCalibration.load,
         progressionTrace: exactHistoryContextCalibration.trace,
-        source: "history",
+        source: historyLoadSource,
+        ...(historyEvidence ? { historyEvidence } : {}),
       };
     }
     if (
@@ -838,10 +1022,20 @@ function resolveLoadForExercise(
       modalRpe >= 9 &&
       progressionInput.context.selectedExposure == null
     ) {
-      return { load: anchorLoad, progressionTrace: decision?.trace, source: "history" };
+      return {
+        load: anchorLoad,
+        progressionTrace: decision?.trace,
+        source: historyLoadSource,
+        ...(historyEvidence ? { historyEvidence } : {}),
+      };
     }
     if (decision) {
-      return { load: decision.nextLoad, progressionTrace: decision.trace, source: "history" };
+      return {
+        load: decision.nextLoad,
+        progressionTrace: decision.trace,
+        source: historyLoadSource,
+        ...(historyEvidence ? { historyEvidence } : {}),
+      };
     }
     const recentSessions =
       historySessions?.slice(1).map((session) =>
@@ -857,7 +1051,11 @@ function resolveLoadForExercise(
       equipment,
       });
       if (computed !== undefined) {
-        return { load: computed, source: "history" };
+        return {
+          load: computed,
+          source: historyLoadSource,
+          ...(historyEvidence ? { historyEvidence } : {}),
+        };
       }
     }
 
@@ -880,7 +1078,17 @@ function resolveLoadForExercise(
     estimatedLoad: estimatedLoadForFallback,
   });
   if (crossIntentFallbackLoad !== undefined) {
-    return { load: crossIntentFallbackLoad, source: "history" };
+    const historyEvidence = acceptedV4Calibration
+      ? buildHistoryEvidence({
+          sessions: crossIntentHistorySessions,
+          source: historyEvidenceSource,
+        })
+      : undefined;
+    return {
+      load: crossIntentFallbackLoad,
+      source: historyLoadSource,
+      ...(historyEvidence ? { historyEvidence } : {}),
+    };
   }
 
   if (baselineSelection !== undefined) {
@@ -903,6 +1111,10 @@ function resolveLoadForExercise(
       load: runtimeAddedCalibrationLoad,
       source: RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE,
     };
+  }
+
+  if (acceptedV4Calibration) {
+    return { source: "none" };
   }
 
   return {

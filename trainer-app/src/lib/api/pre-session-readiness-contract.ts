@@ -1,4 +1,7 @@
-import type { PrescriptionConfidenceLoadSource } from "@/lib/api/template-session/types";
+import type {
+  PrescriptionConfidenceLoadSource,
+  PrescriptionConfidenceReadout,
+} from "@/lib/api/template-session/types";
 import {
   isWeeklyMuscleClosureDecision,
   type WeeklyMuscleClosureDecision,
@@ -86,6 +89,7 @@ export type PreSessionReadinessPrescriptionConfidenceWatchRow = {
     unit: "lb";
     basis: string;
   } | null;
+  historyEvidence?: PrescriptionConfidenceReadout["historyEvidence"];
   source: "generated_progression_trace";
 };
 

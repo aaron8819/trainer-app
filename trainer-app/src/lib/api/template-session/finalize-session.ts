@@ -114,6 +114,25 @@ function buildSessionProvenance(
   };
 }
 
+function usesAcceptedV4Calibration(
+  mapped: MappedGenerationContext,
+  compositionSource: SessionCompositionSource,
+): boolean {
+  if (
+    compositionSource !== "persisted_slot_plan_seed" &&
+    compositionSource !== "deload_seed_replay"
+  ) {
+    return false;
+  }
+  const seedPayload = mapped.activeMesocycle?.currentSeedRevision?.seedPayload;
+  return (
+    seedPayload != null &&
+    typeof seedPayload === "object" &&
+    !Array.isArray(seedPayload) &&
+    (seedPayload as { version?: unknown }).version === 4
+  );
+}
+
 function attachResolvedLoadsToDeloadTrace(
   trace: DeloadTransformationTrace | undefined,
   audit: ReturnType<typeof applyLoadsWithAudit>["audit"]
@@ -193,6 +212,7 @@ export function finalizePostLoadResult(
     isFirstSessionInMesocycle:
       (mapped.activeMesocycle?.accumulationSessionsCompleted ?? -1) === 0,
     selectedAnchorEvidence,
+    acceptedV4Calibration: usesAcceptedV4Calibration(mapped, compositionSource),
   });
   const volumePlanByMuscle = buildPostLoadVolumePlan(mapped, withLoads);
 
@@ -251,6 +271,7 @@ export function finalizeDeloadSessionResult(input: {
   plannerDiagnosticsMode?: PlannerDiagnosticsMode;
   compositionSource?: SessionCompositionSource;
 }): SessionGenerationResult {
+  const compositionSource = input.compositionSource ?? "runtime_selection";
   const exerciseById = Object.fromEntries(
     input.mapped.exerciseLibrary.map((exercise) => [exercise.id, exercise])
   );
@@ -267,6 +288,10 @@ export function finalizeDeloadSessionResult(input: {
       input.mapped.activeMesocycle?.accumulationSessionsCompleted ?? undefined,
     isFirstSessionInMesocycle:
       (input.mapped.activeMesocycle?.accumulationSessionsCompleted ?? -1) === 0,
+    acceptedV4Calibration: usesAcceptedV4Calibration(
+      input.mapped,
+      compositionSource,
+    ),
   });
   const volumePlanByMuscle = buildPostLoadVolumePlan(input.mapped, withLoads);
   const prescriptionReadouts = buildPrescriptionConfidenceReadouts({
@@ -288,7 +313,7 @@ export function finalizeDeloadSessionResult(input: {
         cycleContext: input.mapped.cycleContext,
         sessionProvenance: buildSessionProvenance(
           input.mapped,
-          input.compositionSource ?? "runtime_selection"
+          compositionSource
         ),
         lifecycleRirTarget: input.mapped.lifecycleRirTarget,
         lifecycleVolumeTargets: input.mapped.lifecycleVolumeTargets,

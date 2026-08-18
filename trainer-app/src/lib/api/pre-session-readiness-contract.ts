@@ -59,6 +59,7 @@ export type PreSessionReadinessCoachingRecommendation = {
 
 export type PreSessionReadinessPrescriptionConfidenceWatchRow = {
   exerciseLabel: string;
+  displayMessage?: string;
   watchType: "prescription_confidence";
   reasonCode:
     | "progression_trace_unavailable"
@@ -503,6 +504,7 @@ function hasValidPrescriptionConfidenceWatch(
   return (
     isRecord(value) &&
     typeof value.exerciseLabel === "string" &&
+    (value.displayMessage == null || typeof value.displayMessage === "string") &&
     value.watchType === "prescription_confidence" &&
     (value.reasonCode === "progression_trace_unavailable" ||
       value.reasonCode === "low_confidence" ||

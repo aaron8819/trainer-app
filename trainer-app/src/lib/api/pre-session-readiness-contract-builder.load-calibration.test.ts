@@ -1,6 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { buildLogWorkoutExecutionGuidanceByExercise } from "./log-workout-execution-guidance";
 import { buildPreSessionReadinessContract } from "./pre-session-readiness-contract-builder";
+import { getCalibrationWatchRows } from "./pre-session-readiness-contract-consumers";
+import { buildPreSessionReadinessGymCardDto } from "./pre-session-readiness-gym-card";
 import type { PrescriptionConfidenceReadout } from "./template-session/types";
+
+vi.mock("./home-pre-session-readiness", () => ({
+  loadCurrentHomePreSessionReadinessContractCandidate: vi.fn(),
+  resolveHomePreSessionReadinessContract: vi.fn(),
+}));
 
 function buildContract(readouts: PrescriptionConfidenceReadout[]) {
   return buildPreSessionReadinessContract({
@@ -135,5 +143,83 @@ describe("V4 load-calibration presentation", () => {
         severity: "warning",
       }),
     ]);
+  });
+
+  it("preserves all three calibration explanations through production guidance", () => {
+    const contract = buildContract([
+      readout({
+        exerciseId: "exact-bench",
+        exerciseName: "Bench Press",
+        loadSource: "history",
+        historyEvidence: {
+          source: "exact_compatible_history",
+          confidence: "high",
+          date: "2026-08-03T21:09:57.853Z",
+          load: 135,
+          reps: 8,
+          rpe: 8,
+        },
+      }),
+      readout({
+        exerciseId: "legacy-bench",
+        exerciseName: "Barbell Bench Press",
+        loadSource: "legacy_measurement_history",
+        historyEvidence: {
+          source: "legacy_measurement_bridge",
+          confidence: "reduced",
+          date: "2026-08-03T21:09:57.853Z",
+          load: 135,
+          reps: 8,
+          rpe: 8,
+        },
+      }),
+      readout({
+        exerciseId: "uncalibrated-bench",
+        exerciseName: "Incline Bench Press",
+        loadSource: "none",
+        targetLoad: null,
+        confidence: "low",
+      }),
+    ]);
+
+    expect(getCalibrationWatchRows(contract).map((row) => row.message)).toEqual([
+      "Suggested load: 140 lb. Based on 135 × 8 @ RPE 8 on Aug 3.",
+      "Suggested load: 140 lb. Based on prior Barbell Bench Press history from Aug 3.",
+      "No calibrated load yet. Enter a starting load for this exercise.",
+    ]);
+
+    const card = buildPreSessionReadinessGymCardDto(contract);
+    const guidance = buildLogWorkoutExecutionGuidanceByExercise(card);
+
+    expect(card.calibrationNotes.map((note) => note.message)).toEqual([
+      "Suggested load: 140 lb. Based on 135 × 8 @ RPE 8 on Aug 3.",
+      "Suggested load: 140 lb. Based on prior Barbell Bench Press history from Aug 3.",
+      "No calibrated load yet. Enter a starting load for this exercise.",
+    ]);
+    expect(guidance.byExerciseId).toEqual({
+      "exact-bench": [
+        expect.objectContaining({
+          message:
+            "Suggested load: 140 lb. Based on 135 × 8 @ RPE 8 on Aug 3.",
+          sourceLabel: "History",
+        }),
+      ],
+      "legacy-bench": [
+        expect.objectContaining({
+          message:
+            "Suggested load: 140 lb. Based on prior Barbell Bench Press history from Aug 3.",
+          sourceLabel: "Prior history",
+        }),
+      ],
+      "uncalibrated-bench": [
+        expect.objectContaining({
+          message:
+            "No calibrated load yet. Enter a starting load for this exercise.",
+        }),
+      ],
+    });
+    expect(
+      guidance.byExerciseId["uncalibrated-bench"]?.[0]?.message
+    ).not.toMatch(/start at|use the target/i);
   });
 });

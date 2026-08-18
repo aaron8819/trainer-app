@@ -303,6 +303,14 @@ function formatTargetLoadStart(row: ReadinessCalibrationWatchRow): string | null
 function toDisplaySafeWatchRow(
   row: ReadinessCalibrationWatchRow
 ): ReadinessCalibrationWatchRow {
+  if (row.displayMessage) {
+    const { displayMessage, ...displaySafeRow } = row;
+    return {
+      ...displaySafeRow,
+      message: displayMessage,
+    };
+  }
+
   if (row.displayActionCode) {
     const prefix = row.exerciseLabel ? `${row.exerciseLabel}: ` : "";
     const adjustmentRange = formatAdjustmentRange(row);

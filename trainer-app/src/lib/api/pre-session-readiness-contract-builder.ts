@@ -556,20 +556,24 @@ function buildPrescriptionConfidenceWatches(
       readout?.historyEvidence ||
       (readout?.loadSource === "none" && readout.targetLoad == null)
     ) {
+      const row: PreSessionReadinessPrescriptionConfidenceWatchRow = {
+        exerciseLabel: exercise.exerciseName,
+        watchType: "prescription_confidence",
+        reasonCode: "load_calibration",
+        displayActionCode: "use_target_as_starting_point",
+        severity:
+          readout.historyEvidence?.source === "legacy_measurement_bridge" ||
+          readout.loadSource === "none"
+            ? "warning"
+            : "info",
+        ...(trace ? { confidence: trace.confidence.combinedScale } : {}),
+        source: "generated_progression_trace",
+        ...readoutFields,
+      };
       return [
         {
-          exerciseLabel: exercise.exerciseName,
-          watchType: "prescription_confidence",
-          reasonCode: "load_calibration",
-          displayActionCode: "use_target_as_starting_point",
-          severity:
-            readout.historyEvidence?.source === "legacy_measurement_bridge" ||
-            readout.loadSource === "none"
-              ? "warning"
-              : "info",
-          ...(trace ? { confidence: trace.confidence.combinedScale } : {}),
-          source: "generated_progression_trace",
-          ...readoutFields,
+          ...row,
+          displayMessage: formatPrescriptionConfidenceWatchMessage(row),
         },
       ];
     }
@@ -1134,7 +1138,10 @@ export function buildPreSessionReadinessContract(
     provenance: "operator_audit" as const,
   };
   const prescriptionConfidenceWatchMessages =
-    prescriptionConfidenceWatches.map(formatPrescriptionConfidenceWatchMessage);
+    prescriptionConfidenceWatches.map(
+      (watch) =>
+        watch.displayMessage ?? formatPrescriptionConfidenceWatchMessage(watch)
+    );
   const boundaryNotes = input.boundaryNotes ?? [
     "contract is audit/readout only",
     "no workout/session/log/seed/progression mutation",

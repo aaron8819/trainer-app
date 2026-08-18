@@ -41,6 +41,7 @@ type PrescriptionReadoutFields = Pick<
   | "cautionReason"
   | "adjustmentRangeBasis"
   | "suggestedAdjustmentRange"
+  | "historyEvidence"
 >;
 
 const UPPER_BODY_MUSCLES = new Set([
@@ -551,6 +552,31 @@ function buildPrescriptionConfidenceWatches(
     const trace = generated?.traces.progression[exercise.exerciseId];
     const readout = readoutsByExerciseId.get(exercise.exerciseId);
     const readoutFields = buildPrescriptionReadoutFields(readout);
+    if (
+      readout?.historyEvidence ||
+      (readout?.loadSource === "none" && readout.targetLoad == null)
+    ) {
+      const row: PreSessionReadinessPrescriptionConfidenceWatchRow = {
+        exerciseLabel: exercise.exerciseName,
+        watchType: "prescription_confidence",
+        reasonCode: "load_calibration",
+        displayActionCode: "use_target_as_starting_point",
+        severity:
+          readout.historyEvidence?.source === "legacy_measurement_bridge" ||
+          readout.loadSource === "none"
+            ? "warning"
+            : "info",
+        ...(trace ? { confidence: trace.confidence.combinedScale } : {}),
+        source: "generated_progression_trace",
+        ...readoutFields,
+      };
+      return [
+        {
+          ...row,
+          displayMessage: formatPrescriptionConfidenceWatchMessage(row),
+        },
+      ];
+    }
     if (!trace) {
       return [
         {
@@ -648,6 +674,9 @@ function buildPrescriptionReadoutFields(
     loadConfidence: readout.confidence,
     cautionLevel: readout.cautionLevel,
     cautionReason: readout.cautionReason,
+    ...(readout.historyEvidence
+      ? { historyEvidence: readout.historyEvidence }
+      : {}),
     adjustmentRangeBasis: suggestedAdjustmentRange
       ? "exact_range"
       : hasTargetLoad
@@ -660,6 +689,21 @@ function buildPrescriptionReadoutFields(
 function formatPrescriptionConfidenceWatchMessage(
   row: PreSessionReadinessPrescriptionConfidenceWatchRow
 ): string {
+  if (row.historyEvidence && row.targetLoad != null) {
+    const date = formatCalibrationEvidenceDate(row.historyEvidence.date);
+    if (row.historyEvidence.source === "legacy_measurement_bridge") {
+      return `Suggested load: ${formatPreviewNumber(row.targetLoad)} lb. Based on prior ${row.exerciseLabel} history${date ? ` from ${date}` : ""}.`;
+    }
+    const rpe = row.historyEvidence.rpe == null
+      ? ""
+      : ` @ RPE ${formatPreviewNumber(row.historyEvidence.rpe)}`;
+    return `Suggested load: ${formatPreviewNumber(row.targetLoad)} lb. Based on ${formatPreviewNumber(row.historyEvidence.load)} × ${formatPreviewNumber(row.historyEvidence.reps)}${rpe}${date ? ` on ${date}` : ""}.`;
+  }
+
+  if (row.loadSource === "none" && row.targetLoad == null) {
+    return "No calibrated load yet. Enter a starting load for this exercise.";
+  }
+
   if (row.suggestedAdjustmentRange) {
     const target =
       row.targetLoad == null
@@ -691,6 +735,21 @@ function formatPrescriptionConfidenceWatchMessage(
         ? `- ${row.exerciseLabel}: start at ${targetLoad}; calibrate from the first working set.`
         : `- ${row.exerciseLabel}: use the written target as guidance and calibrate from the first working set.`;
   }
+}
+
+function formatCalibrationEvidenceDate(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) {
+    return null;
+  }
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(date);
 }
 
 function buildStartability(input: {
@@ -1079,7 +1138,10 @@ export function buildPreSessionReadinessContract(
     provenance: "operator_audit" as const,
   };
   const prescriptionConfidenceWatchMessages =
-    prescriptionConfidenceWatches.map(formatPrescriptionConfidenceWatchMessage);
+    prescriptionConfidenceWatches.map(
+      (watch) =>
+        watch.displayMessage ?? formatPrescriptionConfidenceWatchMessage(watch)
+    );
   const boundaryNotes = input.boundaryNotes ?? [
     "contract is audit/readout only",
     "no workout/session/log/seed/progression mutation",

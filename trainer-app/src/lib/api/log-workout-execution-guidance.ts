@@ -57,6 +57,8 @@ function formatSourceLabel(
   switch (value) {
     case "history":
       return "History";
+    case "legacy_measurement_history":
+      return "Prior history";
     case "baseline":
       return "Baseline";
     case "estimate":

@@ -110,6 +110,7 @@ function loadAuditFor(input: {
   targetLoad: number;
   trace?: ProgressionDecisionTrace;
   selectedAnchorEvidence?: ApplyLoadsAudit["selectedAnchorEvidence"];
+  historyEvidence?: ApplyLoadsAudit["resolvedLoads"][string]["historyEvidence"];
 }): Pick<
   ApplyLoadsAudit,
   "progressionTraces" | "resolvedLoads" | "selectedAnchorEvidence"
@@ -122,6 +123,7 @@ function loadAuditFor(input: {
         canonicalSourceLoad: input.targetLoad,
         resolvedTopSetLoad: input.targetLoad,
         resolvedSetLoads: [input.targetLoad],
+        ...(input.historyEvidence ? { historyEvidence: input.historyEvidence } : {}),
       },
     },
     ...(input.selectedAnchorEvidence
@@ -131,6 +133,72 @@ function loadAuditFor(input: {
 }
 
 describe("buildPrescriptionConfidenceReadouts", () => {
+  it("carries exact and reduced-confidence legacy calibration evidence", () => {
+    const exact = buildPrescriptionConfidenceReadouts({
+      workout: workoutWithOneExercise({
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        targetLoad: 140,
+        targetReps: 5,
+        targetRpe: 6.5,
+      }),
+      loadAudit: loadAuditFor({
+        exerciseId: "bench",
+        source: "history",
+        targetLoad: 140,
+        historyEvidence: {
+          source: "exact_compatible_history",
+          confidence: "high",
+          date: "2026-08-03T00:00:00.000Z",
+          load: 135,
+          reps: 8,
+          rpe: 8,
+        },
+      }),
+    });
+    const legacy = buildPrescriptionConfidenceReadouts({
+      workout: workoutWithOneExercise({
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        targetLoad: 140,
+        targetReps: 5,
+        targetRpe: 6.5,
+      }),
+      loadAudit: loadAuditFor({
+        exerciseId: "bench",
+        source: "legacy_measurement_history",
+        targetLoad: 140,
+        trace: progressionTrace({
+          anchorLoad: 135,
+          medianReps: 8,
+          modalRpe: 8,
+          nextLoad: 140,
+          combinedScale: 1,
+        }),
+        historyEvidence: {
+          source: "legacy_measurement_bridge",
+          confidence: "reduced",
+          date: "2026-08-03T00:00:00.000Z",
+          load: 135,
+          reps: 8,
+          rpe: 8,
+        },
+      }),
+    });
+
+    expect(exact[0]).toMatchObject({
+      loadSource: "history",
+      historyEvidence: { source: "exact_compatible_history", confidence: "high" },
+    });
+    expect(legacy[0]).toMatchObject({
+      loadSource: "legacy_measurement_history",
+      confidence: "medium",
+      cautionLevel: "notice",
+      cautionReason: "legacy_measurement_history",
+      historyEvidence: { source: "legacy_measurement_bridge", confidence: "reduced" },
+    });
+  });
+
   it("flags the SLDL target-effort/load mismatch as caution-level low confidence", () => {
     const readouts = buildPrescriptionConfidenceReadouts({
       workout: workoutWithOneExercise({

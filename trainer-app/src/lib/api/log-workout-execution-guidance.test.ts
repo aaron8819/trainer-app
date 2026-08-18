@@ -139,6 +139,45 @@ describe("log workout execution guidance", () => {
     ).toEqual([]);
   });
 
+  it("labels reduced-confidence legacy calibration as prior history", () => {
+    const card = makeCard({
+      calibrationNotes: [
+        {
+          kind: "prescription_confidence",
+          message:
+            "Suggested load: 140 lb. Based on prior Barbell Bench Press history from Aug 3.",
+          exerciseLabel: "Cable Row",
+          reasonCode: "load_calibration",
+          displayActionCode: "use_target_as_starting_point",
+          severity: "warning",
+          targetLoad: 140,
+          targetReps: 5,
+          targetRpe: 6.5,
+          loadSource: "legacy_measurement_history",
+          loadConfidence: "medium",
+          cautionLevel: "notice",
+          cautionReason: "legacy_measurement_history",
+          adjustmentRangeBasis: "target_load_start",
+          suggestedAdjustmentRange: null,
+          source: "generated_progression_trace",
+        },
+      ],
+    });
+
+    expect(
+      getLogWorkoutExecutionGuidanceForExercise(
+        buildLogWorkoutExecutionGuidanceByExercise(card),
+        { exerciseId: "cable-row", name: "Cable Row" },
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        sourceLabel: "Prior history",
+        message:
+          "Suggested load: 140 lb. Based on prior Barbell Bench Press history from Aug 3.",
+      }),
+    ]);
+  });
+
   it("attaches by exercise id when duplicate display names would make name matching ambiguous", () => {
     const guidance = buildLogWorkoutExecutionGuidanceByExercise(makeCard());
 

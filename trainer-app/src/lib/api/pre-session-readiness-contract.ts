@@ -1,4 +1,7 @@
-import type { PrescriptionConfidenceLoadSource } from "@/lib/api/template-session/types";
+import type {
+  PrescriptionConfidenceLoadSource,
+  PrescriptionConfidenceReadout,
+} from "@/lib/api/template-session/types";
 import {
   isWeeklyMuscleClosureDecision,
   type WeeklyMuscleClosureDecision,
@@ -56,6 +59,7 @@ export type PreSessionReadinessCoachingRecommendation = {
 
 export type PreSessionReadinessPrescriptionConfidenceWatchRow = {
   exerciseLabel: string;
+  displayMessage?: string;
   watchType: "prescription_confidence";
   reasonCode:
     | "progression_trace_unavailable"
@@ -86,6 +90,7 @@ export type PreSessionReadinessPrescriptionConfidenceWatchRow = {
     unit: "lb";
     basis: string;
   } | null;
+  historyEvidence?: PrescriptionConfidenceReadout["historyEvidence"];
   source: "generated_progression_trace";
 };
 
@@ -499,6 +504,7 @@ function hasValidPrescriptionConfidenceWatch(
   return (
     isRecord(value) &&
     typeof value.exerciseLabel === "string" &&
+    (value.displayMessage == null || typeof value.displayMessage === "string") &&
     value.watchType === "prescription_confidence" &&
     (value.reasonCode === "progression_trace_unavailable" ||
       value.reasonCode === "low_confidence" ||

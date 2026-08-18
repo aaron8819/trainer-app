@@ -590,6 +590,63 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     });
   });
 
+  it("keeps an uncalibrated starting load editable and logs the manual value", async () => {
+    const user = userEvent.setup();
+    render(
+      <LogWorkoutClient
+        workoutId="workout-1"
+        exercises={[
+          {
+            workoutExerciseId: "ex-bench",
+            name: "Barbell Bench Press",
+            equipment: ["barbell"],
+            isMainLift: true,
+            executionGuidance: [
+              {
+                title: "Prescription guidance",
+                message:
+                  "No calibrated load yet. Enter a starting load for this exercise.",
+                confidenceLabel: "Low confidence",
+              },
+            ],
+            sets: [
+              {
+                setId: "set-bench-1",
+                setIndex: 1,
+                targetReps: 5,
+                targetLoad: null,
+                targetRpe: 6.5,
+                restSeconds: 120,
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(
+      screen.getByText("No calibrated load yet. Enter a starting load for this exercise."),
+    ).toBeInTheDocument();
+    const loadInput = screen.getByLabelText("Load") as HTMLInputElement;
+    expect(loadInput).toBeEnabled();
+    expect(loadInput).toHaveValue(null);
+
+    await user.type(loadInput, "135");
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+
+    await waitFor(() => {
+      expect(mockedLogSetRequest).toHaveBeenCalledWith({
+        expectedRevision: 1,
+        workoutSetId: "set-bench-1",
+        actualReps: 5,
+        actualLoad: 135,
+        actualRpe: 6.5,
+        setIntent: "WORK",
+        wasSkipped: false,
+      });
+    });
+  });
+
   it("does not show a session elapsed timer in the active log UI", () => {
     renderClient();
 

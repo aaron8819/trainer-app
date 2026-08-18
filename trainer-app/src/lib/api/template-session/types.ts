@@ -35,6 +35,7 @@ import type { ActiveMesocycleWithBlocks } from "@/lib/api/mesocycle-lifecycle-st
 import type { GenerationPhaseBlockContext } from "@/lib/api/generation-phase-block-context";
 import type {
   ApplyLoadsAudit,
+  ApplyLoadsHistoryEvidence,
   SelectedAnchorLoadEvidence,
 } from "@/lib/engine/apply-loads";
 
@@ -73,6 +74,7 @@ export type PrescriptionConfidenceLoadSource =
   | "baseline"
   | "estimate"
   | "existing_target_load"
+  | "legacy_measurement_history"
   | "runtime_added_same_exercise_calibration_anchor"
   | "bodyweight"
   | "none"
@@ -96,6 +98,7 @@ export type PrescriptionConfidenceReadout = {
     unit: "lb";
     basis: string;
   } | null;
+  historyEvidence?: ApplyLoadsHistoryEvidence;
   selectedAnchorEvidence?: SelectedAnchorLoadEvidence & {
     selectedExerciseName: string;
   };

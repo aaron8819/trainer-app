@@ -65,6 +65,17 @@ export async function POST(request: Request) {
       { status: 409 }
     );
   }
+  if (nextWorkoutContext.source === "schedule_resolution_blocked") {
+    return NextResponse.json(
+      {
+        error:
+          nextWorkoutContext.lifecycleBlocker?.message ??
+          "Scheduled workout identity is ambiguous. Refresh before continuing.",
+        blocker: nextWorkoutContext.lifecycleBlocker ?? null,
+      },
+      { status: 409 },
+    );
+  }
   if (nextWorkoutContext.source === "final_week_close_pending") {
     return NextResponse.json(
       {

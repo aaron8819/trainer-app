@@ -99,7 +99,11 @@ describe("save-workout persistence CAS (PostgreSQL)", () => {
     const result = await prisma.$transaction(async (tx) => {
       const persisted = await persistWorkoutRow(tx, {
         workoutId: existing.id,
-        existingWorkout: { id: existing.id, revision: existing.revision },
+        existingWorkout: {
+          id: existing.id,
+          revision: existing.revision,
+          status: existing.status,
+        },
         userId: ownerId,
         expectedRevision: existing.revision,
         shouldAdvanceLifecycleTransition: false,
@@ -151,7 +155,11 @@ describe("save-workout persistence CAS (PostgreSQL)", () => {
       prisma.$transaction(async (tx) => {
         await persistWorkoutRow(tx, {
           workoutId: existing.id,
-          existingWorkout: { id: existing.id, revision: existing.revision + 1 },
+          existingWorkout: {
+            id: existing.id,
+            revision: existing.revision + 1,
+            status: existing.status,
+          },
           userId: ownerId,
           expectedRevision: existing.revision,
           shouldAdvanceLifecycleTransition: false,
@@ -183,7 +191,11 @@ describe("save-workout persistence CAS (PostgreSQL)", () => {
       prisma.$transaction(async (tx) => {
         const persisted = await persistWorkoutRow(tx, {
           workoutId: existing.id,
-          existingWorkout: { id: existing.id, revision: existing.revision },
+          existingWorkout: {
+            id: existing.id,
+            revision: existing.revision,
+            status: existing.status,
+          },
           userId: ownerId,
           expectedRevision: existing.revision,
           shouldAdvanceLifecycleTransition: false,
@@ -229,7 +241,11 @@ describe("save-workout persistence CAS (PostgreSQL)", () => {
       prisma.$transaction(async (tx) => {
         await persistWorkoutRow(tx, {
           workoutId: existing.id,
-          existingWorkout: { id: existing.id, revision: existing.revision },
+          existingWorkout: {
+            id: existing.id,
+            revision: existing.revision,
+            status: existing.status,
+          },
           userId: ownerId,
           expectedRevision: existing.revision,
           shouldAdvanceLifecycleTransition: false,
@@ -262,7 +278,11 @@ describe("save-workout persistence CAS (PostgreSQL)", () => {
       prisma.$transaction((tx) =>
         persistWorkoutRow(tx, {
           workoutId: existing.id,
-          existingWorkout: { id: existing.id, revision: existing.revision },
+          existingWorkout: {
+            id: existing.id,
+            revision: existing.revision,
+            status: existing.status,
+          },
           userId: foreignOwnerId,
           expectedRevision: existing.revision,
           shouldAdvanceLifecycleTransition: false,

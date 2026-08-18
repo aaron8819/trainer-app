@@ -14,6 +14,7 @@ import type {
   SessionDecisionReceipt,
   SessionDecisionStimulusAccounting,
   SessionDecisionVolumeTargetSource,
+  ScheduledSlotReceiptV1,
 } from "./types";
 import { getCanonicalDeloadReason } from "@/lib/deload/semantics";
 
@@ -81,6 +82,48 @@ function parseSessionSlotSnapshot(value: unknown): SessionSlotSnapshot | undefin
         ? record.sequenceLength
         : undefined,
     source: record.source,
+  };
+}
+
+function parseScheduledSlotReceipt(
+  value: unknown,
+): ScheduledSlotReceiptV1 | undefined {
+  const record = toObject(value);
+  if (
+    !record ||
+    record.version !== 1 ||
+    typeof record.mesocycleId !== "string" ||
+    typeof record.acceptedRevisionId !== "string" ||
+    typeof record.acceptedRevisionNumber !== "number" ||
+    !Number.isInteger(record.acceptedRevisionNumber) ||
+    record.acceptedRevisionNumber <= 0 ||
+    typeof record.acceptedRevisionHash !== "string" ||
+    !/^[a-f0-9]{64}$/.test(record.acceptedRevisionHash) ||
+    typeof record.weekInMeso !== "number" ||
+    !Number.isInteger(record.weekInMeso) ||
+    record.weekInMeso <= 0 ||
+    typeof record.slotId !== "string" ||
+    record.slotId.length === 0 ||
+    typeof record.sequenceIndex !== "number" ||
+    !Number.isInteger(record.sequenceIndex) ||
+    record.sequenceIndex < 0 ||
+    typeof record.sequenceLength !== "number" ||
+    !Number.isInteger(record.sequenceLength) ||
+    record.sequenceLength <= 0
+  ) {
+    return undefined;
+  }
+
+  return {
+    version: 1,
+    mesocycleId: record.mesocycleId,
+    acceptedRevisionId: record.acceptedRevisionId,
+    acceptedRevisionNumber: record.acceptedRevisionNumber,
+    acceptedRevisionHash: record.acceptedRevisionHash,
+    weekInMeso: record.weekInMeso,
+    slotId: record.slotId,
+    sequenceIndex: record.sequenceIndex,
+    sequenceLength: record.sequenceLength,
   };
 }
 
@@ -1051,6 +1094,9 @@ function parsePersistedReceipt(value: unknown): SessionDecisionReceipt | undefin
     cycleContext,
     ...(sessionProvenance ? { sessionProvenance } : {}),
     sessionSlot: parseSessionSlotSnapshot(record.sessionSlot),
+    scheduledSlotReceipt: parseScheduledSlotReceipt(
+      record.scheduledSlotReceipt,
+    ),
     targetMuscles: parseOptionalStringArray(record.targetMuscles),
     lifecycleRirTarget: parseLifecycleRirTarget(record.lifecycleRirTarget),
     lifecycleVolume: {

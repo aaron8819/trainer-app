@@ -53,6 +53,7 @@ import {
   readRuntimeSlotSequence,
 } from "./mesocycle-slot-runtime";
 import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
+import type { SessionSlotSnapshot } from "@/lib/evidence/types";
 import {
   isCloseoutSession,
   isDismissedCloseoutSession,
@@ -850,6 +851,7 @@ async function loadHomeWeekProgress(input: {
   weeklySchedule: string[];
   nextSession: NextSessionData;
   nextWorkoutSource: NextWorkoutSource;
+  exactEligibleSlotSnapshots?: SessionSlotSnapshot[];
   latestIncomplete: { id: string; status: string } | null;
 }): Promise<{
   activeWeekPlan: HomeActiveWeekPlan | null;
@@ -913,12 +915,15 @@ async function loadHomeWeekProgress(input: {
   const activeWeekLabelBySlotId = new Map(
     activeWeekPlan?.sessions.map((session) => [session.slotId, session.label]) ?? []
   );
-  const eligibleAlternativeSessions = listEligibleAdvancingSlotSnapshots({
-    nextWorkoutSource: input.nextWorkoutSource,
-    slotSequenceJson: input.activeMesocycle.slotSequenceJson,
-    weeklySchedule: input.weeklySchedule,
-    performedAdvancingSlotsThisWeek,
-  })
+  const eligibleAlternativeSessions = (
+    input.exactEligibleSlotSnapshots ??
+    listEligibleAdvancingSlotSnapshots({
+      nextWorkoutSource: input.nextWorkoutSource,
+      slotSequenceJson: input.activeMesocycle.slotSequenceJson,
+      weeklySchedule: input.weeklySchedule,
+      performedAdvancingSlotsThisWeek,
+    })
+  )
     .filter((slot) => slot.slotId !== input.nextSession.slotId)
     .map((slot) => ({
       slotId: slot.slotId,
@@ -953,7 +958,9 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
       select: { weeklySchedule: true },
     }),
   ]);
-  const activeWeek = activeMesocycle ? getCurrentMesoWeek(activeMesocycle) : null;
+  const activeWeek = activeMesocycle
+    ? (nextWorkoutContext.weekInMeso ?? getCurrentMesoWeek(activeMesocycle))
+    : null;
   const nextSession: NextSessionData = {
     intent: nextWorkoutContext.intent,
     slotId: nextWorkoutContext.slotId,
@@ -1158,6 +1165,7 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
     ),
     nextSession,
     nextWorkoutSource: nextWorkoutContext.source,
+    exactEligibleSlotSnapshots: nextWorkoutContext.eligibleSlotSnapshots,
     latestIncomplete,
   });
 

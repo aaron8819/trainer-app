@@ -61,6 +61,9 @@ const mocks = vi.hoisted(() => {
       deleteMany: vi.fn(),
       createMany: vi.fn(),
     },
+    setLog: {
+      count: vi.fn(),
+    },
     mesocycleWeekClose: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
@@ -442,6 +445,8 @@ describe("POST /api/workouts/save", () => {
     mocks.tx.mesocycle.update.mockReset();
     mocks.tx.mesocycleWeekClose.findFirst.mockReset();
     mocks.tx.mesocycleWeekClose.findUnique.mockReset();
+    mocks.tx.setLog.count.mockReset();
+    mocks.tx.setLog.count.mockResolvedValue(0);
     mocks.workoutFindUnique.mockResolvedValue(null);
     mocks.workoutFindFirst.mockResolvedValue({
       id: "workout-1",
@@ -1905,6 +1910,78 @@ describe("POST /api/workouts/save", () => {
     );
   });
 
+  it.each([
+    ["COMPLETED", "mark_skipped"],
+    ["SKIPPED", "mark_completed"],
+    ["PARTIAL", "mark_skipped"],
+  ] as const)("rejects %s -> %s terminal transitions", async (status, action) => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "workout-1",
+      userId: "user-1",
+      status,
+      revision: 1,
+      mesocycleId: null,
+      selectionMetadata: buildCanonicalSelectionMetadata(),
+    });
+    if (action === "mark_completed") {
+      mocks.workoutFindUnique.mockResolvedValueOnce({
+        exercises: [
+          {
+            sets: [
+              {
+                logs: [
+                  {
+                    wasSkipped: false,
+                    actualReps: 8,
+                    actualRpe: 8,
+                    actualLoad: 100,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+    }
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workoutId: "workout-1", action }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(mocks.workoutUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects skipping an uncompleted workout with performed logs", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "workout-1",
+      userId: "user-1",
+      status: "IN_PROGRESS",
+      revision: 1,
+      mesocycleId: null,
+      selectionMetadata: buildCanonicalSelectionMetadata(),
+    });
+    mocks.tx.setLog.count.mockResolvedValueOnce(1);
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          action: "mark_skipped",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(mocks.workoutUpdateMany).not.toHaveBeenCalled();
+  });
+
   it("mark_completed rejects empty effective completion", async () => {
     mocks.workoutFindUnique
       .mockResolvedValueOnce({
@@ -2124,6 +2201,7 @@ describe("POST /api/workouts/save", () => {
         id: "workout-1",
         userId: "user-1",
         revision: 2,
+        status: "PLANNED",
       },
       data: expect.objectContaining({
         revision: { increment: 1 },
@@ -3209,7 +3287,7 @@ describe("POST /api/workouts/save", () => {
     expect(updateMany.data.mesocyclePhaseSnapshot).toBe("DELOAD");
   });
 
-  it("does not double-advance lifecycle counters when an already completed workout is saved again", async () => {
+  it("rejects a same-terminal completion retry without double-advancing lifecycle", async () => {
     mocks.workoutFindUnique
       .mockResolvedValueOnce({
         id: "workout-1",
@@ -3235,15 +3313,14 @@ describe("POST /api/workouts/save", () => {
       })
     );
 
-    expect(response.status).toBe(200);
-    expect(mocks.tx.mesocycle.findUnique).not.toHaveBeenCalled();
+    expect(response.status).toBe(409);
     expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
     expect(mocks.transitionMesocycleStateInTransaction).not.toHaveBeenCalled();
     expect(mocks.workoutUpsert).not.toHaveBeenCalled();
     expect(mocks.createPostSessionReviewSnapshotInTransaction).not.toHaveBeenCalled();
   });
 
-  it("completes an off-order planned slot once and keeps repeated completion idempotent", async () => {
+  it("completes an off-order planned slot once and rejects a stale terminal retry", async () => {
     const alternativeSelectionMetadata = buildCanonicalSelectionMetadata();
     const alternativeReceipt = alternativeSelectionMetadata.sessionDecisionReceipt as
       typeof alternativeSelectionMetadata.sessionDecisionReceipt & {
@@ -3318,7 +3395,7 @@ describe("POST /api/workouts/save", () => {
     );
 
     expect(firstResponse.status).toBe(200);
-    expect(secondResponse.status).toBe(200);
+    expect(secondResponse.status).toBe(409);
     expect(mocks.createPostSessionReviewSnapshotInTransaction).toHaveBeenCalledTimes(1);
     expect(mocks.tx.mesocycle.update).toHaveBeenCalledTimes(1);
     expect(mocks.tx.mesocycle.update).toHaveBeenCalledWith({
@@ -3421,7 +3498,7 @@ describe("POST /api/workouts/save", () => {
     );
 
     expect(firstResponse.status).toBe(200);
-    expect(secondResponse.status).toBe(200);
+    expect(secondResponse.status).toBe(409);
     expect(mocks.autoDismissPendingWeekCloseOnForwardProgress).toHaveBeenCalledTimes(1);
     expect(mocks.autoDismissPendingWeekCloseOnForwardProgress).toHaveBeenCalledWith(mocks.tx, {
       mesocycleId: "meso-1",

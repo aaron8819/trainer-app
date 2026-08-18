@@ -299,10 +299,10 @@ SetLog / logged performance
 - Post-hoc optimizer stretch swapping is removed; final selection remains optimizer-owned (`src/lib/engine/selection-v2/optimizer.evidence.test.ts`).
 
 ## Workout status semantics
-- The split exists to separate adaptation signals from advancement control: partially performed work should inform future load/selection, while schedule/phase advancement remains a stricter completion event.
-- Performed-signal consumers use `COMPLETED` + `PARTIAL` via `PERFORMED_WORKOUT_STATUSES` in `src/lib/workout-status.ts`.
-- Program advancement remains `COMPLETED` only via `ADVANCEMENT_WORKOUT_STATUSES` in `src/lib/workout-status.ts`.
-- Mesocycle lifecycle progression is driven by first transition into performed status (`COMPLETED` or `PARTIAL`). Lifecycle counters (`accumulationSessionsCompleted`, `deloadSessionsCompleted`) are incremented atomically inside the save-workout transaction in `src/app/api/workouts/save/route.ts`; status/action resolution is isolated in `src/app/api/workouts/save/status-machine.ts`; `transitionMesocycleState()` in the lifecycle facade (`src/lib/api/mesocycle-lifecycle.ts`) applies state transitions when thresholds are reached.
+- `src/lib/workout-status.ts` exhaustively owns three separate meanings for every Prisma status: performed is `COMPLETED | PARTIAL`, completed/adherent is `COMPLETED`, and schedule-resolved is `COMPLETED | SKIPPED`. Unknown runtime values fail safely.
+- Performed-signal consumers continue using `COMPLETED | PARTIAL`; skipped work contributes no performed volume, progression, recovery, readiness, PR, or adherence numerator evidence.
+- For legacy and non-V4 paths, lifecycle behavior remains counter-driven. For an accepted exact V4 mesocycle, `src/lib/api/v4-scheduled-slot-resolution.ts` instead resolves the immutable 20-slot universe by `weekInMeso + slotId`; counters increment only for `COMPLETED` and cannot independently advance phase or close the mesocycle.
+- Accepted V4 transitions from accumulation to deload only after all 16 accumulation obligations are schedule-resolved, and enters the shared handoff owner only after all 20 obligations are schedule-resolved. A final `SKIPPED` slot therefore closes normally without becoming performed or completed.
 - Canonical mesocycle progression counters are `accumulationSessionsCompleted` and `deloadSessionsCompleted` (not `completedSessions`) and drive lifecycle week/phase derivation.
 
 ## Session semantics model

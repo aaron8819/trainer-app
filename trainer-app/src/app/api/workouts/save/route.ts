@@ -25,8 +25,11 @@ import {
 } from "@/lib/api/mesocycle-week-close";
 import {
   applyPerformedLifecycleSideEffects,
+  applyV4TerminalScheduleResolution,
   buildWeekCloseResponse,
   deriveMesoSnapshotForSave,
+  lockV4MesocycleForScheduleResolution,
+  resolveV4ScheduleBeforeWorkoutCreation,
   resolveMesocycleForWorkoutSave,
   resolvePersistedAdvancesSplit,
   shouldAdvanceLifecycleForPerformedTransition,
@@ -40,6 +43,7 @@ import {
 } from "@/lib/api/save-workout/guards";
 import {
   buildCompletedWorkoutMetrics,
+  assertWorkoutStatusTransition,
   inferAction,
   isLifecycleAdvancementStatus,
   resolveFinalStatus,
@@ -67,6 +71,14 @@ import {
   validateAndCanonicalizeShortTodaySave,
 } from "@/lib/api/save-workout/session-capacity";
 import { readRuntimeEditReconciliation } from "@/lib/ui/selection-metadata";
+import {
+  attachServerAuthoredV4ScheduledSlotReceipt,
+  resolveV4RequiredSlotFromDecisionReceipt,
+  resolveV4ScheduleAuthority,
+  type V4RequiredSlot,
+  type V4ScheduleAuthority,
+} from "@/lib/api/v4-scheduled-slot-resolution";
+import { getWorkoutStatusPolicy } from "@/lib/workout-status";
 
 export async function POST(request: Request) {
   const paused = productionWritePauseResponse("workout_save", "/api/workouts/save");
@@ -177,19 +189,6 @@ export async function POST(request: Request) {
         hasExerciseRewrite,
         expectedRevision: parsed.data.expectedRevision,
       });
-      const isIdempotentTerminalRetry =
-        existingWorkout != null &&
-        ((action === "mark_completed" &&
-          existingWorkout.status === WorkoutStatus.COMPLETED) ||
-          (action === "mark_partial" &&
-            existingWorkout.status === WorkoutStatus.PARTIAL) ||
-          (action === "mark_skipped" &&
-            existingWorkout.status === WorkoutStatus.SKIPPED));
-      if (isIdempotentTerminalRetry) {
-        persistedRevision = existingWorkout.revision;
-        finalStatus = existingWorkout.status as PersistedStatus;
-        return;
-      }
       if (!existingWorkout && action !== "save_plan") {
         throw new Error("WORKOUT_NOT_FOUND");
       }
@@ -279,6 +278,7 @@ export async function POST(request: Request) {
         });
       }
 
+      let completedMetrics;
       if (action === "mark_completed") {
         const snapshot = await tx.workout.findUnique({
           where: { id: workoutId },
@@ -298,23 +298,35 @@ export async function POST(request: Request) {
           throw new Error("WORKOUT_NOT_FOUND");
         }
 
-        finalStatus = resolveFinalStatus({
-          action,
-          requestedStatus: parsed.data.status as PersistedStatus | undefined,
-          existingStatus: existingWorkout?.status as
-            | PersistedStatus
-            | undefined,
-          completedMetrics: buildCompletedWorkoutMetrics(snapshot),
+        completedMetrics = buildCompletedWorkoutMetrics(snapshot);
+
+      } else if (action === "mark_skipped") {
+        const performedSetLogCount = await tx.setLog.count({
+          where: {
+            wasSkipped: false,
+            workoutSet: {
+              workoutExercise: { workoutId },
+            },
+            OR: [
+              { actualReps: { not: null } },
+              { actualRpe: { not: null } },
+              { actualLoad: { not: null } },
+            ],
+          },
         });
-      } else {
-        finalStatus = resolveFinalStatus({
-          action,
-          requestedStatus: parsed.data.status as PersistedStatus | undefined,
-          existingStatus: existingWorkout?.status as
-            | PersistedStatus
-            | undefined,
-        });
+        completedMetrics = {
+          allSetsCount: 0,
+          resolvedSignalSetCount: 0,
+          effectiveSetCount: 0,
+          performedSetLogCount,
+        };
       }
+      finalStatus = resolveFinalStatus({
+        action,
+        requestedStatus: parsed.data.status as PersistedStatus | undefined,
+        existingStatus: existingWorkout?.status as PersistedStatus | undefined,
+        completedMetrics,
+      });
 
       const completedAt =
         finalStatus === "COMPLETED"
@@ -324,6 +336,12 @@ export async function POST(request: Request) {
       const shouldTransitionPerformed =
         isLifecycleAdvancementStatus(finalStatus) &&
         !isLifecycleAdvancementStatus(existingWorkout?.status);
+      const finalStatusPolicy = getWorkoutStatusPolicy(finalStatus);
+      const existingStatusPolicy = getWorkoutStatusPolicy(existingWorkout?.status);
+      if (!finalStatusPolicy) throw new Error("WORKOUT_STATUS_UNKNOWN");
+      const shouldResolveScheduledSlot =
+        finalStatusPolicy.scheduleResolved &&
+        existingStatusPolicy?.scheduleResolved !== true;
       const shouldFinalizePostSessionReview =
         finalStatus === "COMPLETED" &&
         existingWorkout?.status !== WorkoutStatus.COMPLETED;
@@ -360,17 +378,69 @@ export async function POST(request: Request) {
         throw new Error("ACTIVE_PLAN_SELECTION_CONFLICT");
       }
 
+      let v4ScheduleAuthority: V4ScheduleAuthority | null = null;
+      let v4RequiredSlot: V4RequiredSlot | null = null;
+      if (resolvedMesocycle && effectiveAdvancesSplit) {
+        const v4AuthorityResolution = resolveV4ScheduleAuthority(
+          resolvedMesocycle,
+        );
+        if (v4AuthorityResolution.status === "blocked") {
+          throw new Error(
+            `V4_SCHEDULE_RESOLUTION_BLOCKED:${v4AuthorityResolution.reason}`,
+          );
+        }
+        if (v4AuthorityResolution.status === "available") {
+          v4ScheduleAuthority = v4AuthorityResolution.authority;
+          await lockV4MesocycleForScheduleResolution(tx, {
+            mesocycle: resolvedMesocycle,
+            authority: v4ScheduleAuthority,
+          });
+          const requiredSlotResolution =
+            resolveV4RequiredSlotFromDecisionReceipt({
+              authority: v4ScheduleAuthority,
+              selectionMetadata,
+              sessionIntent: effectiveSessionIntent ?? null,
+            });
+          if ("reason" in requiredSlotResolution) {
+            throw new Error(
+              `V4_SCHEDULE_RECEIPT_INVALID:${requiredSlotResolution.reason}`,
+            );
+          }
+          v4RequiredSlot = requiredSlotResolution.requiredSlot;
+          if (!existingWorkout) {
+            await resolveV4ScheduleBeforeWorkoutCreation(tx, {
+              authority: v4ScheduleAuthority,
+              requiredSlot: v4RequiredSlot,
+            });
+          }
+        }
+      }
+      if (existingWorkout) {
+        assertWorkoutStatusTransition({
+          currentStatus: existingWorkout.status as PersistedStatus,
+          action,
+          completedMetrics,
+        });
+      }
+
       const shouldSetMesoSnapshot =
         (shouldTransitionPerformed || shouldSetPlannedMesoSnapshot) &&
         Boolean(resolvedMesocycleId);
-      const mesoSnapshot = deriveMesoSnapshotForSave({
-        shouldSetMesoSnapshot,
-        resolvedMesocycle,
-        existingWorkout,
-        isOptionalGapFill,
-        receiptWeek: receipt.cycleContext.weekInMeso,
-        requestWeek: parsed.data.mesocycleWeekSnapshot,
-      });
+      const mesoSnapshot =
+        shouldSetMesoSnapshot && v4RequiredSlot
+          ? {
+              week: v4RequiredSlot.weekInMeso,
+              phase: v4RequiredSlot.phase,
+              session: v4RequiredSlot.sequenceIndex + 1,
+            }
+          : deriveMesoSnapshotForSave({
+              shouldSetMesoSnapshot,
+              resolvedMesocycle,
+              existingWorkout,
+              isOptionalGapFill,
+              receiptWeek: receipt.cycleContext.weekInMeso,
+              requestWeek: parsed.data.mesocycleWeekSnapshot,
+            });
       if (isCloseout) {
         await assertValidCloseoutWeekCloseContext(tx, {
           userId: user.id,
@@ -430,6 +500,15 @@ export async function POST(request: Request) {
           exercises: preparedExercises,
         });
       }
+      if (v4ScheduleAuthority && v4RequiredSlot) {
+        selectionMetadata = attachServerAuthoredV4ScheduledSlotReceipt({
+          authority: v4ScheduleAuthority,
+          requiredSlot: v4RequiredSlot,
+          selectionMetadata,
+          incomingSelectionMetadata,
+          persistedSelectionMetadata: existingWorkout?.selectionMetadata,
+        });
+      }
 
       const workoutUpdateData = {
         scheduledDate,
@@ -480,7 +559,22 @@ export async function POST(request: Request) {
         }
       }
 
-      if (shouldAdvanceLifecycleTransition && wonLifecycleTransition) {
+      if (
+        v4ScheduleAuthority &&
+        shouldResolveScheduledSlot &&
+        (finalStatus === WorkoutStatus.COMPLETED ||
+          finalStatus === WorkoutStatus.SKIPPED)
+      ) {
+        await applyV4TerminalScheduleResolution(tx, {
+          resolvedMesocycle: resolvedMesocycle!,
+          authority: v4ScheduleAuthority,
+          finalStatus,
+        });
+      } else if (
+        !v4ScheduleAuthority &&
+        shouldAdvanceLifecycleTransition &&
+        wonLifecycleTransition
+      ) {
         weekCloseResult = await applyPerformedLifecycleSideEffects(tx, {
           userId: user.id,
           scheduledDate,
@@ -645,6 +739,39 @@ export async function POST(request: Request) {
         {
           error:
             "Cannot mark completed without at least one performed (non-skipped) set log.",
+        },
+        { status: 409 },
+      );
+    }
+    if (
+      error instanceof Error &&
+      (error.message === "WORKOUT_TERMINAL_IMMUTABLE" ||
+        error.message === "WORKOUT_SKIP_AFTER_PARTIAL" ||
+        error.message === "WORKOUT_SKIP_AFTER_PERFORMANCE")
+    ) {
+      const messages = {
+        WORKOUT_TERMINAL_IMMUTABLE:
+          "Completed and skipped workouts are immutable. Refresh to view the committed result.",
+        WORKOUT_SKIP_AFTER_PARTIAL:
+          "A partial workout cannot be converted to skipped.",
+        WORKOUT_SKIP_AFTER_PERFORMANCE:
+          "A workout with performed logs cannot be converted to skipped.",
+      } as const;
+      return NextResponse.json(
+        { error: messages[error.message as keyof typeof messages] },
+        { status: 409 },
+      );
+    }
+    if (
+      error instanceof Error &&
+      (error.message.startsWith("V4_SCHEDULE_") ||
+        error.message === "WORKOUT_STATUS_UNKNOWN")
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Scheduled workout identity changed or is ambiguous. Refresh before continuing.",
+          code: "V4_SCHEDULE_RESOLUTION_BLOCKED",
         },
         { status: 409 },
       );

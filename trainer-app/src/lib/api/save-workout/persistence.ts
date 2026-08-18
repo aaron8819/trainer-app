@@ -184,7 +184,7 @@ export async function persistWorkoutRow(
   tx: Prisma.TransactionClient,
   input: {
     workoutId: string;
-    existingWorkout: { id: string; revision: number } | null;
+    existingWorkout: { id: string; revision: number; status: string } | null;
     userId: string;
     expectedRevision?: number;
     shouldAdvanceLifecycleTransition: boolean;
@@ -206,6 +206,7 @@ export async function persistWorkoutRow(
         id: input.workoutId,
         userId: input.userId,
         revision: input.expectedRevision,
+        status: input.existingWorkout.status as never,
       },
       data: {
         ...input.workoutUpdateData,

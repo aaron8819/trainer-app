@@ -22,6 +22,18 @@ export type SessionSlotSnapshot = {
   source: "mesocycle_slot_sequence" | "legacy_weekly_schedule";
 };
 
+export type ScheduledSlotReceiptV1 = {
+  version: 1;
+  mesocycleId: string;
+  acceptedRevisionId: string;
+  acceptedRevisionNumber: number;
+  acceptedRevisionHash: string;
+  weekInMeso: number;
+  slotId: string;
+  sequenceIndex: number;
+  sequenceLength: number;
+};
+
 export type SessionCompositionSource =
   | "persisted_slot_plan_seed"
   | "runtime_selection"
@@ -97,6 +109,7 @@ export type SessionDecisionReceipt = {
   cycleContext: CycleContextSnapshot;
   sessionProvenance?: SessionDecisionProvenance;
   sessionSlot?: SessionSlotSnapshot;
+  scheduledSlotReceipt?: ScheduledSlotReceiptV1;
   targetMuscles?: string[];
   lifecycleRirTarget?: LifecycleRirTarget;
   lifecycleVolume: {

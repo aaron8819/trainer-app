@@ -1,6 +1,9 @@
 import { WorkoutStatus } from "@prisma/client";
-import { isTerminalWorkoutStatus } from "@/lib/workout-status";
-import { ADVANCEMENT_WORKOUT_STATUSES } from "@/lib/workout-status";
+import {
+  ADVANCEMENT_WORKOUT_STATUSES,
+  getWorkoutStatusPolicy,
+  isTerminalWorkoutStatus,
+} from "@/lib/workout-status";
 
 export type SaveAction =
   | "save_plan"
@@ -31,6 +34,7 @@ export type CompletedWorkoutMetrics = {
   allSetsCount: number;
   resolvedSignalSetCount: number;
   effectiveSetCount: number;
+  performedSetLogCount: number;
 };
 
 type CompletedSetLog = {
@@ -100,6 +104,27 @@ export function resolveFinalStatus(
     WorkoutStatus.PLANNED) as PersistedStatus;
 }
 
+export function assertWorkoutStatusTransition(input: {
+  currentStatus: PersistedStatus;
+  action: SaveAction;
+  completedMetrics?: CompletedWorkoutMetrics;
+}): void {
+  const currentPolicy = getWorkoutStatusPolicy(input.currentStatus);
+  if (!currentPolicy) {
+    throw new Error("WORKOUT_STATUS_UNKNOWN");
+  }
+  if (currentPolicy.immutableTerminal) {
+    throw new Error("WORKOUT_TERMINAL_IMMUTABLE");
+  }
+  if (input.action !== "mark_skipped") return;
+  if (input.currentStatus === WorkoutStatus.PARTIAL) {
+    throw new Error("WORKOUT_SKIP_AFTER_PARTIAL");
+  }
+  if ((input.completedMetrics?.performedSetLogCount ?? 0) > 0) {
+    throw new Error("WORKOUT_SKIP_AFTER_PERFORMANCE");
+  }
+}
+
 export function isLifecycleAdvancementStatus(
   status: PersistedStatus | string | null | undefined,
 ): boolean {
@@ -140,5 +165,15 @@ export function buildCompletedWorkoutMetrics(
       .length,
     effectiveSetCount: allSets.filter((set) => isEffectiveLog(set.logs[0]))
       .length,
+    performedSetLogCount: allSets.filter((set) => {
+      const log = set.logs[0];
+      return Boolean(
+        log &&
+          log.wasSkipped !== true &&
+          (log.actualReps != null ||
+            log.actualRpe != null ||
+            log.actualLoad != null),
+      );
+    }).length,
   };
 }

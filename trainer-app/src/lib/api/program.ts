@@ -995,7 +995,9 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
       select: { weeklySchedule: true },
     }),
   ]);
-  const activeWeek = activeMesocycle
+  const exactV4ScheduleBlocked =
+    nextWorkoutContext.source === "schedule_resolution_blocked";
+  const activeWeek = activeMesocycle && !exactV4ScheduleBlocked
     ? (nextWorkoutContext.weekInMeso ?? getCurrentMesoWeek(activeMesocycle))
     : null;
   const nextSession: NextSessionData = {

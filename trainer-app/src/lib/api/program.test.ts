@@ -115,9 +115,11 @@ import {
   loadHomeProgramSupport,
   loadProgramDashboardData,
 } from "./program";
+import { buildHomeProgramReadModel } from "./home-page";
 import { getRirTarget } from "./mesocycle-lifecycle-math";
 import { resolvePhaseBlockProfile } from "./generation-phase-block-context";
 import { buildExerciseStimulusSnapshot } from "@/lib/stimulus-accounting/snapshot";
+import { buildV4CustomPlanReferenceAcceptedSeed } from "@/lib/engine/hypertrophy-plan-authoring-v4.fixture";
 
 type BaseMesoRecord = {
   id: string;
@@ -132,6 +134,16 @@ type BaseMesoRecord = {
   startWeek: number;
   state: "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "COMPLETED";
   slotSequenceJson?: unknown;
+  slotPlanSeedJson?: unknown;
+  currentSeedRevisionId?: string | null;
+  currentSeedRevision?: {
+    id: string;
+    revision: number;
+    seedPayload: unknown;
+    payloadHash: string;
+    hashAlgorithm: string;
+    provenanceStatus: string;
+  } | null;
   rirBandConfig: {
     weekBands: {
       week1: { min: number; max: number };
@@ -312,6 +324,118 @@ function setupDashboardMocks(
   mocks.mesocycleWeekCloseFindFirst.mockResolvedValue(null);
   mocks.getCurrentMesoWeekFn.mockReturnValue(week);
   mocks.findRelevantWeekCloseForUser.mockResolvedValue(null);
+}
+
+function buildV4HomeFixture(input: {
+  status: "PLANNED" | "IN_PROGRESS" | "PARTIAL" | "COMPLETED" | "SKIPPED";
+  includeScheduledReceipt: boolean;
+  releasedShape?: boolean;
+}) {
+  const hash =
+    "3d4e807cbafdb89bd52dc0fb475842b8c18761e2212967614e41acf5e22913b9";
+  const slotSequenceJson = {
+    version: 1,
+    source: "custom_hypertrophy_plan_v2",
+    sequenceMode: "ordered_flexible",
+    sessionsPerWeek: 4,
+    slots: [
+      { slotId: "upper-a", intent: "UPPER" },
+      { slotId: "lower-a", intent: "LOWER" },
+      { slotId: "upper-b", intent: "UPPER" },
+      { slotId: "lower-b", intent: "LOWER" },
+    ],
+  };
+  const scheduledSlotReceipt = {
+    version: 1,
+    mesocycleId: "meso-v4",
+    acceptedRevisionId: "revision-v4",
+    acceptedRevisionNumber: 1,
+    acceptedRevisionHash: hash,
+    weekInMeso: 1,
+    slotId: "upper-a",
+    sequenceIndex: 0,
+    sequenceLength: 4,
+  };
+  const selectionMetadata = {
+    sessionDecisionReceipt: {
+      version: 2,
+      cycleContext: {
+        weekInMeso: 1,
+        weekInBlock: 1,
+        mesocycleLength: 5,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+        source: "computed",
+      },
+      sessionProvenance: {
+        mesocycleId: "meso-v4",
+        compositionSource: "persisted_slot_plan_seed",
+        seedProvenance: { revisionId: "revision-v4", revision: 1, hash },
+      },
+      sessionSlot: {
+        slotId: "upper-a",
+        intent: "upper",
+        sequenceIndex: 0,
+        sequenceLength: 4,
+        source: "mesocycle_slot_sequence",
+      },
+      ...(input.includeScheduledReceipt ? { scheduledSlotReceipt } : {}),
+      lifecycleVolume: { source: "unknown" },
+      sorenessSuppressedMuscles: [],
+      deloadDecision: {
+        mode: "none",
+        reason: [],
+        reductionPercent: 0,
+        appliedTo: "none",
+      },
+      readiness: {
+        wasAutoregulated: false,
+        signalAgeHours: null,
+        fatigueScoreOverall: null,
+        intensityScaling: {
+          applied: false,
+          exerciseIds: [],
+          scaledUpCount: 0,
+          scaledDownCount: 0,
+        },
+      },
+      exceptions: [],
+    },
+  };
+  const mesocycle = {
+    ...BASE_MESO,
+    id: "meso-v4",
+    sessionsPerWeek: 4,
+    slotSequenceJson,
+    currentSeedRevisionId: "revision-v4",
+    currentSeedRevision: {
+      id: "revision-v4",
+      revision: 1,
+      seedPayload: buildV4CustomPlanReferenceAcceptedSeed(),
+      payloadHash: hash,
+      hashAlgorithm: "sha256",
+      provenanceStatus: "exact",
+    },
+  };
+  const workout = {
+    id: "workout-v4-upper-a",
+    status: input.status,
+    scheduledDate: new Date("2026-01-02T00:00:00.000Z"),
+    revision: 1,
+    mesocycleId: mesocycle.id,
+    mesocycleWeekSnapshot: 1,
+    mesocyclePhaseSnapshot: "ACCUMULATION",
+    mesoSessionSnapshot: 1,
+    advancesSplit: input.releasedShape ? false : true,
+    selectionMode: "AUTO",
+    sessionIntent: input.releasedShape ? null : "UPPER",
+    selectionMetadata,
+    seedRevisionId: "revision-v4",
+    seedRevisionNumber: 1,
+    seedPayloadHash: hash,
+  };
+  return { mesocycle, workout };
 }
 
 describe("computeMesoWeekStart", () => {
@@ -962,6 +1086,75 @@ describe("loadProgramDashboardData", () => {
 describe("loadHomeProgramSupport", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("flows an exact skipped V4 claim through support and advances Home to the next frozen slot", async () => {
+    const fixture = buildV4HomeFixture({
+      status: "SKIPPED",
+      includeScheduledReceipt: true,
+    });
+    setupDashboardMocks(fixture.mesocycle, 1);
+    mocks.workoutFindMany.mockImplementation(async (args) => {
+      if (args?.select?.seedPayloadHash) return [fixture.workout];
+      if (args?.select?.exercises) return [];
+      if (args?.select?.sessionIntent && args?.select?.revision) {
+        return [fixture.workout];
+      }
+      return [];
+    });
+
+    const support = await loadHomeProgramSupport("user-1");
+
+    expect(support.nextSession).toMatchObject({
+      intent: "lower",
+      slotId: "lower-a",
+      weekInMeso: 1,
+      sessionInWeek: 2,
+    });
+    expect(support.activeWeekPlan?.sessions.slice(0, 2)).toMatchObject([
+      { slotId: "upper-a", status: "skipped", workoutId: fixture.workout.id },
+      { slotId: "lower-a", status: "next", workoutId: null },
+    ]);
+    expect(support.completedAdvancingSessionsThisWeek).toBe(0);
+    expect(support.totalAdvancingSessionsThisWeek).toBe(4);
+  });
+
+  it("flows a receiptless released owner through the exact resolver and suppresses blocked Home fallbacks", async () => {
+    const fixture = buildV4HomeFixture({
+      status: "PLANNED",
+      includeScheduledReceipt: false,
+      releasedShape: true,
+    });
+    setupDashboardMocks(fixture.mesocycle, 3);
+    mocks.workoutFindMany.mockImplementation(async (args) =>
+      args?.select?.seedPayloadHash ? [fixture.workout] : [],
+    );
+
+    const support = await loadHomeProgramSupport("user-1");
+    const homeReadModel = buildHomeProgramReadModel(support);
+
+    expect(support.lifecycleBlocker).toMatchObject({
+      code: "V4_SCHEDULE_RESOLUTION_BLOCKED",
+      reason: `scheduled_slot_receipt_missing_compat:${fixture.workout.id}`,
+    });
+    expect(support.activeWeek).toBeNull();
+    expect(support.activeWeekPlan).toBeNull();
+    expect(support.eligibleAlternativeSessions).toEqual([]);
+    expect(support.completedAdvancingSessionsThisWeek).toBe(0);
+    expect(support.totalAdvancingSessionsThisWeek).toBe(0);
+    expect(homeReadModel.decision).toMatchObject({
+      activeWeekLabel: null,
+      activeWeekSessions: [],
+      completedAdvancingSessionsThisWeek: 0,
+      totalAdvancingSessionsThisWeek: 0,
+    });
+    expect(homeReadModel.primaryAction).toEqual({
+      state: "blocked",
+      label: "Refresh workout schedule",
+      reason:
+        "Scheduled workout identity is incomplete or ambiguous. Refresh before continuing.",
+      href: "/program",
+    });
   });
 
   it("uses exact V4 claims to keep a skipped slot resolved and advance Home to the next slot", () => {

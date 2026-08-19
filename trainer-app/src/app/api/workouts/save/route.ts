@@ -3,7 +3,7 @@ import { productionWritePauseResponse } from "@/lib/operations/production-write-
 import { prisma } from "@/lib/db/prisma";
 import { saveWorkoutSchema } from "@/lib/validation";
 import { provisionOwnerForMutation } from "@/lib/api/workout-context";
-import { WorkoutStatus, Prisma } from "@prisma/client";
+import { WorkoutSessionIntent, WorkoutStatus, Prisma } from "@prisma/client";
 import {
   extractSessionDecisionReceipt,
   mergeSelectionMetadata,
@@ -245,7 +245,7 @@ export async function POST(request: Request) {
         parsed.data.selectionMode ??
         existingWorkout?.selectionMode ??
         (parsed.data.sessionIntent ? "INTENT" : undefined);
-      const effectiveSessionIntent =
+      let effectiveSessionIntent =
         parsed.data.sessionIntent ?? existingWorkout?.sessionIntent;
       const isOptionalGapFill = isStrictOptionalGapFillSession({
         selectionMetadata,
@@ -426,6 +426,8 @@ export async function POST(request: Request) {
             ) {
               throw new Error("V4_SCHEDULE_RECEIPT_INVALID:workout_intent_conflict");
             }
+            effectiveSessionIntent =
+              v4RequiredSlot.intent.toUpperCase() as WorkoutSessionIntent;
             await lockV4MesocycleForScheduleResolution(tx, {
               mesocycle: resolvedMesocycle,
               authority: v4ScheduleAuthority,
@@ -542,7 +544,9 @@ export async function POST(request: Request) {
         estimatedMinutes: parsed.data.estimatedMinutes ?? undefined,
         notes: parsed.data.notes ?? undefined,
         selectionMode,
-        sessionIntent: parsed.data.sessionIntent ?? undefined,
+        sessionIntent: v4RequiredSlot
+          ? effectiveSessionIntent
+          : (parsed.data.sessionIntent ?? undefined),
         selectionMetadata: selectionMetadata as Prisma.InputJsonValue,
         forcedSplit: parsed.data.forcedSplit ?? undefined,
         advancesSplit: v4RequiredSlot

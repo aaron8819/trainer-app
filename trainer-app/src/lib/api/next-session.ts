@@ -959,6 +959,7 @@ export type V4ScheduleWorkoutCandidate = {
   mesocyclePhaseSnapshot: unknown;
   mesoSessionSnapshot: number | null;
   advancesSplit: boolean | null;
+  selectionMode: string | null;
   sessionIntent: string | null;
   selectionMetadata: unknown;
   seedRevisionId: string | null;
@@ -1139,6 +1140,7 @@ export async function loadNextWorkoutContext(
               mesocyclePhaseSnapshot: true,
               mesoSessionSnapshot: true,
               advancesSplit: true,
+              selectionMode: true,
               sessionIntent: true,
               selectionMetadata: true,
               seedRevisionId: true,

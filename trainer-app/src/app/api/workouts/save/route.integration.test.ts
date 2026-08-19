@@ -171,8 +171,6 @@ vi.mock("@/lib/api/mesocycle-week-close", async (importOriginal) => {
 import { POST as saveWorkoutPost } from "./route";
 import { fingerprintShortTodaySaveExercises } from "@/lib/api/save-workout/session-capacity";
 import { buildV4CustomPlanReferenceAcceptedSeed } from "@/lib/engine/hypertrophy-plan-authoring-v4.fixture";
-import { buildAcceptedCompatibilityProjections } from "@/lib/engine/hypertrophy-plan-authoring";
-import { normalizeAcceptedHypertrophySeedV4 } from "@/lib/api/mesocycle-seed-revision";
 
 describe("production write pause", () => {
   beforeEach(() => {
@@ -259,10 +257,19 @@ function buildV4RouteFixture(input?: {
   includeScheduledReceipt?: boolean;
 }) {
   const seed = buildV4CustomPlanReferenceAcceptedSeed();
-  const normalized = normalizeAcceptedHypertrophySeedV4(seed);
-  const projections = buildAcceptedCompatibilityProjections(seed);
-  const slotSequenceJson = projections.slotSequenceJson as {
-    slots: Array<{ slotId: string; intent: string }>;
+  const acceptedRevisionHash =
+    "3d4e807cbafdb89bd52dc0fb475842b8c18761e2212967614e41acf5e22913b9";
+  const slotSequenceJson = {
+    version: 1,
+    source: "custom_hypertrophy_plan_v2",
+    sequenceMode: "ordered_flexible",
+    sessionsPerWeek: 4,
+    slots: [
+      { slotId: "upper-a", intent: "UPPER" },
+      { slotId: "lower-a", intent: "LOWER" },
+      { slotId: "upper-b", intent: "UPPER" },
+      { slotId: "lower-b", intent: "LOWER" },
+    ],
   };
   const slot = slotSequenceJson.slots[0]!;
   const scheduledSlotReceipt = {
@@ -270,7 +277,7 @@ function buildV4RouteFixture(input?: {
     mesocycleId: "meso-v4",
     acceptedRevisionId: "revision-v4",
     acceptedRevisionNumber: 1,
-    acceptedRevisionHash: normalized.hash,
+    acceptedRevisionHash,
     weekInMeso: 1,
     slotId: slot.slotId,
     sequenceIndex: 0,
@@ -294,7 +301,7 @@ function buildV4RouteFixture(input?: {
         seedProvenance: {
           revisionId: "revision-v4",
           revision: 1,
-          hash: normalized.hash,
+          hash: acceptedRevisionHash,
         },
       },
       sessionSlot: {
@@ -341,7 +348,7 @@ function buildV4RouteFixture(input?: {
       id: "revision-v4",
       revision: 1,
       seedPayload: seed,
-      payloadHash: normalized.hash,
+      payloadHash: acceptedRevisionHash,
       hashAlgorithm: "sha256",
       provenanceStatus: "exact",
     },
@@ -359,13 +366,13 @@ function buildV4RouteFixture(input?: {
     mesocycleWeekSnapshot: 1,
     mesocyclePhaseSnapshot: "ACCUMULATION",
     mesoSessionSnapshot: 1,
-    advancesSplit: input?.advancesSplit ?? true,
-    selectionMode: "INTENT",
-    sessionIntent: slot.intent.toUpperCase(),
+    advancesSplit: input?.advancesSplit ?? false,
+    selectionMode: "AUTO",
+    sessionIntent: null,
     selectionMetadata,
     seedRevisionId: "revision-v4",
     seedRevisionNumber: 1,
-    seedPayloadHash: normalized.hash,
+    seedPayloadHash: acceptedRevisionHash,
   };
   return { mesocycle, workout, selectionMetadata, scheduledSlotReceipt, slot };
 }
@@ -691,12 +698,12 @@ describe("POST /api/workouts/save", () => {
   });
 
   it.each([
-    ["PLANNED", "mark_completed", "COMPLETED"],
-    ["IN_PROGRESS", "mark_completed", "COMPLETED"],
-    ["PLANNED", "mark_skipped", "SKIPPED"],
+    ["PLANNED", "mark_completed", "COMPLETED", 1],
+    ["IN_PROGRESS", "mark_completed", "COMPLETED", 1],
+    ["PLANNED", "mark_skipped", "SKIPPED", 0],
   ] as const)(
     "promotes a released V4 %s row while applying %s",
-    async (initialStatus, action, expectedStatus) => {
+    async (initialStatus, action, expectedStatus, expectedCounterUpdates) => {
       const fixture = buildV4RouteFixture({ status: initialStatus });
       mocks.workoutFindUnique.mockResolvedValueOnce(fixture.workout);
       if (action === "mark_completed") {
@@ -753,8 +760,12 @@ describe("POST /api/workouts/save", () => {
       const update = mocks.workoutUpdateMany.mock.calls[0][0].data;
       expect(update.status).toBe(expectedStatus);
       expect(update.advancesSplit).toBe(true);
+      expect(update.sessionIntent).toBe("UPPER");
       expect(update.selectionMetadata.sessionDecisionReceipt.scheduledSlotReceipt).toEqual(
         fixture.scheduledSlotReceipt,
+      );
+      expect(mocks.tx.mesocycle.update).toHaveBeenCalledTimes(
+        expectedCounterUpdates,
       );
     },
   );
@@ -921,8 +932,7 @@ describe("POST /api/workouts/save", () => {
         body: JSON.stringify({
           workoutId: "created-v4",
           action: "save_plan",
-          selectionMode: "INTENT",
-          sessionIntent: fixture.slot.intent.toUpperCase(),
+          selectionMode: "AUTO",
           advancesSplit: false,
           selectionMetadata: fixture.selectionMetadata,
         }),
@@ -930,7 +940,117 @@ describe("POST /api/workouts/save", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(mocks.workoutCreate.mock.calls[0][0].data.advancesSplit).toBe(true);
+    const created = mocks.workoutCreate.mock.calls[0][0].data;
+    expect(created.advancesSplit).toBe(true);
+    expect(created.sessionIntent).toBe("UPPER");
+    expect(
+      created.selectionMetadata.sessionDecisionReceipt.scheduledSlotReceipt,
+    ).toEqual(fixture.scheduledSlotReceipt);
+  });
+
+  it("rejects client-authored scheduling metadata on AUTO creation before mutation", async () => {
+    const fixture = buildV4RouteFixture({ includeScheduledReceipt: true });
+    mocks.tx.mesocycle.findFirst.mockResolvedValue(fixture.mesocycle);
+    mocks.tx.mesocycleSeedRevision.findFirst.mockResolvedValue({
+      id: "revision-v4",
+      revision: 1,
+      payloadHash: fixture.scheduledSlotReceipt.acceptedRevisionHash,
+    });
+    mocks.tx.mesocycleSeedRevision.findUnique.mockResolvedValue({
+      seedPayload: fixture.mesocycle.currentSeedRevision.seedPayload,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "client-authored-v4",
+          action: "save_plan",
+          selectionMode: "AUTO",
+          advancesSplit: false,
+          selectionMetadata: fixture.selectionMetadata,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(mocks.workoutCreate).not.toHaveBeenCalled();
+    expect(mocks.workoutUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("rolls back released-row compatibility fields when later review finalization fails", async () => {
+    const fixture = buildV4RouteFixture();
+    const committed = structuredClone(fixture.workout);
+    mocks.workoutFindUnique
+      .mockResolvedValueOnce(structuredClone(committed))
+      .mockResolvedValueOnce({
+        exercises: [
+          {
+            sets: [
+              {
+                logs: [
+                  { wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+    mocks.tx.mesocycle.findUnique.mockResolvedValue(fixture.mesocycle);
+    mocks.createPostSessionReviewSnapshotInTransaction.mockRejectedValueOnce(
+      new Error("POST_SESSION_REVIEW_FINALIZATION_FAILED:forced"),
+    );
+    mocks.prisma.$transaction.mockImplementationOnce(async (callback) => {
+      const working = structuredClone(committed);
+      const transaction = {
+        ...mocks.tx,
+        workout: {
+          ...mocks.tx.workout,
+          updateMany: vi.fn(async ({ data }) => {
+            Object.assign(
+              working,
+              Object.fromEntries(
+                Object.entries(data).filter(([, value]) => value !== undefined),
+              ),
+            );
+            return { count: 1 };
+          }),
+          findFirst: vi.fn(async () => ({
+            id: working.id,
+            revision: working.revision + 1,
+            mesocycleId: working.mesocycleId,
+          })),
+          findMany: vi.fn(async () => [
+            { ...working, revision: working.revision + 1 },
+          ]),
+        },
+      };
+      await callback(transaction as typeof mocks.tx);
+      Object.assign(committed, working);
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: fixture.workout.id,
+          action: "mark_completed",
+          expectedRevision: 1,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(committed).toMatchObject({
+      status: "PLANNED",
+      advancesSplit: false,
+      sessionIntent: null,
+    });
+    expect(
+      committed.selectionMetadata.sessionDecisionReceipt,
+    ).not.toHaveProperty("scheduledSlotReceipt");
   });
 
   it("rejects a client-disguised optional V4 standard and duplicate materialization", async () => {

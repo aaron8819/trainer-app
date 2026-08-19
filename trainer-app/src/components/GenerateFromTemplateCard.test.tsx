@@ -36,6 +36,54 @@ function makeTemplateGenerationResponse() {
     selectionMetadata: {
       selectedExerciseIds: ["bench-press"],
       rationale: {},
+      sessionDecisionReceipt: {
+        version: 2,
+        cycleContext: {
+          weekInMeso: 1,
+          weekInBlock: 1,
+          mesocycleLength: 5,
+          phase: "accumulation",
+          blockType: "accumulation",
+          isDeload: false,
+          source: "computed",
+        },
+        sessionProvenance: {
+          mesocycleId: "meso-v4",
+          compositionSource: "persisted_slot_plan_seed",
+          seedProvenance: {
+            revisionId: "revision-v4",
+            revision: 1,
+            hash: "3d4e807cbafdb89bd52dc0fb475842b8c18761e2212967614e41acf5e22913b9",
+          },
+        },
+        sessionSlot: {
+          slotId: "upper-a",
+          intent: "upper",
+          sequenceIndex: 0,
+          sequenceLength: 4,
+          source: "mesocycle_slot_sequence",
+        },
+        lifecycleVolume: { source: "unknown" },
+        sorenessSuppressedMuscles: [],
+        deloadDecision: {
+          mode: "none",
+          reason: [],
+          reductionPercent: 0,
+          appliedTo: "none",
+        },
+        readiness: {
+          wasAutoregulated: false,
+          signalAgeHours: null,
+          fatigueScoreOverall: null,
+          intensityScaling: {
+            applied: false,
+            exerciseIds: [],
+            scaledUpCount: 0,
+            scaledDownCount: 0,
+          },
+        },
+        exceptions: [],
+      },
     },
   };
 }
@@ -113,5 +161,49 @@ describe("GenerateFromTemplateCard", () => {
       templateId: "template-1",
     });
     expect(screen.getByText("Bench Press")).toBeInTheDocument();
+  });
+
+  it("round-trips the released AUTO template shape without client-authored intent or scheduling receipt", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeTemplateGenerationResponse(),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ workoutId: "workout-1" }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<GenerateFromTemplateCard templates={templates} />);
+    fireEvent.click(screen.getByRole("button", { name: "Generate Workout" }));
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    await screen.findByText("Bench Press");
+    fireEvent.click(screen.getByRole("button", { name: "Save Workout" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const savePayload = JSON.parse(fetchMock.mock.calls[1][1].body as string);
+    expect(savePayload).toMatchObject({
+      workoutId: "workout-1",
+      templateId: "template-1",
+      selectionMode: "AUTO",
+      advancesSplit: false,
+      selectionMetadata: {
+        sessionDecisionReceipt: {
+          sessionSlot: {
+            slotId: "upper-a",
+            intent: "upper",
+            sequenceIndex: 0,
+            sequenceLength: 4,
+            source: "mesocycle_slot_sequence",
+          },
+        },
+      },
+    });
+    expect(savePayload).not.toHaveProperty("sessionIntent");
+    expect(
+      savePayload.selectionMetadata.sessionDecisionReceipt,
+    ).not.toHaveProperty("scheduledSlotReceipt");
   });
 });

@@ -6,6 +6,9 @@ import type {
 } from "@/lib/evidence/types";
 import { getWorkoutStatusPolicy } from "@/lib/workout-status";
 import { parseAcceptedHypertrophySeedV4 } from "@/lib/engine/hypertrophy-plan-authoring";
+import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
+import { isCloseoutSession } from "@/lib/session-semantics/closeout-classifier";
+import { isStrictSupplementalDeficitSession } from "@/lib/session-semantics/supplemental-classifier";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -56,6 +59,7 @@ export type V4ScheduleWorkoutEvidence = {
   mesocyclePhaseSnapshot: unknown;
   mesoSessionSnapshot: number | null;
   advancesSplit: boolean | null;
+  selectionMode: string | null;
   sessionIntent: string | null;
   selectionMetadata: unknown;
   seedRevisionId: string | null;
@@ -326,7 +330,10 @@ export function resolveV4RequiredSlotFromDecisionReceipt(input: {
     selectionMetadata: input.selectionMetadata,
   });
   if (schedulingError) return { reason: schedulingError };
-  if (normalizeIntent(input.sessionIntent ?? "") !== requiredSlot.intent) {
+  if (
+    input.sessionIntent != null &&
+    normalizeIntent(input.sessionIntent) !== requiredSlot.intent
+  ) {
     return { reason: "workout_intent_conflict" };
   }
   return { requiredSlot };
@@ -349,7 +356,6 @@ export function resolveV4RequiredSlotFromPersistedWorkoutEvidence(input: {
     input.workout.mesocycleWeekSnapshot !== requiredSlot.weekInMeso ||
     input.workout.mesocyclePhaseSnapshot !== requiredSlot.phase ||
     input.workout.mesoSessionSnapshot !== requiredSlot.sequenceIndex + 1 ||
-    input.workout.advancesSplit === false ||
     input.workout.seedRevisionId !== input.authority.revisionId ||
     input.workout.seedRevisionNumber !== input.authority.revisionNumber ||
     input.workout.seedPayloadHash !== input.authority.revisionHash
@@ -466,42 +472,43 @@ export function attachServerAuthoredV4ScheduledSlotReceipt(input: {
 function validateWorkoutEvidence(input: {
   authority: V4ScheduleAuthority;
   workout: V4ScheduleWorkoutEvidence;
-}): { claim: V4ResolvedSlotClaim } | { reason: string } {
+}): { claim: V4ResolvedSlotClaim } | { excluded: true } | { reason: string } {
   const { workout, authority } = input;
-  const policy = getWorkoutStatusPolicy(workout.status);
-  if (!policy) return { reason: `unknown_workout_status:${workout.id}` };
-  if (workout.mesocycleId !== authority.mesocycleId) {
-    return { reason: `workout_mesocycle_conflict:${workout.id}` };
+  const persistedSlot = resolveV4RequiredSlotFromPersistedWorkoutEvidence({
+    authority,
+    workout,
+  });
+  if ("reason" in persistedSlot) {
+    const isRecognizedNonRequired =
+      isStrictOptionalGapFillSession({
+        selectionMetadata: workout.selectionMetadata,
+        selectionMode: workout.selectionMode,
+        sessionIntent: workout.sessionIntent,
+      }) ||
+      isStrictSupplementalDeficitSession({
+        selectionMetadata: workout.selectionMetadata,
+        selectionMode: workout.selectionMode,
+        sessionIntent: workout.sessionIntent,
+      }) ||
+      isCloseoutSession(workout.selectionMetadata);
+    if (persistedSlot.reason === "required_slot_not_found" && isRecognizedNonRequired) {
+      return { excluded: true };
+    }
+    return { reason: `${persistedSlot.reason}:${workout.id}` };
   }
+
+  const requiredSlot = persistedSlot.requiredSlot;
   const receipt = extractSessionDecisionReceipt(workout.selectionMetadata);
   const scheduled = receipt?.scheduledSlotReceipt;
-  const requiredSlot = authority.requiredSlots.find(
-    (slot) =>
-      slot.weekInMeso === scheduled?.weekInMeso &&
-      slot.slotId === scheduled?.slotId,
-  );
-  if (!requiredSlot) return { reason: `scheduled_slot_missing:${workout.id}` };
+  if (!scheduled) {
+    return { reason: `scheduled_slot_receipt_missing_compat:${workout.id}` };
+  }
   const expectedReceipt = buildScheduledSlotReceipt(authority, requiredSlot);
   if (!receiptMatchesExpected(scheduled, expectedReceipt)) {
     return { reason: `scheduled_slot_receipt_conflict:${workout.id}` };
   }
-  const schedulingError = validateDecisionReceiptScheduling({
-    authority,
-    requiredSlot,
-    selectionMetadata: workout.selectionMetadata,
-  });
-  if (schedulingError) return { reason: `${schedulingError}:${workout.id}` };
-  if (
-    workout.mesocycleWeekSnapshot !== requiredSlot.weekInMeso ||
-    workout.mesocyclePhaseSnapshot !== requiredSlot.phase ||
-    workout.mesoSessionSnapshot !== requiredSlot.sequenceIndex + 1 ||
-    normalizeIntent(workout.sessionIntent ?? "") !== requiredSlot.intent ||
-    workout.seedRevisionId !== authority.revisionId ||
-    workout.seedRevisionNumber !== authority.revisionNumber ||
-    workout.seedPayloadHash !== authority.revisionHash
-  ) {
-    return { reason: `persisted_slot_identity_conflict:${workout.id}` };
-  }
+  const policy = getWorkoutStatusPolicy(workout.status);
+  if (!policy) return { reason: `unknown_workout_status:${workout.id}` };
   return {
     claim: {
       requiredSlot,
@@ -519,7 +526,6 @@ export function resolveV4ScheduledSlots(input: {
 }): V4ScheduleResolution {
   const claimsBySlot = new Map<string, V4ResolvedSlotClaim>();
   for (const workout of input.workouts) {
-    if (workout.advancesSplit === false) continue;
     const validated = validateWorkoutEvidence({
       authority: input.authority,
       workout,
@@ -527,6 +533,7 @@ export function resolveV4ScheduledSlots(input: {
     if ("reason" in validated) {
       return { status: "blocked", reason: validated.reason };
     }
+    if ("excluded" in validated) continue;
     const key = slotKey(validated.claim.requiredSlot);
     if (claimsBySlot.has(key)) {
       return {

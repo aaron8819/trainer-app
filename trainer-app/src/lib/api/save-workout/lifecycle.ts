@@ -229,6 +229,7 @@ async function readV4ScheduleWorkoutEvidence(
       mesocyclePhaseSnapshot: true,
       mesoSessionSnapshot: true,
       advancesSplit: true,
+      selectionMode: true,
       sessionIntent: true,
       selectionMetadata: true,
       seedRevisionId: true,

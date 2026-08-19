@@ -595,6 +595,20 @@ function buildHomePrimaryAction(input: {
   };
 }
 
+export function buildHomeProgramReadModel(homeProgram: HomeProgramSupportData) {
+  const decision = buildDecisionSummary(homeProgram);
+  const closeout = buildHomeCloseoutSummary(homeProgram);
+  return {
+    decision,
+    closeout,
+    primaryAction: buildHomePrimaryAction({
+      homeProgram,
+      decision,
+      closeout,
+    }),
+  };
+}
+
 export async function loadHomePageData(
   userId: string,
   readinessInput?: HomePageReadinessInput
@@ -669,18 +683,14 @@ export async function loadHomePageData(
     loadProgramDashboardData(userId),
     loadHomeProgramSupport(userId),
   ]);
-  const decision = buildDecisionSummary(homeProgram);
-  const closeout = buildHomeCloseoutSummary(homeProgram);
+  const { decision, closeout, primaryAction } =
+    buildHomeProgramReadModel(homeProgram);
 
   return {
     pendingHandoff: null,
     programData,
     homeProgram,
-    primaryAction: buildHomePrimaryAction({
-      homeProgram,
-      decision,
-      closeout,
-    }),
+    primaryAction,
     decision,
     continuity: buildContinuitySummary({
       lastCompleted,

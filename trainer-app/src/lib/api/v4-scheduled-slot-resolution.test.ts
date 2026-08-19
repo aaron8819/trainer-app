@@ -8,13 +8,9 @@ vi.mock("./mesocycle-handoff", () => ({
   enterMesocycleHandoffInTransaction:
     serviceMocks.enterMesocycleHandoffInTransaction,
 }));
-import { buildV4CustomPlanReferenceAcceptedSeed } from "@/lib/engine/hypertrophy-plan-authoring-v4.fixture";
-import { buildAcceptedCompatibilityProjections } from "@/lib/engine/hypertrophy-plan-authoring";
-import { normalizeAcceptedHypertrophySeedV4 } from "./mesocycle-seed-revision";
 import {
   attachServerAuthoredV4ScheduledSlotReceipt,
   buildScheduledSlotReceipt,
-  resolveV4ScheduleAuthority,
   resolveV4RequiredSlotFromPersistedWorkoutEvidence,
   resolveV4ScheduledSlots,
   type V4RequiredSlot,
@@ -29,29 +25,34 @@ import {
 import { persistWorkoutRow } from "./save-workout/persistence";
 
 function authority(): V4ScheduleAuthority {
-  const seed = buildV4CustomPlanReferenceAcceptedSeed();
-  seed.slots = [seed.slots[1]!, seed.slots[0]!, seed.slots[3]!, seed.slots[2]!];
-  const normalized = normalizeAcceptedHypertrophySeedV4(seed);
-  const projections = buildAcceptedCompatibilityProjections(seed);
-  const resolution = resolveV4ScheduleAuthority({
-    id: "meso-v4",
-    durationWeeks: 5,
-    sessionsPerWeek: 4,
-    slotSequenceJson: projections.slotSequenceJson,
-    currentSeedRevisionId: "revision-v4",
-    currentSeedRevision: {
-      id: "revision-v4",
-      revision: 1,
-      seedPayload: seed,
-      payloadHash: normalized.hash,
-      hashAlgorithm: "sha256",
-      provenanceStatus: "exact",
-    },
-  });
-  if (resolution.status !== "available") {
-    throw new Error(`fixture authority unavailable: ${resolution.status}`);
-  }
-  return resolution.authority;
+  const weeklySlots = [
+    { slotId: "lower-a", intent: "lower" },
+    { slotId: "upper-a", intent: "upper" },
+    { slotId: "lower-b", intent: "lower" },
+    { slotId: "upper-b", intent: "upper" },
+  ] as const;
+  const weeks = [
+    { weekInMeso: 1, phase: "ACCUMULATION" },
+    { weekInMeso: 2, phase: "ACCUMULATION" },
+    { weekInMeso: 3, phase: "ACCUMULATION" },
+    { weekInMeso: 4, phase: "ACCUMULATION" },
+    { weekInMeso: 5, phase: "DELOAD" },
+  ] as const;
+  return {
+    mesocycleId: "meso-v4",
+    revisionId: "revision-v4",
+    revisionNumber: 1,
+    revisionHash: "3d4e807cbafdb89bd52dc0fb475842b8c18761e2212967614e41acf5e22913b9",
+    slotsPerWeek: 4,
+    requiredSlots: weeks.flatMap((week) =>
+      weeklySlots.map((slot, sequenceIndex) => ({
+        ...week,
+        ...slot,
+        sequenceIndex,
+        sequenceLength: 4,
+      })),
+    ),
+  };
 }
 
 function workout(input: {
@@ -70,6 +71,7 @@ function workout(input: {
     mesocyclePhaseSnapshot: slot.phase,
     mesoSessionSnapshot: slot.sequenceIndex + 1,
     advancesSplit: input.advancesSplit ?? true,
+    selectionMode: "AUTO",
     sessionIntent: slot.intent.toUpperCase(),
     seedRevisionId: source.revisionId,
     seedRevisionNumber: source.revisionNumber,
@@ -143,8 +145,9 @@ function releasedWorkoutWithoutScheduledReceipt(input: {
     mesocycleWeekSnapshot: slot.weekInMeso,
     mesocyclePhaseSnapshot: slot.phase,
     mesoSessionSnapshot: slot.sequenceIndex + 1,
-    advancesSplit: true,
-    sessionIntent: slot.intent.toUpperCase(),
+    advancesSplit: false,
+    selectionMode: "AUTO",
+    sessionIntent: null,
     seedRevisionId: source.revisionId,
     seedRevisionNumber: source.revisionNumber,
     seedPayloadHash: source.revisionHash,
@@ -213,6 +216,12 @@ describe("V4 scheduled-slot resolution", () => {
         workout: released,
       }),
     ).toEqual({ requiredSlot: slot });
+    expect(
+      resolveV4ScheduledSlots({ authority: source, workouts: [released] }),
+    ).toEqual({
+      status: "blocked",
+      reason: `scheduled_slot_receipt_missing_compat:${released.id}`,
+    });
     const promoted = attachServerAuthoredV4ScheduledSlotReceipt({
       authority: source,
       requiredSlot: slot,
@@ -234,6 +243,22 @@ describe("V4 scheduled-slot resolution", () => {
       slotId: slot.slotId,
       sequenceIndex: slot.sequenceIndex,
       sequenceLength: slot.sequenceLength,
+    });
+    expect(
+      resolveV4ScheduledSlots({
+        authority: source,
+        workouts: [
+          {
+            ...released,
+            advancesSplit: true,
+            sessionIntent: slot.intent.toUpperCase(),
+            selectionMetadata: promoted,
+          },
+        ],
+      }),
+    ).toMatchObject({
+      status: "available",
+      claims: [{ workoutId: released.id, requiredSlot: slot }],
     });
 
     const conflicted = { ...released, mesocyclePhaseSnapshot: "DELOAD" };
@@ -343,7 +368,7 @@ describe("V4 scheduled-slot resolution", () => {
     },
   );
 
-  it("keeps missing rows unresolved and ignores non-advancing supplemental rows", () => {
+  it("does not let advancesSplit=false hide an exact required slot", () => {
     const source = authority();
     const first = source.requiredSlots[0]!;
     const result = resolveV4ScheduledSlots({
@@ -359,9 +384,78 @@ describe("V4 scheduled-slot resolution", () => {
     });
     expect(result).toMatchObject({
       status: "available",
+      resolvedSlotCount: 1,
+      completedSlotCount: 1,
+      nextUnresolvedSlot: {
+        slotId: source.requiredSlots[1]!.slotId,
+        weekInMeso: 1,
+      },
+    });
+  });
+
+  it("excludes only a strictly recognized optional row without consuming a required slot", () => {
+    const source = authority();
+    const result = resolveV4ScheduledSlots({
+      authority: source,
+      workouts: [
+        {
+          id: "optional-gap-fill",
+          status: "COMPLETED",
+          mesocycleId: source.mesocycleId,
+          mesocycleWeekSnapshot: 1,
+          mesocyclePhaseSnapshot: "ACCUMULATION",
+          mesoSessionSnapshot: null,
+          advancesSplit: false,
+          selectionMode: "INTENT",
+          sessionIntent: "BODY_PART",
+          selectionMetadata: {
+            sessionDecisionReceipt: {
+              version: 2,
+              cycleContext: {
+                weekInMeso: 1,
+                weekInBlock: 1,
+                mesocycleLength: 5,
+                phase: "accumulation",
+                blockType: "accumulation",
+                isDeload: false,
+                source: "computed",
+              },
+              lifecycleVolume: { source: "unknown" },
+              sorenessSuppressedMuscles: [],
+              deloadDecision: {
+                mode: "none",
+                reason: [],
+                reductionPercent: 0,
+                appliedTo: "none",
+              },
+              readiness: {
+                wasAutoregulated: false,
+                signalAgeHours: null,
+                fatigueScoreOverall: null,
+                intensityScaling: {
+                  applied: false,
+                  exerciseIds: [],
+                  scaledUpCount: 0,
+                  scaledDownCount: 0,
+                },
+              },
+              exceptions: [
+                { code: "optional_gap_fill", message: "Server-authored optional session." },
+              ],
+            },
+          },
+          seedRevisionId: null,
+          seedRevisionNumber: null,
+          seedPayloadHash: null,
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      status: "available",
+      claims: [],
       resolvedSlotCount: 0,
-      completedSlotCount: 0,
-      nextUnresolvedSlot: { slotId: first.slotId, weekInMeso: 1 },
+      nextUnresolvedSlot: source.requiredSlots[0],
     });
   });
 
@@ -411,6 +505,25 @@ describe("V4 scheduled-slot resolution", () => {
         requiredSlot: slot,
       }),
     ).rejects.toThrow("V4_SCHEDULE_SLOT_ALREADY_MATERIALIZED");
+  });
+
+  it("blocks duplicate materialization while a released receiptless owner awaits canonical save", async () => {
+    const source = authority();
+    const slot = source.requiredSlots[0]!;
+    const tx = {
+      workout: {
+        findMany: vi.fn().mockResolvedValue([
+          releasedWorkoutWithoutScheduledReceipt({ authority: source, slot }),
+        ]),
+      },
+    };
+
+    await expect(
+      resolveV4ScheduleBeforeWorkoutCreation(tx as never, {
+        authority: source,
+        requiredSlot: slot,
+      }),
+    ).rejects.toThrow("V4_SCHEDULE_RESOLUTION_BLOCKED");
   });
 
   it("fails safely for unknown workout statuses", () => {

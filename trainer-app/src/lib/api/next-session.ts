@@ -28,6 +28,7 @@ import {
   resolveV4ScheduleAuthority,
   resolveV4ScheduledSlots,
   type V4ScheduleAuthority,
+  type V4ScheduleResolution,
 } from "./v4-scheduled-slot-resolution";
 
 type MesoSessionInput = {
@@ -101,6 +102,7 @@ export type NextWorkoutContext = {
     | V4ScheduleResolutionBlocker
     | null;
   eligibleSlotSnapshots?: SessionSlotSnapshot[];
+  v4ScheduleResolution?: Extract<V4ScheduleResolution, { status: "available" }>;
 };
 
 type IncompleteWorkoutCandidate = {
@@ -945,6 +947,7 @@ export function resolveV4NextWorkoutContext(input: {
     selectedIncompleteReadiness,
     lifecycleBlocker: null,
     eligibleSlotSnapshots,
+    v4ScheduleResolution: resolution,
   };
 }
 
@@ -953,6 +956,7 @@ export type V4ScheduleWorkoutCandidate = {
   status: unknown;
   mesocycleId: string | null;
   mesocycleWeekSnapshot: number | null;
+  mesocyclePhaseSnapshot: unknown;
   mesoSessionSnapshot: number | null;
   advancesSplit: boolean | null;
   sessionIntent: string | null;
@@ -1132,6 +1136,7 @@ export async function loadNextWorkoutContext(
               status: true,
               mesocycleId: true,
               mesocycleWeekSnapshot: true,
+              mesocyclePhaseSnapshot: true,
               mesoSessionSnapshot: true,
               advancesSplit: true,
               sessionIntent: true,

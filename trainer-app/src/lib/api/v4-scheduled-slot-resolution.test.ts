@@ -15,6 +15,7 @@ import {
   attachServerAuthoredV4ScheduledSlotReceipt,
   buildScheduledSlotReceipt,
   resolveV4ScheduleAuthority,
+  resolveV4RequiredSlotFromPersistedWorkoutEvidence,
   resolveV4ScheduledSlots,
   type V4RequiredSlot,
   type V4ScheduleAuthority,
@@ -66,6 +67,7 @@ function workout(input: {
     status: input.status ?? "PLANNED",
     mesocycleId: source.mesocycleId,
     mesocycleWeekSnapshot: slot.weekInMeso,
+    mesocyclePhaseSnapshot: slot.phase,
     mesoSessionSnapshot: slot.sequenceIndex + 1,
     advancesSplit: input.advancesSplit ?? true,
     sessionIntent: slot.intent.toUpperCase(),
@@ -129,7 +131,129 @@ function workout(input: {
   };
 }
 
+function releasedWorkoutWithoutScheduledReceipt(input: {
+  authority: V4ScheduleAuthority;
+  slot: V4RequiredSlot;
+}): V4ScheduleWorkoutEvidence {
+  const { authority: source, slot } = input;
+  return {
+    id: `released-${slot.weekInMeso}-${slot.slotId}`,
+    status: "PLANNED",
+    mesocycleId: source.mesocycleId,
+    mesocycleWeekSnapshot: slot.weekInMeso,
+    mesocyclePhaseSnapshot: slot.phase,
+    mesoSessionSnapshot: slot.sequenceIndex + 1,
+    advancesSplit: true,
+    sessionIntent: slot.intent.toUpperCase(),
+    seedRevisionId: source.revisionId,
+    seedRevisionNumber: source.revisionNumber,
+    seedPayloadHash: source.revisionHash,
+    selectionMetadata: {
+      sessionDecisionReceipt: {
+        version: 2,
+        cycleContext: {
+          weekInMeso: slot.weekInMeso,
+          weekInBlock: slot.weekInMeso,
+          mesocycleLength: 5,
+          phase: "accumulation",
+          blockType: "accumulation",
+          isDeload: false,
+          source: "computed",
+        },
+        sessionProvenance: {
+          mesocycleId: source.mesocycleId,
+          compositionSource: "persisted_slot_plan_seed",
+          seedProvenance: {
+            revisionId: source.revisionId,
+            revision: source.revisionNumber,
+            hash: source.revisionHash,
+          },
+        },
+        sessionSlot: {
+          slotId: slot.slotId,
+          intent: slot.intent,
+          sequenceIndex: slot.sequenceIndex,
+          sequenceLength: slot.sequenceLength,
+          source: "mesocycle_slot_sequence",
+        },
+        lifecycleVolume: { source: "unknown" },
+        sorenessSuppressedMuscles: [],
+        deloadDecision: {
+          mode: "none",
+          reason: [],
+          reductionPercent: 0,
+          appliedTo: "none",
+        },
+        readiness: {
+          wasAutoregulated: false,
+          signalAgeHours: null,
+          fatigueScoreOverall: null,
+          intensityScaling: {
+            applied: false,
+            exerciseIds: [],
+            scaledUpCount: 0,
+            scaledDownCount: 0,
+          },
+        },
+        exceptions: [],
+      },
+    },
+  };
+}
+
 describe("V4 scheduled-slot resolution", () => {
+  it("promotes the released pre-receipt shape only from complete persisted slot facts", () => {
+    const source = authority();
+    const slot = source.requiredSlots[0]!;
+    const released = releasedWorkoutWithoutScheduledReceipt({ authority: source, slot });
+
+    expect(
+      resolveV4RequiredSlotFromPersistedWorkoutEvidence({
+        authority: source,
+        workout: released,
+      }),
+    ).toEqual({ requiredSlot: slot });
+    const promoted = attachServerAuthoredV4ScheduledSlotReceipt({
+      authority: source,
+      requiredSlot: slot,
+      selectionMetadata: released.selectionMetadata,
+      incomingSelectionMetadata: null,
+      persistedSelectionMetadata: released.selectionMetadata,
+      persistedWorkoutEvidence: released,
+    });
+    expect(
+      (promoted.sessionDecisionReceipt as Record<string, unknown>)
+        .scheduledSlotReceipt,
+    ).toEqual({
+      version: 1,
+      mesocycleId: source.mesocycleId,
+      acceptedRevisionId: source.revisionId,
+      acceptedRevisionNumber: source.revisionNumber,
+      acceptedRevisionHash: source.revisionHash,
+      weekInMeso: slot.weekInMeso,
+      slotId: slot.slotId,
+      sequenceIndex: slot.sequenceIndex,
+      sequenceLength: slot.sequenceLength,
+    });
+
+    const conflicted = { ...released, mesocyclePhaseSnapshot: "DELOAD" };
+    expect(
+      resolveV4RequiredSlotFromPersistedWorkoutEvidence({
+        authority: source,
+        workout: conflicted,
+      }),
+    ).toEqual({ reason: "persisted_slot_identity_conflict" });
+    expect(() =>
+      attachServerAuthoredV4ScheduledSlotReceipt({
+        authority: source,
+        requiredSlot: slot,
+        selectionMetadata: released.selectionMetadata,
+        incomingSelectionMetadata: released.selectionMetadata,
+        persistedSelectionMetadata: released.selectionMetadata,
+        persistedWorkoutEvidence: released,
+      }),
+    ).toThrow("V4_SCHEDULE_RECEIPT_CLIENT_AUTHORED");
+  });
   it("builds 20 unique week + slot obligations for repeated lower/upper slots", () => {
     const resolved = authority();
     const originalAuthority = structuredClone(resolved);

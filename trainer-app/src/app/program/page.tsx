@@ -352,6 +352,13 @@ export default async function ProgramPage() {
           </section>
         )}
 
+        {data.lifecycleBlocker ? (
+          <section className="mt-7 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-amber-950">
+            <h2 className="text-sm font-semibold">Refresh workout schedule</h2>
+            <p className="mt-1 text-sm">{data.lifecycleBlocker.message}</p>
+          </section>
+        ) : null}
+
         {currentWeekPlan && trainNextSlot ? (
           <section className="mt-7 rounded-3xl border-2 border-slate-900 bg-slate-950 p-5 text-white shadow-sm sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">

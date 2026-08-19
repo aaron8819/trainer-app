@@ -74,6 +74,7 @@ import { readRuntimeEditReconciliation } from "@/lib/ui/selection-metadata";
 import {
   attachServerAuthoredV4ScheduledSlotReceipt,
   resolveV4RequiredSlotFromDecisionReceipt,
+  resolveV4RequiredSlotFromPersistedWorkoutEvidence,
   resolveV4ScheduleAuthority,
   type V4RequiredSlot,
   type V4ScheduleAuthority,
@@ -327,6 +328,18 @@ export async function POST(request: Request) {
         existingStatus: existingWorkout?.status as PersistedStatus | undefined,
         completedMetrics,
       });
+      if (existingWorkout) {
+        assertWorkoutStatusTransition({
+          currentStatus: existingWorkout.status as PersistedStatus,
+          action,
+          completedMetrics,
+        });
+      }
+      const hasV4ScheduledIdentity =
+        receipt.sessionSlot?.source === "mesocycle_slot_sequence" &&
+        (receipt.sessionProvenance?.compositionSource ===
+          "persisted_slot_plan_seed" ||
+          receipt.sessionProvenance?.compositionSource === "deload_seed_replay");
 
       const completedAt =
         finalStatus === "COMPLETED"
@@ -351,12 +364,6 @@ export async function POST(request: Request) {
       });
       const forcesAdvancesSplitFalse =
         isOptionalGapFill || isSupplementalDeficitSession || isCloseout;
-      const effectiveAdvancesSplit = forcesAdvancesSplitFalse
-        ? false
-        : (resolvedAdvancesSplit ?? true);
-      const shouldAdvanceLifecycleTransition =
-        shouldTransitionPerformed &&
-        shouldAdvanceLifecycleForPerformedTransition(effectiveAdvancesSplit);
       // Also snapshot on initial plan-save so the label appears immediately in Recent Workouts.
       const shouldSetPlannedMesoSnapshot =
         action === "save_plan" && !existingWorkout;
@@ -380,7 +387,7 @@ export async function POST(request: Request) {
 
       let v4ScheduleAuthority: V4ScheduleAuthority | null = null;
       let v4RequiredSlot: V4RequiredSlot | null = null;
-      if (resolvedMesocycle && effectiveAdvancesSplit) {
+      if (resolvedMesocycle) {
         const v4AuthorityResolution = resolveV4ScheduleAuthority(
           resolvedMesocycle,
         );
@@ -391,38 +398,55 @@ export async function POST(request: Request) {
         }
         if (v4AuthorityResolution.status === "available") {
           v4ScheduleAuthority = v4AuthorityResolution.authority;
-          await lockV4MesocycleForScheduleResolution(tx, {
-            mesocycle: resolvedMesocycle,
-            authority: v4ScheduleAuthority,
-          });
-          const requiredSlotResolution =
-            resolveV4RequiredSlotFromDecisionReceipt({
-              authority: v4ScheduleAuthority,
-              selectionMetadata,
-              sessionIntent: effectiveSessionIntent ?? null,
-            });
+          const requiredSlotResolution = existingWorkout
+            ? resolveV4RequiredSlotFromPersistedWorkoutEvidence({
+                authority: v4ScheduleAuthority,
+                workout: existingWorkout,
+              })
+            : resolveV4RequiredSlotFromDecisionReceipt({
+                authority: v4ScheduleAuthority,
+                selectionMetadata,
+                sessionIntent: effectiveSessionIntent ?? null,
+              });
           if ("reason" in requiredSlotResolution) {
-            throw new Error(
-              `V4_SCHEDULE_RECEIPT_INVALID:${requiredSlotResolution.reason}`,
-            );
-          }
-          v4RequiredSlot = requiredSlotResolution.requiredSlot;
-          if (!existingWorkout) {
-            await resolveV4ScheduleBeforeWorkoutCreation(tx, {
+            if (forcesAdvancesSplitFalse && !hasV4ScheduledIdentity) {
+              v4ScheduleAuthority = null;
+            } else {
+              throw new Error(
+                `V4_SCHEDULE_RECEIPT_INVALID:${requiredSlotResolution.reason}`,
+              );
+            }
+          } else {
+            v4RequiredSlot = requiredSlotResolution.requiredSlot;
+            if (
+              existingWorkout &&
+              parsed.data.sessionIntent &&
+              parsed.data.sessionIntent.trim().toLowerCase() !==
+                v4RequiredSlot.intent
+            ) {
+              throw new Error("V4_SCHEDULE_RECEIPT_INVALID:workout_intent_conflict");
+            }
+            await lockV4MesocycleForScheduleResolution(tx, {
+              mesocycle: resolvedMesocycle,
               authority: v4ScheduleAuthority,
-              requiredSlot: v4RequiredSlot,
             });
+            if (!existingWorkout) {
+              await resolveV4ScheduleBeforeWorkoutCreation(tx, {
+                authority: v4ScheduleAuthority,
+                requiredSlot: v4RequiredSlot,
+              });
+            }
           }
         }
       }
-      if (existingWorkout) {
-        assertWorkoutStatusTransition({
-          currentStatus: existingWorkout.status as PersistedStatus,
-          action,
-          completedMetrics,
-        });
-      }
-
+      const effectiveAdvancesSplit = v4RequiredSlot
+        ? true
+        : forcesAdvancesSplitFalse
+          ? false
+          : (resolvedAdvancesSplit ?? true);
+      const shouldAdvanceLifecycleTransition =
+        shouldTransitionPerformed &&
+        shouldAdvanceLifecycleForPerformedTransition(effectiveAdvancesSplit);
       const shouldSetMesoSnapshot =
         (shouldTransitionPerformed || shouldSetPlannedMesoSnapshot) &&
         Boolean(resolvedMesocycleId);
@@ -507,6 +531,7 @@ export async function POST(request: Request) {
           selectionMetadata,
           incomingSelectionMetadata,
           persistedSelectionMetadata: existingWorkout?.selectionMetadata,
+          persistedWorkoutEvidence: existingWorkout ?? undefined,
         });
       }
 
@@ -520,7 +545,11 @@ export async function POST(request: Request) {
         sessionIntent: parsed.data.sessionIntent ?? undefined,
         selectionMetadata: selectionMetadata as Prisma.InputJsonValue,
         forcedSplit: parsed.data.forcedSplit ?? undefined,
-        advancesSplit: forcesAdvancesSplitFalse ? false : resolvedAdvancesSplit,
+        advancesSplit: v4RequiredSlot
+          ? true
+          : forcesAdvancesSplitFalse
+            ? false
+            : resolvedAdvancesSplit,
         templateId: parsed.data.templateId ?? undefined,
         ...(resolvedMesocycleId ? { mesocycleId: resolvedMesocycleId } : {}),
         ...(mesoSnapshot

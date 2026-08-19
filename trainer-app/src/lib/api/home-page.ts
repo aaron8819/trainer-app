@@ -543,6 +543,15 @@ function buildHomePrimaryAction(input: {
     };
   }
 
+  if (homeProgram.lifecycleBlocker) {
+    return {
+      state: "blocked",
+      label: "Refresh workout schedule",
+      reason: homeProgram.lifecycleBlocker.message,
+      href: "/program",
+    };
+  }
+
   const requiredWeekComplete =
     decision.totalAdvancingSessionsThisWeek > 0 &&
     decision.completedAdvancingSessionsThisWeek >= decision.totalAdvancingSessionsThisWeek;

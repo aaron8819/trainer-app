@@ -111,6 +111,7 @@ vi.mock("./mesocycle-handoff", () => ({
 import {
   computeMesoWeekStart,
   applyCycleAnchor,
+  buildHomeActiveWeekPlan,
   loadHomeProgramSupport,
   loadProgramDashboardData,
 } from "./program";
@@ -961,6 +962,93 @@ describe("loadProgramDashboardData", () => {
 describe("loadHomeProgramSupport", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("uses exact V4 claims to keep a skipped slot resolved and advance Home to the next slot", () => {
+    const result = buildHomeActiveWeekPlan({
+      activeWeek: 2,
+      slotSequenceJson: {
+        version: 1,
+        source: "v4_test",
+        sequenceMode: "ordered_flexible",
+        sessionsPerWeek: 2,
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+        ],
+      },
+      weeklySchedule: [],
+      workouts: [
+        {
+          id: "week-2-upper",
+          status: "SKIPPED",
+          scheduledDate: new Date("2026-03-08T00:00:00.000Z"),
+          advancesSplit: true,
+          selectionMetadata: null,
+          selectionMode: "INTENT",
+          sessionIntent: "UPPER",
+          mesocyclePhaseSnapshot: "ACCUMULATION",
+        },
+      ],
+      nextSession: {
+        intent: "lower",
+        slotId: "lower_a",
+        slotSequenceIndex: 1,
+        slotSequenceLength: 2,
+        slotSource: "mesocycle_slot_sequence",
+        weekInMeso: 2,
+        sessionInWeek: 2,
+        workoutId: null,
+        isExisting: false,
+      },
+      latestIncomplete: null,
+      exactResolution: {
+        status: "available",
+        claims: [
+          {
+            requiredSlot: {
+              weekInMeso: 2,
+              phase: "ACCUMULATION",
+              slotId: "upper_a",
+              intent: "upper",
+              sequenceIndex: 0,
+              sequenceLength: 2,
+            },
+            workoutId: "week-2-upper",
+            status: "SKIPPED",
+            scheduleResolved: true,
+            completed: false,
+          },
+        ],
+        resolvedSlotCount: 1,
+        completedSlotCount: 0,
+        allAccumulationResolved: false,
+        allResolved: false,
+        nextUnresolvedSlot: {
+          weekInMeso: 2,
+          phase: "ACCUMULATION",
+          slotId: "lower_a",
+          intent: "lower",
+          sequenceIndex: 1,
+          sequenceLength: 2,
+        },
+        unresolvedSlotsInNextWeek: [
+          {
+            weekInMeso: 2,
+            phase: "ACCUMULATION",
+            slotId: "lower_a",
+            intent: "lower",
+            sequenceIndex: 1,
+            sequenceLength: 2,
+          },
+        ],
+      },
+    });
+
+    expect(result?.sessions).toMatchObject([
+      { slotId: "upper_a", status: "skipped", workoutId: "week-2-upper" },
+      { slotId: "lower_a", status: "next", workoutId: null },
+    ]);
   });
 
   it("prefers an existing incomplete workout over rotation-derived intent", async () => {

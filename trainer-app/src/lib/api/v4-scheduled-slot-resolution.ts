@@ -53,6 +53,7 @@ export type V4ScheduleWorkoutEvidence = {
   status: unknown;
   mesocycleId: string | null;
   mesocycleWeekSnapshot: number | null;
+  mesocyclePhaseSnapshot: unknown;
   mesoSessionSnapshot: number | null;
   advancesSplit: boolean | null;
   sessionIntent: string | null;
@@ -331,17 +332,54 @@ export function resolveV4RequiredSlotFromDecisionReceipt(input: {
   return { requiredSlot };
 }
 
+export function resolveV4RequiredSlotFromPersistedWorkoutEvidence(input: {
+  authority: V4ScheduleAuthority;
+  workout: V4ScheduleWorkoutEvidence;
+}): { requiredSlot: V4RequiredSlot } | { reason: string } {
+  const resolved = resolveV4RequiredSlotFromDecisionReceipt({
+    authority: input.authority,
+    selectionMetadata: input.workout.selectionMetadata,
+    sessionIntent: input.workout.sessionIntent,
+  });
+  if ("reason" in resolved) return resolved;
+
+  const { requiredSlot } = resolved;
+  if (
+    input.workout.mesocycleId !== input.authority.mesocycleId ||
+    input.workout.mesocycleWeekSnapshot !== requiredSlot.weekInMeso ||
+    input.workout.mesocyclePhaseSnapshot !== requiredSlot.phase ||
+    input.workout.mesoSessionSnapshot !== requiredSlot.sequenceIndex + 1 ||
+    input.workout.advancesSplit === false ||
+    input.workout.seedRevisionId !== input.authority.revisionId ||
+    input.workout.seedRevisionNumber !== input.authority.revisionNumber ||
+    input.workout.seedPayloadHash !== input.authority.revisionHash
+  ) {
+    return { reason: "persisted_slot_identity_conflict" };
+  }
+
+  return { requiredSlot };
+}
+
 export function attachServerAuthoredV4ScheduledSlotReceipt(input: {
   authority: V4ScheduleAuthority;
   requiredSlot: V4RequiredSlot;
   selectionMetadata: unknown;
   incomingSelectionMetadata: unknown;
   persistedSelectionMetadata?: unknown;
+  persistedWorkoutEvidence?: V4ScheduleWorkoutEvidence;
 }): JsonRecord {
   const metadata = record(input.selectionMetadata) ?? {};
   const receipt = record(metadata.sessionDecisionReceipt);
   if (!receipt) throw new Error("V4_SCHEDULE_RECEIPT_REQUIRED");
   const expected = buildScheduledSlotReceipt(input.authority, input.requiredSlot);
+  const schedulingError = validateDecisionReceiptScheduling({
+    authority: input.authority,
+    requiredSlot: input.requiredSlot,
+    selectionMetadata: input.selectionMetadata,
+  });
+  if (schedulingError) {
+    throw new Error(`V4_SCHEDULE_RECEIPT_CONFLICT:${schedulingError}`);
+  }
   const incomingRawReceipt = record(
     record(input.incomingSelectionMetadata)?.sessionDecisionReceipt,
   );
@@ -365,6 +403,36 @@ export function attachServerAuthoredV4ScheduledSlotReceipt(input: {
     input.persistedSelectionMetadata,
   )?.scheduledSlotReceipt;
   if (input.persistedSelectionMetadata != null) {
+    if (!persistedScheduledReceipt) {
+      if (incomingRawReceipt) {
+        throw new Error("V4_SCHEDULE_RECEIPT_CLIENT_AUTHORED");
+      }
+      if (!input.persistedWorkoutEvidence) {
+        throw new Error("V4_SCHEDULE_RECEIPT_INVALID");
+      }
+      const persistedSlot = resolveV4RequiredSlotFromPersistedWorkoutEvidence({
+        authority: input.authority,
+        workout: input.persistedWorkoutEvidence,
+      });
+      if (
+        "reason" in persistedSlot ||
+        slotKey(persistedSlot.requiredSlot) !== slotKey(input.requiredSlot)
+      ) {
+        throw new Error("V4_SCHEDULE_RECEIPT_INVALID");
+      }
+      const persistedMetadata = record(input.persistedSelectionMetadata) ?? {};
+      const persistedReceipt = record(persistedMetadata.sessionDecisionReceipt);
+      if (!persistedReceipt) {
+        throw new Error("V4_SCHEDULE_RECEIPT_INVALID");
+      }
+      return {
+        ...metadata,
+        sessionDecisionReceipt: {
+          ...persistedReceipt,
+          scheduledSlotReceipt: expected,
+        },
+      };
+    }
     if (!receiptMatchesExpected(persistedScheduledReceipt, expected)) {
       throw new Error("V4_SCHEDULE_RECEIPT_INVALID");
     }
@@ -425,6 +493,7 @@ function validateWorkoutEvidence(input: {
   if (schedulingError) return { reason: `${schedulingError}:${workout.id}` };
   if (
     workout.mesocycleWeekSnapshot !== requiredSlot.weekInMeso ||
+    workout.mesocyclePhaseSnapshot !== requiredSlot.phase ||
     workout.mesoSessionSnapshot !== requiredSlot.sequenceIndex + 1 ||
     normalizeIntent(workout.sessionIntent ?? "") !== requiredSlot.intent ||
     workout.seedRevisionId !== authority.revisionId ||

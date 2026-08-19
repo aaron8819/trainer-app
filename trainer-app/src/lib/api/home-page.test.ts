@@ -536,6 +536,39 @@ describe("loadHomePageData", () => {
     );
   });
 
+  it("carries the exact V4 lifecycle blocker into the Home refresh action", async () => {
+    const base = await mocks.loadHomeProgramSupport();
+    mocks.loadHomeProgramSupport.mockResolvedValue({
+      ...base,
+      nextSession: {
+        ...base.nextSession,
+        intent: null,
+        slotId: null,
+        workoutId: null,
+      },
+      activeWeekPlan: null,
+      completedAdvancingSessionsThisWeek: 0,
+      lifecycleBlocker: {
+        code: "V4_SCHEDULE_RESOLUTION_BLOCKED",
+        severity: "hard_blocker",
+        message:
+          "Scheduled workout identity is incomplete or ambiguous. Refresh before continuing.",
+        mesocycleId: "meso-v4",
+        reason: "scheduled_slot_missing:workout-1",
+      },
+    });
+
+    const result = await loadHomePageData("user-1");
+
+    expect(result.primaryAction).toEqual({
+      state: "blocked",
+      label: "Refresh workout schedule",
+      reason:
+        "Scheduled workout identity is incomplete or ambiguous. Refresh before continuing.",
+      href: "/program",
+    });
+  });
+
   it("exposes the readiness gym-card DTO from a typed readiness contract", async () => {
     const base = makeReadinessContract();
     const contract = makeReadinessContract({

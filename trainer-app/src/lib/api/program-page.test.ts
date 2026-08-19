@@ -108,6 +108,138 @@ function makeSlotSelectionMetadata(input: {
 }
 
 describe("buildProgramCurrentWeekPlan", () => {
+  it("uses exact week + slot claims for skipped V4 obligations and repeated slot ids", () => {
+    const slotSequenceJson = buildMesocycleSlotSequence([
+      { slotId: "upper_a", intent: "UPPER" },
+      { slotId: "lower_a", intent: "LOWER" },
+    ]);
+    const requiredSlot = {
+      weekInMeso: 2,
+      phase: "ACCUMULATION" as const,
+      slotId: "upper_a",
+      intent: "upper",
+      sequenceIndex: 0,
+      sequenceLength: 2,
+    };
+
+    const result = buildProgramCurrentWeekPlan({
+      week: 2,
+      slotSequenceJson,
+      weeklySchedule: [],
+      currentWeekWorkouts: [
+        {
+          id: "week-1-upper",
+          status: "COMPLETED",
+          scheduledDate: new Date("2026-03-01T00:00:00.000Z"),
+          sessionIntent: "UPPER",
+          selectionMode: "INTENT",
+          selectionMetadata: null,
+          advancesSplit: true,
+        },
+        {
+          id: "week-2-upper",
+          status: "SKIPPED",
+          scheduledDate: new Date("2026-03-08T00:00:00.000Z"),
+          sessionIntent: "UPPER",
+          selectionMode: "INTENT",
+          selectionMetadata: null,
+          advancesSplit: true,
+        },
+      ],
+      nextWorkoutContext: {
+        intent: "lower",
+        slotId: "lower_a",
+        slotSequenceIndex: 1,
+        slotSequenceLength: 2,
+        slotSource: "mesocycle_slot_sequence",
+        existingWorkoutId: null,
+        isExisting: false,
+        source: "rotation",
+        weekInMeso: 2,
+        sessionInWeek: 2,
+        derivationTrace: [],
+        selectedIncompleteStatus: null,
+        v4ScheduleResolution: {
+          status: "available",
+          claims: [
+            {
+              requiredSlot,
+              workoutId: "week-2-upper",
+              status: "SKIPPED",
+              scheduleResolved: true,
+              completed: false,
+            },
+          ],
+          resolvedSlotCount: 1,
+          completedSlotCount: 0,
+          allAccumulationResolved: false,
+          allResolved: false,
+          nextUnresolvedSlot: {
+            ...requiredSlot,
+            slotId: "lower_a",
+            intent: "lower",
+            sequenceIndex: 1,
+          },
+          unresolvedSlotsInNextWeek: [
+            {
+              ...requiredSlot,
+              slotId: "lower_a",
+              intent: "lower",
+              sequenceIndex: 1,
+            },
+          ],
+        },
+      },
+    });
+
+    expect(result?.slots[0]).toMatchObject({
+      slotId: "upper_a",
+      statusLabel: "Skipped",
+      volumeBasis: "resolved_skipped",
+      linkedWorkoutId: "week-2-upper",
+      linkedWorkoutStatus: "skipped",
+    });
+    expect(result?.slots[1]).toMatchObject({
+      slotId: "lower_a",
+      statusLabel: "Planned next",
+      linkedWorkoutId: null,
+    });
+  });
+
+  it("returns no fallback plan when exact V4 scheduling is blocked", () => {
+    expect(
+      buildProgramCurrentWeekPlan({
+        week: 2,
+        slotSequenceJson: buildMesocycleSlotSequence([
+          { slotId: "upper_a", intent: "UPPER" },
+        ]),
+        weeklySchedule: [],
+        currentWeekWorkouts: [],
+        nextWorkoutContext: {
+          intent: null,
+          slotId: null,
+          slotSequenceIndex: null,
+          slotSequenceLength: null,
+          slotSource: null,
+          existingWorkoutId: null,
+          isExisting: false,
+          source: "schedule_resolution_blocked",
+          weekInMeso: null,
+          sessionInWeek: null,
+          derivationTrace: [],
+          selectedIncompleteStatus: null,
+          lifecycleBlocker: {
+            code: "V4_SCHEDULE_RESOLUTION_BLOCKED",
+            severity: "hard_blocker",
+            message: "Refresh the workout schedule.",
+            mesocycleId: "meso-v4",
+            reason: "scheduled_slot_missing",
+          },
+        },
+      }),
+    ).toBeNull();
+  });
+
   it("marks ordered slots as completed, next, and remaining from canonical runtime context", () => {
     const slotSequenceJson = {
       version: 1,
@@ -1307,6 +1439,37 @@ describe("loadProgramPageData", () => {
       "reset",
       "end_early",
     ]);
+  });
+
+  it("exposes the exact V4 blocker without building a fallback Program plan", async () => {
+    const lifecycleBlocker = {
+      code: "V4_SCHEDULE_RESOLUTION_BLOCKED" as const,
+      severity: "hard_blocker" as const,
+      message:
+        "Scheduled workout identity is incomplete or ambiguous. Refresh before continuing.",
+      mesocycleId: "meso-1",
+      reason: "scheduled_slot_missing:workout-1",
+    };
+    mocks.loadNextWorkoutContext.mockResolvedValue({
+      intent: null,
+      slotId: null,
+      slotSequenceIndex: null,
+      slotSequenceLength: null,
+      slotSource: null,
+      existingWorkoutId: null,
+      isExisting: false,
+      source: "schedule_resolution_blocked",
+      weekInMeso: null,
+      sessionInWeek: null,
+      derivationTrace: [],
+      selectedIncompleteStatus: null,
+      lifecycleBlocker,
+    });
+
+    const result = await loadProgramPageData("user-1");
+
+    expect(result.lifecycleBlocker).toEqual(lifecycleBlocker);
+    expect(result.currentWeekPlan).toBeNull();
   });
 
   it("uses set-aware persisted seed exercises when linked workouts and projection disagree", async () => {

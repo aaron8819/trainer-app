@@ -238,6 +238,7 @@ export type ProgramVolumeDisplayRow = {
 export type ProgramVolumeLandmarkContext = VolumeReadModelLandmarkContext;
 
 export type ProgramPageData = {
+  isExactScheduleBlocked: boolean;
   overview: ProgramPageOverview | null;
   lifecycleBlocker?: NextWorkoutContext["lifecycleBlocker"];
   currentWeekPlan: ProgramCurrentWeekPlan | null;
@@ -1427,17 +1428,21 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
     loadActiveMesocycle(userId),
     loadNextWorkoutContext(userId),
   ]);
+  const isExactScheduleBlocked =
+    nextWorkoutContext.source === "schedule_resolution_blocked";
   const exactV4Week =
-    nextWorkoutContext.source !== "schedule_resolution_blocked" &&
+    !isExactScheduleBlocked &&
     nextWorkoutContext.v4ScheduleResolution
       ? nextWorkoutContext.weekInMeso
       : null;
-  const programCurrentWeek = exactV4Week ?? dashboard.currentWeek;
+  const programCurrentWeek = isExactScheduleBlocked
+    ? null
+    : exactV4Week ?? dashboard.currentWeek;
   const baseOverview = buildProgramPageOverview(dashboard);
-  const overview = baseOverview
+  const overview = !isExactScheduleBlocked && baseOverview && programCurrentWeek != null
     ? { ...baseOverview, currentWeek: programCurrentWeek }
     : null;
-  const rawRelevantWeekClose = activeMesocycle
+  const rawRelevantWeekClose = !isExactScheduleBlocked && activeMesocycle
     ? await findRelevantWeekCloseForUser({
         userId,
         mesocycleId: activeMesocycle.id,
@@ -1448,7 +1453,9 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
       ? null
       : rawRelevantWeekClose;
   const closeoutTargetWeek =
+    !isExactScheduleBlocked &&
     activeMesocycle &&
+    programCurrentWeek != null &&
     isCloseoutWeekInScope({
       activeWeek: programCurrentWeek,
       targetWeek:
@@ -1459,7 +1466,10 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
       ? relevantWeekClose?.targetWeek ?? null
       : programCurrentWeek;
   const currentWeekSurface =
-    activeMesocycle && dashboard.activeMeso
+    !isExactScheduleBlocked &&
+    activeMesocycle &&
+    dashboard.activeMeso &&
+    programCurrentWeek != null
       ? await loadCurrentWeekPlan({
           userId,
           currentWeek: programCurrentWeek,
@@ -1475,7 +1485,7 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
   const currentWeekPlan = currentWeekSurface?.plan ?? null;
   const closeout = currentWeekSurface?.closeout ?? null;
   const projectedWeekReport =
-    activeMesocycle && dashboard.activeMeso
+    !isExactScheduleBlocked && activeMesocycle && dashboard.activeMeso
       ? await loadProjectedWeekVolumeReport({ userId })
       : null;
   const weekCompletionOutlook = projectedWeekReport
@@ -1494,6 +1504,7 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
       : currentWeekPlan;
 
   return {
+    isExactScheduleBlocked,
     overview,
     lifecycleBlocker: nextWorkoutContext.lifecycleBlocker ?? null,
     currentWeekPlan: currentWeekPlanWithImpacts,
@@ -1503,7 +1514,7 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
       dashboard,
     },
     advancedActions: {
-      availableActions: [
+      availableActions: isExactScheduleBlocked ? [] : [
         "deload",
         "extend_phase",
         "reset",

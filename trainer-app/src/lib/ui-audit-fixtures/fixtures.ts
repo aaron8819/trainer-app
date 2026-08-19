@@ -254,6 +254,7 @@ const emptyDashboard: ProgramDashboardData = {
 };
 
 const activeHomeProgram = {
+  isExactScheduleBlocked: false,
   nextSession: {
     intent: "PULL",
     slotId: "pull-a",
@@ -779,6 +780,7 @@ const settingsExercises: ExerciseListItem[] = [
 ];
 
 const activeProgram: ProgramPageData = {
+  isExactScheduleBlocked: false,
   overview: {
     mesoNumber: 4,
     focus: "Hypertrophy base",
@@ -1009,6 +1011,7 @@ const activeProgram: ProgramPageData = {
 };
 
 const emptyProgram: ProgramPageData = {
+  isExactScheduleBlocked: false,
   overview: null,
   currentWeekPlan: null,
   closeout: null,

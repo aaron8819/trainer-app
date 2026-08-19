@@ -203,6 +203,7 @@ export type ProgramDashboardData = {
 };
 
 export type HomeProgramSupportData = {
+  isExactScheduleBlocked: boolean;
   nextSession: NextSessionData;
   eligibleAlternativeSessions: HomeEligibleSession[];
   activeWeek: number | null;
@@ -1214,6 +1215,7 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
   });
 
   return {
+    isExactScheduleBlocked: exactV4ScheduleBlocked,
     nextSession,
     activeWeek,
     ...weekProgress,

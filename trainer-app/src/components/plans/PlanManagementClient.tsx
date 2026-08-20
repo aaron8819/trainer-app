@@ -857,6 +857,17 @@ export function PlanManagementClient({
                         View program
                       </Link>
                     ) : null}
+                    {plan.status === "COMPLETED" ? (
+                      <Link
+                        href={`/plans/${plan.id}/review`}
+                        className={buttonClassName({
+                          variant: "secondary",
+                          size: "touch",
+                        })}
+                      >
+                        View plan
+                      </Link>
+                    ) : null}
                     {customHypertrophyEnabled && plan.editableCopyAvailable ? (
                       <Button variant="secondary" size="touch" onClick={() => void copy(plan)} disabled={busy}>
                         Create editable copy

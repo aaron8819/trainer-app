@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
   const loadProgramDashboardData = vi.fn();
   const loadHomeProgramSupport = vi.fn();
   const loadCurrentHomePreSessionReadinessContractCandidate = vi.fn();
+  const resolveActivePlanContext = vi.fn();
 
   return {
     workoutFindFirst,
@@ -23,6 +24,7 @@ const mocks = vi.hoisted(() => {
     loadProgramDashboardData,
     loadHomeProgramSupport,
     loadCurrentHomePreSessionReadinessContractCandidate,
+    resolveActivePlanContext,
     prisma: {
       user: {
         findUnique: userFindUnique,
@@ -42,6 +44,11 @@ vi.mock("@/lib/db/prisma", () => ({
 vi.mock("./mesocycle-handoff", () => ({
   loadPendingMesocycleHandoff: (...args: unknown[]) =>
     mocks.loadPendingMesocycleHandoff(...args),
+}));
+
+vi.mock("./active-plan-context", () => ({
+  resolveActivePlanContext: (...args: unknown[]) =>
+    mocks.resolveActivePlanContext(...args),
 }));
 
 vi.mock("./program", () => ({
@@ -289,6 +296,7 @@ describe("loadHomePageData", () => {
       activeMacroCycleId: "macro-1",
     });
     mocks.loadPendingMesocycleHandoff.mockResolvedValue(null);
+    mocks.resolveActivePlanContext.mockResolvedValue({ status: "READY" });
     mocks.loadCurrentHomePreSessionReadinessContractCandidate.mockResolvedValue(null);
     mocks.workoutFindFirst.mockResolvedValue(makeWorkoutRow());
     mocks.workoutFindMany.mockResolvedValue([
@@ -454,6 +462,32 @@ describe("loadHomePageData", () => {
         canCreate: false,
       },
     });
+  });
+
+  it("returns selected-plan completion before readiness or active schedule reads", async () => {
+    mocks.resolveActivePlanContext.mockResolvedValue({
+      status: "COMPLETED",
+      activeMacroCycle: { id: "macro-1", name: "Five Week Builder" },
+      lastClosedAt: new Date("2026-08-20T12:00:00.000Z"),
+    });
+
+    const result = await loadHomePageData("user-1");
+
+    expect(result).toMatchObject({
+      completedPlan: {
+        id: "macro-1",
+        name: "Five Week Builder",
+        lastClosedAt: "2026-08-20T12:00:00.000Z",
+      },
+      programData: null,
+      homeProgram: null,
+      preSessionReadinessCard: null,
+    });
+    expect(mocks.loadProgramDashboardData).not.toHaveBeenCalled();
+    expect(mocks.loadHomeProgramSupport).not.toHaveBeenCalled();
+    expect(
+      mocks.loadCurrentHomePreSessionReadinessContractCandidate,
+    ).not.toHaveBeenCalled();
   });
 
   it("composes decision, continuity, recent activity preview, and compact program inputs", async () => {

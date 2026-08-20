@@ -2,6 +2,7 @@ import { WorkoutStatus, type Prisma } from "@prisma/client";
 import { deriveCurrentMesocycleSession } from "@/lib/api/mesocycle-lifecycle-math";
 import {
   claimSelectedPlanForTransitionInTransaction,
+  completeOrEnterHandoffInTransaction,
   resolveActivePlanContextInTransaction,
   transitionMesocycleStateInTransaction,
 } from "@/lib/api/mesocycle-lifecycle-state";
@@ -13,7 +14,6 @@ import {
   assertMesocycleAllowsWorkoutSave,
   type SaveRouteMesocycleState,
 } from "./guards";
-import { enterMesocycleHandoffInTransaction } from "../mesocycle-handoff";
 import {
   resolveV4ScheduledSlots,
   type V4ScheduleAuthority,
@@ -40,6 +40,7 @@ export type SaveRouteMesocycle = {
   startWeek?: number | null;
   macroCycle?: {
     startDate: Date;
+    primaryGoal?: string | null;
   } | null;
 };
 
@@ -190,6 +191,7 @@ const mesocycleSelect = {
   macroCycle: {
     select: {
       startDate: true,
+      primaryGoal: true,
     },
   },
 } as const;
@@ -322,10 +324,12 @@ export async function applyV4TerminalScheduleResolution(
     input.resolvedMesocycle.state === "ACTIVE_DELOAD" &&
     resolution.allResolved
   ) {
-    await enterMesocycleHandoffInTransaction(
-      tx,
-      input.resolvedMesocycle.id,
-    );
+    await completeOrEnterHandoffInTransaction(tx, {
+      id: input.resolvedMesocycle.id,
+      state: input.resolvedMesocycle.state,
+      macroCycle: input.resolvedMesocycle.macroCycle,
+      currentSeedRevision: input.resolvedMesocycle.currentSeedRevision,
+    });
   }
 
   return resolution;

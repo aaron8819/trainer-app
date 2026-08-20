@@ -79,6 +79,7 @@ export type ActivePlanContextResult =
       activeMacroCycle: PlanIdentity;
       activeMesocycle: null;
       completedMesocycleIds: string[];
+      lastClosedAt: Date | null;
     }
   | {
       status: "CORRUPT_STATE";
@@ -272,6 +273,14 @@ export async function resolveActivePlanContextInTransaction(
       activeMacroCycle,
       activeMesocycle: null,
       completedMesocycleIds: lifecycleRows.map((mesocycle) => mesocycle.id),
+      lastClosedAt:
+        lifecycleRows.reduce<Date | null>(
+          (latest, mesocycle) =>
+            !latest || (mesocycle.closedAt && mesocycle.closedAt > latest)
+              ? mesocycle.closedAt
+              : latest,
+          null,
+        ),
     };
   }
   if (!activeMesocycle) {

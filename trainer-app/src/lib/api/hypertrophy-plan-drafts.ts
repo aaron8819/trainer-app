@@ -62,6 +62,8 @@ import { CANONICAL_MUSCLE_IDS, getMusclePolicyByDisplayName } from "@/lib/engine
 import { normalizeLiveInventoryForV2Materialization } from "./v2-materialization-live-inventory";
 import {
   createInitialAcceptedSeedRevisionInTransaction,
+  exactSeedRevisionProvenance,
+  normalizeAcceptedSeedPayload,
   normalizeAcceptedHypertrophySeedV4,
 } from "./mesocycle-seed-revision";
 import { parseAcceptedSeedPayload } from "./slot-plan-seed-parser";
@@ -1261,14 +1263,70 @@ export async function createEditableHypertrophyPlanCopy(input: {
     select: {
       trainingAge: true,
       mesocycles: {
-        where: { isActive: true },
-        take: 1,
-        select: { currentSeedRevision: { select: { seedPayload: true } } },
+        orderBy: [{ mesoNumber: "desc" }, { id: "asc" }],
+        select: {
+          id: true,
+          mesoNumber: true,
+          state: true,
+          isActive: true,
+          currentSeedRevisionId: true,
+          currentSeedRevision: {
+            select: {
+              id: true,
+              mesocycleId: true,
+              revision: true,
+              seedPayload: true,
+              payloadHash: true,
+              hashAlgorithm: true,
+              provenanceStatus: true,
+            },
+          },
+        },
       },
     },
   });
-  const payload = source?.mesocycles[0]?.currentSeedRevision?.seedPayload;
-  if (!source || !payload) throw new PlanManagementError("PLAN_COPY_UNAVAILABLE");
+  if (!source) throw new PlanManagementError("PLAN_COPY_UNAVAILABLE");
+  const activeMesocycles = source.mesocycles.filter(
+    (mesocycle) =>
+      mesocycle.isActive &&
+      mesocycle.state !== MesocycleState.COMPLETED &&
+      mesocycle.state !== MesocycleState.AWAITING_HANDOFF,
+  );
+  const completedMesocycles = source.mesocycles.filter(
+    (mesocycle) => mesocycle.state === MesocycleState.COMPLETED,
+  );
+  const latestCompletedNumber = completedMesocycles[0]?.mesoNumber ?? null;
+  const latestCompletedMesocycles = completedMesocycles.filter(
+    (mesocycle) => mesocycle.mesoNumber === latestCompletedNumber,
+  );
+  const sourceMesocycle =
+    activeMesocycles.length === 1
+      ? activeMesocycles[0]
+      : activeMesocycles.length === 0 && latestCompletedMesocycles.length === 1
+        ? latestCompletedMesocycles[0]
+        : null;
+  const revision = sourceMesocycle?.currentSeedRevision;
+  if (
+    !sourceMesocycle ||
+    !revision ||
+    sourceMesocycle.currentSeedRevisionId !== revision.id ||
+    revision.mesocycleId !== sourceMesocycle.id ||
+    !Number.isInteger(revision.revision) ||
+    revision.revision < 1 ||
+    !exactSeedRevisionProvenance(revision)
+  ) {
+    throw new PlanManagementError("PLAN_COPY_UNAVAILABLE");
+  }
+  let payload: unknown;
+  try {
+    const normalized = normalizeAcceptedSeedPayload(revision.seedPayload);
+    if (normalized.hash !== revision.payloadHash) {
+      throw new Error("accepted revision hash mismatch");
+    }
+    payload = normalized.canonicalPayload;
+  } catch {
+    throw new PlanManagementError("PLAN_COPY_UNAVAILABLE");
+  }
   let accepted;
   try {
     accepted = parseAcceptedSeedPayload(payload).acceptedSeed;

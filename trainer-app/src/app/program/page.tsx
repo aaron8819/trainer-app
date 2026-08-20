@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { findOwnerReadOnly } from "@/lib/api/workout-context";
 import { loadPendingMesocycleHandoff } from "@/lib/api/mesocycle-handoff";
+import { resolveActivePlanContext } from "@/lib/api/active-plan-context";
 import {
   loadProgramPageData,
   type ProgramCurrentWeekPlanRow,
@@ -171,7 +172,52 @@ function resolveTrainNextHref(slot: ProgramCurrentWeekPlanRow): string {
 export default async function ProgramPage() {
   const user = await findOwnerReadOnly();
   if (!user) redirect("/onboarding");
-  const pendingHandoff = await loadPendingMesocycleHandoff(user.id);
+  const [activePlanContext, pendingHandoff] = await Promise.all([
+    resolveActivePlanContext(user.id),
+    loadPendingMesocycleHandoff(user.id),
+  ]);
+
+  if (activePlanContext.status === "COMPLETED") {
+    return (
+      <main className="min-h-screen bg-white text-slate-900">
+        <div className="page-shell max-w-5xl">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h1 className="page-title">My Program</h1>
+            <Link
+              href="/plans"
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-900"
+            >
+              Manage plans
+            </Link>
+          </div>
+
+          <section className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-6">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Completed
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold">
+              {activePlanContext.activeMacroCycle.name}
+            </h2>
+            <p className="mt-2 text-sm text-slate-700">This training plan is complete.</p>
+            {activePlanContext.lastClosedAt ? (
+              <p className="mt-2 text-sm text-slate-500">
+                Last closed {activePlanContext.lastClosedAt.toLocaleDateString()}
+              </p>
+            ) : null}
+            <p className="mt-3 text-sm text-slate-700">
+              Choose your next plan when you&apos;re ready.
+            </p>
+            <Link
+              href="/plans"
+              className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white"
+            >
+              Choose next plan
+            </Link>
+          </section>
+        </div>
+      </main>
+    );
+  }
 
   if (pendingHandoff) {
     return (

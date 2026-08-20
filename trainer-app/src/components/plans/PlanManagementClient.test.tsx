@@ -129,6 +129,37 @@ describe("PlanManagementClient", () => {
     expect(screen.getAllByRole("button", { name: "Archive" })).toHaveLength(2);
   });
 
+  it("keeps a selected completed plan visible with view and editable-copy actions", () => {
+    render(
+      <PlanManagementClient
+        initialData={{
+          activeMacroCycleId: "plan-complete",
+          plans: [
+            plan({
+              id: "plan-complete",
+              name: "Five Week Builder",
+              status: "COMPLETED",
+              isActive: true,
+              editableCopyAvailable: true,
+            }),
+            plan({ id: "plan-next", name: "Next Plan", status: "READY" }),
+          ],
+        }}
+        customHypertrophyEnabled
+      />,
+    );
+
+    expect(screen.getByText("Completed")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View plan" })).toHaveAttribute(
+      "href",
+      "/plans/plan-complete/review",
+    );
+    expect(
+      screen.getByRole("button", { name: "Create editable copy" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Make active" })).toBeInTheDocument();
+  });
+
   it("keeps weekly authoring absent when the custom-plan flag is off", () => {
     render(
       <PlanManagementClient

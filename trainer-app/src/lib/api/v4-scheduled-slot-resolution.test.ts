@@ -3,11 +3,20 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/db/prisma", () => ({ prisma: {} }));
 const serviceMocks = vi.hoisted(() => ({
   enterMesocycleHandoffInTransaction: vi.fn(),
+  completeOrEnterHandoffInTransaction: vi.fn(),
 }));
 vi.mock("./mesocycle-handoff", () => ({
   enterMesocycleHandoffInTransaction:
     serviceMocks.enterMesocycleHandoffInTransaction,
 }));
+vi.mock("./mesocycle-lifecycle-state", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./mesocycle-lifecycle-state")>();
+  return {
+    ...original,
+    completeOrEnterHandoffInTransaction:
+      serviceMocks.completeOrEnterHandoffInTransaction,
+  };
+});
 import {
   attachServerAuthoredV4ScheduledSlotReceipt,
   buildScheduledSlotReceipt,
@@ -607,7 +616,7 @@ describe("V4 scheduled-slot resolution", () => {
     ["SKIPPED", 19, 0],
     ["COMPLETED", 20, 1],
   ] as const)(
-    "closes the final deload slot as %s through the shared handoff owner",
+    "closes the final deload slot as %s through the shared lifecycle owner",
     async (finalStatus, completedCount, expectedCounterUpdates) => {
       const source = authority();
       const rows = source.requiredSlots.map((slot, index) =>
@@ -627,10 +636,10 @@ describe("V4 scheduled-slot resolution", () => {
           updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         },
       };
-      serviceMocks.enterMesocycleHandoffInTransaction.mockReset();
-      serviceMocks.enterMesocycleHandoffInTransaction.mockResolvedValue({
+      serviceMocks.completeOrEnterHandoffInTransaction.mockReset();
+      serviceMocks.completeOrEnterHandoffInTransaction.mockResolvedValue({
         id: source.mesocycleId,
-        state: "AWAITING_HANDOFF",
+        state: "COMPLETED",
       });
 
       const result = await applyV4TerminalScheduleResolution(tx as never, {
@@ -641,6 +650,14 @@ describe("V4 scheduled-slot resolution", () => {
           accumulationSessionsCompleted: 16,
           deloadSessionsCompleted: 3,
           sessionsPerWeek: 4,
+          currentSeedRevision: {
+            id: source.revisionId,
+            revision: source.revisionNumber,
+            seedPayload: { version: 4 },
+            payloadHash: source.revisionHash,
+            hashAlgorithm: "sha256",
+            provenanceStatus: "exact",
+          },
         },
         authority: source,
         finalStatus,
@@ -653,11 +670,20 @@ describe("V4 scheduled-slot resolution", () => {
         resolvedSlotCount: 20,
       });
       expect(tx.mesocycle.update).toHaveBeenCalledTimes(expectedCounterUpdates);
-      expect(serviceMocks.enterMesocycleHandoffInTransaction).toHaveBeenCalledTimes(1);
-      expect(serviceMocks.enterMesocycleHandoffInTransaction).toHaveBeenCalledWith(
-        tx,
-        source.mesocycleId,
-      );
+      expect(serviceMocks.completeOrEnterHandoffInTransaction).toHaveBeenCalledTimes(1);
+      expect(serviceMocks.completeOrEnterHandoffInTransaction).toHaveBeenCalledWith(tx, {
+        id: source.mesocycleId,
+        state: "ACTIVE_DELOAD",
+        macroCycle: undefined,
+        currentSeedRevision: {
+          id: source.revisionId,
+          revision: source.revisionNumber,
+          seedPayload: { version: 4 },
+          payloadHash: source.revisionHash,
+          hashAlgorithm: "sha256",
+          provenanceStatus: "exact",
+        },
+      });
     },
   );
 
@@ -681,7 +707,7 @@ describe("V4 scheduled-slot resolution", () => {
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
     };
-    serviceMocks.enterMesocycleHandoffInTransaction.mockReset();
+    serviceMocks.completeOrEnterHandoffInTransaction.mockReset();
 
     await expect(
       applyV4TerminalScheduleResolution(tx as never, {
@@ -692,12 +718,20 @@ describe("V4 scheduled-slot resolution", () => {
           accumulationSessionsCompleted: 16,
           deloadSessionsCompleted: 3,
           sessionsPerWeek: 4,
+          currentSeedRevision: {
+            id: source.revisionId,
+            revision: source.revisionNumber,
+            seedPayload: { version: 4 },
+            payloadHash: source.revisionHash,
+            hashAlgorithm: "sha256",
+            provenanceStatus: "exact",
+          },
         },
         authority: source,
         finalStatus: "COMPLETED",
       }),
     ).rejects.toThrow("V4_SCHEDULE_RESOLUTION_BLOCKED");
-    expect(serviceMocks.enterMesocycleHandoffInTransaction).not.toHaveBeenCalled();
+    expect(serviceMocks.completeOrEnterHandoffInTransaction).not.toHaveBeenCalled();
   });
 
   it("propagates a final-slot handoff failure so the enclosing transaction can roll back", async () => {
@@ -712,8 +746,8 @@ describe("V4 scheduled-slot resolution", () => {
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
     };
-    serviceMocks.enterMesocycleHandoffInTransaction.mockReset();
-    serviceMocks.enterMesocycleHandoffInTransaction.mockRejectedValue(
+    serviceMocks.completeOrEnterHandoffInTransaction.mockReset();
+    serviceMocks.completeOrEnterHandoffInTransaction.mockRejectedValue(
       new Error("forced_handoff_failure"),
     );
 

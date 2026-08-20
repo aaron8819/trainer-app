@@ -269,6 +269,39 @@ describe("Home page", () => {
     vi.clearAllMocks();
   });
 
+  it("renders selected-plan completion without active training or readiness controls", async () => {
+    mocks.loadHomePageData.mockResolvedValueOnce({
+      pendingHandoff: null,
+      completedPlan: {
+        id: "plan-complete",
+        name: "Five Week Builder",
+        lastClosedAt: "2026-08-20T12:00:00.000Z",
+      },
+      programData: null,
+      homeProgram: null,
+      primaryAction: null,
+      decision: null,
+      continuity: null,
+      closeout: null,
+      preSessionReadinessCard: null,
+      headerContext: "This training plan is complete.",
+      recentActivity: [],
+    });
+
+    const { default: HomePage } = await import("./page");
+    render(await HomePage());
+
+    expect(screen.getByRole("heading", { name: "Plan complete" })).toBeInTheDocument();
+    expect(screen.getByText("This training plan is complete.")).toBeInTheDocument();
+    expect(screen.getByText("Choose your next plan when you're ready.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Choose next plan" })).toHaveAttribute(
+      "href",
+      "/plans",
+    );
+    expect(screen.queryByText(/DashboardGenerateSection/)).toBeNull();
+    expect(screen.queryByText(/HomePreSessionReadinessPanel/)).toBeNull();
+  });
+
   it("renders the action-first Home structure without the old Explore or Next Session card", async () => {
     const { default: HomePage } = await import("./page");
     const ui = await HomePage();

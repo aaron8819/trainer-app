@@ -367,6 +367,22 @@ function buildContinuitySummaryLine(input: {
 function buildDecisionSummary(
   homeProgram: HomeProgramSupportData
 ): HomeDecisionSummary {
+  if (homeProgram.isExactScheduleBlocked) {
+    return {
+      nextSessionLabel: null,
+      nextSessionDescription: null,
+      nextSessionReasonLabel: "Schedule blocked",
+      nextSessionReason:
+        homeProgram.lifecycleBlocker?.message ??
+        "Refresh the workout schedule before continuing.",
+      activeWeekLabel: null,
+      activeWeekSessions: [],
+      activeWeekPlanSource: null,
+      completedAdvancingSessionsThisWeek: 0,
+      totalAdvancingSessionsThisWeek: 0,
+    };
+  }
+
   const reason = buildDecisionReason(homeProgram);
 
   return {
@@ -389,12 +405,15 @@ function buildContinuitySummary(input: {
   lastCompleted: WorkoutListSurfaceSummary | null;
   decision: HomeDecisionSummary | null;
   homeProgram: HomeProgramSupportData | null;
+  suppressScheduleClaims: boolean;
 }): HomeContinuitySummary {
   const lastCompletedDescriptor = input.lastCompleted
     ? buildSessionDescriptor(input.lastCompleted)
     : null;
-  const nextDueLabel = input.decision?.nextSessionLabel ?? null;
-  const nextDueDescriptor = input.homeProgram
+  const nextDueLabel = input.suppressScheduleClaims
+    ? null
+    : input.decision?.nextSessionLabel ?? null;
+  const nextDueDescriptor = !input.suppressScheduleClaims && input.homeProgram
     ? buildNextSessionDescriptor(
         input.homeProgram.nextSession,
         findNextActiveWeekSession(input.homeProgram)?.label
@@ -402,11 +421,15 @@ function buildContinuitySummary(input: {
     : null;
 
   return {
-    summary: buildContinuitySummaryLine({
-      lastCompletedDescriptor,
-      nextDueLabel,
-      nextDueDescriptor,
-    }),
+    summary: input.suppressScheduleClaims
+      ? lastCompletedDescriptor
+        ? `Last completed: ${lastCompletedDescriptor}.`
+        : null
+      : buildContinuitySummaryLine({
+          lastCompletedDescriptor,
+          nextDueLabel,
+          nextDueDescriptor,
+        }),
     lastCompleted: input.lastCompleted,
     lastCompletedDescriptor,
     nextDueLabel,
@@ -518,6 +541,17 @@ function buildHomePrimaryAction(input: {
   const workoutId = homeProgram.nextSession.workoutId ?? latestIncomplete?.id ?? null;
   const workflow = getWorkoutWorkflowState(latestIncomplete?.status ?? null);
 
+  if (homeProgram.isExactScheduleBlocked) {
+    return {
+      state: "blocked",
+      label: "Refresh workout schedule",
+      reason:
+        homeProgram.lifecycleBlocker?.message ??
+        "Refresh the workout schedule before continuing.",
+      href: "/program",
+    };
+  }
+
   if (
     workoutId &&
     latestIncomplete &&
@@ -540,6 +574,15 @@ function buildHomePrimaryAction(input: {
       href: `/log/${workoutId}`,
       reasonLabel: decision.nextSessionReasonLabel,
       reason: decision.nextSessionReason,
+    };
+  }
+
+  if (homeProgram.lifecycleBlocker) {
+    return {
+      state: "blocked",
+      label: "Refresh workout schedule",
+      reason: homeProgram.lifecycleBlocker.message,
+      href: "/program",
     };
   }
 
@@ -583,6 +626,22 @@ function buildHomePrimaryAction(input: {
     label: "No required workout available",
     reason: "Required workout creation is unavailable until the program has a next session.",
     href: "/program",
+  };
+}
+
+export function buildHomeProgramReadModel(homeProgram: HomeProgramSupportData) {
+  const decision = buildDecisionSummary(homeProgram);
+  const closeout = homeProgram.isExactScheduleBlocked
+    ? null
+    : buildHomeCloseoutSummary(homeProgram);
+  return {
+    decision,
+    closeout,
+    primaryAction: buildHomePrimaryAction({
+      homeProgram,
+      decision,
+      closeout,
+    }),
   };
 }
 
@@ -648,6 +707,7 @@ export async function loadHomePageData(
         lastCompleted,
         decision: null,
         homeProgram: null,
+        suppressScheduleClaims: false,
       }),
       closeout: null,
       preSessionReadinessCard,
@@ -660,27 +720,27 @@ export async function loadHomePageData(
     loadProgramDashboardData(userId),
     loadHomeProgramSupport(userId),
   ]);
-  const decision = buildDecisionSummary(homeProgram);
-  const closeout = buildHomeCloseoutSummary(homeProgram);
+  const { decision, closeout, primaryAction } =
+    buildHomeProgramReadModel(homeProgram);
+  const isExactScheduleBlocked = homeProgram.isExactScheduleBlocked;
 
   return {
     pendingHandoff: null,
     programData,
     homeProgram,
-    primaryAction: buildHomePrimaryAction({
-      homeProgram,
-      decision,
-      closeout,
-    }),
+    primaryAction,
     decision,
     continuity: buildContinuitySummary({
       lastCompleted,
       decision,
       homeProgram,
+      suppressScheduleClaims: isExactScheduleBlocked,
     }),
     closeout,
     preSessionReadinessCard,
-    headerContext: buildHeaderContext(programData),
+    headerContext: isExactScheduleBlocked
+      ? "Workout schedule needs attention. Refresh before continuing."
+      : buildHeaderContext(programData),
     recentActivity,
   };
 }

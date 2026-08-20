@@ -24,6 +24,12 @@ import {
   resolveAcceptedSeedPayloadForWeek,
 } from "./slot-plan-seed-parser";
 import { normalizeAcceptedSeedPayload } from "./mesocycle-seed-revision";
+import {
+  resolveV4ScheduleAuthority,
+  resolveV4ScheduledSlots,
+  type V4ScheduleAuthority,
+  type V4ScheduleResolution,
+} from "./v4-scheduled-slot-resolution";
 
 type MesoSessionInput = {
   id?: string;
@@ -45,6 +51,14 @@ export type FinalAccumulationWeekClosePendingBlocker = {
   targetWeek: number | null;
 };
 
+export type V4ScheduleResolutionBlocker = {
+  code: "V4_SCHEDULE_RESOLUTION_BLOCKED";
+  severity: "hard_blocker";
+  message: string;
+  mesocycleId: string | null;
+  reason: string;
+};
+
 export const FINAL_ACCUMULATION_WEEK_CLOSE_PENDING_MESSAGE =
   "Final accumulation closeout is pending. Resolve or dismiss the optional gap-fill before generating the deload. Standard accumulation generation is blocked to prevent an unintended extra accumulation session.";
 
@@ -53,6 +67,7 @@ export type NextWorkoutSource =
   | "rotation"
   | "handoff_pending"
   | "final_week_close_pending"
+  | "schedule_resolution_blocked"
   | "active_plan_unavailable";
 
 export type IncompleteWorkoutReadinessClassification =
@@ -82,7 +97,12 @@ export type NextWorkoutContext = {
   derivationTrace: string[];
   selectedIncompleteStatus: string | null;
   selectedIncompleteReadiness?: IncompleteWorkoutReadiness | null;
-  lifecycleBlocker?: FinalAccumulationWeekClosePendingBlocker | null;
+  lifecycleBlocker?:
+    | FinalAccumulationWeekClosePendingBlocker
+    | V4ScheduleResolutionBlocker
+    | null;
+  eligibleSlotSnapshots?: SessionSlotSnapshot[];
+  v4ScheduleResolution?: Extract<V4ScheduleResolution, { status: "available" }>;
 };
 
 type IncompleteWorkoutCandidate = {
@@ -811,6 +831,142 @@ export function resolveNextWorkoutContext(input: {
   };
 }
 
+function buildV4ScheduleResolutionBlocker(input: {
+  mesocycleId: string | null;
+  reason: string;
+}): V4ScheduleResolutionBlocker {
+  return {
+    code: "V4_SCHEDULE_RESOLUTION_BLOCKED",
+    severity: "hard_blocker",
+    message:
+      "Scheduled workout identity is incomplete or ambiguous. Refresh before continuing.",
+    mesocycleId: input.mesocycleId,
+    reason: input.reason,
+  };
+}
+
+function blockedV4NextWorkoutContext(input: {
+  mesocycleId: string | null;
+  reason: string;
+}): NextWorkoutContext {
+  const blocker = buildV4ScheduleResolutionBlocker(input);
+  return {
+    activeMesocycleId: input.mesocycleId,
+    intent: null,
+    slotId: null,
+    slotSequenceIndex: null,
+    slotSequenceLength: null,
+    slotSource: null,
+    existingWorkoutId: null,
+    isExisting: false,
+    source: "schedule_resolution_blocked",
+    weekInMeso: null,
+    sessionInWeek: null,
+    derivationTrace: [`v4_schedule_resolution_blocked reason=${input.reason}`],
+    selectedIncompleteStatus: null,
+    selectedIncompleteReadiness: null,
+    lifecycleBlocker: blocker,
+    eligibleSlotSnapshots: [],
+  };
+}
+
+export function resolveV4NextWorkoutContext(input: {
+  authority: V4ScheduleAuthority;
+  workouts: V4ScheduleWorkoutCandidate[];
+}): NextWorkoutContext {
+  const resolution = resolveV4ScheduledSlots({
+    authority: input.authority,
+    workouts: input.workouts,
+  });
+  if (resolution.status === "blocked") {
+    return blockedV4NextWorkoutContext({
+      mesocycleId: input.authority.mesocycleId,
+      reason: resolution.reason,
+    });
+  }
+  const next = resolution.nextUnresolvedSlot;
+  if (!next) {
+    return blockedV4NextWorkoutContext({
+      mesocycleId: input.authority.mesocycleId,
+      reason: "resolved_schedule_transition_pending",
+    });
+  }
+  const claim = resolution.claims.find(
+    (candidate) =>
+      candidate.requiredSlot.weekInMeso === next.weekInMeso &&
+      candidate.requiredSlot.slotId === next.slotId,
+  );
+  const existing = claim
+    ? input.workouts.find((workout) => workout.id === claim.workoutId) ?? null
+    : null;
+  const selectedIncompleteReadiness: IncompleteWorkoutReadiness | null = existing
+    ? existing.status === WorkoutStatus.IN_PROGRESS ||
+      existing.status === WorkoutStatus.PARTIAL
+      ? {
+          classification: "in_progress_workout",
+          safeToTrain: true,
+          action: "resume_logging",
+          reason: "Resume the exact unresolved scheduled workout.",
+        }
+      : {
+          classification: "matching_next_planned_workout",
+          safeToTrain: true,
+          action: "start_logging",
+          reason: "This workout owns the next unresolved scheduled slot.",
+        }
+    : null;
+  const eligibleSlotSnapshots = resolution.unresolvedSlotsInNextWeek.map(
+    (slot) => ({
+      slotId: slot.slotId,
+      intent: slot.intent,
+      sequenceIndex: slot.sequenceIndex,
+      sequenceLength: slot.sequenceLength,
+      source: "mesocycle_slot_sequence" as const,
+    }),
+  );
+  return {
+    activeMesocycleId: input.authority.mesocycleId,
+    intent: next.intent,
+    slotId: next.slotId,
+    slotSequenceIndex: next.sequenceIndex,
+    slotSequenceLength: next.sequenceLength,
+    slotSource: "mesocycle_slot_sequence",
+    existingWorkoutId: existing?.id ?? null,
+    isExisting: Boolean(existing),
+    source: existing ? "existing_incomplete" : "rotation",
+    weekInMeso: next.weekInMeso,
+    sessionInWeek: next.sequenceIndex + 1,
+    derivationTrace: [
+      `v4_exact_resolution resolved=${resolution.resolvedSlotCount}/${input.authority.requiredSlots.length}`,
+      `next_slot week=${next.weekInMeso} slot=${next.slotId}`,
+    ],
+    selectedIncompleteStatus:
+      typeof existing?.status === "string"
+        ? existing.status.toLowerCase()
+        : null,
+    selectedIncompleteReadiness,
+    lifecycleBlocker: null,
+    eligibleSlotSnapshots,
+    v4ScheduleResolution: resolution,
+  };
+}
+
+export type V4ScheduleWorkoutCandidate = {
+  id: string;
+  status: unknown;
+  mesocycleId: string | null;
+  mesocycleWeekSnapshot: number | null;
+  mesocyclePhaseSnapshot: unknown;
+  mesoSessionSnapshot: number | null;
+  advancesSplit: boolean | null;
+  selectionMode: string | null;
+  sessionIntent: string | null;
+  selectionMetadata: unknown;
+  seedRevisionId: string | null;
+  seedRevisionNumber: number | null;
+  seedPayloadHash: string | null;
+};
+
 export async function loadNextWorkoutContext(
   userId: string
 ): Promise<NextWorkoutContext> {
@@ -863,9 +1019,23 @@ export async function loadNextWorkoutContext(
     parseAcceptedSeedPayload(mesocycle.currentSeedRevision.seedPayload);
     mesocycle.slotPlanSeedJson = mesocycle.currentSeedRevision.seedPayload;
   }
+  const v4AuthorityResolution = mesocycle
+    ? resolveV4ScheduleAuthority(mesocycle)
+    : { status: "not_v4" as const };
+  if (v4AuthorityResolution.status === "blocked") {
+    return blockedV4NextWorkoutContext({
+      mesocycleId: mesocycle?.id ?? null,
+      reason: v4AuthorityResolution.reason,
+    });
+  }
   const weeklySchedule = (constraints?.weeklySchedule ?? []).map((intent) => intent as string);
   const currentSession = mesocycle ? deriveCurrentMesocycleSession(mesocycle) : null;
-  const [rawIncomplete, pendingWeekClose, rawPerformedAdvancingThisWeek] =
+  const [
+    rawIncomplete,
+    pendingWeekClose,
+    rawPerformedAdvancingThisWeek,
+    rawV4ScheduleWorkouts,
+  ] =
     await Promise.all([
       prisma.workout.findMany({
         where: {
@@ -951,7 +1121,41 @@ export async function loadNextWorkoutContext(
           },
         })
         : Promise.resolve([]),
+      v4AuthorityResolution.status === "available"
+        ? prisma.workout.findMany({
+            where: {
+              userId,
+              mesocycleId: v4AuthorityResolution.authority.mesocycleId,
+            },
+            orderBy: [
+              { mesocycleWeekSnapshot: "asc" },
+              { mesoSessionSnapshot: "asc" },
+              { id: "asc" },
+            ],
+            select: {
+              id: true,
+              status: true,
+              mesocycleId: true,
+              mesocycleWeekSnapshot: true,
+              mesocyclePhaseSnapshot: true,
+              mesoSessionSnapshot: true,
+              advancesSplit: true,
+              selectionMode: true,
+              sessionIntent: true,
+              selectionMetadata: true,
+              seedRevisionId: true,
+              seedRevisionNumber: true,
+              seedPayloadHash: true,
+            },
+          })
+        : Promise.resolve([]),
     ]);
+  if (v4AuthorityResolution.status === "available") {
+    return resolveV4NextWorkoutContext({
+      authority: v4AuthorityResolution.authority,
+      workouts: rawV4ScheduleWorkouts,
+    });
+  }
   const performedAdvancingSlotsThisWeek = buildAdvancingPerformedSlots(rawPerformedAdvancingThisWeek);
   const runtimeSlotSequence = readRuntimeSlotSequence({
     slotSequenceJson: mesocycle?.slotSequenceJson,
@@ -1009,10 +1213,21 @@ export async function loadRequestedAdvancingSlotSnapshot(input: {
   userId: string;
   requestedIntent: string;
   explicitSlotId?: string;
-  nextWorkoutContext?: Pick<NextWorkoutContext, "source">;
+  nextWorkoutContext?: Pick<
+    NextWorkoutContext,
+    "source" | "eligibleSlotSnapshots"
+  >;
 }): Promise<SessionSlotSnapshot | undefined> {
   const nextWorkoutContext =
     input.nextWorkoutContext ?? (await loadNextWorkoutContext(input.userId));
+  if (nextWorkoutContext.eligibleSlotSnapshots) {
+    const requestedIntent = input.requestedIntent.trim().toLowerCase();
+    return nextWorkoutContext.eligibleSlotSnapshots.find(
+      (slot) =>
+        slot.intent === requestedIntent &&
+        (!input.explicitSlotId || slot.slotId === input.explicitSlotId),
+    );
+  }
   const activePlanContext = await resolveActivePlanContext(input.userId);
   if (activePlanContext.status !== "READY") {
     return undefined;

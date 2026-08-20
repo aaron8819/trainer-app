@@ -223,6 +223,7 @@ export default async function ProgramPage() {
   }
 
   const data = await loadProgramPageData(user.id);
+  const isExactScheduleBlocked = data.isExactScheduleBlocked;
   const currentWeekPlan = data.currentWeekPlan;
   const closeout = data.closeout;
   const activeWeekCloseout =
@@ -262,8 +263,9 @@ export default async function ProgramPage() {
           </Link>
         </div>
         <p className="mt-1.5 hidden text-sm text-slate-600 sm:block">
-          Your active mesocycle, next slot, and projected week landing. Use
-          History for completed sessions and Analytics for longer-term trends.
+          {isExactScheduleBlocked
+            ? "Your workout schedule needs attention before current training details can be shown."
+            : "Your active mesocycle, next slot, and projected week landing. Use History for completed sessions and Analytics for longer-term trends."}
         </p>
 
         {data.overview ? (
@@ -346,11 +348,24 @@ export default async function ProgramPage() {
               </div>
             ) : null}
           </section>
-        ) : (
+        ) : !isExactScheduleBlocked ? (
           <section className="mt-6">
             <ProgramStatusCard initialData={data.volumeDetails.dashboard} />
           </section>
-        )}
+        ) : null}
+
+        {data.lifecycleBlocker ? (
+          <section className="mt-7 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-amber-950">
+            <h2 className="text-sm font-semibold">Refresh workout schedule</h2>
+            <p className="mt-1 text-sm">{data.lifecycleBlocker.message}</p>
+            <Link
+              href="/program"
+              className="mt-3 inline-flex min-h-11 items-center justify-center rounded-full border border-amber-400 bg-white px-4 py-2 text-sm font-semibold text-amber-950"
+            >
+              Refresh program
+            </Link>
+          </section>
+        ) : null}
 
         {currentWeekPlan && trainNextSlot ? (
           <section className="mt-7 rounded-3xl border-2 border-slate-900 bg-slate-950 p-5 text-white shadow-sm sm:p-6">

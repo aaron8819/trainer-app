@@ -165,6 +165,17 @@ export async function POST(request: Request) {
     parsed.data.optionalGapFill === true && parsed.data.intent === "body_part";
   const shouldApplySupplementalDeficitSession =
     parsed.data.supplementalDeficitSession === true && parsed.data.intent === "body_part";
+  if (nextWorkoutContext.source === "schedule_resolution_blocked") {
+    return NextResponse.json(
+      {
+        error:
+          nextWorkoutContext.lifecycleBlocker?.message ??
+          "Scheduled workout identity is ambiguous. Refresh before continuing.",
+        blocker: nextWorkoutContext.lifecycleBlocker ?? null,
+      },
+      { status: 409 },
+    );
+  }
   if (
     nextWorkoutContext.source === "final_week_close_pending" &&
     !shouldApplyOptionalGapFill

@@ -33,6 +33,7 @@ import {
   buildAdvancingPerformedSlots,
   listEligibleAdvancingSlotSnapshots,
   loadNextWorkoutContext,
+  type NextWorkoutContext,
   type NextWorkoutSource,
 } from "./next-session";
 import {
@@ -53,6 +54,7 @@ import {
   readRuntimeSlotSequence,
 } from "./mesocycle-slot-runtime";
 import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
+import type { SessionSlotSnapshot } from "@/lib/evidence/types";
 import {
   isCloseoutSession,
   isDismissedCloseoutSession,
@@ -201,6 +203,7 @@ export type ProgramDashboardData = {
 };
 
 export type HomeProgramSupportData = {
+  isExactScheduleBlocked: boolean;
   nextSession: NextSessionData;
   eligibleAlternativeSessions: HomeEligibleSession[];
   activeWeek: number | null;
@@ -211,6 +214,7 @@ export type HomeProgramSupportData = {
   latestIncomplete: { id: string; status: string } | null;
   gapFill: GapFillSupportData;
   closeout: CloseoutSupportData;
+  lifecycleBlocker?: NextWorkoutContext["lifecycleBlocker"];
 };
 
 export type GapFillDeficitRow = {
@@ -735,13 +739,14 @@ function buildHomeSlotWorkoutLookup(
   );
 }
 
-function buildHomeActiveWeekPlan(input: {
+export function buildHomeActiveWeekPlan(input: {
   activeWeek: number | null;
   slotSequenceJson?: unknown;
   weeklySchedule: string[];
   workouts: HomeWeekProgressWorkoutCandidate[];
   nextSession: NextSessionData;
   latestIncomplete: { id: string; status: string } | null;
+  exactResolution?: NextWorkoutContext["v4ScheduleResolution"];
 }): HomeActiveWeekPlan | null {
   if (input.activeWeek == null) {
     return null;
@@ -755,20 +760,47 @@ function buildHomeActiveWeekPlan(input: {
     return null;
   }
 
-  const performedAdvancingSlotsThisWeek = buildAdvancingPerformedSlots(
-    input.workouts.filter((workout) => isPerformedWorkoutStatus(workout.status))
+  const exactClaims = input.exactResolution?.claims.filter(
+    (claim) => claim.requiredSlot.weekInMeso === input.activeWeek,
   );
-  const remainingSlots = buildRemainingRuntimeSlotsFromPerformed({
-    slotSequenceJson: input.slotSequenceJson,
-    weeklySchedule: input.weeklySchedule,
-    performedAdvancingSlotsThisWeek,
-  });
+  const exactClaimBySlotId = exactClaims
+    ? new Map(exactClaims.map((claim) => [claim.requiredSlot.slotId, claim]))
+    : null;
+  const performedAdvancingSlotsThisWeek = input.exactResolution
+    ? []
+    : buildAdvancingPerformedSlots(
+        input.workouts.filter((workout) => isPerformedWorkoutStatus(workout.status)),
+      );
+  const remainingSlots = input.exactResolution
+    ? slotSequence.slots.filter(
+        (slot) => !exactClaimBySlotId?.get(slot.slotId)?.scheduleResolved,
+      )
+    : buildRemainingRuntimeSlotsFromPerformed({
+        slotSequenceJson: input.slotSequenceJson,
+        weeklySchedule: input.weeklySchedule,
+        performedAdvancingSlotsThisWeek,
+      });
   const remainingSlotIds = new Set(remainingSlots.map((slot) => slot.slotId));
-  const nextSlotId = resolveHomeNextSlotId({
-    nextSession: input.nextSession,
-    remainingSlots,
-  });
-  const slotWorkoutLookup = buildHomeSlotWorkoutLookup(input.workouts);
+  const nextSlotId = input.exactResolution
+    ? input.nextSession.weekInMeso === input.activeWeek &&
+      remainingSlotIds.has(input.nextSession.slotId ?? "")
+      ? input.nextSession.slotId
+      : null
+    : resolveHomeNextSlotId({
+        nextSession: input.nextSession,
+        remainingSlots,
+      });
+  const workoutById = new Map(input.workouts.map((workout) => [workout.id, workout]));
+  const slotWorkoutLookup = input.exactResolution
+    ? new Map(
+        [...(exactClaimBySlotId?.entries() ?? [])].flatMap(([slotId, claim]) => {
+          const workout = workoutById.get(claim.workoutId);
+          return workout
+            ? [[slotId, { id: workout.id, status: workout.status }] as const]
+            : [];
+        }),
+      )
+    : buildHomeSlotWorkoutLookup(input.workouts);
   const existingNextWorkout =
     input.nextSession.workoutId && input.latestIncomplete
       ? {
@@ -850,6 +882,8 @@ async function loadHomeWeekProgress(input: {
   weeklySchedule: string[];
   nextSession: NextSessionData;
   nextWorkoutSource: NextWorkoutSource;
+  exactEligibleSlotSnapshots?: SessionSlotSnapshot[];
+  exactResolution?: NextWorkoutContext["v4ScheduleResolution"];
   latestIncomplete: { id: string; status: string } | null;
 }): Promise<{
   activeWeekPlan: HomeActiveWeekPlan | null;
@@ -908,17 +942,21 @@ async function loadHomeWeekProgress(input: {
     workouts,
     nextSession: input.nextSession,
     latestIncomplete: input.latestIncomplete,
+    exactResolution: input.exactResolution,
   });
   const performedAdvancingSlotsThisWeek = buildAdvancingPerformedSlots(performedWorkouts);
   const activeWeekLabelBySlotId = new Map(
     activeWeekPlan?.sessions.map((session) => [session.slotId, session.label]) ?? []
   );
-  const eligibleAlternativeSessions = listEligibleAdvancingSlotSnapshots({
-    nextWorkoutSource: input.nextWorkoutSource,
-    slotSequenceJson: input.activeMesocycle.slotSequenceJson,
-    weeklySchedule: input.weeklySchedule,
-    performedAdvancingSlotsThisWeek,
-  })
+  const eligibleAlternativeSessions = (
+    input.exactEligibleSlotSnapshots ??
+    listEligibleAdvancingSlotSnapshots({
+      nextWorkoutSource: input.nextWorkoutSource,
+      slotSequenceJson: input.activeMesocycle.slotSequenceJson,
+      weeklySchedule: input.weeklySchedule,
+      performedAdvancingSlotsThisWeek,
+    })
+  )
     .filter((slot) => slot.slotId !== input.nextSession.slotId)
     .map((slot) => ({
       slotId: slot.slotId,
@@ -934,7 +972,12 @@ async function loadHomeWeekProgress(input: {
   return {
     activeWeekPlan,
     eligibleAlternativeSessions,
-    completedAdvancingSessionsThisWeek: countAdvancingSessions(performedWorkouts),
+    completedAdvancingSessionsThisWeek: input.exactResolution
+      ? input.exactResolution.claims.filter(
+          (claim) =>
+            claim.requiredSlot.weekInMeso === input.activeWeek && claim.completed,
+        ).length
+      : countAdvancingSessions(performedWorkouts),
     totalAdvancingSessionsThisWeek: Math.max(
       1,
       activeWeekPlan?.sessions.length ??
@@ -953,7 +996,11 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
       select: { weeklySchedule: true },
     }),
   ]);
-  const activeWeek = activeMesocycle ? getCurrentMesoWeek(activeMesocycle) : null;
+  const exactV4ScheduleBlocked =
+    nextWorkoutContext.source === "schedule_resolution_blocked";
+  const activeWeek = activeMesocycle && !exactV4ScheduleBlocked
+    ? (nextWorkoutContext.weekInMeso ?? getCurrentMesoWeek(activeMesocycle))
+    : null;
   const nextSession: NextSessionData = {
     intent: nextWorkoutContext.intent,
     slotId: nextWorkoutContext.slotId,
@@ -973,7 +1020,11 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
     : null;
 
   let lastSessionSkipped = false;
-  if (!nextSession.isExisting && nextSession.intent) {
+  if (
+    !nextWorkoutContext.v4ScheduleResolution &&
+    !nextSession.isExisting &&
+    nextSession.intent
+  ) {
     const intentEnum = nextSession.intent.toUpperCase() as WorkoutSessionIntent;
     const latestForIntent = await prisma.workout.findFirst({
       where: {
@@ -1158,10 +1209,13 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
     ),
     nextSession,
     nextWorkoutSource: nextWorkoutContext.source,
+    exactEligibleSlotSnapshots: nextWorkoutContext.eligibleSlotSnapshots,
+    exactResolution: nextWorkoutContext.v4ScheduleResolution,
     latestIncomplete,
   });
 
   return {
+    isExactScheduleBlocked: exactV4ScheduleBlocked,
     nextSession,
     activeWeek,
     ...weekProgress,
@@ -1169,6 +1223,7 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
     latestIncomplete,
     gapFill,
     closeout,
+    lifecycleBlocker: nextWorkoutContext.lifecycleBlocker ?? null,
   };
 }
 

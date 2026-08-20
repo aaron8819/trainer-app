@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import { WorkoutStatus, type Prisma } from "@prisma/client";
 import { deriveCurrentMesocycleSession } from "@/lib/api/mesocycle-lifecycle-math";
 import {
   claimSelectedPlanForTransitionInTransaction,
@@ -13,6 +13,12 @@ import {
   assertMesocycleAllowsWorkoutSave,
   type SaveRouteMesocycleState,
 } from "./guards";
+import { enterMesocycleHandoffInTransaction } from "../mesocycle-handoff";
+import {
+  resolveV4ScheduledSlots,
+  type V4ScheduleAuthority,
+  type V4ScheduleResolution,
+} from "../v4-scheduled-slot-resolution";
 
 export type SaveRouteMesocycle = {
   id: string;
@@ -21,6 +27,16 @@ export type SaveRouteMesocycle = {
   accumulationSessionsCompleted: number;
   deloadSessionsCompleted: number;
   sessionsPerWeek: number;
+  slotSequenceJson?: Prisma.JsonValue | null;
+  currentSeedRevisionId?: string | null;
+  currentSeedRevision?: {
+    id: string;
+    revision: number;
+    seedPayload: Prisma.JsonValue;
+    payloadHash: string | null;
+    hashAlgorithm: string | null;
+    provenanceStatus: string;
+  } | null;
   startWeek?: number | null;
   macroCycle?: {
     startDate: Date;
@@ -158,6 +174,18 @@ const mesocycleSelect = {
   accumulationSessionsCompleted: true,
   deloadSessionsCompleted: true,
   sessionsPerWeek: true,
+  slotSequenceJson: true,
+  currentSeedRevisionId: true,
+  currentSeedRevision: {
+    select: {
+      id: true,
+      revision: true,
+      seedPayload: true,
+      payloadHash: true,
+      hashAlgorithm: true,
+      provenanceStatus: true,
+    },
+  },
   startWeek: true,
   macroCycle: {
     select: {
@@ -165,6 +193,143 @@ const mesocycleSelect = {
     },
   },
 } as const;
+
+export async function lockV4MesocycleForScheduleResolution(
+  tx: Prisma.TransactionClient,
+  input: {
+    mesocycle: SaveRouteMesocycle;
+    authority: V4ScheduleAuthority;
+  },
+): Promise<void> {
+  const locked = await tx.mesocycle.updateMany({
+    where: {
+      id: input.mesocycle.id,
+      state: input.mesocycle.state,
+      currentSeedRevisionId: input.authority.revisionId,
+    },
+    data: { state: input.mesocycle.state },
+  });
+  if (locked.count !== 1) {
+    throw new Error("V4_SCHEDULE_AUTHORITY_CONFLICT");
+  }
+}
+
+async function readV4ScheduleWorkoutEvidence(
+  tx: Prisma.TransactionClient,
+  mesocycleId: string,
+) {
+  return tx.workout.findMany({
+    where: { mesocycleId },
+    orderBy: [{ mesocycleWeekSnapshot: "asc" }, { mesoSessionSnapshot: "asc" }, { id: "asc" }],
+    select: {
+      id: true,
+      status: true,
+      mesocycleId: true,
+      mesocycleWeekSnapshot: true,
+      mesocyclePhaseSnapshot: true,
+      mesoSessionSnapshot: true,
+      advancesSplit: true,
+      selectionMode: true,
+      sessionIntent: true,
+      selectionMetadata: true,
+      seedRevisionId: true,
+      seedRevisionNumber: true,
+      seedPayloadHash: true,
+    },
+  });
+}
+
+export async function resolveV4ScheduleBeforeWorkoutCreation(
+  tx: Prisma.TransactionClient,
+  input: {
+    authority: V4ScheduleAuthority;
+    requiredSlot: { weekInMeso: number; slotId: string };
+  },
+): Promise<void> {
+  const resolution = resolveV4ScheduledSlots({
+    authority: input.authority,
+    workouts: await readV4ScheduleWorkoutEvidence(
+      tx,
+      input.authority.mesocycleId,
+    ),
+  });
+  if (resolution.status === "blocked") {
+    throw new Error(`V4_SCHEDULE_RESOLUTION_BLOCKED:${resolution.reason}`);
+  }
+  if (
+    resolution.claims.some(
+      (claim) =>
+        claim.requiredSlot.weekInMeso === input.requiredSlot.weekInMeso &&
+        claim.requiredSlot.slotId === input.requiredSlot.slotId,
+    )
+  ) {
+    throw new Error("V4_SCHEDULE_SLOT_ALREADY_MATERIALIZED");
+  }
+  if (
+    resolution.nextUnresolvedSlot?.weekInMeso !== input.requiredSlot.weekInMeso ||
+    !resolution.unresolvedSlotsInNextWeek.some(
+      (slot) => slot.slotId === input.requiredSlot.slotId,
+    )
+  ) {
+    throw new Error("V4_SCHEDULE_SLOT_NOT_ELIGIBLE");
+  }
+}
+
+export async function applyV4TerminalScheduleResolution(
+  tx: Prisma.TransactionClient,
+  input: {
+    resolvedMesocycle: SaveRouteMesocycle;
+    authority: V4ScheduleAuthority;
+    finalStatus: "COMPLETED" | "SKIPPED";
+  },
+): Promise<V4ScheduleResolution> {
+  if (input.finalStatus === WorkoutStatus.COMPLETED) {
+    await tx.mesocycle.update({
+      where: { id: input.resolvedMesocycle.id },
+      data: buildPerformedLifecycleCounterUpdate(
+        input.resolvedMesocycle.state,
+      ),
+    });
+  }
+
+  const resolution = resolveV4ScheduledSlots({
+    authority: input.authority,
+    workouts: await readV4ScheduleWorkoutEvidence(
+      tx,
+      input.resolvedMesocycle.id,
+    ),
+  });
+  if (resolution.status === "blocked") {
+    throw new Error(`V4_SCHEDULE_RESOLUTION_BLOCKED:${resolution.reason}`);
+  }
+
+  if (
+    input.resolvedMesocycle.state === "ACTIVE_ACCUMULATION" &&
+    resolution.allAccumulationResolved
+  ) {
+    const advanced = await tx.mesocycle.updateMany({
+      where: {
+        id: input.resolvedMesocycle.id,
+        state: "ACTIVE_ACCUMULATION",
+        currentSeedRevisionId: input.authority.revisionId,
+      },
+      data: { state: "ACTIVE_DELOAD" },
+    });
+    if (advanced.count !== 1) {
+      throw new Error("V4_SCHEDULE_AUTHORITY_CONFLICT");
+    }
+  } else if (
+    input.resolvedMesocycle.state === "ACTIVE_DELOAD" &&
+    resolution.allResolved
+  ) {
+    await enterMesocycleHandoffInTransaction(
+      tx,
+      input.resolvedMesocycle.id,
+    );
+  }
+
+  return resolution;
+}
 
 export async function resolveMesocycleForWorkoutSave(
   tx: Prisma.TransactionClient,

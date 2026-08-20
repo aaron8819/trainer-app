@@ -983,7 +983,7 @@ describe("runtime workout mutation CAS (PostgreSQL)", () => {
     const partialSave = await db.$transaction((tx) =>
       persistWorkoutRow(tx, {
         workoutId: workout.id,
-        existingWorkout: { id: workout.id, revision: 5 },
+        existingWorkout: { id: workout.id, revision: 5, status: "PLANNED" },
         userId: ownerId,
         expectedRevision: 5,
         shouldAdvanceLifecycleTransition: false,
@@ -1022,7 +1022,7 @@ describe("runtime workout mutation CAS (PostgreSQL)", () => {
     const completion = await db.$transaction(async (tx) => {
       const persisted = await persistWorkoutRow(tx, {
         workoutId: workout.id,
-        existingWorkout: { id: workout.id, revision: 6 },
+        existingWorkout: { id: workout.id, revision: 6, status: "PARTIAL" },
         userId: ownerId,
         expectedRevision: 6,
         shouldAdvanceLifecycleTransition: false,

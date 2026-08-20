@@ -137,6 +137,7 @@ export default async function Home() {
   const decision = homePage.decision;
   const continuity = homePage.continuity;
   const closeout = homePage.closeout;
+  const isExactScheduleBlocked = homeProgram?.isExactScheduleBlocked === true;
 
   if (!programData || !homeProgram || !homePage.primaryAction || !decision || !continuity) {
     return null;
@@ -298,7 +299,8 @@ export default async function Home() {
           )}
         </section>
 
-        {homePage.preSessionReadinessCard || canPrepareReadiness ? (
+        {!isExactScheduleBlocked &&
+        (homePage.preSessionReadinessCard || canPrepareReadiness) ? (
           <section className="mt-8 md:mt-10">
             <HomePreSessionReadinessPanel
               card={homePage.preSessionReadinessCard ?? null}
@@ -315,7 +317,9 @@ export default async function Home() {
             {continuity.summary ? (
               <p className="mt-2 text-sm text-slate-700">{continuity.summary}</p>
             ) : null}
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div
+              className={`mt-4 grid gap-3 ${isExactScheduleBlocked ? "" : "md:grid-cols-2"}`}
+            >
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Last Completed
@@ -347,32 +351,36 @@ export default async function Home() {
                   </Link>
                 ) : null}
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Next Due
-                </p>
-                <p className="mt-2 text-base font-semibold text-slate-900">
-                  {decision.nextSessionLabel ?? "No next session yet"}
-                </p>
-                {continuity.nextDueDescriptor ? (
-                  <p className="mt-1 text-sm text-slate-600">{continuity.nextDueDescriptor}</p>
-                ) : null}
-                <p className="mt-1 text-xs text-slate-500">
-                  {decision.activeWeekLabel ?? decision.nextSessionReasonLabel}
-                </p>
-                {homeProgram.lastSessionSkipped &&
-                homeProgram.nextSession.intent &&
-                !homeProgram.nextSession.slotId ? (
-                  <p className="mt-2 text-xs text-slate-500">
-                    Your last session for this intent was skipped, so it remains next.
+              {!isExactScheduleBlocked ? (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Next Due
                   </p>
-                ) : null}
-              </div>
+                  <p className="mt-2 text-base font-semibold text-slate-900">
+                    {decision.nextSessionLabel ?? "No next session yet"}
+                  </p>
+                  {continuity.nextDueDescriptor ? (
+                    <p className="mt-1 text-sm text-slate-600">
+                      {continuity.nextDueDescriptor}
+                    </p>
+                  ) : null}
+                  <p className="mt-1 text-xs text-slate-500">
+                    {decision.activeWeekLabel ?? decision.nextSessionReasonLabel}
+                  </p>
+                  {homeProgram.lastSessionSkipped &&
+                  homeProgram.nextSession.intent &&
+                  !homeProgram.nextSession.slotId ? (
+                    <p className="mt-2 text-xs text-slate-500">
+                      Your last session for this intent was skipped, so it remains next.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </div>
         </section>
 
-        {decision.activeWeekLabel ? (
+        {!isExactScheduleBlocked && decision.activeWeekLabel ? (
           <section className="mt-8 md:mt-10">
             <div className="rounded-2xl border border-slate-200 p-5">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -427,18 +435,22 @@ export default async function Home() {
           </section>
         ) : null}
 
-        <section className="mt-8 space-y-6 md:mt-10">
-          <OptionalWeekCompletion
-            activeWeek={homeProgram.activeWeek}
-            gapFill={homeProgram.gapFill}
-            customSession={activeWeekCloseout}
-          />
-          {priorWeekCloseout ? <CloseoutCard closeout={priorWeekCloseout} /> : null}
-        </section>
+        {!isExactScheduleBlocked ? (
+          <section className="mt-8 space-y-6 md:mt-10">
+            <OptionalWeekCompletion
+              activeWeek={homeProgram.activeWeek}
+              gapFill={homeProgram.gapFill}
+              customSession={activeWeekCloseout}
+            />
+            {priorWeekCloseout ? <CloseoutCard closeout={priorWeekCloseout} /> : null}
+          </section>
+        ) : null}
 
-        <section className="mt-8 md:mt-10">
-          <ProgramStatusCard initialData={programData} variant="homeCompact" />
-        </section>
+        {!isExactScheduleBlocked ? (
+          <section className="mt-8 md:mt-10">
+            <ProgramStatusCard initialData={programData} variant="homeCompact" />
+          </section>
+        ) : null}
 
         <RecentWorkouts
           recentWorkouts={homePage.recentActivity}

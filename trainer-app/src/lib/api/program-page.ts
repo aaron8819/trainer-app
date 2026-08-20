@@ -153,7 +153,12 @@ export type ProgramCurrentWeekPlanRow = {
   uiState: Extract<CanonicalUiState, "planned" | "active" | "completed" | "projected" | "blocked">;
   statusLabel: string;
   statusDescription: string;
-  volumeBasis: "actual_completed" | "projected_next" | "projected_remaining" | "optional";
+  volumeBasis:
+    | "actual_completed"
+    | "resolved_skipped"
+    | "projected_next"
+    | "projected_remaining"
+    | "optional";
   linkedWorkoutId: string | null;
   linkedWorkoutStatus: string | null;
   exercises?: ProgramSlotExercise[];
@@ -233,7 +238,9 @@ export type ProgramVolumeDisplayRow = {
 export type ProgramVolumeLandmarkContext = VolumeReadModelLandmarkContext;
 
 export type ProgramPageData = {
+  isExactScheduleBlocked: boolean;
   overview: ProgramPageOverview | null;
+  lifecycleBlocker?: NextWorkoutContext["lifecycleBlocker"];
   currentWeekPlan: ProgramCurrentWeekPlan | null;
   closeout: ProgramCloseoutSummary | null;
   weekCompletionOutlook: ProgramWeekCompletionOutlook | null;
@@ -894,7 +901,7 @@ function attachProjectedSlotDetails(input: {
         ...slot,
         exercises: resolvedExercises,
         exerciseSource,
-        impact: projectedSession
+        impact: slot.volumeBasis !== "resolved_skipped" && projectedSession
           ? buildProgramSlotImpact({
               projectedContributionByMuscle: projectedSession.projectedContributionByMuscle,
             })
@@ -1090,12 +1097,22 @@ function resolvePlanRowPresentation(input: {
   isCompletedSlot: boolean;
   isNextSlot: boolean;
   linkedWorkoutStatus: string | null;
+  isSkippedSlot?: boolean;
 }): Pick<
   ProgramCurrentWeekPlanRow,
   "uiState" | "statusLabel" | "statusDescription" | "volumeBasis"
 > {
   const sessionLabel = `Session ${input.slot.sequenceIndex + 1}`;
   const linkedStatus = input.linkedWorkoutStatus?.trim().toLowerCase() ?? null;
+
+  if (input.isSkippedSlot) {
+    return {
+      uiState: "completed",
+      statusLabel: "Skipped",
+      statusDescription: `${sessionLabel} was skipped and its scheduled obligation is resolved.`,
+      volumeBasis: "resolved_skipped",
+    };
+  }
 
   if (linkedStatus === "in_progress" || linkedStatus === "partial") {
     return {
@@ -1150,6 +1167,9 @@ export function buildProgramCurrentWeekPlan(input: {
   currentWeekWorkouts: CurrentWeekWorkoutRow[];
   nextWorkoutContext: NextWorkoutContext;
 }): ProgramCurrentWeekPlan | null {
+  if (input.nextWorkoutContext.source === "schedule_resolution_blocked") {
+    return null;
+  }
   const slotSequence = readRuntimeSlotSequence({
     slotSequenceJson: input.slotSequenceJson,
     weeklySchedule: input.weeklySchedule,
@@ -1158,21 +1178,6 @@ export function buildProgramCurrentWeekPlan(input: {
     return null;
   }
 
-  const performedAdvancingSlotsThisWeek: AdvancingPerformedSlot[] = buildAdvancingPerformedSlots(
-    input.currentWeekWorkouts.filter((workout) => isPerformedWorkoutStatus(workout.status))
-  );
-
-  const remainingSlots = buildRemainingRuntimeSlotsFromPerformed({
-    slotSequenceJson: input.slotSequenceJson,
-    weeklySchedule: input.weeklySchedule,
-    performedAdvancingSlotsThisWeek,
-  });
-  const remainingSlotIds = new Set(remainingSlots.map((slot) => slot.slotId));
-  const nextSlotId = resolveNextSlotId({
-    nextWorkoutContext: input.nextWorkoutContext,
-    remainingSlots,
-  });
-  const slotWorkoutLookup = buildSlotWorkoutLookup(input.currentWeekWorkouts);
   const workoutById = new Map(
     input.currentWeekWorkouts.map((workout) => [
       workout.id,
@@ -1183,6 +1188,45 @@ export function buildProgramCurrentWeekPlan(input: {
       } satisfies LinkedSlotWorkout,
     ])
   );
+  const exactResolution = input.nextWorkoutContext.v4ScheduleResolution;
+  const exactClaims = exactResolution?.claims.filter(
+    (claim) => claim.requiredSlot.weekInMeso === input.week,
+  );
+  const exactClaimBySlotId = exactClaims
+    ? new Map(exactClaims.map((claim) => [claim.requiredSlot.slotId, claim]))
+    : null;
+  const performedAdvancingSlotsThisWeek: AdvancingPerformedSlot[] = exactResolution
+    ? []
+    : buildAdvancingPerformedSlots(
+        input.currentWeekWorkouts.filter((workout) => isPerformedWorkoutStatus(workout.status)),
+      );
+  const remainingSlots = exactResolution
+    ? slotSequence.slots.filter(
+        (slot) => !exactClaimBySlotId?.get(slot.slotId)?.scheduleResolved,
+      )
+    : buildRemainingRuntimeSlotsFromPerformed({
+        slotSequenceJson: input.slotSequenceJson,
+        weeklySchedule: input.weeklySchedule,
+        performedAdvancingSlotsThisWeek,
+      });
+  const remainingSlotIds = new Set(remainingSlots.map((slot) => slot.slotId));
+  const nextSlotId = exactResolution
+    ? input.nextWorkoutContext.weekInMeso === input.week &&
+      remainingSlotIds.has(input.nextWorkoutContext.slotId ?? "")
+      ? input.nextWorkoutContext.slotId
+      : null
+    : resolveNextSlotId({
+        nextWorkoutContext: input.nextWorkoutContext,
+        remainingSlots,
+      });
+  const slotWorkoutLookup = exactResolution
+    ? new Map(
+        [...(exactClaimBySlotId?.entries() ?? [])].flatMap(([slotId, claim]) => {
+          const workout = workoutById.get(claim.workoutId);
+          return workout ? [[slotId, workout] as const] : [];
+        }),
+      )
+    : buildSlotWorkoutLookup(input.currentWeekWorkouts);
   const existingNextWorkout =
     input.nextWorkoutContext.existingWorkoutId && input.nextWorkoutContext.selectedIncompleteStatus
       ? workoutById.get(input.nextWorkoutContext.existingWorkoutId) ?? {
@@ -1196,6 +1240,7 @@ export function buildProgramCurrentWeekPlan(input: {
     week: input.week,
     slots: slotSequence.slots.map((slot) => {
       const isCompletedSlot = !remainingSlotIds.has(slot.slotId);
+      const exactClaim = exactClaimBySlotId?.get(slot.slotId);
       const isNextSlot = slot.slotId === nextSlotId;
       const linkedWorkout =
         slotWorkoutLookup.get(slot.slotId) ??
@@ -1211,6 +1256,7 @@ export function buildProgramCurrentWeekPlan(input: {
         isCompletedSlot,
         isNextSlot,
         linkedWorkoutStatus: linkedWorkout?.status ?? null,
+        isSkippedSlot: exactClaim?.status === "SKIPPED",
       });
 
       return {
@@ -1382,8 +1428,21 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
     loadActiveMesocycle(userId),
     loadNextWorkoutContext(userId),
   ]);
-  const overview = buildProgramPageOverview(dashboard);
-  const rawRelevantWeekClose = activeMesocycle
+  const isExactScheduleBlocked =
+    nextWorkoutContext.source === "schedule_resolution_blocked";
+  const exactV4Week =
+    !isExactScheduleBlocked &&
+    nextWorkoutContext.v4ScheduleResolution
+      ? nextWorkoutContext.weekInMeso
+      : null;
+  const programCurrentWeek = isExactScheduleBlocked
+    ? null
+    : exactV4Week ?? dashboard.currentWeek;
+  const baseOverview = buildProgramPageOverview(dashboard);
+  const overview = !isExactScheduleBlocked && baseOverview && programCurrentWeek != null
+    ? { ...baseOverview, currentWeek: programCurrentWeek }
+    : null;
+  const rawRelevantWeekClose = !isExactScheduleBlocked && activeMesocycle
     ? await findRelevantWeekCloseForUser({
         userId,
         mesocycleId: activeMesocycle.id,
@@ -1394,21 +1453,26 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
       ? null
       : rawRelevantWeekClose;
   const closeoutTargetWeek =
+    !isExactScheduleBlocked &&
     activeMesocycle &&
+    programCurrentWeek != null &&
     isCloseoutWeekInScope({
-      activeWeek: dashboard.currentWeek,
+      activeWeek: programCurrentWeek,
       targetWeek:
         relevantWeekClose?.mesocycleId === activeMesocycle.id
           ? relevantWeekClose.targetWeek
           : null,
     })
       ? relevantWeekClose?.targetWeek ?? null
-      : dashboard.currentWeek;
+      : programCurrentWeek;
   const currentWeekSurface =
-    activeMesocycle && dashboard.activeMeso
+    !isExactScheduleBlocked &&
+    activeMesocycle &&
+    dashboard.activeMeso &&
+    programCurrentWeek != null
       ? await loadCurrentWeekPlan({
           userId,
-          currentWeek: dashboard.currentWeek,
+          currentWeek: programCurrentWeek,
           activeMesocycle,
           nextWorkoutContext,
           closeoutTargetWeek,
@@ -1421,7 +1485,7 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
   const currentWeekPlan = currentWeekSurface?.plan ?? null;
   const closeout = currentWeekSurface?.closeout ?? null;
   const projectedWeekReport =
-    activeMesocycle && dashboard.activeMeso
+    !isExactScheduleBlocked && activeMesocycle && dashboard.activeMeso
       ? await loadProjectedWeekVolumeReport({ userId })
       : null;
   const weekCompletionOutlook = projectedWeekReport
@@ -1440,7 +1504,9 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
       : currentWeekPlan;
 
   return {
+    isExactScheduleBlocked,
     overview,
+    lifecycleBlocker: nextWorkoutContext.lifecycleBlocker ?? null,
     currentWeekPlan: currentWeekPlanWithImpacts,
     closeout,
     weekCompletionOutlook,
@@ -1448,7 +1514,7 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
       dashboard,
     },
     advancedActions: {
-      availableActions: [
+      availableActions: isExactScheduleBlocked ? [] : [
         "deload",
         "extend_phase",
         "reset",

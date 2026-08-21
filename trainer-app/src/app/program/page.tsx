@@ -172,10 +172,7 @@ function resolveTrainNextHref(slot: ProgramCurrentWeekPlanRow): string {
 export default async function ProgramPage() {
   const user = await findOwnerReadOnly();
   if (!user) redirect("/onboarding");
-  const [activePlanContext, pendingHandoff] = await Promise.all([
-    resolveActivePlanContext(user.id),
-    loadPendingMesocycleHandoff(user.id),
-  ]);
+  const activePlanContext = await resolveActivePlanContext(user.id);
 
   if (activePlanContext.status === "COMPLETED") {
     return (
@@ -218,6 +215,8 @@ export default async function ProgramPage() {
       </main>
     );
   }
+
+  const pendingHandoff = await loadPendingMesocycleHandoff(user.id);
 
   if (pendingHandoff) {
     return (

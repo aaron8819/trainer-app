@@ -62,6 +62,7 @@ export type ActiveMesocycleWithBlocks = Prisma.MesocycleGetPayload<{
   >;
   currentSeedRevision?: {
     id: string;
+    mesocycleId: string;
     revision: number;
     seedPayload: Prisma.JsonValue;
     payloadHash: string | null;
@@ -102,41 +103,154 @@ export async function initializeNextMesocycle(
 
 type LifecycleTx = Prisma.TransactionClient;
 
-type FiniteV4CompletionState = "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD";
+export type FiniteV4CompletionResult =
+  | { status: "finite_v4_complete"; mesocycle: Mesocycle }
+  | { status: "not_v4" }
+  | { status: "v4_blocked"; reason: string };
+
+function isV4SeedPayload(value: unknown): boolean {
+  return (
+    value != null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    "version" in value &&
+    value.version === 4
+  );
+}
+
+function finiteV4Blocked(reason: string): FiniteV4CompletionResult {
+  return { status: "v4_blocked", reason };
+}
+
+function finiteV4CompletionConflict(reason: string): Error {
+  return new Error(`V4_SCHEDULE_COMPLETION_BLOCKED:${reason}`);
+}
+
+function validateFiniteV4MacroTopology(input: {
+  currentMesocycleId: string;
+  macroDurationWeeks: number;
+  siblings: Array<{
+    id: string;
+    mesoNumber: number;
+    startWeek: number;
+    durationWeeks: number;
+    state: string;
+  }>;
+}): string | null {
+  if (!Number.isInteger(input.macroDurationWeeks) || input.macroDurationWeeks < 1) {
+    return "macro_duration_invalid";
+  }
+  if (input.siblings.length === 0) return "macro_topology_empty";
+
+  let exclusiveEnd = 0;
+  for (let index = 0; index < input.siblings.length; index += 1) {
+    const sibling = input.siblings[index];
+    if (sibling.mesoNumber !== index + 1) {
+      return "macro_mesocycle_numbering_invalid";
+    }
+    if (!Number.isInteger(sibling.durationWeeks) || sibling.durationWeeks < 1) {
+      return "macro_mesocycle_duration_invalid";
+    }
+    if (sibling.startWeek !== exclusiveEnd) {
+      if (index === 0) return "macro_first_mesocycle_start_invalid";
+      return sibling.startWeek < exclusiveEnd
+        ? "macro_mesocycle_overlap"
+        : "macro_mesocycle_gap";
+    }
+    exclusiveEnd = sibling.startWeek + sibling.durationWeeks;
+  }
+
+  const currentIndex = input.siblings.findIndex(
+    (sibling) => sibling.id === input.currentMesocycleId,
+  );
+  if (currentIndex < 0) return "current_mesocycle_missing_from_macro";
+  if (currentIndex !== input.siblings.length - 1) {
+    return "later_mesocycle_exists";
+  }
+  if (
+    input.siblings
+      .slice(0, currentIndex)
+      .some((sibling) => sibling.state !== "COMPLETED")
+  ) {
+    return "earlier_mesocycle_incomplete";
+  }
+  if (exclusiveEnd !== input.macroDurationWeeks) {
+    return "macro_duration_boundary_mismatch";
+  }
+  return null;
+}
 
 export async function completeFiniteV4PlanInTransaction(
   tx: LifecycleTx,
   input: {
     mesocycleId: string;
-    expectedState: FiniteV4CompletionState;
+    expectedState: string;
   },
-): Promise<Mesocycle | null> {
+): Promise<FiniteV4CompletionResult> {
   const identity = await tx.mesocycle.findUnique({
     where: { id: input.mesocycleId },
     select: {
       macroCycleId: true,
+      state: true,
+      isActive: true,
+      closedAt: true,
+      currentSeedRevision: { select: { seedPayload: true } },
       macroCycle: { select: { userId: true } },
     },
   });
-  if (!identity) return null;
+  if (!identity) return finiteV4Blocked("mesocycle_not_found");
+  if (!isV4SeedPayload(identity.currentSeedRevision?.seedPayload)) {
+    return { status: "not_v4" };
+  }
 
-  await claimSelectedPlanForTransitionInTransaction(tx, {
-    userId: identity.macroCycle.userId,
-    macroCycleId: identity.macroCycleId,
-  });
+  const expectedState =
+    input.expectedState === "ACTIVE_ACCUMULATION" ||
+    input.expectedState === "ACTIVE_DELOAD"
+      ? input.expectedState
+      : null;
+  const identityIsCompletedRetry =
+    identity.state === "COMPLETED" &&
+    !identity.isActive &&
+    identity.closedAt != null;
+  if (
+    !identityIsCompletedRetry &&
+    (!expectedState ||
+      identity.state !== expectedState ||
+      !identity.isActive ||
+      identity.closedAt != null)
+  ) {
+    return finiteV4Blocked("lifecycle_state_ineligible");
+  }
 
-  const locked = await tx.mesocycle.updateMany({
-    where: {
-      id: input.mesocycleId,
+  try {
+    await claimSelectedPlanForTransitionInTransaction(tx, {
+      userId: identity.macroCycle.userId,
       macroCycleId: identity.macroCycleId,
-      state: input.expectedState,
-      isActive: true,
-      closedAt: null,
-      handoffSummaryJson: { equals: Prisma.DbNull },
-      nextSeedDraftJson: { equals: Prisma.DbNull },
-    },
-    data: { state: input.expectedState },
-  });
+    });
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === "ACTIVE_PLAN_SELECTION_CONFLICT"
+    ) {
+      return finiteV4Blocked("selected_plan_conflict");
+    }
+    throw error;
+  }
+
+  const locked = expectedState
+    ? await tx.mesocycle.updateMany({
+        where: {
+          id: input.mesocycleId,
+          macroCycleId: identity.macroCycleId,
+          state: expectedState,
+          isActive: true,
+          closedAt: null,
+          handoffSummaryJson: { equals: Prisma.DbNull },
+          nextSeedDraftJson: { equals: Prisma.DbNull },
+        },
+        data: { state: expectedState },
+      })
+    : { count: 0 };
 
   const mesocycle = await tx.mesocycle.findUnique({
     where: { id: input.mesocycleId },
@@ -144,6 +258,7 @@ export async function completeFiniteV4PlanInTransaction(
       currentSeedRevision: {
         select: {
           id: true,
+          mesocycleId: true,
           revision: true,
           seedPayload: true,
           payloadHash: true,
@@ -171,51 +286,64 @@ export async function completeFiniteV4PlanInTransaction(
       },
     },
   });
-  if (!mesocycle) return null;
+  if (!mesocycle) return finiteV4Blocked("mesocycle_disappeared");
+  if (!isV4SeedPayload(mesocycle.currentSeedRevision?.seedPayload)) {
+    return finiteV4Blocked("accepted_revision_changed");
+  }
 
   const isCompletedRetry =
     mesocycle.state === "COMPLETED" &&
     !mesocycle.isActive &&
     mesocycle.closedAt != null;
   const isExpectedActiveState =
-    mesocycle.state === input.expectedState &&
+    expectedState != null &&
+    mesocycle.state === expectedState &&
     mesocycle.isActive &&
     mesocycle.closedAt == null;
-  const siblings = mesocycle.macroCycle.mesocycles;
-  const currentIndex = siblings.findIndex((row) => row.id === mesocycle.id);
-  const earlierSiblings = siblings.filter((row) => row.id !== mesocycle.id);
-  const hasUnambiguousFinalPosition =
-    currentIndex >= 0 &&
-    earlierSiblings.every(
-      (row) =>
-        row.mesoNumber < mesocycle.mesoNumber &&
-        row.startWeek < mesocycle.startWeek &&
-        row.state === "COMPLETED",
-    );
   const authority = resolveV4ScheduleAuthority(mesocycle);
-  const predicateProven =
-    mesocycle.macroCycle.id === identity.macroCycleId &&
-    mesocycle.macroCycle.userId === identity.macroCycle.userId &&
-    mesocycle.macroCycle.primaryGoal === "HYPERTROPHY" &&
-    authority.status === "available" &&
-    mesocycle.startWeek + mesocycle.durationWeeks ===
-      mesocycle.macroCycle.durationWeeks &&
-    hasUnambiguousFinalPosition &&
-    mesocycle.handoffSummaryJson == null &&
-    mesocycle.nextSeedDraftJson == null &&
-    (isExpectedActiveState || isCompletedRetry);
-
-  if (!predicateProven) return null;
-  if (isCompletedRetry) return mesocycle;
+  if (mesocycle.macroCycle.id !== identity.macroCycleId) {
+    return finiteV4Blocked("macro_identity_changed");
+  }
+  if (mesocycle.macroCycle.userId !== identity.macroCycle.userId) {
+    return finiteV4Blocked("macro_owner_changed");
+  }
+  if (mesocycle.macroCycle.primaryGoal !== "HYPERTROPHY") {
+    return finiteV4Blocked("plan_type_invalid");
+  }
+  if (authority.status !== "available") {
+    return finiteV4Blocked(
+      authority.status === "blocked"
+        ? authority.reason
+        : "accepted_revision_not_v4_after_lock",
+    );
+  }
+  const topologyReason = validateFiniteV4MacroTopology({
+    currentMesocycleId: mesocycle.id,
+    macroDurationWeeks: mesocycle.macroCycle.durationWeeks,
+    siblings: mesocycle.macroCycle.mesocycles,
+  });
+  if (topologyReason) return finiteV4Blocked(topologyReason);
+  if (mesocycle.handoffSummaryJson != null || mesocycle.nextSeedDraftJson != null) {
+    return finiteV4Blocked("handoff_artifacts_present");
+  }
+  if (!isExpectedActiveState && !isCompletedRetry) {
+    return finiteV4Blocked("lifecycle_state_changed");
+  }
+  if (isCompletedRetry) {
+    return { status: "finite_v4_complete", mesocycle };
+  }
+  if (!expectedState) {
+    return finiteV4Blocked("lifecycle_state_ineligible");
+  }
   if (locked.count !== 1) {
-    throw new Error("FINITE_V4_PLAN_COMPLETION_CONFLICT");
+    return finiteV4Blocked("lifecycle_lock_conflict");
   }
 
   const completed = await tx.mesocycle.updateMany({
     where: {
       id: mesocycle.id,
       macroCycleId: mesocycle.macroCycleId,
-      state: input.expectedState,
+      state: expectedState,
       isActive: true,
       closedAt: null,
       currentSeedRevisionId: authority.authority.revisionId,
@@ -229,14 +357,16 @@ export async function completeFiniteV4PlanInTransaction(
     },
   });
   if (completed.count !== 1) {
-    throw new Error("FINITE_V4_PLAN_COMPLETION_CONFLICT");
+    throw finiteV4CompletionConflict("terminal_compare_and_swap_conflict");
   }
 
   const updated = await tx.mesocycle.findUnique({
     where: { id: mesocycle.id },
   });
-  if (!updated) throw new Error("FINITE_V4_PLAN_COMPLETION_CONFLICT");
-  return updated;
+  if (!updated) {
+    throw finiteV4CompletionConflict("completed_mesocycle_not_found");
+  }
+  return { status: "finite_v4_complete", mesocycle: updated };
 }
 
 export async function completeOrEnterHandoffInTransaction(
@@ -253,25 +383,18 @@ export async function completeOrEnterHandoffInTransaction(
   );
   switch (planType) {
     case "HYPERTROPHY": {
-      const seedPayload = mesocycle.currentSeedRevision?.seedPayload;
-      const isV4Candidate =
-        seedPayload != null &&
-        typeof seedPayload === "object" &&
-        !Array.isArray(seedPayload) &&
-        "version" in seedPayload &&
-        seedPayload.version === 4;
-      if (
-        isV4Candidate &&
-        (mesocycle.state === "ACTIVE_ACCUMULATION" ||
-          mesocycle.state === "ACTIVE_DELOAD")
-      ) {
-        const completed = await completeFiniteV4PlanInTransaction(tx, {
-          mesocycleId: mesocycle.id,
-          expectedState: mesocycle.state,
-        });
-        if (completed) return completed;
+      const completion = await completeFiniteV4PlanInTransaction(tx, {
+        mesocycleId: mesocycle.id,
+        expectedState: mesocycle.state,
+      });
+      switch (completion.status) {
+        case "finite_v4_complete":
+          return completion.mesocycle;
+        case "not_v4":
+          return enterMesocycleHandoffInTransaction(tx, mesocycle.id);
+        case "v4_blocked":
+          throw finiteV4CompletionConflict(completion.reason);
       }
-      return enterMesocycleHandoffInTransaction(tx, mesocycle.id);
     }
     case "STRENGTH":
       return tx.mesocycle.update({

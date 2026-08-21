@@ -71,6 +71,19 @@ export async function PATCH(request: NextRequest) {
     }
     if (
       err instanceof Error &&
+      err.message.startsWith("V4_SCHEDULE_COMPLETION_BLOCKED:")
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "The accepted workout schedule or plan boundary changed. Refresh before retrying.",
+          code: "V4_SCHEDULE_COMPLETION_BLOCKED",
+        },
+        { status: 409 },
+      );
+    }
+    if (
+      err instanceof Error &&
       (err.message === "MESOCYCLE_FINISH_EARLY_INVALID_STATE" ||
         err.message === "MESOCYCLE_FINISH_EARLY_HANDOFF_EXISTS")
     ) {

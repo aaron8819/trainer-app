@@ -97,4 +97,23 @@ describe("PATCH /api/program", () => {
       workoutIds: ["workout-1"],
     });
   });
+
+  it("returns a recoverable conflict when finite V4 completion proof blocks", async () => {
+    mocks.applyCycleAnchor.mockRejectedValue(
+      new Error("V4_SCHEDULE_COMPLETION_BLOCKED:macro_mesocycle_gap"),
+    );
+
+    const response = await PATCH(
+      new NextRequest("http://localhost/api/program", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "end_early" }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "V4_SCHEDULE_COMPLETION_BLOCKED",
+    });
+  });
 });

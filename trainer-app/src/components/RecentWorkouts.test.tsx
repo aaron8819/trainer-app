@@ -264,4 +264,21 @@ describe("preview mode", () => {
     expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open History" })).toBeInTheDocument();
   });
+
+  it("renders terminal history as view-only when the selected plan is complete", () => {
+    render(
+      <RecentWorkouts
+        recentWorkouts={[makeWorkout({ status: "PARTIAL" })]}
+        viewOnly
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: "View" })).toHaveAttribute(
+      "href",
+      "/workout/w1",
+    );
+    expect(screen.queryByRole("link", { name: "Resume" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Review" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
+  });
 });

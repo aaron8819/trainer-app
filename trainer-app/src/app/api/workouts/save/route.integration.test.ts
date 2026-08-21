@@ -346,6 +346,7 @@ function buildV4RouteFixture(input?: {
     currentSeedRevisionId: "revision-v4",
     currentSeedRevision: {
       id: "revision-v4",
+      mesocycleId: "meso-v4",
       revision: 1,
       seedPayload: seed,
       payloadHash: acceptedRevisionHash,

@@ -1286,25 +1286,41 @@ export async function createEditableHypertrophyPlanCopy(input: {
     },
   });
   if (!source) throw new PlanManagementError("PLAN_COPY_UNAVAILABLE");
+  const hasCanonicalNumbering = source.mesocycles.every(
+    (mesocycle, index) =>
+      Number.isInteger(mesocycle.mesoNumber) &&
+      mesocycle.mesoNumber === source.mesocycles.length - index,
+  );
+  const highestMesoNumber = source.mesocycles[0]?.mesoNumber ?? null;
+  const highestMesocycles = source.mesocycles.filter(
+    (mesocycle) => mesocycle.mesoNumber === highestMesoNumber,
+  );
   const activeMesocycles = source.mesocycles.filter(
     (mesocycle) =>
       mesocycle.isActive &&
       mesocycle.state !== MesocycleState.COMPLETED &&
       mesocycle.state !== MesocycleState.AWAITING_HANDOFF,
   );
-  const completedMesocycles = source.mesocycles.filter(
-    (mesocycle) => mesocycle.state === MesocycleState.COMPLETED,
-  );
-  const latestCompletedNumber = completedMesocycles[0]?.mesoNumber ?? null;
-  const latestCompletedMesocycles = completedMesocycles.filter(
-    (mesocycle) => mesocycle.mesoNumber === latestCompletedNumber,
-  );
+  const highestMesocycle =
+    hasCanonicalNumbering && highestMesocycles.length === 1
+      ? highestMesocycles[0]
+      : null;
+  const highestIsEligibleActive =
+    highestMesocycle != null &&
+    highestMesocycle.isActive &&
+    (highestMesocycle.state === MesocycleState.ACTIVE_ACCUMULATION ||
+      highestMesocycle.state === MesocycleState.ACTIVE_DELOAD) &&
+    activeMesocycles.length === 1 &&
+    activeMesocycles[0].id === highestMesocycle.id;
+  const highestIsEligibleCompleted =
+    highestMesocycle != null &&
+    !highestMesocycle.isActive &&
+    highestMesocycle.state === MesocycleState.COMPLETED &&
+    activeMesocycles.length === 0;
   const sourceMesocycle =
-    activeMesocycles.length === 1
-      ? activeMesocycles[0]
-      : activeMesocycles.length === 0 && latestCompletedMesocycles.length === 1
-        ? latestCompletedMesocycles[0]
-        : null;
+    highestIsEligibleActive || highestIsEligibleCompleted
+      ? highestMesocycle
+      : null;
   const revision = sourceMesocycle?.currentSeedRevision;
   if (
     !sourceMesocycle ||

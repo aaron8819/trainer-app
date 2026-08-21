@@ -14,6 +14,7 @@ const activeMesocycleInclude = {
   currentSeedRevision: {
     select: {
       id: true,
+      mesocycleId: true,
       revision: true,
       seedPayload: true,
       payloadHash: true,

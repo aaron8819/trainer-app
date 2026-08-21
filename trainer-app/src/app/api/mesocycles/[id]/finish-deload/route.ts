@@ -82,6 +82,19 @@ export async function POST(
         { status: 409 }
       );
     }
+    if (
+      error instanceof Error &&
+      error.message.startsWith("V4_SCHEDULE_COMPLETION_BLOCKED:")
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "The accepted workout schedule or plan boundary changed. Refresh before retrying.",
+          code: "V4_SCHEDULE_COMPLETION_BLOCKED",
+        },
+        { status: 409 },
+      );
+    }
     throw error;
   }
 }

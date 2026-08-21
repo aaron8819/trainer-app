@@ -512,6 +512,7 @@ describe("ProgramPage", () => {
       "/plans",
     );
     expect(mocks.loadProgramPageData).not.toHaveBeenCalled();
+    expect(mocks.loadPendingMesocycleHandoff).not.toHaveBeenCalled();
     expect(screen.queryByText("Active Mesocycle")).toBeNull();
     expect(screen.queryByText(/CycleAnchorControls/)).toBeNull();
   });

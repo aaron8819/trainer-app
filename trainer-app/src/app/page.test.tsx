@@ -96,14 +96,16 @@ vi.mock("@/components/RecentWorkouts", () => ({
     heading,
     showDeleteActions,
     showCount,
+    viewOnly,
     viewAllLabel,
   }: {
     heading?: string;
     showDeleteActions?: boolean;
     showCount?: boolean;
+    viewOnly?: boolean;
     viewAllLabel?: string;
   }) => (
-    <div>{`RecentWorkouts:${heading ?? "Recent Workouts"}:${String(showDeleteActions)}:${String(showCount)}:${viewAllLabel ?? "View all"}`}</div>
+    <div>{`RecentWorkouts:${heading ?? "Recent Workouts"}:${String(showDeleteActions)}:${String(showCount)}:${String(viewOnly)}:${viewAllLabel ?? "View all"}`}</div>
   ),
 }));
 
@@ -300,6 +302,11 @@ describe("Home page", () => {
     );
     expect(screen.queryByText(/DashboardGenerateSection/)).toBeNull();
     expect(screen.queryByText(/HomePreSessionReadinessPanel/)).toBeNull();
+    expect(
+      screen.getByText(
+        "RecentWorkouts:Recent Activity:false:false:true:Open History",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("renders the action-first Home structure without the old Explore or Next Session card", async () => {
@@ -328,7 +335,7 @@ describe("Home page", () => {
     expect(screen.getAllByText("Upcoming")).toHaveLength(2);
     expect(screen.getByText("ProgramStatusCard:homeCompact")).toBeInTheDocument();
     expect(
-      screen.getByText("RecentWorkouts:Recent Activity:false:false:Open History")
+      screen.getByText("RecentWorkouts:Recent Activity:false:false:undefined:Open History")
     ).toBeInTheDocument();
     expect(screen.queryByText("Explore")).not.toBeInTheDocument();
     expect(screen.queryByText("Next Session")).not.toBeInTheDocument();

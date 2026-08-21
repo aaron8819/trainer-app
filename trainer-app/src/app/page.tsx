@@ -88,6 +88,7 @@ export default async function Home() {
             heading="Recent Activity"
             showCount={false}
             showDeleteActions={false}
+            viewOnly
             viewAllLabel="Open History"
           />
         </div>

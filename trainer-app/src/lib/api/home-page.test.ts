@@ -485,9 +485,25 @@ describe("loadHomePageData", () => {
     });
     expect(mocks.loadProgramDashboardData).not.toHaveBeenCalled();
     expect(mocks.loadHomeProgramSupport).not.toHaveBeenCalled();
+    expect(mocks.loadPendingMesocycleHandoff).not.toHaveBeenCalled();
     expect(
       mocks.loadCurrentHomePreSessionReadinessContractCandidate,
     ).not.toHaveBeenCalled();
+    expect(mocks.workoutFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          userId: "user-1",
+          status: { in: ["COMPLETED", "PARTIAL", "SKIPPED"] },
+        },
+      }),
+    );
+    expect(result.recentActivity.map((workout) => workout.status)).toEqual([
+      "COMPLETED",
+      "COMPLETED",
+    ]);
+    expect(result.recentActivity.map((workout) => workout.status)).not.toContain(
+      "PLANNED",
+    );
   });
 
   it("composes decision, continuity, recent activity preview, and compact program inputs", async () => {

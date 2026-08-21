@@ -20,6 +20,7 @@ export type V4ScheduleAuthorityInput = {
   currentSeedRevisionId?: string | null;
   currentSeedRevision?: {
     id: string;
+    mesocycleId: string;
     revision: number;
     seedPayload: unknown;
     payloadHash: string | null;
@@ -125,7 +126,17 @@ export function resolveV4ScheduleAuthority(
   const revision = mesocycle.currentSeedRevision;
   if (
     !revision ||
-    mesocycle.currentSeedRevisionId !== revision.id ||
+    mesocycle.currentSeedRevisionId !== revision.id
+  ) {
+    return block("accepted_revision_identity_invalid");
+  }
+  if (revision.mesocycleId !== mesocycle.id) {
+    return block("accepted_revision_ownership_invalid");
+  }
+  if (!Number.isInteger(revision.revision) || revision.revision < 1) {
+    return block("accepted_revision_number_invalid");
+  }
+  if (
     revision.hashAlgorithm !== "sha256" ||
     revision.provenanceStatus !== "exact" ||
     !revision.payloadHash

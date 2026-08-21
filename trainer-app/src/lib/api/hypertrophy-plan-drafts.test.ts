@@ -3715,4 +3715,41 @@ describe("custom hypertrophy draft persistence", () => {
     ).rejects.toMatchObject({ code: "PLAN_COPY_UNAVAILABLE" });
     expect(mocks.prisma.macroCycle.create).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["AWAITING_HANDOFF", true],
+    ["ACTIVE_ACCUMULATION", false],
+  ] as const)(
+    "rejects an earlier completed copy source when the latest mesocycle is %s",
+    async (latestState, latestIsActive) => {
+      const accepted = buildV4CustomPlanReferenceAcceptedSeed();
+      const earlier = acceptedCopySource(accepted, {
+        id: "meso-1",
+        mesoNumber: 1,
+        state: "COMPLETED",
+        isActive: false,
+      }).mesocycles[0];
+      const latest = {
+        ...acceptedCopySource(accepted, {
+          id: "meso-2",
+          mesoNumber: 2,
+        }).mesocycles[0],
+        state: latestState,
+        isActive: latestIsActive,
+      };
+      mocks.prisma.macroCycle.findFirst.mockResolvedValueOnce({
+        trainingAge: "INTERMEDIATE",
+        mesocycles: [latest, earlier],
+      });
+
+      await expect(
+        createEditableHypertrophyPlanCopy({
+          userId: "user-1",
+          sourcePlanId: "source-plan",
+          name: "Stale completed copy",
+        }),
+      ).rejects.toMatchObject({ code: "PLAN_COPY_UNAVAILABLE" });
+      expect(mocks.prisma.macroCycle.create).not.toHaveBeenCalled();
+    },
+  );
 });

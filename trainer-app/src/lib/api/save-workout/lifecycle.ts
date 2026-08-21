@@ -31,6 +31,7 @@ export type SaveRouteMesocycle = {
   currentSeedRevisionId?: string | null;
   currentSeedRevision?: {
     id: string;
+    mesocycleId: string;
     revision: number;
     seedPayload: Prisma.JsonValue;
     payloadHash: string | null;
@@ -180,6 +181,7 @@ const mesocycleSelect = {
   currentSeedRevision: {
     select: {
       id: true,
+      mesocycleId: true,
       revision: true,
       seedPayload: true,
       payloadHash: true,

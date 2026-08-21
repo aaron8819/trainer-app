@@ -652,6 +652,7 @@ describe("V4 scheduled-slot resolution", () => {
           sessionsPerWeek: 4,
           currentSeedRevision: {
             id: source.revisionId,
+            mesocycleId: source.mesocycleId,
             revision: source.revisionNumber,
             seedPayload: { version: 4 },
             payloadHash: source.revisionHash,
@@ -677,6 +678,7 @@ describe("V4 scheduled-slot resolution", () => {
         macroCycle: undefined,
         currentSeedRevision: {
           id: source.revisionId,
+          mesocycleId: source.mesocycleId,
           revision: source.revisionNumber,
           seedPayload: { version: 4 },
           payloadHash: source.revisionHash,
@@ -720,6 +722,7 @@ describe("V4 scheduled-slot resolution", () => {
           sessionsPerWeek: 4,
           currentSeedRevision: {
             id: source.revisionId,
+            mesocycleId: source.mesocycleId,
             revision: source.revisionNumber,
             seedPayload: { version: 4 },
             payloadHash: source.revisionHash,

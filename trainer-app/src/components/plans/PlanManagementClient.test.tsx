@@ -150,6 +150,11 @@ describe("PlanManagementClient", () => {
     );
 
     expect(screen.getByText("Completed")).toBeInTheDocument();
+    expect(screen.getByText("Selected")).toBeInTheDocument();
+    expect(screen.getByText("Selected and completed")).toBeInTheDocument();
+    expect(
+      screen.getByText("Five Week Builder").closest("article"),
+    ).not.toHaveTextContent("Active");
     expect(screen.getByRole("link", { name: "View plan" })).toHaveAttribute(
       "href",
       "/plans/plan-complete/review",

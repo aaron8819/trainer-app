@@ -15,6 +15,9 @@ import {
 } from "@/lib/exercise-measurement/semantics";
 
 const ESTIMATED_STRENGTH_MAX_REPS = 15;
+const PERFORMED_WORKOUT_STATUS_SET = new Set<WorkoutStatus>(
+  PERFORMED_WORKOUT_STATUSES,
+);
 
 export type ExerciseHistorySet = {
   setIndex: number;
@@ -29,10 +32,22 @@ export type ExerciseHistoryRepresentativeSet = ExerciseHistorySet & {
   basis: "best_estimated_strength" | "heaviest_completed_load" | "most_reps";
 };
 
+export type ExerciseHistoryLoadConvention =
+  | "per_dumbbell"
+  | "per_implement"
+  | "recorded_external_load"
+  | "machine_displayed"
+  | "displayed_assistance"
+  | "no_load"
+  | "not_comparable";
+
 export type ExerciseExposure = {
   workoutId: string;
   date: string;
   workoutStatus: "COMPLETED" | "PARTIAL";
+  measurement: MeasurementSemantics | null;
+  displayLoadConvention: ExerciseHistoryLoadConvention;
+  isRecordComparable: boolean;
   sets: ExerciseHistorySet[];
   completedSetCount: number;
   skippedSetCount: number;
@@ -66,14 +81,7 @@ export type ExerciseHistoryResult = {
   };
   comparison: {
     scope: "exact_exercise";
-    loadConvention:
-      | "per_dumbbell"
-      | "per_implement"
-      | "recorded_external_load"
-      | "machine_displayed"
-      | "displayed_assistance"
-      | "no_load"
-      | "not_comparable";
+    loadConvention: ExerciseHistoryLoadConvention;
     note: string;
   };
   lastExposure: ExerciseExposure | null;
@@ -161,7 +169,32 @@ function selectRepresentativeSet(
   return { ...mostReps, basis: "most_reps" };
 }
 
-function toExposure(row: HistoryRow): ExerciseExposure | null {
+function resolveLoadConvention(
+  measurement: MeasurementSemantics | null,
+  equipment: string[],
+): ExerciseHistoryLoadConvention {
+  if (measurement) {
+    if (measurement.profile === "REPS_BODYWEIGHT") return "no_load";
+    if (measurement.loadConvention === "MACHINE_DISPLAYED") {
+      return "machine_displayed";
+    }
+    if (measurement.loadConvention === "DISPLAYED_ASSISTANCE") {
+      return "displayed_assistance";
+    }
+    if (measurement.loadConvention === "IMPLEMENT_WEIGHT") {
+      return "per_implement";
+    }
+    return "recorded_external_load";
+  }
+
+  if (equipment.includes("bodyweight")) return "not_comparable";
+  if (equipment.includes("dumbbell")) return "per_dumbbell";
+  return "recorded_external_load";
+}
+
+type PerformedExerciseExposure = Omit<ExerciseExposure, "isRecordComparable">;
+
+function toExposure(row: HistoryRow): PerformedExerciseExposure | null {
   const semantics = deriveSessionSemantics({
     advancesSplit: row.workout.advancesSplit,
     selectionMetadata: row.workout.selectionMetadata,
@@ -204,10 +237,17 @@ function toExposure(row: HistoryRow): ExerciseExposure | null {
     return null;
   }
 
+  const measurement = parseMeasurementColumns(row);
+  const equipment = row.exercise.exerciseEquipment.map((item) =>
+    item.equipment.type.toLowerCase(),
+  );
+
   return {
     workoutId: row.workout.id,
     date: (row.workout.completedAt ?? row.workout.scheduledDate).toISOString(),
     workoutStatus: row.workout.status as "COMPLETED" | "PARTIAL",
+    measurement,
+    displayLoadConvention: resolveLoadConvention(measurement, equipment),
     sets,
     completedSetCount: sets.length,
     skippedSetCount,
@@ -218,18 +258,7 @@ function toExposure(row: HistoryRow): ExerciseExposure | null {
   };
 }
 
-function buildRecords(
-  exposures: ExerciseExposure[],
-  loadComparable: boolean
-): ExerciseHistoryResult["records"] {
-  if (!loadComparable) {
-    return {
-      bestEstimatedStrength: null,
-      heaviestCompletedLoad: null,
-      highestSessionVolume: null,
-    };
-  }
-
+function buildRecords(exposures: ExerciseExposure[]): ExerciseHistoryResult["records"] {
   const loadedSets = exposures.flatMap((exposure) =>
     exposure.sets
       .filter((set) => set.load != null && set.load > 0 && set.reps > 0)
@@ -291,48 +320,41 @@ export async function loadExerciseHistory(
   comparisonSnapshot?: { measurement: MeasurementSemantics | null },
 ): Promise<ExerciseHistoryResult> {
   const rows = await loadHistoryRows(exerciseId, userId);
+  const performedRows = rows.filter(
+    (row) =>
+      row.exerciseId === exerciseId &&
+      PERFORMED_WORKOUT_STATUS_SET.has(row.workout.status),
+  );
+  const performedExposures = performedRows
+    .map(toExposure)
+    .filter((row): row is PerformedExerciseExposure => row !== null)
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const currentMeasurement = comparisonSnapshot
     ? comparisonSnapshot.measurement
-    : rows[0]
-      ? parseMeasurementColumns(rows[0])
-      : null;
+    : performedExposures[0]?.measurement ?? null;
   const currentComparisonKey = measurementComparisonKey({
     exerciseId,
     measurement: currentMeasurement,
   });
-  const comparableRows = rows.filter(
-    (row) =>
+  const currentLoadComparable = currentMeasurement
+    ? permitsComputedLoadComparison(currentMeasurement)
+    : performedExposures[0]?.displayLoadConvention !== "not_comparable";
+  const exposures: ExerciseExposure[] = performedExposures.map((exposure) => ({
+    ...exposure,
+    isRecordComparable:
+      currentLoadComparable &&
       measurementComparisonKey({
         exerciseId,
-        measurement: parseMeasurementColumns(row),
+        measurement: exposure.measurement,
       }) === currentComparisonKey,
-  );
-  const exposures = comparableRows
-    .map(toExposure)
-    .filter((row): row is ExerciseExposure => row !== null)
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }));
 
-  const exercise = rows[0]?.exercise;
+  const exercise = performedRows[0]?.exercise;
   const equipment = (exercise?.exerciseEquipment ?? []).map((item) =>
     item.equipment.type.toLowerCase()
   );
-  const isDumbbell = equipment.includes("dumbbell");
   const hasBodyweight = equipment.includes("bodyweight");
-  const loadConvention = currentMeasurement
-    ? currentMeasurement.profile === "REPS_BODYWEIGHT"
-      ? "no_load"
-      : currentMeasurement.loadConvention === "MACHINE_DISPLAYED"
-        ? "machine_displayed"
-        : currentMeasurement.loadConvention === "DISPLAYED_ASSISTANCE"
-          ? "displayed_assistance"
-          : currentMeasurement.loadConvention === "IMPLEMENT_WEIGHT"
-            ? "per_implement"
-            : "recorded_external_load"
-    : hasBodyweight
-    ? "not_comparable"
-    : isDumbbell
-      ? "per_dumbbell"
-      : "recorded_external_load";
+  const loadConvention = resolveLoadConvention(currentMeasurement, equipment);
 
   return {
     exercise: {
@@ -345,21 +367,14 @@ export async function loadExerciseHistory(
       loadConvention,
       note: currentMeasurement
         ? permitsComputedLoadComparison(currentMeasurement)
-          ? "Compared only with this exact exercise and frozen measurement semantics."
-          : "Raw matching history is shown, but computed load records are disabled for this measurement convention."
+          ? "All performed work for this exact exercise is shown. Load records use only exposures with matching frozen measurement semantics."
+          : "All performed work for this exact exercise is shown, but computed load records are disabled for this measurement convention."
         : hasBodyweight
-        ? "Load-based records are hidden because bodyweight and assistance are not comparable in the current data model."
-        : isDumbbell
-          ? "Compared only with this exact exercise; dumbbell loads are recorded per dumbbell."
-          : "Compared only with this exact exercise. Different physical machines are comparable only when they use separate exercise entries.",
+        ? "All performed work for this exact exercise is shown. Legacy load records are unavailable because bodyweight and assistance are not comparable in the current data model."
+        : "All performed work for this exact exercise is shown. Load records use only legacy-null exposures from this exact exercise.",
     },
     lastExposure: exposures[0] ?? null,
     recentExposures: exposures.slice(0, limit),
-    records: buildRecords(
-      exposures,
-      currentMeasurement
-        ? permitsComputedLoadComparison(currentMeasurement)
-        : !hasBodyweight,
-    ),
+    records: buildRecords(exposures.filter((exposure) => exposure.isRecordComparable)),
   };
 }

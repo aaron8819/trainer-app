@@ -23,10 +23,11 @@ vi.mock("@/lib/db/prisma", () => ({
 import { loadExerciseHistory } from "./exercise-history";
 
 function makeRow(input?: {
+  exerciseId?: string;
   workoutId?: string;
   date?: string;
   completedAt?: string;
-  status?: "COMPLETED" | "PARTIAL";
+  status?: "COMPLETED" | "PARTIAL" | "IN_PROGRESS";
   equipment?: string[];
   selectionMetadata?: unknown;
   phase?: "ACCUMULATION" | "DELOAD";
@@ -47,14 +48,16 @@ function makeRow(input?: {
   }>;
 }) {
   const date = input?.date ?? "2026-02-20T00:00:00.000Z";
+  const exerciseId = input?.exerciseId ?? "bench";
   return {
     id: `we-${input?.workoutId ?? "1"}`,
+    exerciseId,
     measurementProfile: input?.measurement?.measurementProfile ?? null,
     loadConvention: input?.measurement?.loadConvention ?? null,
     repBasis: input?.measurement?.repBasis ?? null,
     exercise: {
-      id: "bench",
-      name: "Bench Press",
+      id: exerciseId,
+      name: exerciseId === "bench" ? "Bench Press" : "Other Exercise",
       exerciseEquipment: (input?.equipment ?? ["BARBELL"]).map((type) => ({
         equipment: { type },
       })),
@@ -162,6 +165,7 @@ describe("loadExerciseHistory", () => {
   it("suppresses load records when bodyweight or assistance is not comparable", async () => {
     mocks.findMany.mockResolvedValue([
       makeRow({
+        exerciseId: "assisted-pull-up",
         equipment: ["BODYWEIGHT", "MACHINE"],
         sets: [{ setIndex: 1, reps: 10, load: 40, rpe: 8 }],
       }),
@@ -177,7 +181,7 @@ describe("loadExerciseHistory", () => {
     });
   });
 
-  it("keeps classified, incompatible, and legacy histories in separate cohorts", async () => {
+  it("shows classified, incompatible, and legacy performed work while keeping records measurement-safe", async () => {
     mocks.findMany.mockResolvedValue([
       makeRow({
         workoutId: "current",
@@ -208,14 +212,60 @@ describe("loadExerciseHistory", () => {
 
     const result = await loadExerciseHistory("bench", "user-1", 10);
 
-    expect(result.recentExposures.map((row) => row.workoutId)).toEqual(["current"]);
+    expect(result.recentExposures.map((row) => row.workoutId)).toEqual([
+      "current",
+      "incompatible",
+      "legacy",
+    ]);
+    expect(result.recentExposures.map((row) => row.measurement)).toEqual([
+      {
+        profile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "BARBELL_TOTAL",
+        repBasis: "TOTAL",
+      },
+      {
+        profile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "IMPLEMENT_WEIGHT",
+        repBasis: "TOTAL",
+      },
+      null,
+    ]);
+    expect(result.recentExposures.map((row) => row.isRecordComparable)).toEqual([
+      true,
+      false,
+      false,
+    ]);
     expect(result.comparison.loadConvention).toBe("recorded_external_load");
+    expect(result.records.heaviestCompletedLoad?.load).toBe(185);
+  });
+
+  it("never admits another canonical exercise even if the database adapter violates its filter", async () => {
+    mocks.findMany.mockResolvedValue([
+      makeRow({
+        exerciseId: "incline-bench",
+        workoutId: "other-exercise",
+        date: "2026-03-03T00:00:00.000Z",
+        sets: [{ setIndex: 1, reps: 8, load: 300, rpe: 8 }],
+      }),
+      makeRow({
+        workoutId: "exact-exercise",
+        date: "2026-03-01T00:00:00.000Z",
+        sets: [{ setIndex: 1, reps: 8, load: 185, rpe: 8 }],
+      }),
+    ]);
+
+    const result = await loadExerciseHistory("bench", "user-1", 10);
+
+    expect(result.recentExposures.map((row) => row.workoutId)).toEqual([
+      "exact-exercise",
+    ]);
     expect(result.records.heaviestCompletedLoad?.load).toBe(185);
   });
 
   it("labels classified implement loads without assuming two dumbbells", async () => {
     mocks.findMany.mockResolvedValue([
       makeRow({
+        exerciseId: "goblet",
         measurement: {
           measurementProfile: "REPS_EXTERNAL_LOAD",
           loadConvention: "IMPLEMENT_WEIGHT",
@@ -232,6 +282,7 @@ describe("loadExerciseHistory", () => {
   it("labels displayed machine and assistance values without claiming pounds", async () => {
     mocks.findMany.mockResolvedValue([
       makeRow({
+        exerciseId: "assisted",
         measurement: {
           measurementProfile: "REPS_ASSISTED",
           loadConvention: "DISPLAYED_ASSISTANCE",
@@ -246,6 +297,7 @@ describe("loadExerciseHistory", () => {
 
     mocks.findMany.mockResolvedValue([
       makeRow({
+        exerciseId: "cable-row",
         measurement: {
           measurementProfile: "REPS_EXTERNAL_LOAD",
           loadConvention: "MACHINE_DISPLAYED",
@@ -258,10 +310,43 @@ describe("loadExerciseHistory", () => {
     expect(machine.records.heaviestCompletedLoad).toBeNull();
   });
 
-  it("uses the active workout snapshot instead of the newest historical cohort", async () => {
+  it("shows legacy performed history for a classified active snapshot without using it for records", async () => {
     mocks.findMany.mockResolvedValue([
       makeRow({
-        workoutId: "classified-newest",
+        workoutId: "legacy-history",
+        date: "2026-03-01T00:00:00.000Z",
+        sets: [{ setIndex: 1, reps: 8, load: 225, rpe: 8 }],
+      }),
+    ]);
+
+    const result = await loadExerciseHistory("bench", "user-1", 10, {
+      measurement: {
+        profile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "BARBELL_TOTAL",
+        repBasis: "TOTAL",
+      },
+    });
+
+    expect(result.recentExposures.map((row) => row.workoutId)).toEqual([
+      "legacy-history",
+    ]);
+    expect(result.lastExposure).toMatchObject({
+      workoutId: "legacy-history",
+      measurement: null,
+      isRecordComparable: false,
+    });
+    expect(result.records).toEqual({
+      bestEstimatedStrength: null,
+      heaviestCompletedLoad: null,
+      highestSessionVolume: null,
+    });
+  });
+
+  it("excludes an in-progress current workout without hiding older performed history", async () => {
+    mocks.findMany.mockResolvedValue([
+      makeRow({
+        workoutId: "current-in-progress",
+        status: "IN_PROGRESS",
         date: "2026-03-03T00:00:00.000Z",
         measurement: {
           measurementProfile: "REPS_EXTERNAL_LOAD",
@@ -271,19 +356,51 @@ describe("loadExerciseHistory", () => {
         sets: [{ setIndex: 1, reps: 8, load: 185, rpe: 8 }],
       }),
       makeRow({
-        workoutId: "legacy-active-cohort",
+        workoutId: "older-legacy",
         date: "2026-03-01T00:00:00.000Z",
         sets: [{ setIndex: 1, reps: 8, load: 225, rpe: 8 }],
       }),
     ]);
 
     const result = await loadExerciseHistory("bench", "user-1", 10, {
-      measurement: null,
+      measurement: {
+        profile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "BARBELL_TOTAL",
+        repBasis: "TOTAL",
+      },
     });
 
     expect(result.recentExposures.map((row) => row.workoutId)).toEqual([
-      "legacy-active-cohort",
+      "older-legacy",
     ]);
-    expect(result.records.heaviestCompletedLoad?.load).toBe(225);
+    expect(result.lastExposure?.workoutId).toBe("older-legacy");
+  });
+
+  it("keeps a classified historical exposure visible and eligible for matching records", async () => {
+    mocks.findMany.mockResolvedValue([
+      makeRow({
+        workoutId: "classified-history",
+        measurement: {
+          measurementProfile: "REPS_EXTERNAL_LOAD",
+          loadConvention: "BARBELL_TOTAL",
+          repBasis: "TOTAL",
+        },
+        sets: [{ setIndex: 1, reps: 8, load: 205, rpe: 8 }],
+      }),
+    ]);
+
+    const result = await loadExerciseHistory("bench", "user-1", 10, {
+      measurement: {
+        profile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "BARBELL_TOTAL",
+        repBasis: "TOTAL",
+      },
+    });
+
+    expect(result.lastExposure).toMatchObject({
+      workoutId: "classified-history",
+      isRecordComparable: true,
+    });
+    expect(result.records.heaviestCompletedLoad?.load).toBe(205);
   });
 });

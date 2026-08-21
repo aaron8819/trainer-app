@@ -437,12 +437,15 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
         comparison: {
           scope: "exact_exercise",
           loadConvention: "per_dumbbell",
-          note: "Compared only with this exact exercise; dumbbell loads are recorded per dumbbell.",
+          note: "All performed work for this exact exercise is shown. Load records use only legacy-null exposures from this exact exercise.",
         },
         lastExposure: {
           workoutId: "prior-workout",
           date: "2026-03-08T00:00:00.000Z",
           workoutStatus: "COMPLETED",
+          measurement: null,
+          displayLoadConvention: "per_dumbbell",
+          isRecordComparable: true,
           sets: [
             {
               setIndex: 1,
@@ -460,7 +463,12 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
           representativeSet: { reps: 10, load: 45, rpe: 8 },
         },
         recentExposures: [
-          { representativeSet: { reps: 10, load: 45, rpe: 8 } },
+          {
+            measurement: null,
+            displayLoadConvention: "per_dumbbell",
+            isRecordComparable: true,
+            representativeSet: { reps: 10, load: 45, rpe: 8 },
+          },
         ],
         records: {
           bestEstimatedStrength: null,

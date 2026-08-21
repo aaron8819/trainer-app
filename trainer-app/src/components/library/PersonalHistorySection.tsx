@@ -68,8 +68,21 @@ function exposureNote(exposure: ExerciseExposure): string | null {
       ? `${exposure.unloggedSetCount} unlogged ${exposure.unloggedSetCount === 1 ? "set" : "sets"}`
       : null,
     exposure.hasSessionLocalChanges ? "Included session-local changes" : null,
+    exposure.isRecordComparable === false
+      ? "Not included in load-based records for the current measurement snapshot"
+      : null,
   ].filter((note): note is string => Boolean(note));
   return notes.length > 0 ? notes.join(" · ") : null;
+}
+
+function formatExposureSummary(exposure: ExerciseExposure): string {
+  const summary = formatSet(
+    exposure.representativeSet,
+    exposure.displayLoadConvention,
+  );
+  return exposure.isRecordComparable === false
+    ? `${summary} (not comparable for records)`
+    : summary;
 }
 
 export function PersonalHistorySection({
@@ -160,9 +173,7 @@ export function PersonalHistorySection({
   }
 
   const { lastExposure, records, comparison } = data;
-  const trend = data.recentExposures.map((exposure) =>
-    formatSet(exposure.representativeSet, comparison.loadConvention)
-  );
+  const trend = data.recentExposures.map(formatExposureSummary);
   const lastExposureNote = exposureNote(lastExposure);
 
   return (
@@ -195,7 +206,7 @@ export function PersonalHistorySection({
                 Set {set.setIndex}{set.isRuntimeAdded ? " · Extra" : ""}
               </span>
               <span className="text-right font-medium text-slate-800">
-                {formatSet(set, comparison.loadConvention)}
+                {formatSet(set, lastExposure.displayLoadConvention)}
               </span>
             </div>
           ))}
@@ -250,7 +261,7 @@ export function PersonalHistorySection({
           </div>
         ) : (
           <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
-            Load-based records are unavailable for this exercise’s current load convention.
+            Comparable load-based records are unavailable for the current measurement snapshot.
           </p>
         )}
       </section>

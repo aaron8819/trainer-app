@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => {
   const txMesoFindFirst = vi.fn();
   const txMesoFindUnique = vi.fn();
   const txMesoUpdate = vi.fn();
+  const txMesoUpdateMany = vi.fn();
   const txMesoCreate = vi.fn();
   const txWorkoutUpdate = vi.fn();
   const txConstraintsFindUnique = vi.fn();
@@ -21,6 +22,7 @@ const mocks = vi.hoisted(() => {
         findFirst: txMesoFindFirst,
         findUnique: txMesoFindUnique,
         update: txMesoUpdate,
+        updateMany: txMesoUpdateMany,
         create: txMesoCreate,
       },
       trainingBlock: {
@@ -49,6 +51,7 @@ const mocks = vi.hoisted(() => {
     txMesoFindFirst,
     txMesoFindUnique,
     txMesoUpdate,
+    txMesoUpdateMany,
     txMesoCreate,
     txWorkoutUpdate,
     txConstraintsFindUnique,
@@ -108,6 +111,7 @@ import {
 describe("mesocycle-lifecycle", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.txMesoUpdateMany.mockResolvedValue({ count: 1 });
   });
 
   it("returns mesocycle unchanged when below accumulation threshold", async () => {

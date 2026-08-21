@@ -79,6 +79,7 @@ import {
   type V4RequiredSlot,
   type V4ScheduleAuthority,
 } from "@/lib/api/v4-scheduled-slot-resolution";
+import type { TerminalTransitionLockProof } from "@/lib/api/mesocycle-lifecycle-state";
 import { getWorkoutStatusPolicy } from "@/lib/workout-status";
 
 export async function POST(request: Request) {
@@ -387,6 +388,7 @@ export async function POST(request: Request) {
 
       let v4ScheduleAuthority: V4ScheduleAuthority | null = null;
       let v4RequiredSlot: V4RequiredSlot | null = null;
+      let v4TerminalLock: TerminalTransitionLockProof | null = null;
       if (resolvedMesocycle) {
         const v4AuthorityResolution = resolveV4ScheduleAuthority(
           resolvedMesocycle,
@@ -428,9 +430,10 @@ export async function POST(request: Request) {
             }
             effectiveSessionIntent =
               v4RequiredSlot.intent.toUpperCase() as WorkoutSessionIntent;
-            await lockV4MesocycleForScheduleResolution(tx, {
+            v4TerminalLock = await lockV4MesocycleForScheduleResolution(tx, {
               mesocycle: resolvedMesocycle,
               authority: v4ScheduleAuthority,
+              userId: user.id,
             });
             if (!existingWorkout) {
               await resolveV4ScheduleBeforeWorkoutCreation(tx, {
@@ -602,6 +605,7 @@ export async function POST(request: Request) {
           resolvedMesocycle: resolvedMesocycle!,
           authority: v4ScheduleAuthority,
           finalStatus,
+          terminalLock: v4TerminalLock!,
         });
       } else if (
         !v4ScheduleAuthority &&

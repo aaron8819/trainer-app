@@ -3,8 +3,10 @@ import { deriveCurrentMesocycleSession } from "@/lib/api/mesocycle-lifecycle-mat
 import {
   claimSelectedPlanForTransitionInTransaction,
   completeOrEnterHandoffInTransaction,
+  lockMesocycleForTerminalTransitionInTransaction,
   resolveActivePlanContextInTransaction,
   transitionMesocycleStateInTransaction,
+  type TerminalTransitionLockProof,
 } from "@/lib/api/mesocycle-lifecycle-state";
 import {
   autoDismissPendingWeekCloseOnForwardProgress,
@@ -201,21 +203,24 @@ const mesocycleSelect = {
 export async function lockV4MesocycleForScheduleResolution(
   tx: Prisma.TransactionClient,
   input: {
-    mesocycle: SaveRouteMesocycle;
+    mesocycle: SelectedSaveRouteMesocycle;
     authority: V4ScheduleAuthority;
+    userId: string;
   },
-): Promise<void> {
-  const locked = await tx.mesocycle.updateMany({
-    where: {
-      id: input.mesocycle.id,
-      state: input.mesocycle.state,
-      currentSeedRevisionId: input.authority.revisionId,
-    },
-    data: { state: input.mesocycle.state },
-  });
-  if (locked.count !== 1) {
+): Promise<TerminalTransitionLockProof> {
+  if (
+    input.mesocycle.state !== "ACTIVE_ACCUMULATION" &&
+    input.mesocycle.state !== "ACTIVE_DELOAD"
+  ) {
     throw new Error("V4_SCHEDULE_AUTHORITY_CONFLICT");
   }
+  return lockMesocycleForTerminalTransitionInTransaction(tx, {
+    mesocycleId: input.mesocycle.id,
+    macroCycleId: input.mesocycle.macroCycleId,
+    userId: input.userId,
+    expectedState: input.mesocycle.state,
+    currentSeedRevisionId: input.authority.revisionId,
+  });
 }
 
 async function readV4ScheduleWorkoutEvidence(
@@ -285,6 +290,7 @@ export async function applyV4TerminalScheduleResolution(
     resolvedMesocycle: SaveRouteMesocycle;
     authority: V4ScheduleAuthority;
     finalStatus: "COMPLETED" | "SKIPPED";
+    terminalLock: TerminalTransitionLockProof;
   },
 ): Promise<V4ScheduleResolution> {
   if (input.finalStatus === WorkoutStatus.COMPLETED) {
@@ -308,6 +314,21 @@ export async function applyV4TerminalScheduleResolution(
   }
 
   if (
+    (input.resolvedMesocycle.state === "ACTIVE_ACCUMULATION" ||
+      input.resolvedMesocycle.state === "ACTIVE_DELOAD") &&
+    resolution.allResolved
+  ) {
+    await completeOrEnterHandoffInTransaction(
+      tx,
+      {
+        id: input.resolvedMesocycle.id,
+        state: input.resolvedMesocycle.state,
+        macroCycle: input.resolvedMesocycle.macroCycle,
+        currentSeedRevision: input.resolvedMesocycle.currentSeedRevision,
+      },
+      input.terminalLock,
+    );
+  } else if (
     input.resolvedMesocycle.state === "ACTIVE_ACCUMULATION" &&
     resolution.allAccumulationResolved
   ) {
@@ -322,16 +343,6 @@ export async function applyV4TerminalScheduleResolution(
     if (advanced.count !== 1) {
       throw new Error("V4_SCHEDULE_AUTHORITY_CONFLICT");
     }
-  } else if (
-    input.resolvedMesocycle.state === "ACTIVE_DELOAD" &&
-    resolution.allResolved
-  ) {
-    await completeOrEnterHandoffInTransaction(tx, {
-      id: input.resolvedMesocycle.id,
-      state: input.resolvedMesocycle.state,
-      macroCycle: input.resolvedMesocycle.macroCycle,
-      currentSeedRevision: input.resolvedMesocycle.currentSeedRevision,
-    });
   }
 
   return resolution;

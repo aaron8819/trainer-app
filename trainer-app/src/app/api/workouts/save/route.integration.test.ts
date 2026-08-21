@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => {
   const resolveWeekCloseOnOptionalGapFillCompletion = vi.fn();
   const dismissPendingWeekClose = vi.fn();
   const createPostSessionReviewSnapshotInTransaction = vi.fn();
+  const enterMesocycleHandoffInTransaction = vi.fn();
   const provisionOwnerForMutation = vi.fn(async () => ({ id: "user-1" }));
 
   const tx = {
@@ -103,6 +104,7 @@ const mocks = vi.hoisted(() => {
     resolveWeekCloseOnOptionalGapFillCompletion,
     dismissPendingWeekClose,
     createPostSessionReviewSnapshotInTransaction,
+    enterMesocycleHandoffInTransaction,
     provisionOwnerForMutation,
   };
 });
@@ -118,6 +120,11 @@ vi.mock("@/lib/api/workout-context", () => ({
 vi.mock("@/lib/api/post-session-review-snapshot", () => ({
   createPostSessionReviewSnapshotInTransaction: (...args: unknown[]) =>
     mocks.createPostSessionReviewSnapshotInTransaction(...args),
+}));
+
+vi.mock("@/lib/api/mesocycle-handoff", () => ({
+  enterMesocycleHandoffInTransaction: (...args: unknown[]) =>
+    mocks.enterMesocycleHandoffInTransaction(...args),
 }));
 
 vi.mock("@/lib/api/mesocycle-lifecycle-state", async (importOriginal) => {
@@ -169,11 +176,28 @@ vi.mock("@/lib/api/mesocycle-week-close", async (importOriginal) => {
 });
 
 import { POST as saveWorkoutPost } from "./route";
+import {
+  finishDeloadEarly,
+  finishMesocycleEarly,
+} from "@/lib/api/mesocycle-lifecycle-state";
 import { fingerprintShortTodaySaveExercises } from "@/lib/api/save-workout/session-capacity";
 import { buildV4CustomPlanReferenceAcceptedSeed } from "@/lib/engine/hypertrophy-plan-authoring-v4.fixture";
+import {
+  buildScheduledSlotReceipt,
+  resolveV4ScheduleAuthority,
+  type V4RequiredSlot,
+  type V4ScheduleAuthority,
+} from "@/lib/api/v4-scheduled-slot-resolution";
 
 describe("production write pause", () => {
   beforeEach(() => {
+    mocks.prisma.$transaction.mockImplementation(
+      async (callback: (trx: typeof mocks.tx) => Promise<void>) =>
+        callback(mocks.tx),
+    );
+    mocks.claimSelectedPlanForTransitionInTransaction.mockReset();
+    mocks.claimSelectedPlanForTransitionInTransaction.mockResolvedValue(undefined);
+    mocks.enterMesocycleHandoffInTransaction.mockReset();
     vi.clearAllMocks();
     delete process.env.TRAINER_WRITE_PAUSE;
   });
@@ -555,8 +579,472 @@ function buildCloseoutSelectionMetadata() {
   });
 }
 
+type TerminalRaceState = "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD";
+type TerminalOperation = "natural" | "early";
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+function terminalWorkout(
+  authority: V4ScheduleAuthority,
+  slot: V4RequiredSlot,
+  status: "PLANNED" | "COMPLETED" | "SKIPPED",
+) {
+  const selectionMetadata = {
+    sessionDecisionReceipt: {
+      version: 2,
+      cycleContext: {
+        weekInMeso: slot.weekInMeso,
+        weekInBlock: slot.phase === "DELOAD" ? 1 : slot.weekInMeso,
+        mesocycleLength: 5,
+        phase: slot.phase.toLowerCase(),
+        blockType: slot.phase.toLowerCase(),
+        isDeload: slot.phase === "DELOAD",
+        source: "computed",
+      },
+      sessionProvenance: {
+        mesocycleId: authority.mesocycleId,
+        compositionSource:
+          slot.phase === "DELOAD"
+            ? "deload_seed_replay"
+            : "persisted_slot_plan_seed",
+        seedProvenance: {
+          revisionId: authority.revisionId,
+          revision: authority.revisionNumber,
+          hash: authority.revisionHash,
+        },
+      },
+      sessionSlot: {
+        slotId: slot.slotId,
+        intent: slot.intent,
+        sequenceIndex: slot.sequenceIndex,
+        sequenceLength: slot.sequenceLength,
+        source: "mesocycle_slot_sequence",
+      },
+      scheduledSlotReceipt: buildScheduledSlotReceipt(authority, slot),
+      lifecycleVolume: { source: "unknown" },
+      sorenessSuppressedMuscles: [],
+      deloadDecision: {
+        mode: slot.phase === "DELOAD" ? "scheduled" : "none",
+        reason: [],
+        reductionPercent: 0,
+        appliedTo: "none",
+      },
+      readiness: {
+        wasAutoregulated: false,
+        signalAgeHours: null,
+        fatigueScoreOverall: null,
+        intensityScaling: {
+          applied: false,
+          exerciseIds: [],
+          scaledUpCount: 0,
+          scaledDownCount: 0,
+        },
+      },
+      exceptions: [],
+    },
+  };
+  return {
+    id: `workout-${slot.weekInMeso}-${slot.slotId}`,
+    userId: "user-1",
+    status,
+    scheduledDate: new Date("2026-08-20T10:00:00.000Z"),
+    completedAt: null as Date | null,
+    revision: 1,
+    mesocycleId: authority.mesocycleId,
+    mesocycleWeekSnapshot: slot.weekInMeso,
+    mesocyclePhaseSnapshot: slot.phase,
+    mesoSessionSnapshot: slot.sequenceIndex + 1,
+    advancesSplit: true,
+    selectionMode: "AUTO",
+    sessionIntent: slot.intent.toUpperCase(),
+    selectionMetadata,
+    seedRevisionId: authority.revisionId,
+    seedRevisionNumber: authority.revisionNumber,
+    seedPayloadHash: authority.revisionHash,
+  };
+}
+
+function buildTerminalRaceFixture(state: TerminalRaceState) {
+  const base = buildV4RouteFixture();
+  const mesocycle = {
+    ...base.mesocycle,
+    state: state as TerminalRaceState | "COMPLETED",
+    mesoNumber: 2,
+    startWeek: 5,
+    completedSessions: 19,
+    accumulationSessionsCompleted: 16,
+    deloadSessionsCompleted: 3,
+    isActive: true,
+    closedAt: null as Date | null,
+    handoffSummaryJson: null,
+    nextSeedDraftJson: null,
+    macroCycle: {
+      id: "macro-1",
+      userId: "user-1",
+      startDate: new Date("2026-07-16T00:00:00.000Z"),
+      primaryGoal: "HYPERTROPHY",
+      durationWeeks: 10,
+      mesocycles: [
+        {
+          id: "meso-previous",
+          mesoNumber: 1,
+          startWeek: 0,
+          durationWeeks: 5,
+          state: "COMPLETED",
+        },
+        {
+          id: base.mesocycle.id,
+          mesoNumber: 2,
+          startWeek: 5,
+          durationWeeks: 5,
+          state,
+        },
+      ],
+    },
+  };
+  const resolution = resolveV4ScheduleAuthority(mesocycle);
+  if (resolution.status !== "available") {
+    throw new Error(`Invalid terminal route fixture: ${resolution.status}`);
+  }
+  const authority = resolution.authority;
+  const finalSlot = authority.requiredSlots.at(-1)!;
+  const workouts = authority.requiredSlots.map((slot) =>
+    terminalWorkout(
+      authority,
+      slot,
+      slot === finalSlot ? "PLANNED" : "COMPLETED",
+    ),
+  );
+  return {
+    authority,
+    mesocycle,
+    workouts,
+    finalWorkoutId: `workout-${finalSlot.weekInMeso}-${finalSlot.slotId}`,
+  };
+}
+
+type TerminalRaceFixture = ReturnType<typeof buildTerminalRaceFixture>;
+type TerminalRaceWorkout = TerminalRaceFixture["workouts"][number];
+
+function lockAwareTerminalHarness(
+  state: TerminalRaceState,
+  winner: TerminalOperation,
+) {
+  const fixture = buildTerminalRaceFixture(state);
+  let committed = structuredClone({
+    activeMacroCycleId: "macro-1",
+    mesocycle: fixture.mesocycle,
+    workouts: fixture.workouts,
+  });
+  const lockOwners: Record<"user" | "mesocycle", string | null> = {
+    user: null,
+    mesocycle: null,
+  };
+  const waiters: Record<"user" | "mesocycle", Array<() => void>> = {
+    user: [],
+    mesocycle: [],
+  };
+  const labels: TerminalOperation[] = [];
+  const started = new Map<TerminalOperation, ReturnType<typeof deferred>>();
+  const events = new Map<TerminalOperation, string[]>();
+  const errors = new Map<TerminalOperation, string>();
+  const rolledBackWorkoutWrites = new Map<TerminalOperation, number>();
+  const winnerHasBothLocks = deferred();
+  const releaseWinner = deferred();
+  const contenderBlocked = deferred();
+  let terminalWrites = 0;
+  let transactionSequence = 0;
+
+  function queue(label: TerminalOperation) {
+    labels.push(label);
+    const signal = deferred();
+    started.set(label, signal);
+    events.set(label, []);
+    return signal.promise;
+  }
+
+  async function acquire(
+    txId: string,
+    label: TerminalOperation,
+    held: Set<"user" | "mesocycle">,
+    lock: "user" | "mesocycle",
+  ) {
+    if (held.has(lock)) throw new Error(`TEST_LOCK_REACQUIRED:${lock}`);
+    if (lock === "mesocycle" && !held.has("user")) {
+      throw new Error("TEST_MESOCYCLE_LOCK_BEFORE_USER_LOCK");
+    }
+    if (lockOwners[lock] != null) {
+      if (label !== winner) contenderBlocked.resolve();
+      await new Promise<void>((resolve) => waiters[lock].push(resolve));
+    }
+    lockOwners[lock] = txId;
+    held.add(lock);
+    events.get(label)!.push(lock);
+  }
+
+  function release(txId: string, held: Set<"user" | "mesocycle">) {
+    for (const lock of ["mesocycle", "user"] as const) {
+      if (!held.has(lock) || lockOwners[lock] !== txId) continue;
+      lockOwners[lock] = null;
+      waiters[lock].shift()?.();
+    }
+  }
+
+  function assertWorkoutLocks(
+    label: TerminalOperation,
+    held: Set<"user" | "mesocycle">,
+    event: string,
+  ) {
+    if (!held.has("user") || !held.has("mesocycle")) {
+      throw new Error(`TEST_WORKOUT_BEFORE_LOCKS:${event}`);
+    }
+    events.get(label)!.push(event);
+  }
+
+  async function transaction<T>(
+    label: TerminalOperation,
+    callback: (tx: object) => Promise<T>,
+  ) {
+    const txId = `${label}-${++transactionSequence}`;
+    const held = new Set<"user" | "mesocycle">();
+    let local = structuredClone(committed);
+    let localTerminalWrites = 0;
+    let localWorkoutWrites = 0;
+    let paused = false;
+
+    const tx = {
+      user: {
+        updateMany: async (args: { where: { id: string; activeMacroCycleId: string } }) => {
+          await acquire(txId, label, held, "user");
+          return {
+            count:
+              args.where.id === "user-1" &&
+              committed.activeMacroCycleId === args.where.activeMacroCycleId
+                ? 1
+                : 0,
+          };
+        },
+        findUnique: async () => ({
+          activeMacroCycleId: committed.activeMacroCycleId,
+        }),
+      },
+      mesocycle: {
+        findFirst: async () => structuredClone(local.mesocycle),
+        findUnique: async () => structuredClone(local.mesocycle),
+        updateMany: async (args: {
+          where: Record<string, unknown>;
+          data: Record<string, unknown>;
+        }) => {
+          if (args.data.state !== "COMPLETED") {
+            await acquire(txId, label, held, "mesocycle");
+            local = structuredClone(committed);
+            const matches =
+              local.mesocycle.id === args.where.id &&
+              local.mesocycle.macroCycleId === args.where.macroCycleId &&
+              local.mesocycle.state === args.where.state &&
+              local.mesocycle.currentSeedRevisionId ===
+                args.where.currentSeedRevisionId;
+            if (!matches) return { count: 0 };
+            if (label === winner && !paused) {
+              paused = true;
+              winnerHasBothLocks.resolve();
+              await releaseWinner.promise;
+            }
+            return { count: 1 };
+          }
+          assertWorkoutLocks(label, held, "terminal-cas");
+          const matches =
+            local.mesocycle.state === args.where.state &&
+            local.mesocycle.isActive === true &&
+            local.mesocycle.closedAt == null &&
+            local.mesocycle.currentSeedRevisionId ===
+              args.where.currentSeedRevisionId;
+          if (!matches) return { count: 0 };
+          local.mesocycle.state = "COMPLETED";
+          local.mesocycle.isActive = false;
+          local.mesocycle.closedAt = args.data.closedAt as Date;
+          local.mesocycle.macroCycle.mesocycles.at(-1)!.state = "COMPLETED";
+          localTerminalWrites += 1;
+          return { count: 1 };
+        },
+        update: async (args: { data: Record<string, unknown> }) => {
+          assertWorkoutLocks(label, held, "mesocycle-counter");
+          const completed = args.data.completedSessions as
+            | { increment: number }
+            | undefined;
+          const accumulation = args.data.accumulationSessionsCompleted as
+            | { increment: number }
+            | undefined;
+          const deload = args.data.deloadSessionsCompleted as
+            | { increment: number }
+            | undefined;
+          if (completed) local.mesocycle.completedSessions += completed.increment;
+          if (accumulation) {
+            local.mesocycle.accumulationSessionsCompleted += accumulation.increment;
+          }
+          if (deload) {
+            local.mesocycle.deloadSessionsCompleted += deload.increment;
+          }
+          return structuredClone(local.mesocycle);
+        },
+      },
+      workout: {
+        findUnique: async (args: Record<string, unknown>) => {
+          const workout = local.workouts.find(
+            (candidate) => candidate.id === fixture.finalWorkoutId,
+          );
+          if (!workout) return null;
+          if ("include" in args) {
+            return {
+              ...structuredClone(workout),
+              exercises: [
+                {
+                  sets: [
+                    {
+                      logs: [
+                        {
+                          wasSkipped: false,
+                          actualReps: 8,
+                          actualRpe: 8,
+                          actualLoad: 135,
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            };
+          }
+          return structuredClone(workout);
+        },
+        findFirst: async () =>
+          structuredClone(
+            local.workouts.find(
+              (candidate) => candidate.id === fixture.finalWorkoutId,
+            ) ?? null,
+          ),
+        findMany: async (args?: {
+          where?: { status?: { in?: string[] } };
+        }) => {
+          assertWorkoutLocks(label, held, "workout-read");
+          const statuses = args?.where?.status?.in;
+          const workouts = statuses
+            ? local.workouts.filter((workout) =>
+                statuses.includes(workout.status),
+              )
+            : local.workouts;
+          return structuredClone(
+            workouts.map((workout) => ({ ...workout, exercises: [] })),
+          );
+        },
+        updateMany: async (args: {
+          where: { id: string; userId: string; revision: number; status: string };
+          data: Record<string, unknown> & { revision: { increment: number } };
+        }) => {
+          assertWorkoutLocks(label, held, "workout-write");
+          const workout = local.workouts.find(
+            (candidate) => candidate.id === args.where.id,
+          );
+          if (
+            !workout ||
+            workout.userId !== args.where.userId ||
+            workout.revision !== args.where.revision ||
+            workout.status !== args.where.status
+          ) {
+            return { count: 0 };
+          }
+          Object.assign(workout, args.data, {
+            revision: workout.revision + args.data.revision.increment,
+          });
+          localWorkoutWrites += 1;
+          return { count: 1 };
+        },
+        update: async (args: {
+          where: { id: string };
+          data: { status: "SKIPPED"; selectionMetadata: unknown };
+        }) => {
+          assertWorkoutLocks(label, held, "workout-write");
+          const workout = local.workouts.find(
+            (candidate) => candidate.id === args.where.id,
+          );
+          if (!workout) throw new Error("WORKOUT_NOT_FOUND");
+          workout.status = args.data.status;
+          workout.selectionMetadata = args.data.selectionMetadata as TerminalRaceWorkout["selectionMetadata"];
+          localWorkoutWrites += 1;
+          return structuredClone(workout);
+        },
+      },
+      workoutTemplate: { findFirst: async () => null },
+      mesocycleSeedRevision: { findFirst: async () => null },
+      setLog: { count: async () => 0 },
+      filteredExercise: {
+        deleteMany: async () => ({ count: 0 }),
+        createMany: async () => ({ count: 0 }),
+      },
+    };
+
+    try {
+      started.get(label)!.resolve();
+      const result = await callback(tx);
+      committed = structuredClone(local);
+      terminalWrites += localTerminalWrites;
+      return result;
+    } catch (error) {
+      errors.set(label, error instanceof Error ? error.message : String(error));
+      rolledBackWorkoutWrites.set(label, localWorkoutWrites);
+      throw error;
+    } finally {
+      release(txId, held);
+    }
+  }
+
+  mocks.prisma.$transaction.mockImplementation(
+    (async (callback: (tx: object) => Promise<unknown>) => {
+      const label = labels.shift();
+      if (!label) throw new Error("TEST_TRANSACTION_LABEL_MISSING");
+      return transaction(label, callback);
+    }) as never,
+  );
+  mocks.claimSelectedPlanForTransitionInTransaction.mockImplementation(
+    async (tx: { user: { updateMany: (args: object) => Promise<{ count: number }> } }) => {
+      const claimed = await tx.user.updateMany({
+        where: { id: "user-1", activeMacroCycleId: "macro-1" },
+        data: { activeMacroCycleId: "macro-1" },
+      });
+      if (claimed.count !== 1) throw new Error("ACTIVE_PLAN_SELECTION_CONFLICT");
+    },
+  );
+
+  return {
+    fixture,
+    queue,
+    waitForWinnerLocks: () => winnerHasBothLocks.promise,
+    waitForContender: () => contenderBlocked.promise,
+    releaseWinner: releaseWinner.resolve,
+    events: (label: TerminalOperation) => events.get(label) ?? [],
+    error: (label: TerminalOperation) => errors.get(label),
+    rolledBackWorkoutWrites: (label: TerminalOperation) =>
+      rolledBackWorkoutWrites.get(label) ?? 0,
+    terminalWrites: () => terminalWrites,
+    state: () => committed,
+  };
+}
+
 describe("POST /api/workouts/save", () => {
   beforeEach(() => {
+    mocks.prisma.$transaction.mockImplementation(
+      async (callback: (trx: typeof mocks.tx) => Promise<void>) =>
+        callback(mocks.tx),
+    );
+    mocks.claimSelectedPlanForTransitionInTransaction.mockReset();
+    mocks.claimSelectedPlanForTransitionInTransaction.mockResolvedValue(undefined);
+    mocks.enterMesocycleHandoffInTransaction.mockReset();
     mocks.workoutFindUnique.mockReset();
     mocks.workoutFindFirst.mockReset();
     mocks.workoutFindMany.mockReset();
@@ -696,6 +1184,149 @@ describe("POST /api/workouts/save", () => {
     });
     mocks.tx.mesocycleWeekClose.findFirst.mockResolvedValue(null);
     mocks.tx.mesocycleWeekClose.findUnique.mockResolvedValue(null);
+  });
+
+  function terminalSaveRequest(
+    workoutId: string,
+    action: "mark_completed" | "mark_skipped",
+  ) {
+    return POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workoutId, action, expectedRevision: 1 }),
+      }),
+    );
+  }
+
+  function earlyFinish(state: TerminalRaceState) {
+    const input = { userId: "user-1", mesocycleId: "meso-v4" };
+    return state === "ACTIVE_ACCUMULATION"
+      ? finishMesocycleEarly(input)
+      : finishDeloadEarly(input);
+  }
+
+  function expectCanonicalTerminalEvents(events: string[]) {
+    expect(events.filter((event) => event === "user")).toHaveLength(1);
+    expect(events.filter((event) => event === "mesocycle")).toHaveLength(1);
+    expect(events.slice(0, 2)).toEqual(["user", "mesocycle"]);
+    expect(
+      events
+        .filter((event) => event.startsWith("workout") || event === "terminal-cas")
+        .every((event) => events.indexOf(event) > 1),
+    ).toBe(true);
+  }
+
+  it.each([
+    [
+      "natural final save wins against accumulation early finish",
+      "ACTIVE_ACCUMULATION",
+      "natural",
+    ],
+    [
+      "accumulation early finish wins against natural final save",
+      "ACTIVE_ACCUMULATION",
+      "early",
+    ],
+    [
+      "natural final save wins against deload early finish",
+      "ACTIVE_DELOAD",
+      "natural",
+    ],
+    [
+      "deload early finish wins against natural final save",
+      "ACTIVE_DELOAD",
+      "early",
+    ],
+  ] as const)("serializes %s", async (_label, state, winner) => {
+    const loser: TerminalOperation = winner === "natural" ? "early" : "natural";
+    const harness = lockAwareTerminalHarness(state, winner);
+
+    const winnerStarted = harness.queue(winner);
+    const winnerResult =
+      winner === "natural"
+        ? terminalSaveRequest(harness.fixture.finalWorkoutId, "mark_completed")
+        : earlyFinish(state);
+    await winnerStarted;
+    await harness.waitForWinnerLocks();
+
+    const loserStarted = harness.queue(loser);
+    const loserResult =
+      loser === "natural"
+        ? terminalSaveRequest(harness.fixture.finalWorkoutId, "mark_completed")
+        : earlyFinish(state);
+    await loserStarted;
+    await harness.waitForContender();
+    harness.releaseWinner();
+
+    const [winnerOutcome, loserOutcome] = await Promise.allSettled([
+      winnerResult,
+      loserResult,
+    ]);
+
+    if (winnerOutcome.status === "rejected") {
+      throw new Error(
+        `TEST_WINNER_FAILED:${harness.error(winner) ?? String(winnerOutcome.reason)}\n${
+          winnerOutcome.reason instanceof Error ? winnerOutcome.reason.stack : ""
+        }`,
+      );
+    }
+    if (winner === "natural" && winnerOutcome.status === "fulfilled") {
+      expect((winnerOutcome.value as Response).status).toBe(200);
+    }
+    if (loser === "natural" && loserOutcome.status === "fulfilled") {
+      expect((loserOutcome.value as Response).status).toBe(409);
+    } else {
+      expect(loserOutcome.status).toBe("rejected");
+    }
+    expect(harness.error(loser)).toBe("V4_SCHEDULE_AUTHORITY_CONFLICT");
+    expectCanonicalTerminalEvents(harness.events(winner));
+    expectCanonicalTerminalEvents(harness.events(loser));
+    expect(harness.terminalWrites()).toBe(1);
+    expect(harness.state().mesocycle).toMatchObject({
+      state: "COMPLETED",
+      isActive: false,
+      closedAt: expect.any(Date),
+      handoffSummaryJson: null,
+      nextSeedDraftJson: null,
+    });
+    expect(
+      harness.state().workouts.find(
+        (workout) => workout.id === harness.fixture.finalWorkoutId,
+      ),
+    ).toMatchObject({
+      status: winner === "natural" ? "COMPLETED" : "SKIPPED",
+      revision: winner === "natural" ? 2 : 1,
+    });
+    expect(harness.rolledBackWorkoutWrites(loser)).toBe(0);
+    expect(mocks.enterMesocycleHandoffInTransaction).not.toHaveBeenCalled();
+  });
+
+  it("runs a final skipped save through the production route under the canonical locks", async () => {
+    const harness = lockAwareTerminalHarness("ACTIVE_DELOAD", "natural");
+    const started = harness.queue("natural");
+    const result = terminalSaveRequest(
+      harness.fixture.finalWorkoutId,
+      "mark_skipped",
+    );
+    await started;
+    await harness.waitForWinnerLocks();
+    harness.releaseWinner();
+
+    const response = await result;
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      workoutStatus: "SKIPPED",
+    });
+    expectCanonicalTerminalEvents(harness.events("natural"));
+    expect(harness.terminalWrites()).toBe(1);
+    expect(harness.state().mesocycle.state).toBe("COMPLETED");
+    expect(
+      harness.state().workouts.find(
+        (workout) => workout.id === harness.fixture.finalWorkoutId,
+      ),
+    ).toMatchObject({ status: "SKIPPED", revision: 2 });
+    expect(mocks.enterMesocycleHandoffInTransaction).not.toHaveBeenCalled();
   });
 
   it.each([

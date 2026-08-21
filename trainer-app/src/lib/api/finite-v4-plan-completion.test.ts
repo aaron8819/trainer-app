@@ -21,9 +21,10 @@ vi.mock("./mesocycle-handoff", () => ({
 import {
   completeFiniteV4PlanInTransaction,
   completeOrEnterHandoffInTransaction,
+  claimSelectedPlanAndLockMesocycleForTerminalTransitionInTransaction,
   finishDeloadEarlyInTransaction,
   finishMesocycleEarlyInTransaction,
-  lockMesocycleForTerminalTransitionInTransaction,
+  type TerminalTransitionLockProof,
 } from "./mesocycle-lifecycle-state";
 import { normalizeAcceptedHypertrophySeedV4 } from "./mesocycle-seed-revision";
 import {
@@ -32,7 +33,6 @@ import {
 import { buildV4CustomPlanReferenceAcceptedSeed } from "@/lib/engine/hypertrophy-plan-authoring-v4.fixture";
 import {
   applyV4TerminalScheduleResolution,
-  lockV4MesocycleForScheduleResolution,
   resolveMesocycleForWorkoutSave,
 } from "./save-workout/lifecycle";
 import { persistWorkoutRow } from "./save-workout/persistence";
@@ -374,7 +374,7 @@ async function lockTerminalTransition(
   expectedState: "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" =
     row.state as "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD",
 ) {
-  return lockMesocycleForTerminalTransitionInTransaction(tx as never, {
+  return claimSelectedPlanAndLockMesocycleForTerminalTransitionInTransaction(tx as never, {
     mesocycleId: row.id,
     macroCycleId: row.macroCycleId,
     userId: row.macroCycle.userId,
@@ -391,6 +391,105 @@ describe("finite accepted-V4 plan completion", () => {
       id: "meso-final",
       state: "AWAITING_HANDOFF",
     });
+  });
+
+  it("issues terminal proof only after the selected-plan claim and mesocycle lock", async () => {
+    const row = lifecycleRow();
+    const { tx, updateMany } = transaction(row);
+
+    const proof = await lockTerminalTransition(tx, row);
+
+    expect(proof).toBeDefined();
+    expect(Object.keys(proof)).toEqual([]);
+    expect(Object.isFrozen(proof)).toBe(true);
+    expect(
+      mocks.claimSelectedPlanForTransitionInTransaction.mock.invocationCallOrder[0],
+    ).toBeLessThan(updateMany.mock.invocationCallOrder[0]!);
+  });
+
+  it("does not issue terminal proof when the selected-plan claim fails", async () => {
+    mocks.claimSelectedPlanForTransitionInTransaction.mockRejectedValue(
+      new Error("ACTIVE_PLAN_SELECTION_CONFLICT"),
+    );
+    const row = lifecycleRow();
+    const { tx, updateMany } = transaction(row);
+
+    await expect(lockTerminalTransition(tx, row)).rejects.toThrow(
+      "ACTIVE_PLAN_SELECTION_CONFLICT",
+    );
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it("does not issue terminal proof when the mesocycle lock loses authority", async () => {
+    const row = lifecycleRow();
+    const { tx, updateMany } = transaction(row, { lockCount: 0 });
+
+    await expect(lockTerminalTransition(tx, row)).rejects.toThrow(
+      "V4_SCHEDULE_AUTHORITY_CONFLICT",
+    );
+    expect(updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a terminal proof issued by a different transaction client", async () => {
+    const row = lifecycleRow();
+    const issuing = transaction(row);
+    const consuming = transaction(row);
+    const terminalLock = await lockTerminalTransition(issuing.tx, row);
+
+    await expect(
+      completeFiniteV4PlanInTransaction(consuming.tx as never, {
+        mesocycleId: row.id,
+        expectedState: "ACTIVE_DELOAD",
+        terminalLock,
+      }),
+    ).rejects.toThrow("V4_SCHEDULE_AUTHORITY_CONFLICT");
+    expect(consuming.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects a fabricated terminal proof", async () => {
+    const row = lifecycleRow();
+    const { tx, updateMany } = transaction(row);
+
+    await expect(
+      completeFiniteV4PlanInTransaction(tx as never, {
+        mesocycleId: row.id,
+        expectedState: "ACTIVE_DELOAD",
+        terminalLock: {} as TerminalTransitionLockProof,
+      }),
+    ).rejects.toThrow("V4_SCHEDULE_AUTHORITY_CONFLICT");
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["mesocycle", { mesocycleId: "other-mesocycle" }],
+    ["macrocycle", { macroCycleId: "other-plan" }],
+    ["owner", { userId: "other-user" }],
+    ["state", { expectedState: "ACTIVE_ACCUMULATION" as const }],
+    ["revision", { currentSeedRevisionId: "other-revision" }],
+  ] as const)("rejects terminal proof with the wrong %s binding", async (_label, proofOverride) => {
+    const row = lifecycleRow();
+    const { tx, updateMany } = transaction(row);
+    const terminalLock =
+      await claimSelectedPlanAndLockMesocycleForTerminalTransitionInTransaction(
+        tx as never,
+        {
+          mesocycleId: row.id,
+          macroCycleId: row.macroCycleId,
+          userId: row.macroCycle.userId,
+          expectedState: "ACTIVE_DELOAD",
+          currentSeedRevisionId: row.currentSeedRevisionId,
+          ...proofOverride,
+        },
+      );
+
+    await expect(
+      completeFiniteV4PlanInTransaction(tx as never, {
+        mesocycleId: row.id,
+        expectedState: "ACTIVE_DELOAD",
+        terminalLock,
+      }),
+    ).rejects.toThrow("V4_SCHEDULE_AUTHORITY_CONFLICT");
+    expect(updateMany).toHaveBeenCalledTimes(1);
   });
 
   it.each(["ACTIVE_ACCUMULATION", "ACTIVE_DELOAD"] as const)(
@@ -438,7 +537,10 @@ describe("finite accepted-V4 plan completion", () => {
           closedAt: expect.any(Date),
         },
       });
-      expect(mocks.claimSelectedPlanForTransitionInTransaction).not.toHaveBeenCalled();
+      expect(mocks.claimSelectedPlanForTransitionInTransaction).toHaveBeenCalledTimes(1);
+      expect(
+        mocks.claimSelectedPlanForTransitionInTransaction.mock.invocationCallOrder[0],
+      ).toBeLessThan(updateMany.mock.invocationCallOrder[0]!);
     },
   );
 
@@ -466,12 +568,21 @@ describe("finite accepted-V4 plan completion", () => {
           existingMesocycleId: harness.state().row.id,
           shouldResolve: true,
           shouldRequireForPerformedTransition: true,
+          claimSelectedPlan: false,
         });
-        const terminalLock = await lockV4MesocycleForScheduleResolution(tx as never, {
-          mesocycle: resolved.resolvedMesocycle as never,
-          authority: harness.authority,
-          userId: "user-1",
-        });
+        const terminalLock =
+          await claimSelectedPlanAndLockMesocycleForTerminalTransitionInTransaction(
+            tx as never,
+            {
+              mesocycleId: resolved.resolvedMesocycle!.id,
+              macroCycleId: resolved.resolvedMesocycle!.macroCycleId,
+              userId: "user-1",
+              expectedState: resolved.resolvedMesocycle!.state as
+                | "ACTIVE_ACCUMULATION"
+                | "ACTIVE_DELOAD",
+              currentSeedRevisionId: harness.authority.revisionId,
+            },
+          );
         const existingWorkout = harness
           .state()
           .workouts.find((workout) => workout.id === harness.finalWorkoutId)!;
@@ -528,14 +639,17 @@ describe("finite accepted-V4 plan completion", () => {
 
     await expect(
       harness.transaction(async (tx) => {
-        const terminalLock = await lockV4MesocycleForScheduleResolution(
-          tx as never,
-          {
-            mesocycle: harness.state().row as never,
-            authority: harness.authority,
-            userId: "user-1",
-          },
-        );
+        const terminalLock =
+          await claimSelectedPlanAndLockMesocycleForTerminalTransitionInTransaction(
+            tx as never,
+            {
+              mesocycleId: harness.state().row.id,
+              macroCycleId: harness.state().row.macroCycleId,
+              userId: "user-1",
+              expectedState: "ACTIVE_DELOAD",
+              currentSeedRevisionId: harness.authority.revisionId,
+            },
+          );
         const existingWorkout = harness
           .state()
           .workouts.find((workout) => workout.id === harness.finalWorkoutId)!;

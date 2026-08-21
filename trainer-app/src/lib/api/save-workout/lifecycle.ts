@@ -3,7 +3,6 @@ import { deriveCurrentMesocycleSession } from "@/lib/api/mesocycle-lifecycle-mat
 import {
   claimSelectedPlanForTransitionInTransaction,
   completeOrEnterHandoffInTransaction,
-  lockMesocycleForTerminalTransitionInTransaction,
   resolveActivePlanContextInTransaction,
   transitionMesocycleStateInTransaction,
   type TerminalTransitionLockProof,
@@ -200,29 +199,6 @@ const mesocycleSelect = {
   },
 } as const;
 
-export async function lockV4MesocycleForScheduleResolution(
-  tx: Prisma.TransactionClient,
-  input: {
-    mesocycle: SelectedSaveRouteMesocycle;
-    authority: V4ScheduleAuthority;
-    userId: string;
-  },
-): Promise<TerminalTransitionLockProof> {
-  if (
-    input.mesocycle.state !== "ACTIVE_ACCUMULATION" &&
-    input.mesocycle.state !== "ACTIVE_DELOAD"
-  ) {
-    throw new Error("V4_SCHEDULE_AUTHORITY_CONFLICT");
-  }
-  return lockMesocycleForTerminalTransitionInTransaction(tx, {
-    mesocycleId: input.mesocycle.id,
-    macroCycleId: input.mesocycle.macroCycleId,
-    userId: input.userId,
-    expectedState: input.mesocycle.state,
-    currentSeedRevisionId: input.authority.revisionId,
-  });
-}
-
 async function readV4ScheduleWorkoutEvidence(
   tx: Prisma.TransactionClient,
   mesocycleId: string,
@@ -355,6 +331,7 @@ export async function resolveMesocycleForWorkoutSave(
     existingMesocycleId?: string | null;
     shouldResolve: boolean;
     shouldRequireForPerformedTransition: boolean;
+    claimSelectedPlan?: boolean;
   },
 ): Promise<{
   resolvedMesocycleId: string | null;
@@ -387,13 +364,12 @@ export async function resolveMesocycleForWorkoutSave(
 
   if (resolvedMesocycle) {
     assertMesocycleAllowsWorkoutSave(resolvedMesocycle.state);
-  }
-
-  if (resolvedMesocycle) {
-    await claimSelectedPlanForTransitionInTransaction(tx, {
-      userId: input.userId,
-      macroCycleId: resolvedMesocycle.macroCycleId,
-    });
+    if (input.claimSelectedPlan !== false) {
+      await claimSelectedPlanForTransitionInTransaction(tx, {
+        userId: input.userId,
+        macroCycleId: resolvedMesocycle.macroCycleId,
+      });
+    }
   }
 
   if (

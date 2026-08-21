@@ -268,15 +268,16 @@ Sources of truth:
   - success: `{ ok: true, action: "finish_deload_early", mesocycle, skippedWorkoutIds, skippedWorkoutCount, handoffSummaryCreated, nextSeedDraftCreated }`
   - ownership: after the production write gate, the route provisions the owner through `provisionOwnerForMutation(operation)` and delegates lifecycle behavior to `finishDeloadEarly()` in `src/lib/api/mesocycle-lifecycle-state.ts`
   - semantics: this is an explicit user action to end the remaining deload without performing the remaining scheduled deload workouts; it does not create `SetLog` rows, does not create fake completed workouts, does not increment `deloadSessionsCompleted`, does not mutate `slotPlanSeedJson`, and does not change runtime replay
-  - incomplete deload workouts: unperformed `PLANNED`/`IN_PROGRESS` workouts in the source mesocycle are marked `SKIPPED` with additive `selectionMetadata.finishDeloadEarly` audit metadata before entering handoff; `PARTIAL` workouts or workouts with performed non-skipped logs are rejected with `409`
+  - incomplete deload workouts: unperformed `PLANNED`/`IN_PROGRESS` workouts in the source mesocycle are marked `SKIPPED` with additive `selectionMetadata.finishDeloadEarly` audit metadata before terminal lifecycle resolution; `PARTIAL` workouts or workouts with performed non-skipped logs are rejected with `409`
+  - terminal result: a healthy final finite accepted V4 plan completes directly without handoff or successor creation; blocked or conflicting V4 proof returns a recoverable `409` and rolls back the skips; definitive non-V4 hypertrophy retains legacy handoff, while Strength retains direct completion
 
 - `PATCH /api/program` action `end_early` (`src/app/api/program/route.ts`)
-  - purpose: intentionally close the active accumulation mesocycle without fabricating completion, then expose the existing handoff review/accept flow
+  - purpose: intentionally close the active accumulation mesocycle without fabricating performed work, then resolve its canonical terminal lifecycle
   - ownership: the route resolves the owner and delegates through `applyCycleAnchor()` to canonical `finishMesocycleEarly()` lifecycle behavior
   - incomplete workouts: untouched `PLANNED`/`IN_PROGRESS` workouts are marked `SKIPPED` with additive `selectionMetadata.finishMesocycleEarly`; canonical `sessionDecisionReceipt` data is preserved
   - conflicts: `PARTIAL` workouts, any incomplete workout with performed non-skipped logs, non-`ACTIVE_ACCUMULATION` state, or existing handoff artifacts return `409`
   - invariants: accumulation/deload counters, accepted seed, runtime replay, performed logs, and successor acceptance behavior are unchanged
-  - handoff: success calls the same canonical handoff entry seam as normal deload completion, freezing `handoffSummaryJson` and seeding `nextSeedDraftJson`; successor creation remains reserved for `POST /api/mesocycles/[id]/accept-next-cycle`
+  - terminal result: a healthy final finite accepted V4 plan completes directly without handoff or successor creation; blocked or conflicting V4 proof returns a recoverable `409` and rolls back the skips; definitive non-V4 hypertrophy retains legacy handoff, while Strength retains direct completion. Successor creation for legacy handoff remains reserved for `POST /api/mesocycles/[id]/accept-next-cycle`
 - `POST /api/mesocycles/[id]/setup-preview` (`src/app/api/mesocycles/[id]/setup-preview/route.ts`)
   - state gate: target mesocycle must exist for the owner and be in `AWAITING_HANDOFF`
   - request payload: `nextCycleSeedDraftUpdateSchema`

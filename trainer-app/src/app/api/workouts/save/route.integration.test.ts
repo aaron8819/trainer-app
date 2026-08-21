@@ -13,6 +13,7 @@ afterEach(() => {
 
 const mocks = vi.hoisted(() => {
   const workoutFindUnique = vi.fn();
+  const workoutIdentityFindFirst = vi.fn();
   const workoutFindFirst = vi.fn();
   const workoutFindMany = vi.fn();
   const workoutUpdateMany = vi.fn();
@@ -31,11 +32,39 @@ const mocks = vi.hoisted(() => {
   const createPostSessionReviewSnapshotInTransaction = vi.fn();
   const enterMesocycleHandoffInTransaction = vi.fn();
   const provisionOwnerForMutation = vi.fn(async () => ({ id: "user-1" }));
+  let terminalDiscoveryFixture: Record<string, unknown> | null | undefined;
 
   const tx = {
     workout: {
-      findUnique: workoutFindUnique,
-      findFirst: workoutFindFirst,
+      findUnique: async (args: Record<string, unknown>) => {
+        const authoritative = await workoutFindUnique(args);
+        const discovered = terminalDiscoveryFixture;
+        terminalDiscoveryFixture = undefined;
+        if (!discovered) return authoritative;
+        const authoritativeRecord =
+          authoritative && typeof authoritative === "object"
+            ? (authoritative as Record<string, unknown>)
+            : {};
+        return {
+          ...discovered,
+          ...authoritativeRecord,
+          exercises:
+            authoritativeRecord.exercises ?? discovered.exercises ?? [],
+        };
+      },
+      findFirst: async (args: Record<string, unknown>) => {
+        const select = args.select as Record<string, unknown> | undefined;
+        const where = args.where as Record<string, unknown> | undefined;
+        if (
+          select?.id === true &&
+          select.mesocycleId === true &&
+          Object.keys(select).length === 2 &&
+          where?.userId !== undefined
+        ) {
+          return workoutIdentityFindFirst(args);
+        }
+        return workoutFindFirst(args);
+      },
       findMany: workoutFindMany,
       updateMany: workoutUpdateMany,
       create: workoutCreate,
@@ -88,6 +117,7 @@ const mocks = vi.hoisted(() => {
     tx,
     prisma,
     workoutFindUnique,
+    workoutIdentityFindFirst,
     workoutFindFirst,
     workoutFindMany,
     workoutUpdateMany,
@@ -106,12 +136,26 @@ const mocks = vi.hoisted(() => {
     createPostSessionReviewSnapshotInTransaction,
     enterMesocycleHandoffInTransaction,
     provisionOwnerForMutation,
+    rememberTerminalDiscovery: (
+      workout: Record<string, unknown> | null,
+    ) => {
+      terminalDiscoveryFixture = workout;
+    },
   };
 });
 
 vi.mock("@/lib/db/prisma", () => ({
   prisma: mocks.prisma,
 }));
+
+vi.mock("@/lib/api/active-plan-context", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/active-plan-context")>();
+  return {
+    ...actual,
+    claimSelectedPlanForTransitionInTransaction:
+      mocks.claimSelectedPlanForTransitionInTransaction,
+  };
+});
 
 vi.mock("@/lib/api/workout-context", () => ({
   provisionOwnerForMutation: () => mocks.provisionOwnerForMutation(),
@@ -191,6 +235,7 @@ import {
 
 describe("production write pause", () => {
   beforeEach(() => {
+    mocks.rememberTerminalDiscovery(null);
     mocks.prisma.$transaction.mockImplementation(
       async (callback: (trx: typeof mocks.tx) => Promise<void>) =>
         callback(mocks.tx),
@@ -735,6 +780,7 @@ type TerminalRaceWorkout = TerminalRaceFixture["workouts"][number];
 function lockAwareTerminalHarness(
   state: TerminalRaceState,
   winner: TerminalOperation,
+  performedLogCount = 1,
 ) {
   const fixture = buildTerminalRaceFixture(state);
   let committed = structuredClone({
@@ -896,25 +942,30 @@ function lockAwareTerminalHarness(
       },
       workout: {
         findUnique: async (args: Record<string, unknown>) => {
+          assertWorkoutLocks(label, held, "workout-read");
           const workout = local.workouts.find(
             (candidate) => candidate.id === fixture.finalWorkoutId,
           );
           if (!workout) return null;
-          if ("include" in args) {
+          const select = args.select as Record<string, unknown> | undefined;
+          if ("include" in args || select?.exercises) {
             return {
               ...structuredClone(workout),
               exercises: [
                 {
                   sets: [
                     {
-                      logs: [
-                        {
-                          wasSkipped: false,
-                          actualReps: 8,
-                          actualRpe: 8,
-                          actualLoad: 135,
-                        },
-                      ],
+                      logs:
+                        performedLogCount > 0
+                          ? [
+                              {
+                                wasSkipped: false,
+                                actualReps: 8,
+                                actualRpe: 8,
+                                actualLoad: 135,
+                              },
+                            ]
+                          : [],
                     },
                   ],
                 },
@@ -923,12 +974,36 @@ function lockAwareTerminalHarness(
           }
           return structuredClone(workout);
         },
-        findFirst: async () =>
-          structuredClone(
+        findFirst: async (args: Record<string, unknown>) => {
+          const select = args.select as Record<string, unknown> | undefined;
+          const where = args.where as Record<string, unknown> | undefined;
+          if (
+            select?.id === true &&
+            select.mesocycleId === true &&
+            Object.keys(select).length === 2
+          ) {
+            if (
+              where?.id !== fixture.finalWorkoutId ||
+              where?.userId !== "user-1" ||
+              Object.keys(where).length !== 2
+            ) {
+              throw new Error("TEST_INVALID_WORKOUT_IDENTITY_DISCOVERY");
+            }
+            events.get(label)!.push("workout-identity-discovery");
+            const workout = local.workouts.find(
+              (candidate) => candidate.id === fixture.finalWorkoutId,
+            );
+            return workout
+              ? { id: workout.id, mesocycleId: workout.mesocycleId }
+              : null;
+          }
+          assertWorkoutLocks(label, held, "workout-read");
+          return structuredClone(
             local.workouts.find(
               (candidate) => candidate.id === fixture.finalWorkoutId,
             ) ?? null,
-          ),
+          );
+        },
         findMany: async (args?: {
           where?: { status?: { in?: string[] } };
         }) => {
@@ -982,7 +1057,12 @@ function lockAwareTerminalHarness(
       },
       workoutTemplate: { findFirst: async () => null },
       mesocycleSeedRevision: { findFirst: async () => null },
-      setLog: { count: async () => 0 },
+      setLog: {
+        count: async () => {
+          assertWorkoutLocks(label, held, "set-log-read");
+          return 0;
+        },
+      },
       filteredExercise: {
         deleteMany: async () => ({ count: 0 }),
         createMany: async () => ({ count: 0 }),
@@ -1038,6 +1118,7 @@ function lockAwareTerminalHarness(
 
 describe("POST /api/workouts/save", () => {
   beforeEach(() => {
+    mocks.rememberTerminalDiscovery(null);
     mocks.prisma.$transaction.mockImplementation(
       async (callback: (trx: typeof mocks.tx) => Promise<void>) =>
         callback(mocks.tx),
@@ -1046,6 +1127,7 @@ describe("POST /api/workouts/save", () => {
     mocks.claimSelectedPlanForTransitionInTransaction.mockResolvedValue(undefined);
     mocks.enterMesocycleHandoffInTransaction.mockReset();
     mocks.workoutFindUnique.mockReset();
+    mocks.workoutIdentityFindFirst.mockReset();
     mocks.workoutFindFirst.mockReset();
     mocks.workoutFindMany.mockReset();
     mocks.workoutUpdateMany.mockReset();
@@ -1077,6 +1159,19 @@ describe("POST /api/workouts/save", () => {
     mocks.tx.setLog.count.mockReset();
     mocks.tx.setLog.count.mockResolvedValue(0);
     mocks.workoutFindUnique.mockResolvedValue(null);
+    mocks.workoutIdentityFindFirst.mockImplementation(async (args) => {
+      const discovered = await mocks.workoutFindUnique(args);
+      const normalizedDiscovery = discovered
+        ? { ...discovered, mesocycleId: discovered.mesocycleId ?? null }
+        : null;
+      mocks.rememberTerminalDiscovery(normalizedDiscovery);
+      return discovered
+        ? {
+            id: discovered.id,
+            mesocycleId: discovered.mesocycleId ?? null,
+          }
+        : null;
+    });
     mocks.workoutFindMany.mockResolvedValue([]);
     mocks.workoutFindFirst.mockResolvedValue({
       id: "workout-1",
@@ -1209,11 +1304,21 @@ describe("POST /api/workouts/save", () => {
   function expectCanonicalTerminalEvents(events: string[]) {
     expect(events.filter((event) => event === "user")).toHaveLength(1);
     expect(events.filter((event) => event === "mesocycle")).toHaveLength(1);
-    expect(events.slice(0, 2)).toEqual(["user", "mesocycle"]);
+    const lockStart = events.includes("workout-identity-discovery") ? 1 : 0;
+    if (lockStart === 1) {
+      expect(events[0]).toBe("workout-identity-discovery");
+    }
+    expect(events.slice(lockStart, lockStart + 2)).toEqual(["user", "mesocycle"]);
     expect(
       events
-        .filter((event) => event.startsWith("workout") || event === "terminal-cas")
-        .every((event) => events.indexOf(event) > 1),
+        .filter(
+          (event) =>
+            (event.startsWith("workout") &&
+              event !== "workout-identity-discovery") ||
+            event === "set-log-read" ||
+            event === "terminal-cas",
+        )
+        .every((event) => events.indexOf(event) > lockStart + 1),
     ).toBe(true);
   }
 
@@ -1303,7 +1408,7 @@ describe("POST /api/workouts/save", () => {
   });
 
   it("runs a final skipped save through the production route under the canonical locks", async () => {
-    const harness = lockAwareTerminalHarness("ACTIVE_DELOAD", "natural");
+    const harness = lockAwareTerminalHarness("ACTIVE_DELOAD", "natural", 0);
     const started = harness.queue("natural");
     const result = terminalSaveRequest(
       harness.fixture.finalWorkoutId,
@@ -1466,7 +1571,7 @@ describe("POST /api/workouts/save", () => {
       );
 
       expect(response.status).toBe(409);
-      expect(mocks.tx.mesocycle.updateMany).not.toHaveBeenCalled();
+      expect(mocks.tx.mesocycle.updateMany).toHaveBeenCalledTimes(1);
       expect(mocks.workoutUpdateMany).not.toHaveBeenCalled();
       expect(mocks.workoutCreate).not.toHaveBeenCalled();
     },
@@ -1614,21 +1719,25 @@ describe("POST /api/workouts/save", () => {
   it("rolls back released-row compatibility fields when later review finalization fails", async () => {
     const fixture = buildV4RouteFixture();
     const committed = structuredClone(fixture.workout);
-    mocks.workoutFindUnique
-      .mockResolvedValueOnce(structuredClone(committed))
-      .mockResolvedValueOnce({
-        exercises: [
-          {
-            sets: [
-              {
-                logs: [
-                  { wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 },
-                ],
-              },
-            ],
-          },
-        ],
-      });
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      ...structuredClone(committed),
+      exercises: [
+        {
+          sets: [
+            {
+              logs: [
+                {
+                  wasSkipped: false,
+                  actualReps: 8,
+                  actualRpe: 8,
+                  actualLoad: 135,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
     mocks.tx.mesocycle.findUnique.mockResolvedValue(fixture.mesocycle);
     mocks.createPostSessionReviewSnapshotInTransaction.mockRejectedValueOnce(
       new Error("POST_SESSION_REVIEW_FINALIZATION_FAILED:forced"),
@@ -3148,8 +3257,23 @@ describe("POST /api/workouts/save", () => {
       revision: 1,
       mesocycleId: null,
       selectionMetadata: buildCanonicalSelectionMetadata(),
+      exercises: [
+        {
+          sets: [
+            {
+              logs: [
+                {
+                  wasSkipped: false,
+                  actualReps: 8,
+                  actualRpe: 8,
+                  actualLoad: 100,
+                },
+              ],
+            },
+          ],
+        },
+      ],
     });
-    mocks.tx.setLog.count.mockResolvedValueOnce(1);
 
     const response = await POST(
       new Request("http://localhost/api/workouts/save", {

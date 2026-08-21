@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/db/prisma", () => ({ prisma: {} }));
+vi.mock("./active-plan-context", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./active-plan-context")>();
+  return {
+    ...original,
+    claimSelectedPlanForTransitionInTransaction: vi.fn(async () => undefined),
+  };
+});
 const serviceMocks = vi.hoisted(() => ({
   enterMesocycleHandoffInTransaction: vi.fn(),
   completeOrEnterHandoffInTransaction: vi.fn(),
@@ -32,7 +39,7 @@ import {
   resolveV4ScheduleBeforeWorkoutCreation,
 } from "./save-workout/lifecycle";
 import { persistWorkoutRow } from "./save-workout/persistence";
-import { lockMesocycleForTerminalTransitionInTransaction } from "./mesocycle-lifecycle-state";
+import { claimSelectedPlanAndLockMesocycleForTerminalTransitionInTransaction } from "./mesocycle-lifecycle-state";
 
 function authority(): V4ScheduleAuthority {
   const weeklySlots = [
@@ -66,10 +73,12 @@ function authority(): V4ScheduleAuthority {
 }
 
 async function terminalLock(
-  tx: Parameters<typeof lockMesocycleForTerminalTransitionInTransaction>[0],
+  tx: Parameters<
+    typeof claimSelectedPlanAndLockMesocycleForTerminalTransitionInTransaction
+  >[0],
   source: V4ScheduleAuthority,
 ) {
-  return lockMesocycleForTerminalTransitionInTransaction(tx, {
+  return claimSelectedPlanAndLockMesocycleForTerminalTransitionInTransaction(tx, {
     mesocycleId: source.mesocycleId,
     macroCycleId: "macro-v4",
     userId: "user-v4",

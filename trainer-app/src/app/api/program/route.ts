@@ -84,6 +84,19 @@ export async function PATCH(request: NextRequest) {
     }
     if (
       err instanceof Error &&
+      err.message === "V4_SCHEDULE_AUTHORITY_CONFLICT"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "The accepted workout schedule changed concurrently. Refresh and try again.",
+          code: "V4_SCHEDULE_AUTHORITY_CONFLICT",
+        },
+        { status: 409 },
+      );
+    }
+    if (
+      err instanceof Error &&
       (err.message === "MESOCYCLE_FINISH_EARLY_INVALID_STATE" ||
         err.message === "MESOCYCLE_FINISH_EARLY_HANDOFF_EXISTS")
     ) {

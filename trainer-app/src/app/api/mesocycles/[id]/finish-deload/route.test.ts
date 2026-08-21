@@ -165,4 +165,27 @@ describe("POST /api/mesocycles/[id]/finish-deload", () => {
       code: "V4_SCHEDULE_COMPLETION_BLOCKED",
     });
   });
+
+  it("returns a recoverable conflict when finite V4 terminal authority changes", async () => {
+    mocks.finishDeloadEarly.mockRejectedValue(
+      new Error("V4_SCHEDULE_AUTHORITY_CONFLICT"),
+    );
+
+    const response = await POST(
+      new Request("http://localhost/api/mesocycles/meso-1/finish-deload", {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: "meso-1" }) },
+    );
+
+    expect(response.status).toBe(409);
+    const body = await response.json();
+    expect(body).toEqual({
+      error:
+        "The accepted workout schedule changed concurrently. Refresh and try again.",
+      code: "V4_SCHEDULE_AUTHORITY_CONFLICT",
+    });
+    expect(JSON.stringify(body)).not.toContain("stack");
+    expect(mocks.finishDeloadEarly).toHaveBeenCalledTimes(1);
+  });
 });

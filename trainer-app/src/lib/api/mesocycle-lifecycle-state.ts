@@ -103,10 +103,14 @@ export async function initializeNextMesocycle(
 
 type LifecycleTx = Prisma.TransactionClient;
 
-const terminalTransitionLockProof = Symbol("terminal-transition-lock-proof");
+declare const terminalTransitionLockProofType: unique symbol;
 
 export type TerminalTransitionLockProof = {
-  readonly [terminalTransitionLockProof]: true;
+  readonly [terminalTransitionLockProofType]: true;
+};
+
+type TerminalTransitionLockRecord = {
+  readonly tx: LifecycleTx;
   readonly mesocycleId: string;
   readonly macroCycleId: string;
   readonly userId: string;
@@ -114,7 +118,12 @@ export type TerminalTransitionLockProof = {
   readonly currentSeedRevisionId: string | null;
 };
 
-export async function lockMesocycleForTerminalTransitionInTransaction(
+const terminalTransitionLockRegistry = new WeakMap<
+  TerminalTransitionLockProof,
+  TerminalTransitionLockRecord
+>();
+
+export async function claimSelectedPlanAndLockMesocycleForTerminalTransitionInTransaction(
   tx: LifecycleTx,
   input: {
     mesocycleId: string;
@@ -124,6 +133,10 @@ export async function lockMesocycleForTerminalTransitionInTransaction(
     currentSeedRevisionId: string | null;
   },
 ): Promise<TerminalTransitionLockProof> {
+  await claimSelectedPlanForTransitionInTransaction(tx, {
+    userId: input.userId,
+    macroCycleId: input.macroCycleId,
+  });
   const locked = await tx.mesocycle.updateMany({
     where: {
       id: input.mesocycleId,
@@ -136,14 +149,29 @@ export async function lockMesocycleForTerminalTransitionInTransaction(
   if (locked.count !== 1) {
     throw new Error("V4_SCHEDULE_AUTHORITY_CONFLICT");
   }
-  return {
-    [terminalTransitionLockProof]: true,
+  const proof = Object.freeze({}) as TerminalTransitionLockProof;
+  terminalTransitionLockRegistry.set(proof, {
+    tx,
     mesocycleId: input.mesocycleId,
     macroCycleId: input.macroCycleId,
     userId: input.userId,
     expectedState: input.expectedState,
     currentSeedRevisionId: input.currentSeedRevisionId,
-  };
+  });
+  return proof;
+}
+
+function requireTerminalTransitionLockRecord(
+  tx: LifecycleTx,
+  proof: TerminalTransitionLockProof | undefined,
+): TerminalTransitionLockRecord {
+  const record = proof
+    ? terminalTransitionLockRegistry.get(proof)
+    : undefined;
+  if (!record || record.tx !== tx) {
+    throw new Error("V4_SCHEDULE_AUTHORITY_CONFLICT");
+  }
+  return record;
 }
 
 export type FiniteV4CompletionResult =
@@ -247,18 +275,22 @@ export async function completeFiniteV4PlanInTransaction(
     return { status: "not_v4" };
   }
 
+  const terminalLock = requireTerminalTransitionLockRecord(
+    tx,
+    input.terminalLock,
+  );
+
   const expectedState =
     input.expectedState === "ACTIVE_ACCUMULATION" ||
     input.expectedState === "ACTIVE_DELOAD"
       ? input.expectedState
       : null;
   if (
-    !input.terminalLock ||
     !expectedState ||
-    input.terminalLock.mesocycleId !== input.mesocycleId ||
-    input.terminalLock.expectedState !== expectedState ||
-    input.terminalLock.macroCycleId !== identity.macroCycleId ||
-    input.terminalLock.userId !== identity.macroCycle.userId ||
+    terminalLock.mesocycleId !== input.mesocycleId ||
+    terminalLock.expectedState !== expectedState ||
+    terminalLock.macroCycleId !== identity.macroCycleId ||
+    terminalLock.userId !== identity.macroCycle.userId ||
     identity.state !== expectedState ||
     !identity.isActive ||
     identity.closedAt != null
@@ -328,7 +360,7 @@ export async function completeFiniteV4PlanInTransaction(
     );
   }
   if (
-    input.terminalLock.currentSeedRevisionId !==
+    terminalLock.currentSeedRevisionId !==
     authority.authority.revisionId
   ) {
     throw new Error("V4_SCHEDULE_AUTHORITY_CONFLICT");
@@ -558,26 +590,23 @@ export async function finishMesocycleEarlyInTransaction(
     throw new Error("MESOCYCLE_FINISH_EARLY_NOT_FOUND");
   }
   requireSupportedPlanType(mesocycle.macroCycle?.primaryGoal);
-  await claimSelectedPlanForTransitionInTransaction(tx, {
-    userId: input.userId,
-    macroCycleId: mesocycle.macroCycleId,
-  });
   if (mesocycle.state !== "ACTIVE_ACCUMULATION" || !mesocycle.isActive) {
     throw new Error("MESOCYCLE_FINISH_EARLY_INVALID_STATE");
   }
   if (mesocycle.handoffSummaryJson || mesocycle.nextSeedDraftJson || mesocycle.closedAt) {
     throw new Error("MESOCYCLE_FINISH_EARLY_HANDOFF_EXISTS");
   }
-  const terminalLock = await lockMesocycleForTerminalTransitionInTransaction(
-    tx,
-    {
-      mesocycleId: mesocycle.id,
-      macroCycleId: mesocycle.macroCycleId,
-      userId: input.userId,
-      expectedState: "ACTIVE_ACCUMULATION",
-      currentSeedRevisionId: mesocycle.currentSeedRevisionId,
-    },
-  );
+  const terminalLock =
+    await claimSelectedPlanAndLockMesocycleForTerminalTransitionInTransaction(
+      tx,
+      {
+        mesocycleId: mesocycle.id,
+        macroCycleId: mesocycle.macroCycleId,
+        userId: input.userId,
+        expectedState: "ACTIVE_ACCUMULATION",
+        currentSeedRevisionId: mesocycle.currentSeedRevisionId,
+      },
+    );
 
   const incompleteWorkouts: EarlyFinishWorkoutRow[] = await tx.workout.findMany({
     where: {
@@ -738,10 +767,6 @@ export async function finishDeloadEarlyInTransaction(
     throw new Error("MESOCYCLE_FINISH_DELOAD_NOT_FOUND");
   }
   requireSupportedPlanType(mesocycle.macroCycle?.primaryGoal);
-  await claimSelectedPlanForTransitionInTransaction(tx, {
-    userId: input.userId,
-    macroCycleId: mesocycle.macroCycleId,
-  });
   if (mesocycle.state !== "ACTIVE_DELOAD") {
     throw new Error("MESOCYCLE_FINISH_DELOAD_INVALID_STATE");
   }
@@ -751,16 +776,17 @@ export async function finishDeloadEarlyInTransaction(
   if (mesocycle.handoffSummaryJson || mesocycle.nextSeedDraftJson || mesocycle.closedAt) {
     throw new Error("MESOCYCLE_FINISH_DELOAD_HANDOFF_EXISTS");
   }
-  const terminalLock = await lockMesocycleForTerminalTransitionInTransaction(
-    tx,
-    {
-      mesocycleId: mesocycle.id,
-      macroCycleId: mesocycle.macroCycleId,
-      userId: input.userId,
-      expectedState: "ACTIVE_DELOAD",
-      currentSeedRevisionId: mesocycle.currentSeedRevisionId,
-    },
-  );
+  const terminalLock =
+    await claimSelectedPlanAndLockMesocycleForTerminalTransitionInTransaction(
+      tx,
+      {
+        mesocycleId: mesocycle.id,
+        macroCycleId: mesocycle.macroCycleId,
+        userId: input.userId,
+        expectedState: "ACTIVE_DELOAD",
+        currentSeedRevisionId: mesocycle.currentSeedRevisionId,
+      },
+    );
 
   const incompleteWorkouts: EarlyFinishWorkoutRow[] = await tx.workout.findMany({
     where: {

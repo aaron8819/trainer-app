@@ -95,6 +95,19 @@ export async function POST(
         { status: 409 },
       );
     }
+    if (
+      error instanceof Error &&
+      error.message === "V4_SCHEDULE_AUTHORITY_CONFLICT"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "The accepted workout schedule changed concurrently. Refresh and try again.",
+          code: "V4_SCHEDULE_AUTHORITY_CONFLICT",
+        },
+        { status: 409 },
+      );
+    }
     throw error;
   }
 }

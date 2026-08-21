@@ -116,4 +116,28 @@ describe("PATCH /api/program", () => {
       code: "V4_SCHEDULE_COMPLETION_BLOCKED",
     });
   });
+
+  it("returns a recoverable conflict when finite V4 terminal authority changes", async () => {
+    mocks.applyCycleAnchor.mockRejectedValue(
+      new Error("V4_SCHEDULE_AUTHORITY_CONFLICT"),
+    );
+
+    const response = await PATCH(
+      new NextRequest("http://localhost/api/program", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "end_early" }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    const body = await response.json();
+    expect(body).toEqual({
+      error:
+        "The accepted workout schedule changed concurrently. Refresh and try again.",
+      code: "V4_SCHEDULE_AUTHORITY_CONFLICT",
+    });
+    expect(JSON.stringify(body)).not.toContain("stack");
+    expect(mocks.applyCycleAnchor).toHaveBeenCalledTimes(1);
+  });
 });

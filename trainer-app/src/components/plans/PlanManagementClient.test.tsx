@@ -1,8 +1,22 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PlanManagementData, PlanSummary } from "@/lib/api/plan-management";
+import {
+  loadPlanManagementData,
+  type PlanManagementData,
+  type PlanSummary,
+} from "@/lib/api/plan-management";
+import { buildV4CustomPlanReferenceAcceptedSeed } from "@/lib/engine/hypertrophy-plan-authoring-v4.fixture";
+import { normalizeAcceptedSeedPayload } from "@/lib/api/mesocycle-seed-revision";
 import { PlanManagementClient } from "./PlanManagementClient";
+
+const dbMocks = vi.hoisted(() => ({ userFindUnique: vi.fn() }));
+
+vi.mock("@/lib/db/prisma", () => ({
+  prisma: {
+    user: { findUnique: dbMocks.userFindUnique },
+  },
+}));
 
 const router = {
   push: vi.fn(),
@@ -127,6 +141,81 @@ describe("PlanManagementClient", () => {
     );
     expect(screen.getByRole("button", { name: "Make active" })).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Archive" })).toHaveLength(2);
+  });
+
+  it("renders editable-copy action from the owning read model's highest exact accepted revision", async () => {
+    const accepted = buildV4CustomPlanReferenceAcceptedSeed();
+    const normalized = normalizeAcceptedSeedPayload(accepted);
+    const timestamp = new Date("2026-07-01T00:00:00.000Z");
+    dbMocks.userFindUnique.mockResolvedValue({
+      activeMacroCycleId: "plan-complete",
+      macroCycles: [
+        {
+          id: "plan-complete",
+          name: "Five Week Builder",
+          primaryGoal: "HYPERTROPHY",
+          startDate: timestamp,
+          endDate: new Date("2026-09-09T00:00:00.000Z"),
+          durationWeeks: 10,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          hypertrophyDraft: null,
+          mesocycles: [
+            {
+              id: "meso-1",
+              mesoNumber: 1,
+              state: "COMPLETED",
+              isActive: false,
+              sessionsPerWeek: 4,
+              currentSeedRevisionId: null,
+              currentSeedRevision: null,
+            },
+            {
+              id: "meso-2",
+              mesoNumber: 2,
+              state: "COMPLETED",
+              isActive: false,
+              sessionsPerWeek: 4,
+              currentSeedRevisionId: "revision-2",
+              currentSeedRevision: {
+                id: "revision-2",
+                mesocycleId: "meso-2",
+                revision: 1,
+                seedPayload: accepted,
+                payloadHash: normalized.hash,
+                hashAlgorithm: "sha256",
+                provenanceStatus: "exact",
+              },
+            },
+          ],
+        },
+      ],
+    });
+    const initialData = await loadPlanManagementData("user-1", {
+      includeCustomDrafts: true,
+    });
+
+    render(
+      <PlanManagementClient
+        initialData={initialData}
+        customHypertrophyEnabled
+      />,
+    );
+
+    expect(screen.getByText("Completed")).toBeInTheDocument();
+    expect(screen.getByText("Selected")).toBeInTheDocument();
+    expect(screen.getByText("Selected and completed")).toBeInTheDocument();
+    expect(
+      screen.getByText("Five Week Builder").closest("article"),
+    ).not.toHaveTextContent("Active");
+    expect(screen.getByRole("link", { name: "View plan" })).toHaveAttribute(
+      "href",
+      "/plans/plan-complete/review",
+    );
+    expect(
+      screen.getByRole("button", { name: "Create editable copy" }),
+    ).toBeInTheDocument();
+    expect(initialData.plans[0]?.editableCopyAvailable).toBe(true);
   });
 
   it("keeps weekly authoring absent when the custom-plan flag is off", () => {

@@ -96,14 +96,16 @@ vi.mock("@/components/RecentWorkouts", () => ({
     heading,
     showDeleteActions,
     showCount,
+    viewOnly,
     viewAllLabel,
   }: {
     heading?: string;
     showDeleteActions?: boolean;
     showCount?: boolean;
+    viewOnly?: boolean;
     viewAllLabel?: string;
   }) => (
-    <div>{`RecentWorkouts:${heading ?? "Recent Workouts"}:${String(showDeleteActions)}:${String(showCount)}:${viewAllLabel ?? "View all"}`}</div>
+    <div>{`RecentWorkouts:${heading ?? "Recent Workouts"}:${String(showDeleteActions)}:${String(showCount)}:${String(viewOnly)}:${viewAllLabel ?? "View all"}`}</div>
   ),
 }));
 
@@ -269,6 +271,44 @@ describe("Home page", () => {
     vi.clearAllMocks();
   });
 
+  it("renders selected-plan completion without active training or readiness controls", async () => {
+    mocks.loadHomePageData.mockResolvedValueOnce({
+      pendingHandoff: null,
+      completedPlan: {
+        id: "plan-complete",
+        name: "Five Week Builder",
+        lastClosedAt: "2026-08-20T12:00:00.000Z",
+      },
+      programData: null,
+      homeProgram: null,
+      primaryAction: null,
+      decision: null,
+      continuity: null,
+      closeout: null,
+      preSessionReadinessCard: null,
+      headerContext: "This training plan is complete.",
+      recentActivity: [],
+    });
+
+    const { default: HomePage } = await import("./page");
+    render(await HomePage());
+
+    expect(screen.getByRole("heading", { name: "Plan complete" })).toBeInTheDocument();
+    expect(screen.getByText("This training plan is complete.")).toBeInTheDocument();
+    expect(screen.getByText("Choose your next plan when you're ready.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Choose next plan" })).toHaveAttribute(
+      "href",
+      "/plans",
+    );
+    expect(screen.queryByText(/DashboardGenerateSection/)).toBeNull();
+    expect(screen.queryByText(/HomePreSessionReadinessPanel/)).toBeNull();
+    expect(
+      screen.getByText(
+        "RecentWorkouts:Recent Activity:false:false:true:Open History",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("renders the action-first Home structure without the old Explore or Next Session card", async () => {
     const { default: HomePage } = await import("./page");
     const ui = await HomePage();
@@ -295,7 +335,7 @@ describe("Home page", () => {
     expect(screen.getAllByText("Upcoming")).toHaveLength(2);
     expect(screen.getByText("ProgramStatusCard:homeCompact")).toBeInTheDocument();
     expect(
-      screen.getByText("RecentWorkouts:Recent Activity:false:false:Open History")
+      screen.getByText("RecentWorkouts:Recent Activity:false:false:undefined:Open History")
     ).toBeInTheDocument();
     expect(screen.queryByText("Explore")).not.toBeInTheDocument();
     expect(screen.queryByText("Next Session")).not.toBeInTheDocument();

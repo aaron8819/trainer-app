@@ -32,6 +32,7 @@ import {
   loadCurrentHomePreSessionReadinessContractCandidate,
   resolveHomePreSessionReadinessContract,
 } from "./home-pre-session-readiness";
+import { resolveActivePlanContext } from "./active-plan-context";
 
 export type HomeDecisionSummary = {
   nextSessionLabel: string | null;
@@ -117,6 +118,11 @@ function formatCloseoutTitle(
 
 export type HomePageData = {
   pendingHandoff: Awaited<ReturnType<typeof loadPendingMesocycleHandoff>>;
+  completedPlan?: {
+    id: string;
+    name: string;
+    lastClosedAt: string | null;
+  } | null;
   programData: ProgramDashboardData | null;
   homeProgram: HomeProgramSupportData | null;
   primaryAction: HomePrimaryAction | null;
@@ -653,10 +659,72 @@ export async function loadHomePageData(
   if (fixture?.home) {
     return fixture.home;
   }
-  const preSessionReadinessCard = await loadHomePreSessionReadinessCard({
-    userId,
-    readinessInput,
-  });
+  const activePlanContext = await resolveActivePlanContext(userId);
+
+  if (activePlanContext.status === "COMPLETED") {
+    const [owner, latestCompletedRow, recentActivityRows] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: { activeMacroCycleId: true },
+      }),
+      prisma.workout.findFirst({
+        where: { userId, status: "COMPLETED" },
+        orderBy: { completedAt: "desc" },
+        select: workoutListItemSelect,
+      }),
+      prisma.workout.findMany({
+        where: {
+          userId,
+          status: { in: ["COMPLETED", "PARTIAL", "SKIPPED"] },
+        },
+        orderBy: { scheduledDate: "desc" },
+        take: 10,
+        select: workoutListItemSelect,
+      }),
+    ]);
+    const lastCompleted = latestCompletedRow
+      ? buildWorkoutListSurfaceSummary(latestCompletedRow, {
+          activeMacroCycleId: owner?.activeMacroCycleId ?? null,
+        })
+      : null;
+    const recentActivity = recentActivityRows
+      .filter(
+        (workout) =>
+          workout.status === "COMPLETED" ||
+          workout.status === "PARTIAL" ||
+          workout.status === "SKIPPED",
+      )
+      .map((workout) =>
+        buildWorkoutListSurfaceSummary(workout, {
+          activeMacroCycleId: owner?.activeMacroCycleId ?? null,
+        }),
+      )
+      .filter((workout) => !workout.isCloseoutDismissed)
+      .slice(0, 3);
+
+    return {
+      pendingHandoff: null,
+      completedPlan: {
+        id: activePlanContext.activeMacroCycle.id,
+        name: activePlanContext.activeMacroCycle.name,
+        lastClosedAt: activePlanContext.lastClosedAt?.toISOString() ?? null,
+      },
+      programData: null,
+      homeProgram: null,
+      primaryAction: null,
+      decision: null,
+      continuity: buildContinuitySummary({
+        lastCompleted,
+        decision: null,
+        homeProgram: null,
+        suppressScheduleClaims: true,
+      }),
+      closeout: null,
+      preSessionReadinessCard: null,
+      headerContext: "This training plan is complete.",
+      recentActivity,
+    };
+  }
 
   const [owner, pendingHandoff, latestCompletedRow, recentActivityRows] = await Promise.all([
     prisma.user.findUnique({
@@ -694,6 +762,7 @@ export async function loadHomePageData(
   if (pendingHandoff) {
     return {
       pendingHandoff,
+      completedPlan: null,
       programData: null,
       homeProgram: null,
       primaryAction: {
@@ -710,15 +779,16 @@ export async function loadHomePageData(
         suppressScheduleClaims: false,
       }),
       closeout: null,
-      preSessionReadinessCard,
+      preSessionReadinessCard: null,
       headerContext: "Training is paused until you accept the next cycle.",
       recentActivity,
     };
   }
 
-  const [programData, homeProgram] = await Promise.all([
+  const [programData, homeProgram, preSessionReadinessCard] = await Promise.all([
     loadProgramDashboardData(userId),
     loadHomeProgramSupport(userId),
+    loadHomePreSessionReadinessCard({ userId, readinessInput }),
   ]);
   const { decision, closeout, primaryAction } =
     buildHomeProgramReadModel(homeProgram);
@@ -726,6 +796,7 @@ export async function loadHomePageData(
 
   return {
     pendingHandoff: null,
+    completedPlan: null,
     programData,
     homeProgram,
     primaryAction,

@@ -14,10 +14,14 @@ vi.mock("@/lib/api/workout-context", () => ({
   provisionOwnerForMutation: (...args: unknown[]) => mocks.provisionOwnerForMutation(...args),
 }));
 
-vi.mock("@/lib/api/mesocycle-lifecycle", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/api/mesocycle-lifecycle")>();
+vi.mock("@/lib/api/mesocycle-lifecycle", () => {
+  class FinishDeloadEarlyBlockedWorkoutError extends Error {
+    constructor(readonly workoutIds: string[]) {
+      super("MESOCYCLE_FINISH_DELOAD_BLOCKED_WORKOUTS");
+    }
+  }
   return {
-    ...actual,
+    FinishDeloadEarlyBlockedWorkoutError,
     finishDeloadEarly: (...args: unknown[]) => mocks.finishDeloadEarly(...args),
   };
 });
@@ -140,5 +144,48 @@ describe("POST /api/mesocycles/[id]/finish-deload", () => {
         "Resolve incomplete workouts with performed logs or unclear deload scope before finishing deload early.",
       workoutIds: ["workout-1"],
     });
+  });
+
+  it("returns a recoverable conflict when finite V4 completion proof blocks", async () => {
+    mocks.finishDeloadEarly.mockRejectedValue(
+      new Error(
+        "V4_SCHEDULE_COMPLETION_BLOCKED:accepted_revision_hash_mismatch",
+      ),
+    );
+
+    const response = await POST(
+      new Request("http://localhost/api/mesocycles/meso-1/finish-deload", {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: "meso-1" }) },
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "V4_SCHEDULE_COMPLETION_BLOCKED",
+    });
+  });
+
+  it("returns a recoverable conflict when finite V4 terminal authority changes", async () => {
+    mocks.finishDeloadEarly.mockRejectedValue(
+      new Error("V4_SCHEDULE_AUTHORITY_CONFLICT"),
+    );
+
+    const response = await POST(
+      new Request("http://localhost/api/mesocycles/meso-1/finish-deload", {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: "meso-1" }) },
+    );
+
+    expect(response.status).toBe(409);
+    const body = await response.json();
+    expect(body).toEqual({
+      error:
+        "The accepted workout schedule changed concurrently. Refresh and try again.",
+      code: "V4_SCHEDULE_AUTHORITY_CONFLICT",
+    });
+    expect(JSON.stringify(body)).not.toContain("stack");
+    expect(mocks.finishDeloadEarly).toHaveBeenCalledTimes(1);
   });
 });

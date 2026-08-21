@@ -59,6 +59,9 @@ function formatDate(value: string): string {
 }
 
 function planGroup(plan: PlanSummary): { rank: number; label: string } {
+  if (plan.isActive && plan.status === "COMPLETED") {
+    return { rank: 0, label: "Selected and completed" };
+  }
   if (plan.isActive) return { rank: 0, label: "Active plan" };
   if (plan.status === "DRAFT") return { rank: 1, label: "Drafts" };
   if (plan.status === "READY") return { rank: 2, label: "Ready to activate" };
@@ -399,7 +402,7 @@ export function PlanManagementClient({
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Your plans</h2>
           <p className="mt-1 text-sm text-slate-600">
-            Only the plan marked Active drives Home, Program, and new workouts.
+            Your selected plan determines Home and Program. New workouts require a ready plan.
           </p>
         </div>
         <Button
@@ -761,7 +764,7 @@ export function PlanManagementClient({
               ) : null}
               <article
                 className={`rounded-2xl border p-4 sm:p-5 ${
-                  plan.isActive
+                  plan.isActive && plan.status !== "COMPLETED"
                     ? "border-blue-300 bg-blue-50/40 ring-1 ring-blue-200"
                     : "border-slate-200 bg-white"
                 }`}
@@ -773,7 +776,11 @@ export function PlanManagementClient({
                         {plan.name}
                       </h3>
                       {plan.isActive ? (
-                        <StatusBadge tone="positive">Active</StatusBadge>
+                        <StatusBadge
+                          tone={plan.status === "COMPLETED" ? "neutral" : "positive"}
+                        >
+                          {plan.status === "COMPLETED" ? "Selected" : "Active"}
+                        </StatusBadge>
                       ) : null}
                       <StatusBadge tone="neutral">
                         {planTypeLabel(plan.primaryGoal)}
@@ -855,6 +862,17 @@ export function PlanManagementClient({
                         })}
                       >
                         View program
+                      </Link>
+                    ) : null}
+                    {plan.status === "COMPLETED" ? (
+                      <Link
+                        href={`/plans/${plan.id}/review`}
+                        className={buttonClassName({
+                          variant: "secondary",
+                          size: "touch",
+                        })}
+                      >
+                        View plan
                       </Link>
                     ) : null}
                     {customHypertrophyEnabled && plan.editableCopyAvailable ? (

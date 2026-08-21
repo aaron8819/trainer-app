@@ -28,7 +28,6 @@ import {
   applyV4TerminalScheduleResolution,
   buildWeekCloseResponse,
   deriveMesoSnapshotForSave,
-  lockV4MesocycleForScheduleResolution,
   resolveV4ScheduleBeforeWorkoutCreation,
   resolveMesocycleForWorkoutSave,
   resolvePersistedAdvancesSplit,
@@ -65,7 +64,12 @@ import { isCloseoutSession } from "@/lib/session-semantics/closeout-classifier";
 import { isStrictSupplementalDeficitSession } from "@/lib/session-semantics/supplemental-classifier";
 import type { SaveWorkoutResponse } from "@/lib/api/workout-save-contract";
 import { createPostSessionReviewSnapshotInTransaction } from "@/lib/api/post-session-review-snapshot";
-import { resolveActivePlanContextInTransaction } from "@/lib/api/mesocycle-lifecycle-state";
+import {
+  claimSelectedPlanAndLockMesocycleForTerminalTransitionInTransaction,
+  claimSelectedPlanForTransitionInTransaction,
+  resolveActivePlanContextInTransaction,
+  type TerminalTransitionLockProof,
+} from "@/lib/api/mesocycle-lifecycle-state";
 import {
   fingerprintShortTodaySaveExercises,
   validateAndCanonicalizeShortTodaySave,
@@ -80,6 +84,56 @@ import {
   type V4ScheduleAuthority,
 } from "@/lib/api/v4-scheduled-slot-resolution";
 import { getWorkoutStatusPolicy } from "@/lib/workout-status";
+
+const workoutForSaveSelect = {
+  id: true,
+  userId: true,
+  status: true,
+  scheduledDate: true,
+  completedAt: true,
+  revision: true,
+  mesocycleId: true,
+  mesocycleWeekSnapshot: true,
+  mesocyclePhaseSnapshot: true,
+  mesoSessionSnapshot: true,
+  advancesSplit: true,
+  selectionMode: true,
+  sessionIntent: true,
+  selectionMetadata: true,
+  seedRevisionId: true,
+  seedRevisionNumber: true,
+  seedPayloadHash: true,
+} satisfies Prisma.WorkoutSelect;
+
+const terminalWorkoutForSaveSelect = {
+  ...workoutForSaveSelect,
+  exercises: {
+    select: {
+      sets: {
+        select: {
+          logs: {
+            orderBy: { completedAt: "desc" as const },
+            take: 1,
+            select: {
+              wasSkipped: true,
+              actualReps: true,
+              actualRpe: true,
+              actualLoad: true,
+            },
+          },
+        },
+      },
+    },
+  },
+} satisfies Prisma.WorkoutSelect;
+
+type WorkoutForSave = Prisma.WorkoutGetPayload<{
+  select: typeof workoutForSaveSelect;
+}>;
+
+type TerminalWorkoutForSave = Prisma.WorkoutGetPayload<{
+  select: typeof terminalWorkoutForSaveSelect;
+}>;
 
 export async function POST(request: Request) {
   const paused = productionWritePauseResponse("workout_save", "/api/workouts/save");
@@ -120,28 +174,76 @@ export async function POST(request: Request) {
 
   try {
     await prisma.$transaction(async (tx) => {
-      const loadedWorkout = await tx.workout.findUnique({
-        where: { id: workoutId },
-        select: {
-          id: true,
-          userId: true,
-          status: true,
-          scheduledDate: true,
-          completedAt: true,
-          revision: true,
-          mesocycleId: true,
-          mesocycleWeekSnapshot: true,
-          mesocyclePhaseSnapshot: true,
-          mesoSessionSnapshot: true,
-          advancesSplit: true,
-          selectionMode: true,
-          sessionIntent: true,
-          selectionMetadata: true,
-          seedRevisionId: true,
-          seedRevisionNumber: true,
-          seedPayloadHash: true,
-        },
-      });
+      const isTerminalIntent =
+        action === "mark_completed" || action === "mark_skipped";
+      let terminalMesocycleResolution: Awaited<
+        ReturnType<typeof resolveMesocycleForWorkoutSave>
+      > | null = null;
+      let terminalTransitionLock: TerminalTransitionLockProof | null = null;
+      let terminalEvidenceMetrics: ReturnType<
+        typeof buildCompletedWorkoutMetrics
+      > | null = null;
+
+      let loadedWorkout: WorkoutForSave | TerminalWorkoutForSave | null;
+      if (isTerminalIntent) {
+        const discoveredWorkout = await tx.workout.findFirst({
+          where: { id: workoutId, userId: user.id },
+          select: { id: true, mesocycleId: true },
+        });
+        if (!discoveredWorkout) {
+          throw new Error("WORKOUT_NOT_FOUND");
+        }
+
+        terminalMesocycleResolution = await resolveMesocycleForWorkoutSave(tx, {
+          userId: user.id,
+          existingMesocycleId: discoveredWorkout.mesocycleId,
+          shouldResolve:
+            Boolean(discoveredWorkout.mesocycleId) || action === "mark_completed",
+          shouldRequireForPerformedTransition: action === "mark_completed",
+          claimSelectedPlan: false,
+        });
+        const terminalMesocycle =
+          terminalMesocycleResolution.resolvedMesocycle;
+        if (terminalMesocycle) {
+          if (
+            terminalMesocycle.state !== "ACTIVE_ACCUMULATION" &&
+            terminalMesocycle.state !== "ACTIVE_DELOAD"
+          ) {
+            throw new Error("V4_SCHEDULE_AUTHORITY_CONFLICT");
+          }
+          terminalTransitionLock =
+            await claimSelectedPlanAndLockMesocycleForTerminalTransitionInTransaction(
+              tx,
+              {
+                mesocycleId: terminalMesocycle.id,
+                macroCycleId: terminalMesocycle.macroCycleId,
+                userId: user.id,
+                expectedState: terminalMesocycle.state,
+                currentSeedRevisionId:
+                  terminalMesocycle.currentSeedRevisionId ?? null,
+              },
+            );
+        }
+
+        const terminalWorkout = await tx.workout.findUnique({
+          where: { id: workoutId },
+          select: terminalWorkoutForSaveSelect,
+        });
+        if (
+          !terminalWorkout ||
+          terminalWorkout.userId !== user.id ||
+          terminalWorkout.mesocycleId !== discoveredWorkout.mesocycleId
+        ) {
+          throw new Error("WORKOUT_NOT_FOUND");
+        }
+        loadedWorkout = terminalWorkout;
+        terminalEvidenceMetrics = buildCompletedWorkoutMetrics(terminalWorkout);
+      } else {
+        loadedWorkout = await tx.workout.findUnique({
+          where: { id: workoutId },
+          select: workoutForSaveSelect,
+        });
+      }
       if (loadedWorkout && loadedWorkout.userId !== user.id) {
         throw new Error("WORKOUT_NOT_FOUND");
       }
@@ -281,45 +383,14 @@ export async function POST(request: Request) {
 
       let completedMetrics;
       if (action === "mark_completed") {
-        const snapshot = await tx.workout.findUnique({
-          where: { id: workoutId },
-          include: {
-            exercises: {
-              include: {
-                sets: {
-                  include: {
-                    logs: { orderBy: { completedAt: "desc" }, take: 1 },
-                  },
-                },
-              },
-            },
-          },
-        });
-        if (!snapshot) {
-          throw new Error("WORKOUT_NOT_FOUND");
-        }
-
-        completedMetrics = buildCompletedWorkoutMetrics(snapshot);
-
+        completedMetrics = terminalEvidenceMetrics!;
       } else if (action === "mark_skipped") {
-        const performedSetLogCount = await tx.setLog.count({
-          where: {
-            wasSkipped: false,
-            workoutSet: {
-              workoutExercise: { workoutId },
-            },
-            OR: [
-              { actualReps: { not: null } },
-              { actualRpe: { not: null } },
-              { actualLoad: { not: null } },
-            ],
-          },
-        });
         completedMetrics = {
           allSetsCount: 0,
           resolvedSignalSetCount: 0,
           effectiveSetCount: 0,
-          performedSetLogCount,
+          performedSetLogCount:
+            terminalEvidenceMetrics!.performedSetLogCount,
         };
       }
       finalStatus = resolveFinalStatus({
@@ -372,12 +443,14 @@ export async function POST(request: Request) {
         shouldTransitionPerformed ||
         shouldSetPlannedMesoSnapshot;
       const { resolvedMesocycleId, resolvedMesocycle } =
-        await resolveMesocycleForWorkoutSave(tx, {
+        terminalMesocycleResolution ??
+        (await resolveMesocycleForWorkoutSave(tx, {
           userId: user.id,
           existingMesocycleId: existingWorkout?.mesocycleId,
           shouldResolve: shouldResolveMesocycleForSaveFence,
           shouldRequireForPerformedTransition: shouldTransitionPerformed,
-        });
+          claimSelectedPlan: false,
+        }));
       if (
         receipt.sessionProvenance?.mesocycleId &&
         receipt.sessionProvenance.mesocycleId !== resolvedMesocycleId
@@ -428,10 +501,25 @@ export async function POST(request: Request) {
             }
             effectiveSessionIntent =
               v4RequiredSlot.intent.toUpperCase() as WorkoutSessionIntent;
-            await lockV4MesocycleForScheduleResolution(tx, {
-              mesocycle: resolvedMesocycle,
-              authority: v4ScheduleAuthority,
-            });
+            if (!terminalTransitionLock) {
+              if (
+                resolvedMesocycle.state !== "ACTIVE_ACCUMULATION" &&
+                resolvedMesocycle.state !== "ACTIVE_DELOAD"
+              ) {
+                throw new Error("V4_SCHEDULE_AUTHORITY_CONFLICT");
+              }
+              terminalTransitionLock =
+                await claimSelectedPlanAndLockMesocycleForTerminalTransitionInTransaction(
+                  tx,
+                  {
+                    mesocycleId: resolvedMesocycle.id,
+                    macroCycleId: resolvedMesocycle.macroCycleId,
+                    userId: user.id,
+                    expectedState: resolvedMesocycle.state,
+                    currentSeedRevisionId: v4ScheduleAuthority.revisionId,
+                  },
+                );
+            }
             if (!existingWorkout) {
               await resolveV4ScheduleBeforeWorkoutCreation(tx, {
                 authority: v4ScheduleAuthority,
@@ -439,6 +527,12 @@ export async function POST(request: Request) {
               });
             }
           }
+        }
+        if (!terminalTransitionLock) {
+          await claimSelectedPlanForTransitionInTransaction(tx, {
+            userId: user.id,
+            macroCycleId: resolvedMesocycle.macroCycleId,
+          });
         }
       }
       const effectiveAdvancesSplit = v4RequiredSlot
@@ -602,6 +696,7 @@ export async function POST(request: Request) {
           resolvedMesocycle: resolvedMesocycle!,
           authority: v4ScheduleAuthority,
           finalStatus,
+          terminalLock: terminalTransitionLock!,
         });
       } else if (
         !v4ScheduleAuthority &&

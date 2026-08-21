@@ -15,6 +15,7 @@ import {
   type WeeklyPrescriptionV4,
 } from "@/lib/engine/hypertrophy-plan-authoring";
 import { buildV4CustomPlanReferenceAcceptedSeed } from "@/lib/engine/hypertrophy-plan-authoring-v4.fixture";
+import { normalizeAcceptedSeedPayload } from "./mesocycle-seed-revision";
 import { buildRevisedFourDayPlanSubmittedDraft } from "@/lib/engine/hypertrophy-plan-authoring-v4-revised.fixture";
 import {
   buildExpectedRevisedFourDayAcceptedSeed,
@@ -118,6 +119,50 @@ import {
   toAuthoringExercise,
   type HypertrophyPlanDraftExerciseRow,
 } from "./hypertrophy-plan-drafts";
+
+function acceptedCopySource(
+  seedPayload: unknown,
+  options: {
+    id?: string;
+    mesoNumber?: number;
+    state?: "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "COMPLETED";
+    isActive?: boolean;
+    additionalMesocycles?: Array<Record<string, unknown>>;
+    currentSeedRevisionId?: string;
+  } = {},
+) {
+  let payloadHash = "invalid";
+  try {
+    payloadHash = normalizeAcceptedSeedPayload(seedPayload).hash;
+  } catch {
+    // Invalid payload fixtures must still reach the production fail-closed path.
+  }
+  const id = options.id ?? "meso-source";
+  const revisionId = `revision-${id}`;
+  return {
+    trainingAge: "INTERMEDIATE",
+    mesocycles: [
+      {
+        id,
+        mesoNumber: options.mesoNumber ?? 1,
+        state: options.state ?? "ACTIVE_ACCUMULATION",
+        isActive: options.isActive ?? options.state !== "COMPLETED",
+        currentSeedRevisionId:
+          options.currentSeedRevisionId ?? revisionId,
+        currentSeedRevision: {
+          id: revisionId,
+          mesocycleId: id,
+          revision: 1,
+          seedPayload,
+          payloadHash,
+          hashAlgorithm: "sha256",
+          provenanceStatus: "exact",
+        },
+      },
+      ...(options.additionalMesocycles ?? []),
+    ],
+  };
+}
 
 type CatalogRow = {
   name: string;
@@ -3496,10 +3541,9 @@ describe("custom hypertrophy draft persistence", () => {
         })),
       })),
     };
-    mocks.prisma.macroCycle.findFirst.mockResolvedValueOnce({
-      trainingAge: "INTERMEDIATE",
-      mesocycles: [{ currentSeedRevision: { seedPayload: accepted } }],
-    });
+    mocks.prisma.macroCycle.findFirst.mockResolvedValueOnce(
+      acceptedCopySource(accepted),
+    );
     mocks.prisma.macroCycle.create.mockResolvedValue({});
     await createEditableHypertrophyPlanCopy({
       userId: "user-1",
@@ -3543,10 +3587,9 @@ describe("custom hypertrophy draft persistence", () => {
         })),
       })),
     };
-    mocks.prisma.macroCycle.findFirst.mockResolvedValueOnce({
-      trainingAge: "INTERMEDIATE",
-      mesocycles: [{ currentSeedRevision: { seedPayload: accepted } }],
-    });
+    mocks.prisma.macroCycle.findFirst.mockResolvedValueOnce(
+      acceptedCopySource(accepted),
+    );
     mocks.prisma.macroCycle.create.mockResolvedValue({});
 
     await createEditableHypertrophyPlanCopy({
@@ -3585,10 +3628,9 @@ describe("custom hypertrophy draft persistence", () => {
     { version: 3, source: "custom_hypertrophy_plan_v1", slots: [] },
     { version: 4, source: "custom_hypertrophy_plan_v1", slots: [] },
   ])("rejects an invalid accepted copy source before creating a draft", async (seedPayload) => {
-    mocks.prisma.macroCycle.findFirst.mockResolvedValueOnce({
-      trainingAge: "INTERMEDIATE",
-      mesocycles: [{ currentSeedRevision: { seedPayload } }],
-    });
+    mocks.prisma.macroCycle.findFirst.mockResolvedValueOnce(
+      acceptedCopySource(seedPayload),
+    );
 
     await expect(
       createEditableHypertrophyPlanCopy({
@@ -3599,4 +3641,115 @@ describe("custom hypertrophy draft persistence", () => {
     ).rejects.toMatchObject({ code: "PLAN_COPY_UNAVAILABLE" });
     expect(mocks.prisma.macroCycle.create).not.toHaveBeenCalled();
   });
+
+  it("copies the latest completed mesocycle from its exact current accepted revision", async () => {
+    const accepted = buildV4CustomPlanReferenceAcceptedSeed();
+    mocks.prisma.macroCycle.findFirst.mockResolvedValueOnce(
+      acceptedCopySource(accepted, {
+        id: "meso-completed",
+        mesoNumber: 2,
+        state: "COMPLETED",
+        isActive: false,
+        additionalMesocycles: [
+          {
+            ...acceptedCopySource(accepted, {
+              id: "meso-older",
+              mesoNumber: 1,
+              state: "COMPLETED",
+              isActive: false,
+            }).mesocycles[0],
+          },
+        ],
+      }),
+    );
+    mocks.prisma.macroCycle.create.mockResolvedValue({});
+
+    await createEditableHypertrophyPlanCopy({
+      userId: "user-1",
+      sourcePlanId: "source-plan",
+      name: "Completed plan copy",
+    });
+
+    expect(mocks.prisma.macroCycle.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects ambiguous or pointer-mismatched completed copy sources", async () => {
+    const accepted = buildV4CustomPlanReferenceAcceptedSeed();
+    const ambiguous = acceptedCopySource(accepted, {
+      id: "meso-a",
+      mesoNumber: 2,
+      state: "COMPLETED",
+      isActive: false,
+      additionalMesocycles: [
+        acceptedCopySource(accepted, {
+          id: "meso-b",
+          mesoNumber: 2,
+          state: "COMPLETED",
+          isActive: false,
+        }).mesocycles[0],
+      ],
+    });
+    mocks.prisma.macroCycle.findFirst.mockResolvedValueOnce(ambiguous);
+
+    await expect(
+      createEditableHypertrophyPlanCopy({
+        userId: "user-1",
+        sourcePlanId: "source-plan",
+        name: "Ambiguous copy",
+      }),
+    ).rejects.toMatchObject({ code: "PLAN_COPY_UNAVAILABLE" });
+
+    mocks.prisma.macroCycle.findFirst.mockResolvedValueOnce(
+      acceptedCopySource(accepted, {
+        state: "COMPLETED",
+        isActive: false,
+        currentSeedRevisionId: "different-revision",
+      }),
+    );
+    await expect(
+      createEditableHypertrophyPlanCopy({
+        userId: "user-1",
+        sourcePlanId: "source-plan",
+        name: "Mismatched copy",
+      }),
+    ).rejects.toMatchObject({ code: "PLAN_COPY_UNAVAILABLE" });
+    expect(mocks.prisma.macroCycle.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["AWAITING_HANDOFF", true],
+    ["ACTIVE_ACCUMULATION", false],
+  ] as const)(
+    "rejects an earlier completed copy source when the latest mesocycle is %s",
+    async (latestState, latestIsActive) => {
+      const accepted = buildV4CustomPlanReferenceAcceptedSeed();
+      const earlier = acceptedCopySource(accepted, {
+        id: "meso-1",
+        mesoNumber: 1,
+        state: "COMPLETED",
+        isActive: false,
+      }).mesocycles[0];
+      const latest = {
+        ...acceptedCopySource(accepted, {
+          id: "meso-2",
+          mesoNumber: 2,
+        }).mesocycles[0],
+        state: latestState,
+        isActive: latestIsActive,
+      };
+      mocks.prisma.macroCycle.findFirst.mockResolvedValueOnce({
+        trainingAge: "INTERMEDIATE",
+        mesocycles: [latest, earlier],
+      });
+
+      await expect(
+        createEditableHypertrophyPlanCopy({
+          userId: "user-1",
+          sourcePlanId: "source-plan",
+          name: "Stale completed copy",
+        }),
+      ).rejects.toMatchObject({ code: "PLAN_COPY_UNAVAILABLE" });
+      expect(mocks.prisma.macroCycle.create).not.toHaveBeenCalled();
+    },
+  );
 });

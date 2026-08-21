@@ -21,6 +21,7 @@ type Props = {
   heading?: string;
   showCount?: boolean;
   showDeleteActions?: boolean;
+  viewOnly?: boolean;
   viewAllLabel?: string;
 };
 
@@ -29,6 +30,7 @@ export default function RecentWorkouts({
   heading = "Recent Workouts",
   showCount = true,
   showDeleteActions = true,
+  viewOnly = false,
   viewAllLabel = "View all",
 }: Props) {
   const router = useRouter();
@@ -100,8 +102,17 @@ export default function RecentWorkouts({
                   >
                     {getWorkoutListDisplayStatusLabel(workout)}
                   </span>
-                  <WorkoutRowActions workout={workout} />
-                  {showDeleteActions ? (
+                  {viewOnly ? (
+                    <Link
+                      href={`/workout/${workout.id}`}
+                      className="text-sm font-semibold text-slate-900 underline"
+                    >
+                      View
+                    </Link>
+                  ) : (
+                    <WorkoutRowActions workout={workout} />
+                  )}
+                  {showDeleteActions && !viewOnly ? (
                     <DeleteWorkoutButton
                       workoutId={workout.id}
                       expectedRevision={workout.revision}

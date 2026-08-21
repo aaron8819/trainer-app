@@ -138,6 +138,7 @@ type BaseMesoRecord = {
   currentSeedRevisionId?: string | null;
   currentSeedRevision?: {
     id: string;
+    mesocycleId: string;
     revision: number;
     seedPayload: unknown;
     payloadHash: string;
@@ -326,13 +327,15 @@ function setupDashboardMocks(
   mocks.findRelevantWeekCloseForUser.mockResolvedValue(null);
 }
 
+const V4_HOME_SEED_HASH =
+  "3d4e807cbafdb89bd52dc0fb475842b8c18761e2212967614e41acf5e22913b9";
+
 function buildV4HomeFixture(input: {
   status: "PLANNED" | "IN_PROGRESS" | "PARTIAL" | "COMPLETED" | "SKIPPED";
   includeScheduledReceipt: boolean;
   releasedShape?: boolean;
 }) {
-  const hash =
-    "3d4e807cbafdb89bd52dc0fb475842b8c18761e2212967614e41acf5e22913b9";
+  const hash = V4_HOME_SEED_HASH;
   const slotSequenceJson = {
     version: 1,
     source: "custom_hypertrophy_plan_v2",
@@ -411,6 +414,7 @@ function buildV4HomeFixture(input: {
     currentSeedRevisionId: "revision-v4",
     currentSeedRevision: {
       id: "revision-v4",
+      mesocycleId: "meso-v4",
       revision: 1,
       seedPayload: buildV4CustomPlanReferenceAcceptedSeed(),
       payloadHash: hash,
@@ -436,6 +440,21 @@ function buildV4HomeFixture(input: {
     seedPayloadHash: hash,
   };
   return { mesocycle, workout };
+}
+
+function expectValidV4HomeAuthority(
+  mesocycle: ReturnType<typeof buildV4HomeFixture>["mesocycle"],
+) {
+  expect(mesocycle.currentSeedRevisionId).toBe(
+    mesocycle.currentSeedRevision.id,
+  );
+  expect(mesocycle.currentSeedRevision).toMatchObject({
+    mesocycleId: mesocycle.id,
+    revision: 1,
+    payloadHash: V4_HOME_SEED_HASH,
+    hashAlgorithm: "sha256",
+    provenanceStatus: "exact",
+  });
 }
 
 describe("computeMesoWeekStart", () => {
@@ -1093,6 +1112,7 @@ describe("loadHomeProgramSupport", () => {
       status: "SKIPPED",
       includeScheduledReceipt: true,
     });
+    expectValidV4HomeAuthority(fixture.mesocycle);
     setupDashboardMocks(fixture.mesocycle, 1);
     mocks.workoutFindMany.mockImplementation(async (args) => {
       if (args?.select?.seedPayloadHash) return [fixture.workout];
@@ -1125,6 +1145,7 @@ describe("loadHomeProgramSupport", () => {
       includeScheduledReceipt: false,
       releasedShape: true,
     });
+    expectValidV4HomeAuthority(fixture.mesocycle);
     setupDashboardMocks(fixture.mesocycle, 3);
     mocks.workoutFindMany.mockImplementation(async (args) =>
       args?.select?.seedPayloadHash ? [fixture.workout] : [],

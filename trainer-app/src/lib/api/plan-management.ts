@@ -41,6 +41,7 @@ import type {
 import { PlanManagementError } from "./plan-management-errors";
 import { parsePersistedHypertrophyPlanDraft } from "@/lib/engine/hypertrophy-plan-authoring";
 import { isCustomHypertrophyPlanRolloutEnabled } from "@/lib/operations/custom-hypertrophy-plan-rollout";
+import { resolveEditableHypertrophyPlanCopySource } from "./hypertrophy-plan-copy-source";
 
 export {
   PlanManagementError,
@@ -61,15 +62,6 @@ type PlanLifecycleRow = {
   state: MesocycleState;
   isActive: boolean;
 };
-
-function hasEditableCustomHypertrophySeed(value: unknown): boolean {
-  try {
-    const source = parseAcceptedSeedPayload(value).acceptedSeed?.source;
-    return source === "custom_hypertrophy_plan_v1" || source === "custom_hypertrophy_plan_v2";
-  } catch {
-    return false;
-  }
-}
 
 export type DerivedPlanLifecycle = {
   status: PlanLifecycleStatus;
@@ -251,8 +243,17 @@ export async function loadPlanManagementData(
               state: true,
               isActive: true,
               sessionsPerWeek: true,
+              currentSeedRevisionId: true,
               currentSeedRevision: {
-                select: { seedPayload: true },
+                select: {
+                  id: true,
+                  mesocycleId: true,
+                  revision: true,
+                  seedPayload: true,
+                  payloadHash: true,
+                  hashAlgorithm: true,
+                  provenanceStatus: true,
+                },
               },
             },
           },
@@ -266,8 +267,9 @@ export async function loadPlanManagementData(
   return {
     activeMacroCycleId: owner.activeMacroCycleId,
     plans: owner.macroCycles.map((plan) => {
-      const firstRevision = plan.mesocycles[0]?.currentSeedRevision?.seedPayload;
-      const editableCopyAvailable = hasEditableCustomHypertrophySeed(firstRevision);
+      const editableCopyAvailable =
+        plan.primaryGoal === "HYPERTROPHY" &&
+        resolveEditableHypertrophyPlanCopySource(plan.mesocycles) != null;
       return toPlanSummary(
         options.includeCustomDrafts
           ? { ...plan, editableCopyAvailable }
@@ -500,8 +502,17 @@ export async function loadPlanReview(
             intensityBias: true,
             slotSequenceJson: true,
             slotPlanSeedJson: true,
+            currentSeedRevisionId: true,
             currentSeedRevision: {
-              select: { seedPayload: true },
+              select: {
+                id: true,
+                mesocycleId: true,
+                revision: true,
+                seedPayload: true,
+                payloadHash: true,
+                hashAlgorithm: true,
+                provenanceStatus: true,
+              },
             },
             state: true,
             isActive: true,
@@ -514,9 +525,11 @@ export async function loadPlanReview(
   ]);
   if (!owner || !plan) return null;
 
-  const firstAcceptedSeed =
-    plan.mesocycles[0]?.currentSeedRevision?.seedPayload;
-  const editableCopyAvailable = hasEditableCustomHypertrophySeed(firstAcceptedSeed);
+  const copySource =
+    plan.primaryGoal === "HYPERTROPHY"
+      ? resolveEditableHypertrophyPlanCopySource(plan.mesocycles)
+      : null;
+  const editableCopyAvailable = copySource != null;
   const summary = toPlanSummary(
     options.includeCustomPlanMetadata
       ? { ...plan, hypertrophyDraft: null, editableCopyAvailable }
@@ -531,9 +544,9 @@ export async function loadPlanReview(
           acceptedSeedPayload:
             plan.mesocycles[0].currentSeedRevision?.seedPayload,
         })
-      : summary.primaryGoal === "HYPERTROPHY" && firstAcceptedSeed
+      : summary.primaryGoal === "HYPERTROPHY" && copySource
         ? readCustomHypertrophyReview({
-            acceptedSeedPayload: firstAcceptedSeed,
+            acceptedSeedPayload: copySource.canonicalPayload,
             exerciseNameById: new Map(
               exerciseRows.map((exercise) => [exercise.id, exercise.name]),
             ),

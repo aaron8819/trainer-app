@@ -46,7 +46,8 @@ vi.mock("@/lib/db/prisma", () => ({ prisma: mocks.prisma }));
 vi.mock("@/lib/engine", () => ({
   generateMacroCycle: mocks.generateMacroCycle,
 }));
-vi.mock("./mesocycle-seed-revision", () => ({
+vi.mock("./mesocycle-seed-revision", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./mesocycle-seed-revision")>()),
   createInitialAcceptedSeedRevisionInTransaction:
     mocks.createInitialAcceptedSeedRevision,
 }));
@@ -62,6 +63,8 @@ import {
   loadPlanReview,
   renamePlan,
 } from "./plan-management";
+import { normalizeAcceptedSeedPayload } from "./mesocycle-seed-revision";
+import { buildV4CustomPlanReferenceAcceptedSeed } from "@/lib/engine/hypertrophy-plan-authoring-v4.fixture";
 
 function mesocycle(
   id: string,
@@ -70,6 +73,59 @@ function mesocycle(
   mesoNumber = 1,
 ) {
   return { id, state, isActive, mesoNumber };
+}
+
+function copyReadMesocycle(input: {
+  id: string;
+  mesoNumber: number;
+  state: MesocycleState;
+  isActive: boolean;
+  seedPayload?: unknown;
+}) {
+  const normalized = input.seedPayload
+    ? normalizeAcceptedSeedPayload(input.seedPayload)
+    : null;
+  const revisionId = normalized ? `revision-${input.id}` : null;
+  return {
+    ...input,
+    startWeek: (input.mesoNumber - 1) * 5,
+    durationWeeks: 5,
+    sessionsPerWeek: 4,
+    focus: "Hypertrophy",
+    volumeTarget: "MODERATE",
+    intensityBias: "HYPERTROPHY",
+    slotSequenceJson: null,
+    slotPlanSeedJson: null,
+    _count: { blocks: 3 },
+    currentSeedRevisionId: revisionId,
+    currentSeedRevision: normalized
+      ? {
+          id: revisionId,
+          mesocycleId: input.id,
+          revision: 1,
+          seedPayload: input.seedPayload,
+          payloadHash: normalized.hash,
+          hashAlgorithm: "sha256",
+          provenanceStatus: "exact",
+        }
+      : null,
+  };
+}
+
+function copyReadPlan(mesocycles: ReturnType<typeof copyReadMesocycle>[]) {
+  const timestamp = new Date("2026-08-03T00:00:00.000Z");
+  return {
+    id: "custom-plan",
+    name: "Custom Hypertrophy",
+    primaryGoal: "HYPERTROPHY",
+    startDate: timestamp,
+    endDate: new Date("2026-10-12T00:00:00.000Z"),
+    durationWeeks: 10,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    hypertrophyDraft: null,
+    mesocycles,
+  };
 }
 
 const requiredStrengthRows = [
@@ -961,6 +1017,7 @@ describe("plan management persistence policy", () => {
         },
       ],
     };
+    const normalized = normalizeAcceptedSeedPayload(seedPayload);
     mocks.userFindUnique.mockResolvedValue({ activeMacroCycleId: "custom-plan" });
     mocks.exerciseFindMany.mockResolvedValue([
       { id: "bench", name: "Machine Chest Press" },
@@ -988,7 +1045,16 @@ describe("plan management persistence policy", () => {
         _count: { blocks: 3 },
         slotSequenceJson: null,
         slotPlanSeedJson: null,
-        currentSeedRevision: { seedPayload },
+        currentSeedRevisionId: "custom-revision",
+        currentSeedRevision: {
+          id: "custom-revision",
+          mesocycleId: "custom-meso",
+          revision: 1,
+          seedPayload,
+          payloadHash: normalized.hash,
+          hashAlgorithm: "sha256",
+          provenanceStatus: "exact",
+        },
       }],
     });
 
@@ -1021,6 +1087,120 @@ describe("plan management persistence policy", () => {
         },
       ],
     });
+  });
+
+  it("derives review copy availability and structure from the highest exact accepted V4 revision", async () => {
+    const accepted = buildV4CustomPlanReferenceAcceptedSeed();
+    const plan = copyReadPlan([
+      copyReadMesocycle({
+        id: "meso-1",
+        mesoNumber: 1,
+        state: MesocycleState.COMPLETED,
+        isActive: false,
+      }),
+      copyReadMesocycle({
+        id: "meso-2",
+        mesoNumber: 2,
+        state: MesocycleState.COMPLETED,
+        isActive: false,
+        seedPayload: accepted,
+      }),
+    ]);
+    mocks.userFindUnique.mockResolvedValue({ activeMacroCycleId: "custom-plan" });
+    mocks.macroCycleFindFirst.mockResolvedValue(plan);
+    mocks.exerciseFindMany.mockResolvedValue([]);
+
+    const review = await loadPlanReview("user-1", "custom-plan", {
+      includeCustomPlanMetadata: true,
+    });
+
+    expect(review?.editableCopyAvailable).toBe(true);
+    expect(review?.weeklyStructure[0]).toMatchObject({
+      slotId: accepted.slots[0]?.slotId,
+      label: accepted.slots[0]?.name,
+      intent: accepted.slots[0]?.focus,
+    });
+  });
+
+  it.each([
+    {
+      label: "highest mesocycle awaiting handoff",
+      rows: (accepted: ReturnType<typeof buildV4CustomPlanReferenceAcceptedSeed>) => [
+        copyReadMesocycle({
+          id: "meso-1",
+          mesoNumber: 1,
+          state: MesocycleState.COMPLETED,
+          isActive: false,
+          seedPayload: accepted,
+        }),
+        copyReadMesocycle({
+          id: "meso-2",
+          mesoNumber: 2,
+          state: MesocycleState.AWAITING_HANDOFF,
+          isActive: false,
+          seedPayload: accepted,
+        }),
+      ],
+    },
+    {
+      label: "highest mesocycle inactive before completion",
+      rows: (accepted: ReturnType<typeof buildV4CustomPlanReferenceAcceptedSeed>) => [
+        copyReadMesocycle({
+          id: "meso-1",
+          mesoNumber: 1,
+          state: MesocycleState.COMPLETED,
+          isActive: false,
+          seedPayload: accepted,
+        }),
+        copyReadMesocycle({
+          id: "meso-2",
+          mesoNumber: 2,
+          state: MesocycleState.ACTIVE_ACCUMULATION,
+          isActive: false,
+          seedPayload: accepted,
+        }),
+      ],
+    },
+    {
+      label: "duplicate highest mesocycle number",
+      rows: (accepted: ReturnType<typeof buildV4CustomPlanReferenceAcceptedSeed>) => [
+        copyReadMesocycle({
+          id: "meso-a",
+          mesoNumber: 2,
+          state: MesocycleState.COMPLETED,
+          isActive: false,
+          seedPayload: accepted,
+        }),
+        copyReadMesocycle({
+          id: "meso-b",
+          mesoNumber: 2,
+          state: MesocycleState.COMPLETED,
+          isActive: false,
+          seedPayload: accepted,
+        }),
+      ],
+    },
+  ])("keeps service-facing read models unavailable for $label", async ({ rows }) => {
+    const plan = copyReadPlan(rows(buildV4CustomPlanReferenceAcceptedSeed()));
+    mocks.userFindUnique
+      .mockResolvedValueOnce({
+        activeMacroCycleId: "custom-plan",
+        macroCycles: [plan],
+      })
+      .mockResolvedValueOnce({ activeMacroCycleId: "custom-plan" });
+    mocks.macroCycleFindFirst.mockResolvedValue(plan);
+    mocks.exerciseFindMany.mockResolvedValue([]);
+
+    const management = await loadPlanManagementData("user-1", {
+      includeCustomDrafts: true,
+    });
+    const review = await loadPlanReview("user-1", "custom-plan", {
+      includeCustomPlanMetadata: true,
+    });
+
+    expect(management.plans[0]?.editableCopyAvailable).toBe(false);
+    expect(review?.editableCopyAvailable).toBe(false);
+    expect(review?.weeklyStructure).toEqual([]);
   });
 
   it.each([

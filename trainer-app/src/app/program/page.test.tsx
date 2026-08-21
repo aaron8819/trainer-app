@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => ({
   findOwnerReadOnly: vi.fn(),
   loadPendingMesocycleHandoff: vi.fn(),
   loadProgramPageData: vi.fn(),
+  resolveActivePlanContext: vi.fn(),
 }));
 
 type VolumeRow = ProgramDashboardData["volumeThisWeek"][number];
@@ -163,6 +164,11 @@ vi.mock("@/lib/api/program-page", () => ({
     mocks.loadProgramPageData(...args),
 }));
 
+vi.mock("@/lib/api/active-plan-context", () => ({
+  resolveActivePlanContext: (...args: unknown[]) =>
+    mocks.resolveActivePlanContext(...args),
+}));
+
 vi.mock("@/components/ProgramStatusCard", () => ({
   ProgramStatusCard: ({ variant }: { variant?: string }) => (
     <div>
@@ -209,6 +215,7 @@ describe("ProgramPage", () => {
   beforeEach(() => {
     mocks.findOwnerReadOnly.mockResolvedValue({ id: "user-1" });
     mocks.loadPendingMesocycleHandoff.mockResolvedValue(null);
+    mocks.resolveActivePlanContext.mockResolvedValue({ status: "READY" });
     mocks.loadProgramPageData.mockResolvedValue({
       overview: {
         mesoNumber: 2,
@@ -485,6 +492,29 @@ describe("ProgramPage", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+  });
+
+  it("renders selected-plan completion without active program controls", async () => {
+    mocks.resolveActivePlanContext.mockResolvedValueOnce({
+      status: "COMPLETED",
+      activeMacroCycle: { id: "plan-complete", name: "Five Week Builder" },
+      lastClosedAt: new Date("2026-08-20T12:00:00.000Z"),
+    });
+
+    const { default: ProgramPage } = await import("./page");
+    render(await ProgramPage());
+
+    expect(screen.getByText("Five Week Builder")).toBeInTheDocument();
+    expect(screen.getByText("This training plan is complete.")).toBeInTheDocument();
+    expect(screen.getByText("Choose your next plan when you're ready.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Choose next plan" })).toHaveAttribute(
+      "href",
+      "/plans",
+    );
+    expect(mocks.loadProgramPageData).not.toHaveBeenCalled();
+    expect(mocks.loadPendingMesocycleHandoff).not.toHaveBeenCalled();
+    expect(screen.queryByText("Active Mesocycle")).toBeNull();
+    expect(screen.queryByText(/CycleAnchorControls/)).toBeNull();
   });
 
   it("renders the outlook and toggles between default and filtered badge views client-side", async () => {

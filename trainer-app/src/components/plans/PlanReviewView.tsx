@@ -20,6 +20,7 @@ export function PlanReviewView({
   backHref?: string;
 }) {
   const planType = planTypeLabel(plan.primaryGoal);
+  const isSelectedCompleted = plan.isActive && plan.status === "COMPLETED";
 
   return (
     <main className="min-h-screen bg-white text-slate-900">
@@ -38,11 +39,21 @@ export function PlanReviewView({
             <h1 className="page-title mt-2">{plan.name}</h1>
             <p className="mt-2 text-sm text-slate-600">
               {plan.editableCopyAvailable
-                ? "This accepted plan is immutable. Activate it separately, or create an editable copy from Plan Management."
+                ? isSelectedCompleted
+                  ? "This selected plan is complete and immutable. You can review it here or create an editable copy from Plan Management."
+                  : "This accepted plan is immutable. Activate it separately, or create an editable copy from Plan Management."
                 : "Review the generated mesocycles before finalizing. Finalization makes the plan READY without changing your active plan."}
             </p>
           </div>
-          <StatusBadge tone={plan.status === "READY" ? "positive" : "warning"}>
+          <StatusBadge
+            tone={
+              plan.status === "COMPLETED"
+                ? "neutral"
+                : plan.status === "READY"
+                  ? "positive"
+                  : "warning"
+            }
+          >
             {formatLabel(plan.status)}
           </StatusBadge>
         </div>
@@ -70,7 +81,7 @@ export function PlanReviewView({
             </div>
             <div>
               <dt className="text-xs uppercase tracking-wide text-slate-500">
-                Active now
+                {isSelectedCompleted ? "Selected" : "Active now"}
               </dt>
               <dd className="mt-1 font-medium">{plan.isActive ? "Yes" : "No"}</dd>
             </div>
@@ -206,12 +217,18 @@ export function PlanReviewView({
 
         <section className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 p-4 sm:p-5">
           <h2 className="font-semibold text-slate-900">
-            {plan.status === "PREPARING" ? "Ready to finalize?" : "Plan ready"}
+            {plan.status === "PREPARING"
+              ? "Ready to finalize?"
+              : isSelectedCompleted
+                ? "Completed plan"
+                : "Plan ready"}
           </h2>
           <p className="mt-2 text-sm text-slate-700">
             {plan.status === "PREPARING"
               ? "This locks in the generated plan’s readiness state and accepts its executable session structure when required. It does not activate the plan."
-              : "Making a plan ready does not activate it. Return to Plan Management to activate it or create an editable copy."}
+              : isSelectedCompleted
+                ? "This plan remains selected for completed-plan history. Return to Plan Management to choose another plan or create an editable copy."
+                : "Making a plan ready does not activate it. Return to Plan Management to activate it or create an editable copy."}
           </p>
           <div className="mt-4">
             {plan.status === "PREPARING" ? (

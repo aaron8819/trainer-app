@@ -57,6 +57,45 @@ export default async function Home() {
     return new Date(value).toLocaleDateString();
   }
 
+  if (homePage.completedPlan) {
+    return (
+      <main className="min-h-screen bg-white text-slate-900">
+        <div className="page-shell max-w-5xl">
+          <header className="mb-8 md:mb-10">
+            <p className="text-sm uppercase tracking-wide text-slate-500">Personal AI Trainer</p>
+            <h1 className="page-title mt-2">Plan complete</h1>
+            <p className="mt-2 text-sm text-slate-500">This training plan is complete.</p>
+          </header>
+
+          <section className="rounded-2xl border border-slate-200 bg-slate-50 p-6 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Completed plan
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold">{homePage.completedPlan.name}</h2>
+            <p className="mt-2 text-sm text-slate-700">
+              Choose your next plan when you&apos;re ready.
+            </p>
+            <Link
+              href="/plans"
+              className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white"
+            >
+              Choose next plan
+            </Link>
+          </section>
+
+          <RecentWorkouts
+            recentWorkouts={homePage.recentActivity}
+            heading="Recent Activity"
+            showCount={false}
+            showDeleteActions={false}
+            viewOnly
+            viewAllLabel="Open History"
+          />
+        </div>
+      </main>
+    );
+  }
+
   if (homePage.pendingHandoff) {
     const lastCompleted = homePage.continuity?.lastCompleted ?? null;
 

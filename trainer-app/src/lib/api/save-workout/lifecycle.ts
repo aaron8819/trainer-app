@@ -2,8 +2,10 @@ import { WorkoutStatus, type Prisma } from "@prisma/client";
 import { deriveCurrentMesocycleSession } from "@/lib/api/mesocycle-lifecycle-math";
 import {
   claimSelectedPlanForTransitionInTransaction,
+  completeOrEnterHandoffInTransaction,
   resolveActivePlanContextInTransaction,
   transitionMesocycleStateInTransaction,
+  type TerminalTransitionLockProof,
 } from "@/lib/api/mesocycle-lifecycle-state";
 import {
   autoDismissPendingWeekCloseOnForwardProgress,
@@ -13,7 +15,6 @@ import {
   assertMesocycleAllowsWorkoutSave,
   type SaveRouteMesocycleState,
 } from "./guards";
-import { enterMesocycleHandoffInTransaction } from "../mesocycle-handoff";
 import {
   resolveV4ScheduledSlots,
   type V4ScheduleAuthority,
@@ -31,6 +32,7 @@ export type SaveRouteMesocycle = {
   currentSeedRevisionId?: string | null;
   currentSeedRevision?: {
     id: string;
+    mesocycleId: string;
     revision: number;
     seedPayload: Prisma.JsonValue;
     payloadHash: string | null;
@@ -40,6 +42,7 @@ export type SaveRouteMesocycle = {
   startWeek?: number | null;
   macroCycle?: {
     startDate: Date;
+    primaryGoal?: string | null;
   } | null;
 };
 
@@ -179,6 +182,7 @@ const mesocycleSelect = {
   currentSeedRevision: {
     select: {
       id: true,
+      mesocycleId: true,
       revision: true,
       seedPayload: true,
       payloadHash: true,
@@ -190,29 +194,10 @@ const mesocycleSelect = {
   macroCycle: {
     select: {
       startDate: true,
+      primaryGoal: true,
     },
   },
 } as const;
-
-export async function lockV4MesocycleForScheduleResolution(
-  tx: Prisma.TransactionClient,
-  input: {
-    mesocycle: SaveRouteMesocycle;
-    authority: V4ScheduleAuthority;
-  },
-): Promise<void> {
-  const locked = await tx.mesocycle.updateMany({
-    where: {
-      id: input.mesocycle.id,
-      state: input.mesocycle.state,
-      currentSeedRevisionId: input.authority.revisionId,
-    },
-    data: { state: input.mesocycle.state },
-  });
-  if (locked.count !== 1) {
-    throw new Error("V4_SCHEDULE_AUTHORITY_CONFLICT");
-  }
-}
 
 async function readV4ScheduleWorkoutEvidence(
   tx: Prisma.TransactionClient,
@@ -281,6 +266,7 @@ export async function applyV4TerminalScheduleResolution(
     resolvedMesocycle: SaveRouteMesocycle;
     authority: V4ScheduleAuthority;
     finalStatus: "COMPLETED" | "SKIPPED";
+    terminalLock: TerminalTransitionLockProof;
   },
 ): Promise<V4ScheduleResolution> {
   if (input.finalStatus === WorkoutStatus.COMPLETED) {
@@ -304,6 +290,21 @@ export async function applyV4TerminalScheduleResolution(
   }
 
   if (
+    (input.resolvedMesocycle.state === "ACTIVE_ACCUMULATION" ||
+      input.resolvedMesocycle.state === "ACTIVE_DELOAD") &&
+    resolution.allResolved
+  ) {
+    await completeOrEnterHandoffInTransaction(
+      tx,
+      {
+        id: input.resolvedMesocycle.id,
+        state: input.resolvedMesocycle.state,
+        macroCycle: input.resolvedMesocycle.macroCycle,
+        currentSeedRevision: input.resolvedMesocycle.currentSeedRevision,
+      },
+      input.terminalLock,
+    );
+  } else if (
     input.resolvedMesocycle.state === "ACTIVE_ACCUMULATION" &&
     resolution.allAccumulationResolved
   ) {
@@ -318,14 +319,6 @@ export async function applyV4TerminalScheduleResolution(
     if (advanced.count !== 1) {
       throw new Error("V4_SCHEDULE_AUTHORITY_CONFLICT");
     }
-  } else if (
-    input.resolvedMesocycle.state === "ACTIVE_DELOAD" &&
-    resolution.allResolved
-  ) {
-    await enterMesocycleHandoffInTransaction(
-      tx,
-      input.resolvedMesocycle.id,
-    );
   }
 
   return resolution;
@@ -338,6 +331,7 @@ export async function resolveMesocycleForWorkoutSave(
     existingMesocycleId?: string | null;
     shouldResolve: boolean;
     shouldRequireForPerformedTransition: boolean;
+    claimSelectedPlan?: boolean;
   },
 ): Promise<{
   resolvedMesocycleId: string | null;
@@ -370,13 +364,12 @@ export async function resolveMesocycleForWorkoutSave(
 
   if (resolvedMesocycle) {
     assertMesocycleAllowsWorkoutSave(resolvedMesocycle.state);
-  }
-
-  if (resolvedMesocycle) {
-    await claimSelectedPlanForTransitionInTransaction(tx, {
-      userId: input.userId,
-      macroCycleId: resolvedMesocycle.macroCycleId,
-    });
+    if (input.claimSelectedPlan !== false) {
+      await claimSelectedPlanForTransitionInTransaction(tx, {
+        userId: input.userId,
+        macroCycleId: resolvedMesocycle.macroCycleId,
+      });
+    }
   }
 
   if (

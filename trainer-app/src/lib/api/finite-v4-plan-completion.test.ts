@@ -31,6 +31,8 @@ import {
 import { buildV4CustomPlanReferenceAcceptedSeed } from "@/lib/engine/hypertrophy-plan-authoring-v4.fixture";
 import {
   applyV4TerminalScheduleResolution,
+  lockV4MesocycleForScheduleResolution,
+  resolveMesocycleForWorkoutSave,
 } from "./save-workout/lifecycle";
 import { persistWorkoutRow } from "./save-workout/persistence";
 import {
@@ -201,14 +203,15 @@ function integratedSaveHarness(overrides: Record<string, unknown> = {}) {
       ),
     ),
   };
+  let committedVersion = 0;
 
   const tx = {
     mesocycle: {
       findFirst: vi.fn(async () => state.row),
       findUnique: vi.fn(async (args: Record<string, unknown>) => {
-        if ("include" in args) return state.row;
+        if ("include" in args) return structuredClone(state.row);
         const select = args.select as Record<string, unknown> | undefined;
-        if (select?.macroCycleId) {
+        if (select?.macroCycleId && !select.id) {
           return {
             macroCycleId: state.row.macroCycleId,
             state: state.row.state,
@@ -220,7 +223,7 @@ function integratedSaveHarness(overrides: Record<string, unknown> = {}) {
             macroCycle: { userId: state.row.macroCycle.userId },
           };
         }
-        return state.row;
+        return structuredClone(state.row);
       }),
       update: vi.fn(async (args: { data: Record<string, unknown> }) => {
         const completedSessions = args.data.completedSessions as
@@ -239,8 +242,17 @@ function integratedSaveHarness(overrides: Record<string, unknown> = {}) {
         return state.row;
       }),
       updateMany: vi.fn(async (args: { data: Record<string, unknown> }) => {
+        const where = (args as { where?: Record<string, unknown> }).where;
+        if (
+          where?.state !== undefined &&
+          (state.row.state !== where.state ||
+            (where.currentSeedRevisionId !== undefined &&
+              state.row.currentSeedRevisionId !== where.currentSeedRevisionId))
+        ) {
+          return { count: 0 };
+        }
         if (args.data.state === "COMPLETED") {
-          if (state.row.state !== "ACTIVE_DELOAD" || !state.row.isActive) {
+          if (!state.row.isActive) {
             return { count: 0 };
           }
           state.row.state = "COMPLETED";
@@ -305,13 +317,17 @@ function integratedSaveHarness(overrides: Record<string, unknown> = {}) {
   return {
     authority,
     finalWorkoutId: `workout-${finalSlot.weekInMeso}-${finalSlot.slotId}`,
+    mesocycleUpdateMany: tx.mesocycle.updateMany,
     state: () => state,
     transaction: async <T>(callback: (client: typeof tx) => Promise<T>) => {
       const snapshot = structuredClone(state);
+      const snapshotVersion = committedVersion;
       try {
-        return await callback(tx);
+        const result = await callback(tx);
+        committedVersion += 1;
+        return result;
       } catch (error) {
-        state = snapshot;
+        if (committedVersion === snapshotVersion) state = snapshot;
         throw error;
       }
     },
@@ -408,16 +424,41 @@ describe("finite accepted-V4 plan completion", () => {
         tx,
         { userId: "user-1", macroCycleId: "plan-1" },
       );
+      expect(
+        mocks.claimSelectedPlanForTransitionInTransaction.mock.invocationCallOrder[0],
+      ).toBeLessThan(updateMany.mock.invocationCallOrder[0]!);
     },
   );
 
   it.each(["COMPLETED", "SKIPPED"] as const)(
-    "commits a natural final %s save through the real persistence and lifecycle adapters",
+    "commits a natural final %s save through claim, lock, persistence, and lifecycle adapters",
     async (finalStatus) => {
       const harness = integratedSaveHarness();
       const originalPointer = harness.state().row.currentSeedRevisionId;
+      let selectedPlanClaimed = false;
+      mocks.claimSelectedPlanForTransitionInTransaction.mockImplementation(
+        async () => {
+          selectedPlanClaimed = true;
+        },
+      );
+      harness.mesocycleUpdateMany.mockImplementationOnce(async () => {
+        if (!selectedPlanClaimed) {
+          throw new Error("TEST_MESOCYCLE_LOCK_BEFORE_SELECTED_PLAN_CLAIM");
+        }
+        return { count: 1 };
+      });
 
       await harness.transaction(async (tx) => {
+        const resolved = await resolveMesocycleForWorkoutSave(tx as never, {
+          userId: "user-1",
+          existingMesocycleId: harness.state().row.id,
+          shouldResolve: true,
+          shouldRequireForPerformedTransition: true,
+        });
+        await lockV4MesocycleForScheduleResolution(tx as never, {
+          mesocycle: resolved.resolvedMesocycle as never,
+          authority: harness.authority,
+        });
         const existingWorkout = harness
           .state()
           .workouts.find((workout) => workout.id === harness.finalWorkoutId)!;
@@ -451,6 +492,107 @@ describe("finite accepted-V4 plan completion", () => {
           (workout) => workout.id === harness.finalWorkoutId,
         ),
       ).toMatchObject({ status: finalStatus, revision: 2 });
+      expect(mocks.enterMesocycleHandoffInTransaction).not.toHaveBeenCalled();
+      expect(
+        mocks.claimSelectedPlanForTransitionInTransaction.mock.invocationCallOrder[0],
+      ).toBeLessThan(
+        harness.mesocycleUpdateMany.mock.invocationCallOrder[0]!,
+      );
+    },
+  );
+
+  it.each([
+    ["ACTIVE_ACCUMULATION", finishMesocycleEarlyInTransaction],
+    ["ACTIVE_DELOAD", finishDeloadEarlyInTransaction],
+  ] as const)(
+    "serializes a natural final save racing the %s early-finish service boundary",
+    async (state, finish) => {
+      const harness = integratedSaveHarness({
+        state,
+        macroCycle: {
+          ...lifecycleRow().macroCycle,
+          mesocycles: [
+            lifecycleRow().macroCycle.mesocycles[0],
+            { ...lifecycleRow().macroCycle.mesocycles[1], state },
+          ],
+        },
+      });
+      let releaseNaturalClaim!: () => void;
+      let signalNaturalClaim!: () => void;
+      const naturalClaimEntered = new Promise<void>((resolve) => {
+        signalNaturalClaim = resolve;
+      });
+      const naturalClaimGate = new Promise<void>((resolve) => {
+        releaseNaturalClaim = resolve;
+      });
+      mocks.claimSelectedPlanForTransitionInTransaction
+        .mockImplementationOnce(async () => {
+          signalNaturalClaim();
+          await naturalClaimGate;
+        })
+        .mockResolvedValue(undefined);
+
+      const naturalSave = harness.transaction(async (tx) => {
+        const resolved = await resolveMesocycleForWorkoutSave(tx as never, {
+          userId: "user-1",
+          existingMesocycleId: harness.state().row.id,
+          shouldResolve: true,
+          shouldRequireForPerformedTransition: true,
+        });
+        await lockV4MesocycleForScheduleResolution(tx as never, {
+          mesocycle: resolved.resolvedMesocycle as never,
+          authority: harness.authority,
+        });
+        const existingWorkout = harness
+          .state()
+          .workouts.find((workout) => workout.id === harness.finalWorkoutId)!;
+        await persistWorkoutRow(tx as never, {
+          workoutId: existingWorkout.id,
+          existingWorkout,
+          userId: "user-1",
+          expectedRevision: 1,
+          shouldAdvanceLifecycleTransition: true,
+          resolvedMesocycleId: harness.state().row.id,
+          workoutUpdateData: { status: "COMPLETED" },
+          workoutCreateData: {},
+        });
+        await applyV4TerminalScheduleResolution(tx as never, {
+          resolvedMesocycle: resolved.resolvedMesocycle as never,
+          authority: harness.authority,
+          finalStatus: "COMPLETED",
+        });
+      });
+      await naturalClaimEntered;
+
+      const earlyResult = await harness.transaction((tx) =>
+        finish(tx as never, {
+          userId: "user-1",
+          mesocycleId: "meso-final",
+        }),
+      );
+      releaseNaturalClaim();
+
+      await expect(naturalSave).rejects.toThrow(
+        "V4_SCHEDULE_AUTHORITY_CONFLICT",
+      );
+      expect(earlyResult.mesocycle).toMatchObject({
+        state: "COMPLETED",
+        isActive: false,
+      });
+      expect(harness.state().row).toMatchObject({
+        state: "COMPLETED",
+        isActive: false,
+      });
+      expect(
+        harness.mesocycleUpdateMany.mock.calls.filter(
+          ([input]) => input.data.state === "COMPLETED",
+        ),
+      ).toHaveLength(1);
+      expect(
+        mocks.claimSelectedPlanForTransitionInTransaction.mock.invocationCallOrder[1],
+      ).toBeLessThan(
+        harness.mesocycleUpdateMany.mock.invocationCallOrder[0]!,
+      );
       expect(mocks.enterMesocycleHandoffInTransaction).not.toHaveBeenCalled();
     },
   );
@@ -593,6 +735,9 @@ describe("finite accepted-V4 plan completion", () => {
       expect(result.nextSeedDraftCreated).toBe(false);
       expect(workoutUpdate).not.toHaveBeenCalled();
       expect(updateMany).toHaveBeenCalledTimes(2);
+      expect(
+        mocks.claimSelectedPlanForTransitionInTransaction.mock.invocationCallOrder[0],
+      ).toBeLessThan(updateMany.mock.invocationCallOrder[0]!);
       expect(mocks.enterMesocycleHandoffInTransaction).not.toHaveBeenCalled();
     },
   );

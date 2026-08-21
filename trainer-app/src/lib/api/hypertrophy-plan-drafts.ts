@@ -62,11 +62,9 @@ import { CANONICAL_MUSCLE_IDS, getMusclePolicyByDisplayName } from "@/lib/engine
 import { normalizeLiveInventoryForV2Materialization } from "./v2-materialization-live-inventory";
 import {
   createInitialAcceptedSeedRevisionInTransaction,
-  exactSeedRevisionProvenance,
-  normalizeAcceptedSeedPayload,
   normalizeAcceptedHypertrophySeedV4,
 } from "./mesocycle-seed-revision";
-import { parseAcceptedSeedPayload } from "./slot-plan-seed-parser";
+import { resolveEditableHypertrophyPlanCopySource } from "./hypertrophy-plan-copy-source";
 import { PlanManagementError } from "./plan-management-errors";
 
 const FIVE_WEEKS_MS = 35 * 24 * 60 * 60 * 1000;
@@ -1286,70 +1284,9 @@ export async function createEditableHypertrophyPlanCopy(input: {
     },
   });
   if (!source) throw new PlanManagementError("PLAN_COPY_UNAVAILABLE");
-  const hasCanonicalNumbering = source.mesocycles.every(
-    (mesocycle, index) =>
-      Number.isInteger(mesocycle.mesoNumber) &&
-      mesocycle.mesoNumber === source.mesocycles.length - index,
-  );
-  const highestMesoNumber = source.mesocycles[0]?.mesoNumber ?? null;
-  const highestMesocycles = source.mesocycles.filter(
-    (mesocycle) => mesocycle.mesoNumber === highestMesoNumber,
-  );
-  const activeMesocycles = source.mesocycles.filter(
-    (mesocycle) =>
-      mesocycle.isActive &&
-      mesocycle.state !== MesocycleState.COMPLETED &&
-      mesocycle.state !== MesocycleState.AWAITING_HANDOFF,
-  );
-  const highestMesocycle =
-    hasCanonicalNumbering && highestMesocycles.length === 1
-      ? highestMesocycles[0]
-      : null;
-  const highestIsEligibleActive =
-    highestMesocycle != null &&
-    highestMesocycle.isActive &&
-    (highestMesocycle.state === MesocycleState.ACTIVE_ACCUMULATION ||
-      highestMesocycle.state === MesocycleState.ACTIVE_DELOAD) &&
-    activeMesocycles.length === 1 &&
-    activeMesocycles[0].id === highestMesocycle.id;
-  const highestIsEligibleCompleted =
-    highestMesocycle != null &&
-    !highestMesocycle.isActive &&
-    highestMesocycle.state === MesocycleState.COMPLETED &&
-    activeMesocycles.length === 0;
-  const sourceMesocycle =
-    highestIsEligibleActive || highestIsEligibleCompleted
-      ? highestMesocycle
-      : null;
-  const revision = sourceMesocycle?.currentSeedRevision;
-  if (
-    !sourceMesocycle ||
-    !revision ||
-    sourceMesocycle.currentSeedRevisionId !== revision.id ||
-    revision.mesocycleId !== sourceMesocycle.id ||
-    !Number.isInteger(revision.revision) ||
-    revision.revision < 1 ||
-    !exactSeedRevisionProvenance(revision)
-  ) {
-    throw new PlanManagementError("PLAN_COPY_UNAVAILABLE");
-  }
-  let payload: unknown;
-  try {
-    const normalized = normalizeAcceptedSeedPayload(revision.seedPayload);
-    if (normalized.hash !== revision.payloadHash) {
-      throw new Error("accepted revision hash mismatch");
-    }
-    payload = normalized.canonicalPayload;
-  } catch {
-    throw new PlanManagementError("PLAN_COPY_UNAVAILABLE");
-  }
-  let accepted;
-  try {
-    accepted = parseAcceptedSeedPayload(payload).acceptedSeed;
-  } catch {
-    throw new PlanManagementError("PLAN_COPY_UNAVAILABLE");
-  }
-  if (!accepted) throw new PlanManagementError("PLAN_COPY_UNAVAILABLE");
+  const copySource = resolveEditableHypertrophyPlanCopySource(source.mesocycles);
+  if (!copySource) throw new PlanManagementError("PLAN_COPY_UNAVAILABLE");
+  const accepted = copySource.acceptedSeed;
   const draft = accepted.version === 4
     ? copyAcceptedHypertrophySeedV4ToDraft(accepted)
     : parseHypertrophyPlanDraft({

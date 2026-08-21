@@ -32,7 +32,7 @@ describe("GET /api/exercises/[id]/history", () => {
     expect(mocks.loadExerciseHistory).toHaveBeenCalledWith("bench", "user-1", 20);
   });
 
-  it("uses an explicit classified workout snapshot to select the history cohort", async () => {
+  it("uses an explicit classified workout snapshot as the record comparison context", async () => {
     const response = await GET(
       new Request(
         "http://localhost/api/exercises/bench/history?measurementSnapshot=classified&measurementProfile=REPS_EXTERNAL_LOAD&loadConvention=BARBELL_TOTAL&repBasis=TOTAL",
@@ -50,7 +50,7 @@ describe("GET /api/exercises/[id]/history", () => {
     });
   });
 
-  it("uses an explicit legacy snapshot and rejects partial classified tuples", async () => {
+  it("uses an explicit legacy record context and rejects partial classified tuples", async () => {
     const legacy = await GET(
       new Request(
         "http://localhost/api/exercises/bench/history?measurementSnapshot=legacy",

@@ -24,6 +24,13 @@ describe("PersonalHistorySection", () => {
             workoutId: "workout-1",
             date: "2026-03-08T00:00:00.000Z",
             workoutStatus: "PARTIAL",
+            measurement: {
+              profile: "REPS_EXTERNAL_LOAD",
+              loadConvention: "BARBELL_TOTAL",
+              repBasis: "TOTAL",
+            },
+            displayLoadConvention: "recorded_external_load",
+            isRecordComparable: true,
             completedSetCount: 2,
             skippedSetCount: 1,
             unloggedSetCount: 0,
@@ -46,11 +53,15 @@ describe("PersonalHistorySection", () => {
             {
               workoutId: "workout-1",
               date: "2026-03-08T00:00:00.000Z",
+              displayLoadConvention: "recorded_external_load",
+              isRecordComparable: true,
               representativeSet: { reps: 8, load: 185, rpe: 8 },
             },
             {
               workoutId: "workout-0",
               date: "2026-03-01T00:00:00.000Z",
+              displayLoadConvention: "recorded_external_load",
+              isRecordComparable: true,
               representativeSet: { reps: 8, load: 180, rpe: 8 },
             },
           ],
@@ -108,7 +119,7 @@ describe("PersonalHistorySection", () => {
     ).toBeInTheDocument();
   });
 
-  it("requests the exact frozen measurement cohort when a workout snapshot is supplied", async () => {
+  it("supplies the exact frozen measurement snapshot for record comparison", async () => {
     render(
       <PersonalHistorySection
         exerciseId="bench"
@@ -125,5 +136,90 @@ describe("PersonalHistorySection", () => {
         "/api/exercises/bench/history?limit=3&measurementSnapshot=classified&measurementProfile=REPS_EXTERNAL_LOAD&loadConvention=BARBELL_TOTAL&repBasis=TOTAL",
       );
     });
+  });
+
+  it("shows legacy performed work while explicitly excluding it from classified records", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          exercise: { id: "bench", name: "Bench Press", equipment: ["barbell"] },
+          comparison: {
+            scope: "exact_exercise",
+            loadConvention: "recorded_external_load",
+            note: "All performed work for this exact exercise is shown. Load records use only exposures with matching frozen measurement semantics.",
+          },
+          lastExposure: {
+            workoutId: "legacy-workout",
+            date: "2026-03-01T00:00:00.000Z",
+            workoutStatus: "COMPLETED",
+            measurement: null,
+            displayLoadConvention: "recorded_external_load",
+            isRecordComparable: false,
+            completedSetCount: 1,
+            skippedSetCount: 0,
+            unloggedSetCount: 0,
+            hasSessionLocalChanges: false,
+            representativeSet: {
+              setIndex: 1,
+              reps: 8,
+              load: 225,
+              rpe: 8,
+              completedAt: "2026-03-01T00:00:00.000Z",
+              isRuntimeAdded: false,
+              basis: "best_estimated_strength",
+            },
+            sets: [
+              {
+                setIndex: 1,
+                reps: 8,
+                load: 225,
+                rpe: 8,
+                completedAt: "2026-03-01T00:00:00.000Z",
+                isRuntimeAdded: false,
+              },
+            ],
+          },
+          recentExposures: [
+            {
+              displayLoadConvention: "recorded_external_load",
+              isRecordComparable: false,
+              representativeSet: { reps: 8, load: 225, rpe: 8 },
+            },
+          ],
+          records: {
+            bestEstimatedStrength: null,
+            heaviestCompletedLoad: null,
+            highestSessionVolume: null,
+          },
+        }),
+      }),
+    );
+
+    render(
+      <PersonalHistorySection
+        exerciseId="bench"
+        comparisonMeasurement={{
+          profile: "REPS_EXTERNAL_LOAD",
+          loadConvention: "BARBELL_TOTAL",
+          repBasis: "TOTAL",
+        }}
+      />,
+    );
+
+    expect(await screen.findByText("225 lb × 8 · RPE 8")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Not included in load-based records for the current measurement snapshot/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("225 lb × 8 · RPE 8 (not comparable for records)"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Comparable load-based records are unavailable for the current measurement snapshot.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No qualifying history yet.")).not.toBeInTheDocument();
   });
 });

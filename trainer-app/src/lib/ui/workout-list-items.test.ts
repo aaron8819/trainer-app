@@ -10,6 +10,102 @@ import {
   getWorkoutListStatusClasses,
   getWorkoutListStatusLabel,
 } from "./workout-list-items";
+import { formatWorkoutSessionSnapshotLabel } from "./workout-session-snapshot";
+
+const V4_SLOT_SEQUENCE = {
+  version: 1,
+  source: "handoff_draft",
+  sequenceMode: "ordered_flexible",
+  slots: [
+    { slotId: "lower-a", intent: "LOWER", label: "Lower A" },
+    { slotId: "upper-a", intent: "UPPER", label: "Upper A" },
+    { slotId: "lower-b", intent: "LOWER", label: "Lower B" },
+    { slotId: "upper-b", intent: "UPPER", label: "Upper B" },
+  ],
+} as const;
+
+function buildSessionLabelSummary(input: {
+  slotId?: string | null;
+  intent: "LOWER" | "UPPER";
+  status?: "COMPLETED" | "PARTIAL" | "SKIPPED" | "PLANNED";
+  slotSequenceJson?: unknown;
+  hasMesocycle?: boolean;
+}) {
+  const slotId = input.slotId ?? null;
+  const normalizedIntent = input.intent.toLowerCase() as "lower" | "upper";
+
+  return buildWorkoutListSurfaceSummary({
+    id: `workout-${slotId ?? normalizedIntent}`,
+    revision: 1,
+    scheduledDate: new Date("2026-08-20T10:00:00.000Z"),
+    completedAt: new Date("2026-08-20T11:00:00.000Z"),
+    status: input.status ?? "COMPLETED",
+    selectionMode: "INTENT",
+    sessionIntent: input.intent,
+    mesocycleId: input.hasMesocycle === false ? null : "meso-v4",
+    mesocycleWeekSnapshot: 5,
+    mesoSessionSnapshot: 4,
+    mesocyclePhaseSnapshot: "ACCUMULATION",
+    selectionMetadata: {
+      sessionDecisionReceipt: {
+        version: 1,
+        cycleContext: {
+          weekInMeso: 5,
+          weekInBlock: 1,
+          phase: "accumulation",
+          blockType: "accumulation",
+          isDeload: false,
+          source: "computed",
+        },
+        ...(slotId
+          ? {
+              sessionSlot: {
+                slotId,
+                intent: normalizedIntent,
+                sequenceIndex: 0,
+                sequenceLength: 4,
+                source: "mesocycle_slot_sequence",
+              },
+            }
+          : {}),
+        lifecycleVolume: { source: "unknown" },
+        sorenessSuppressedMuscles: [],
+        deloadDecision: {
+          mode: "none",
+          reason: [],
+          reductionPercent: 0,
+          appliedTo: "none",
+        },
+        readiness: {
+          wasAutoregulated: false,
+          signalAgeHours: null,
+          fatigueScoreOverall: null,
+          intensityScaling: {
+            applied: false,
+            exerciseIds: [],
+            scaledUpCount: 0,
+            scaledDownCount: 0,
+          },
+        },
+        exceptions: [],
+      },
+    },
+    mesocycle:
+      input.hasMesocycle === false
+        ? null
+        : {
+            macroCycleId: "plan-v4",
+            sessionsPerWeek: 4,
+            slotSequenceJson: (input.slotSequenceJson === undefined
+              ? V4_SLOT_SEQUENCE
+              : input.slotSequenceJson) as never,
+            state: "ACTIVE_ACCUMULATION",
+            isActive: true,
+          },
+    _count: { exercises: 0 },
+    exercises: [],
+  });
+}
 
 describe("buildWorkoutListSurfaceSummary", () => {
   it("derives session data and clears resumability for a switched-away plan", () => {
@@ -58,7 +154,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
           exceptions: [],
         },
       },
-      mesocycle: { macroCycleId: "plan-a", sessionsPerWeek: 3, state: "ACTIVE_ACCUMULATION", isActive: true },
+      mesocycle: { macroCycleId: "plan-a", sessionsPerWeek: 3, slotSequenceJson: null, state: "ACTIVE_ACCUMULATION", isActive: true },
       _count: { exercises: 2 },
       exercises: [
         {
@@ -155,7 +251,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
           exceptions: [{ code: "optional_gap_fill", message: "Marked as optional gap-fill session." }],
         },
       },
-      mesocycle: { macroCycleId: "plan-a", sessionsPerWeek: 3, state: "ACTIVE_ACCUMULATION", isActive: true },
+      mesocycle: { macroCycleId: "plan-a", sessionsPerWeek: 3, slotSequenceJson: null, state: "ACTIVE_ACCUMULATION", isActive: true },
       _count: { exercises: 1 },
       exercises: [{ sets: [] }],
     });
@@ -233,7 +329,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
           ],
         },
       },
-      mesocycle: { macroCycleId: "plan-a", sessionsPerWeek: 3, state: "ACTIVE_ACCUMULATION", isActive: true },
+      mesocycle: { macroCycleId: "plan-a", sessionsPerWeek: 3, slotSequenceJson: null, state: "ACTIVE_ACCUMULATION", isActive: true },
       _count: { exercises: 1 },
       exercises: [{ sets: [] }],
     });
@@ -299,7 +395,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
           ],
         },
       },
-      mesocycle: { macroCycleId: "plan-a", sessionsPerWeek: 3, state: "ACTIVE_ACCUMULATION", isActive: true },
+      mesocycle: { macroCycleId: "plan-a", sessionsPerWeek: 3, slotSequenceJson: null, state: "ACTIVE_ACCUMULATION", isActive: true },
       _count: { exercises: 1 },
       exercises: [{ sets: [] }],
     });
@@ -365,7 +461,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
           exceptions: [],
         },
       },
-      mesocycle: { macroCycleId: "plan-a", sessionsPerWeek: 4, state: "ACTIVE_ACCUMULATION", isActive: true },
+      mesocycle: { macroCycleId: "plan-a", sessionsPerWeek: 4, slotSequenceJson: null, state: "ACTIVE_ACCUMULATION", isActive: true },
       _count: { exercises: 1 },
       exercises: [{ sets: [] }],
     });
@@ -428,7 +524,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
           ],
         },
       },
-      mesocycle: { macroCycleId: "plan-a", sessionsPerWeek: 3, state: "ACTIVE_ACCUMULATION", isActive: true },
+      mesocycle: { macroCycleId: "plan-a", sessionsPerWeek: 3, slotSequenceJson: null, state: "ACTIVE_ACCUMULATION", isActive: true },
       _count: { exercises: 1 },
       exercises: [{ sets: [] }],
     });
@@ -486,12 +582,94 @@ describe("buildWorkoutListSurfaceSummary", () => {
           exceptions: [],
         },
       },
-      mesocycle: { macroCycleId: "plan-a", sessionsPerWeek: 3, state: "ACTIVE_DELOAD", isActive: true },
+      mesocycle: { macroCycleId: "plan-a", sessionsPerWeek: 3, slotSequenceJson: null, state: "ACTIVE_DELOAD", isActive: true },
       _count: { exercises: 1 },
       exercises: [{ sets: [] }],
     });
 
     expect(summary.isDeload).toBe(true);
+  });
+
+  it.each([
+    ["lower-a", "LOWER", "COMPLETED", "Lower A"],
+    ["upper-a", "UPPER", "PARTIAL", "Upper A"],
+    ["lower-b", "LOWER", "PLANNED", "Lower B"],
+    ["upper-b", "UPPER", "SKIPPED", "Upper B"],
+  ] as const)(
+    "projects the persisted V4 authored label for %s",
+    (slotId, intent, status, expectedLabel) => {
+      const summary = buildSessionLabelSummary({ slotId, intent, status });
+
+      expect(summary.sessionIdentityLabel).toBe(expectedLabel);
+      expect(summary.status).toBe(status);
+      expect(summary.sessionSlotId).toBe(slotId);
+    },
+  );
+
+  it("prefers an authored label over both intent and legacy ordinal fallbacks", () => {
+    const summary = buildSessionLabelSummary({
+      slotId: "lower_b",
+      intent: "LOWER",
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [{ slotId: "lower_b", intent: "LOWER", label: "Lower B" }],
+      },
+    });
+
+    expect(summary.sessionIdentityLabel).toBe("Lower B");
+  });
+
+  it.each([
+    ["lower_b", "LOWER", "Lower 2"],
+    ["upper_b", "UPPER", "Upper 2"],
+  ] as const)(
+    "preserves the legacy ordinal fallback for %s without an authored label",
+    (slotId, intent, expectedLabel) => {
+      const summary = buildSessionLabelSummary({
+        slotId,
+        intent,
+        slotSequenceJson: null,
+      });
+
+      expect(summary.sessionIdentityLabel).toBe(expectedLabel);
+    },
+  );
+
+  it.each([
+    ["LOWER", "Lower"],
+    ["UPPER", "Upper"],
+  ] as const)("keeps the generic %s intent fallback", (intent, expectedLabel) => {
+    const summary = buildSessionLabelSummary({ intent, slotId: null });
+
+    expect(summary.sessionIdentityLabel).toBe(expectedLabel);
+  });
+
+  it.each([
+    ["missing sequence", null, true],
+    ["malformed sequence", { version: 1, slots: "invalid" }, true],
+    ["missing mesocycle", V4_SLOT_SEQUENCE, false],
+  ] as const)("fails safely for a %s", (_case, slotSequenceJson, hasMesocycle) => {
+    const summary = buildSessionLabelSummary({
+      slotId: "lower-a",
+      intent: "LOWER",
+      slotSequenceJson,
+      hasMesocycle,
+    });
+
+    expect(summary.sessionIdentityLabel).toBe("Lower");
+  });
+
+  it("keeps skipped workout identity and week/session subtitle independent", () => {
+    const summary = buildSessionLabelSummary({
+      slotId: "upper-b",
+      intent: "UPPER",
+      status: "SKIPPED",
+    });
+
+    expect(summary.sessionIdentityLabel).toBe("Upper B");
+    expect(formatWorkoutSessionSnapshotLabel(summary.sessionSnapshot)).toBe("Wk5·S4");
   });
 });
 

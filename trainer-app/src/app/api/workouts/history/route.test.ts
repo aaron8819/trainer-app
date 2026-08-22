@@ -43,6 +43,8 @@ function makeWorkout(overrides: Partial<{
   mesocyclePhaseSnapshot: string | null;
   exerciseCount: number;
   setLogCount: number;
+  selectionMetadata: unknown;
+  mesocycle: unknown;
 }> = {}) {
   const exerciseCount = overrides.exerciseCount ?? 3;
   const setLogCount = overrides.setLogCount ?? 9;
@@ -55,6 +57,7 @@ function makeWorkout(overrides: Partial<{
 
   return {
     id: overrides.id ?? "workout-1",
+    revision: 1,
     scheduledDate: overrides.scheduledDate ?? new Date("2026-02-20T10:00:00Z"),
     completedAt: overrides.completedAt ?? null,
     status: overrides.status ?? "COMPLETED",
@@ -64,6 +67,8 @@ function makeWorkout(overrides: Partial<{
     mesocycleWeekSnapshot: overrides.mesocycleWeekSnapshot ?? null,
     mesoSessionSnapshot: overrides.mesoSessionSnapshot ?? null,
     mesocyclePhaseSnapshot: overrides.mesocyclePhaseSnapshot ?? null,
+    selectionMetadata: overrides.selectionMetadata ?? null,
+    mesocycle: overrides.mesocycle ?? null,
     _count: { exercises: exerciseCount },
     exercises,
   };
@@ -227,5 +232,86 @@ describe("GET /api/workouts/history", () => {
     });
     // 3 exercises × 3 sets × floor(9/3) = 9 logs total (may vary by int division)
     expect(typeof body.workouts[0].totalSetsLogged).toBe("number");
+  });
+
+  it("serializes the persisted authored label through paginated history", async () => {
+    mocks.workoutFindMany.mockResolvedValue([
+      makeWorkout({
+        id: "workout-lower-b",
+        sessionIntent: "LOWER",
+        mesocycleId: "meso-v4",
+        mesocycleWeekSnapshot: 5,
+        mesoSessionSnapshot: 4,
+        mesocyclePhaseSnapshot: "ACCUMULATION",
+        selectionMetadata: {
+          sessionDecisionReceipt: {
+            version: 1,
+            cycleContext: {
+              weekInMeso: 5,
+              weekInBlock: 1,
+              phase: "accumulation",
+              blockType: "accumulation",
+              isDeload: false,
+              source: "computed",
+            },
+            sessionSlot: {
+              slotId: "lower-b",
+              intent: "lower",
+              sequenceIndex: 2,
+              sequenceLength: 4,
+              source: "mesocycle_slot_sequence",
+            },
+            lifecycleVolume: { source: "unknown" },
+            sorenessSuppressedMuscles: [],
+            deloadDecision: {
+              mode: "none",
+              reason: [],
+              reductionPercent: 0,
+              appliedTo: "none",
+            },
+            readiness: {
+              wasAutoregulated: false,
+              signalAgeHours: null,
+              fatigueScoreOverall: null,
+              intensityScaling: {
+                applied: false,
+                exerciseIds: [],
+                scaledUpCount: 0,
+                scaledDownCount: 0,
+              },
+            },
+            exceptions: [],
+          },
+        },
+        mesocycle: {
+          macroCycleId: "plan-v4",
+          sessionsPerWeek: 4,
+          state: "ACTIVE_ACCUMULATION",
+          isActive: true,
+          slotSequenceJson: {
+            version: 1,
+            source: "handoff_draft",
+            sequenceMode: "ordered_flexible",
+            slots: [
+              { slotId: "lower-b", intent: "LOWER", label: "Lower B" },
+            ],
+          },
+        },
+      }),
+    ]);
+    mocks.workoutCount.mockResolvedValue(1);
+
+    const res = await GET(
+      makeRequest({ cursor: "2026-08-21T00:00:00.000Z" }),
+    );
+    const body = await res.json();
+
+    expect(body.workouts[0]).toMatchObject({
+      sessionIdentityLabel: "Lower B",
+      sessionSlotId: "lower-b",
+      sessionSnapshot: { week: 5, session: 4, phase: "ACCUMULATION" },
+    });
+    expect(mocks.workoutFindMany.mock.calls[0][0].select.mesocycle.select)
+      .toMatchObject({ slotSequenceJson: true });
   });
 });

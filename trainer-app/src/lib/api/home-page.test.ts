@@ -78,6 +78,7 @@ import { loadHomePageData } from "./home-page";
 function makeWorkoutRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "workout-1",
+    revision: 1,
     scheduledDate: new Date("2026-03-24T00:00:00.000Z"),
     completedAt: new Date("2026-03-24T01:00:00.000Z"),
     status: "COMPLETED",
@@ -130,6 +131,7 @@ function makeWorkoutRow(overrides: Record<string, unknown> = {}) {
     mesocycle: {
       macroCycleId: "macro-1",
       sessionsPerWeek: 4,
+      slotSequenceJson: null,
       state: "ACTIVE_ACCUMULATION",
       isActive: true,
     },
@@ -137,6 +139,73 @@ function makeWorkoutRow(overrides: Record<string, unknown> = {}) {
     exercises: [],
     ...overrides,
   };
+}
+
+function makeAuthoredWorkoutRow(input: {
+  id: string;
+  slotId: "lower-a" | "upper-a";
+  intent: "LOWER" | "UPPER";
+  label: "Lower A" | "Upper A";
+}) {
+  const normalizedIntent = input.intent.toLowerCase();
+  return makeWorkoutRow({
+    id: input.id,
+    sessionIntent: input.intent,
+    selectionMetadata: {
+      sessionDecisionReceipt: {
+        version: 1,
+        cycleContext: {
+          weekInMeso: 2,
+          weekInBlock: 2,
+          phase: "accumulation",
+          blockType: "accumulation",
+          isDeload: false,
+          source: "computed",
+        },
+        sessionSlot: {
+          slotId: input.slotId,
+          intent: normalizedIntent,
+          sequenceIndex: 0,
+          sequenceLength: 4,
+          source: "mesocycle_slot_sequence",
+        },
+        lifecycleVolume: { source: "unknown" },
+        sorenessSuppressedMuscles: [],
+        deloadDecision: {
+          mode: "none",
+          reason: [],
+          reductionPercent: 0,
+          appliedTo: "none",
+        },
+        readiness: {
+          wasAutoregulated: false,
+          signalAgeHours: null,
+          fatigueScoreOverall: null,
+          intensityScaling: {
+            applied: false,
+            exerciseIds: [],
+            scaledUpCount: 0,
+            scaledDownCount: 0,
+          },
+        },
+        exceptions: [],
+      },
+    },
+    mesocycle: {
+      macroCycleId: "macro-1",
+      sessionsPerWeek: 4,
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: input.slotId, intent: input.intent, label: input.label },
+        ],
+      },
+      state: "ACTIVE_ACCUMULATION",
+      isActive: true,
+    },
+  });
 }
 
 function readinessCheck(
@@ -584,6 +653,34 @@ describe("loadHomePageData", () => {
         take: 10,
       })
     );
+  });
+
+  it("uses the shared authored-label projection for Home continuity and recent activity", async () => {
+    mocks.workoutFindFirst.mockResolvedValue(
+      makeAuthoredWorkoutRow({
+        id: "last-lower-a",
+        slotId: "lower-a",
+        intent: "LOWER",
+        label: "Lower A",
+      }),
+    );
+    mocks.workoutFindMany.mockResolvedValue([
+      makeAuthoredWorkoutRow({
+        id: "recent-upper-a",
+        slotId: "upper-a",
+        intent: "UPPER",
+        label: "Upper A",
+      }),
+    ]);
+
+    const result = await loadHomePageData("user-1");
+
+    expect(result.continuity?.lastCompleted?.sessionIdentityLabel).toBe("Lower A");
+    expect(result.recentActivity).toEqual([
+      expect.objectContaining({ sessionIdentityLabel: "Upper A" }),
+    ]);
+    expect(mocks.workoutFindMany.mock.calls[0][0].select.mesocycle.select)
+      .toMatchObject({ slotSequenceJson: true });
   });
 
   it("exposes the readiness gym-card DTO from a typed readiness contract", async () => {

@@ -179,16 +179,16 @@ describe("HistoryClient", () => {
     expect(screen.getAllByText("Body Part")).toHaveLength(1);
   });
 
-  it("renders slot-aware session identity labels when present", () => {
+  it("renders the shared authored identity once without a competing fallback", () => {
     render(
       <HistoryClient
         initialWorkouts={[
           makeWorkout({
             id: "upper-2",
             sessionIntent: "UPPER",
-            sessionIdentityLabel: "Upper 2",
-            sessionSlotId: "upper_b",
-            sessionTechnicalLabel: "Slot ID: upper_b",
+            sessionIdentityLabel: "Upper B",
+            sessionSlotId: "upper-b",
+            sessionTechnicalLabel: "Slot ID: upper-b",
           }),
         ]}
         initialNextCursor={null}
@@ -197,8 +197,9 @@ describe("HistoryClient", () => {
       />
     );
 
-    expect(screen.getByText("Upper 2")).toBeInTheDocument();
-    expect(screen.queryByText("Slot ID: upper_b")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Upper B")).toHaveLength(1);
+    expect(screen.queryByText("Upper 2")).not.toBeInTheDocument();
+    expect(screen.queryByText("Slot ID: upper-b")).not.toBeInTheDocument();
   });
 
   it("renders a Deload badge on deload workouts", () => {

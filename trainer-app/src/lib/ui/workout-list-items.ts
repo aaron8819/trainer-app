@@ -20,6 +20,7 @@ import {
   isDismissedCloseoutSession,
 } from "@/lib/session-semantics/closeout-classifier";
 import { isStrictSupplementalDeficitSession } from "@/lib/session-semantics/supplemental-classifier";
+import { resolveMesocycleSlotContract } from "@/lib/api/mesocycle-slot-contract";
 
 export const workoutListItemSelect = {
   id: true,
@@ -38,6 +39,7 @@ export const workoutListItemSelect = {
     select: {
       macroCycleId: true,
       sessionsPerWeek: true,
+      slotSequenceJson: true,
       state: true,
       isActive: true,
     },
@@ -204,6 +206,21 @@ function countLoggedSets(row: WorkoutListItemRow): number {
     }, 0);
 }
 
+function resolvePersistedAuthoredSessionLabel(input: {
+  slotId: string | null;
+  slotSequenceJson: unknown;
+}): string | null {
+  if (!input.slotId) {
+    return null;
+  }
+
+  return (
+    resolveMesocycleSlotContract({
+      slotSequenceJson: input.slotSequenceJson,
+    }).slots.find((slot) => slot.slotId === input.slotId)?.label ?? null
+  );
+}
+
 export function buildWorkoutListSurfaceSummary(
   row: WorkoutListItemRow,
   selection?: { activeMacroCycleId: string | null },
@@ -222,7 +239,12 @@ export function buildWorkoutListSurfaceSummary(
   });
   const receipt = readSessionDecisionReceipt(row.selectionMetadata);
   const sessionSlotId = isCloseout ? null : (receipt?.sessionSlot?.slotId ?? null);
+  const authoredLabel = resolvePersistedAuthoredSessionLabel({
+    slotId: sessionSlotId,
+    slotSequenceJson: row.mesocycle?.slotSequenceJson,
+  });
   const sessionIdentityLabel = formatSessionIdentityLabel({
+    authoredLabel,
     intent: row.sessionIntent ?? receipt?.sessionSlot?.intent ?? null,
     slotId: sessionSlotId,
   });

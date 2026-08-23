@@ -41,6 +41,7 @@ import { useRestTimerState, type RestTimerSnapshot } from "@/components/log-work
 import { useWorkoutSessionLayout } from "@/components/log-workout/useWorkoutSessionLayout";
 import { useWorkoutSessionFlow } from "@/components/log-workout/useWorkoutSessionFlow";
 import { isSetSatisfied } from "@/components/log-workout/useWorkoutLogState";
+import { formatFrozenLoadValue } from "@/lib/exercise-measurement/load-entry-policy";
 
 export type { LogExerciseInput, LogSetInput } from "@/components/log-workout/types";
 
@@ -119,7 +120,12 @@ function normalizeLoadInput(raw: string, isDumbbell: boolean): number | null {
   return toStoredLoad(parsed, isDumbbell) ?? null;
 }
 
-function formatQueueSetSummary(set: LogSetInput, isLogged: boolean, isDumbbell: boolean): string {
+function formatQueueSetSummary(
+  set: LogSetInput,
+  isLogged: boolean,
+  isDumbbell: boolean,
+  exercise: LogExerciseInput
+): string {
   if (set.setIntent === "WARMUP") {
     return isLogged ? "Warmup recorded" : "Warmup";
   }
@@ -135,7 +141,21 @@ function formatQueueSetSummary(set: LogSetInput, isLogged: boolean, isDumbbell: 
 
   const parts: string[] = [`${setPrefix} OK`];
   if (set.actualLoad != null && set.actualReps != null) {
-    parts.push(`${toDisplayLoad(set.actualLoad, isDumbbell) ?? set.actualLoad} x ${set.actualReps}`);
+    const displayLoad = formatFrozenLoadValue(
+      {
+        load: set.actualLoad,
+        snapshot: {
+          measurement: exercise.measurement ?? null,
+          zeroLoadMeaning: exercise.zeroLoadMeaning ?? null,
+        },
+      },
+      (load) => `${toDisplayLoad(load, isDumbbell) ?? load}`
+    );
+    parts.push(
+      displayLoad === "Bodyweight" || displayLoad === "Machine default / no added load"
+        ? `${displayLoad} × ${set.actualReps}`
+        : `${displayLoad ?? set.actualLoad} x ${set.actualReps}`
+    );
   } else if (set.actualReps != null) {
     parts.push(`${set.actualReps} reps`);
   }
@@ -782,7 +802,8 @@ export default function LogWorkoutClient({
                       label: formatQueueSetSummary(
                         warmupSet,
                         satisfiedSetIds.has(warmupSet.setId),
-                        isDumbbellExercise(exercise)
+                        isDumbbellExercise(exercise),
+                        exercise
                       ),
                       isLogged: satisfiedSetIds.has(warmupSet.setId),
                       isActive: resolvedActiveSetId === warmupSet.setId,
@@ -802,7 +823,8 @@ export default function LogWorkoutClient({
                   label: formatQueueSetSummary(
                     set,
                     satisfiedSetIds.has(set.setId),
-                    isDumbbellExercise(exercise)
+                    isDumbbellExercise(exercise),
+                    exercise
                   ),
                   isLogged: satisfiedSetIds.has(set.setId),
                   isActive: resolvedActiveSetId === set.setId,

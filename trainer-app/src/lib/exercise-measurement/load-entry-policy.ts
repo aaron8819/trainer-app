@@ -1,8 +1,7 @@
 import {
+  isZeroLoadMeaningCompatible,
   permitsComputedLoadComparison,
   type FrozenMeasurementSnapshot,
-  type MeasurementSemantics,
-  type ZeroLoadMeaning,
 } from "./semantics";
 
 export type LoadEntryPolicy = {
@@ -12,25 +11,6 @@ export type LoadEntryPolicy = {
   zeroDisplayLabel: "Bodyweight" | "Machine default / no added load" | null;
   positiveLoadProgressionEligible: boolean;
 };
-
-function zeroMeaningCompatible(
-  measurement: MeasurementSemantics,
-  zeroLoadMeaning: ZeroLoadMeaning | null,
-): boolean {
-  if (zeroLoadMeaning === "MACHINE_DEFAULT_NO_ADDED_LOAD") {
-    return (
-      measurement.profile === "REPS_EXTERNAL_LOAD" &&
-      measurement.loadConvention === "MACHINE_DISPLAYED"
-    );
-  }
-  if (zeroLoadMeaning === "BODYWEIGHT_NO_ADDED_LOAD") {
-    return (
-      measurement.profile === "REPS_EXTERNAL_LOAD" &&
-      measurement.loadConvention === "IMPLEMENT_WEIGHT"
-    );
-  }
-  return false;
-}
 
 export function deriveLoadEntryPolicy(
   snapshot: FrozenMeasurementSnapshot,
@@ -42,12 +22,7 @@ export function deriveLoadEntryPolicy(
       showLoadField: true,
       blankAllowedForPerformedSet: true,
       zeroAllowed: true,
-      zeroDisplayLabel:
-        zeroLoadMeaning === "BODYWEIGHT_NO_ADDED_LOAD"
-          ? "Bodyweight"
-          : zeroLoadMeaning === "MACHINE_DEFAULT_NO_ADDED_LOAD"
-            ? "Machine default / no added load"
-            : null,
+      zeroDisplayLabel: null,
       positiveLoadProgressionEligible: true,
     };
   }
@@ -72,10 +47,10 @@ export function deriveLoadEntryPolicy(
     };
   }
 
-  const compatibleZeroMeaning = zeroMeaningCompatible(
+  const compatibleZeroMeaning = isZeroLoadMeaningCompatible(
     measurement,
     zeroLoadMeaning,
-  );
+  ) && zeroLoadMeaning != null;
   return {
     showLoadField: true,
     blankAllowedForPerformedSet: false,

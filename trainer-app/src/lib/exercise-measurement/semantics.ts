@@ -101,6 +101,10 @@ export type FrozenMeasurementSnapshot = {
   zeroLoadMeaning: ZeroLoadMeaning | null;
 };
 
+export type PersistedFrozenMeasurementColumns = PersistedMeasurementColumns & {
+  zeroLoadMeaning: ZeroLoadMeaning | null;
+};
+
 export type ZeroLoadMeaningColumn = {
   zeroLoadMeaning?: string | null;
 };
@@ -119,6 +123,51 @@ export function frozenMeasurementSnapshot(
   return {
     measurement: parseMeasurementColumns(columns),
     zeroLoadMeaning: parseZeroLoadMeaningColumn(columns),
+  };
+}
+
+export function isMeasurementAwareAcceptedVersion(
+  acceptedVersion: number | null | undefined,
+): boolean {
+  return acceptedVersion === 3 || acceptedVersion === 4;
+}
+
+export function isZeroLoadMeaningCompatible(
+  measurement: MeasurementSemantics | null,
+  zeroLoadMeaning: ZeroLoadMeaning | null,
+): boolean {
+  if (zeroLoadMeaning == null) return true;
+  if (!measurement || measurement.profile !== "REPS_EXTERNAL_LOAD") return false;
+
+  if (zeroLoadMeaning === "BODYWEIGHT_NO_ADDED_LOAD") {
+    return (
+      measurement.loadConvention === "IMPLEMENT_WEIGHT" &&
+      measurement.repBasis === "PER_SIDE"
+    );
+  }
+
+  return (
+    measurement.loadConvention === "MACHINE_DISPLAYED" &&
+    measurement.repBasis === "TOTAL"
+  );
+}
+
+export function assertFrozenMeasurementSnapshotInvariant(
+  snapshot: FrozenMeasurementSnapshot,
+): FrozenMeasurementSnapshot {
+  if (!isZeroLoadMeaningCompatible(snapshot.measurement, snapshot.zeroLoadMeaning)) {
+    throw new Error("ZERO_LOAD_MEANING_MEASUREMENT_MISMATCH");
+  }
+  return snapshot;
+}
+
+export function frozenMeasurementColumns(
+  snapshot: FrozenMeasurementSnapshot,
+): PersistedFrozenMeasurementColumns {
+  const valid = assertFrozenMeasurementSnapshotInvariant(snapshot);
+  return {
+    ...measurementColumns(valid.measurement),
+    zeroLoadMeaning: valid.zeroLoadMeaning,
   };
 }
 

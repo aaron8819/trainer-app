@@ -187,6 +187,11 @@ describe("accepted workout measurement snapshot copying", () => {
       exercises: [
         {
           ...prepared,
+          measurement: {
+            profile: "REPS_EXTERNAL_LOAD",
+            loadConvention: "IMPLEMENT_WEIGHT",
+            repBasis: "PER_SIDE",
+          },
           zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
         },
       ],
@@ -201,6 +206,28 @@ describe("accepted workout measurement snapshot copying", () => {
     );
   });
 
+  it("rejects incompatible frozen capability tuples at the persistence writer", async () => {
+    const tx = {
+      workoutExercise: {
+        findMany: vi.fn().mockResolvedValue([]),
+        create: vi.fn(),
+      },
+      workoutSet: { deleteMany: vi.fn() },
+    } as unknown as Prisma.TransactionClient;
+
+    await expect(
+      rewriteWorkoutExercises(tx, {
+        workoutId: "workout-1",
+        exercises: [
+          {
+            ...prepared,
+            zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
+          },
+        ],
+      })
+    ).rejects.toThrow("ZERO_LOAD_MEANING_MEASUREMENT_MISMATCH");
+  });
+
   it("strips measurement from legacy materialization", async () => {
     const tx = {} as Prisma.TransactionClient;
     const [legacy] = await applyAcceptedMeasurementSnapshots(tx, {
@@ -208,6 +235,7 @@ describe("accepted workout measurement snapshot copying", () => {
       exercises: [prepared],
     });
     expect(legacy).not.toHaveProperty("measurement");
+    expect(legacy.zeroLoadMeaning).toBeNull();
   });
 
   it("persists an unresolved calibrated target as null", () => {

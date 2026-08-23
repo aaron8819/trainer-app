@@ -163,6 +163,43 @@ describe("GenerateFromTemplateCard", () => {
     expect(screen.getByText("Bench Press")).toBeInTheDocument();
   });
 
+  it("formats generated semantic-zero targets from the frozen snapshot", async () => {
+    const response = makeTemplateGenerationResponse();
+    response.workout.mainLifts = [
+      {
+        id: "workout-exercise-bulgarian",
+        orderIndex: 0,
+        isMainLift: true,
+        exercise: { id: "bulgarian", name: "Bulgarian Split Squat" },
+        sets: [{ setIndex: 1, targetReps: 10, targetLoad: 0, targetRpe: 8 }],
+        measurement: {
+          profile: "REPS_EXTERNAL_LOAD",
+          loadConvention: "IMPLEMENT_WEIGHT",
+          repBasis: "PER_SIDE",
+        },
+        zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
+      } as (typeof response.workout.mainLifts)[number] & {
+        measurement: {
+          profile: "REPS_EXTERNAL_LOAD";
+          loadConvention: "IMPLEMENT_WEIGHT";
+          repBasis: "PER_SIDE";
+        };
+        zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD";
+      },
+    ];
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => response,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<GenerateFromTemplateCard templates={templates} />);
+    fireEvent.click(screen.getByRole("button", { name: "Generate Workout" }));
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+
+    expect(await screen.findByText(/Bodyweight/)).toBeInTheDocument();
+  });
+
   it("round-trips the released AUTO template shape without client-authored intent or scheduling receipt", async () => {
     const fetchMock = vi
       .fn()

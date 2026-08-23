@@ -5,6 +5,7 @@ import type {
   ProgressionSet,
 } from "../engine/progression";
 import type { WorkoutHistoryEntry } from "../engine/types";
+import type { FrozenMeasurementSnapshot } from "../exercise-measurement/semantics";
 
 export type CanonicalProgressionHistorySession = {
   exposureId?: string;
@@ -61,6 +62,7 @@ export function buildCanonicalProgressionEvaluationInput(input: {
   calibrationConfidenceScale?: number;
   calibrationConfidenceReason?: string;
   loadIncrement?: number;
+  measurementSnapshot?: FrozenMeasurementSnapshot;
 }): CanonicalProgressionEvaluationInput {
   const historySessions = input.historySessions ?? [];
   const progressionExposures = historySessions.map((session, index) =>
@@ -101,6 +103,7 @@ export function buildCanonicalProgressionEvaluationInput(input: {
       intentDeviation: intentDeviation.signal,
       ...(input.currentTarget ? { currentTarget: input.currentTarget } : {}),
       ...(input.loadIncrement != null ? { loadIncrement: input.loadIncrement } : {}),
+      ...(input.measurementSnapshot ? { measurementSnapshot: input.measurementSnapshot } : {}),
       ...(progressionExposures.length > 0 ? { progressionExposures } : {}),
       ...(intentDeviation.targetLoadCeiling != null
         ? { intentDeviationTargetLoadCeiling: intentDeviation.targetLoadCeiling }

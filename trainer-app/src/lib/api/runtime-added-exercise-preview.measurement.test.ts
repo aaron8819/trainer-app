@@ -19,6 +19,7 @@ vi.mock("@/lib/db/prisma", () => ({
 }));
 
 import { resolveRuntimeAddedExercisePreviews } from "./runtime-added-exercise-preview";
+import { buildRevisedFourDayPlanAcceptedSeed } from "@/lib/engine/hypertrophy-plan-authoring-v4-revised.fixture";
 
 function acceptedV3Seed() {
   const measurement = {
@@ -59,10 +60,12 @@ function exercise(input: {
   measurementProfile?: string | null;
   loadConvention?: string | null;
   repBasis?: string | null;
+  zeroLoadMeaning?: string | null;
+  name?: string;
 }) {
   return {
     id: input.id,
-    name: input.id,
+    name: input.name ?? input.id,
     repRangeMin: 8,
     repRangeMax: 12,
     fatigueCost: 2,
@@ -70,6 +73,7 @@ function exercise(input: {
     measurementProfile: input.measurementProfile ?? null,
     loadConvention: input.loadConvention ?? null,
     repBasis: input.repBasis ?? null,
+    zeroLoadMeaning: input.zeroLoadMeaning ?? null,
     exerciseEquipment: [],
   };
 }
@@ -113,7 +117,70 @@ describe("runtime-added measurement previews", () => {
     expect(previews[0]).toMatchObject({
       exerciseId: "classified",
       targetLoad: null,
+      measurement: {
+        profile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "BARBELL_TOTAL",
+        repBasis: "TOTAL",
+      },
+      zeroLoadMeaning: null,
     });
+  });
+
+  it("freezes complete Bulgarian and Hack semantics in accepted V4 add previews", async () => {
+    mocks.workoutFindFirst.mockResolvedValue({
+      selectionMetadata: {},
+      seedRevision: { seedPayload: buildRevisedFourDayPlanAcceptedSeed() },
+      exercises: [],
+    });
+    mocks.exerciseFindMany.mockResolvedValue([
+      exercise({
+        id: "bulgarian",
+        name: "Bulgarian Split Squat",
+        measurementProfile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "IMPLEMENT_WEIGHT",
+        repBasis: "PER_SIDE",
+        zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
+      }),
+      exercise({
+        id: "hack",
+        name: "Hack Squat",
+        measurementProfile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "MACHINE_DISPLAYED",
+        repBasis: "TOTAL",
+        zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD",
+      }),
+    ]);
+
+    const previews = await resolveRuntimeAddedExercisePreviews({
+      workoutId: "workout",
+      userId: "user",
+      exerciseIds: ["bulgarian", "hack"],
+    });
+
+    expect(previews).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          exerciseId: "bulgarian",
+          measurement: {
+            profile: "REPS_EXTERNAL_LOAD",
+            loadConvention: "IMPLEMENT_WEIGHT",
+            repBasis: "PER_SIDE",
+          },
+          zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
+          targetLoad: null,
+        }),
+        expect.objectContaining({
+          exerciseId: "hack",
+          measurement: {
+            profile: "REPS_EXTERNAL_LOAD",
+            loadConvention: "MACHINE_DISPLAYED",
+            repBasis: "TOTAL",
+          },
+          zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD",
+          targetLoad: null,
+        }),
+      ])
+    );
   });
 
   it("retains legacy preview behavior", async () => {

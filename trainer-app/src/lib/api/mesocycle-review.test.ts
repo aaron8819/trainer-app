@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import { loadMesocycleReview } from "./mesocycle-review";
+import { formatMesocycleBestSetLabel, loadMesocycleReview } from "./mesocycle-review";
 
 function buildBenchExercise(load: number, id = `bench-${load}`) {
   return {
@@ -9,6 +9,10 @@ function buildBenchExercise(load: number, id = `bench-${load}`) {
     orderIndex: 1,
     section: "MAIN",
     isMainLift: true,
+    measurementProfile: "REPS_EXTERNAL_LOAD" as const,
+    loadConvention: "BARBELL_TOTAL" as const,
+    repBasis: "TOTAL" as const,
+    zeroLoadMeaning: null,
     exercise: {
       id: "bench",
       name: "Bench Press",
@@ -41,6 +45,39 @@ function buildBenchExercise(load: number, id = `bench-${load}`) {
 }
 
 describe("loadMesocycleReview", () => {
+  it.each([
+    [
+      {
+        measurement: {
+          profile: "REPS_EXTERNAL_LOAD" as const,
+          loadConvention: "IMPLEMENT_WEIGHT" as const,
+          repBasis: "PER_SIDE" as const,
+        },
+        zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD" as const,
+      },
+      "12 reps @ Bodyweight @ RPE 8",
+    ],
+    [
+      {
+        measurement: {
+          profile: "REPS_EXTERNAL_LOAD" as const,
+          loadConvention: "MACHINE_DISPLAYED" as const,
+          repBasis: "TOTAL" as const,
+        },
+        zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD" as const,
+      },
+      "12 reps @ Machine default / no added load @ RPE 8",
+    ],
+    [{ measurement: null, zeroLoadMeaning: null }, "12 reps @ 0 lb @ RPE 8"],
+  ])("formats mesocycle best-set zero from frozen semantics", (snapshot, expected) => {
+    expect(
+      formatMesocycleBestSetLabel(
+        { actualReps: 12, actualLoad: 0, actualRpe: 8 },
+        snapshot
+      )
+    ).toBe(expected);
+  });
+
   it("loads frozen handoff data and derives mesocycle-scoped review metrics from mesocycleId", async () => {
     const mesocycleFindFirst = vi.fn().mockResolvedValue({
       id: "meso-1",
@@ -231,12 +268,15 @@ describe("loadMesocycleReview", () => {
       plannedSessions: 0,
       performedSessions: 0,
     });
-    expect(result?.derived.topProgressedExercises[0]).toMatchObject({
+    const benchProgress = result?.derived.topProgressedExercises.find(
+      (row) => row.exerciseId === "bench"
+    );
+    expect(benchProgress).toMatchObject({
       exerciseId: "bench",
       exerciseName: "Bench Press",
       signal: "estimated_strength",
     });
-    expect(result?.derived.topProgressedExercises[0]?.summary).toMatch(/Estimated strength up/i);
+    expect(benchProgress?.summary).toMatch(/Estimated strength up/i);
     expect(result?.derived.muscleVolumeSummary.find((row) => row.muscle === "Chest")).toMatchObject({
       targetSets: expect.any(Number),
       actualEffectiveSets: 6,

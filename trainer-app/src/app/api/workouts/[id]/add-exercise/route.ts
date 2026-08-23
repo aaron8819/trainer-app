@@ -23,7 +23,8 @@ import {
   isWorkoutMutationError,
 } from "@/lib/api/workout-mutation";
 import {
-  measurementColumns,
+  frozenMeasurementColumns,
+  isMeasurementAwareAcceptedVersion,
   parseMeasurementColumns,
   parseZeroLoadMeaningColumn,
 } from "@/lib/exercise-measurement/semantics";
@@ -287,7 +288,9 @@ export async function POST(
     return NextResponse.json({ error: "Exercise not found" }, { status: 404 });
   }
   const measurementAwareWorkout = workout.seedRevision?.seedPayload
-    ? parseAcceptedSeedPayload(workout.seedRevision.seedPayload).acceptedVersion === 3
+    ? isMeasurementAwareAcceptedVersion(
+        parseAcceptedSeedPayload(workout.seedRevision.seedPayload).acceptedVersion,
+      )
     : false;
   const catalogMeasurement = parseMeasurementColumns(exercise);
   if (measurementAwareWorkout && !catalogMeasurement) {
@@ -374,8 +377,10 @@ export async function POST(
         throw new Error("WORKOUT_NOT_FOUND");
       }
       const latestMeasurementAware = latestWorkout.seedRevision?.seedPayload
-        ? parseAcceptedSeedPayload(latestWorkout.seedRevision.seedPayload)
-            .acceptedVersion === 3
+        ? isMeasurementAwareAcceptedVersion(
+            parseAcceptedSeedPayload(latestWorkout.seedRevision.seedPayload)
+              .acceptedVersion,
+          )
         : false;
       const committedSemantics =
         (await tx.exercise.findUnique({
@@ -450,8 +455,12 @@ export async function POST(
           isMainLift: preview.isMainLift,
           stimulusAccountingSnapshot:
             stimulusAccountingSnapshot as unknown as Prisma.InputJsonValue,
-          zeroLoadMeaning: committedZeroLoadMeaning,
-          ...measurementColumns(latestMeasurementAware ? committedMeasurement : null),
+          ...frozenMeasurementColumns({
+            measurement: latestMeasurementAware ? committedMeasurement : null,
+            zeroLoadMeaning: latestMeasurementAware
+              ? committedZeroLoadMeaning
+              : null,
+          }),
           sets: {
             create: setIndices.map((setIndex) => ({
               setIndex,

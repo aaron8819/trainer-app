@@ -99,6 +99,65 @@ function makeExplanation(): WorkoutExplanation {
 }
 
 describe("buildPostWorkoutInsightsModel", () => {
+  it.each([
+    [
+      "Bulgarian Split Squat",
+      {
+        profile: "REPS_EXTERNAL_LOAD" as const,
+        loadConvention: "IMPLEMENT_WEIGHT" as const,
+        repBasis: "PER_SIDE" as const,
+      },
+      "BODYWEIGHT_NO_ADDED_LOAD" as const,
+      "bodyweight",
+    ],
+    [
+      "Hack Squat",
+      {
+        profile: "REPS_EXTERNAL_LOAD" as const,
+        loadConvention: "MACHINE_DISPLAYED" as const,
+        repBasis: "TOTAL" as const,
+      },
+      "MACHINE_DEFAULT_NO_ADDED_LOAD" as const,
+      "machine default / no added load",
+    ],
+    ["Legacy Exercise", null, null, "0 lbs"],
+  ])("uses frozen %s zero semantics in post-workout copy", (name, measurement, zeroLoadMeaning, wording) => {
+    const explanation = makeExplanation();
+    explanation.nextExposureDecisions = new Map([
+      [
+        "exercise",
+        {
+          action: "hold" as const,
+          summary: "Hold.",
+          reason: "Build reps.",
+          anchorLoad: 0,
+          repRange: { min: 8, max: 12 },
+          modalRpe: 8,
+          medianReps: 10,
+        },
+      ],
+    ]);
+    explanation.progressionReceipts = new Map();
+
+    const model = buildPostWorkoutInsightsModel({
+      explanation,
+      exercises: [
+        {
+          exerciseId: "exercise",
+          exerciseName: name,
+          isMainLift: true,
+          measurement,
+          zeroLoadMeaning,
+        },
+      ],
+    });
+
+    expect(model.keyLifts[0]?.performed).toContain(wording);
+    if (name === "Legacy Exercise") {
+      expect(model.keyLifts[0]?.performed).not.toContain("bodyweight");
+    }
+  });
+
   it("formats main-lift rep ranges with the range primary and aim secondary", () => {
     expect(
       formatRepPrescription(

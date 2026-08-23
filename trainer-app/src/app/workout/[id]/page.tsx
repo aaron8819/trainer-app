@@ -431,7 +431,7 @@ export default async function WorkoutDetailPage({
                                   </div>
                                   {loadMiss && !log.wasSkipped && log.actualLoad != null && set.targetLoad != null ? (
                                     <div className="mt-0.5 text-xs text-slate-500">
-                                      {`Load: ${log.actualLoad} / ${set.targetLoad} lbs (${Math.round(
+                                      {`Load: ${formatExerciseLoad(log.actualLoad) ?? log.actualLoad} / ${set.targetLoad} lbs (${Math.round(
                                         ((log.actualLoad - set.targetLoad) / set.targetLoad) * 100
                                       )}%)`}
                                     </div>

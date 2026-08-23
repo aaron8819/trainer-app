@@ -6,6 +6,7 @@ import type { LogExerciseInput } from "@/components/log-workout/types";
 import type { BonusSuggestion } from "@/lib/api/bonus-suggestions";
 import type { RuntimeAddedExercisePreview } from "@/lib/api/runtime-added-exercise-preview";
 import type { ExerciseSearchResult } from "@/lib/exercise-library/search";
+import { formatFrozenLoadValue } from "@/lib/exercise-measurement/load-entry-policy";
 
 type Props = {
   isOpen: boolean;
@@ -100,7 +101,19 @@ export function BonusExerciseSheet({
       formatRestSeconds(preview.restSeconds),
     ];
     if (preview.targetLoad != null) {
-      parts.push(`Load hint ${preview.targetLoad} lbs`);
+      const loadLabel = formatFrozenLoadValue(
+        {
+          load: preview.targetLoad,
+          snapshot: {
+            measurement: preview.measurement ?? null,
+            zeroLoadMeaning: preview.zeroLoadMeaning,
+          },
+        },
+        (load) => `${load} lbs`,
+      );
+      if (loadLabel) {
+        parts.push(`Load hint ${loadLabel}`);
+      }
     }
 
     return parts.join(" · ");

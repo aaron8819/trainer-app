@@ -153,6 +153,38 @@ describe("loadCompletedWorkoutReviewReadModel", () => {
     });
   });
 
+  it("adapts completed-review semantic zero from immutable workout evidence", async () => {
+    mocks.produceCurrentPostSessionReviewInterpretation.mockResolvedValue(
+      readyResult({
+        exercises: [
+          exercise({
+            exerciseId: "hack",
+            exerciseName: "Hack Squat",
+            measurement: {
+              profile: "REPS_EXTERNAL_LOAD",
+              loadConvention: "MACHINE_DISPLAYED",
+              repBasis: "TOTAL",
+            },
+            zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD",
+            sets: [
+              performedSet("set-1", {
+                targetLoad: 50,
+                actualLoad: 0,
+                actualReps: 6,
+              }),
+            ],
+          }),
+        ],
+      })
+    );
+
+    const model = await loadCompletedWorkoutReviewReadModel("user-1", "workout-1");
+
+    expect(model.postSessionReview?.loadCalibration[0]?.detail).toContain(
+      "Performed median load Machine default / no added load vs target 50"
+    );
+  });
+
   it("returns the persisted exact historical review without current-policy recomputation", async () => {
     const persisted = readyResult().contract;
     mocks.loadHistoricalPostSessionReview.mockResolvedValue({

@@ -9,12 +9,19 @@ import {
   type WeeklyMuscleStatus,
 } from "@/lib/ui/weekly-muscle-status";
 import { getCanonicalNextExposureCopy } from "@/lib/ui/next-exposure-copy";
+import { formatFrozenLoadValue } from "@/lib/exercise-measurement/load-entry-policy";
+import type {
+  MeasurementSemantics,
+  ZeroLoadMeaning,
+} from "@/lib/exercise-measurement/semantics";
 
 export type ReviewedExerciseMeta = {
   exerciseId: string;
   exerciseName: string;
   isMainLift: boolean;
   isRuntimeAdded?: boolean;
+  measurement?: MeasurementSemantics | null;
+  zeroLoadMeaning?: ZeroLoadMeaning | null;
 };
 
 export type PostWorkoutInsightTone = "positive" | "neutral" | "caution";
@@ -67,14 +74,28 @@ function formatSignedPercent(value: number | null | undefined): string | null {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
-function formatLoad(load: number | null | undefined): string {
+function formatLoad(
+  load: number | null | undefined,
+  exercise?: ReviewedExerciseMeta
+): string {
   if (load == null || !Number.isFinite(load)) {
     return "your logged working load";
   }
-  if (load === 0) {
-    return "bodyweight";
-  }
-  return `${load} lbs`;
+  const formatted = formatFrozenLoadValue(
+    {
+      load,
+      snapshot: {
+        measurement: exercise?.measurement ?? null,
+        zeroLoadMeaning: exercise?.zeroLoadMeaning ?? null,
+      },
+    },
+    (numericLoad) => `${numericLoad} lbs`
+  );
+  return formatted === "Bodyweight"
+    ? "bodyweight"
+    : formatted === "Machine default / no added load"
+      ? "machine default / no added load"
+      : formatted ?? "your logged working load";
 }
 
 function formatExerciseNameList(names: string[]): string {
@@ -123,9 +144,12 @@ function isReviewBeforeIncreaseAction(
   );
 }
 
-function describePerformedSignal(decision: NextExposureDecision): string {
+function describePerformedSignal(
+  decision: NextExposureDecision,
+  exercise: ReviewedExerciseMeta
+): string {
   const parts = [
-    `Today's performed signal centered on ${formatLoad(decision.anchorLoad)}`,
+    `Today's performed signal centered on ${formatLoad(decision.anchorLoad, exercise)}`,
     decision.medianReps != null
       ? `median ${Number(decision.medianReps.toFixed(1))} reps`
       : null,
@@ -135,7 +159,10 @@ function describePerformedSignal(decision: NextExposureDecision): string {
   return `${parts.join(" at ")}.`;
 }
 
-function describeTodayTargetContext(receipt: ProgressionReceipt | undefined): string {
+function describeTodayTargetContext(
+  receipt: ProgressionReceipt | undefined,
+  exercise: ReviewedExerciseMeta
+): string {
   if (!receipt) {
     return "Today's written target stayed close to plan because no clear progression trace was available.";
   }
@@ -147,19 +174,19 @@ function describeTodayTargetContext(receipt: ProgressionReceipt | undefined): st
   switch (receipt.trigger) {
     case "double_progression":
       if (previousLoad != null && todayLoad != null) {
-        return `Today's written target moved from ${formatLoad(previousLoad)} to ${formatLoad(todayLoad)}${deltaPercent ? ` (${deltaPercent})` : ""}.`;
+        return `Today's written target moved from ${formatLoad(previousLoad, exercise)} to ${formatLoad(todayLoad, exercise)}${deltaPercent ? ` (${deltaPercent})` : ""}.`;
       }
       return "Today's written target moved up from your prior performed anchor.";
     case "hold":
       if (todayLoad != null) {
-        return `Today's written target held at ${formatLoad(todayLoad)} because recent history did not justify a change.`;
+        return `Today's written target held at ${formatLoad(todayLoad, exercise)} because recent history did not justify a change.`;
       }
       return "Today's written target held your recent anchor.";
     case "readiness_scale":
       return "Today's written target was adjusted to match the readiness signal on the day.";
     case "deload":
       if (previousLoad != null && todayLoad != null) {
-        return `Today's written target was intentionally lighter for deload work, moving from ${formatLoad(previousLoad)} to ${formatLoad(todayLoad)}${deltaPercent ? ` (${deltaPercent})` : ""}.`;
+        return `Today's written target was intentionally lighter for deload work, moving from ${formatLoad(previousLoad, exercise)} to ${formatLoad(todayLoad, exercise)}${deltaPercent ? ` (${deltaPercent})` : ""}.`;
       }
       return "Today's written target was intentionally lighter for deload work.";
     default:
@@ -383,9 +410,9 @@ function buildDescriptiveKeyLiftInsights(
         badge: "Deload",
         tone: "neutral",
         performed: decision
-          ? describePerformedSignal(decision)
+          ? describePerformedSignal(decision, exercise)
           : "This lift was logged as intentionally lighter deload work.",
-        todayContext: describeTodayTargetContext(receipt),
+        todayContext: describeTodayTargetContext(receipt, exercise),
         nextTime:
           "This session does not count toward progression history. Next block re-anchors from accumulation work, not this deload.",
       };
@@ -437,8 +464,8 @@ function buildDescriptiveKeyLiftInsights(
         action: decision.action,
         badge: badgeForAction(decision.action),
         tone: toneForAction(decision.action),
-        performed: describePerformedSignal(decision),
-        todayContext: describeTodayTargetContext(receipt),
+        performed: describePerformedSignal(decision, exercise),
+        todayContext: describeTodayTargetContext(receipt, exercise),
         nextTime: `${decision.summary} ${decision.reason}`,
       },
     ];

@@ -18,6 +18,7 @@ import type {
   PostSessionReviewRecentExerciseExposureEvidence,
   PostSessionReviewSetEvidence,
 } from "./post-session-review-evidence";
+import { formatFrozenLoadValue } from "@/lib/exercise-measurement/load-entry-policy";
 
 const RECENT_EXPOSURE_LOOKBACK_WORKOUT_LIMIT = 3;
 
@@ -562,11 +563,24 @@ function performedRealityDetail(input: {
     typeof row.medianReps === "number"
       ? `${formatValue(row.medianReps)} reps`
       : "reps not captured";
+  const actualLoad =
+    typeof row.medianPerformedLoad === "number"
+      ? formatFrozenLoadValue(
+          {
+            load: row.medianPerformedLoad,
+            snapshot: {
+              measurement: row.measurement ?? null,
+              zeroLoadMeaning: row.zeroLoadMeaning ?? null,
+            },
+          },
+          (load) => formatValue(load),
+        )
+      : "not captured";
 
   return [
     completionDetail,
     `target ${formatTargetRange(row)}, load ${formatValue(row.targetLoad)}, RPE ${formatValue(row.targetRpe)}`,
-    `actual median ${actualReps}, load ${formatValue(row.medianPerformedLoad)}, RPE ${formatValue(row.medianActualRpe)}`,
+    `actual median ${actualReps}, load ${actualLoad ?? "n/a"}, RPE ${formatValue(row.medianActualRpe)}`,
   ].join("; ") + ".";
 }
 
@@ -725,6 +739,8 @@ function buildCalibrationRows(
     return {
       exerciseId: exercise.exerciseId,
       exerciseName: exercise.exerciseName,
+      measurement: exercise.measurement ?? null,
+      zeroLoadMeaning: exercise.zeroLoadMeaning ?? null,
       ...classification,
       plannedSetCount,
       performedSetCount,

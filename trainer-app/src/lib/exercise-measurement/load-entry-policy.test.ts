@@ -65,7 +65,19 @@ describe("frozen load-entry policy", () => {
         },
         (load) => `${load} lb`,
       ),
-    ).toBe("Bodyweight");
+    ).toBe("0 lb");
+    expect(
+      formatFrozenLoadValue(
+        {
+          load: 0,
+          snapshot: {
+            measurement: null,
+            zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD",
+          },
+        },
+        (load) => `${load} lb`,
+      ),
+    ).toBe("0 lb");
   });
 
   it("hides bodyweight-only load and treats bodyweight-plus-load zero as bodyweight", () => {

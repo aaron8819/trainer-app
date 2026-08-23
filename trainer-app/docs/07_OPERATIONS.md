@@ -2,7 +2,9 @@
 
 ## Zero-load catalog release sequence
 
-After deploying the schema and runtime, use separate authorization to (1) run a scoped production catalog dry-run, (2) confirm exactly two capability updates for `bulgarian-split-squat` and `hack-squat` with no unrelated operations, (3) apply those updates, and (4) run a second scoped dry-run that reports zero operations. Do not update historical terminal workout snapshots. The bounded pre-existing-workout candidate scope is only null-capability `WorkoutExercise` rows for those two exact canonical exercise IDs whose parent workout is `PLANNED` and whose frozen measurement tuple still matches the approved tuple. Any `IN_PROGRESS` row requires separate review and must not be changed automatically. The migration does not repair or backfill either scope.
+Use one controlled release window that prevents materialization against a partially ready catalog: (1) apply the additive schema migration while the old runtime remains active, (2) under separate production authorization run the scoped catalog dry-run and confirm exactly two capability updates for `bulgarian-split-squat` and `hack-squat` with no unrelated operations, (3) apply those catalog updates, (4) run a second scoped dry-run that reports zero operations, and only then (5) activate the new runtime or otherwise expose measurement-aware workout materialization. Do not use the schema migration to synchronize catalog data.
+
+If the platform cannot prevent new-runtime materialization during the schema/catalog gap, record the exact gap start and end and require a bounded inventory before rollout completion. The candidate scope is only null-capability `WorkoutExercise` rows for those two exact canonical exercise IDs created during that interval whose parent workout is `PLANNED` and whose frozen measurement tuple still matches the approved tuple. Any repair requires separate authorization. `IN_PROGRESS` rows require individual review and must not be changed automatically. Terminal rows remain untouched. The migration does not repair or backfill any scope.
 
 ## Phase 1 Finisher rollout
 

@@ -32,6 +32,16 @@ import {
   type WeeklyRetroCalibrationContract,
   type WeeklyRetroCalibrationSummaryKind,
 } from "./weekly-retro-calibration-contract";
+import { formatFrozenLoadValue } from "@/lib/exercise-measurement/load-entry-policy";
+import {
+  parseMeasurementColumns,
+  parseZeroLoadMeaningColumn,
+  type LoadConvention,
+  type FrozenMeasurementSnapshot,
+  type MeasurementProfile,
+  type RepBasis,
+  type ZeroLoadMeaning,
+} from "@/lib/exercise-measurement/semantics";
 
 type MesocycleReviewReader =
   | Pick<Prisma.TransactionClient, "mesocycle" | "workout">
@@ -80,6 +90,10 @@ type ReviewWorkoutRow = {
     orderIndex: number;
     section: string | null;
     isMainLift: boolean;
+    measurementProfile: MeasurementProfile | null;
+    loadConvention: LoadConvention | null;
+    repBasis: RepBasis | null;
+    zeroLoadMeaning: ZeroLoadMeaning | null;
     exercise: {
       id: string;
       name: string;
@@ -498,15 +512,27 @@ function buildAdherenceSummary(workouts: ReviewWorkoutRow[]): MesocycleReviewAdh
   };
 }
 
-function buildExerciseBestSetLabel(log: {
-  actualReps: number | null;
-  actualLoad: number | null;
-  actualRpe: number | null;
-}): string {
+export function formatMesocycleBestSetLabel(
+  log: {
+    actualReps: number | null;
+    actualLoad: number | null;
+    actualRpe: number | null;
+  },
+  snapshot: FrozenMeasurementSnapshot
+): string {
   const reps = typeof log.actualReps === "number" ? `${log.actualReps} reps` : "logged set";
-  const load = formatLoad(log.actualLoad);
+  const load = formatFrozenLoadValue(
+    {
+      load: log.actualLoad,
+      snapshot,
+    },
+    (numericLoad) => {
+      const formatted = formatLoad(numericLoad);
+      return formatted ? `${formatted} lb` : null;
+    }
+  );
   const rpe = typeof log.actualRpe === "number" ? ` @ RPE ${log.actualRpe}` : "";
-  return load ? `${reps} @ ${load} lb${rpe}` : `${reps}${rpe}`;
+  return load ? `${reps} @ ${load}${rpe}` : `${reps}${rpe}`;
 }
 
 function buildExerciseExposure(
@@ -539,7 +565,10 @@ function buildExerciseExposure(
       scheduledDate: "",
       signal: "estimated_strength",
       value: weightedSets[0]?.value ?? 0,
-      bestSet: buildExerciseBestSetLabel(weightedSets[0].log),
+      bestSet: formatMesocycleBestSetLabel(weightedSets[0].log, {
+        measurement: parseMeasurementColumns(workoutExercise),
+        zeroLoadMeaning: parseZeroLoadMeaningColumn(workoutExercise),
+      }),
       sessionIntent: null,
     };
   }
@@ -553,7 +582,10 @@ function buildExerciseExposure(
     scheduledDate: "",
     signal: "top_reps",
     value: bestRepSet.actualReps ?? 0,
-    bestSet: buildExerciseBestSetLabel(bestRepSet),
+    bestSet: formatMesocycleBestSetLabel(bestRepSet, {
+      measurement: parseMeasurementColumns(workoutExercise),
+      zeroLoadMeaning: parseZeroLoadMeaningColumn(workoutExercise),
+    }),
     sessionIntent: null,
   };
 }
@@ -915,6 +947,10 @@ async function loadMesocycleWorkouts(
           orderIndex: true,
           section: true,
           isMainLift: true,
+          measurementProfile: true,
+          loadConvention: true,
+          repBasis: true,
+          zeroLoadMeaning: true,
           exercise: {
             select: {
               id: true,

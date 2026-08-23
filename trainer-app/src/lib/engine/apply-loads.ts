@@ -289,6 +289,10 @@ export function applyLoadsWithAudit(
     )
       ? resolveLoadForExercise(
         exercise,
+        {
+          measurement: exerciseEntry.measurement ?? null,
+          zeroLoadMeaning: exerciseEntry.zeroLoadMeaning ?? null,
+        },
         (hasUsableExactHistory ? exactHistorySessions : undefined) ?? legacyHistorySessions,
         (hasUsableExactCrossIntentHistory ? exactCrossIntentHistorySessions : undefined) ??
           legacyCrossIntentHistorySessions,
@@ -886,6 +890,7 @@ function resolveBaselineLoad(baseline: BaselineInput): number | undefined {
 
 function resolveLoadForExercise(
   exercise: Exercise,
+  measurementSnapshot: import("@/lib/exercise-measurement/semantics").FrozenMeasurementSnapshot,
   historySessions: WorkoutSessionHistory[] | undefined,
   crossIntentHistorySessions: WorkoutSessionHistory[] | undefined,
   historyEvidenceSource: ApplyLoadsHistoryEvidence["source"],
@@ -982,6 +987,10 @@ function resolveLoadForExercise(
       calibrationConfidenceScale,
       calibrationConfidenceReason: calibrationPolicy.confidenceReason,
       loadIncrement,
+      measurementSnapshot: {
+        measurement: measurementSnapshot.measurement,
+        zeroLoadMeaning: measurementSnapshot.zeroLoadMeaning,
+      },
     });
     const decision = computeDoubleProgressionDecision(
       progressionInput.lastSets,

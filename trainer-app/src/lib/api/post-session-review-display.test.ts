@@ -95,6 +95,54 @@ function buildDisplay(overrides: Partial<PostSessionReviewContractBuildInput> = 
 }
 
 describe("post-session review display adapter", () => {
+  it.each([
+    [
+      "Bulgarian Split Squat",
+      {
+        profile: "REPS_EXTERNAL_LOAD" as const,
+        loadConvention: "IMPLEMENT_WEIGHT" as const,
+        repBasis: "PER_SIDE" as const,
+      },
+      "BODYWEIGHT_NO_ADDED_LOAD" as const,
+      "Bodyweight",
+    ],
+    [
+      "Hack Squat",
+      {
+        profile: "REPS_EXTERNAL_LOAD" as const,
+        loadConvention: "MACHINE_DISPLAYED" as const,
+        repBasis: "TOTAL" as const,
+      },
+      "MACHINE_DEFAULT_NO_ADDED_LOAD" as const,
+      "Machine default / no added load",
+    ],
+  ])("formats %s semantic zero from post-session frozen evidence", (name, measurement, zeroLoadMeaning, label) => {
+    const display = buildDisplay({
+      exercises: [
+        exercise({
+          exerciseId: name,
+          exerciseName: name,
+          measurement,
+          zeroLoadMeaning,
+          sets: [
+            performedSet("set-1", {
+              targetLoad: 50,
+              actualLoad: 0,
+              actualReps: 6,
+            }),
+          ],
+        }),
+      ],
+    });
+
+    expect(display.loadCalibration[0]?.detail).toContain(
+      `Performed median load ${label} vs target 50`
+    );
+    expect(display.performedReality?.[0]?.detail).toContain(
+      `actual median 6 reps, load ${label}`
+    );
+  });
+
   it("maps a completed clean workout to a concise review DTO", () => {
     const display = buildDisplay();
 

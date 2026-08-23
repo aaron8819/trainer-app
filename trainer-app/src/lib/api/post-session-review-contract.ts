@@ -206,6 +206,8 @@ export type PostSessionReviewPerformedRealityTrendGroup = {
 export type PostSessionReviewPrescriptionCalibrationRow = {
   exerciseId: string;
   exerciseName: string;
+  measurement?: import("@/lib/exercise-measurement/semantics").MeasurementSemantics | null;
+  zeroLoadMeaning?: import("@/lib/exercise-measurement/semantics").ZeroLoadMeaning | null;
   classification: PostSessionReviewCalibrationClassification;
   plannedSetCount: number;
   performedSetCount: number;

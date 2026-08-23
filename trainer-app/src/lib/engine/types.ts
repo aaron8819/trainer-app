@@ -189,6 +189,7 @@ export type WorkoutExercise = {
   sets: WorkoutSet[];
   warmupSets?: WorkoutSet[];
   measurement?: import("@/lib/exercise-measurement/semantics").MeasurementSemantics;
+  zeroLoadMeaning?: import("@/lib/exercise-measurement/semantics").ZeroLoadMeaning | null;
 };
 
 export type WorkoutPlan = {

@@ -345,7 +345,7 @@ describe("WorkoutDetailPage", { timeout: 15000 }, () => {
               targetReps: 10,
               targetRepMin: 8,
               targetRepMax: 12,
-              targetLoad: 0,
+              targetLoad: 50,
               targetRpe: 8,
               logs: [{ actualReps: 10, actualLoad: 0, actualRpe: 8, wasSkipped: false }],
             },
@@ -363,7 +363,8 @@ describe("WorkoutDetailPage", { timeout: 15000 }, () => {
     expect(screen.queryByText("Key lift takeaways")).not.toBeInTheDocument();
     expect(screen.queryByText("Program impact")).not.toBeInTheDocument();
     expect(screen.getByText(/Actual: 8 reps \| 40 lbs \| RPE 8 OK/)).toHaveClass("text-emerald-700");
-    expect(screen.getByText(/Actual: 10 reps \| Bodyweight \| RPE 8 OK/)).toHaveClass("text-emerald-700");
+    expect(screen.getByText(/Actual: 10 reps \| Bodyweight \| RPE 8/)).toHaveClass("text-amber-700");
+    expect(screen.getByText(/Load: Bodyweight \/ 50 lbs \(-100%\)/)).toBeInTheDocument();
     expect(screen.getByText("Good session")).toBeInTheDocument();
     expect(
       screen.getByText("You completed the planned work with no skipped or unlogged sets.")

@@ -425,6 +425,64 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     expect(repsInput.className).toContain("text-slate-400");
   });
 
+  it("formats semantic zero in active queue chips from each frozen snapshot", () => {
+    const zeroSet = {
+      setId: "set-zero",
+      setIndex: 1,
+      targetReps: 10,
+      targetLoad: 0,
+      targetRpe: 8,
+      actualReps: 10,
+      actualLoad: 0,
+      actualRpe: 8,
+    };
+    render(
+      <LogWorkoutClient
+        workoutId="workout-zero"
+        exercises={[
+          {
+            workoutExerciseId: "we-bulgarian",
+            name: "Bulgarian Split Squat",
+            isMainLift: false,
+            measurement: {
+              profile: "REPS_EXTERNAL_LOAD",
+              loadConvention: "IMPLEMENT_WEIGHT",
+              repBasis: "PER_SIDE",
+            },
+            zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
+            sets: [{ ...zeroSet, setId: "set-bulgarian" }],
+          },
+          {
+            workoutExerciseId: "we-hack",
+            name: "Hack Squat",
+            isMainLift: false,
+            measurement: {
+              profile: "REPS_EXTERNAL_LOAD",
+              loadConvention: "MACHINE_DISPLAYED",
+              repBasis: "TOTAL",
+            },
+            zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD",
+            sets: [{ ...zeroSet, setId: "set-hack" }],
+          },
+          {
+            workoutExerciseId: "we-legacy",
+            name: "Legacy Exercise",
+            isMainLift: false,
+            sets: [{ ...zeroSet, setId: "set-legacy" }],
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: /Set 1 OK Bodyweight × 10 @8/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Hack Squat" }));
+    expect(
+      screen.getByRole("button", { name: /Set 1 OK Machine default \/ no added load × 10 @8/ })
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Legacy Exercise" }));
+    expect(screen.getByRole("button", { name: /Set 1 OK 0 x 10 @8/ })).toBeInTheDocument();
+  });
+
   it("opens trusted exact-exercise history from the active workout card", async () => {
     mockedFetch.mockResolvedValue({
       ok: true,

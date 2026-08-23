@@ -42,6 +42,68 @@ describe("readiness API", () => {
     expect(query.where.status.in).toEqual([...PERFORMED_WORKOUT_STATUSES]);
   });
 
+  it.each([
+    [
+      "semantic-zero external-load",
+      {
+        measurementProfile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "IMPLEMENT_WEIGHT",
+        repBasis: "PER_SIDE",
+      },
+      0,
+      0,
+    ],
+    [
+      "positive external-load",
+      {
+        measurementProfile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "IMPLEMENT_WEIGHT",
+        repBasis: "PER_SIDE",
+      },
+      20,
+      1,
+    ],
+    [
+      "true reps-only",
+      {
+        measurementProfile: "REPS_BODYWEIGHT",
+        loadConvention: null,
+        repBasis: "TOTAL",
+      },
+      null,
+      1,
+    ],
+  ])("scores %s readiness evidence intentionally", async (_label, measurement, load, expectedStalls) => {
+    mocks.findMany.mockResolvedValue(
+      ["latest", "previous"].map((id) => ({
+        id,
+        exercises: [
+          {
+            exerciseId: "exercise-1",
+            ...measurement,
+            sets: [
+              {
+                targetRpe: 8,
+                logs: [
+                  {
+                    actualLoad: load,
+                    actualReps: 10,
+                    actualRpe: 8,
+                    wasSkipped: false,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }))
+    );
+
+    await expect(computePerformanceSignals("user-1", 2)).resolves.toMatchObject({
+      stallCount: expectedStalls,
+    });
+  });
+
   it("maps latest ReadinessSignal into canonical readiness shape", async () => {
     const now = new Date();
     mocks.findFirst.mockResolvedValue({

@@ -274,11 +274,18 @@ export function explainLoadChoice(
   trainingAge: UserProfile["trainingAge"],
   periodization?: PeriodizationModifiers
 ): LoadRationale {
-  if (!load) {
+  if (load == null) {
     return {
       load: 0,
       progressionType: "autoregulated",
-      reason: "Bodyweight exercise (no external load)",
+      reason: "No fixed load was prescribed; select the working load while logging",
+    };
+  }
+  if (load === 0) {
+    return {
+      load: 0,
+      progressionType: "autoregulated",
+      reason: "Zero load was prescribed; interpret it using the exercise's frozen logging semantics",
     };
   }
 

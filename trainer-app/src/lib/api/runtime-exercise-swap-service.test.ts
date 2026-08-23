@@ -92,6 +92,7 @@ import {
 } from "./runtime-exercise-swap-service";
 import { buildV2AcceptedPlannerIntentDto } from "@/lib/engine/planning/v2";
 import { compileAcceptedHypertrophySeed } from "@/lib/engine/hypertrophy-plan-authoring";
+import { buildRevisedFourDayPlanAcceptedSeed } from "@/lib/engine/hypertrophy-plan-authoring-v4-revised.fixture";
 
 function acceptedV3Seed() {
   const measurement = {
@@ -762,7 +763,7 @@ describe("runtime exercise swap service", () => {
     const classified = {
       measurementProfile: "REPS_EXTERNAL_LOAD" as const,
       loadConvention: "IMPLEMENT_WEIGHT" as const,
-      repBasis: "TOTAL" as const,
+      repBasis: "PER_SIDE" as const,
       zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD" as const,
     };
     mocks.workoutFindFirst.mockResolvedValue({
@@ -816,10 +817,94 @@ describe("runtime exercise swap service", () => {
       measurement: {
         profile: "REPS_EXTERNAL_LOAD",
         loadConvention: "IMPLEMENT_WEIGHT",
-        repBasis: "TOTAL",
+        repBasis: "PER_SIDE",
       },
     });
     expect(applied.exercise.sets.every((set) => set.targetLoad === null)).toBe(true);
+  });
+
+  it.each([
+    [
+      "Bulgarian Split Squat",
+      {
+        measurementProfile: "REPS_EXTERNAL_LOAD" as const,
+        loadConvention: "IMPLEMENT_WEIGHT" as const,
+        repBasis: "PER_SIDE" as const,
+        zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD" as const,
+      },
+    ],
+    [
+      "Hack Squat",
+      {
+        measurementProfile: "REPS_EXTERNAL_LOAD" as const,
+        loadConvention: "MACHINE_DISPLAYED" as const,
+        repBasis: "TOTAL" as const,
+        zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD" as const,
+      },
+    ],
+  ])("freezes accepted V4 %s semantics identically in swap preview and commit", async (name, frozen) => {
+    mocks.workoutFindFirst.mockResolvedValue({
+      id: "workout-1",
+      status: "IN_PROGRESS",
+      selectionMode: "INTENT",
+      sessionIntent: "PULL",
+      exercises: [{ id: "we-1", exerciseId: "t-bar-row" }],
+      selectionMetadata: {},
+      seedRevision: { seedPayload: buildRevisedFourDayPlanAcceptedSeed() },
+      mesocycle: null,
+    });
+    mocks.exerciseFindMany.mockResolvedValue([
+      {
+        id: "replacement",
+        name,
+        fatigueCost: 2,
+        jointStress: "LOW",
+        isMainLiftEligible: false,
+        isCompound: true,
+        repRangeMin: 8,
+        repRangeMax: 12,
+        movementPatterns: ["HORIZONTAL_PULL"],
+        exerciseEquipment: [{ equipment: { type: "DUMBBELL" } }],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Lats" } },
+          { role: "PRIMARY", muscle: { name: "Upper Back" } },
+        ],
+        aliases: [],
+        ...frozen,
+      },
+    ]);
+    mocks.txExerciseFindUnique.mockResolvedValue(frozen);
+    const input = {
+      workoutId: "workout-1",
+      workoutExerciseId: "we-1",
+      replacementExerciseId: "replacement",
+      userId: "user-1",
+    };
+
+    const preview = await resolveRuntimeExerciseSwapPreview(input);
+    const applied = await applyRuntimeExerciseSwap({ ...input, expectedRevision: 1 });
+
+    expect(preview).toEqual(applied.exercise);
+    expect(preview).toMatchObject({
+      measurement: {
+        profile: frozen.measurementProfile,
+        loadConvention: frozen.loadConvention,
+        repBasis: frozen.repBasis,
+      },
+      zeroLoadMeaning: frozen.zeroLoadMeaning,
+      sets: expect.arrayContaining([expect.objectContaining({ targetLoad: null })]),
+    });
+    expect(mocks.txWorkoutExerciseUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining(frozen) })
+    );
+    expect(mocks.txWorkoutUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({
+          currentSeedRevisionId: expect.anything(),
+          slotPlanSeedJson: expect.anything(),
+        }),
+      })
+    );
   });
 
   it("returns a recoverable classification error for an unclassified V3 replacement", async () => {

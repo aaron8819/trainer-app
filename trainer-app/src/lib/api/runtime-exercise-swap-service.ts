@@ -35,7 +35,9 @@ import {
   isWorkoutMutationError,
 } from "@/lib/api/workout-mutation";
 import {
-  measurementColumns,
+  assertFrozenMeasurementSnapshotInvariant,
+  frozenMeasurementColumns,
+  isMeasurementAwareAcceptedVersion,
   parseMeasurementColumns,
   parseZeroLoadMeaningColumn,
   type MeasurementSemantics,
@@ -258,8 +260,10 @@ function mapSourceSwapProfile(context: SwapContext): RuntimeExerciseSwapProfile 
 
 function isMeasurementAwareWorkout(context: SwapContext): boolean {
   return context.workout.seedRevision?.seedPayload
-    ? parseAcceptedSeedPayload(context.workout.seedRevision.seedPayload)
-        .acceptedVersion === 3
+    ? isMeasurementAwareAcceptedVersion(
+        parseAcceptedSeedPayload(context.workout.seedRevision.seedPayload)
+          .acceptedVersion,
+      )
     : false;
 }
 
@@ -311,6 +315,15 @@ function toPreviewExercise(input: {
   const targetReps = buildReplacementTargetReps(input.replacementExercise);
   const targetRepRange = buildTargetRepRange(input.replacementExercise);
   const muscleTagGroups = buildExerciseMuscleDisplayGroups(input.replacementExercise);
+  const measurementAware = isMeasurementAwareWorkout(input.context);
+  const snapshot = assertFrozenMeasurementSnapshotInvariant({
+    measurement: measurementAware
+      ? parseMeasurementColumns(input.replacementExercise)
+      : null,
+    zeroLoadMeaning: measurementAware
+      ? parseZeroLoadMeaningColumn(input.replacementExercise)
+      : null,
+  });
 
   return {
     workoutExerciseId: input.context.workoutExercise.id,
@@ -333,10 +346,10 @@ function toPreviewExercise(input: {
     isMainLift: input.context.workoutExercise.isMainLift,
     isSwapped: true,
     section: normalizeWorkoutSection(input.context.workoutExercise.section),
-    ...(isMeasurementAwareWorkout(input.context)
-      ? { measurement: parseMeasurementColumns(input.replacementExercise) ?? undefined }
+    ...(snapshot.measurement
+      ? { measurement: snapshot.measurement }
       : {}),
-    zeroLoadMeaning: parseZeroLoadMeaningColumn(input.replacementExercise),
+    zeroLoadMeaning: snapshot.zeroLoadMeaning,
     sessionNote: formatRuntimeExerciseSwapNote({
       fromExerciseName: input.context.workoutExercise.exercise.name,
       fromExerciseId: input.context.workoutExercise.exerciseId,
@@ -956,8 +969,10 @@ export async function applyRuntimeExerciseSwap(input: {
         movementPatterns: resolution.replacementExercise.movementPatterns,
         stimulusAccountingSnapshot:
           replacementStimulusAccountingSnapshot as unknown as Prisma.InputJsonValue,
-        zeroLoadMeaning: committedZeroLoadMeaning,
-        ...measurementColumns(measurementAware ? committedMeasurement : null),
+        ...frozenMeasurementColumns({
+          measurement: measurementAware ? committedMeasurement : null,
+          zeroLoadMeaning: measurementAware ? committedZeroLoadMeaning : null,
+        }),
       },
     });
     if (replaced.count !== 1) {
@@ -1040,7 +1055,7 @@ export async function applyRuntimeExerciseSwap(input: {
       return {
         exercise: {
           ...resolution.exercise,
-          zeroLoadMeaning: committedZeroLoadMeaning,
+          zeroLoadMeaning: measurementAware ? committedZeroLoadMeaning : null,
           ...(committedMeasurement
             ? { measurement: committedMeasurement }
             : { measurement: undefined }),

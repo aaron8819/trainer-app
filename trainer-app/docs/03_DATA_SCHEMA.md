@@ -2,7 +2,7 @@
 
 ## Frozen zero-load capability
 
-`Exercise.zeroLoadMeaning` owns the canonical nullable capability. `WorkoutExercise.zeroLoadMeaning` freezes it when a workout exercise is materialized, added, or swapped. Historical rows remain nullable and are not backfilled merely to adopt the capability. The accepted seed payload and hash do not contain this field; it is copied from the server-owned catalog at workout materialization.
+`Exercise.zeroLoadMeaning` owns the canonical nullable capability. `WorkoutExercise.zeroLoadMeaning` freezes it when a workout exercise is materialized, added, or swapped. A frozen capability requires a complete compatible measurement tuple; a null measurement snapshot requires a null capability. Historical rows remain nullable and are not backfilled merely to adopt the capability. The accepted seed payload and hash do not contain this field; it is copied from the server-owned catalog at workout materialization.
 
 ## Phase 1 Finisher persistence
 

@@ -9,6 +9,7 @@ import type {
   PostSessionReviewWeeklyImpactRow,
 } from "./post-session-review-contract";
 import { getCanonicalNextExposureCopy } from "@/lib/ui/next-exposure-copy";
+import { formatFrozenLoadValue } from "@/lib/exercise-measurement/load-entry-policy";
 
 export type PostSessionReviewDisplayStatus = "reviewed" | "blocked" | "not_ready";
 
@@ -182,8 +183,18 @@ function formatEffortResult(
 function performedRealityDetail(
   row: PostSessionReviewPrescriptionCalibrationRow
 ): string {
+  const performedLoad = formatFrozenLoadValue(
+    {
+      load: row.medianPerformedLoad,
+      snapshot: {
+        measurement: row.measurement ?? null,
+        zeroLoadMeaning: row.zeroLoadMeaning ?? null,
+      },
+    },
+    (load) => formatLoad(load)
+  ) ?? "not captured";
   const parts = [
-    `Performed median load ${formatLoad(row.medianPerformedLoad)} vs target ${formatLoad(row.targetLoad)}`,
+    `Performed median load ${performedLoad} vs target ${formatLoad(row.targetLoad)}`,
     formatRepRangeResult(row),
     formatEffortResult(row),
   ].filter((part): part is string => Boolean(part));

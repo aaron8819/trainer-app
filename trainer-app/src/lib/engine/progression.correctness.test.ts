@@ -549,4 +549,26 @@ describe("progression correctness", () => {
 
     expect(shouldDeload(history as never, new Set(["bench"]))).toBe(true);
   });
+
+  it("does not treat explicit zero-load main-lift work as plateau e1RM evidence", () => {
+    const history = Array.from({ length: 5 }, (_, index) => ({
+      date: `2026-02-0${index + 1}T00:00:00.000Z`,
+      status: "COMPLETED",
+      readinessScore: 3,
+      exercises: [
+        {
+          exerciseId: "hack-squat",
+          measurement: {
+            profile: "REPS_EXTERNAL_LOAD",
+            loadConvention: "MACHINE_DISPLAYED",
+            repBasis: "TOTAL",
+          },
+          zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD",
+          sets: [{ setIndex: 1, reps: 10, load: 0, rpe: 8 }],
+        },
+      ],
+    }));
+
+    expect(shouldDeload(history as never, new Set(["hack-squat"]))).toBe(false);
+  });
 });

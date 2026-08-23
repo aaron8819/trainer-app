@@ -35,6 +35,17 @@ describe("classifySetLog", () => {
     });
   });
 
+  it("counts an explicit zero-load set with reps and RPE as performed work", () => {
+    expect(classifySetLog({ actualReps: 10, actualRpe: 8, actualLoad: 0 })).toEqual({
+      isSkipped: false,
+      isResolved: true,
+      isPerformed: true,
+      isWorkEvidence: true,
+      isSignal: true,
+      countsTowardVolume: true,
+    });
+  });
+
   it("classifies load-only rows as resolved but not performed", () => {
     expect(classifySetLog({ actualLoad: 135 })).toEqual({
       isSkipped: false,

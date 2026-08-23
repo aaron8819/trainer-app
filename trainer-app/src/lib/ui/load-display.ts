@@ -1,4 +1,9 @@
 import { quantizeLoad } from "@/lib/units/load-quantization";
+import { formatFrozenLoadValue } from "@/lib/exercise-measurement/load-entry-policy";
+import type {
+  MeasurementSemantics,
+  ZeroLoadMeaning,
+} from "@/lib/exercise-measurement/semantics";
 
 /**
  * Utilities for displaying exercise loads consistently.
@@ -39,6 +44,25 @@ export function formatLoad(
     return "BW";
   }
   return undefined;
+}
+
+export function formatFrozenWorkoutLoad(input: {
+  load: number | null | undefined;
+  isDumbbell: boolean;
+  isBodyweight: boolean;
+  measurement: MeasurementSemantics | null;
+  zeroLoadMeaning: ZeroLoadMeaning | null;
+}): string | undefined {
+  return formatFrozenLoadValue(
+    {
+      load: input.load,
+      snapshot: {
+        measurement: input.measurement,
+        zeroLoadMeaning: input.zeroLoadMeaning,
+      },
+    },
+    (load) => formatLoad(load, input.isDumbbell, input.isBodyweight) ?? null,
+  ) ?? undefined;
 }
 
 /**

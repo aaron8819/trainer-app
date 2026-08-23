@@ -432,6 +432,36 @@ describe("useWorkoutSessionFlow", () => {
     expect(callbacks.setFieldPrefilledSpy).toHaveBeenCalledTimes(3);
   });
 
+  it("does not create a positive same-session suggestion from explicit zero", async () => {
+    const callbacks = createCallbacks();
+    const exercises = makeExercises();
+    exercises.main[0] = {
+      ...exercises.main[0],
+      name: "Bulgarian Split Squat",
+      measurement: {
+        profile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "IMPLEMENT_WEIGHT",
+        repBasis: "PER_SIDE",
+      },
+      zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
+      sets: exercises.main[0].sets.map((set) => ({
+        ...set,
+        targetLoad: 0,
+        ...(set.setId === "set-1" ? { actualLoad: 0 } : {}),
+      })),
+    };
+
+    render(<WorkoutSessionFlowHarness callbacks={callbacks} exercises={exercises} />);
+    fireEvent.click(screen.getByRole("button", { name: "log-first" }));
+
+    await waitFor(() => {
+      expect(mockedLogSetRequest).toHaveBeenCalledWith(
+        expect.objectContaining({ actualLoad: 0 }),
+      );
+      expect(screen.getByTestId("autoreg-hint")).toHaveTextContent("");
+    });
+  });
+
   it("V evaluates completed actuals against the completed set when the next targets differ", async () => {
     const callbacks = createCallbacks();
     const exercises = makeExercises();

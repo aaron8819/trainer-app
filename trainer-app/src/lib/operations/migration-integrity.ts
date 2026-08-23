@@ -25,6 +25,7 @@ export const EXPECTED_MIGRATION_CHAIN = [
   "20260804120000_add_custom_hypertrophy_plan_drafts",
   "20260807120000_add_exercise_measurement_foundation",
   "20260813120000_add_anti_extension_movement_pattern",
+  "20260823120000_add_zero_load_meaning",
 ] as const;
 
 export type LedgerRow = {
@@ -437,6 +438,32 @@ export const PENDING_ARCHITECTURE_MANIFEST: readonly PendingMigrationExpectation
         enumName: "MovementPatternV2",
         name: "ANTI_EXTENSION",
       },
+    ],
+  },
+  {
+    migration: "20260823120000_add_zero_load_meaning",
+    effect: "objects",
+    objects: [
+      {
+        kind: "enum_value",
+        enumName: "ZeroLoadMeaning",
+        name: "BODYWEIGHT_NO_ADDED_LOAD",
+      },
+      {
+        kind: "enum_value",
+        enumName: "ZeroLoadMeaning",
+        name: "MACHINE_DEFAULT_NO_ADDED_LOAD",
+      },
+      ...["Exercise", "WorkoutExercise"].map((table) => ({
+        kind: "column" as const,
+        table,
+        name: "zeroLoadMeaning",
+        column: {
+          type: '"ZeroLoadMeaning"',
+          nullable: true,
+          default: null,
+        },
+      })),
     ],
   },
 ] as const;

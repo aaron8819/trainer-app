@@ -36,6 +36,7 @@ function makeRow(input?: {
     loadConvention: "BARBELL_TOTAL" | "IMPLEMENT_WEIGHT" | "MACHINE_DISPLAYED" | "ADDED_EXTERNAL_LOAD" | "DISPLAYED_ASSISTANCE" | null;
     repBasis: "TOTAL" | "PER_SIDE";
   };
+  zeroLoadMeaning?: "BODYWEIGHT_NO_ADDED_LOAD" | "MACHINE_DEFAULT_NO_ADDED_LOAD" | null;
   sets?: Array<{
     id?: string;
     setIndex: number;
@@ -55,6 +56,7 @@ function makeRow(input?: {
     measurementProfile: input?.measurement?.measurementProfile ?? null,
     loadConvention: input?.measurement?.loadConvention ?? null,
     repBasis: input?.measurement?.repBasis ?? null,
+    zeroLoadMeaning: input?.zeroLoadMeaning ?? null,
     exercise: {
       id: exerciseId,
       name: exerciseId === "bench" ? "Bench Press" : "Other Exercise",
@@ -402,5 +404,84 @@ describe("loadExerciseHistory", () => {
       isRecordComparable: true,
     });
     expect(result.records.heaviestCompletedLoad?.load).toBe(205);
+  });
+
+  it.each([
+    [
+      "bulgarian",
+      "IMPLEMENT_WEIGHT" as const,
+      "PER_SIDE" as const,
+      "BODYWEIGHT_NO_ADDED_LOAD" as const,
+    ],
+    [
+      "hack-squat",
+      "MACHINE_DISPLAYED" as const,
+      "TOTAL" as const,
+      "MACHINE_DEFAULT_NO_ADDED_LOAD" as const,
+    ],
+  ])(
+    "does not split positive %s history when the frozen zero capability appears",
+    async (exerciseId, loadConvention, repBasis, zeroLoadMeaning) => {
+      const measurement = {
+        measurementProfile: "REPS_EXTERNAL_LOAD" as const,
+        loadConvention,
+        repBasis,
+      };
+      mocks.findMany.mockResolvedValue([
+        makeRow({
+          exerciseId,
+          workoutId: "new-capability",
+          date: "2026-03-02T00:00:00.000Z",
+          measurement,
+          zeroLoadMeaning,
+          sets: [{ setIndex: 1, reps: 8, load: 100, rpe: 8 }],
+        }),
+        makeRow({
+          exerciseId,
+          workoutId: "old-null",
+          date: "2026-03-01T00:00:00.000Z",
+          measurement,
+          zeroLoadMeaning: null,
+          sets: [{ setIndex: 1, reps: 8, load: 120, rpe: 8 }],
+        }),
+      ]);
+
+      const result = await loadExerciseHistory(exerciseId, "user-1", 10);
+
+      expect(result.recentExposures).toHaveLength(2);
+      expect(result.recentExposures.map((row) => row.isRecordComparable)).toEqual([
+        loadConvention !== "MACHINE_DISPLAYED",
+        loadConvention !== "MACHINE_DISPLAYED",
+      ]);
+      if (loadConvention === "MACHINE_DISPLAYED") {
+        expect(result.records.heaviestCompletedLoad).toBeNull();
+      } else {
+        expect(result.records.heaviestCompletedLoad?.load).toBe(120);
+      }
+    },
+  );
+
+  it("keeps zero visible as performed work without e1RM, load, or volume records", async () => {
+    mocks.findMany.mockResolvedValue([
+      makeRow({
+        exerciseId: "bulgarian",
+        measurement: {
+          measurementProfile: "REPS_EXTERNAL_LOAD",
+          loadConvention: "IMPLEMENT_WEIGHT",
+          repBasis: "PER_SIDE",
+        },
+        zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
+        sets: [{ setIndex: 1, reps: 10, load: 0, rpe: 8 }],
+      }),
+    ]);
+
+    const result = await loadExerciseHistory("bulgarian", "user-1", 3);
+
+    expect(result.lastExposure?.sets[0]).toMatchObject({ reps: 10, load: 0, rpe: 8 });
+    expect(result.records).toEqual({
+      bestEstimatedStrength: null,
+      heaviestCompletedLoad: null,
+      highestSessionVolume: null,
+    });
   });
 });

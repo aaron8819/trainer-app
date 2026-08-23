@@ -1,5 +1,9 @@
 # 05 UI Flows
 
+## Zero-load display
+
+The shared frozen load-entry policy controls load-field visibility, performed-set blank/zero validity, zero labels, and positive-load coaching eligibility. Capability-backed zero displays as `Bodyweight` or `Machine default / no added load`; legacy zero remains a neutral numeric value.
+
 ## Post-workout Finisher
 
 The server-only decision in `src/lib/operations/finisher-rollout.ts` owns all

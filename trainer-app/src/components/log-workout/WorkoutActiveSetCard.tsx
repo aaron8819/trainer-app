@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { PersonalHistorySection } from "@/components/library/PersonalHistorySection";
 import { SlideUpSheet } from "@/components/ui/SlideUpSheet";
-import { toDisplayLoad } from "@/lib/ui/load-display";
+import { formatFrozenWorkoutLoad } from "@/lib/ui/load-display";
 import { formatRepPrescriptionInline } from "@/lib/ui/rep-target-display";
 import { getSetValidity } from "@/lib/logging/setValidity";
+import { deriveLoadEntryPolicy } from "@/lib/exercise-measurement/load-entry-policy";
 import {
   measurementLoadLabel,
   measurementRepsLabel,
@@ -171,6 +172,10 @@ export function WorkoutActiveSetCard({
   const isWarmup = activeSet.set.setIntent === "WARMUP";
   const workSetCount = activeSet.exercise.sets.filter((set) => set.setIntent !== "WARMUP").length;
   const { actualReps, actualLoad, actualRpe } = resolvedValues;
+  const loadEntryPolicy = deriveLoadEntryPolicy({
+    measurement: activeSet.exercise.measurement ?? null,
+    zeroLoadMeaning: activeSet.exercise.zeroLoadMeaning ?? null,
+  });
   const setValidity = getSetValidity({
     actualReps,
     actualRpe,
@@ -179,12 +184,20 @@ export function WorkoutActiveSetCard({
         ? null
         : actualLoad,
     wasSkipped: activeSet.set.wasSkipped ?? false,
-    measurementProfile: activeSet.exercise.measurement?.profile,
+    measurement: activeSet.exercise.measurement ?? null,
+    zeroLoadMeaning: activeSet.exercise.zeroLoadMeaning ?? null,
   });
   const canSubmit = setValidity.valid;
   const validationMessage = setValidity.reason ?? null;
   const repsLabel = measurementRepsLabel(activeSet.exercise.measurement ?? null);
   const executionGuidance = activeSet.exercise.executionGuidance ?? [];
+  const targetLoadDisplay = formatFrozenWorkoutLoad({
+    load: activeSet.set.targetLoad,
+    isDumbbell,
+    isBodyweight: isBodyweightExercise(activeSet.exercise),
+    measurement: activeSet.exercise.measurement ?? null,
+    zeroLoadMeaning: activeSet.exercise.zeroLoadMeaning ?? null,
+  });
 
   return (
     <section
@@ -258,12 +271,8 @@ export function WorkoutActiveSetCard({
           {activeSet.set.targetLoad != null &&
           activeSet.exercise.measurement?.profile !== "REPS_BODYWEIGHT"
             ? activeSet.exercise.measurement
-              ? ` · ${measurementLoadLabel(activeSet.exercise.measurement)}: ${activeSet.set.targetLoad}`
-              : ` · ${
-                isDumbbell
-                  ? `${toDisplayLoad(activeSet.set.targetLoad, true)} lbs each`
-                  : `${activeSet.set.targetLoad} lbs`
-              }`
+              ? ` · ${measurementLoadLabel(activeSet.exercise.measurement)}: ${targetLoadDisplay}`
+              : ` · ${targetLoadDisplay}`
             : ""}
           {activeSet.set.targetRpe ? ` · RPE ${activeSet.set.targetRpe}` : ""}
         </p>
@@ -312,7 +321,7 @@ export function WorkoutActiveSetCard({
           </div>
         ) : null}
       </div>
-      {activeSet.exercise.measurement?.profile === "REPS_BODYWEIGHT" ? (
+      {!loadEntryPolicy.showLoadField ? (
         <p className="mt-2 text-xs text-slate-500">Bodyweight — reps only.</p>
       ) : !isWarmup && shouldUseBodyweightLoadLabel(activeSet.exercise, activeSet.set) ? (
         <p className="mt-2 text-xs text-slate-500">Bodyweight movement (legacy load behavior).</p>
@@ -386,7 +395,7 @@ export function WorkoutActiveSetCard({
           </div>
         </div>
 
-        {activeSet.exercise.measurement?.profile === "REPS_BODYWEIGHT" ? null : <div>
+        {!loadEntryPolicy.showLoadField ? null : <div>
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
             {activeSet.exercise.measurement
               ? measurementLoadLabel(activeSet.exercise.measurement)

@@ -117,6 +117,7 @@ function toPrisma(raw: EngineExercise): PrismaExercise & {
     measurementProfile: null,
     loadConvention: null,
     repBasis: null,
+    zeroLoadMeaning: null,
     aliases: [],
     exerciseEquipment: (raw.equipment ?? []).map((item) => ({
       equipment: { type: mapEquipment(item) },

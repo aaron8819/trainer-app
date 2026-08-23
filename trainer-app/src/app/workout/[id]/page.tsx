@@ -8,7 +8,14 @@ import { FinisherExperience } from "@/components/finishers/FinisherExperience";
 import { SessionContextCard } from "@/components/explainability";
 import { prisma } from "@/lib/db/prisma";
 import { parseExplainabilitySelectionMetadata } from "@/lib/ui/explainability";
-import { isDumbbellEquipment, formatLoad } from "@/lib/ui/load-display";
+import {
+  formatFrozenWorkoutLoad,
+  isDumbbellEquipment,
+} from "@/lib/ui/load-display";
+import {
+  parseMeasurementColumns,
+  parseZeroLoadMeaningColumn,
+} from "@/lib/exercise-measurement/semantics";
 import { formatRepPrescriptionInline } from "@/lib/ui/rep-target-display";
 import {
   getLoadProvenanceNote,
@@ -276,11 +283,17 @@ export default async function WorkoutDetailPage({
                   const isBodyweightExercise = hasBodyweightEquipment(exercise.exercise);
                   const isDumbbellExercise = hasDumbbellEquipment(exercise.exercise);
                   const targetLoad = exercise.sets[0]?.targetLoad;
-                  const workingLoadDisplay = formatLoad(
-                    targetLoad,
-                    isDumbbellExercise,
-                    isBodyweightExercise
-                  );
+                  const measurement = parseMeasurementColumns(exercise);
+                  const zeroLoadMeaning = parseZeroLoadMeaningColumn(exercise);
+                  const formatExerciseLoad = (load: number | null | undefined) =>
+                    formatFrozenWorkoutLoad({
+                      load,
+                      isDumbbell: isDumbbellExercise,
+                      isBodyweight: isBodyweightExercise,
+                      measurement,
+                      zeroLoadMeaning,
+                    });
+                  const workingLoadDisplay = formatExerciseLoad(targetLoad);
 
                   const progressionReceipt = explanation?.progressionReceipts.get(exercise.exerciseId);
                   const loadNote = getLoadProvenanceNote({
@@ -391,8 +404,8 @@ export default async function WorkoutDetailPage({
                                 </span>
                                 <span className="text-slate-700">
                                   {formatTargetRepDisplay(set, roleLabel === "Main lift")}
-                                  {formatLoad(set.targetLoad, isDumbbellExercise, isBodyweightExercise)
-                                    ? ` | ${formatLoad(set.targetLoad, isDumbbellExercise, isBodyweightExercise)}`
+                                  {formatExerciseLoad(set.targetLoad)
+                                    ? ` | ${formatExerciseLoad(set.targetLoad)}`
                                     : ""}
                                   {set.targetRpe ? ` | RPE ${set.targetRpe}` : ""}
                                 </span>
@@ -404,9 +417,7 @@ export default async function WorkoutDetailPage({
                                       ? "Actual: Skipped"
                                       : [
                                           `Actual: ${log.actualReps ?? "?"} reps`,
-                                          log.actualLoad != null
-                                            ? formatLoad(log.actualLoad, isDumbbellExercise, false)
-                                            : null,
+                                          formatExerciseLoad(log.actualLoad),
                                           log.actualRpe != null ? `RPE ${log.actualRpe}` : null,
                                         ]
                                           .filter(Boolean)

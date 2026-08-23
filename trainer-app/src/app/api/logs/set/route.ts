@@ -11,6 +11,7 @@ import { quantizeLoad } from "@/lib/units/load-quantization";
 import { getSetValidity } from "@/lib/logging/setValidity";
 import {
   parseMeasurementColumns,
+  parseZeroLoadMeaningColumn,
   quantizesAsPounds,
 } from "@/lib/exercise-measurement/semantics";
 import { getClosedMesocycleWorkoutFenceReason } from "@/lib/workout-workflow";
@@ -92,6 +93,7 @@ export async function POST(request: Request) {
           measurementProfile: true,
           loadConvention: true,
           repBasis: true,
+          zeroLoadMeaning: true,
           workout: {
             select: {
               id: true,
@@ -147,6 +149,7 @@ export async function POST(request: Request) {
 
       const wasSkipped = parsed.data.wasSkipped ?? false;
       const measurement = parseMeasurementColumns(workoutExercise);
+      const zeroLoadMeaning = parseZeroLoadMeaningColumn(workoutExercise);
       const normalizedActualLoad =
         measurement?.profile === "REPS_BODYWEIGHT"
           ? undefined
@@ -164,7 +167,8 @@ export async function POST(request: Request) {
             ? parsed.data.actualLoad
             : normalizedActualLoad,
         wasSkipped,
-        measurementProfile: measurement?.profile,
+        measurement,
+        zeroLoadMeaning,
       });
       if (!validity.valid) {
         throw new SetLogMutationError(validity.reason ?? "Invalid set log", 400);
@@ -311,6 +315,7 @@ export async function POST(request: Request) {
             measurementProfile: true,
             loadConvention: true,
             repBasis: true,
+            zeroLoadMeaning: true,
           },
         },
       },
@@ -330,6 +335,7 @@ export async function POST(request: Request) {
     const wasSkipped = parsed.data.wasSkipped ?? false;
     const setIntent = parsed.data.setIntent ?? "WORK";
     const measurement = parseMeasurementColumns(setRecord.workoutExercise);
+    const zeroLoadMeaning = parseZeroLoadMeaningColumn(setRecord.workoutExercise);
     const normalizedActualLoad =
       measurement?.profile === "REPS_BODYWEIGHT"
         ? undefined
@@ -347,7 +353,8 @@ export async function POST(request: Request) {
           ? parsed.data.actualLoad
           : normalizedActualLoad,
       wasSkipped,
-      measurementProfile: measurement?.profile,
+      measurement,
+      zeroLoadMeaning,
     });
     if (!validity.valid) {
       throw new SetLogMutationError(validity.reason ?? "Invalid set log", 400);

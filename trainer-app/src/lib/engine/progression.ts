@@ -4,6 +4,7 @@ import { roundLoad } from "./utils";
 import { isPerformedHistoryEntry } from "./history";
 import type { ProgressionDecisionTrace } from "@/lib/evidence/session-audit-types";
 import { quantizeLoad } from "@/lib/units/load-quantization";
+import { isPositiveLoadProgressionEligible } from "@/lib/exercise-measurement/load-entry-policy";
 
 export type ProgressionSet = {
   setIndex?: number;
@@ -966,7 +967,16 @@ function hasMainLiftPlateau(
         continue;
       }
       const topSet = resolveTopSet(exercise.sets);
-      if (!topSet) {
+      if (
+        !topSet ||
+        !isPositiveLoadProgressionEligible(
+          {
+            measurement: exercise.measurement ?? null,
+            zeroLoadMeaning: exercise.zeroLoadMeaning ?? null,
+          },
+          topSet.load,
+        )
+      ) {
         continue;
       }
       const e1rm = topSet.load * (1 + topSet.reps / 30);
@@ -992,7 +1002,12 @@ function hasMainLiftPlateau(
 function resolveTopSet(sets: HistorySet[]) {
   let topSet: { reps: number; load: number; setIndex: number } | null = null;
   for (const set of sets) {
-    if (!Number.isFinite(set.load) || !Number.isFinite(set.reps) || set.reps <= 0) {
+    if (
+      !Number.isFinite(set.load) ||
+      (set.load ?? 0) <= 0 ||
+      !Number.isFinite(set.reps) ||
+      set.reps <= 0
+    ) {
       continue;
     }
     if (!topSet || set.setIndex < topSet.setIndex) {

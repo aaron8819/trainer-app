@@ -28,7 +28,10 @@ import type {
   UndoSnapshot,
 } from "@/components/log-workout/types";
 import { getSetValidity } from "@/lib/logging/setValidity";
-import { permitsComputedLoadComparison } from "@/lib/exercise-measurement/semantics";
+import {
+  deriveLoadEntryPolicy,
+  isPositiveLoadProgressionEligible,
+} from "@/lib/exercise-measurement/load-entry-policy";
 import { getLoadRecommendation } from "@/lib/progression/load-coaching";
 import {
   resolveExternalLoadDirection,
@@ -215,7 +218,10 @@ export function useWorkoutSessionFlow({
       const normalizedSet: LogSetInput = {
         ...mergedSet,
         actualLoad:
-          targetSet.exercise.measurement?.profile === "REPS_BODYWEIGHT"
+          !deriveLoadEntryPolicy({
+            measurement: targetSet.exercise.measurement ?? null,
+            zeroLoadMeaning: targetSet.exercise.zeroLoadMeaning ?? null,
+          }).showLoadField
             ? null
             : !(mergedSet.wasSkipped ?? false) && isBodyweightTarget && mergedSet.actualLoad == null
             ? 0
@@ -226,7 +232,8 @@ export function useWorkoutSessionFlow({
         actualRpe: normalizedSet.actualRpe,
         actualLoad: normalizedSet.actualLoad,
         wasSkipped: normalizedSet.wasSkipped,
-        measurementProfile: targetSet.exercise.measurement?.profile,
+        measurement: targetSet.exercise.measurement ?? null,
+        zeroLoadMeaning: targetSet.exercise.zeroLoadMeaning ?? null,
       });
       if (!validity.valid) {
         showError(validity.reason ?? "Unable to log set");
@@ -297,7 +304,13 @@ export function useWorkoutSessionFlow({
             item.set.targetRpe != null
         );
         if (
-          permitsComputedLoadComparison(targetSet.exercise.measurement ?? null) &&
+          isPositiveLoadProgressionEligible(
+            {
+              measurement: targetSet.exercise.measurement ?? null,
+              zeroLoadMeaning: targetSet.exercise.zeroLoadMeaning ?? null,
+            },
+            normalizedSet.actualLoad,
+          ) &&
           nextExerciseSet &&
           normalizedSet.actualRpe != null &&
           targetSet.set.targetRpe != null
@@ -470,6 +483,8 @@ export function useWorkoutSessionFlow({
         actualRpe: values.actualRpe,
         actualLoad: values.actualLoad,
         wasSkipped: false,
+        measurement: targetExercise.measurement ?? null,
+        zeroLoadMeaning: targetExercise.zeroLoadMeaning ?? null,
       });
       if (!validity.valid) {
         showError(validity.reason ?? "Unable to log warmup");

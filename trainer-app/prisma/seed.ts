@@ -24,6 +24,7 @@ import { assertOperationalProductionWriteAllowed } from "@/lib/operations/rollou
 import {
   measurementColumns,
   parseMeasurementColumns,
+  parseZeroLoadMeaningColumn,
 } from "@/lib/exercise-measurement/semantics";
 
 assertOperationalProductionWriteAllowed({
@@ -671,6 +672,7 @@ async function seedExercisesFromJson() {
       isUnilateral: ex.unilateral,
       repRangeMin: ex.repRangeRecommendation.min,
       repRangeMax: ex.repRangeRecommendation.max,
+      zeroLoadMeaning: parseZeroLoadMeaningColumn(ex),
       ...measurementColumns(measurement),
     };
 

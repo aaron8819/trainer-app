@@ -40,7 +40,7 @@ export async function detectPRsFromWorkout(
         workoutExercise: { workoutId },
       },
       wasSkipped: false,
-      actualLoad: { not: null },
+      actualLoad: { gt: 0 },
     },
     include: {
       workoutSet: {
@@ -62,7 +62,7 @@ export async function detectPRsFromWorkout(
   // Group current sets by exercise, find top set weight per exercise
   const currentTopByExercise = new Map<string, { name: string; topLoad: number }>();
   for (const log of currentSets) {
-    if (log.actualLoad == null) continue;
+    if (log.actualLoad == null || log.actualLoad <= 0) continue;
     const exerciseId = log.workoutSet.workoutExercise.exerciseId;
     const exerciseName = log.workoutSet.workoutExercise.exercise.name;
     const existing = currentTopByExercise.get(exerciseId);
@@ -94,7 +94,7 @@ export async function detectPRsFromWorkout(
             },
           },
           wasSkipped: false,
-          actualLoad: { not: null },
+          actualLoad: { gt: 0 },
         },
       });
       historicalMaxByExercise.set(exerciseId, result._max.actualLoad ?? null);

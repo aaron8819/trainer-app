@@ -17,9 +17,15 @@ export const LOAD_CONVENTION_VALUES = [
 
 export const REP_BASIS_VALUES = ["TOTAL", "PER_SIDE"] as const;
 
+export const ZERO_LOAD_MEANING_VALUES = [
+  "BODYWEIGHT_NO_ADDED_LOAD",
+  "MACHINE_DEFAULT_NO_ADDED_LOAD",
+] as const;
+
 export type MeasurementProfile = (typeof MEASUREMENT_PROFILE_VALUES)[number];
 export type LoadConvention = (typeof LOAD_CONVENTION_VALUES)[number];
 export type RepBasis = (typeof REP_BASIS_VALUES)[number];
+export type ZeroLoadMeaning = (typeof ZERO_LOAD_MEANING_VALUES)[number];
 
 export type MeasurementSemantics =
   | {
@@ -89,6 +95,32 @@ export type PersistedMeasurementColumns = {
   loadConvention: LoadConvention | null;
   repBasis: RepBasis | null;
 };
+
+export type FrozenMeasurementSnapshot = {
+  measurement: MeasurementSemantics | null;
+  zeroLoadMeaning: ZeroLoadMeaning | null;
+};
+
+export type ZeroLoadMeaningColumn = {
+  zeroLoadMeaning?: string | null;
+};
+
+const zeroLoadMeaningSchema = z.enum(ZERO_LOAD_MEANING_VALUES).nullable();
+
+export function parseZeroLoadMeaningColumn(
+  columns: ZeroLoadMeaningColumn,
+): ZeroLoadMeaning | null {
+  return zeroLoadMeaningSchema.parse(columns.zeroLoadMeaning ?? null);
+}
+
+export function frozenMeasurementSnapshot(
+  columns: MeasurementColumns & ZeroLoadMeaningColumn,
+): FrozenMeasurementSnapshot {
+  return {
+    measurement: parseMeasurementColumns(columns),
+    zeroLoadMeaning: parseZeroLoadMeaningColumn(columns),
+  };
+}
 
 export function parseMeasurementColumns(
   columns: MeasurementColumns,

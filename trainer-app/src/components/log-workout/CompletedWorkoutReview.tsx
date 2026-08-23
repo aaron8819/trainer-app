@@ -4,7 +4,10 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { PostSessionReviewCard } from "@/components/post-workout/PostSessionReviewCard";
 import { classifySetLog } from "@/lib/session-semantics/set-classification";
-import { isDumbbellEquipment, toDisplayLoad } from "@/lib/ui/load-display";
+import {
+  formatFrozenWorkoutLoad,
+  isDumbbellEquipment,
+} from "@/lib/ui/load-display";
 import { formatRepPrescriptionInline } from "@/lib/ui/rep-target-display";
 import { evaluateTargetReps } from "@/lib/session-semantics/target-evaluation";
 import type { PostSessionReviewDisplayDto } from "@/lib/api/post-session-review-display";
@@ -154,11 +157,13 @@ export function CompletedWorkoutReview({
                       : "text-rose-700";
                     const targetLabel = [
                       formatRepTarget(set.targetReps, set.targetRepRange, exercise.isMainLift),
-                      set.targetLoad != null
-                        ? isDumbbell
-                          ? `${toDisplayLoad(set.targetLoad, true)} lbs each`
-                          : `${set.targetLoad} lbs`
-                        : null,
+                      formatFrozenWorkoutLoad({
+                        load: set.targetLoad,
+                        isDumbbell,
+                        isBodyweight: false,
+                        measurement: exercise.measurement ?? null,
+                        zeroLoadMeaning: exercise.zeroLoadMeaning ?? null,
+                      }),
                       set.targetRpe ? `RPE ${set.targetRpe}` : null,
                     ]
                       .filter(Boolean)
@@ -169,11 +174,13 @@ export function CompletedWorkoutReview({
                       ? "Skipped"
                       : [
                           set.actualReps != null ? `${set.actualReps} reps` : null,
-                          set.actualLoad != null
-                            ? isDumbbell
-                              ? `${toDisplayLoad(set.actualLoad, true)} lbs each`
-                              : `${set.actualLoad} lbs`
-                            : null,
+                          formatFrozenWorkoutLoad({
+                            load: set.actualLoad,
+                            isDumbbell,
+                            isBodyweight: false,
+                            measurement: exercise.measurement ?? null,
+                            zeroLoadMeaning: exercise.zeroLoadMeaning ?? null,
+                          }),
                           set.actualRpe != null ? `RPE ${set.actualRpe}` : null,
                         ]
                           .filter(Boolean)

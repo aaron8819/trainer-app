@@ -7,7 +7,9 @@ import {
 import type { SessionDecisionStimulusAccounting } from "@/lib/evidence/types";
 import {
   measurementColumns,
+  parseZeroLoadMeaningColumn,
   type MeasurementSemantics,
+  type ZeroLoadMeaning,
 } from "@/lib/exercise-measurement/semantics";
 import { normalizeAcceptedSeedPayload } from "@/lib/api/mesocycle-seed-revision";
 
@@ -46,6 +48,7 @@ export type PersistedSaveWorkoutExercise = {
 export type PreparedWorkoutExercise = SaveWorkoutExerciseInput & {
   movementPatterns: MovementPatternV2[];
   stimulusAccountingSnapshot: ExerciseStimulusSnapshot;
+  zeroLoadMeaning: ZeroLoadMeaning | null;
 };
 
 function stripMeasurementSnapshot(
@@ -145,6 +148,7 @@ export async function prepareWorkoutExercisesForPersistence(
 
     prepared.push({
       ...exercise,
+      zeroLoadMeaning: parseZeroLoadMeaningColumn(exerciseRecord),
       movementPatterns: exerciseRecord.movementPatterns,
       stimulusAccountingSnapshot: buildExerciseStimulusSnapshot(
         {
@@ -272,6 +276,7 @@ export async function rewriteWorkoutExercises(
         movementPatterns: exercise.movementPatterns,
         stimulusAccountingSnapshot:
           exercise.stimulusAccountingSnapshot as unknown as Prisma.InputJsonValue,
+        zeroLoadMeaning: exercise.zeroLoadMeaning,
         ...measurementColumns(exercise.measurement ?? null),
         sets: {
           create: exercise.sets.map((set) => ({

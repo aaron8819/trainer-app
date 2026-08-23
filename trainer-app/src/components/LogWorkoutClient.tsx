@@ -386,6 +386,8 @@ export default function LogWorkoutClient({
           sourceExerciseId: exercise.exerciseId,
           name: exercise.name,
           equipment: exercise.equipment,
+          measurement: exercise.measurement,
+          zeroLoadMeaning: exercise.zeroLoadMeaning ?? null,
           isSwapped: exercise.isSwapped,
           isRuntimeAdded: exercise.isRuntimeAdded,
           isMainLift: exercise.isMainLift,

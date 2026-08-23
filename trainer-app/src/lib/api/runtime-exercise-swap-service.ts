@@ -37,7 +37,9 @@ import {
 import {
   measurementColumns,
   parseMeasurementColumns,
+  parseZeroLoadMeaningColumn,
   type MeasurementSemantics,
+  type ZeroLoadMeaning,
 } from "@/lib/exercise-measurement/semantics";
 
 type ExerciseRecord = Prisma.ExerciseGetPayload<{
@@ -130,6 +132,7 @@ export type RuntimeExerciseSwapExercisePayload = {
   isSwapped: true;
   section: "WARMUP" | "MAIN" | "ACCESSORY";
   measurement?: MeasurementSemantics;
+  zeroLoadMeaning: ZeroLoadMeaning | null;
   sessionNote: string;
   capabilities: {
     canAddSet: boolean;
@@ -333,6 +336,7 @@ function toPreviewExercise(input: {
     ...(isMeasurementAwareWorkout(input.context)
       ? { measurement: parseMeasurementColumns(input.replacementExercise) ?? undefined }
       : {}),
+    zeroLoadMeaning: parseZeroLoadMeaningColumn(input.replacementExercise),
     sessionNote: formatRuntimeExerciseSwapNote({
       fromExerciseName: input.context.workoutExercise.exercise.name,
       fromExerciseId: input.context.workoutExercise.exerciseId,
@@ -920,18 +924,20 @@ export async function applyRuntimeExerciseSwap(input: {
     }
 
     const measurementAware = isMeasurementAwareWorkout(latestContext);
+    const committedSemantics =
+      (await tx.exercise.findUnique({
+        where: { id: resolution.replacementExercise.id },
+        select: {
+          measurementProfile: true,
+          loadConvention: true,
+          repBasis: true,
+          zeroLoadMeaning: true,
+        },
+      })) ?? {};
     const committedMeasurement = measurementAware
-      ? parseMeasurementColumns(
-          (await tx.exercise.findUnique({
-            where: { id: resolution.replacementExercise.id },
-            select: {
-              measurementProfile: true,
-              loadConvention: true,
-              repBasis: true,
-            },
-          })) ?? {},
-        )
+      ? parseMeasurementColumns(committedSemantics)
       : null;
+    const committedZeroLoadMeaning = parseZeroLoadMeaningColumn(committedSemantics);
     if (measurementAware && !committedMeasurement) {
       throw buildRuntimeExerciseSwapError(
         "This exercise is not yet available for measurement-aware workouts.",
@@ -950,6 +956,7 @@ export async function applyRuntimeExerciseSwap(input: {
         movementPatterns: resolution.replacementExercise.movementPatterns,
         stimulusAccountingSnapshot:
           replacementStimulusAccountingSnapshot as unknown as Prisma.InputJsonValue,
+        zeroLoadMeaning: committedZeroLoadMeaning,
         ...measurementColumns(measurementAware ? committedMeasurement : null),
       },
     });
@@ -1033,6 +1040,7 @@ export async function applyRuntimeExerciseSwap(input: {
       return {
         exercise: {
           ...resolution.exercise,
+          zeroLoadMeaning: committedZeroLoadMeaning,
           ...(committedMeasurement
             ? { measurement: committedMeasurement }
             : { measurement: undefined }),

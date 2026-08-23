@@ -173,6 +173,108 @@ describe("POST /api/logs/set", () => {
     );
   });
 
+  it("preserves explicit zero through semantic validation and mocked persistence", async () => {
+    mocks.workoutSetFindFirst.mockResolvedValue({
+      id: "set-bulgarian",
+      targetLoad: null,
+      workoutExercise: {
+        workoutId: "workout-1",
+        measurementProfile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "IMPLEMENT_WEIGHT",
+        repBasis: "PER_SIDE",
+        zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
+        workout: {
+          id: "workout-1",
+          status: "PLANNED",
+          mesocycleId: null,
+          mesocycle: null,
+        },
+      },
+    });
+    mocks.setLogFindUnique.mockResolvedValue(null);
+
+    const response = await POST(
+      new Request("http://localhost/api/logs/set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expectedRevision: 1,
+          workoutSetId: "set-bulgarian",
+          actualReps: 8,
+          actualLoad: 0,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.setLogUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({ actualLoad: 0 }),
+        create: expect.objectContaining({ actualLoad: 0 }),
+      }),
+    );
+  });
+
+  it("preserves an omitted legacy load as undefined through mocked persistence", async () => {
+    mocks.setLogFindUnique.mockResolvedValue(null);
+
+    const response = await POST(
+      new Request("http://localhost/api/logs/set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expectedRevision: 1,
+          workoutSetId: "set-1",
+          actualReps: 8,
+          actualRpe: 8,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.setLogUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({ actualLoad: undefined }),
+        create: expect.objectContaining({ actualLoad: undefined }),
+      }),
+    );
+  });
+
+  it("rejects blank load from the same frozen Bulgarian snapshot", async () => {
+    mocks.workoutSetFindFirst.mockResolvedValue({
+      id: "set-bulgarian",
+      targetLoad: null,
+      workoutExercise: {
+        workoutId: "workout-1",
+        measurementProfile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "IMPLEMENT_WEIGHT",
+        repBasis: "PER_SIDE",
+        zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
+        workout: {
+          id: "workout-1",
+          status: "PLANNED",
+          mesocycleId: null,
+          mesocycle: null,
+        },
+      },
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/logs/set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expectedRevision: 1,
+          workoutSetId: "set-bulgarian",
+          actualReps: 8,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(mocks.setLogUpsert).not.toHaveBeenCalled();
+  });
+
   it("defaults omitted set intent to work", async () => {
     mocks.setLogFindUnique.mockResolvedValue(null);
 

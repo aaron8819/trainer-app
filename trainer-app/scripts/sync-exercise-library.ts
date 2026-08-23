@@ -48,6 +48,7 @@ type DbExercise = {
   measurementProfile?: string | null;
   loadConvention?: string | null;
   repBasis?: string | null;
+  zeroLoadMeaning?: string | null;
   aliases: Array<{ alias: string; exerciseId: string }>;
   exerciseMuscles: Array<{ role: string; muscle: { id: string; name: string } }>;
   exerciseEquipment: Array<{ equipment: { id: string; name: string; type: string } }>;
@@ -150,6 +151,7 @@ export type SelectedCatalogStateFingerprint = {
             measurementProfile: string | null;
             loadConvention: string | null;
             repBasis: string | null;
+            zeroLoadMeaning: string | null;
           };
           muscles: Array<{ muscleId: string; role: string }>;
           equipment: Array<{ equipmentId: string }>;
@@ -326,6 +328,7 @@ export function buildExerciseData(exercise: CatalogExerciseSeed): Record<string,
     isUnilateral: Boolean(exercise.unilateral),
     repRangeMin: exercise.repRangeRecommendation?.min ?? 1,
     repRangeMax: exercise.repRangeRecommendation?.max ?? 20,
+    zeroLoadMeaning: exercise.zeroLoadMeaning ?? null,
     ...measurementColumns(measurement),
   };
 }
@@ -350,6 +353,7 @@ function normalizedCatalogExercise(exercise: CatalogExerciseSeed) {
     isUnilateral: Boolean(exercise.unilateral),
     repRangeMin: exercise.repRangeRecommendation?.min ?? 1,
     repRangeMax: exercise.repRangeRecommendation?.max ?? 20,
+    zeroLoadMeaning: exercise.zeroLoadMeaning ?? null,
     ...measurementColumns(
       parseMeasurementColumns({
         measurementProfile: exercise.measurementProfile ?? null,
@@ -391,6 +395,7 @@ function normalizedDbExercise(exercise: DbExercise) {
     measurementProfile: exercise.measurementProfile ?? null,
     loadConvention: exercise.loadConvention ?? null,
     repBasis: exercise.repBasis ?? null,
+    zeroLoadMeaning: exercise.zeroLoadMeaning ?? null,
   };
 }
 
@@ -764,6 +769,7 @@ function buildSelectedCatalogStateFingerprintFromState(
                 measurementProfile: exercise.measurementProfile ?? null,
                 loadConvention: exercise.loadConvention ?? null,
                 repBasis: exercise.repBasis ?? null,
+                zeroLoadMeaning: exercise.zeroLoadMeaning ?? null,
               },
               muscles: exercise.exerciseMuscles
                 .map((entry) => ({ muscleId: entry.muscle.id, role: entry.role }))

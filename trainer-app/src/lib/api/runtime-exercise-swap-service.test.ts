@@ -763,6 +763,7 @@ describe("runtime exercise swap service", () => {
       measurementProfile: "REPS_EXTERNAL_LOAD" as const,
       loadConvention: "IMPLEMENT_WEIGHT" as const,
       repBasis: "TOTAL" as const,
+      zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD" as const,
     };
     mocks.workoutFindFirst.mockResolvedValue({
       id: "workout-1",
@@ -811,6 +812,7 @@ describe("runtime exercise swap service", () => {
       }),
     );
     expect(applied.exercise).toMatchObject({
+      zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
       measurement: {
         profile: "REPS_EXTERNAL_LOAD",
         loadConvention: "IMPLEMENT_WEIGHT",

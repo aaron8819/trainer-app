@@ -1,5 +1,9 @@
 # 04 API Contracts
 
+## Frozen load logging
+
+Set logging reads the measurement tuple and `zeroLoadMeaning` only from the already-materialized `WorkoutExercise`. Client input cannot author or override the capability. Blank load normalizes to null or omission, while explicit numeric zero remains zero through transport validation, semantic validation, and persistence.
+
 ## Owner lookup and write-pause ordering
 
 - Pages and read handlers use `findOwnerReadOnly()`. A missing owner produces the route's explicit

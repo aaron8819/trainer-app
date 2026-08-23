@@ -193,17 +193,17 @@ describe("migration integrity", () => {
     );
   });
 
-  it("accepts the conventional chain with anti-extension pending", () => {
+  it("accepts the conventional chain with zero-load semantics pending", () => {
     const result = report();
 
     expect(EXPECTED_MIGRATION_CHAIN.at(-1)).toBe(
-      "20260813120000_add_anti_extension_movement_pattern",
+      "20260823120000_add_zero_load_meaning",
     );
     expect(result.chain).toMatchObject({
       checkedIn: EXPECTED_MIGRATION_CHAIN.length,
       applied: EXPECTED_MIGRATION_CHAIN.length - 1,
       pending: 1,
-      pendingNames: ["20260813120000_add_anti_extension_movement_pattern"],
+      pendingNames: ["20260823120000_add_zero_load_meaning"],
       exactExpectedChain: true,
     });
     expect(result.migrationIntegrityValid).toBe(true);

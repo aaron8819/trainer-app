@@ -1,5 +1,9 @@
 # 07 Operations
 
+## Zero-load catalog release sequence
+
+After deploying the schema and runtime, use separate authorization to (1) run a scoped production catalog dry-run, (2) confirm exactly two capability updates for `bulgarian-split-squat` and `hack-squat` with no unrelated operations, (3) apply those updates, and (4) run a second scoped dry-run that reports zero operations. Do not update historical terminal workout snapshots. The bounded pre-existing-workout candidate scope is only null-capability `WorkoutExercise` rows for those two exact canonical exercise IDs whose parent workout is `PLANNED` and whose frozen measurement tuple still matches the approved tuple. Any `IN_PROGRESS` row requires separate review and must not be changed automatically. The migration does not repair or backfill either scope.
+
 ## Phase 1 Finisher rollout
 
 The canonical runtime gate is the server-only
@@ -274,7 +278,7 @@ deployment, environment mutation, or execution authorization.
 The command detects its mode from PostgreSQL catalog objects and verifies that result against the Prisma ledger and checked-in migration checksums:
 
 - `pre_architecture_migration` requires exactly the first 10 migrations applied, the legacy readiness lifecycle columns present, and the seed-revision table, current-seed pointer, atomic-readiness identity columns, and both exact partial unique indexes absent. It queries only legacy columns. Every row is classified as `legacy_valid`, `legacy_duplicate`, `legacy_stale`, `legacy_invalid`, or `legacy_unknown`.
-- `fully_migrated` requires the complete checked-in chain (currently 21 migrations) applied and the complete seed-revision/readiness identity catalog, including both valid, ready, live partial unique indexes. It verifies canonical identity and target hashes, payload hashes, identity/contract versions, contract-to-row agreement, lifecycle consistency, duplicate active identities and logical targets under canonical recomputation, stale workout and seed revisions, readiness/projection/prescription fingerprint agreement, supersession integrity, and honest retained legacy rows.
+- `fully_migrated` requires the complete checked-in chain (currently 23 migrations) applied and the complete seed-revision/readiness identity catalog, including both valid, ready, live partial unique indexes. It verifies canonical identity and target hashes, payload hashes, identity/contract versions, contract-to-row agreement, lifecycle consistency, duplicate active identities and logical targets under canonical recomputation, stale workout and seed revisions, readiness/projection/prescription fingerprint agreement, supersession integrity, and honest retained legacy rows.
 - `partial_or_incompatible` covers every intermediate, incomplete, index-missing, or ledger/catalog-disagreeing state and fails closed without issuing a schema-specific readiness-row query.
 
 Pre-migration rows do not contain enough persisted evidence to prove exact post-migration identity. The report therefore labels exact checks `not_applicable_pre_migration`, leaves their finding arrays empty only under that explicit label, and never fabricates identity hashes, target hashes, projection fingerprints, or seed-revision references. The migration-safety section follows the checked-in atomic-readiness SQL: existing rows receive `identityStatus=LEGACY_UNKNOWN`, while the two new unique indexes include only active `EXACT` rows. It separately reports reconstructable active legacy-target duplicates and ambiguous targets; those integrity conflicts block readiness authorization even though the raw index DDL excludes legacy rows.

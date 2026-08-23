@@ -233,6 +233,7 @@ export type WorkoutHistoryEntry = {
   exercises: {
     exerciseId: string;
     measurement?: import("@/lib/exercise-measurement/semantics").MeasurementSemantics;
+    zeroLoadMeaning?: import("@/lib/exercise-measurement/semantics").ZeroLoadMeaning | null;
     plannedWorkingSetCount?: number;
     primaryMuscles?: string[];
     secondaryMuscles?: string[];
@@ -242,6 +243,7 @@ export type WorkoutHistoryEntry = {
   calibrationExercises?: {
     exerciseId: string;
     measurement?: import("@/lib/exercise-measurement/semantics").MeasurementSemantics;
+    zeroLoadMeaning?: import("@/lib/exercise-measurement/semantics").ZeroLoadMeaning | null;
     source: "runtime_added_same_exercise";
     plannedWorkingSetCount?: number;
     sets: SetLog[];

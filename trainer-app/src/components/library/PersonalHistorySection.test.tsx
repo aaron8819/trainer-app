@@ -222,4 +222,68 @@ describe("PersonalHistorySection", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText("No qualifying history yet.")).not.toBeInTheDocument();
   });
+
+  it("formats an explicit Bulgarian zero from its own frozen exposure", async () => {
+    const exposure = {
+      workoutId: "bulgarian-zero",
+      date: "2026-03-08T00:00:00.000Z",
+      workoutStatus: "COMPLETED",
+      measurement: {
+        profile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "IMPLEMENT_WEIGHT",
+        repBasis: "PER_SIDE",
+      },
+      zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
+      displayLoadConvention: "per_implement",
+      isRecordComparable: true,
+      completedSetCount: 1,
+      skippedSetCount: 0,
+      unloggedSetCount: 0,
+      hasSessionLocalChanges: false,
+      representativeSet: {
+        setIndex: 1,
+        reps: 10,
+        load: 0,
+        rpe: 8,
+        completedAt: "2026-03-08T00:00:00.000Z",
+        isRuntimeAdded: false,
+        basis: "most_reps",
+      },
+      sets: [
+        {
+          setIndex: 1,
+          reps: 10,
+          load: 0,
+          rpe: 8,
+          completedAt: "2026-03-08T00:00:00.000Z",
+          isRuntimeAdded: false,
+        },
+      ],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          exercise: { id: "bulgarian", name: "Bulgarian Split Squat", equipment: ["dumbbell"] },
+          comparison: {
+            scope: "exact_exercise",
+            loadConvention: "per_implement",
+            note: "Compared only with this exact exercise.",
+          },
+          lastExposure: exposure,
+          recentExposures: [exposure],
+          records: {
+            bestEstimatedStrength: null,
+            heaviestCompletedLoad: null,
+            highestSessionVolume: null,
+          },
+        }),
+      }),
+    );
+
+    render(<PersonalHistorySection exerciseId="bulgarian" />);
+
+    expect(await screen.findAllByText("Bodyweight × 10 · RPE 8")).toHaveLength(2);
+  });
 });

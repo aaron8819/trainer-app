@@ -4,6 +4,8 @@ import { buildExerciseStimulusSnapshot } from "@/lib/stimulus-accounting/snapsho
 import {
   applyAcceptedMeasurementSnapshots,
   buildPersistedExercisesForSave,
+  prepareWorkoutExercisesForPersistence,
+  rewriteWorkoutExercises,
 } from "./persistence";
 
 const measurement = {
@@ -73,6 +75,7 @@ function acceptedV4() {
 
 const prepared = {
   exerciseId: "squat",
+  zeroLoadMeaning: null,
   section: "MAIN" as const,
   measurement,
   movementPatterns: ["SQUAT" as const],
@@ -116,9 +119,11 @@ describe("accepted workout measurement snapshot copying", () => {
   });
 
   it("copies the server-authored V4 snapshot and rejects client drift", async () => {
+    const seedPayload = acceptedV4();
+    const acceptedPayloadBefore = JSON.stringify(seedPayload);
     const tx = {
       mesocycleSeedRevision: {
-        findUnique: vi.fn().mockResolvedValue({ seedPayload: acceptedV4() }),
+        findUnique: vi.fn().mockResolvedValue({ seedPayload }),
       },
     } as unknown as Prisma.TransactionClient;
 
@@ -139,6 +144,61 @@ describe("accepted workout measurement snapshot copying", () => {
         ],
       }),
     ).rejects.toThrow(/WORKOUT_MEASUREMENT_SNAPSHOT_MISMATCH/);
+    expect(JSON.stringify(seedPayload)).toBe(acceptedPayloadBefore);
+  });
+
+  it("copies the canonical zero-load capability during normal materialization", async () => {
+    const tx = {
+      exercise: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "bulgarian",
+          name: "Bulgarian Split Squat",
+          movementPatterns: ["LUNGE"],
+          zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
+          aliases: [],
+          exerciseMuscles: [],
+        }),
+      },
+    } as unknown as Prisma.TransactionClient;
+
+    const [result] = await prepareWorkoutExercisesForPersistence(tx, [
+      {
+        exerciseId: "bulgarian",
+        section: "ACCESSORY",
+        sets: [{ setIndex: 1, targetReps: 8 }],
+      },
+    ]);
+
+    expect(result.zeroLoadMeaning).toBe("BODYWEIGHT_NO_ADDED_LOAD");
+  });
+
+  it("persists the frozen capability without adding it to accepted measurement data", async () => {
+    const create = vi.fn().mockResolvedValue({ id: "we-1" });
+    const tx = {
+      workoutExercise: {
+        findMany: vi.fn().mockResolvedValue([]),
+        create,
+      },
+      workoutSet: { deleteMany: vi.fn() },
+    } as unknown as Prisma.TransactionClient;
+
+    await rewriteWorkoutExercises(tx, {
+      workoutId: "workout-1",
+      exercises: [
+        {
+          ...prepared,
+          zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
+        },
+      ],
+    });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
+        }),
+      }),
+    );
   });
 
   it("strips measurement from legacy materialization", async () => {

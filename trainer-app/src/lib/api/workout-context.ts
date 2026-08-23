@@ -54,7 +54,10 @@ import {
   assertProductionWriteAllowed,
   type ProductionWriteOperation,
 } from "@/lib/operations/production-write-gate";
-import { parseMeasurementColumns } from "@/lib/exercise-measurement/semantics";
+import {
+  parseMeasurementColumns,
+  parseZeroLoadMeaningColumn,
+} from "@/lib/exercise-measurement/semantics";
 
 type ExerciseWithMuscles = Exercise & {
   exerciseMuscles?: { role: string; muscle: { name: string } }[];
@@ -623,6 +626,7 @@ function mapWorkoutExerciseHistory(
     ...(parseMeasurementColumns(exercise)
       ? { measurement: parseMeasurementColumns(exercise)! }
       : {}),
+    zeroLoadMeaning: parseZeroLoadMeaningColumn(exercise),
     plannedWorkingSetCount: exercise.sets.length,
     primaryMuscles: accounting.snapshot
       ? getRelationshipMusclesFromSnapshot(accounting.snapshot, "primary")

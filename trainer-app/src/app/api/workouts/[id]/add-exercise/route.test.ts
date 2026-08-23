@@ -447,7 +447,10 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       new Request("http://localhost/api/workouts/workout-1/add-exercise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ exerciseId: "fly", expectedRevision: 1 }),
+        body: JSON.stringify({
+          exerciseId: "fly",
+          expectedRevision: 1,
+        }),
       }),
       { params: Promise.resolve({ id: "workout-1" }) }
     );
@@ -500,7 +503,10 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       new Request("http://localhost/api/workouts/workout-1/add-exercise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ exerciseId: "fly", expectedRevision: 1 }),
+        body: JSON.stringify({
+          exerciseId: "fly",
+          expectedRevision: 1,
+        }),
       }),
       { params: Promise.resolve({ id: "workout-1" }) }
     );
@@ -636,7 +642,11 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       new Request("http://localhost/api/workouts/workout-1/add-exercise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ exerciseId: "fly", expectedRevision: 1 }),
+        body: JSON.stringify({
+          exerciseId: "fly",
+          expectedRevision: 1,
+          zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
+        }),
       }),
       { params: Promise.resolve({ id: "workout-1" }) }
     );
@@ -654,6 +664,7 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
         measurementProfile: null,
         loadConvention: null,
         repBasis: null,
+        zeroLoadMeaning: null,
         stimulusAccountingSnapshot: expect.objectContaining({
           version: 1,
           sourceExerciseId: "fly",
@@ -761,10 +772,14 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       seedRevision: { seedPayload: acceptedV3Seed() },
       exercises: [],
     });
-    mocks.txExerciseFindUnique.mockResolvedValueOnce(measurementColumns);
+    mocks.txExerciseFindUnique.mockResolvedValueOnce({
+      ...measurementColumns,
+      zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD",
+    });
     mocks.txWorkoutExerciseCreate.mockResolvedValueOnce({
       id: "we-v3",
       ...measurementColumns,
+      zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD",
       sets: [
         {
           id: "set-v3",
@@ -793,6 +808,7 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           ...measurementColumns,
+          zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD",
           sets: {
             create: expect.arrayContaining([
               expect.not.objectContaining({ targetLoad: expect.anything() }),
@@ -803,6 +819,7 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
     );
     await expect(response.json()).resolves.toMatchObject({
       exercise: {
+        zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD",
         measurement: {
           profile: "REPS_EXTERNAL_LOAD",
           loadConvention: "MACHINE_DISPLAYED",

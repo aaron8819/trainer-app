@@ -10,8 +10,10 @@ import {
 import {
   measurementComparisonKey,
   parseMeasurementColumns,
+  parseZeroLoadMeaningColumn,
   permitsComputedLoadComparison,
   type MeasurementSemantics,
+  type ZeroLoadMeaning,
 } from "@/lib/exercise-measurement/semantics";
 
 const ESTIMATED_STRENGTH_MAX_REPS = 15;
@@ -46,6 +48,7 @@ export type ExerciseExposure = {
   date: string;
   workoutStatus: "COMPLETED" | "PARTIAL";
   measurement: MeasurementSemantics | null;
+  zeroLoadMeaning: ZeroLoadMeaning | null;
   displayLoadConvention: ExerciseHistoryLoadConvention;
   isRecordComparable: boolean;
   sets: ExerciseHistorySet[];
@@ -238,6 +241,7 @@ function toExposure(row: HistoryRow): PerformedExerciseExposure | null {
   }
 
   const measurement = parseMeasurementColumns(row);
+  const zeroLoadMeaning = parseZeroLoadMeaningColumn(row);
   const equipment = row.exercise.exerciseEquipment.map((item) =>
     item.equipment.type.toLowerCase(),
   );
@@ -247,6 +251,7 @@ function toExposure(row: HistoryRow): PerformedExerciseExposure | null {
     date: (row.workout.completedAt ?? row.workout.scheduledDate).toISOString(),
     workoutStatus: row.workout.status as "COMPLETED" | "PARTIAL",
     measurement,
+    zeroLoadMeaning,
     displayLoadConvention: resolveLoadConvention(measurement, equipment),
     sets,
     completedSetCount: sets.length,

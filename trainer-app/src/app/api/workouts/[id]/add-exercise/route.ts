@@ -25,6 +25,7 @@ import {
 import {
   measurementColumns,
   parseMeasurementColumns,
+  parseZeroLoadMeaningColumn,
 } from "@/lib/exercise-measurement/semantics";
 import { parseAcceptedSeedPayload } from "@/lib/api/slot-plan-seed-parser";
 
@@ -376,18 +377,20 @@ export async function POST(
         ? parseAcceptedSeedPayload(latestWorkout.seedRevision.seedPayload)
             .acceptedVersion === 3
         : false;
+      const committedSemantics =
+        (await tx.exercise.findUnique({
+          where: { id: exercise.id },
+          select: {
+            measurementProfile: true,
+            loadConvention: true,
+            repBasis: true,
+            zeroLoadMeaning: true,
+          },
+        })) ?? {};
       const committedMeasurement = latestMeasurementAware
-        ? parseMeasurementColumns(
-            (await tx.exercise.findUnique({
-              where: { id: exercise.id },
-              select: {
-                measurementProfile: true,
-                loadConvention: true,
-                repBasis: true,
-              },
-            })) ?? {},
-          )
+        ? parseMeasurementColumns(committedSemantics)
         : null;
+      const committedZeroLoadMeaning = parseZeroLoadMeaningColumn(committedSemantics);
       if (latestMeasurementAware && !committedMeasurement) {
         throw new Error("MEASUREMENT_AWARE_EXERCISE_REQUIRED");
       }
@@ -447,6 +450,7 @@ export async function POST(
           isMainLift: preview.isMainLift,
           stimulusAccountingSnapshot:
             stimulusAccountingSnapshot as unknown as Prisma.InputJsonValue,
+          zeroLoadMeaning: committedZeroLoadMeaning,
           ...measurementColumns(latestMeasurementAware ? committedMeasurement : null),
           sets: {
             create: setIndices.map((setIndex) => ({
@@ -578,6 +582,7 @@ export async function POST(
   }
   const workoutExercise = workoutMutation.result;
   const persistedMeasurement = parseMeasurementColumns(workoutExercise);
+  const persistedZeroLoadMeaning = parseZeroLoadMeaningColumn(workoutExercise);
 
   // Return in LogExerciseInput format
   const muscleTagGroups = buildExerciseMuscleDisplayGroups(exercise);
@@ -597,6 +602,7 @@ export async function POST(
     ...(persistedMeasurement
       ? { measurement: persistedMeasurement }
       : {}),
+    zeroLoadMeaning: persistedZeroLoadMeaning,
     sessionNote: RUNTIME_ADDED_EXERCISE_SESSION_NOTE,
     capabilities: {
       canAddSet: true,

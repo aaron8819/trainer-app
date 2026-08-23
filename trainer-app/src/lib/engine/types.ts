@@ -161,6 +161,7 @@ export type Exercise = {
   primaryMuscles?: string[];
   secondaryMuscles?: string[];
   stimulusProfile?: StimulusProfile;
+  zeroLoadMeaning?: import("@/lib/exercise-measurement/semantics").ZeroLoadMeaning | null;
 };
 
 export type WorkoutSet = {

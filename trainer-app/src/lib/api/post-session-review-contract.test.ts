@@ -1055,6 +1055,12 @@ describe("post-session review contract", () => {
             workoutExerciseId: "we-cable-curl-planned",
             exerciseId: "cable-curl",
             exerciseName: "Cable Curl",
+            measurement: {
+              profile: "REPS_EXTERNAL_LOAD",
+              loadConvention: "IMPLEMENT_WEIGHT",
+              repBasis: "PER_SIDE",
+            },
+            zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
             sets: [performedSet("planned-curl-set-1")],
           }),
           exercise({
@@ -1064,6 +1070,12 @@ describe("post-session review contract", () => {
             isRuntimeAdded: true,
             section: "ACCESSORY",
             isMainLift: false,
+            measurement: {
+              profile: "REPS_EXTERNAL_LOAD",
+              loadConvention: "MACHINE_DISPLAYED",
+              repBasis: "TOTAL",
+            },
+            zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD",
             sets: [
               performedSet("added-curl-set-1", {
                 actualLoad: 35,
@@ -1095,6 +1107,19 @@ describe("post-session review contract", () => {
           medianLoad: 35,
           medianRpe: 8.5,
         },
+      }),
+    ]);
+    const serialized = JSON.parse(JSON.stringify(contract)) as PostSessionReviewContract;
+    expect(serialized.prescriptionCalibration.rows).toEqual([
+      expect.objectContaining({
+        workoutExerciseId: "we-cable-curl-planned",
+        exerciseId: "cable-curl",
+        zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
+      }),
+      expect.objectContaining({
+        workoutExerciseId: "we-cable-curl-added",
+        exerciseId: "cable-curl",
+        zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD",
       }),
     ]);
   });

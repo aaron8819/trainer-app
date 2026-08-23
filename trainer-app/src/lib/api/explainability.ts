@@ -261,6 +261,11 @@ export async function generateWorkoutExplanation(
   for (const workoutExercise of workout.exercises) {
     const exercise = mappedExercises.find((e) => e.id === workoutExercise.exerciseId);
     if (!exercise) continue;
+    const comparisonMeasurement = parseMeasurementColumns(workoutExercise);
+    const measurementSnapshot: FrozenMeasurementSnapshot = {
+      measurement: comparisonMeasurement,
+      zeroLoadMeaning: parseZeroLoadMeaningColumn(workoutExercise),
+    };
 
     const engineSets = workoutExercise.sets.map((dbSet: WorkoutSet) => ({
       setIndex: dbSet.setIndex,
@@ -296,6 +301,7 @@ export async function generateWorkoutExplanation(
         exercise.repRangeMin && exercise.repRangeMax
           ? { min: exercise.repRangeMin, max: exercise.repRangeMax }
           : undefined,
+      measurementSnapshot,
     });
 
     prescriptionRationales.set(workoutExercise.exerciseId, rationale);
@@ -316,11 +322,6 @@ export async function generateWorkoutExplanation(
       ? [effectiveRepRange.min, effectiveRepRange.max]
       : [8, 8];
     const equipmentTypes = workoutExercise.exercise.exerciseEquipment.map((item) => item.equipment.type);
-    const comparisonMeasurement = parseMeasurementColumns(workoutExercise);
-    const measurementSnapshot: FrozenMeasurementSnapshot = {
-      measurement: comparisonMeasurement,
-      zeroLoadMeaning: parseZeroLoadMeaningColumn(workoutExercise),
-    };
     const lastPerformed = await loadLatestPerformedSetSummary(
       workout.userId,
       workout.id,
@@ -734,7 +735,11 @@ function buildPlannedMaxByExercise(
       if (!latest || latest.wasSkipped) {
         continue;
       }
-      if (latest.actualLoad != null && latest.actualLoad > 0) {
+      if (
+        typeof latest.actualLoad === "number" &&
+        Number.isFinite(latest.actualLoad) &&
+        latest.actualLoad > 0
+      ) {
         maxLoad = maxLoad == null ? latest.actualLoad : Math.max(maxLoad, latest.actualLoad);
       }
       if (repsOnlyEvidence && latest.actualReps != null) {
@@ -855,7 +860,11 @@ async function loadHistoricalExercisePerformance(
       if (!latest || latest.wasSkipped) {
         continue;
       }
-      if (latest.actualLoad != null && latest.actualLoad > 0) {
+      if (
+        typeof latest.actualLoad === "number" &&
+        Number.isFinite(latest.actualLoad) &&
+        latest.actualLoad > 0
+      ) {
         current.maxLoad =
           current.maxLoad == null ? latest.actualLoad : Math.max(current.maxLoad, latest.actualLoad);
       }

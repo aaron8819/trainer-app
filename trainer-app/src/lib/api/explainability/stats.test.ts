@@ -6,7 +6,11 @@ describe("explainability PR-potential load evidence", () => {
     [0, 0],
     [0, 100],
     [100, 0],
-  ])("excludes non-positive planned or historical load (%s vs %s)", (planned, historical) => {
+    [Number.POSITIVE_INFINITY, 100],
+    [100, Number.POSITIVE_INFINITY],
+    [Number.NaN, 100],
+    [100, Number.NaN],
+  ])("excludes non-finite or non-positive planned/historical load (%s vs %s)", (planned, historical) => {
     expect(
       hasPRPotential(
         new Map([["exercise", { maxLoad: planned, maxReps: 10 }]]),

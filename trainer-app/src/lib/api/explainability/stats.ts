@@ -50,8 +50,10 @@ export function hasPRPotential(
 
     if (
       planned.maxLoad != null &&
+      Number.isFinite(planned.maxLoad) &&
       planned.maxLoad > 0 &&
       historical.maxLoad != null &&
+      Number.isFinite(historical.maxLoad) &&
       historical.maxLoad > 0 &&
       planned.maxLoad >= historical.maxLoad * 0.97
     ) {

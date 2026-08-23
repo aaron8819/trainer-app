@@ -290,6 +290,8 @@ function isLoadSource(value: unknown): value is PrescriptionConfidenceLoadSource
     value === "existing_target_load" ||
     value === "runtime_added_same_exercise_calibration_anchor" ||
     value === "bodyweight" ||
+    value === "machine_default" ||
+    value === "neutral_zero" ||
     value === "none" ||
     value === "unknown"
   );

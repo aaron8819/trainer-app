@@ -25,10 +25,12 @@ import { buildProjectedWarmupSets, canResolveLoadForWarmupRamp } from "./warmup-
 import type { BlockContext } from "./periodization/types";
 import { prescribeWithBlock } from "./periodization/prescribe-with-block";
 import { estimateStrengthSessionTiming } from "./strength-session-timing";
+import { assertFrozenMeasurementSnapshotInvariant } from "@/lib/exercise-measurement/semantics";
 
 export type TemplateExerciseInput = {
   exercise: Exercise;
   measurement?: import("@/lib/exercise-measurement/semantics").MeasurementSemantics;
+  zeroLoadMeaning?: import("@/lib/exercise-measurement/semantics").ZeroLoadMeaning | null;
   orderIndex: number;
   supersetGroup?: number;
   mesocycleRole?: "CORE_COMPOUND" | "ACCESSORY";
@@ -319,6 +321,10 @@ function buildTemplateExercise(
               : Math.min(set.targetRpe, 10 - lifecycleRirTarget.min),
         }))
       : blockAdjustedSets;
+  const measurementSnapshot = assertFrozenMeasurementSnapshotInvariant({
+    measurement: input.measurement ?? null,
+    zeroLoadMeaning: input.zeroLoadMeaning ?? null,
+  });
 
   return {
     id: createId(),
@@ -329,7 +335,12 @@ function buildTemplateExercise(
     notes: isMainLift ? "Primary movement" : undefined,
     supersetGroup,
     sets: cappedSets,
-    ...(input.measurement ? { measurement: input.measurement } : {}),
+    ...(measurementSnapshot.measurement
+      ? { measurement: measurementSnapshot.measurement }
+      : {}),
+    ...(measurementSnapshot.zeroLoadMeaning
+      ? { zeroLoadMeaning: measurementSnapshot.zeroLoadMeaning }
+      : {}),
   };
 }
 

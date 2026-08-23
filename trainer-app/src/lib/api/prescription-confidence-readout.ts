@@ -3,13 +3,9 @@ import {
   RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE,
   type ApplyLoadsAudit,
 } from "@/lib/engine/apply-loads";
-import type {
-  Exercise,
-  WorkoutExercise,
-  WorkoutPlan,
-  WorkoutSet,
-} from "@/lib/engine/types";
+import type { WorkoutExercise, WorkoutPlan, WorkoutSet } from "@/lib/engine/types";
 import { listWorkoutPlanExercisesInOrder } from "@/lib/engine/workout-plan-order";
+import { deriveLoadEntryPolicy } from "@/lib/exercise-measurement/load-entry-policy";
 import type { ProgressionDecisionTrace } from "@/lib/evidence/session-audit-types";
 import type {
   PrescriptionConfidenceLoadSource,
@@ -113,7 +109,7 @@ export function buildPrescriptionConfidenceReadouts(input: {
       const resolvedLoad = input.loadAudit?.resolvedLoads[exerciseId];
       const target = resolveRepresentativeTarget(exercise, trace);
       const loadSource = resolveLoadSource({
-        exercise: exercise.exercise,
+        exercise,
         targetLoad: target.load,
         source: resolvedLoad?.source,
       });
@@ -187,16 +183,26 @@ function resolveRepresentativeTarget(
 }
 
 function resolveLoadSource(input: {
-  exercise: Exercise;
+  exercise: WorkoutExercise;
   targetLoad: number | null;
   source?: ApplyLoadsAudit["resolvedLoads"][string]["source"];
 }): PrescriptionConfidenceLoadSource {
   if (input.targetLoad === 0) {
-    return "bodyweight";
+    const zeroDisplayLabel = deriveLoadEntryPolicy({
+      measurement: input.exercise.measurement ?? null,
+      zeroLoadMeaning: input.exercise.zeroLoadMeaning ?? null,
+    }).zeroDisplayLabel;
+    if (zeroDisplayLabel === "Bodyweight") return "bodyweight";
+    if (zeroDisplayLabel === "Machine default / no added load") {
+      return "machine_default";
+    }
+    return "neutral_zero";
   }
 
   if (input.targetLoad == null) {
-    return input.exercise.equipment.includes("bodyweight") ? "bodyweight" : "none";
+    return input.exercise.measurement?.profile === "REPS_BODYWEIGHT"
+      ? "bodyweight"
+      : "none";
   }
 
   return input.source ?? "unknown";
@@ -211,7 +217,10 @@ function resolveConfidence(input: {
     return "low";
   }
 
-  if (input.loadSource === "bodyweight") {
+  if (
+    input.loadSource === "bodyweight" ||
+    input.loadSource === "machine_default"
+  ) {
     return "high";
   }
 

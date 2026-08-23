@@ -161,6 +161,16 @@ export function assertFrozenMeasurementSnapshotInvariant(
   return snapshot;
 }
 
+export function resolveProposedFrozenMeasurementSnapshot(input: {
+  measurement: MeasurementSemantics | null;
+  catalogZeroLoadMeaning: ZeroLoadMeaning | null;
+}): FrozenMeasurementSnapshot {
+  return assertFrozenMeasurementSnapshotInvariant({
+    measurement: input.measurement,
+    zeroLoadMeaning: input.measurement ? input.catalogZeroLoadMeaning : null,
+  });
+}
+
 export function frozenMeasurementColumns(
   snapshot: FrozenMeasurementSnapshot,
 ): PersistedFrozenMeasurementColumns {

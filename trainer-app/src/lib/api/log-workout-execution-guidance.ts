@@ -69,6 +69,10 @@ function formatSourceLabel(
       return "Same-exercise calibration";
     case "bodyweight":
       return "Bodyweight";
+    case "machine_default":
+      return "Machine default / no added load";
+    case "neutral_zero":
+      return "Zero load";
     case "none":
     case "unknown":
     case undefined:

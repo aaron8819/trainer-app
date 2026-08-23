@@ -11,7 +11,10 @@ import {
 } from "@/lib/api/slot-plan-seed-parser";
 import type { RepTargetV4 } from "@/lib/engine/hypertrophy-plan-authoring";
 import type { MappedGenerationContext } from "./types";
-import type { MeasurementSemantics } from "@/lib/exercise-measurement/semantics";
+import {
+  resolveProposedFrozenMeasurementSnapshot,
+  type MeasurementSemantics,
+} from "@/lib/exercise-measurement/semantics";
 
 export type NormalizedSeededSlotExercise = {
   exerciseId: string;
@@ -242,12 +245,24 @@ function resolveSeededSlotPlan(input: {
     intent: selectedSlot.intent,
     sequenceIndex: selectedSlot.sequenceIndex,
     exercises: selectedSlot.exercises,
-    templateExercises: selectedSlot.exercises.map((exercise, orderIndex) => ({
-      exercise: exerciseById.get(exercise.exerciseId)!,
-      orderIndex,
-      mesocycleRole: exercise.role,
-      ...(exercise.measurement ? { measurement: exercise.measurement } : {}),
-    })),
+    templateExercises: selectedSlot.exercises.map((exercise, orderIndex) => {
+      const catalogExercise = exerciseById.get(exercise.exerciseId)!;
+      const proposedSnapshot = resolveProposedFrozenMeasurementSnapshot({
+        measurement: exercise.measurement ?? null,
+        catalogZeroLoadMeaning: catalogExercise.zeroLoadMeaning ?? null,
+      });
+      return {
+        exercise: catalogExercise,
+        orderIndex,
+        mesocycleRole: exercise.role,
+        ...(proposedSnapshot.measurement
+          ? { measurement: proposedSnapshot.measurement }
+          : {}),
+        ...(proposedSnapshot.zeroLoadMeaning
+          ? { zeroLoadMeaning: proposedSnapshot.zeroLoadMeaning }
+          : {}),
+      };
+    }),
     ...(!seedHasMissingSetCounts
       ? {
           setCountOverrides: Object.fromEntries(

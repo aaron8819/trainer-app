@@ -77,6 +77,8 @@ export type PrescriptionConfidenceLoadSource =
   | "legacy_measurement_history"
   | "runtime_added_same_exercise_calibration_anchor"
   | "bodyweight"
+  | "machine_default"
+  | "neutral_zero"
   | "none"
   | "unknown";
 

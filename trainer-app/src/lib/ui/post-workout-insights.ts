@@ -174,7 +174,7 @@ function describeTodayTargetContext(
   switch (receipt.trigger) {
     case "double_progression":
       if (previousLoad != null && todayLoad != null) {
-        return `Today's written target moved from ${formatLoad(previousLoad, exercise)} to ${formatLoad(todayLoad, exercise)}${deltaPercent ? ` (${deltaPercent})` : ""}.`;
+        return `Today's written target moved from ${formatLoad(previousLoad)} to ${formatLoad(todayLoad, exercise)}${deltaPercent ? ` (${deltaPercent})` : ""}.`;
       }
       return "Today's written target moved up from your prior performed anchor.";
     case "hold":
@@ -186,7 +186,7 @@ function describeTodayTargetContext(
       return "Today's written target was adjusted to match the readiness signal on the day.";
     case "deload":
       if (previousLoad != null && todayLoad != null) {
-        return `Today's written target was intentionally lighter for deload work, moving from ${formatLoad(previousLoad, exercise)} to ${formatLoad(todayLoad, exercise)}${deltaPercent ? ` (${deltaPercent})` : ""}.`;
+        return `Today's written target was intentionally lighter for deload work, moving from ${formatLoad(previousLoad)} to ${formatLoad(todayLoad, exercise)}${deltaPercent ? ` (${deltaPercent})` : ""}.`;
       }
       return "Today's written target was intentionally lighter for deload work.";
     default:

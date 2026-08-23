@@ -466,6 +466,7 @@ export function mapExercises(
         name: exercise.name,
         aliases: (exercise.aliases ?? []).map((alias) => alias.alias),
       }),
+      zeroLoadMeaning: parseZeroLoadMeaningColumn(exercise),
     };
   });
 }

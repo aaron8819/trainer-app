@@ -204,6 +204,7 @@ export type PostSessionReviewPerformedRealityTrendGroup = {
 };
 
 export type PostSessionReviewPrescriptionCalibrationRow = {
+  workoutExerciseId: string;
   exerciseId: string;
   exerciseName: string;
   measurement?: import("@/lib/exercise-measurement/semantics").MeasurementSemantics | null;

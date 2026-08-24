@@ -16,6 +16,7 @@ export type CanonicalProgressionHistorySession = {
   confidenceNotes: string[];
   progressionEligible?: boolean;
   comparable?: boolean;
+  directionalActionEligible?: boolean;
   plannedWorkingSetCount?: number;
   representativeLoad?: number;
   sets?: ProgressionSet[];
@@ -139,6 +140,9 @@ function toBoundProgressionExposure(
     ...(session.selectionMode ? { selectionMode: session.selectionMode } : {}),
     progressionEligible: session.progressionEligible !== false,
     comparable: session.comparable !== false,
+    ...(session.directionalActionEligible != null
+      ? { directionalActionEligible: session.directionalActionEligible }
+      : {}),
     ...(session.plannedWorkingSetCount != null
       ? { plannedWorkingSetCount: session.plannedWorkingSetCount }
       : {}),

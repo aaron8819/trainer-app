@@ -1,6 +1,23 @@
 import { describe, expect, it } from "vitest";
 
-import { isProgressionEligibleWorkout } from "./progression-eligibility";
+import {
+  isPartialExposureAdequateForProgression,
+  isProgressionEligibleWorkout,
+} from "./progression-eligibility";
+
+describe("isPartialExposureAdequateForProgression", () => {
+  it.each([
+    { performed: 1, planned: 3, expected: false },
+    { performed: 2, planned: 3, expected: true },
+    { performed: 2, planned: 4, expected: false },
+    { performed: 3, planned: 4, expected: true },
+  ])("classifies $performed/$planned as $expected", ({ performed, planned, expected }) => {
+    expect(isPartialExposureAdequateForProgression({
+      plannedWorkingSetCount: planned,
+      performedWorkingSetCount: performed,
+    })).toBe(expected);
+  });
+});
 
 describe("isProgressionEligibleWorkout", () => {
   it("excludes scheduled deload sessions from progression anchors", () => {

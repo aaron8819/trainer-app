@@ -67,7 +67,6 @@ function lowerAWorkout(id: string, date: string): WorkoutPlan {
 function lowerAHistory(input: {
   workoutId: string;
   date: string;
-  frozen: boolean;
 }): WorkoutHistoryEntry {
   return {
     workoutId: input.workoutId,
@@ -79,9 +78,8 @@ function lowerAHistory(input: {
     selectionMode: "INTENT",
     sessionIntent: "lower",
     confidence: 1,
-    exercises: definitions.map(([exerciseId, , , measurement, , load]) => ({
+    exercises: definitions.map(([exerciseId, , , , , load]) => ({
       exerciseId,
-      ...(input.frozen ? { measurement } : {}),
       plannedWorkingSetCount: 3,
       sets: [1, 2, 3].map((setIndex) => ({
         exerciseId,
@@ -96,6 +94,50 @@ function lowerAHistory(input: {
         targetRpe: 8,
       })),
     })),
+  };
+}
+
+function performedHistoryFromGenerated(
+  generated: ReturnType<typeof generate>,
+  input: { workoutId: string; date: string; includeExercise?: (exerciseId: string) => boolean },
+): WorkoutHistoryEntry {
+  const generatedEntries = [
+    ...generated.workout.mainLifts,
+    ...generated.workout.accessories,
+  ];
+  return {
+    workoutId: input.workoutId,
+    date: input.date,
+    completed: true,
+    status: "COMPLETED",
+    progressionEligible: true,
+    performanceEligible: true,
+    selectionMode: "INTENT",
+    sessionIntent: "lower",
+    confidence: 1,
+    exercises: generatedEntries
+      .filter((entry) => input.includeExercise?.(entry.exercise.id) ?? true)
+      .map((entry) => {
+        const simulatedLoad = definitions.find(([id]) => id === entry.exercise.id)?.[5];
+        if (simulatedLoad == null) throw new Error(`Missing simulated load for ${entry.exercise.id}`);
+        return {
+          exerciseId: entry.exercise.id,
+          measurement: entry.measurement,
+          plannedWorkingSetCount: entry.sets.length,
+          sets: entry.sets.map((set) => ({
+            exerciseId: entry.exercise.id,
+            setIndex: set.setIndex,
+            load: simulatedLoad,
+            reps: 12,
+            rpe: 8,
+            targetLoad: set.targetLoad,
+            targetReps: set.targetReps,
+            targetRepMin: set.targetRepRange?.min,
+            targetRepMax: set.targetRepRange?.max,
+            targetRpe: set.targetRpe,
+          })),
+        };
+      }),
   };
 }
 
@@ -119,7 +161,6 @@ describe("Lower A Week 1 to Week 3 prescription regression", () => {
     const week1 = lowerAHistory({
       workoutId: "week-1-lower-a",
       date: "2026-08-01T00:00:00.000Z",
-      frozen: false,
     });
     const week2 = generate(
       lowerAWorkout("week-2-generation", "2026-08-08T00:00:00.000Z"),
@@ -148,10 +189,9 @@ describe("Lower A Week 1 to Week 3 prescription regression", () => {
       });
     }
 
-    const exactWeek2 = lowerAHistory({
+    const exactWeek2 = performedHistoryFromGenerated(week2, {
       workoutId: "week-2-lower-a",
       date: "2026-08-08T00:00:00.000Z",
-      frozen: true,
     });
     const week3 = generate(
       lowerAWorkout("week-3-generation", "2026-08-15T00:00:00.000Z"),
@@ -181,6 +221,26 @@ describe("Lower A Week 1 to Week 3 prescription regression", () => {
           expect.objectContaining({ measurementProvenance: "legacy_null" }),
         ]),
       );
+    }
+
+    const withoutExactWeek2MachineEvidence = performedHistoryFromGenerated(week2, {
+      workoutId: "week-2-lower-a-no-machines",
+      date: "2026-08-08T00:00:00.000Z",
+      includeExercise: (exerciseId) =>
+        definitions.find(([id]) => id === exerciseId)?.[2] === "barbell",
+    });
+    const negativeControl = generate(
+      lowerAWorkout("week-3-negative-control", "2026-08-15T00:00:00.000Z"),
+      [withoutExactWeek2MachineEvidence, week1],
+    );
+    for (const id of ["leg-press", "hip-abduction", "lying-leg-curl", "cable-crunch"]) {
+      expect(negativeControl.audit.prescriptions[id], id).toMatchObject({
+        kind: "calibration_required",
+        reasonCodes: expect.arrayContaining(["legacy_machine_calibration_only"]),
+      });
+      expect(negativeControl.workout.accessories
+        .find((entry) => entry.exercise.id === id)?.sets
+        .every((set) => set.targetLoad == null)).toBe(true);
     }
   });
 });

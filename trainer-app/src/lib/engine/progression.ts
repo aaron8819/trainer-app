@@ -7,6 +7,8 @@ import { quantizeLoad } from "@/lib/units/load-quantization";
 import { isPositiveLoadProgressionEligible } from "@/lib/exercise-measurement/load-entry-policy";
 import { formatFrozenLoadValue } from "@/lib/exercise-measurement/load-entry-policy";
 import type { FrozenMeasurementSnapshot } from "@/lib/exercise-measurement/semantics";
+import { isPartialExposureAdequateForProgression } from "@/lib/progression/progression-eligibility";
+import { PRESCRIPTION_CONFIDENCE_POLICY } from "./load-prescription";
 
 export type ProgressionSet = {
   setIndex?: number;
@@ -48,6 +50,7 @@ export type BoundProgressionExposure = {
   selectionMode?: WorkoutHistoryEntry["selectionMode"];
   progressionEligible: boolean;
   comparable: boolean;
+  directionalActionEligible?: boolean;
   plannedWorkingSetCount?: number;
   representativeLoad?: number;
   sets: ProgressionSet[];
@@ -1173,7 +1176,10 @@ function resolveBoundExposureDecision(input: {
     .map((exposure) => evaluateBoundProgressionExposure(exposure, exposure.representativeLoad))
     .filter((item) => item.exposure.comparable && !item.incomplete);
   const repeatedSuccess = comparableEvaluations.filter((item) => item.successful).length >= 2;
-  const confidenceSufficient = input.progressionConfidenceScale >= 0.75;
+  const confidenceSufficient =
+    input.progressionConfidenceScale >=
+      PRESCRIPTION_CONFIDENCE_POLICY.directionalActionFloor ||
+    selected.directionalActionEligible === true;
 
   const translatedLoad = translateLoadToTargetContext({
     priorLoad: input.anchorLoad,
@@ -1257,12 +1263,13 @@ function evaluateBoundProgressionExposure(
       Number.isFinite(resolveProgressionSetTargetReps(set)) &&
       Number.isFinite(set.targetRpe)
   );
-  const minimumCoverage = plannedWorkingSetCount <= 1 ? 1 : 2;
   const adequateCoverage =
     exposure.progressionEligible &&
     exposure.comparable &&
-    completeSets.length >= minimumCoverage &&
-    completeSets.length / Math.max(plannedWorkingSetCount, 1) >= 2 / 3;
+    isPartialExposureAdequateForProgression({
+      plannedWorkingSetCount,
+      performedWorkingSetCount: completeSets.length,
+    });
   const representativeLoad = exposure.representativeLoad ?? fallbackLoad ?? 0;
   const representativeSet = [...completeSets]
     .sort((left, right) => {

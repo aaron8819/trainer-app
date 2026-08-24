@@ -7,6 +7,7 @@ import {
   type ProgressionAnchorStrategy,
   type PlannedLoadStructure,
 } from "@/lib/progression/anchoring";
+import { isPartialExposureAdequateForProgression } from "@/lib/progression/progression-eligibility";
 import { classifySetLog } from "./set-classification";
 
 export type PerformedExerciseSetInput = {
@@ -115,16 +116,23 @@ export function normalizePerformedExerciseEvidence(input: {
     ? Math.max(0, input.plannedWorkingSetCount as number)
     : null;
   const performedSetCount = performedSets.length;
-  const minimumAdequateCount = plannedWorkingSetCount == null
-    ? 1
-    : Math.max(1, Math.ceil(plannedWorkingSetCount / 2));
   const coverage: PerformedEvidenceCoverage =
     plannedWorkingSetCount != null && performedSetCount >= plannedWorkingSetCount
       ? "complete"
-      : performedSetCount >= minimumAdequateCount
+      : plannedWorkingSetCount == null
+        ? performedSetCount >= 1
+          ? "adequate_partial"
+          : "inadequate_partial"
+        : isPartialExposureAdequateForProgression({
+            plannedWorkingSetCount,
+            performedWorkingSetCount: performedSetCount,
+          })
         ? "adequate_partial"
         : "inadequate_partial";
   const workoutId = input.workoutId ?? null;
+  const representativeSet = semantics?.signalSets.find(
+    (set) => set.load === semantics.workingSetLoad,
+  );
 
   return {
     evidenceId: `${workoutId ?? input.performedAt}:${input.canonicalExerciseId}`,
@@ -138,8 +146,8 @@ export function normalizePerformedExerciseEvidence(input: {
     plannedWorkingSetCount,
     coverage,
     representativeLoad: semantics?.workingSetLoad ?? null,
-    representativeReps: semantics?.medianReps ?? null,
-    representativeRpe: semantics?.modalRpe ?? null,
+    representativeReps: representativeSet?.reps ?? semantics?.medianReps ?? null,
+    representativeRpe: representativeSet?.rpe ?? semantics?.modalRpe ?? null,
     hasPerformedLoad: performedSets.some((set) => Number.isFinite(set.load)),
     hasPerformedReps: performedSetCount > 0,
     hasPerformedEffort: performedSets.some((set) => Number.isFinite(set.rpe)),
@@ -173,6 +181,7 @@ export function derivePerformedExerciseSemantics(input: {
         (set.actualLoad ?? 0) >= 0
     )
     .map((set) => ({
+      setIndex: set.setIndex,
       reps: set.actualReps as number,
       load: set.actualLoad as number,
       rpe: set.actualRpe ?? undefined,

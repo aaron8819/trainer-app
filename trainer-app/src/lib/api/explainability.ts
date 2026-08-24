@@ -822,7 +822,7 @@ async function loadHistoricalExercisePerformance(
     }
     if (
       currentMeasurement?.profile !== "REPS_BODYWEIGHT" &&
-      !permitsComputedLoadComparison(currentMeasurement)
+      !permitsLegacyExplainabilityLoadComparison(currentMeasurement)
     ) {
       continue;
     }
@@ -1052,7 +1052,7 @@ async function loadLatestPerformedSetSummary(
   isCompound: boolean | undefined,
   client: ExplainabilityReader
 ): Promise<(ProgressionSetSummary & { decisionLog?: string[] }) | null> {
-  if (!permitsComputedLoadComparison(comparisonMeasurement)) {
+  if (!permitsLegacyExplainabilityLoadComparison(comparisonMeasurement)) {
     return null;
   }
   const previous = await findLatestProgressionEligibleWorkoutExercise({
@@ -1539,7 +1539,7 @@ async function buildNextExposureDecision(
 ): Promise<NextExposureDecision | null> {
   if (
     !performedSemantics ||
-    !permitsComputedLoadComparison(input.comparisonMeasurement)
+    !permitsLegacyExplainabilityLoadComparison(input.comparisonMeasurement)
   ) {
     return null;
   }
@@ -1606,6 +1606,20 @@ async function buildNextExposureDecision(
     medianReps: performedSemantics.medianReps,
     decisionLog,
   };
+}
+
+// Migration boundary: explainability/progression receipts retain their
+// pre-Phase-1 machine behavior until they consume structured comparability.
+function permitsLegacyExplainabilityLoadComparison(
+  measurement: MeasurementSemantics | null,
+): boolean {
+  return (
+    permitsComputedLoadComparison(measurement) &&
+    !(
+      measurement?.profile === "REPS_EXTERNAL_LOAD" &&
+      measurement.loadConvention === "MACHINE_DISPLAYED"
+    )
+  );
 }
 
 function resolveNextExposureReviewQuality(input: {

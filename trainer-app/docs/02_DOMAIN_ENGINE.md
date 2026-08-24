@@ -3,28 +3,61 @@
 ## Load prescription domain
 
 `src/lib/engine/load-prescription.ts` owns the versioned pure `PrescriptionResult`
-contract and structured comparability policy. Every working exercise processed by
-`apply-loads` ends in exactly one numeric, semantic-zero, calibration-required,
-not-applicable, or unavailable result; `targetLoad` remains a compatibility
-projection only. Shared normalization of performed load, reps, effort, set
-coverage, measurement provenance, and representative working-set load remains in
-`src/lib/session-semantics/performed-exercise-semantics.ts`.
+contract, structured comparability, selected evidence, and prescription
+confidence/action policy. `permitsComputedLoadComparison()` is only a coarse
+measurement capability: it does not establish exercise identity, frozen tuple
+equality, evidence quality, or progression eligibility. `apply-loads` is the
+Phase 1 structured-policy consumer. Legacy exercise-history and explainability
+callers keep `MACHINE_DISPLAYED` disabled behind explicit local migration gates
+until those contracts can consume the complete structured policy.
+
+The production flow is performed evidence normalization -> comparability -> one
+selected exposure -> progression -> `PrescriptionResult` -> `toTargetLoad()` ->
+compatibility `targetLoad`. The selected exposure owns representative load,
+anchor-set reps and effort, coverage facts, frozen measurement, performed time,
+provenance, confidence, and reason codes. Invalid newer evidence is skipped in
+favor of the newest valid comparable exposure; progression sessions are rebound
+to that selection, so a numeric result and its audit projection cannot cite a
+different exposure from the load anchor. Every working exercise processed by
+`apply-loads` ends in exactly one numeric, semantic-zero,
+calibration-required, not-applicable, or unavailable result before set targets
+are written. `targetLoad` is emitted only through `toTargetLoad()`; result-derived
+evidence also owns the compatibility audit citation.
 
 Positive longitudinal comparison requires the exact canonical exercise id and
 the exact frozen measurement tuple. Exact barbell and dumbbell evidence is
 high-confidence. Exact `MACHINE_DISPLAYED` evidence is comparable at reduced
 confidence; the displayed scale is exercise-local and does not imply equipment
-instance equivalence. The existing legacy-null bridge remains restricted to
+instance equivalence. `PRESCRIPTION_CONFIDENCE_POLICY` is the single owner of
+the categorical/numeric/action relationship. Clean exact machine evidence is
+capped at `0.7` and remains categorically reduced, but it may increase, hold, or
+decrease through the existing bounded progression criteria. The exception does
+not raise weaker source confidence to the cap. Missing effort, incomplete
+coverage, runtime-added evidence, or substitution blocks directional action.
+`isPartialExposureAdequateForProgression()` owns the canonical minimum of two
+performed working sets and at least two-thirds coverage; evidence normalization
+only reports the resulting coverage fact.
+
+The existing legacy-null bridge remains restricted to
 `REPS_EXTERNAL_LOAD / BARBELL_TOTAL / TOTAL`. Legacy-null evidence for a current
 machine-displayed exercise is calibration-only: its normalized representative
 working-set load may be retained as a non-progressive hint but cannot feed
-progression. Newer exact machine evidence wins over that hint.
+progression. Newer exact machine evidence wins over that hint and does not
+inherit the hint's low confidence. Reps-only bodyweight is not applicable,
+displayed assistance is unsupported, and valid explicit zero semantics are
+resolved before an existing positive target can be preserved. Only semantically
+valid external-load work may retain a positive existing target.
 
-Reps-only bodyweight load is not applicable, displayed assistance is unsupported,
-and deload evidence is excluded from accumulation progression. Explicit zero
+Deload evidence remains excluded from accumulation progression. Explicit zero
 continues to use only the existing `BODYWEIGHT_NO_ADDED_LOAD` and
-`MACHINE_DEFAULT_NO_ADDED_LOAD` meanings. No prescription result is persisted or
-rendered in this phase.
+`MACHINE_DEFAULT_NO_ADDED_LOAD` meanings, including the isolated legacy
+bodyweight compatibility adapter. No `PrescriptionResult`, calibration state,
+or structured evidence is persisted or rendered in this phase. Releasing Phase
+1 alone can expose numeric targets from exact frozen machine history through the
+existing UI, while calibration-required work still projects to blank and the
+current review can still produce legacy false-warning behavior. Phase 1 is
+therefore mergeable as engine work but should be held from independent release
+until Phase 2 persists/renders calibration and updates review semantics.
 
 ## Frozen zero-load semantics
 

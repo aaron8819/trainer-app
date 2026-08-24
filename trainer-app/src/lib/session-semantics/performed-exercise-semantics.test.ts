@@ -147,4 +147,31 @@ describe("normalizePerformedExerciseEvidence", () => {
       hasPerformedEffort: true,
     });
   });
+
+  it.each([
+    { performed: 1, planned: 3, expected: "inadequate_partial" },
+    { performed: 2, planned: 3, expected: "adequate_partial" },
+    { performed: 2, planned: 4, expected: "inadequate_partial" },
+    { performed: 3, planned: 4, expected: "adequate_partial" },
+  ] as const)(
+    "uses canonical progression coverage for $performed/$planned",
+    ({ performed, planned, expected }) => {
+      const evidence = normalizePerformedExerciseEvidence({
+        workoutId: `coverage-${performed}-${planned}`,
+        canonicalExerciseId: "leg-press",
+        performedAt: "2026-08-01T00:00:00.000Z",
+        status: "PARTIAL",
+        measurement: null,
+        plannedWorkingSetCount: planned,
+        sets: Array.from({ length: performed }, (_, index) => ({
+          setIndex: index + 1,
+          load: 100,
+          reps: 10,
+          rpe: 8,
+        })),
+      });
+
+      expect(evidence.coverage).toBe(expected);
+    },
+  );
 });

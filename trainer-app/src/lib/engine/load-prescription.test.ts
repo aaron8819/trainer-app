@@ -171,14 +171,22 @@ describe("prescription comparability", () => {
       evidence: evidence({ rpe: null }),
     })).toMatchObject({
       kind: "comparable_reduced_confidence",
-      increaseAllowed: false,
+      directionalActionEligible: false,
       reasonCodes: expect.arrayContaining(["missing_effort"]),
     });
     expect(classifyPrescriptionComparability({
       canonicalExerciseId: "leg-press",
       measurement: machine,
+      evidence: evidence({ status: "PARTIAL", planned: 3, setCount: 2 }),
+    })).toMatchObject({
+      kind: "comparable_reduced_confidence",
+      directionalActionEligible: false,
+    });
+    expect(classifyPrescriptionComparability({
+      canonicalExerciseId: "leg-press",
+      measurement: machine,
       evidence: evidence({ status: "PARTIAL", planned: 4, setCount: 2 }),
-    })).toMatchObject({ kind: "comparable_reduced_confidence" });
+    })).toMatchObject({ kind: "not_comparable", blockingFields: ["performedSetCoverage"] });
     expect(classifyPrescriptionComparability({
       canonicalExerciseId: "leg-press",
       measurement: machine,
@@ -260,8 +268,7 @@ describe("PrescriptionResult compatibility projection", () => {
       canonicalExerciseId: "pull-up",
       measurement: { profile: "REPS_BODYWEIGHT", repBasis: "TOTAL" },
       zeroLoadMeaning: null,
-      finalTargetLoad: null,
-      source: null,
+      candidate: null,
       comparability: null,
       isDeload: false,
     });
@@ -273,8 +280,7 @@ describe("PrescriptionResult compatibility projection", () => {
         repBasis: "TOTAL",
       },
       zeroLoadMeaning: null,
-      finalTargetLoad: null,
-      source: null,
+      candidate: null,
       comparability: null,
       isDeload: false,
     });
@@ -282,8 +288,7 @@ describe("PrescriptionResult compatibility projection", () => {
       canonicalExerciseId: "bench",
       measurement: barbell,
       zeroLoadMeaning: null,
-      finalTargetLoad: null,
-      source: null,
+      candidate: null,
       comparability: null,
       isDeload: false,
     });

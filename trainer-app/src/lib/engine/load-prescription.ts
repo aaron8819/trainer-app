@@ -6,6 +6,15 @@ import type { NormalizedPerformedExerciseEvidence } from "@/lib/session-semantic
 
 export const PRESCRIPTION_RESULT_VERSION = 1 as const;
 
+export const PRESCRIPTION_CONFIDENCE_POLICY = {
+  directionalActionFloor: 0.75,
+  incompleteEvidenceCap: 0.7,
+  exactMachineDisplayed: {
+    confidenceCap: 0.7,
+    cleanEvidenceActionFloor: 0.7,
+  },
+} as const;
+
 export type PrescriptionConfidence = "high" | "reduced" | "low";
 
 export type PrescriptionReasonCode =
@@ -113,7 +122,7 @@ type ComparableResult = {
   confidence: "high" | "reduced";
   reasonCodes: PrescriptionReasonCode[];
   evidence: PrescriptionEvidenceReference;
-  increaseAllowed: boolean;
+  directionalActionEligible: boolean;
 };
 
 export type PrescriptionComparabilityResult =
@@ -137,6 +146,11 @@ export type PrescriptionComparabilityResult =
       evidence?: PrescriptionEvidenceReference;
     };
 
+export type SelectedPrescriptionEvidence = {
+  comparability: PrescriptionComparabilityResult;
+  evidence: PrescriptionEvidenceReference;
+};
+
 export function toTargetLoad(result: PrescriptionResult): number | null {
   return result.kind === "numeric" || result.kind === "semantic_zero"
     ? result.value
@@ -154,7 +168,7 @@ export function createNumericPrescription(
 
 export function createSemanticZeroPrescription(input: {
   canonicalExerciseId: string;
-  measurement: MeasurementSemantics;
+  measurement: MeasurementSemantics | null;
   zeroLoadMeaning: ZeroLoadMeaning;
   evidence?: PrescriptionEvidenceReference[];
 }): SemanticZeroPrescription {
@@ -179,14 +193,38 @@ export function resolvePrescriptionResult(input: {
   measurement: MeasurementSemantics | null;
   zeroLoadMeaning: ZeroLoadMeaning | null;
   existingTargetLoad?: number;
-  finalTargetLoad: number | null;
-  source: NumericPrescription["source"] | null;
+  candidate?: {
+    value: number;
+    source: NumericPrescription["source"];
+  } | null;
   comparability: PrescriptionComparabilityResult | null;
   isDeload: boolean;
 }): PrescriptionResult {
+  if (input.measurement?.profile === "REPS_BODYWEIGHT") {
+    return {
+      version: PRESCRIPTION_RESULT_VERSION,
+      kind: "not_applicable",
+      canonicalExerciseId: input.canonicalExerciseId,
+      measurement: input.measurement,
+      reasonCodes: ["bodyweight_no_load_not_applicable"],
+      evidence: [],
+    };
+  }
+
+  if (input.measurement?.profile === "REPS_ASSISTED") {
+    return {
+      version: PRESCRIPTION_RESULT_VERSION,
+      kind: "unavailable",
+      canonicalExerciseId: input.canonicalExerciseId,
+      measurement: input.measurement,
+      reasonCodes: ["displayed_assistance_unsupported"],
+      evidence: [],
+      blockingFields: ["measurement"],
+    };
+  }
+
   if (
-    input.existingTargetLoad === 0 &&
-    input.measurement != null &&
+    (input.existingTargetLoad === 0 || input.candidate?.value === 0) &&
     input.zeroLoadMeaning != null
   ) {
     return createSemanticZeroPrescription({
@@ -196,23 +234,37 @@ export function resolvePrescriptionResult(input: {
     });
   }
 
-  if (input.finalTargetLoad != null && input.finalTargetLoad > 0 && input.source) {
+  const selectedCandidate =
+    !input.isDeload &&
+    Number.isFinite(input.existingTargetLoad) &&
+    (input.existingTargetLoad ?? 0) > 0
+      ? {
+          value: input.existingTargetLoad as number,
+          source: "existing_target" as const,
+        }
+      : input.candidate && Number.isFinite(input.candidate.value) && input.candidate.value > 0
+        ? input.candidate
+        : null;
+
+  if (selectedCandidate) {
     const evidence =
-      input.source === "existing_target" ? [] : comparableEvidence(input.comparability);
+      selectedCandidate.source === "existing_target"
+        ? []
+        : comparableEvidence(input.comparability);
     return createNumericPrescription({
       canonicalExerciseId: input.canonicalExerciseId,
       measurement: input.measurement,
-      value: input.finalTargetLoad,
-      source: input.source,
-      confidence: numericConfidence(input.source, input.comparability),
+      value: selectedCandidate.value,
+      source: selectedCandidate.source,
+      confidence: numericConfidence(selectedCandidate.source, input.comparability),
       reasonCodes:
-        input.source === "existing_target"
+        selectedCandidate.source === "existing_target"
           ? ["existing_target_preserved"]
           : uniqueReasons([
               ...(input.comparability?.reasonCodes ?? []),
               decisionReason({
                 existingTargetLoad: input.existingTargetLoad,
-                finalTargetLoad: input.finalTargetLoad,
+                candidateValue: selectedCandidate.value,
                 evidenceLoad: evidence[0]?.representativeLoad ?? null,
                 isDeload: input.isDeload,
               }),
@@ -237,8 +289,7 @@ export function resolvePrescriptionResult(input: {
   }
 
   if (
-    input.comparability?.kind === "not_applicable" ||
-    input.measurement?.profile === "REPS_BODYWEIGHT"
+    input.comparability?.kind === "not_applicable"
   ) {
     return {
       version: PRESCRIPTION_RESULT_VERSION,
@@ -246,25 +297,11 @@ export function resolvePrescriptionResult(input: {
       canonicalExerciseId: input.canonicalExerciseId,
       measurement: input.measurement,
       reasonCodes:
-        input.comparability?.kind === "not_applicable"
-          ? input.comparability.reasonCodes
-          : ["bodyweight_no_load_not_applicable"],
+        input.comparability.reasonCodes,
       evidence:
-        input.comparability?.kind === "not_applicable" && input.comparability.evidence
+        input.comparability.evidence
           ? [input.comparability.evidence]
           : [],
-    };
-  }
-
-  if (input.measurement?.profile === "REPS_ASSISTED") {
-    return {
-      version: PRESCRIPTION_RESULT_VERSION,
-      kind: "unavailable",
-      canonicalExerciseId: input.canonicalExerciseId,
-      measurement: input.measurement,
-      reasonCodes: ["displayed_assistance_unsupported"],
-      evidence: [],
-      blockingFields: ["measurement"],
     };
   }
 
@@ -345,7 +382,7 @@ export function classifyPrescriptionComparability(input: {
       return comparableReduced(
         ["legacy_barbell_bridge", ...qualityReasons],
         asEvidenceReference(input.evidence, true),
-        input.evidence.hasPerformedEffort,
+        directionalActionEligible(input.evidence, currentMeasurement),
       );
     }
     if (isMachineDisplayed(currentMeasurement)) {
@@ -369,7 +406,7 @@ export function classifyPrescriptionComparability(input: {
     return comparableReduced(
       ["same_exercise_displayed_load", ...qualityReasons],
       asEvidenceReference(input.evidence, true),
-      input.evidence.hasPerformedEffort,
+      directionalActionEligible(input.evidence, currentMeasurement),
     );
   }
 
@@ -382,15 +419,19 @@ export function classifyPrescriptionComparability(input: {
     return comparableReduced(
       ["same_exercise_same_measurement", ...qualityReasons],
       asEvidenceReference(input.evidence, true),
-      input.evidence.hasPerformedEffort,
+      false,
     );
   }
+  const actionEligible = directionalActionEligible(
+    input.evidence,
+    currentMeasurement,
+  );
   return {
     kind: "comparable",
     confidence: "high",
     reasonCodes: ["same_exercise_same_measurement", ...qualityReasons],
     evidence: asEvidenceReference(input.evidence, true),
-    increaseAllowed: true,
+    directionalActionEligible: actionEligible,
   };
 }
 
@@ -406,9 +447,18 @@ export function selectBestPrescriptionComparability(input: {
       evidence,
     }),
   );
+  const firstFrozenBlockingResult = results.find(
+    (result) =>
+      result.kind === "not_comparable" &&
+      result.evidence?.measurementProvenance === "frozen",
+  );
   return (
-    results.find((result) => result.kind === "comparable") ??
-    results.find((result) => result.kind === "comparable_reduced_confidence") ??
+    results.find(
+      (result) =>
+        result.kind === "comparable" ||
+        result.kind === "comparable_reduced_confidence",
+    ) ??
+    firstFrozenBlockingResult ??
     results.find((result) => result.kind === "calibration_required") ??
     results.find((result) => result.kind === "not_applicable") ??
     results[0] ??
@@ -416,18 +466,42 @@ export function selectBestPrescriptionComparability(input: {
   );
 }
 
+export function selectedPrescriptionEvidence(
+  comparability: PrescriptionComparabilityResult | null,
+): SelectedPrescriptionEvidence | null {
+  if (!comparability?.evidence) return null;
+  return { comparability, evidence: comparability.evidence };
+}
+
 function comparableReduced(
   reasonCodes: PrescriptionReasonCode[],
   evidence: PrescriptionEvidenceReference,
-  increaseAllowed: boolean,
+  actionEligible: boolean,
 ): ComparableResult {
   return {
     kind: "comparable_reduced_confidence",
     confidence: "reduced",
     reasonCodes,
     evidence,
-    increaseAllowed,
+    directionalActionEligible: actionEligible,
   };
+}
+
+function directionalActionEligible(
+  evidence: NormalizedPerformedExerciseEvidence,
+  measurement: MeasurementSemantics | null,
+): boolean {
+  const cleanEvidence =
+    evidence.coverage === "complete" &&
+    evidence.hasPerformedEffort &&
+    !evidence.runtimeAdded &&
+    !evidence.substituted;
+  if (!cleanEvidence) return false;
+
+  const actionFloor = isMachineDisplayed(measurement)
+    ? PRESCRIPTION_CONFIDENCE_POLICY.exactMachineDisplayed.cleanEvidenceActionFloor
+    : PRESCRIPTION_CONFIDENCE_POLICY.directionalActionFloor;
+  return evidence.confidence >= actionFloor;
 }
 
 function comparableEvidence(
@@ -441,7 +515,7 @@ function comparableEvidence(
 
 function decisionReason(input: {
   existingTargetLoad?: number;
-  finalTargetLoad: number;
+  candidateValue: number;
   evidenceLoad: number | null;
   isDeload: boolean;
 }): PrescriptionReasonCode {
@@ -449,8 +523,8 @@ function decisionReason(input: {
     return "existing_target_preserved";
   }
   if (input.evidenceLoad == null) return "no_comparable_history";
-  if (input.finalTargetLoad > input.evidenceLoad) return "double_progression_increase";
-  if (input.finalTargetLoad < input.evidenceLoad) return "decrease";
+  if (input.candidateValue > input.evidenceLoad) return "double_progression_increase";
+  if (input.candidateValue < input.evidenceLoad) return "decrease";
   return "hold";
 }
 

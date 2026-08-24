@@ -205,6 +205,7 @@ describe("POST /api/workouts/[id]/add-exercise-preview", () => {
           targetRpe: 6.5,
           restSeconds: 120,
           prescriptionSource: "session_accessory_defaults",
+          zeroLoadMeaning: null,
         },
       ],
     });

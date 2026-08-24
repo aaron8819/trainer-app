@@ -208,8 +208,8 @@ describe("test-suite environment manifest", () => {
       manifest: currentManifest,
       discoveredTestFiles,
     });
-    expect(discoveredTestFiles).toHaveLength(368);
-    expect(selection.credentialFree).toHaveLength(329);
+    expect(discoveredTestFiles).toHaveLength(374);
+    expect(selection.credentialFree).toHaveLength(335);
     expect(selection.credentialFree).toContain(
       "src/lib/operations/credential-free-inventory-runner.test.ts"
     );

@@ -5,6 +5,7 @@ const deriveCurrentMesocycleSessionMock = vi.fn();
 vi.mock("@/lib/api/mesocycle-lifecycle-math", () => ({
   deriveCurrentMesocycleSession: (...args: unknown[]) => deriveCurrentMesocycleSessionMock(...args),
 }));
+vi.mock("@/lib/db/prisma", () => ({ prisma: {} }));
 
 import {
   assertMesocycleAllowsWorkoutSave,
@@ -14,6 +15,7 @@ import {
   resolvePersistedAdvancesSplit,
   shouldAdvanceLifecycleForPerformedTransition,
 } from "./lifecycle-contract";
+import { classifyLegacyTerminalLifecycleResult } from "@/lib/api/save-workout/lifecycle";
 
 describe("save lifecycle contract", () => {
   beforeEach(() => {
@@ -134,5 +136,35 @@ describe("save lifecycle contract", () => {
         requestAdvancesSplit: true,
       })
     ).toBe(true);
+  });
+
+  it.each([
+    ["COMPLETED", true, true],
+    ["SKIPPED", false, true],
+    ["PARTIAL", false, false],
+  ] as const)(
+    "classifies %s without equating authored resolution to performed completion",
+    (finalStatus, applyPerformedSideEffects, reconcileAuthoredSchedule) => {
+      expect(
+        classifyLegacyTerminalLifecycleResult({
+          advancesSplit: true,
+          previousStatus: "PLANNED",
+          finalStatus,
+        }),
+      ).toEqual({ applyPerformedSideEffects, reconcileAuthoredSchedule });
+    },
+  );
+
+  it("excludes explicit non-advancing terminal rows from legacy lifecycle effects", () => {
+    expect(
+      classifyLegacyTerminalLifecycleResult({
+        advancesSplit: false,
+        previousStatus: "PLANNED",
+        finalStatus: "SKIPPED",
+      }),
+    ).toEqual({
+      applyPerformedSideEffects: false,
+      reconcileAuthoredSchedule: false,
+    });
   });
 });

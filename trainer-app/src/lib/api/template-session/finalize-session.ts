@@ -270,6 +270,7 @@ export function finalizeDeloadSessionResult(input: {
   deloadTrace: DeloadTransformationTrace;
   plannerDiagnosticsMode?: PlannerDiagnosticsMode;
   compositionSource?: SessionCompositionSource;
+  sessionSlot?: SessionSlotSnapshot;
 }): SessionGenerationResult {
   const compositionSource = input.compositionSource ?? "runtime_selection";
   const exerciseById = Object.fromEntries(
@@ -315,6 +316,7 @@ export function finalizeDeloadSessionResult(input: {
           input.mapped,
           compositionSource
         ),
+        sessionSlot: input.sessionSlot,
         lifecycleRirTarget: input.mapped.lifecycleRirTarget,
         lifecycleVolumeTargets: input.mapped.lifecycleVolumeTargets,
         sorenessSuppressedMuscles: input.mapped.sorenessSuppressedMuscles,

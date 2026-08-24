@@ -1,7 +1,11 @@
 import { WorkoutStatus } from "@prisma/client";
-import { reconcileMesocycleLifecycle } from "./mesocycle-lifecycle-reconciliation";
+import {
+  assessClosedHandoffDeletionInTransaction,
+  reconcileMesocycleLifecycle,
+} from "./mesocycle-lifecycle-reconciliation";
 import { executeWorkoutMutation } from "./workout-mutation";
 import { isFinisherRolloutEnabled } from "@/lib/operations/finisher-rollout";
+import { resolveV4ScheduleAuthority } from "./v4-scheduled-slot-resolution";
 
 export class DeleteWorkoutError extends Error {
   readonly status = 409 as const;
@@ -43,6 +47,22 @@ export async function deleteOwnedWorkout(input: {
               sessionsPerWeek: true,
               state: true,
               isActive: true,
+              completedSessions: true,
+              accumulationSessionsCompleted: true,
+              deloadSessionsCompleted: true,
+              slotSequenceJson: true,
+              currentSeedRevisionId: true,
+              currentSeedRevision: {
+                select: {
+                  id: true,
+                  mesocycleId: true,
+                  revision: true,
+                  seedPayload: true,
+                  payloadHash: true,
+                  hashAlgorithm: true,
+                  provenanceStatus: true,
+                },
+              },
             },
           },
         },
@@ -72,6 +92,16 @@ export async function deleteOwnedWorkout(input: {
         }
       }
 
+      const v4Authority = workout.mesocycle
+        ? resolveV4ScheduleAuthority(workout.mesocycle)
+        : null;
+      if (v4Authority?.status === "blocked") {
+        throw new DeleteWorkoutError(
+          "Cannot delete this workout because exact V4 schedule authority could not be validated.",
+          "V4_SCHEDULE_RESOLUTION_BLOCKED",
+        );
+      }
+
       const exercises = await tx.workoutExercise.findMany({
         where: { workoutId: workout.id },
         select: { id: true },
@@ -96,6 +126,22 @@ export async function deleteOwnedWorkout(input: {
         workout.mesocycle &&
         (workout.mesocycle.isActive || workout.mesocycle.state !== "COMPLETED")
       ) {
+        if (
+          workout.mesocycle.state === "AWAITING_HANDOFF" &&
+          v4Authority?.status === "not_v4"
+        ) {
+          const deletionAssessment =
+            await assessClosedHandoffDeletionInTransaction(
+              tx,
+              workout.mesocycle,
+            );
+          if (!deletionAssessment.safe) {
+            throw new DeleteWorkoutError(
+              "Cannot delete this workout because the closed mesocycle would become unresolved.",
+              "WORKOUT_DELETE_CLOSED_LIFECYCLE_REGRESSION",
+            );
+          }
+        }
         await reconcileMesocycleLifecycle(tx, workout.mesocycle);
       }
       return { status: "deleted" as const };

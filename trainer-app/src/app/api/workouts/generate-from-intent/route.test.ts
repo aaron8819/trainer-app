@@ -325,6 +325,13 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
 
   it("returns deload prescription path when active mesocycle state is ACTIVE_DELOAD", async () => {
     mocks.loadActiveMesocycle.mockResolvedValue({ id: "meso-1", state: "ACTIVE_DELOAD" });
+    mocks.loadRequestedAdvancingSlotSnapshot.mockResolvedValue({
+      slotId: "pull_a",
+      intent: "pull",
+      sequenceIndex: 1,
+      sequenceLength: 4,
+      source: "mesocycle_slot_sequence",
+    });
     mocks.generateDeloadSessionFromIntent.mockResolvedValue({
       workout: {
         id: "w1",
@@ -346,6 +353,18 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
         perExerciseSetTargets: { ex: 1 },
         rationale: {},
         volumePlanByMuscle: {},
+        sessionDecisionReceipt: {
+          ...exactV4Receipt({
+            week: 5,
+            phase: "deload",
+            slotId: "pull_a",
+            intent: "pull",
+          }),
+          sessionProvenance: {
+            mesocycleId: "meso-1",
+            compositionSource: "deload_seed_replay",
+          },
+        },
       },
       filteredExercises: [],
     });
@@ -360,9 +379,28 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(mocks.generateDeloadSessionFromIntent).toHaveBeenCalledOnce();
+    expect(mocks.generateDeloadSessionFromIntent).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({
+        intent: "pull",
+        advancingSlot: {
+          slotId: "pull_a",
+          intent: "pull",
+          sequenceIndex: 1,
+          sequenceLength: 4,
+          source: "mesocycle_slot_sequence",
+        },
+      }),
+    );
     expect(mocks.generateSessionFromIntent).not.toHaveBeenCalled();
     expect(body.workout.mainLifts[0].sets[0].targetRpe).toBe(5);
+    expect(body.selectionMetadata.sessionDecisionReceipt.sessionSlot).toEqual({
+      slotId: "pull_a",
+      intent: "pull",
+      sequenceIndex: 1,
+      sequenceLength: 4,
+      source: "mesocycle_slot_sequence",
+    });
   });
 
   it("replays accepted V4 Week 5 through the exact seeded path without autoregulation", async () => {

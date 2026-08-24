@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   workoutExerciseFindMany: vi.fn(),
   workoutDelete: vi.fn(),
   reconcileMesocycleLifecycle: vi.fn(),
+  assessClosedHandoffDeletionInTransaction: vi.fn(),
 }));
 
 vi.mock("./workout-mutation", () => ({
@@ -35,6 +36,8 @@ vi.mock("./workout-mutation", () => ({
 vi.mock("./mesocycle-lifecycle-reconciliation", () => ({
   reconcileMesocycleLifecycle: (...args: unknown[]) =>
     mocks.reconcileMesocycleLifecycle(...args),
+  assessClosedHandoffDeletionInTransaction: (...args: unknown[]) =>
+    mocks.assessClosedHandoffDeletionInTransaction(...args),
 }));
 
 import { deleteOwnedWorkout } from "./workout-deletion";

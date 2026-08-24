@@ -209,6 +209,39 @@ describe("accepted V4 load calibration", () => {
       source: "none",
       canonicalSourceLoad: null,
     });
+    expect(result.audit.prescriptions.bench).toMatchObject({
+      kind: "unavailable",
+      blockingFields: ["evidence"],
+      reasonCodes: ["no_comparable_history"],
+    });
+  });
+
+  it("keeps explicit semantic zero distinct from absent evidence", () => {
+    const zeroWorkout = workoutFor(bench, {
+      profile: "REPS_EXTERNAL_LOAD",
+      loadConvention: "MACHINE_DISPLAYED",
+      repBasis: "TOTAL",
+    });
+    zeroWorkout.mainLifts[0].zeroLoadMeaning = "MACHINE_DEFAULT_NO_ADDED_LOAD";
+    zeroWorkout.mainLifts[0].sets = zeroWorkout.mainLifts[0].sets.map((set) => ({
+      ...set,
+      targetLoad: 0,
+    }));
+
+    const result = calibrate({ workout: zeroWorkout, history: [] });
+    expect(result.workout.mainLifts[0].sets.map((set) => set.targetLoad)).toEqual([0, 0, 0, 0]);
+    expect(result.audit.prescriptions.bench).toMatchObject({
+      kind: "semantic_zero",
+      value: 0,
+      zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD",
+      reasonCodes: ["machine_default_no_added_load"],
+    });
+
+    const absent = calibrate({
+      workout: workoutFor(bench, zeroWorkout.mainLifts[0].measurement),
+      history: [],
+    });
+    expect(absent.audit.prescriptions.bench.kind).toBe("unavailable");
   });
 
   it("rejects legacy history for a different exercise identity", () => {

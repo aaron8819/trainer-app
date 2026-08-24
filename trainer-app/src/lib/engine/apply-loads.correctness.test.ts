@@ -2661,6 +2661,12 @@ describe("applyLoads correctness", () => {
         ],
       },
     );
-    expect(machine.workout.mainLifts[0].sets[0].targetLoad).toBeUndefined();
+    expect(machine.workout.mainLifts[0].sets[0].targetLoad).toBe(185);
+    expect(machine.audit.prescriptions.bench).toMatchObject({
+      kind: "numeric",
+      source: "exact_history",
+      confidence: "reduced",
+      reasonCodes: expect.arrayContaining(["same_exercise_displayed_load"]),
+    });
   });
 });

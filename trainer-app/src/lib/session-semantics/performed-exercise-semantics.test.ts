@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   derivePerformedExerciseSemantics,
   derivePlannedSetStructure,
+  normalizePerformedExerciseEvidence,
 } from "./performed-exercise-semantics";
 
 describe("derivePerformedExerciseSemantics", () => {
@@ -114,5 +115,36 @@ describe("derivePlannedSetStructure", () => {
         { setIndex: 2, targetLoad: 50 },
       ])
     ).toBe("uniform_working_sets");
+  });
+});
+
+describe("normalizePerformedExerciseEvidence", () => {
+  it("preserves frozen provenance, coverage, and the representative working-set anchor", () => {
+    const evidence = normalizePerformedExerciseEvidence({
+      workoutId: "week-1-lower-a",
+      canonicalExerciseId: "leg-press",
+      performedAt: "2026-08-01T00:00:00.000Z",
+      status: "PARTIAL",
+      measurement: null,
+      plannedWorkingSetCount: 4,
+      isMainLiftEligible: false,
+      sets: [
+        { setIndex: 1, load: 180, reps: 10, rpe: 8 },
+        { setIndex: 2, load: 200, reps: 10, rpe: 8 },
+        { setIndex: 3, load: 200, reps: 10, rpe: 8 },
+      ],
+    });
+
+    expect(evidence).toMatchObject({
+      evidenceId: "week-1-lower-a:leg-press",
+      measurementProvenance: "legacy_null",
+      coverage: "adequate_partial",
+      representativeLoad: 200,
+      representativeReps: 10,
+      representativeRpe: 8,
+      hasPerformedLoad: true,
+      hasPerformedReps: true,
+      hasPerformedEffort: true,
+    });
   });
 });

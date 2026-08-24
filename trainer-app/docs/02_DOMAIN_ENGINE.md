@@ -1,5 +1,31 @@
 # 02 Domain Engine
 
+## Load prescription domain
+
+`src/lib/engine/load-prescription.ts` owns the versioned pure `PrescriptionResult`
+contract and structured comparability policy. Every working exercise processed by
+`apply-loads` ends in exactly one numeric, semantic-zero, calibration-required,
+not-applicable, or unavailable result; `targetLoad` remains a compatibility
+projection only. Shared normalization of performed load, reps, effort, set
+coverage, measurement provenance, and representative working-set load remains in
+`src/lib/session-semantics/performed-exercise-semantics.ts`.
+
+Positive longitudinal comparison requires the exact canonical exercise id and
+the exact frozen measurement tuple. Exact barbell and dumbbell evidence is
+high-confidence. Exact `MACHINE_DISPLAYED` evidence is comparable at reduced
+confidence; the displayed scale is exercise-local and does not imply equipment
+instance equivalence. The existing legacy-null bridge remains restricted to
+`REPS_EXTERNAL_LOAD / BARBELL_TOTAL / TOTAL`. Legacy-null evidence for a current
+machine-displayed exercise is calibration-only: its normalized representative
+working-set load may be retained as a non-progressive hint but cannot feed
+progression. Newer exact machine evidence wins over that hint.
+
+Reps-only bodyweight load is not applicable, displayed assistance is unsupported,
+and deload evidence is excluded from accumulation progression. Explicit zero
+continues to use only the existing `BODYWEIGHT_NO_ADDED_LOAD` and
+`MACHINE_DEFAULT_NO_ADDED_LOAD` meanings. No prescription result is persisted or
+rendered in this phase.
+
 ## Frozen zero-load semantics
 
 `zeroLoadMeaning` is a nullable canonical logging capability. `BODYWEIGHT_NO_ADDED_LOAD` means explicit zero is bodyweight with no added load; `MACHINE_DEFAULT_NO_ADDED_LOAD` means explicit zero is the machine default or no added load and does not imply calibrated resistance. The capability affects explicit zero only. A capability is interpreted only with its compatible frozen measurement tuple; malformed measurement-null snapshots remain legacy-neutral. Measurement-aware ordinary generation combines the accepted measurement tuple with the compatible current catalog capability for proposal and preview semantics, while accepted seed serialization, hashing, and replay identity remain unchanged. Non-positive load is not load-PR or load-stall evidence, while true reps-only scoring is selected from the frozen measurement profile. Positive-load comparison continues to use the existing exact-exercise measurement tuple, so it does not split historical cohorts. Blank remains distinct from zero.

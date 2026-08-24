@@ -101,7 +101,18 @@ export type LegacyAuthoredScheduleMesocycle = {
   durationWeeks: number;
   sessionsPerWeek: number;
   slotSequenceJson?: unknown;
-  currentSeedRevision?: { seedPayload: unknown } | null;
+  currentSeedRevisionId?: string | null;
+  currentSeedRevision?:
+    | {
+        seedPayload: unknown;
+        id?: string;
+        mesocycleId?: string;
+        revision?: number;
+        payloadHash?: string | null;
+        hashAlgorithm?: string | null;
+        provenanceStatus?: string;
+      }
+    | null;
 };
 
 export type LegacyAuthoredScheduleWorkout = {
@@ -254,8 +265,17 @@ export function resolveStrictFrozenLegacyAuthoredScheduleLifecycle(input: {
   mesocycle: LegacyAuthoredScheduleMesocycle;
   workouts: readonly LegacyAuthoredScheduleWorkout[];
 }): StrictFrozenLegacyAuthoredScheduleResolution {
-  if (isV4SeedPayload(input.mesocycle.currentSeedRevision?.seedPayload)) {
+  const v4Authority = resolveV4ScheduleAuthority(
+    input.mesocycle as Parameters<typeof resolveV4ScheduleAuthority>[0],
+  );
+  if (v4Authority.status === "available") {
     return { status: "not_legacy" };
+  }
+  if (v4Authority.status === "blocked") {
+    return {
+      status: "blocked",
+      reason: `v4_schedule_authority_blocked:${v4Authority.reason}`,
+    };
   }
 
   const frozenSlots = resolveLegacyFrozenSlots(input.mesocycle);
@@ -404,16 +424,10 @@ export function resolveStrictFrozenLegacyAuthoredScheduleLifecycle(input: {
     if (!obligation) continue;
 
     const expectedPhase = obligation.phase;
-    if (
-      typeof workout.mesocyclePhaseSnapshot === "string" &&
-      workout.mesocyclePhaseSnapshot.trim().toUpperCase() !== expectedPhase
-    ) {
+    if (workout.mesocyclePhaseSnapshot !== expectedPhase) {
       return { status: "blocked", reason: `legacy_phase_identity_conflict:${workout.id}` };
     }
-    if (
-      typeof receipt.cycleContext.phase === "string" &&
-      receipt.cycleContext.phase.trim().toUpperCase() !== expectedPhase
-    ) {
+    if (receipt.cycleContext.phase !== expectedPhase.toLowerCase()) {
       return { status: "blocked", reason: `legacy_receipt_phase_conflict:${workout.id}` };
     }
     if (receipt.cycleContext.isDeload !== (expectedPhase === "DELOAD")) {
@@ -1094,7 +1108,17 @@ export async function transitionMesocycleStateInTransaction(
     where: { id: mesocycleId },
     include: {
       macroCycle: { select: { primaryGoal: true } },
-      currentSeedRevision: { select: { seedPayload: true } },
+      currentSeedRevision: {
+        select: {
+          id: true,
+          mesocycleId: true,
+          revision: true,
+          seedPayload: true,
+          payloadHash: true,
+          hashAlgorithm: true,
+          provenanceStatus: true,
+        },
+      },
     },
   });
   if (!mesocycle) {

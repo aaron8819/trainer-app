@@ -423,6 +423,60 @@ describe("mesocycle-lifecycle", () => {
         ).toEqual({ status: "blocked", reason: testCase.reason });
       }
     });
+
+    it.each([
+      { label: "null", phaseSnapshot: null },
+      { label: "missing", phaseSnapshot: undefined },
+      { label: "malformed", phaseSnapshot: "recovery" },
+      { label: "wrong", phaseSnapshot: "ACCUMULATION" },
+    ])("rejects a $label workout phase snapshot for a strict deload claim", ({ phaseSnapshot }) => {
+      const finalClaim = buildLegacyScheduleWorkout({ week: 5, session: 4 });
+      const invalidClaim = { ...finalClaim } as Record<string, unknown>;
+      if (phaseSnapshot === undefined) {
+        delete invalidClaim.mesocyclePhaseSnapshot;
+      } else {
+        invalidClaim.mesocyclePhaseSnapshot = phaseSnapshot;
+      }
+      const workouts = buildLegacyFiveWeekSchedule();
+      workouts[workouts.length - 1] = invalidClaim as ReturnType<
+        typeof buildLegacyScheduleWorkout
+      >;
+
+      expect(
+        resolveStrictFrozenLegacyAuthoredScheduleLifecycle({
+          mesocycle,
+          workouts,
+        }),
+      ).toEqual({
+        status: "blocked",
+        reason: `legacy_phase_identity_conflict:${finalClaim.id}`,
+      });
+    });
+
+    it("accepts the exact phase snapshot and blocks final closure when the only apparent final claim lacks it", () => {
+      const exact = buildLegacyFiveWeekSchedule();
+      expect(
+        resolveStrictFrozenLegacyAuthoredScheduleLifecycle({
+          mesocycle,
+          workouts: exact,
+        }),
+      ).toMatchObject({ status: "available", allResolved: true });
+
+      const missingFinalPhase = buildLegacyFiveWeekSchedule();
+      delete (missingFinalPhase[missingFinalPhase.length - 1] as unknown as Record<
+        string,
+        unknown
+      >).mesocyclePhaseSnapshot;
+      const blocked = resolveStrictFrozenLegacyAuthoredScheduleLifecycle({
+        mesocycle,
+        workouts: missingFinalPhase,
+      });
+      expect(blocked).toEqual({
+        status: "blocked",
+        reason: "legacy_phase_identity_conflict:legacy-5-4",
+      });
+      expect(blocked).not.toMatchObject({ status: "available", allResolved: true });
+    });
   });
 
   it("returns mesocycle unchanged when below accumulation threshold", async () => {

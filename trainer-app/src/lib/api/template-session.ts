@@ -3401,6 +3401,7 @@ export async function generateDeloadSessionFromIntent(
   if ("error" in deload) {
     return deload;
   }
+  const resolvedSessionSlot = resolveGenerationSessionSlotSnapshot(mapped, input);
 
   return finalizeDeloadSessionResult({
     mapped,
@@ -3412,5 +3413,6 @@ export async function generateDeloadSessionFromIntent(
     deloadTrace: deload.trace,
     plannerDiagnosticsMode: input.plannerDiagnosticsMode,
     compositionSource: deload.compositionSource,
+    sessionSlot: resolvedSessionSlot,
   });
 }

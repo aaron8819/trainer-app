@@ -6,6 +6,9 @@ import {
   assessClosedHandoffDeletionInTransaction,
   deriveReconciledMesocycleLifecycle,
 } from "./mesocycle-lifecycle-reconciliation";
+import { normalizeAcceptedHypertrophySeedV4 } from "./mesocycle-seed-revision";
+import { buildAcceptedCompatibilityProjections } from "@/lib/engine/hypertrophy-plan-authoring";
+import { buildV4CustomPlanReferenceAcceptedSeed } from "@/lib/engine/hypertrophy-plan-authoring-v4.fixture";
 
 const slotSequenceJson = {
   version: 1,
@@ -115,7 +118,83 @@ const mesocycle = {
   },
 };
 
+function exactV4Mesocycle() {
+  const seedPayload = buildV4CustomPlanReferenceAcceptedSeed();
+  const normalized = normalizeAcceptedHypertrophySeedV4(seedPayload);
+  const compatibility = buildAcceptedCompatibilityProjections(seedPayload);
+  return {
+    ...mesocycle,
+    id: "meso-v4",
+    slotSequenceJson: compatibility.slotSequenceJson,
+    currentSeedRevisionId: "revision-v4",
+    currentSeedRevision: {
+      id: "revision-v4",
+      mesocycleId: "meso-v4",
+      revision: 1,
+      seedPayload,
+      payloadHash: normalized.hash,
+      hashAlgorithm: "sha256",
+      provenanceStatus: "exact",
+    },
+  };
+}
+
 describe("legacy mesocycle lifecycle deletion reconciliation", () => {
+  it("preserves the existing reconciliation path for exact valid V4 authority", async () => {
+    const v4Mesocycle = exactV4Mesocycle();
+    const workouts = completeSchedule().map((row) => ({
+      ...row,
+      mesocycleId: v4Mesocycle.id,
+    }));
+
+    await expect(
+      deriveReconciledMesocycleLifecycle(
+        txWithWorkouts(workouts as ReturnType<typeof workout>[]),
+        v4Mesocycle,
+      ),
+    ).resolves.toEqual({
+      completedSessions: 20,
+      accumulationSessionsCompleted: 16,
+      deloadSessionsCompleted: 4,
+      state: "COMPLETED",
+    });
+  });
+
+  it("blocks raw V4-like payloads that lack exact accepted authority", async () => {
+    await expect(
+      deriveReconciledMesocycleLifecycle(txWithWorkouts([]), {
+        ...mesocycle,
+        currentSeedRevisionId: null,
+        currentSeedRevision: {
+          seedPayload: { version: 4 },
+        } as never,
+      }),
+    ).rejects.toThrow(
+      "V4_SCHEDULE_RESOLUTION_BLOCKED:accepted_revision_identity_invalid",
+    );
+  });
+
+  it("blocks malformed V4 revision hashes before counter fallback", async () => {
+    const malformed = exactV4Mesocycle();
+    malformed.currentSeedRevision.payloadHash = "stale-hash";
+
+    await expect(
+      deriveReconciledMesocycleLifecycle(txWithWorkouts([]), malformed),
+    ).rejects.toThrow(
+      "V4_SCHEDULE_RESOLUTION_BLOCKED:accepted_revision_hash_mismatch",
+    );
+  });
+
+  it("blocks unsupported V4-like topology before counter fallback", async () => {
+    const unsupported = { ...exactV4Mesocycle(), sessionsPerWeek: 3 };
+
+    await expect(
+      deriveReconciledMesocycleLifecycle(txWithWorkouts([]), unsupported),
+    ).rejects.toThrow(
+      "V4_SCHEDULE_RESOLUTION_BLOCKED:unsupported_v4_topology",
+    );
+  });
+
   it("rejects closed deletion when a strict obligation becomes unresolved", async () => {
     const workouts = completeSchedule();
     workouts.pop();

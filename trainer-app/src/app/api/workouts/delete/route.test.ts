@@ -82,6 +82,35 @@ vi.mock("@/lib/api/mesocycle-lifecycle-reconciliation", () => ({
 }));
 
 import { POST } from "./route";
+import { normalizeAcceptedHypertrophySeedV4 } from "@/lib/api/mesocycle-seed-revision";
+import { buildAcceptedCompatibilityProjections } from "@/lib/engine/hypertrophy-plan-authoring";
+import { buildV4CustomPlanReferenceAcceptedSeed } from "@/lib/engine/hypertrophy-plan-authoring-v4.fixture";
+
+function exactV4Mesocycle() {
+  const seedPayload = buildV4CustomPlanReferenceAcceptedSeed();
+  const normalized = normalizeAcceptedHypertrophySeedV4(seedPayload);
+  return {
+    id: "meso-v4",
+    durationWeeks: 5,
+    sessionsPerWeek: 4,
+    state: "AWAITING_HANDOFF",
+    isActive: false,
+    completedSessions: 20,
+    accumulationSessionsCompleted: 16,
+    deloadSessionsCompleted: 4,
+    slotSequenceJson: buildAcceptedCompatibilityProjections(seedPayload).slotSequenceJson,
+    currentSeedRevisionId: "revision-v4",
+    currentSeedRevision: {
+      id: "revision-v4",
+      mesocycleId: "meso-v4",
+      revision: 1,
+      seedPayload,
+      payloadHash: normalized.hash,
+      hashAlgorithm: "sha256",
+      provenanceStatus: "exact",
+    },
+  };
+}
 
 describe("POST /api/workouts/delete", () => {
   const originalRollout = process.env.TRAINER_FINISHERS_ROLLOUT;
@@ -311,8 +340,28 @@ describe("POST /api/workouts/delete", () => {
     mocks.workoutFindFirst.mockResolvedValue({
       id: "workout-v4",
       mesocycleId: "meso-v4",
+      mesocycle: exactV4Mesocycle(),
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workoutId: "workout-v4", expectedRevision: 1 }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.assessClosedHandoffDeletionInTransaction).not.toHaveBeenCalled();
+    expect(mocks.reconcileMesocycleLifecycle).toHaveBeenCalled();
+  });
+
+  it("rejects raw version 4 without exact authority before deletion", async () => {
+    mocks.workoutFindFirst.mockResolvedValue({
+      id: "workout-v4-like",
+      mesocycleId: "meso-v4-like",
       mesocycle: {
-        id: "meso-v4",
+        id: "meso-v4-like",
         durationWeeks: 5,
         sessionsPerWeek: 4,
         state: "AWAITING_HANDOFF",
@@ -329,13 +378,22 @@ describe("POST /api/workouts/delete", () => {
       new Request("http://localhost/api/workouts/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workoutId: "workout-v4", expectedRevision: 1 }),
+        body: JSON.stringify({
+          workoutId: "workout-v4-like",
+          expectedRevision: 1,
+        }),
       }),
     );
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "Cannot delete this workout because exact V4 schedule authority could not be validated.",
+      code: "V4_SCHEDULE_RESOLUTION_BLOCKED",
+    });
+    expect(mocks.workoutDelete).not.toHaveBeenCalled();
     expect(mocks.assessClosedHandoffDeletionInTransaction).not.toHaveBeenCalled();
-    expect(mocks.reconcileMesocycleLifecycle).toHaveBeenCalled();
+    expect(mocks.reconcileMesocycleLifecycle).not.toHaveBeenCalled();
   });
 
   it.each([

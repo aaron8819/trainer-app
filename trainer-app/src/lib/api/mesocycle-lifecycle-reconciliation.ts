@@ -7,6 +7,10 @@ import {
   type LegacyAuthoredScheduleWorkout,
 } from "@/lib/api/mesocycle-lifecycle-state";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
+import {
+  resolveV4ScheduleAuthority,
+  type V4ScheduleAuthorityInput,
+} from "@/lib/api/v4-scheduled-slot-resolution";
 
 type MesocycleLifecycleTx = Prisma.TransactionClient;
 
@@ -18,8 +22,19 @@ type MesocycleLifecycleRecord = {
   completedSessions: number;
   accumulationSessionsCompleted: number;
   deloadSessionsCompleted: number;
-  slotSequenceJson?: Prisma.JsonValue | null;
-  currentSeedRevision?: { seedPayload: Prisma.JsonValue } | null;
+  slotSequenceJson?: unknown;
+  currentSeedRevisionId?: string | null;
+  currentSeedRevision?:
+    | {
+        seedPayload: unknown;
+        id?: string;
+        mesocycleId?: string;
+        revision?: number;
+        payloadHash?: string | null;
+        hashAlgorithm?: string | null;
+        provenanceStatus?: string;
+      }
+    | null;
 };
 
 type AdvancingWorkoutSnapshot = LegacyAuthoredScheduleWorkout & {
@@ -38,8 +53,23 @@ export type ClosedHandoffDeletionAssessment =
   | { safe: true }
   | {
       safe: false;
-      reason: "strict_identity_blocked" | "authored_obligation_unresolved";
+      reason:
+        | "strict_identity_blocked"
+        | "authored_obligation_unresolved"
+        | "v4_authority_blocked";
     };
+
+function resolveReconciliationV4Authority(
+  mesocycle: MesocycleLifecycleRecord,
+) {
+  const resolution = resolveV4ScheduleAuthority(
+    mesocycle as V4ScheduleAuthorityInput,
+  );
+  if (resolution.status === "blocked") {
+    throw new Error(`V4_SCHEDULE_RESOLUTION_BLOCKED:${resolution.reason}`);
+  }
+  return resolution;
+}
 
 function isDeloadWorkout(
   workout: AdvancingWorkoutSnapshot,
@@ -60,6 +90,7 @@ export async function deriveReconciledMesocycleLifecycle(
   tx: MesocycleLifecycleTx,
   mesocycle: MesocycleLifecycleRecord
 ): Promise<ReconciledMesocycleLifecycle> {
+  resolveReconciliationV4Authority(mesocycle);
   const workouts = await tx.workout.findMany({
     where: {
       mesocycleId: mesocycle.id,
@@ -165,6 +196,15 @@ export async function assessClosedHandoffDeletionInTransaction(
   tx: MesocycleLifecycleTx,
   mesocycle: MesocycleLifecycleRecord,
 ): Promise<ClosedHandoffDeletionAssessment> {
+  const v4Authority = resolveV4ScheduleAuthority(
+    mesocycle as V4ScheduleAuthorityInput,
+  );
+  if (v4Authority.status === "blocked") {
+    return { safe: false, reason: "v4_authority_blocked" };
+  }
+  if (v4Authority.status === "available") {
+    return { safe: true };
+  }
   const workouts = await tx.workout.findMany({
     where: { mesocycleId: mesocycle.id },
     select: {
@@ -212,29 +252,41 @@ export async function reconcileMesocycleLifecycle(
     where: { id: mesocycle.id },
     select: {
       slotSequenceJson: true,
-      currentSeedRevision: { select: { seedPayload: true } },
+      currentSeedRevisionId: true,
+      currentSeedRevision: {
+        select: {
+          id: true,
+          mesocycleId: true,
+          revision: true,
+          seedPayload: true,
+          payloadHash: true,
+          hashAlgorithm: true,
+          provenanceStatus: true,
+        },
+      },
     },
   });
-  const nextLifecycle = await deriveReconciledMesocycleLifecycle(tx, {
+  const authoritativeMesocycle = {
     ...mesocycle,
     slotSequenceJson: authority?.slotSequenceJson,
+    currentSeedRevisionId: authority?.currentSeedRevisionId,
     currentSeedRevision: authority?.currentSeedRevision,
-  });
+  };
+  const v4Authority = resolveReconciliationV4Authority(
+    authoritativeMesocycle,
+  );
+  const nextLifecycle = await deriveReconciledMesocycleLifecycle(
+    tx,
+    authoritativeMesocycle,
+  );
 
   const updated = await tx.mesocycle.update({
     where: { id: mesocycle.id },
     data: nextLifecycle,
   });
-  const seedPayload = authority?.currentSeedRevision?.seedPayload;
-  const isV4 =
-    seedPayload != null &&
-    typeof seedPayload === "object" &&
-    !Array.isArray(seedPayload) &&
-    "version" in seedPayload &&
-    seedPayload.version === 4;
   if (
     authority?.slotSequenceJson != null &&
-    !isV4 &&
+    v4Authority.status === "not_v4" &&
     (nextLifecycle.state === "ACTIVE_ACCUMULATION" ||
       nextLifecycle.state === "ACTIVE_DELOAD")
   ) {

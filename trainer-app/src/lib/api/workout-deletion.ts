@@ -5,6 +5,7 @@ import {
 } from "./mesocycle-lifecycle-reconciliation";
 import { executeWorkoutMutation } from "./workout-mutation";
 import { isFinisherRolloutEnabled } from "@/lib/operations/finisher-rollout";
+import { resolveV4ScheduleAuthority } from "./v4-scheduled-slot-resolution";
 
 export class DeleteWorkoutError extends Error {
   readonly status = 409 as const;
@@ -50,7 +51,18 @@ export async function deleteOwnedWorkout(input: {
               accumulationSessionsCompleted: true,
               deloadSessionsCompleted: true,
               slotSequenceJson: true,
-              currentSeedRevision: { select: { seedPayload: true } },
+              currentSeedRevisionId: true,
+              currentSeedRevision: {
+                select: {
+                  id: true,
+                  mesocycleId: true,
+                  revision: true,
+                  seedPayload: true,
+                  payloadHash: true,
+                  hashAlgorithm: true,
+                  provenanceStatus: true,
+                },
+              },
             },
           },
         },
@@ -80,6 +92,16 @@ export async function deleteOwnedWorkout(input: {
         }
       }
 
+      const v4Authority = workout.mesocycle
+        ? resolveV4ScheduleAuthority(workout.mesocycle)
+        : null;
+      if (v4Authority?.status === "blocked") {
+        throw new DeleteWorkoutError(
+          "Cannot delete this workout because exact V4 schedule authority could not be validated.",
+          "V4_SCHEDULE_RESOLUTION_BLOCKED",
+        );
+      }
+
       const exercises = await tx.workoutExercise.findMany({
         where: { workoutId: workout.id },
         select: { id: true },
@@ -104,17 +126,9 @@ export async function deleteOwnedWorkout(input: {
         workout.mesocycle &&
         (workout.mesocycle.isActive || workout.mesocycle.state !== "COMPLETED")
       ) {
-        const currentSeedPayload =
-          workout.mesocycle.currentSeedRevision?.seedPayload;
-        const isV4 =
-          currentSeedPayload != null &&
-          typeof currentSeedPayload === "object" &&
-          !Array.isArray(currentSeedPayload) &&
-          "version" in currentSeedPayload &&
-          currentSeedPayload.version === 4;
         if (
           workout.mesocycle.state === "AWAITING_HANDOFF" &&
-          !isV4
+          v4Authority?.status === "not_v4"
         ) {
           const deletionAssessment =
             await assessClosedHandoffDeletionInTransaction(

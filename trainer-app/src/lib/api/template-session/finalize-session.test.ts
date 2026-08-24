@@ -477,6 +477,7 @@ describe("finalizeDeloadSessionResult", () => {
         lifecycleVolumeTargets: { "Upper Back": 8 },
         sorenessSuppressedMuscles: [],
         activeMesocycle: {
+          id: "legacy-meso",
           accumulationSessionsCompleted: 12,
         },
         effectivePeriodization: {
@@ -547,6 +548,14 @@ describe("finalizeDeloadSessionResult", () => {
       selectionMode: "INTENT",
       sessionIntent: "pull",
       note: "Scheduled deload week.",
+      compositionSource: "deload_seed_replay",
+      sessionSlot: {
+        slotId: "pull_a",
+        intent: "pull",
+        sequenceIndex: 1,
+        sequenceLength: 4,
+        source: "mesocycle_slot_sequence",
+      },
       deloadTrace: {
         version: 1,
         sessionIntent: "pull",
@@ -593,6 +602,19 @@ describe("finalizeDeloadSessionResult", () => {
       exerciseId: "row",
       exerciseName: "Chest Supported Row",
       loadSource: "history",
+    });
+    expect(result.selection.sessionDecisionReceipt).toMatchObject({
+      sessionProvenance: {
+        mesocycleId: "legacy-meso",
+        compositionSource: "deload_seed_replay",
+      },
+      sessionSlot: {
+        slotId: "pull_a",
+        intent: "pull",
+        sequenceIndex: 1,
+        sequenceLength: 4,
+        source: "mesocycle_slot_sequence",
+      },
     });
   });
 });

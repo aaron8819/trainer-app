@@ -2916,6 +2916,57 @@ describe("POST /api/workouts/save", () => {
     expect(mocks.transitionMesocycleStateInTransaction).not.toHaveBeenCalled();
   });
 
+  it("reconciles a newly skipped legacy authored session without incrementing performed counters", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "workout-1",
+      userId: "user-1",
+      status: "PLANNED",
+      revision: 1,
+      mesocycleId: "meso-1",
+      mesocycleWeekSnapshot: 5,
+      mesocyclePhaseSnapshot: "DELOAD",
+      mesoSessionSnapshot: 4,
+      advancesSplit: true,
+      selectionMode: "INTENT",
+      sessionIntent: "LOWER",
+      selectionMetadata: buildCanonicalSelectionMetadata(),
+      exercises: [],
+    });
+    mocks.tx.mesocycle.findUnique.mockResolvedValue({
+      id: "meso-1",
+      macroCycleId: "macro-1",
+      state: "ACTIVE_DELOAD",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 16,
+      deloadSessionsCompleted: 3,
+      sessionsPerWeek: 4,
+      currentSeedRevisionId: null,
+      currentSeedRevision: null,
+      macroCycle: { startDate: new Date("2026-07-01T00:00:00.000Z"), primaryGoal: "HYPERTROPHY" },
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          action: "mark_skipped",
+          expectedRevision: 1,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ workoutStatus: "SKIPPED" });
+    expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
+    expect(mocks.transitionMesocycleStateInTransaction).toHaveBeenCalledTimes(1);
+    expect(mocks.transitionMesocycleStateInTransaction).toHaveBeenCalledWith(
+      mocks.tx,
+      "meso-1",
+    );
+  });
+
   it("advances lifecycle when a partial workout is later completed for the first time", async () => {
     mocks.workoutFindUnique
       .mockResolvedValueOnce({

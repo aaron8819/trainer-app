@@ -20,6 +20,7 @@ import {
   type V4ScheduleAuthority,
   type V4ScheduleResolution,
 } from "../v4-scheduled-slot-resolution";
+import { getWorkoutStatusPolicy } from "@/lib/workout-status";
 
 export type SaveRouteMesocycle = {
   id: string;
@@ -494,6 +495,71 @@ export async function applyPerformedLifecycleSideEffects(
   }
 
   return null;
+}
+
+export async function applyLegacyTerminalLifecycleSideEffects(
+  tx: Prisma.TransactionClient,
+  input: {
+    userId: string;
+    scheduledDate: Date;
+    resolvedMesocycleId: string;
+    resolvedMesocycle: SaveRouteMesocycle;
+    mesoSnapshot?: SaveRouteMesoSnapshot;
+    isOptionalGapFill: boolean;
+    advancesSplit: boolean;
+    previousStatus: unknown;
+    finalStatus: unknown;
+    wonCompletedTransition: boolean;
+  },
+): Promise<WeekCloseResult | null> {
+  const classification = classifyLegacyTerminalLifecycleResult(input);
+  if (classification.applyPerformedSideEffects) {
+    if (!input.wonCompletedTransition) {
+      throw new Error("WORKOUT_LIFECYCLE_TRANSITION_NOT_CLAIMED");
+    }
+    return applyPerformedLifecycleSideEffects(tx, {
+      userId: input.userId,
+      scheduledDate: input.scheduledDate,
+      resolvedMesocycleId: input.resolvedMesocycleId,
+      resolvedMesocycle: input.resolvedMesocycle,
+      mesoSnapshot: input.mesoSnapshot,
+      isOptionalGapFill: input.isOptionalGapFill,
+    });
+  }
+
+  if (classification.reconcileAuthoredSchedule) {
+    await transitionMesocycleStateInTransaction(
+      tx,
+      input.resolvedMesocycleId,
+    );
+  }
+
+  return null;
+}
+
+export function classifyLegacyTerminalLifecycleResult(input: {
+  advancesSplit: boolean;
+  previousStatus: unknown;
+  finalStatus: unknown;
+}): {
+  applyPerformedSideEffects: boolean;
+  reconcileAuthoredSchedule: boolean;
+} {
+  if (!shouldAdvanceLifecycleForPerformedTransition(input.advancesSplit)) {
+    return {
+      applyPerformedSideEffects: false,
+      reconcileAuthoredSchedule: false,
+    };
+  }
+  const previousPolicy = getWorkoutStatusPolicy(input.previousStatus);
+  const finalPolicy = getWorkoutStatusPolicy(input.finalStatus);
+  if (!finalPolicy) throw new Error("WORKOUT_STATUS_UNKNOWN");
+  return {
+    applyPerformedSideEffects:
+      finalPolicy.completed && previousPolicy?.completed !== true,
+    reconcileAuthoredSchedule:
+      finalPolicy.scheduleResolved && previousPolicy?.scheduleResolved !== true,
+  };
 }
 
 export function buildWeekCloseResponse(result: WeekCloseResult | null) {

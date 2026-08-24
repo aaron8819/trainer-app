@@ -99,6 +99,7 @@ import {
   getWeeklyVolumeTarget,
   initializeNextMesocycle,
   loadActiveMesocycle,
+  resolveLegacyAuthoredScheduleLifecycle,
   transitionMesocycleState,
   transitionMesocycleStateInTransaction,
 } from "./mesocycle-lifecycle";
@@ -108,10 +109,179 @@ import {
   CANONICAL_DELOAD_VOLUME_FRACTION,
 } from "@/lib/deload/semantics";
 
+const LEGACY_FOUR_DAY_SLOT_SEQUENCE = {
+  version: 1,
+  source: "handoff_draft",
+  sequenceMode: "ordered_flexible",
+  slots: [
+    { slotId: "upper_a", intent: "UPPER" },
+    { slotId: "lower_a", intent: "LOWER" },
+    { slotId: "upper_b", intent: "UPPER" },
+    { slotId: "lower_b", intent: "LOWER" },
+  ],
+};
+
+function buildLegacyScheduleWorkout(input: {
+  week: number;
+  session: number;
+  status?: "PLANNED" | "IN_PROGRESS" | "PARTIAL" | "COMPLETED" | "SKIPPED";
+  id?: string;
+  advancesSplit?: boolean;
+  intent?: string;
+}) {
+  const expectedIntent = input.session === 1 || input.session === 3 ? "UPPER" : "LOWER";
+  return {
+    id: input.id ?? `legacy-${input.week}-${input.session}`,
+    status: input.status ?? "COMPLETED",
+    mesocycleId: "legacy-meso",
+    mesocycleWeekSnapshot: input.week,
+    mesocyclePhaseSnapshot: input.week === 5 ? "DELOAD" : "ACCUMULATION",
+    mesoSessionSnapshot: input.session,
+    advancesSplit: input.advancesSplit ?? true,
+    selectionMode: "INTENT",
+    sessionIntent: input.intent ?? expectedIntent,
+    selectionMetadata: null,
+  };
+}
+
+function buildLegacyFiveWeekSchedule(
+  override?: (workout: ReturnType<typeof buildLegacyScheduleWorkout>) => void,
+) {
+  const workouts = Array.from({ length: 5 }, (_, weekIndex) =>
+    Array.from({ length: 4 }, (_, sessionIndex) =>
+      buildLegacyScheduleWorkout({
+        week: weekIndex + 1,
+        session: sessionIndex + 1,
+      }),
+    ),
+  ).flat();
+  workouts.forEach((workout) => override?.(workout));
+  return workouts;
+}
+
 describe("mesocycle-lifecycle", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.txMesoUpdateMany.mockResolvedValue({ count: 1 });
+  });
+
+  describe("compatible legacy authored-schedule resolution", () => {
+    const mesocycle = {
+      id: "legacy-meso",
+      durationWeeks: 5,
+      sessionsPerWeek: 4,
+      slotSequenceJson: LEGACY_FOUR_DAY_SLOT_SEQUENCE,
+      currentSeedRevision: {
+        seedPayload: { version: 2, source: "legacy_accepted_seed" },
+      },
+    };
+
+    it("closes a five-week schedule when the final deload obligation is skipped without counting it as performed", () => {
+      const workouts = buildLegacyFiveWeekSchedule((workout) => {
+        if (workout.mesocycleWeekSnapshot === 5 && workout.mesoSessionSnapshot === 4) {
+          workout.status = "SKIPPED";
+        }
+      });
+
+      expect(resolveLegacyAuthoredScheduleLifecycle({ mesocycle, workouts })).toMatchObject({
+        status: "available",
+        expectedObligationCount: 20,
+        resolvedObligationCount: 20,
+        performedCompletionCount: 19,
+        accumulationCompletionCount: 16,
+        deloadCompletionCount: 3,
+        allAccumulationResolved: true,
+        allResolved: true,
+      });
+    });
+
+    it("allows an earlier skip to remain resolved when the final outstanding obligation completes", () => {
+      const workouts = buildLegacyFiveWeekSchedule((workout) => {
+        if (workout.mesocycleWeekSnapshot === 2 && workout.mesoSessionSnapshot === 2) {
+          workout.status = "SKIPPED";
+        }
+      });
+
+      expect(resolveLegacyAuthoredScheduleLifecycle({ mesocycle, workouts })).toMatchObject({
+        status: "available",
+        resolvedObligationCount: 20,
+        performedCompletionCount: 19,
+        allResolved: true,
+      });
+    });
+
+    it("keeps the schedule unresolved for PARTIAL or any other outstanding authored obligation", () => {
+      const workouts = buildLegacyFiveWeekSchedule((workout) => {
+        if (workout.mesocycleWeekSnapshot === 3 && workout.mesoSessionSnapshot === 1) {
+          workout.status = "PARTIAL";
+        }
+      });
+
+      expect(resolveLegacyAuthoredScheduleLifecycle({ mesocycle, workouts })).toMatchObject({
+        status: "available",
+        resolvedObligationCount: 19,
+        performedCompletionCount: 19,
+        allResolved: false,
+      });
+    });
+
+    it("ignores stale out-of-schedule rows and explicit non-advancing rows", () => {
+      const workouts = [
+        ...buildLegacyFiveWeekSchedule(),
+        {
+          ...buildLegacyScheduleWorkout({
+            week: 6,
+            session: 1,
+            status: "IN_PROGRESS",
+            id: "stale-future",
+          }),
+          selectionMetadata: {
+            sessionDecisionReceipt: { malformed: true },
+          },
+        },
+        buildLegacyScheduleWorkout({
+          week: 5,
+          session: 4,
+          status: "PLANNED",
+          id: "optional-extra",
+          advancesSplit: false,
+        }),
+      ];
+
+      expect(resolveLegacyAuthoredScheduleLifecycle({ mesocycle, workouts })).toMatchObject({
+        status: "available",
+        expectedObligationCount: 20,
+        resolvedObligationCount: 20,
+        performedCompletionCount: 20,
+        allResolved: true,
+      });
+    });
+
+    it("fails closed on duplicate or malformed claims against an authored obligation", () => {
+      const duplicate = [
+        ...buildLegacyFiveWeekSchedule(),
+        buildLegacyScheduleWorkout({
+          week: 5,
+          session: 4,
+          status: "SKIPPED",
+          id: "duplicate-lower-b",
+        }),
+      ];
+      expect(resolveLegacyAuthoredScheduleLifecycle({ mesocycle, workouts: duplicate })).toEqual({
+        status: "blocked",
+        reason: "duplicate_legacy_authored_claim:5:4",
+      });
+
+      const malformed = buildLegacyFiveWeekSchedule((workout) => {
+        if (workout.mesocycleWeekSnapshot === 5 && workout.mesoSessionSnapshot === 4) {
+          workout.sessionIntent = "UPPER";
+        }
+      });
+      expect(resolveLegacyAuthoredScheduleLifecycle({ mesocycle, workouts: malformed })).toEqual({
+        status: "blocked",
+        reason: "legacy_intent_identity_conflict:legacy-5-4",
+      });
+    });
   });
 
   it("returns mesocycle unchanged when below accumulation threshold", async () => {

@@ -24,7 +24,7 @@ import {
   resolveWeekCloseOnOptionalGapFillCompletion,
 } from "@/lib/api/mesocycle-week-close";
 import {
-  applyPerformedLifecycleSideEffects,
+  applyLegacyTerminalLifecycleSideEffects,
   applyV4TerminalScheduleResolution,
   buildWeekCloseResponse,
   deriveMesoSnapshotForSave,
@@ -700,16 +700,20 @@ export async function POST(request: Request) {
         });
       } else if (
         !v4ScheduleAuthority &&
-        shouldAdvanceLifecycleTransition &&
-        wonLifecycleTransition
+        resolvedMesocycleId &&
+        resolvedMesocycle
       ) {
-        weekCloseResult = await applyPerformedLifecycleSideEffects(tx, {
+        weekCloseResult = await applyLegacyTerminalLifecycleSideEffects(tx, {
           userId: user.id,
           scheduledDate,
-          resolvedMesocycleId: resolvedMesocycleId!,
-          resolvedMesocycle: resolvedMesocycle!,
+          resolvedMesocycleId,
+          resolvedMesocycle,
           mesoSnapshot,
           isOptionalGapFill,
+          advancesSplit: effectiveAdvancesSplit,
+          previousStatus: existingWorkout?.status,
+          finalStatus,
+          wonCompletedTransition: wonLifecycleTransition,
         });
       }
       if (

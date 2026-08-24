@@ -7,6 +7,7 @@ import type {
   ExerciseHistoryResult,
 } from "@/lib/api/exercise-history";
 import type { MeasurementSemantics } from "@/lib/exercise-measurement/semantics";
+import { formatFrozenLoadValue } from "@/lib/exercise-measurement/load-entry-policy";
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString(undefined, {
@@ -50,9 +51,18 @@ function formatLoad(
 
 function formatSet(
   set: Pick<ExerciseHistoryRepresentativeSet, "load" | "reps" | "rpe">,
-  loadConvention: ExerciseHistoryResult["comparison"]["loadConvention"]
+  exposure: Pick<ExerciseExposure, "displayLoadConvention" | "measurement" | "zeroLoadMeaning">,
 ): string {
-  const load = formatLoad(set.load, loadConvention);
+  const load = formatFrozenLoadValue(
+    {
+      load: set.load,
+      snapshot: {
+        measurement: exposure.measurement,
+        zeroLoadMeaning: exposure.zeroLoadMeaning,
+      },
+    },
+    (value) => formatLoad(value, exposure.displayLoadConvention),
+  );
   return [load ? `${load} × ${set.reps}` : `${set.reps} reps`, set.rpe != null ? `RPE ${set.rpe}` : null]
     .filter(Boolean)
     .join(" · ");
@@ -78,7 +88,7 @@ function exposureNote(exposure: ExerciseExposure): string | null {
 function formatExposureSummary(exposure: ExerciseExposure): string {
   const summary = formatSet(
     exposure.representativeSet,
-    exposure.displayLoadConvention,
+    exposure,
   );
   return exposure.isRecordComparable === false
     ? `${summary} (not comparable for records)`
@@ -206,7 +216,7 @@ export function PersonalHistorySection({
                 Set {set.setIndex}{set.isRuntimeAdded ? " · Extra" : ""}
               </span>
               <span className="text-right font-medium text-slate-800">
-                {formatSet(set, lastExposure.displayLoadConvention)}
+                {formatSet(set, lastExposure)}
               </span>
             </div>
           ))}
@@ -229,7 +239,11 @@ export function PersonalHistorySection({
               <div className="rounded-xl border border-slate-200 p-3">
                 <p className="text-xs text-slate-500">Best estimated strength</p>
                 <p className="mt-1 text-sm font-semibold text-slate-900">
-                  {formatSet(records.bestEstimatedStrength, comparison.loadConvention)}
+                  {formatSet(records.bestEstimatedStrength, {
+                    displayLoadConvention: comparison.loadConvention,
+                    measurement: comparisonMeasurement ?? null,
+                    zeroLoadMeaning: null,
+                  })}
                 </p>
                 <p className="mt-1 text-xs text-slate-600">
                   Estimated 1RM {formatNumber(records.bestEstimatedStrength.estimatedOneRepMax)} lb · {formatDate(records.bestEstimatedStrength.date)}
@@ -240,7 +254,11 @@ export function PersonalHistorySection({
               <div className="rounded-xl border border-slate-200 p-3">
                 <p className="text-xs text-slate-500">Heaviest completed load</p>
                 <p className="mt-1 text-sm font-semibold text-slate-900">
-                  {formatSet(records.heaviestCompletedLoad, comparison.loadConvention)}
+                  {formatSet(records.heaviestCompletedLoad, {
+                    displayLoadConvention: comparison.loadConvention,
+                    measurement: comparisonMeasurement ?? null,
+                    zeroLoadMeaning: null,
+                  })}
                 </p>
                 <p className="mt-1 text-xs text-slate-600">
                   {formatDate(records.heaviestCompletedLoad.date)}

@@ -10,6 +10,9 @@ import {
   UNSUPPORTED_MEASUREMENT_IDENTITIES,
 } from "./catalog-support-manifest";
 import {
+  assertFrozenMeasurementSnapshotInvariant,
+  frozenMeasurementColumns,
+  isMeasurementAwareAcceptedVersion,
   measurementComparisonKey,
   measurementLoadLabel,
   measurementRepsLabel,
@@ -33,6 +36,44 @@ function expectUnclassified(names: readonly string[]) {
 }
 
 describe("exercise measurement semantics", () => {
+  it("owns measurement-aware accepted versions and frozen capability invariants", () => {
+    expect(isMeasurementAwareAcceptedVersion(2)).toBe(false);
+    expect(isMeasurementAwareAcceptedVersion(3)).toBe(true);
+    expect(isMeasurementAwareAcceptedVersion(4)).toBe(true);
+    expect(isMeasurementAwareAcceptedVersion(null)).toBe(false);
+
+    expect(() =>
+      assertFrozenMeasurementSnapshotInvariant({
+        measurement: null,
+        zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
+      })
+    ).toThrow("ZERO_LOAD_MEANING_MEASUREMENT_MISMATCH");
+    expect(() =>
+      frozenMeasurementColumns({
+        measurement: {
+          profile: "REPS_EXTERNAL_LOAD",
+          loadConvention: "IMPLEMENT_WEIGHT",
+          repBasis: "TOTAL",
+        },
+        zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
+      })
+    ).toThrow("ZERO_LOAD_MEANING_MEASUREMENT_MISMATCH");
+    expect(
+      frozenMeasurementColumns({
+        measurement: {
+          profile: "REPS_EXTERNAL_LOAD",
+          loadConvention: "MACHINE_DISPLAYED",
+          repBasis: "TOTAL",
+        },
+        zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD",
+      })
+    ).toEqual({
+      measurementProfile: "REPS_EXTERNAL_LOAD",
+      loadConvention: "MACHINE_DISPLAYED",
+      repBasis: "TOTAL",
+      zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD",
+    });
+  });
   it("accepts only all-null or complete supported tuples", () => {
     expect(
       parseMeasurementColumns({

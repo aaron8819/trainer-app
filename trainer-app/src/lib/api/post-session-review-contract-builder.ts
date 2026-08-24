@@ -18,6 +18,7 @@ import type {
   PostSessionReviewRecentExerciseExposureEvidence,
   PostSessionReviewSetEvidence,
 } from "./post-session-review-evidence";
+import { formatFrozenLoadValue } from "@/lib/exercise-measurement/load-entry-policy";
 
 const RECENT_EXPOSURE_LOOKBACK_WORKOUT_LIMIT = 3;
 
@@ -562,11 +563,24 @@ function performedRealityDetail(input: {
     typeof row.medianReps === "number"
       ? `${formatValue(row.medianReps)} reps`
       : "reps not captured";
+  const actualLoad =
+    typeof row.medianPerformedLoad === "number"
+      ? formatFrozenLoadValue(
+          {
+            load: row.medianPerformedLoad,
+            snapshot: {
+              measurement: row.measurement ?? null,
+              zeroLoadMeaning: row.zeroLoadMeaning ?? null,
+            },
+          },
+          (load) => formatValue(load),
+        )
+      : "not captured";
 
   return [
     completionDetail,
     `target ${formatTargetRange(row)}, load ${formatValue(row.targetLoad)}, RPE ${formatValue(row.targetRpe)}`,
-    `actual median ${actualReps}, load ${formatValue(row.medianPerformedLoad)}, RPE ${formatValue(row.medianActualRpe)}`,
+    `actual median ${actualReps}, load ${actualLoad ?? "n/a"}, RPE ${formatValue(row.medianActualRpe)}`,
   ].join("; ") + ".";
 }
 
@@ -574,8 +588,13 @@ function buildPerformedRealityRows(input: {
   exerciseRows: PostSessionReviewExerciseReconciliationRow[];
   calibrationRows: PostSessionReviewPrescriptionCalibrationRow[];
 }): PostSessionReviewPerformedRealityRow[] {
-  return input.exerciseRows.map((exerciseRow, index) => {
-    const calibrationRow = input.calibrationRows[index];
+  const calibrationByWorkoutExerciseId = new Map(
+    input.calibrationRows.map((row) => [row.workoutExerciseId, row]),
+  );
+  return input.exerciseRows.map((exerciseRow) => {
+    const calibrationRow = calibrationByWorkoutExerciseId.get(
+      exerciseRow.workoutExerciseId,
+    );
     if (!calibrationRow) {
       return {
         workoutExerciseId: exerciseRow.workoutExerciseId,
@@ -723,8 +742,11 @@ function buildCalibrationRows(
     });
 
     return {
+      workoutExerciseId: exercise.workoutExerciseId,
       exerciseId: exercise.exerciseId,
       exerciseName: exercise.exerciseName,
+      measurement: exercise.measurement ?? null,
+      zeroLoadMeaning: exercise.zeroLoadMeaning ?? null,
       ...classification,
       plannedSetCount,
       performedSetCount,
@@ -1105,12 +1127,23 @@ function buildRecentPerformedRealityRows(
 
   const exerciseRows = buildExerciseRows(exposures);
   const calibrationRows = buildCalibrationRows(exposures);
+  const exposureByWorkoutExerciseId = new Map(
+    exposures.map((exposure) => [exposure.workoutExerciseId, exposure]),
+  );
+  const calibrationByWorkoutExerciseId = new Map(
+    calibrationRows.map((row) => [row.workoutExerciseId, row]),
+  );
   return buildPerformedRealityRows({ exerciseRows, calibrationRows }).map(
-    (row, index) => ({
+    (row) => ({
       ...row,
-      workoutId: exposures[index]?.workoutId ?? row.workoutExerciseId,
-      performedAt: exposures[index]?.performedAt ?? "",
-      calibrationClassification: calibrationRows[index]?.classification ?? "insufficient_evidence",
+      workoutId:
+        exposureByWorkoutExerciseId.get(row.workoutExerciseId)?.workoutId ??
+        row.workoutExerciseId,
+      performedAt:
+        exposureByWorkoutExerciseId.get(row.workoutExerciseId)?.performedAt ?? "",
+      calibrationClassification:
+        calibrationByWorkoutExerciseId.get(row.workoutExerciseId)?.classification ??
+        "insufficient_evidence",
     })
   );
 }
@@ -1181,6 +1214,9 @@ function buildPerformedRealityTrendGroups(input: {
     PostSessionReviewPerformedRealityTrendGroup["kind"],
     PostSessionReviewPerformedRealityTrendGroup
   >();
+  const currentCalibrationByWorkoutExerciseId = new Map(
+    input.currentCalibrationRows.map((row) => [row.workoutExerciseId, row]),
+  );
 
   input.currentRows.forEach((currentRow, sourceOrder) => {
     const matchingRecentRows = recentRows
@@ -1189,7 +1225,8 @@ function buildPerformedRealityTrendGroups(input: {
       .slice(0, 2);
     const recentLabels = matchingRecentRows.map((row) => row.label);
     const currentClassification =
-      input.currentCalibrationRows[sourceOrder]?.classification ?? "insufficient_evidence";
+      currentCalibrationByWorkoutExerciseId.get(currentRow.workoutExerciseId)
+        ?.classification ?? "insufficient_evidence";
     const kind = trendKindForLabels({
       currentLabel: currentRow.label,
       recentLabels,

@@ -151,6 +151,11 @@ enum RepBasis {
   PER_SIDE
 }
 
+enum ZeroLoadMeaning {
+  BODYWEIGHT_NO_ADDED_LOAD
+  MACHINE_DEFAULT_NO_ADDED_LOAD
+}
+
 enum StimulusBias {
   MECHANICAL
   METABOLIC
@@ -439,6 +444,7 @@ model Exercise {
   measurementProfile  MeasurementProfile?
   loadConvention      LoadConvention?
   repBasis             RepBasis?
+  zeroLoadMeaning      ZeroLoadMeaning?
 
   variations             ExerciseVariation[]
   aliases                ExerciseAlias[]
@@ -832,6 +838,7 @@ model WorkoutExercise {
   measurementProfile         MeasurementProfile?
   loadConvention             LoadConvention?
   repBasis                    RepBasis?
+  zeroLoadMeaning             ZeroLoadMeaning?
   notes                      String?
 
   sets WorkoutSet[]

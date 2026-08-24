@@ -82,13 +82,23 @@ describe("progression correctness", () => {
           { reps: 12, rpe: 8, load: 0 },
         ],
         testCase.repRange,
-        "other"
+        "other",
+        {
+          measurementSnapshot: {
+            measurement: {
+              profile: "REPS_BODYWEIGHT_PLUS_LOAD",
+              loadConvention: "ADDED_EXTERNAL_LOAD",
+              repBasis: "TOTAL",
+            },
+            zeroLoadMeaning: null,
+          },
+        }
       );
 
       expect(decision, testCase.name).toBeDefined();
       expect(decision?.nextLoad, testCase.name).toBe(0);
       expect(decision?.decisionLog.join(" | "), testCase.name).toContain(
-        "bodyweight exercise — rep progression only"
+        "bodyweight — rep progression only"
       );
     }
   });
@@ -101,15 +111,66 @@ describe("progression correctness", () => {
         { reps: 9, rpe: 8, load: 0 },
       ],
       [6, 12],
-      "other"
+      "other",
+      {
+        measurementSnapshot: {
+          measurement: {
+            profile: "REPS_BODYWEIGHT_PLUS_LOAD",
+            loadConvention: "ADDED_EXTERNAL_LOAD",
+            repBasis: "TOTAL",
+          },
+          zeroLoadMeaning: null,
+        },
+      }
     );
 
     expect(decision).toBeDefined();
     expect(decision?.nextLoad).toBe(0);
     expect(decision?.path).toBe("fallback_hold");
     expect(decision?.decisionLog.join(" | ")).toContain(
-      "Below top of rep range for bodyweight load. Hold load at 0 and target more reps."
+      "Below top of rep range at bodyweight. Hold load at 0 and target more reps."
     );
+  });
+
+  it.each([
+    [
+      "Bulgarian Split Squat",
+      {
+        measurement: {
+          profile: "REPS_EXTERNAL_LOAD" as const,
+          loadConvention: "IMPLEMENT_WEIGHT" as const,
+          repBasis: "PER_SIDE" as const,
+        },
+        zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD" as const,
+      },
+      "bodyweight",
+    ],
+    [
+      "Hack Squat",
+      {
+        measurement: {
+          profile: "REPS_EXTERNAL_LOAD" as const,
+          loadConvention: "MACHINE_DISPLAYED" as const,
+          repBasis: "TOTAL" as const,
+        },
+        zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD" as const,
+      },
+      "machine default / no added load",
+    ],
+    ["legacy", { measurement: null, zeroLoadMeaning: null }, "zero load"],
+  ])("uses frozen semantics for %s zero-load progression copy", (_name, snapshot, wording) => {
+    const decision = computeDoubleProgressionDecision(
+      [{ reps: 10, rpe: 8, load: 0 }],
+      [8, 12],
+      "other",
+      { measurementSnapshot: snapshot }
+    );
+
+    expect(decision?.nextLoad).toBe(0);
+    expect(decision?.decisionLog.join(" | ")).toContain(wording);
+    if (_name === "legacy") {
+      expect(decision?.decisionLog.join(" | ")).not.toContain("bodyweight");
+    }
   });
 
   it("scales progression increment by 0.8 when only one prior session exists", () => {
@@ -548,5 +609,27 @@ describe("progression correctness", () => {
     }));
 
     expect(shouldDeload(history as never, new Set(["bench"]))).toBe(true);
+  });
+
+  it("does not treat explicit zero-load main-lift work as plateau e1RM evidence", () => {
+    const history = Array.from({ length: 5 }, (_, index) => ({
+      date: `2026-02-0${index + 1}T00:00:00.000Z`,
+      status: "COMPLETED",
+      readinessScore: 3,
+      exercises: [
+        {
+          exerciseId: "hack-squat",
+          measurement: {
+            profile: "REPS_EXTERNAL_LOAD",
+            loadConvention: "MACHINE_DISPLAYED",
+            repBasis: "TOTAL",
+          },
+          zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD",
+          sets: [{ setIndex: 1, reps: 10, load: 0, rpe: 8 }],
+        },
+      ],
+    }));
+
+    expect(shouldDeload(history as never, new Set(["hack-squat"]))).toBe(false);
   });
 });

@@ -145,6 +145,60 @@ describe("CompletedWorkoutReview", () => {
     expect(screen.getByText("8 reps | 40 lbs | RPE 8")).toHaveClass("text-emerald-700");
   });
 
+  it("renders frozen zero meanings and keeps legacy zero neutral", async () => {
+    const zeroSet = {
+      ...performanceSummary[0].sets[0],
+      targetLoad: null,
+      actualLoad: 0,
+    };
+    render(
+      <CompletedWorkoutReview
+        workoutId="workout-1"
+        performanceSummary={[
+          {
+            ...performanceSummary[0],
+            exerciseId: "bulgarian",
+            name: "Bulgarian Split Squat",
+            measurement: {
+              profile: "REPS_EXTERNAL_LOAD",
+              loadConvention: "IMPLEMENT_WEIGHT",
+              repBasis: "PER_SIDE",
+            },
+            zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
+            sets: [zeroSet],
+          },
+          {
+            ...performanceSummary[0],
+            exerciseId: "hack",
+            name: "Hack Squat",
+            measurement: {
+              profile: "REPS_EXTERNAL_LOAD",
+              loadConvention: "MACHINE_DISPLAYED",
+              repBasis: "TOTAL",
+            },
+            zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD",
+            sets: [zeroSet],
+          },
+          {
+            ...performanceSummary[0],
+            exerciseId: "legacy",
+            name: "Legacy Exercise",
+            measurement: undefined,
+            zeroLoadMeaning: null,
+            sets: [zeroSet],
+          },
+        ]}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText("Good session")).toBeInTheDocument());
+    expect(screen.getByText(/8 reps \| Bodyweight \| RPE 8/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/8 reps \| Machine default \/ no added load \| RPE 8/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/8 reps \| 0 lbs \| RPE 8/)).toBeInTheDocument();
+  });
+
   it("shows a safe unavailable state instead of deriving a fallback conclusion", async () => {
     vi.stubGlobal(
       "fetch",

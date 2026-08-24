@@ -25,6 +25,10 @@ import type {
   PostSessionReviewRecentExerciseExposureEvidence,
   PostSessionReviewReplacementEvidence,
 } from "./post-session-review-evidence";
+import {
+  parseMeasurementColumns,
+  parseZeroLoadMeaningColumn,
+} from "@/lib/exercise-measurement/semantics";
 
 type ReviewWorkout = Prisma.WorkoutGetPayload<{
   select: {
@@ -51,6 +55,10 @@ type ReviewWorkout = Prisma.WorkoutGetPayload<{
         orderIndex: true;
         section: true;
         isMainLift: true;
+        measurementProfile: true;
+        loadConvention: true;
+        repBasis: true;
+        zeroLoadMeaning: true;
         exercise: { select: { name: true } };
         sets: {
           orderBy: [{ setIndex: "asc" }, { id: "asc" }];
@@ -89,6 +97,10 @@ type RecentReviewWorkoutExercise = Prisma.WorkoutExerciseGetPayload<{
     orderIndex: true;
     section: true;
     isMainLift: true;
+    measurementProfile: true;
+    loadConvention: true;
+    repBasis: true;
+    zeroLoadMeaning: true;
     exercise: { select: { name: true } };
     workout: {
       select: {
@@ -220,6 +232,8 @@ function buildExerciseEvidence(
       orderIndex: workoutExercise.orderIndex,
       section: workoutExercise.section,
       isMainLift: workoutExercise.isMainLift,
+      measurement: parseMeasurementColumns(workoutExercise),
+      zeroLoadMeaning: parseZeroLoadMeaningColumn(workoutExercise),
       isRuntimeAdded: isRuntimeAddedExercise,
       ...(replacement ? { replacement } : {}),
       sets: workoutExercise.sets.map((set) => {
@@ -264,6 +278,8 @@ function toRecentExerciseExposureEvidence(
     orderIndex: row.orderIndex,
     section: row.section,
     isMainLift: row.isMainLift,
+    measurement: parseMeasurementColumns(row),
+    zeroLoadMeaning: parseZeroLoadMeaningColumn(row),
     isRuntimeAdded: isRuntimeAddedExercise,
     performedAt: (row.workout.completedAt ?? row.workout.scheduledDate).toISOString(),
     sets: row.sets.map((set) => {
@@ -320,6 +336,10 @@ async function loadRecentExerciseExposureEvidence(
       orderIndex: true,
       section: true,
       isMainLift: true,
+      measurementProfile: true,
+      loadConvention: true,
+      repBasis: true,
+      zeroLoadMeaning: true,
       exercise: { select: { name: true } },
       workout: {
         select: {
@@ -541,6 +561,10 @@ export async function produceCurrentPostSessionReviewInterpretation(
           orderIndex: true,
           section: true,
           isMainLift: true,
+          measurementProfile: true,
+          loadConvention: true,
+          repBasis: true,
+          zeroLoadMeaning: true,
           exercise: { select: { name: true } },
           sets: {
             orderBy: [{ setIndex: "asc" }, { id: "asc" }],

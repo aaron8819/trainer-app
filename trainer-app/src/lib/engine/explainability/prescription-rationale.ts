@@ -22,6 +22,8 @@ import type {
 import type { Exercise, WorkoutSet, Goals, UserProfile } from "../types";
 import type { PeriodizationModifiers } from "../rules";
 import type { BlockType } from "../periodization/types";
+import { formatFrozenLoadValue } from "@/lib/exercise-measurement/load-entry-policy";
+import type { FrozenMeasurementSnapshot } from "@/lib/exercise-measurement/semantics";
 
 /**
  * Input context for prescription rationale
@@ -44,6 +46,7 @@ export type PrescriptionRationaleContext = {
   weightUnit?: "kg" | "lbs";
   /** Block type from the active program block — bypasses re-inference from periodization multipliers. */
   blockType?: BlockType;
+  measurementSnapshot?: FrozenMeasurementSnapshot;
 };
 
 /**
@@ -119,7 +122,11 @@ export function explainPrescriptionRationale(
   // Build overall narrative
   const reps = representativeSet.targetReps ?? representativeSet.targetRepRange?.min ?? 8;
   const unit = context.weightUnit ?? "lbs";
-  const load = representativeSet.targetLoad ? `${representativeSet.targetLoad}${unit}` : "BW";
+  const load = formatPrescriptionLoad(
+    representativeSet.targetLoad,
+    context.measurementSnapshot,
+    unit,
+  );
   const rir = representativeSet.targetRpe ? 10 - representativeSet.targetRpe : 2;
   const rest = context.restSeconds ? formatRestDuration(context.restSeconds) : "2 min";
 
@@ -134,6 +141,31 @@ export function explainPrescriptionRationale(
     rest: restRationale,
     overallNarrative,
   };
+}
+
+function formatPrescriptionLoad(
+  load: number | undefined,
+  snapshot: FrozenMeasurementSnapshot | undefined,
+  unit: "kg" | "lbs",
+): string {
+  const resolvedSnapshot = snapshot ?? {
+    measurement: null,
+    zeroLoadMeaning: null,
+  };
+  if (load == null) {
+    return resolvedSnapshot.measurement?.profile === "REPS_BODYWEIGHT"
+      ? "Bodyweight"
+      : "Load not specified";
+  }
+  return (
+    formatFrozenLoadValue(
+      { load, snapshot: resolvedSnapshot },
+      (numericLoad) => `${numericLoad}${unit}`,
+    ) ??
+    (resolvedSnapshot.measurement?.profile === "REPS_BODYWEIGHT"
+      ? "Bodyweight"
+      : "Load not specified")
+  );
 }
 
 /**
@@ -274,11 +306,18 @@ export function explainLoadChoice(
   trainingAge: UserProfile["trainingAge"],
   periodization?: PeriodizationModifiers
 ): LoadRationale {
-  if (!load) {
+  if (load == null) {
     return {
       load: 0,
       progressionType: "autoregulated",
-      reason: "Bodyweight exercise (no external load)",
+      reason: "No fixed load was prescribed; select the working load while logging",
+    };
+  }
+  if (load === 0) {
+    return {
+      load: 0,
+      progressionType: "autoregulated",
+      reason: "Zero load was prescribed; interpret it using the exercise's frozen logging semantics",
     };
   }
 
@@ -286,11 +325,18 @@ export function explainLoadChoice(
   const progressionType = determineProgressionType(trainingAge, lastLoad, lastReps, targetReps);
 
   // Calculate load change
-  if (!lastLoad) {
+  if (lastLoad == null) {
     return {
       load,
       progressionType,
       reason: "Initial working weight (baseline or estimated from body weight)",
+    };
+  }
+  if (lastLoad === 0) {
+    return {
+      load,
+      progressionType,
+      reason: "Working load increased from a zero-load baseline",
     };
   }
 

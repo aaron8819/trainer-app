@@ -33,6 +33,7 @@ import {
   computeMusclesApproachingMRV,
   computeVolumeSpikePercent,
   hasPRPotential,
+  type PRPotentialEvidence,
 } from "./explainability/stats";
 import { computeDoubleProgressionDecision } from "@/lib/engine/progression";
 import { getWeeklyVolumeTarget } from "./mesocycle-lifecycle-math";
@@ -69,9 +70,12 @@ import { readSessionAuditSnapshot } from "@/lib/evidence/session-audit-snapshot"
 import {
   measurementComparisonKey,
   parseMeasurementColumns,
+  parseZeroLoadMeaningColumn,
   permitsComputedLoadComparison,
+  type FrozenMeasurementSnapshot,
   type MeasurementSemantics,
 } from "@/lib/exercise-measurement/semantics";
+import { formatFrozenLoadValue } from "@/lib/exercise-measurement/load-entry-policy";
 
 const HISTORY_RECENCY_WINDOW_DAYS = 42;
 const CANONICAL_RATIONALE_COMPONENT_KEYS = [
@@ -257,6 +261,11 @@ export async function generateWorkoutExplanation(
   for (const workoutExercise of workout.exercises) {
     const exercise = mappedExercises.find((e) => e.id === workoutExercise.exerciseId);
     if (!exercise) continue;
+    const comparisonMeasurement = parseMeasurementColumns(workoutExercise);
+    const measurementSnapshot: FrozenMeasurementSnapshot = {
+      measurement: comparisonMeasurement,
+      zeroLoadMeaning: parseZeroLoadMeaningColumn(workoutExercise),
+    };
 
     const engineSets = workoutExercise.sets.map((dbSet: WorkoutSet) => ({
       setIndex: dbSet.setIndex,
@@ -292,6 +301,7 @@ export async function generateWorkoutExplanation(
         exercise.repRangeMin && exercise.repRangeMax
           ? { min: exercise.repRangeMin, max: exercise.repRangeMax }
           : undefined,
+      measurementSnapshot,
     });
 
     prescriptionRationales.set(workoutExercise.exerciseId, rationale);
@@ -312,7 +322,6 @@ export async function generateWorkoutExplanation(
       ? [effectiveRepRange.min, effectiveRepRange.max]
       : [8, 8];
     const equipmentTypes = workoutExercise.exercise.exerciseEquipment.map((item) => item.equipment.type);
-    const comparisonMeasurement = parseMeasurementColumns(workoutExercise);
     const lastPerformed = await loadLatestPerformedSetSummary(
       workout.userId,
       workout.id,
@@ -367,6 +376,7 @@ export async function generateWorkoutExplanation(
         workoutId: workout.id,
         exerciseId: workoutExercise.exerciseId,
         comparisonMeasurement,
+        measurementSnapshot,
         scheduledDate: workout.scheduledDate,
         selectionMode: workout.selectionMode ?? undefined,
         performedLogs: workoutExercise.sets.map((set) => ({
@@ -714,9 +724,10 @@ function buildPlannedMaxByExercise(
       sets: Array<WorkoutSet & { logs: { actualLoad: number | null; actualReps: number | null; wasSkipped: boolean }[] }>;
     }
   >
-): Map<string, { maxLoad: number | null; maxReps: number | null }> {
-  const output = new Map<string, { maxLoad: number | null; maxReps: number | null }>();
+): Map<string, PRPotentialEvidence> {
+  const output = new Map<string, PRPotentialEvidence>();
   for (const exercise of exercises) {
+    const repsOnlyEvidence = parseMeasurementColumns(exercise)?.profile === "REPS_BODYWEIGHT";
     let maxLoad: number | null = null;
     let maxReps: number | null = null;
     for (const set of exercise.sets) {
@@ -724,14 +735,18 @@ function buildPlannedMaxByExercise(
       if (!latest || latest.wasSkipped) {
         continue;
       }
-      if (latest.actualLoad != null) {
+      if (
+        typeof latest.actualLoad === "number" &&
+        Number.isFinite(latest.actualLoad) &&
+        latest.actualLoad > 0
+      ) {
         maxLoad = maxLoad == null ? latest.actualLoad : Math.max(maxLoad, latest.actualLoad);
       }
-      if (latest.actualReps != null) {
+      if (repsOnlyEvidence && latest.actualReps != null) {
         maxReps = maxReps == null ? latest.actualReps : Math.max(maxReps, latest.actualReps);
       }
     }
-    output.set(exercise.exerciseId, { maxLoad, maxReps });
+    output.set(exercise.exerciseId, { maxLoad, maxReps, repsOnlyEvidence });
   }
   return output;
 }
@@ -764,10 +779,14 @@ async function loadHistoricalExercisePerformance(
   comparisonByExerciseId: ReadonlyMap<string, MeasurementSemantics | null>,
   excludeWorkoutId: string,
   client: ExplainabilityReader
-): Promise<Map<string, { maxLoad: number | null; maxReps: number | null }>> {
+): Promise<Map<string, PRPotentialEvidence>> {
   const exerciseIds = [...comparisonByExerciseId.keys()];
-  const output = new Map<string, { maxLoad: number | null; maxReps: number | null }>(
-    exerciseIds.map((exerciseId) => [exerciseId, { maxLoad: null, maxReps: null }])
+  const output = new Map<string, PRPotentialEvidence>(
+    exerciseIds.map((exerciseId) => [exerciseId, {
+      maxLoad: null,
+      maxReps: null,
+      repsOnlyEvidence: comparisonByExerciseId.get(exerciseId)?.profile === "REPS_BODYWEIGHT",
+    }])
   );
   const rows = await client.workoutExercise.findMany({
     where: {
@@ -831,17 +850,25 @@ async function loadHistoricalExercisePerformance(
       continue;
     }
 
-    const current = output.get(row.exerciseId) ?? { maxLoad: null, maxReps: null };
+    const current = output.get(row.exerciseId) ?? {
+      maxLoad: null,
+      maxReps: null,
+      repsOnlyEvidence: currentMeasurement?.profile === "REPS_BODYWEIGHT",
+    };
     for (const set of row.sets) {
       const latest = set.logs[0];
       if (!latest || latest.wasSkipped) {
         continue;
       }
-      if (latest.actualLoad != null) {
+      if (
+        typeof latest.actualLoad === "number" &&
+        Number.isFinite(latest.actualLoad) &&
+        latest.actualLoad > 0
+      ) {
         current.maxLoad =
           current.maxLoad == null ? latest.actualLoad : Math.max(current.maxLoad, latest.actualLoad);
       }
-      if (latest.actualReps != null) {
+      if (current.repsOnlyEvidence === true && latest.actualReps != null) {
         current.maxReps =
           current.maxReps == null ? latest.actualReps : Math.max(current.maxReps, latest.actualReps);
       }
@@ -1095,6 +1122,10 @@ async function loadLatestPerformedSetSummary(
       scheduledDate: performedDate ?? undefined,
       exerciseId,
       comparisonMeasurement,
+      measurementSnapshot: {
+        measurement: parseMeasurementColumns(previous),
+        zeroLoadMeaning: parseZeroLoadMeaningColumn(previous),
+      },
       performedLogs,
       client,
     }
@@ -1124,6 +1155,7 @@ type ExplainabilityConfidenceInput = {
   exposureId?: string;
   exerciseId: string;
   comparisonMeasurement: MeasurementSemantics | null;
+  measurementSnapshot: FrozenMeasurementSnapshot;
   selectionMode?: WorkoutSelectionMode;
   scheduledDate?: Date;
   plannedSets?: NextExposurePlannedSetInput[];
@@ -1546,6 +1578,7 @@ async function buildNextExposureDecision(
     repRange,
     plannedSets: input.plannedSets,
     hasTransitionBackfillSubstitution: input.hasTransitionBackfillSubstitution === true,
+    measurementSnapshot: input.measurementSnapshot,
   });
   const action = reviewQuality.action;
   const decisionLog =
@@ -1565,6 +1598,7 @@ async function buildNextExposureDecision(
       modalRpe: performedSemantics.modalRpe,
       anchorLoad: decision.anchorLoad,
       reviewQualityReason: reviewQuality.reason,
+      measurementSnapshot: input.measurementSnapshot,
     }),
     anchorLoad: decision.anchorLoad,
     repRange: { min: repRange[0], max: repRange[1] },
@@ -1582,13 +1616,18 @@ function resolveNextExposureReviewQuality(input: {
   repRange: [number, number];
   plannedSets: NextExposurePlannedSetInput[];
   hasTransitionBackfillSubstitution: boolean;
+  measurementSnapshot: FrozenMeasurementSnapshot;
 }): NextExposureReviewQuality {
   const adherence = summarizeNextExposureTargetAdherence({
     plannedSets: input.plannedSets,
     performedSemantics: input.performedSemantics,
     anchorLoad: input.decisionAnchorLoad,
   });
-  const adherenceLog = formatTargetAdherenceDecisionLog(adherence, input.decisionAnchorLoad);
+  const adherenceLog = formatTargetAdherenceDecisionLog(
+    adherence,
+    input.decisionAnchorLoad,
+    input.measurementSnapshot
+  );
   const buildReviewQualityAction = (
     action: NextExposureDecision["action"],
     reason: string,
@@ -1617,7 +1656,7 @@ function resolveNextExposureReviewQuality(input: {
   ) {
     return buildReviewQualityAction(
       "hold_at_recalibrated_anchor",
-      `Next target should hold at today's ${formatLoadLabel(input.decisionAnchorLoad)} performed anchor, not the old written target ${formatLoadLabel(adherence.targetLoad)}. Reps stayed within the ${formatRepRangeLabel(input.repRange)} range at or under target effort (${formatRpeComparison(input.performedSemantics.modalRpe, adherence.targetRpe)}), so the written target or estimate was too low and was recalibrated upward.`,
+      `Next target should hold at today's ${formatLoadLabel(input.decisionAnchorLoad, input.measurementSnapshot)} performed anchor, not the old written target ${formatLoadLabel(adherence.targetLoad, input.measurementSnapshot)}. Reps stayed within the ${formatRepRangeLabel(input.repRange)} range at or under target effort (${formatRpeComparison(input.performedSemantics.modalRpe, adherence.targetRpe)}), so the written target or estimate was too low and was recalibrated upward.`,
       "Review-quality guard: target_too_low/performed_anchor_above_written_target/hold_at_recalibrated_anchor reframed a plain hold as a recalibrated-anchor hold."
     );
   }
@@ -1635,7 +1674,7 @@ function resolveNextExposureReviewQuality(input: {
   ) {
     return buildReviewQualityAction(
       "target_too_high",
-      `Hold around ${formatLoadLabel(input.decisionAnchorLoad)} next time and rebuild from today's performed anchor, not the old written target ${formatLoadLabel(adherence.targetLoad)}. The written target was missed by ${formatRatioPercent(targetMissRatio ?? 0)} despite ${adherence.signalSetCount}/${adherence.plannedSetCount} clean signal sets${formatSkippedClause(adherence)}, and reps stayed within the ${formatRepRangeLabel(input.repRange)} range at or under target effort (${formatRpeComparison(input.performedSemantics.modalRpe, adherence.targetRpe)}). Treat ${formatLoadLabel(adherence.targetLoad)} as too high for next exposure rather than a normal clean hold.`,
+      `Hold around ${formatLoadLabel(input.decisionAnchorLoad, input.measurementSnapshot)} next time and rebuild from today's performed anchor, not the old written target ${formatLoadLabel(adherence.targetLoad, input.measurementSnapshot)}. The written target was missed by ${formatRatioPercent(targetMissRatio ?? 0)} despite ${adherence.signalSetCount}/${adherence.plannedSetCount} clean signal sets${formatSkippedClause(adherence)}, and reps stayed within the ${formatRepRangeLabel(input.repRange)} range at or under target effort (${formatRpeComparison(input.performedSemantics.modalRpe, adherence.targetRpe)}). Treat ${formatLoadLabel(adherence.targetLoad, input.measurementSnapshot)} as too high for next exposure rather than a normal clean hold.`,
       "Review-quality guard: target_too_high/performed_anchor_below_written_target/downward_recalibration reframed a plain hold as a target-too-high recalibration."
     );
   }
@@ -1663,7 +1702,7 @@ function resolveNextExposureReviewQuality(input: {
   if (targetMissRatio != null && targetMissRatio >= LARGE_TARGET_MISS_RATIO) {
     return buildReviewQualityAction(
       "target_too_high",
-      `The engine trace would increase from today's ${formatLoadLabel(input.decisionAnchorLoad)} performed anchor, but the written target ${formatLoadLabel(adherence.targetLoad)} was missed by ${formatRatioPercent(targetMissRatio)} with ${adherence.signalSetCount}/${adherence.plannedSetCount} clean signal sets${formatSkippedClause(adherence)}. Treat the written target as too high before increasing.`,
+      `The engine trace would increase from today's ${formatLoadLabel(input.decisionAnchorLoad, input.measurementSnapshot)} performed anchor, but the written target ${formatLoadLabel(adherence.targetLoad, input.measurementSnapshot)} was missed by ${formatRatioPercent(targetMissRatio)} with ${adherence.signalSetCount}/${adherence.plannedSetCount} clean signal sets${formatSkippedClause(adherence)}. Treat the written target as too high before increasing.`,
       "Review-quality guard: large written-target miss downgraded a plain increase to target-too-high review."
     );
   }
@@ -1671,7 +1710,7 @@ function resolveNextExposureReviewQuality(input: {
   if (targetMissRatio != null && targetMissRatio >= MATERIAL_TARGET_MISS_RATIO && hasLowCoverage) {
     return buildReviewQualityAction(
       "recalibrate",
-      `Today's performed anchor was ${formatRatioPercent(targetMissRatio)} below the written target ${formatLoadLabel(adherence.targetLoad)}, and set coverage was not clean (${adherence.signalSetCount}/${adherence.plannedSetCount} signal sets${formatSkippedClause(adherence)}). Recalibrate before increasing.`,
+      `Today's performed anchor was ${formatRatioPercent(targetMissRatio)} below the written target ${formatLoadLabel(adherence.targetLoad, input.measurementSnapshot)}, and set coverage was not clean (${adherence.signalSetCount}/${adherence.plannedSetCount} signal sets${formatSkippedClause(adherence)}). Recalibrate before increasing.`,
       "Review-quality guard: material written-target miss plus low coverage downgraded a plain increase to recalibration."
     );
   }
@@ -1690,7 +1729,7 @@ function resolveNextExposureReviewQuality(input: {
   ) {
     return buildReviewQualityAction(
       "recalibrated_increase",
-      `This is an upward target recalibration from today's ${formatLoadLabel(input.decisionAnchorLoad)} performed anchor, not a clean progression win against the written target ${formatLoadLabel(adherence.targetLoad)}. The performed anchor was ${formatRatioPercent(targetOvershootRatio)} above the written target, so treat the written target as too low and progress from the recalibrated anchor.`,
+      `This is an upward target recalibration from today's ${formatLoadLabel(input.decisionAnchorLoad, input.measurementSnapshot)} performed anchor, not a clean progression win against the written target ${formatLoadLabel(adherence.targetLoad, input.measurementSnapshot)}. The performed anchor was ${formatRatioPercent(targetOvershootRatio)} above the written target, so treat the written target as too low and progress from the recalibrated anchor.`,
       "Review-quality guard: target_too_low/performed_anchor_above_written_target/upward_recalibration reframed a plain increase as a recalibrated-anchor increase."
     );
   }
@@ -1701,7 +1740,7 @@ function resolveNextExposureReviewQuality(input: {
   ) {
     return buildReviewQualityAction(
       "recalibrated_increase",
-      `This is an increase from today's ${formatLoadLabel(input.decisionAnchorLoad)} performed anchor, not a clean win against the written target ${formatLoadLabel(adherence.targetLoad)}. The target was missed by ${formatRatioPercent(targetMissRatio)}, so progress from the recalibrated anchor.`,
+      `This is an increase from today's ${formatLoadLabel(input.decisionAnchorLoad, input.measurementSnapshot)} performed anchor, not a clean win against the written target ${formatLoadLabel(adherence.targetLoad, input.measurementSnapshot)}. The target was missed by ${formatRatioPercent(targetMissRatio)}, so progress from the recalibrated anchor.`,
       "Review-quality guard: material written-target miss reframed a plain increase as a recalibrated-anchor increase."
     );
   }
@@ -1917,7 +1956,8 @@ function medianNumber(values: number[]): number {
 
 function formatTargetAdherenceDecisionLog(
   adherence: NextExposureTargetAdherence,
-  anchorLoad: number
+  anchorLoad: number,
+  measurementSnapshot: FrozenMeasurementSnapshot
 ): string {
   const targetMiss =
     adherence.targetMissRatio != null
@@ -1928,8 +1968,8 @@ function formatTargetAdherenceDecisionLog(
       ? formatRatioPercent(adherence.targetOvershootRatio)
       : "n/a";
   return (
-    `Review-quality signal: target=${formatLoadLabel(adherence.targetLoad)}, ` +
-    `anchor=${formatLoadLabel(anchorLoad)}, target miss=${targetMiss}, target overshoot=${targetOvershoot}, ` +
+    `Review-quality signal: target=${formatLoadLabel(adherence.targetLoad, measurementSnapshot)}, ` +
+    `anchor=${formatLoadLabel(anchorLoad, measurementSnapshot)}, target miss=${targetMiss}, target overshoot=${targetOvershoot}, ` +
     `performed sets=${adherence.performedSetCount}/${adherence.plannedSetCount}, ` +
     `signal sets=${adherence.signalSetCount}/${adherence.plannedSetCount}, ` +
     `skipped sets=${adherence.skippedSetCount}.`
@@ -1958,11 +1998,17 @@ function formatRpeComparison(modalRpe: number | null, targetRpe: number | null):
   return `modal RPE ${modalRpe} vs target RPE ${targetRpe}`;
 }
 
-function formatLoadLabel(load: number | null): string {
+function formatLoadLabel(
+  load: number | null,
+  measurementSnapshot: FrozenMeasurementSnapshot
+): string {
   if (load == null || !Number.isFinite(load)) {
     return "n/a";
   }
-  return `${Number.isInteger(load) ? load.toFixed(0) : load.toFixed(1)} lbs`;
+  return formatFrozenLoadValue(
+    { load, snapshot: measurementSnapshot },
+    (numericLoad) => `${Number.isInteger(numericLoad) ? numericLoad.toFixed(0) : numericLoad.toFixed(1)} lbs`
+  ) ?? "n/a";
 }
 
 async function buildExplainabilityCanonicalProgressionInput(
@@ -2034,6 +2080,7 @@ async function buildExplainabilityCanonicalProgressionInput(
         : {}),
       workingSetLoad: performedSemantics.workingSetLoad ?? undefined,
       historySessions,
+      measurementSnapshot: input.measurementSnapshot,
     }),
     promotionPolicy: buildExplainabilityPromotionPolicy({
       equipment,
@@ -2086,6 +2133,10 @@ async function loadExplainabilityProgressionSessions(
         exposureId: previous.workoutId,
         exerciseId: input.exerciseId,
         comparisonMeasurement: input.comparisonMeasurement,
+        measurementSnapshot: {
+          measurement: parseMeasurementColumns(previous),
+          zeroLoadMeaning: parseZeroLoadMeaningColumn(previous),
+        },
         selectionMode: previous.workout.selectionMode ?? undefined,
         scheduledDate: previous.workout.scheduledDate,
         client: input.client,
@@ -2167,6 +2218,7 @@ function formatNextExposureReason(input: {
   modalRpe: number | null;
   anchorLoad: number;
   reviewQualityReason?: string;
+  measurementSnapshot: FrozenMeasurementSnapshot;
 }): string {
   const repRangeLabel =
     input.repRange[0] === input.repRange[1]
@@ -2187,12 +2239,12 @@ function formatNextExposureReason(input: {
     if (input.decisionPath === "path_5_overshoot") {
       return input.modalRpe != null && input.modalRpe > 8
         ? `You beat the written load across enough working sets to earn a one-step increase, even at modal RPE ${modalRpeLabel}.`
-        : `You beat the written load at manageable effort, so ${input.anchorLoad} lbs should not stay capped next time.`;
+        : `You beat the written load at manageable effort, so ${formatLoadLabel(input.anchorLoad, input.measurementSnapshot)} should not stay capped next time.`;
     }
-    return `Median reps reached the upper end of the ${repTargetLabel} at manageable effort (modal RPE ${modalRpeLabel}) on ${input.anchorLoad} lbs.`;
+    return `Median reps reached the upper end of the ${repTargetLabel} at manageable effort (modal RPE ${modalRpeLabel}) on ${formatLoadLabel(input.anchorLoad, input.measurementSnapshot)}.`;
   }
   if (input.action === "decrease") {
-    return `Effort looked too high to keep ${input.anchorLoad} lbs moving productively next time.`;
+    return `Effort looked too high to keep ${formatLoadLabel(input.anchorLoad, input.measurementSnapshot)} moving productively next time.`;
   }
   const overshootGateMessage = input.decisionLog
     ?.slice()
@@ -2202,7 +2254,7 @@ function formatNextExposureReason(input: {
     return overshootGateMessage.replace(/^Overshoot gate:\s*/, "");
   }
   if (input.modalRpe != null && input.modalRpe >= 9) {
-    return `Effort was already high at modal RPE ${modalRpeLabel}, so ${input.anchorLoad} lbs should hold.`;
+    return `Effort was already high at modal RPE ${modalRpeLabel}, so ${formatLoadLabel(input.anchorLoad, input.measurementSnapshot)} should hold.`;
   }
   return `Median reps stayed at ${medianRepsLabel} in the ${repTargetLabel}, so keep building reps before adding load.`;
 }

@@ -9,6 +9,18 @@ import type {
   WhoopData,
 } from "@/lib/engine/readiness/types";
 import type { Prisma } from "@prisma/client";
+import { parseMeasurementColumns } from "@/lib/exercise-measurement/semantics";
+
+function resolvePerformanceScore(input: {
+  measurement: ReturnType<typeof parseMeasurementColumns>;
+  load: number | null;
+  reps: number | null;
+}): number | null {
+  if (input.reps == null || input.reps <= 0) return null;
+  if (input.measurement?.profile === "REPS_BODYWEIGHT") return input.reps;
+  if (input.load == null || input.load <= 0) return null;
+  return input.load * input.reps;
+}
 
 type ReadinessSignalReader =
   | Pick<typeof prisma, "readinessSignal">
@@ -80,9 +92,14 @@ export async function computePerformanceSignals(
         if (!log || log.wasSkipped) {
           continue;
         }
-        const reps = log.actualReps ?? 0;
-        const load = log.actualLoad ?? 0;
-        const score = load > 0 && reps > 0 ? load * reps : reps;
+        const score = resolvePerformanceScore({
+          measurement: parseMeasurementColumns(workoutExercise),
+          load: log.actualLoad,
+          reps: log.actualReps,
+        });
+        if (score == null) {
+          continue;
+        }
         bestScore = Math.max(bestScore, score);
       }
       if (bestScore <= 0) {

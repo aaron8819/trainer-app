@@ -4,6 +4,9 @@ import { roundLoad } from "./utils";
 import { isPerformedHistoryEntry } from "./history";
 import type { ProgressionDecisionTrace } from "@/lib/evidence/session-audit-types";
 import { quantizeLoad } from "@/lib/units/load-quantization";
+import { isPositiveLoadProgressionEligible } from "@/lib/exercise-measurement/load-entry-policy";
+import { formatFrozenLoadValue } from "@/lib/exercise-measurement/load-entry-policy";
+import type { FrozenMeasurementSnapshot } from "@/lib/exercise-measurement/semantics";
 
 export type ProgressionSet = {
   setIndex?: number;
@@ -50,6 +53,7 @@ export type BoundProgressionExposure = {
   sets: ProgressionSet[];
 };
 export type DoubleProgressionDecisionOptions = {
+  measurementSnapshot?: FrozenMeasurementSnapshot;
   priorSessionCount?: number;
   historyConfidenceScale?: number;
   confidenceReasons?: string[];
@@ -297,18 +301,34 @@ export function computeDoubleProgressionDecision(
   }
 
   if (anchorLoad === 0) {
+    const zeroLabel = formatFrozenLoadValue(
+      {
+        load: 0,
+        snapshot: options?.measurementSnapshot ?? {
+          measurement: null,
+          zeroLoadMeaning: null,
+        },
+      },
+      (load) => `${load}`
+    ) ?? "0";
+    const zeroMeaning =
+      zeroLabel === "Bodyweight"
+        ? { subject: "bodyweight", reasonCode: "bodyweight" }
+        : zeroLabel === "Machine default / no added load"
+          ? { subject: "machine default / no added load", reasonCode: "machine_default" }
+          : { subject: "zero load", reasonCode: "zero_load" };
     const reasonCode =
       medianReps >= topOfRange
-        ? "bodyweight_top_of_range_hold"
-        : "bodyweight_hold_for_reps";
-    decisionLog.push("bodyweight exercise — rep progression only");
+        ? `${zeroMeaning.reasonCode}_top_of_range_hold`
+        : `${zeroMeaning.reasonCode}_hold_for_reps`;
+    decisionLog.push(`${zeroMeaning.subject} — rep progression only`);
     if (medianReps >= topOfRange) {
       decisionLog.push(
-        "Top of rep range achieved at bodyweight load. Hold load at 0 and progress via reps until external load is added."
+        `Top of rep range achieved at ${zeroMeaning.subject}. Hold load at 0 and progress via reps until positive external load is added.`
       );
     } else {
       decisionLog.push(
-        "Below top of rep range for bodyweight load. Hold load at 0 and target more reps."
+        `Below top of rep range at ${zeroMeaning.subject}. Hold load at 0 and target more reps.`
       );
     }
     return {
@@ -338,7 +358,7 @@ export function computeDoubleProgressionDecision(
         equipment,
         medianReps,
         modalRpe: modalRpe ?? null,
-        reasonCodes: ["bodyweight_rep_progression_only", reasonCode],
+        reasonCodes: [`${zeroMeaning.reasonCode}_rep_progression_only`, reasonCode],
       }),
     };
   }
@@ -966,7 +986,16 @@ function hasMainLiftPlateau(
         continue;
       }
       const topSet = resolveTopSet(exercise.sets);
-      if (!topSet) {
+      if (
+        !topSet ||
+        !isPositiveLoadProgressionEligible(
+          {
+            measurement: exercise.measurement ?? null,
+            zeroLoadMeaning: exercise.zeroLoadMeaning ?? null,
+          },
+          topSet.load,
+        )
+      ) {
         continue;
       }
       const e1rm = topSet.load * (1 + topSet.reps / 30);
@@ -992,7 +1021,12 @@ function hasMainLiftPlateau(
 function resolveTopSet(sets: HistorySet[]) {
   let topSet: { reps: number; load: number; setIndex: number } | null = null;
   for (const set of sets) {
-    if (!Number.isFinite(set.load) || !Number.isFinite(set.reps) || set.reps <= 0) {
+    if (
+      !Number.isFinite(set.load) ||
+      (set.load ?? 0) <= 0 ||
+      !Number.isFinite(set.reps) ||
+      set.reps <= 0
+    ) {
       continue;
     }
     if (!topSet || set.setIndex < topSet.setIndex) {

@@ -1,7 +1,14 @@
 import { prisma } from "@/lib/db/prisma";
 import { resolveRuntimeAddedAccessoryDefaults } from "@/lib/api/runtime-added-exercise-defaults";
 import type { PrimaryGoal, TrainingAge } from "@/lib/engine/types";
-import { parseMeasurementColumns } from "@/lib/exercise-measurement/semantics";
+import {
+  assertFrozenMeasurementSnapshotInvariant,
+  isMeasurementAwareAcceptedVersion,
+  parseMeasurementColumns,
+  parseZeroLoadMeaningColumn,
+  type MeasurementSemantics,
+  type ZeroLoadMeaning,
+} from "@/lib/exercise-measurement/semantics";
 import { parseAcceptedSeedPayload } from "@/lib/api/slot-plan-seed-parser";
 
 type ExistingWorkoutSet = {
@@ -26,6 +33,8 @@ type PreviewExercise = {
   fatigueCost?: number | null;
   isCompound?: boolean | null;
   equipment: string[];
+  measurement?: MeasurementSemantics | null;
+  zeroLoadMeaning?: ZeroLoadMeaning | null;
 };
 
 export type RuntimeAddedExercisePreview = {
@@ -41,6 +50,8 @@ export type RuntimeAddedExercisePreview = {
   targetRpe: number;
   restSeconds: number;
   prescriptionSource: "session_accessory_defaults" | "generic_accessory_fallback";
+  measurement?: MeasurementSemantics;
+  zeroLoadMeaning: ZeroLoadMeaning | null;
 };
 
 type BuildRuntimeAddedExercisePreviewInput = {
@@ -84,6 +95,10 @@ export function buildRuntimeAddedExercisePreview(
     targetRpe: defaults.targetRpe,
     restSeconds: defaults.restSeconds,
     prescriptionSource: defaults.prescriptionSource,
+    ...(input.exercise.measurement
+      ? { measurement: input.exercise.measurement }
+      : {}),
+    zeroLoadMeaning: input.exercise.zeroLoadMeaning ?? null,
   };
 }
 
@@ -166,14 +181,23 @@ export async function resolveRuntimeAddedExercisePreviews(input: {
     throw new Error("WORKOUT_NOT_FOUND");
   }
   const measurementAware = workout.seedRevision?.seedPayload
-    ? parseAcceptedSeedPayload(workout.seedRevision.seedPayload).acceptedVersion === 3
+    ? isMeasurementAwareAcceptedVersion(
+        parseAcceptedSeedPayload(workout.seedRevision.seedPayload).acceptedVersion,
+      )
     : false;
 
   const exerciseMap = new Map(
     exercises.flatMap((exercise) => {
-      if (measurementAware && parseMeasurementColumns(exercise) == null) {
+      const measurement = measurementAware ? parseMeasurementColumns(exercise) : null;
+      if (measurementAware && measurement == null) {
         return [];
       }
+      const snapshot = assertFrozenMeasurementSnapshotInvariant({
+        measurement,
+        zeroLoadMeaning: measurementAware
+          ? parseZeroLoadMeaningColumn(exercise)
+          : null,
+      });
       return [[
       exercise.id,
       {
@@ -184,6 +208,7 @@ export async function resolveRuntimeAddedExercisePreviews(input: {
         fatigueCost: exercise.fatigueCost,
         isCompound: exercise.isCompound,
         equipment: exercise.exerciseEquipment.map((item) => item.equipment.type),
+        ...snapshot,
       } satisfies PreviewExercise,
       ] as const];
     })

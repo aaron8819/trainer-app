@@ -16,6 +16,7 @@ import type { ActiveBlockPhase } from "@/lib/api/program";
 import type { GenerateFromTemplateResponse } from "@/lib/api/template-session/types";
 import type { SaveWorkoutRequestPayload } from "@/components/log-workout/api";
 import { formatRepPrescriptionInline } from "@/lib/ui/rep-target-display";
+import { formatFrozenLoadValue } from "@/lib/exercise-measurement/load-entry-policy";
 
 type WorkoutSet = {
   setIndex: number;
@@ -33,6 +34,7 @@ type WorkoutExercise = {
   exercise: { id: string; name: string; equipment?: string[] };
   sets: WorkoutSet[];
   measurement?: import("@/lib/exercise-measurement/semantics").MeasurementSemantics;
+  zeroLoadMeaning?: import("@/lib/exercise-measurement/semantics").ZeroLoadMeaning | null;
 };
 
 type WorkoutPlan = {
@@ -111,7 +113,16 @@ function formatTargetLoadLabel(exercise: WorkoutExercise, set?: WorkoutSet): str
     return null;
   }
   if (set.targetLoad !== undefined && set.targetLoad !== null) {
-    return `${set.targetLoad} lbs`;
+    return formatFrozenLoadValue(
+      {
+        load: set.targetLoad,
+        snapshot: {
+          measurement: exercise.measurement ?? null,
+          zeroLoadMeaning: exercise.zeroLoadMeaning ?? null,
+        },
+      },
+      (load) => `${load} lbs`,
+    );
   }
   if (hasBodyweightEquipment(exercise.exercise.equipment)) {
     return "BW";

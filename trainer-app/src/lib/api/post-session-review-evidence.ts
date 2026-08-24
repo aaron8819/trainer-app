@@ -2,6 +2,10 @@ import type {
   MuscleVolumeCompliance,
   NextExposureDecision,
 } from "@/lib/engine/explainability";
+import type {
+  MeasurementSemantics,
+  ZeroLoadMeaning,
+} from "@/lib/exercise-measurement/semantics";
 
 export type PostSessionReviewSourceTruthEvidence = {
   setLogsAvailable: boolean;
@@ -77,6 +81,8 @@ export type PostSessionReviewExerciseEvidence = {
   section?: "WARMUP" | "MAIN" | "ACCESSORY" | string | null;
   isMainLift?: boolean;
   isRuntimeAdded?: boolean;
+  measurement?: MeasurementSemantics | null;
+  zeroLoadMeaning?: ZeroLoadMeaning | null;
   replacement?: PostSessionReviewReplacementEvidence;
   sets: PostSessionReviewSetEvidence[];
 };

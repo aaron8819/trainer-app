@@ -229,7 +229,10 @@ function classifyPrescriptionReadout(
     return "recent_history";
   }
 
-  if (readout.loadSource === "bodyweight") {
+  if (
+    readout.loadSource === "bodyweight" ||
+    readout.loadSource === "machine_default"
+  ) {
     return readout.confidence === "low" ? "missing" : "exact_history";
   }
 

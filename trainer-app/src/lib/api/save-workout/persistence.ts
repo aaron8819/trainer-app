@@ -6,8 +6,11 @@ import {
 } from "@/lib/stimulus-accounting/snapshot";
 import type { SessionDecisionStimulusAccounting } from "@/lib/evidence/types";
 import {
-  measurementColumns,
+  frozenMeasurementColumns,
+  isMeasurementAwareAcceptedVersion,
+  parseZeroLoadMeaningColumn,
   type MeasurementSemantics,
+  type ZeroLoadMeaning,
 } from "@/lib/exercise-measurement/semantics";
 import { normalizeAcceptedSeedPayload } from "@/lib/api/mesocycle-seed-revision";
 
@@ -46,12 +49,13 @@ export type PersistedSaveWorkoutExercise = {
 export type PreparedWorkoutExercise = SaveWorkoutExerciseInput & {
   movementPatterns: MovementPatternV2[];
   stimulusAccountingSnapshot: ExerciseStimulusSnapshot;
+  zeroLoadMeaning: ZeroLoadMeaning | null;
 };
 
 function stripMeasurementSnapshot(
   exercise: PreparedWorkoutExercise,
 ): PreparedWorkoutExercise {
-  const legacyExercise = { ...exercise };
+  const legacyExercise = { ...exercise, zeroLoadMeaning: null };
   delete legacyExercise.measurement;
   return legacyExercise;
 }
@@ -72,7 +76,7 @@ export async function applyAcceptedMeasurementSnapshots(
   });
   if (!revision) throw new Error("WORKOUT_SEED_REVISION_MISSING");
   const normalized = normalizeAcceptedSeedPayload(revision.seedPayload);
-  if (normalized.payloadVersion !== 3 && normalized.payloadVersion !== 4) {
+  if (!isMeasurementAwareAcceptedVersion(normalized.payloadVersion)) {
     return input.exercises.map(stripMeasurementSnapshot);
   }
 
@@ -145,6 +149,7 @@ export async function prepareWorkoutExercisesForPersistence(
 
     prepared.push({
       ...exercise,
+      zeroLoadMeaning: parseZeroLoadMeaningColumn(exerciseRecord),
       movementPatterns: exerciseRecord.movementPatterns,
       stimulusAccountingSnapshot: buildExerciseStimulusSnapshot(
         {
@@ -272,7 +277,10 @@ export async function rewriteWorkoutExercises(
         movementPatterns: exercise.movementPatterns,
         stimulusAccountingSnapshot:
           exercise.stimulusAccountingSnapshot as unknown as Prisma.InputJsonValue,
-        ...measurementColumns(exercise.measurement ?? null),
+        ...frozenMeasurementColumns({
+          measurement: exercise.measurement ?? null,
+          zeroLoadMeaning: exercise.zeroLoadMeaning,
+        }),
         sets: {
           create: exercise.sets.map((set) => ({
             setIndex: set.setIndex,

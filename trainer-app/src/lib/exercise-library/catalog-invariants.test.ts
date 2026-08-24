@@ -378,6 +378,16 @@ describe("exercise catalog invariants", () => {
       }),
     ).not.toThrow();
 
+    expect(
+      catalog.exercises
+        .filter((exercise) => exercise.zeroLoadMeaning != null)
+        .map((exercise) => [exercise.catalogKey, exercise.zeroLoadMeaning])
+        .sort(([left], [right]) => left.localeCompare(right)),
+    ).toEqual([
+      ["bulgarian-split-squat", "BODYWEIGHT_NO_ADDED_LOAD"],
+      ["hack-squat", "MACHINE_DEFAULT_NO_ADDED_LOAD"],
+    ]);
+
     const exact = exerciseAliases.find(
       (alias) => alias.alias === "Decline Barbell Bench",
     );

@@ -10,6 +10,11 @@ import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import type {
   StallDetectionExercise,
 } from "@/lib/engine/readiness/stall-intervention";
+import { isPositiveLoadProgressionEligible } from "@/lib/exercise-measurement/load-entry-policy";
+import {
+  parseMeasurementColumns,
+  parseZeroLoadMeaningColumn,
+} from "@/lib/exercise-measurement/semantics";
 
 export async function GET() {
   // Get user from database (matches existing codebase pattern)
@@ -53,7 +58,16 @@ export async function GET() {
       sets: we.sets
         .filter((set) => {
           const log = set.logs[0];
-          return log && log.actualLoad !== null && log.actualLoad !== undefined;
+          return (
+            log != null &&
+            isPositiveLoadProgressionEligible(
+              {
+                measurement: parseMeasurementColumns(we),
+                zeroLoadMeaning: parseZeroLoadMeaningColumn(we),
+              },
+              log.actualLoad,
+            )
+          );
         })
         .map((set) => {
           const log = set.logs[0]!; // Safe because we filtered above

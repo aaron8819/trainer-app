@@ -40,7 +40,7 @@ export async function detectPRsFromWorkout(
         workoutExercise: { workoutId },
       },
       wasSkipped: false,
-      actualLoad: { not: null },
+      actualLoad: { gt: 0 },
     },
     include: {
       workoutSet: {
@@ -55,14 +55,10 @@ export async function detectPRsFromWorkout(
     },
   });
 
-  if (currentSets.length === 0) {
-    return { prsDetected: 0, updates: [], repsPRs: [] };
-  }
-
   // Group current sets by exercise, find top set weight per exercise
   const currentTopByExercise = new Map<string, { name: string; topLoad: number }>();
   for (const log of currentSets) {
-    if (log.actualLoad == null) continue;
+    if (log.actualLoad == null || log.actualLoad <= 0) continue;
     const exerciseId = log.workoutSet.workoutExercise.exerciseId;
     const exerciseName = log.workoutSet.workoutExercise.exercise.name;
     const existing = currentTopByExercise.get(exerciseId);
@@ -72,9 +68,6 @@ export async function detectPRsFromWorkout(
   }
 
   const exerciseIds = [...currentTopByExercise.keys()];
-  if (exerciseIds.length === 0) {
-    return { prsDetected: 0, updates: [], repsPRs: [] };
-  }
 
   // For each exercise, find historical max weight from OTHER completed workouts
   const historicalMaxByExercise = new Map<string, number | null>();
@@ -94,7 +87,7 @@ export async function detectPRsFromWorkout(
             },
           },
           wasSkipped: false,
-          actualLoad: { not: null },
+          actualLoad: { gt: 0 },
         },
       });
       historicalMaxByExercise.set(exerciseId, result._max.actualLoad ?? null);
@@ -115,10 +108,15 @@ export async function detectPRsFromWorkout(
     }
   }
 
-  // T9: Track reps PRs for bodyweight exercises (sets with no load)
+  // Track reps PRs only for rows with an explicit frozen bodyweight profile.
   const bodyweightSets = await tx.setLog.findMany({
     where: {
-      workoutSet: { workoutExercise: { workoutId } },
+      workoutSet: {
+        workoutExercise: {
+          workoutId,
+          measurementProfile: "REPS_BODYWEIGHT",
+        },
+      },
       wasSkipped: false,
       actualLoad: null,
       actualReps: { not: null },
@@ -157,6 +155,7 @@ export async function detectPRsFromWorkout(
             workoutSet: {
               workoutExercise: {
                 exerciseId,
+                measurementProfile: "REPS_BODYWEIGHT",
                 workout: { userId, status: "COMPLETED", id: { not: workoutId } },
               },
             },

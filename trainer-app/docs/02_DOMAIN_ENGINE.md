@@ -1,5 +1,9 @@
 # 02 Domain Engine
 
+## Frozen zero-load semantics
+
+`zeroLoadMeaning` is a nullable canonical logging capability. `BODYWEIGHT_NO_ADDED_LOAD` means explicit zero is bodyweight with no added load; `MACHINE_DEFAULT_NO_ADDED_LOAD` means explicit zero is the machine default or no added load and does not imply calibrated resistance. The capability affects explicit zero only. A capability is interpreted only with its compatible frozen measurement tuple; malformed measurement-null snapshots remain legacy-neutral. Measurement-aware ordinary generation combines the accepted measurement tuple with the compatible current catalog capability for proposal and preview semantics, while accepted seed serialization, hashing, and replay identity remain unchanged. Non-positive load is not load-PR or load-stall evidence, while true reps-only scoring is selected from the frozen measurement profile. Positive-load comparison continues to use the existing exact-exercise measurement tuple, so it does not split historical cohorts. Blank remains distinct from zero.
+
 ## Phase 1 Finisher policy
 
 `src/lib/engine/finisher-domain.ts` owns two pure policies:

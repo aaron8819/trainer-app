@@ -87,6 +87,7 @@ vi.mock("@/lib/api/workout-context", () => ({
 }));
 
 import { POST } from "./route";
+import { buildRevisedFourDayPlanAcceptedSeed } from "@/lib/engine/hypertrophy-plan-authoring-v4-revised.fixture";
 
 function acceptedV3Seed() {
   const measurement = {
@@ -447,7 +448,10 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       new Request("http://localhost/api/workouts/workout-1/add-exercise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ exerciseId: "fly", expectedRevision: 1 }),
+        body: JSON.stringify({
+          exerciseId: "fly",
+          expectedRevision: 1,
+        }),
       }),
       { params: Promise.resolve({ id: "workout-1" }) }
     );
@@ -500,7 +504,10 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       new Request("http://localhost/api/workouts/workout-1/add-exercise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ exerciseId: "fly", expectedRevision: 1 }),
+        body: JSON.stringify({
+          exerciseId: "fly",
+          expectedRevision: 1,
+        }),
       }),
       { params: Promise.resolve({ id: "workout-1" }) }
     );
@@ -636,7 +643,11 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       new Request("http://localhost/api/workouts/workout-1/add-exercise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ exerciseId: "fly", expectedRevision: 1 }),
+        body: JSON.stringify({
+          exerciseId: "fly",
+          expectedRevision: 1,
+          zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
+        }),
       }),
       { params: Promise.resolve({ id: "workout-1" }) }
     );
@@ -654,6 +665,7 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
         measurementProfile: null,
         loadConvention: null,
         repBasis: null,
+        zeroLoadMeaning: null,
         stimulusAccountingSnapshot: expect.objectContaining({
           version: 1,
           sourceExerciseId: "fly",
@@ -761,10 +773,14 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       seedRevision: { seedPayload: acceptedV3Seed() },
       exercises: [],
     });
-    mocks.txExerciseFindUnique.mockResolvedValueOnce(measurementColumns);
+    mocks.txExerciseFindUnique.mockResolvedValueOnce({
+      ...measurementColumns,
+      zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD",
+    });
     mocks.txWorkoutExerciseCreate.mockResolvedValueOnce({
       id: "we-v3",
       ...measurementColumns,
+      zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD",
       sets: [
         {
           id: "set-v3",
@@ -793,6 +809,7 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           ...measurementColumns,
+          zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD",
           sets: {
             create: expect.arrayContaining([
               expect.not.objectContaining({ targetLoad: expect.anything() }),
@@ -803,6 +820,7 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
     );
     await expect(response.json()).resolves.toMatchObject({
       exercise: {
+        zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD",
         measurement: {
           profile: "REPS_EXTERNAL_LOAD",
           loadConvention: "MACHINE_DISPLAYED",
@@ -810,6 +828,108 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
         },
       },
     });
+  });
+
+  it.each([
+    [
+      "Bulgarian Split Squat",
+      {
+        measurementProfile: "REPS_EXTERNAL_LOAD" as const,
+        loadConvention: "IMPLEMENT_WEIGHT" as const,
+        repBasis: "PER_SIDE" as const,
+        zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD" as const,
+      },
+    ],
+    [
+      "Hack Squat",
+      {
+        measurementProfile: "REPS_EXTERNAL_LOAD" as const,
+        loadConvention: "MACHINE_DISPLAYED" as const,
+        repBasis: "TOTAL" as const,
+        zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD" as const,
+      },
+    ],
+  ])("freezes the accepted V4 %s tuple during add commit", async (name, frozen) => {
+    const seedPayload = buildRevisedFourDayPlanAcceptedSeed();
+    mocks.workoutFindFirst.mockResolvedValueOnce({
+      id: "workout-1",
+      status: "PLANNED",
+      mesocycleId: null,
+      mesocycle: null,
+      seedRevision: { seedPayload },
+    });
+    mocks.exerciseFindUnique.mockResolvedValueOnce({
+      id: "replacement",
+      name,
+      repRangeMin: 8,
+      repRangeMax: 12,
+      fatigueCost: 2,
+      isCompound: false,
+      exerciseEquipment: [{ equipment: { type: "MACHINE" } }],
+      exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Quads" } }],
+      aliases: [],
+      ...frozen,
+    });
+    mocks.txWorkoutFindUnique.mockResolvedValueOnce({
+      selectionMetadata: buildWorkoutSelectionMetadata(),
+      selectionMode: "INTENT",
+      sessionIntent: "LOWER",
+      status: "PLANNED",
+      mesocycleId: null,
+      mesocycle: null,
+      seedRevision: { seedPayload },
+      exercises: [],
+    });
+    mocks.txExerciseFindUnique.mockResolvedValueOnce(frozen);
+    mocks.txWorkoutExerciseCreate.mockResolvedValueOnce({
+      id: "we-v4",
+      ...frozen,
+      sets: [
+        {
+          id: "set-v4",
+          setIndex: 1,
+          targetReps: 10,
+          targetRepMin: 8,
+          targetRepMax: 12,
+          targetLoad: null,
+          targetRpe: 6.5,
+          restSeconds: 120,
+        },
+      ],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/workout-1/add-exercise", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ exerciseId: "replacement", expectedRevision: 1 }),
+      }),
+      { params: Promise.resolve({ id: "workout-1" }) }
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.txWorkoutExerciseCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining(frozen) })
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      exercise: {
+        measurement: {
+          profile: frozen.measurementProfile,
+          loadConvention: frozen.loadConvention,
+          repBasis: frozen.repBasis,
+        },
+        zeroLoadMeaning: frozen.zeroLoadMeaning,
+        sets: expect.arrayContaining([expect.objectContaining({ targetLoad: null })]),
+      },
+    });
+    expect(mocks.txWorkoutUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({
+          currentSeedRevisionId: expect.anything(),
+          slotPlanSeedJson: expect.anything(),
+        }),
+      })
+    );
   });
 
   it("returns 409 without mutation when classification disappears before V3 add commit", async () => {

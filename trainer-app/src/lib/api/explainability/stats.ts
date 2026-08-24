@@ -3,6 +3,12 @@ import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
 export const SECONDARY_VOLUME_MULTIPLIER = 0.3;
 export const MRV_WARNING_THRESHOLD = 0.9;
 
+export type PRPotentialEvidence = {
+  maxLoad: number | null;
+  maxReps: number | null;
+  repsOnlyEvidence?: boolean;
+};
+
 export function computeVolumeSpikePercent(currentEffectiveSets: number, baselineEffectiveSets: number[]): number | undefined {
   if (!Number.isFinite(currentEffectiveSets) || baselineEffectiveSets.length === 0) {
     return undefined;
@@ -33,8 +39,8 @@ export function computeMusclesApproachingMRV(
 }
 
 export function hasPRPotential(
-  plannedByExercise: Map<string, { maxLoad: number | null; maxReps: number | null }>,
-  historyMaxByExercise: Map<string, { maxLoad: number | null; maxReps: number | null }>
+  plannedByExercise: Map<string, PRPotentialEvidence>,
+  historyMaxByExercise: Map<string, PRPotentialEvidence>
 ): boolean {
   for (const [exerciseId, planned] of plannedByExercise.entries()) {
     const historical = historyMaxByExercise.get(exerciseId);
@@ -44,13 +50,18 @@ export function hasPRPotential(
 
     if (
       planned.maxLoad != null &&
+      Number.isFinite(planned.maxLoad) &&
+      planned.maxLoad > 0 &&
       historical.maxLoad != null &&
+      Number.isFinite(historical.maxLoad) &&
+      historical.maxLoad > 0 &&
       planned.maxLoad >= historical.maxLoad * 0.97
     ) {
       return true;
     }
     if (
-      planned.maxLoad == null &&
+      planned.repsOnlyEvidence === true &&
+      historical.repsOnlyEvidence === true &&
       planned.maxReps != null &&
       historical.maxReps != null &&
       planned.maxReps > historical.maxReps

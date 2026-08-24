@@ -43,6 +43,7 @@ export type LogExerciseInput = {
   equipment?: string[];
   loadIncrement?: number;
   measurement?: import("@/lib/exercise-measurement/semantics").MeasurementSemantics;
+  zeroLoadMeaning?: import("@/lib/exercise-measurement/semantics").ZeroLoadMeaning | null;
   movementPatterns?: string[];
   muscleTags?: string[];
   muscleTagGroups?: LogExerciseMuscleTagGroups;
@@ -140,6 +141,8 @@ export type CompletedWorkoutExerciseSummary = {
   sourceExerciseId?: string;
   name: string;
   equipment?: string[];
+  measurement?: import("@/lib/exercise-measurement/semantics").MeasurementSemantics;
+  zeroLoadMeaning?: import("@/lib/exercise-measurement/semantics").ZeroLoadMeaning | null;
   isSwapped?: boolean;
   isRuntimeAdded?: boolean;
   isMainLift: boolean;

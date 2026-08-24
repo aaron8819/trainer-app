@@ -8,7 +8,11 @@ import {
   STIMULUS_BIAS_VALUES,
 } from "@/lib/engine/types";
 import { MUSCLE_POLICY_BY_ID } from "@/lib/engine/muscle-policy";
-import { parseMeasurementColumns } from "@/lib/exercise-measurement/semantics";
+import {
+  parseMeasurementColumns,
+  parseZeroLoadMeaningColumn,
+  type ZeroLoadMeaning,
+} from "@/lib/exercise-measurement/semantics";
 import {
   MEASUREMENT_SUPPORT_MANIFEST,
   type CompleteSupportedMeasurementEntry,
@@ -54,6 +58,7 @@ export type CatalogExerciseDefinition = {
   measurementProfile?: string | null;
   loadConvention?: string | null;
   repBasis?: string | null;
+  zeroLoadMeaning?: ZeroLoadMeaning | null;
 };
 
 export type CanonicalCatalogExerciseDefinition = CatalogExerciseDefinition & {
@@ -80,6 +85,10 @@ const MUSCLES = new Set<string>(
 );
 const EXPECTED_CANONICAL_COUNT = 150;
 const EXPECTED_MANAGED_ALIAS_COUNT = 54;
+const EXPECTED_ZERO_LOAD_MEANING_BY_KEY = new Map<string, ZeroLoadMeaning>([
+  ["bulgarian-split-squat", "BODYWEIGHT_NO_ADDED_LOAD"],
+  ["hack-squat", "MACHINE_DEFAULT_NO_ADDED_LOAD"],
+] as const);
 const EXPECTED_CATALOG_KEYS = new Set<string>(
   EXPECTED_CATALOG_KEY_MEMBERSHIP_V1,
 );
@@ -422,6 +431,20 @@ export function validateCatalogInvariants(input: {
     } catch {
       measurementIsValid = false;
       errors.push(`CATALOG_MEASUREMENT_INVALID:${exercise.name}`);
+    }
+
+    let zeroLoadMeaning: string | null = null;
+    try {
+      zeroLoadMeaning = parseZeroLoadMeaningColumn(exercise);
+    } catch {
+      errors.push(`CATALOG_ZERO_LOAD_MEANING_INVALID:${exercise.name}`);
+    }
+    const expectedZeroLoadMeaning =
+      EXPECTED_ZERO_LOAD_MEANING_BY_KEY.get(exercise.catalogKey ?? "") ?? null;
+    if (zeroLoadMeaning !== expectedZeroLoadMeaning) {
+      errors.push(
+        `CATALOG_ZERO_LOAD_MEANING_MISMATCH:${exercise.name}:expected:${expectedZeroLoadMeaning}:actual:${zeroLoadMeaning}`,
+      );
     }
 
     const completeEntry = COMPLETE_MEASUREMENT_BY_NAME.get(exercise.name);

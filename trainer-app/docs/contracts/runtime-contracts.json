@@ -13,6 +13,7 @@
   "MeasurementProfile": ["REPS_EXTERNAL_LOAD", "REPS_BODYWEIGHT", "REPS_BODYWEIGHT_PLUS_LOAD", "REPS_ASSISTED"],
   "LoadConvention": ["BARBELL_TOTAL", "IMPLEMENT_WEIGHT", "MACHINE_DISPLAYED", "ADDED_EXTERNAL_LOAD", "DISPLAYED_ASSISTANCE"],
   "RepBasis": ["TOTAL", "PER_SIDE"],
+  "ZeroLoadMeaning": ["BODYWEIGHT_NO_ADDED_LOAD", "MACHINE_DEFAULT_NO_ADDED_LOAD"],
   "workoutPhasePlacement": ["POST_WORKOUT"],
   "workoutPhaseKind": ["FINISHER"],
   "workoutPhaseProtocol": ["TIMED_INTERVALS"],

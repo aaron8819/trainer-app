@@ -234,6 +234,57 @@ describe("BonusExerciseSheet", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("formats semantic-zero load hints from the runtime preview snapshot", async () => {
+    const fetchMock = createFetchMock();
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const parsedUrl = new URL(String(input), "http://localhost");
+      if (parsedUrl.pathname !== "/api/workouts/workout-1/add-exercise-preview") {
+        return createFetchMock()(input, init);
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          previews: [
+            {
+              exerciseId: "fly",
+              exerciseName: "Bulgarian Split Squat",
+              equipment: ["DUMBBELL"],
+              section: "ACCESSORY",
+              isMainLift: false,
+              setCount: 2,
+              targetReps: 10,
+              targetRepRange: { min: 8, max: 12 },
+              targetLoad: 0,
+              targetRpe: 7,
+              restSeconds: 90,
+              prescriptionSource: "session_accessory_defaults",
+              measurement: {
+                profile: "REPS_EXTERNAL_LOAD",
+                loadConvention: "IMPLEMENT_WEIGHT",
+                repBasis: "PER_SIDE",
+              },
+              zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
+            },
+          ],
+        }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <BonusExerciseSheet
+        isOpen
+        onClose={vi.fn()}
+        workoutId="workout-1"
+        expectedRevision={1}
+        onRevision={vi.fn()}
+        onAdd={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByText(/Load hint Bodyweight/)).toBeInTheDocument();
+  });
+
   it("uses mobile-safe search input sizing and tap targets", async () => {
     const fetchMock = createFetchMock();
     vi.stubGlobal("fetch", fetchMock);

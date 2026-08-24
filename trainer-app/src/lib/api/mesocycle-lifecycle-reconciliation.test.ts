@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/db/prisma", () => ({ prisma: {} }));
 
-import { deriveReconciledMesocycleLifecycle } from "./mesocycle-lifecycle-reconciliation";
+import {
+  assessClosedHandoffDeletionInTransaction,
+  deriveReconciledMesocycleLifecycle,
+} from "./mesocycle-lifecycle-reconciliation";
 
 const slotSequenceJson = {
   version: 1,
@@ -23,17 +26,64 @@ function workout(input: {
   id?: string;
   advancesSplit?: boolean;
 }) {
+  const phase = input.week === 5 ? "DELOAD" : "ACCUMULATION";
+  const intent = input.session === 1 || input.session === 3 ? "UPPER" : "LOWER";
+  const slotIds = ["upper_a", "lower_a", "upper_b", "lower_b"];
   return {
     id: input.id ?? `workout-${input.week}-${input.session}`,
     status: input.status ?? "COMPLETED",
     mesocycleId: "meso-1",
     mesocycleWeekSnapshot: input.week,
-    mesocyclePhaseSnapshot: input.week === 5 ? "DELOAD" : "ACCUMULATION",
+    mesocyclePhaseSnapshot: phase,
     mesoSessionSnapshot: input.session,
     advancesSplit: input.advancesSplit ?? true,
     selectionMode: "INTENT",
-    sessionIntent: input.session === 1 || input.session === 3 ? "UPPER" : "LOWER",
-    selectionMetadata: null,
+    sessionIntent: intent,
+    selectionMetadata: {
+      sessionDecisionReceipt: {
+        version: 2,
+        cycleContext: {
+          weekInMeso: input.week,
+          weekInBlock: input.week,
+          mesocycleLength: 5,
+          phase: phase.toLowerCase(),
+          blockType: phase.toLowerCase(),
+          isDeload: phase === "DELOAD",
+          source: "computed",
+        },
+        sessionProvenance: {
+          mesocycleId: "meso-1",
+          compositionSource: "runtime_selection",
+        },
+        sessionSlot: {
+          slotId: slotIds[input.session - 1],
+          intent: intent.toLowerCase(),
+          sequenceIndex: input.session - 1,
+          sequenceLength: 4,
+          source: "mesocycle_slot_sequence",
+        },
+        lifecycleVolume: { source: "unknown" },
+        sorenessSuppressedMuscles: [],
+        deloadDecision: {
+          mode: phase === "DELOAD" ? "scheduled" : "none",
+          reason: [],
+          reductionPercent: 0,
+          appliedTo: "none",
+        },
+        readiness: {
+          wasAutoregulated: false,
+          signalAgeHours: null,
+          fatigueScoreOverall: null,
+          intensityScaling: {
+            applied: false,
+            exerciseIds: [],
+            scaledUpCount: 0,
+            scaledDownCount: 0,
+          },
+        },
+        exceptions: [],
+      },
+    },
   };
 }
 
@@ -56,6 +106,9 @@ const mesocycle = {
   durationWeeks: 5,
   sessionsPerWeek: 4,
   state: "AWAITING_HANDOFF" as const,
+  completedSessions: 20,
+  accumulationSessionsCompleted: 16,
+  deloadSessionsCompleted: 4,
   slotSequenceJson,
   currentSeedRevision: {
     seedPayload: { version: 2, source: "legacy_accepted_seed" },
@@ -63,6 +116,35 @@ const mesocycle = {
 };
 
 describe("legacy mesocycle lifecycle deletion reconciliation", () => {
+  it("rejects closed deletion when a strict obligation becomes unresolved", async () => {
+    const workouts = completeSchedule();
+    workouts.pop();
+
+    await expect(
+      assessClosedHandoffDeletionInTransaction(
+        txWithWorkouts(workouts),
+        mesocycle,
+      ),
+    ).resolves.toEqual({
+      safe: false,
+      reason: "authored_obligation_unresolved",
+    });
+  });
+
+  it("rejects closed deletion when remaining strict identity is ambiguous", async () => {
+    const workouts = completeSchedule();
+    workouts.push(
+      workout({ week: 5, session: 4, status: "SKIPPED", id: "duplicate-final" }),
+    );
+
+    await expect(
+      assessClosedHandoffDeletionInTransaction(
+        txWithWorkouts(workouts),
+        mesocycle,
+      ),
+    ).resolves.toEqual({ safe: false, reason: "strict_identity_blocked" });
+  });
+
   it("keeps handoff closed after deleting an out-of-schedule row and preserves completion-only counters", async () => {
     const workouts = completeSchedule();
     workouts[19].status = "SKIPPED";
@@ -71,7 +153,7 @@ describe("legacy mesocycle lifecycle deletion reconciliation", () => {
       workout({
         week: 5,
         session: 4,
-        status: "PLANNED",
+        status: "COMPLETED",
         id: "optional-row",
         advancesSplit: false,
       }),
@@ -116,7 +198,7 @@ describe("legacy mesocycle lifecycle deletion reconciliation", () => {
     });
   });
 
-  it("fails closed on duplicate authored claims while still recomputing completion-only counters", async () => {
+  it("fails closed on duplicate authored claims without changing strict counters", async () => {
     const workouts = completeSchedule();
     workouts.push(
       workout({ week: 5, session: 4, status: "SKIPPED", id: "duplicate-final" }),
@@ -124,13 +206,35 @@ describe("legacy mesocycle lifecycle deletion reconciliation", () => {
 
     await expect(
       deriveReconciledMesocycleLifecycle(txWithWorkouts(workouts), {
-        ...mesocycle,
-        state: "ACTIVE_DELOAD",
+      ...mesocycle,
+      state: "ACTIVE_DELOAD",
+      completedSessions: 19,
+      deloadSessionsCompleted: 3,
       }),
     ).resolves.toEqual({
-      completedSessions: 20,
+      completedSessions: 19,
       accumulationSessionsCompleted: 16,
-      deloadSessionsCompleted: 4,
+      deloadSessionsCompleted: 3,
+      state: "ACTIVE_DELOAD",
+    });
+  });
+
+  it("keeps absent-topology fallback explicitly counter-based for historical compatibility", async () => {
+    const workouts = completeSchedule();
+    workouts[19].status = "SKIPPED";
+
+    await expect(
+      deriveReconciledMesocycleLifecycle(txWithWorkouts(workouts), {
+        ...mesocycle,
+        state: "ACTIVE_DELOAD",
+        completedSessions: 19,
+        deloadSessionsCompleted: 3,
+        slotSequenceJson: null,
+      }),
+    ).resolves.toEqual({
+      completedSessions: 19,
+      accumulationSessionsCompleted: 16,
+      deloadSessionsCompleted: 3,
       state: "ACTIVE_DELOAD",
     });
   });

@@ -125,12 +125,13 @@ export type LegacyAuthoredObligation = {
   intent: string;
 };
 
-export type LegacyAuthoredScheduleResolution =
+export type StrictFrozenLegacyAuthoredScheduleResolution =
   | { status: "not_legacy" }
   | { status: "unavailable"; reason: string }
   | { status: "blocked"; reason: string }
   | {
       status: "available";
+      evidenceMode: "STRICT_FROZEN_TOPOLOGY";
       expectedObligationCount: number;
       resolvedObligationCount: number;
       performedCompletionCount: number;
@@ -249,10 +250,10 @@ function isExplicitLegacyNonAdvancingWorkout(
   );
 }
 
-export function resolveLegacyAuthoredScheduleLifecycle(input: {
+export function resolveStrictFrozenLegacyAuthoredScheduleLifecycle(input: {
   mesocycle: LegacyAuthoredScheduleMesocycle;
   workouts: readonly LegacyAuthoredScheduleWorkout[];
-}): LegacyAuthoredScheduleResolution {
+}): StrictFrozenLegacyAuthoredScheduleResolution {
   if (isV4SeedPayload(input.mesocycle.currentSeedRevision?.seedPayload)) {
     return { status: "not_legacy" };
   }
@@ -281,7 +282,7 @@ export function resolveLegacyAuthoredScheduleLifecycle(input: {
   );
   const claimsByKey = new Map<
     string,
-    Extract<LegacyAuthoredScheduleResolution, { status: "available" }>["claims"][number]
+    Extract<StrictFrozenLegacyAuthoredScheduleResolution, { status: "available" }>["claims"][number]
   >();
 
   for (const workout of input.workouts) {
@@ -326,24 +327,52 @@ export function resolveLegacyAuthoredScheduleLifecycle(input: {
       continue;
     }
 
-    if (
-      workout.mesocycleWeekSnapshot != null &&
-      receiptWeek != null &&
-      workout.mesocycleWeekSnapshot !== receiptWeek
-    ) {
-      return { status: "blocked", reason: `legacy_week_identity_conflict:${workout.id}` };
+    if (!hasRawReceipt || !receipt) {
+      return {
+        status: "blocked",
+        reason: hasRawReceipt
+          ? `strict_frozen_receipt_invalid:${workout.id}`
+          : `strict_frozen_receipt_missing:${workout.id}`,
+      };
+    }
+    if (!receiptSlot) {
+      return {
+        status: "blocked",
+        reason: `strict_frozen_session_slot_missing:${workout.id}`,
+      };
+    }
+    if (receiptSlot.source !== "mesocycle_slot_sequence") {
+      return {
+        status: "blocked",
+        reason: `strict_frozen_slot_source_non_authoritative:${workout.id}`,
+      };
     }
     if (
-      workout.mesoSessionSnapshot != null &&
-      receiptSession != null &&
-      workout.mesoSessionSnapshot !== receiptSession
+      receipt.sessionProvenance?.mesocycleId !== input.mesocycle.id ||
+      (receipt.sessionProvenance.compositionSource !== "runtime_selection" &&
+        receipt.sessionProvenance.compositionSource !== "persisted_slot_plan_seed" &&
+        receipt.sessionProvenance.compositionSource !== "deload_seed_replay")
     ) {
+      return {
+        status: "blocked",
+        reason: `strict_frozen_mesocycle_provenance_invalid:${workout.id}`,
+      };
+    }
+    if (!snapshotHasCoordinates) {
+      return {
+        status: "blocked",
+        reason: `strict_frozen_workout_coordinates_missing:${workout.id}`,
+      };
+    }
+    if (workout.mesocycleWeekSnapshot !== receiptWeek) {
+      return { status: "blocked", reason: `legacy_week_identity_conflict:${workout.id}` };
+    }
+    if (workout.mesoSessionSnapshot !== receiptSession) {
       return { status: "blocked", reason: `legacy_session_identity_conflict:${workout.id}` };
     }
 
-    const weekInMeso = workout.mesocycleWeekSnapshot ?? receiptWeek ?? null;
-    const sessionInWeek = workout.mesoSessionSnapshot ?? receiptSession ?? null;
-    if (weekInMeso == null && sessionInWeek == null) continue;
+    const weekInMeso = workout.mesocycleWeekSnapshot;
+    const sessionInWeek = workout.mesoSessionSnapshot;
 
     const weekInRange =
       Number.isInteger(weekInMeso) &&
@@ -363,19 +392,7 @@ export function resolveLegacyAuthoredScheduleLifecycle(input: {
       continue;
     }
 
-    if (hasRawReceipt && !receipt) {
-      return { status: "blocked", reason: `legacy_receipt_invalid:${workout.id}` };
-    }
-    if (
-      receipt?.sessionProvenance?.mesocycleId != null &&
-      receipt.sessionProvenance.mesocycleId !== input.mesocycle.id
-    ) {
-      return { status: "blocked", reason: `legacy_receipt_mesocycle_conflict:${workout.id}` };
-    }
-    if (
-      receipt?.cycleContext.mesocycleLength != null &&
-      receipt.cycleContext.mesocycleLength !== input.mesocycle.durationWeeks
-    ) {
+    if (receipt.cycleContext.mesocycleLength !== input.mesocycle.durationWeeks) {
       return { status: "blocked", reason: `legacy_receipt_length_conflict:${workout.id}` };
     }
 
@@ -394,10 +411,27 @@ export function resolveLegacyAuthoredScheduleLifecycle(input: {
       return { status: "blocked", reason: `legacy_phase_identity_conflict:${workout.id}` };
     }
     if (
-      typeof receipt?.cycleContext.phase === "string" &&
+      typeof receipt.cycleContext.phase === "string" &&
       receipt.cycleContext.phase.trim().toUpperCase() !== expectedPhase
     ) {
       return { status: "blocked", reason: `legacy_receipt_phase_conflict:${workout.id}` };
+    }
+    if (receipt.cycleContext.isDeload !== (expectedPhase === "DELOAD")) {
+      return { status: "blocked", reason: `legacy_receipt_phase_conflict:${workout.id}` };
+    }
+    const compositionSource = receipt.sessionProvenance.compositionSource;
+    if (
+      (expectedPhase === "DELOAD" &&
+        compositionSource !== "deload_seed_replay" &&
+        compositionSource !== "runtime_selection") ||
+      (expectedPhase === "ACCUMULATION" &&
+        compositionSource !== "persisted_slot_plan_seed" &&
+        compositionSource !== "runtime_selection")
+    ) {
+      return {
+        status: "blocked",
+        reason: `strict_frozen_composition_source_conflict:${workout.id}`,
+      };
     }
     if (
       typeof workout.sessionIntent !== "string" ||
@@ -406,12 +440,10 @@ export function resolveLegacyAuthoredScheduleLifecycle(input: {
       return { status: "blocked", reason: `legacy_intent_identity_conflict:${workout.id}` };
     }
     if (
-      receiptSlot &&
-      (receiptSlot.slotId !== obligation.slotId ||
+      receiptSlot.slotId !== obligation.slotId ||
         receiptSlot.sequenceIndex !== obligation.sessionInWeek - 1 ||
-        (receiptSlot.sequenceLength != null &&
-          receiptSlot.sequenceLength !== input.mesocycle.sessionsPerWeek) ||
-        normalizeLegacyIntent(receiptSlot.intent) !== obligation.intent)
+        receiptSlot.sequenceLength !== input.mesocycle.sessionsPerWeek ||
+        normalizeLegacyIntent(receiptSlot.intent) !== obligation.intent
     ) {
       return { status: "blocked", reason: `legacy_slot_identity_conflict:${workout.id}` };
     }
@@ -442,6 +474,7 @@ export function resolveLegacyAuthoredScheduleLifecycle(input: {
   const performedCompletionCount = claims.filter((claim) => claim.completed).length;
   return {
     status: "available",
+    evidenceMode: "STRICT_FROZEN_TOPOLOGY",
     expectedObligationCount: obligations.length,
     resolvedObligationCount,
     performedCompletionCount,
@@ -1076,7 +1109,7 @@ export async function transitionMesocycleStateInTransaction(
     return { mesocycle, advanced: false };
   }
 
-  const legacyResolution = resolveLegacyAuthoredScheduleLifecycle({
+  const legacyResolution = resolveStrictFrozenLegacyAuthoredScheduleLifecycle({
     mesocycle,
     workouts: await tx.workout.findMany({
       where: { mesocycleId: mesocycle.id },

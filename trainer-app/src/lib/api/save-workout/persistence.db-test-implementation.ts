@@ -9,6 +9,8 @@ import {
   rewriteWorkoutExercises,
 } from "./persistence";
 import { applyLegacyTerminalLifecycleSideEffects } from "./lifecycle";
+import { deriveReconciledMesocycleLifecycle } from "../mesocycle-lifecycle-reconciliation";
+import { deleteOwnedWorkout } from "../workout-deletion";
 
 export function registerPersistenceDatabaseTests(databaseUrl: string): void {
 describe("save-workout persistence CAS (PostgreSQL)", () => {
@@ -146,6 +148,11 @@ describe("save-workout persistence CAS (PostgreSQL)", () => {
     const workouts: Prisma.WorkoutCreateManyInput[] = [];
     for (let week = 1; week <= 5; week += 1) {
       for (let session = 1; session <= 4; session += 1) {
+        const phase = week === 5 ? "DELOAD" : "ACCUMULATION";
+        const intent = session === 1 || session === 3 ? "UPPER" : "LOWER";
+        const slotId = ["upper_a", "lower_a", "upper_b", "lower_b"][
+          session - 1
+        ];
         workouts.push({
           userId: ownerId,
           mesocycleId: mesocycle.id,
@@ -162,15 +169,56 @@ describe("save-workout persistence CAS (PostgreSQL)", () => {
               ? null
               : new Date(Date.UTC(2026, 6, week * 4 + session, 1)),
           selectionMode: "INTENT" as const,
-          sessionIntent:
-            session === 1 || session === 3
-              ? ("UPPER" as const)
-              : ("LOWER" as const),
+          sessionIntent: intent as "UPPER" | "LOWER",
           advancesSplit: true,
           mesocycleWeekSnapshot: week,
-          mesocyclePhaseSnapshot:
-            week === 5 ? ("DELOAD" as const) : ("ACCUMULATION" as const),
+          mesocyclePhaseSnapshot: phase as "DELOAD" | "ACCUMULATION",
           mesoSessionSnapshot: session,
+          selectionMetadata: {
+            sessionDecisionReceipt: {
+              version: 2,
+              cycleContext: {
+                weekInMeso: week,
+                weekInBlock: week,
+                mesocycleLength: 5,
+                phase: phase.toLowerCase(),
+                blockType: phase.toLowerCase(),
+                isDeload: phase === "DELOAD",
+                source: "computed",
+              },
+              sessionProvenance: {
+                mesocycleId: mesocycle.id,
+                compositionSource: "runtime_selection",
+              },
+              sessionSlot: {
+                slotId,
+                intent: intent.toLowerCase(),
+                sequenceIndex: session - 1,
+                sequenceLength: 4,
+                source: "mesocycle_slot_sequence",
+              },
+              lifecycleVolume: { source: "unknown" },
+              sorenessSuppressedMuscles: [],
+              deloadDecision: {
+                mode: phase === "DELOAD" ? "scheduled" : "none",
+                reason: [],
+                reductionPercent: 0,
+                appliedTo: "none",
+              },
+              readiness: {
+                wasAutoregulated: false,
+                signalAgeHours: null,
+                fatigueScoreOverall: null,
+                intensityScaling: {
+                  applied: false,
+                  exerciseIds: [],
+                  scaledUpCount: 0,
+                  scaledDownCount: 0,
+                },
+              },
+              exceptions: [],
+            },
+          },
         });
       }
     }
@@ -235,6 +283,7 @@ describe("save-workout persistence CAS (PostgreSQL)", () => {
       });
       await applyLegacyTerminalLifecycleSideEffects(tx, {
         userId: ownerId,
+        workoutId: input.workoutId,
         scheduledDate: new Date("2026-07-25T12:00:00.000Z"),
         resolvedMesocycleId: mesocycle.id,
         resolvedMesocycle: mesocycle,
@@ -343,6 +392,149 @@ describe("save-workout persistence CAS (PostgreSQL)", () => {
     await expect(
       prisma.mesocycle.findUniqueOrThrow({ where: { id: fixture.mesocycle.id } }),
     ).resolves.toMatchObject(frozenArtifacts);
+  });
+
+  it("rolls back deletion that would regress a closed legacy handoff", async () => {
+    const fixture = await createLegacyLifecycleFixture("closed-delete-rollback");
+    await saveLegacyTerminalStatus({
+      mesocycleId: fixture.mesocycle.id,
+      workoutId: fixture.finalWorkout.id,
+      expectedRevision: fixture.finalWorkout.revision,
+      finalStatus: "SKIPPED",
+    });
+    const before = await prisma.mesocycle.findUniqueOrThrow({
+      where: { id: fixture.mesocycle.id },
+    });
+    const finalWorkout = await prisma.workout.findUniqueOrThrow({
+      where: { id: fixture.finalWorkout.id },
+    });
+
+    await expect(
+      deleteOwnedWorkout({
+        workoutId: finalWorkout.id,
+        userId: ownerId,
+        expectedRevision: finalWorkout.revision,
+      }),
+    ).rejects.toMatchObject({
+      code: "WORKOUT_DELETE_CLOSED_LIFECYCLE_REGRESSION",
+    });
+
+    await expect(
+      prisma.workout.findUnique({ where: { id: finalWorkout.id } }),
+    ).resolves.toMatchObject({
+      id: finalWorkout.id,
+      status: "SKIPPED",
+      revision: finalWorkout.revision,
+    });
+    await expect(
+      prisma.mesocycle.findUniqueOrThrow({ where: { id: fixture.mesocycle.id } }),
+    ).resolves.toMatchObject({
+      state: "AWAITING_HANDOFF",
+      isActive: before.isActive,
+      closedAt: before.closedAt,
+      handoffSummaryJson: before.handoffSummaryJson,
+      nextSeedDraftJson: before.nextSeedDraftJson,
+      completedSessions: before.completedSessions,
+      accumulationSessionsCompleted: before.accumulationSessionsCompleted,
+      deloadSessionsCompleted: before.deloadSessionsCompleted,
+    });
+  });
+
+  it("allows closed-handoff deletion that does not regress lifecycle truth", async () => {
+    const fixture = await createLegacyLifecycleFixture("closed-delete-safe");
+    await saveLegacyTerminalStatus({
+      mesocycleId: fixture.mesocycle.id,
+      workoutId: fixture.finalWorkout.id,
+      expectedRevision: fixture.finalWorkout.revision,
+      finalStatus: "SKIPPED",
+    });
+    const before = await prisma.mesocycle.findUniqueOrThrow({
+      where: { id: fixture.mesocycle.id },
+    });
+    const stale = await prisma.workout.create({
+      data: {
+        userId: ownerId,
+        mesocycleId: fixture.mesocycle.id,
+        scheduledDate: new Date("2026-08-20T12:00:00.000Z"),
+        status: "COMPLETED",
+        completedAt: new Date("2026-08-20T13:00:00.000Z"),
+        selectionMode: "INTENT",
+        sessionIntent: "UPPER",
+        advancesSplit: true,
+        mesocycleWeekSnapshot: 6,
+        mesocyclePhaseSnapshot: "ACCUMULATION",
+        mesoSessionSnapshot: 1,
+      },
+    });
+
+    await expect(
+      deleteOwnedWorkout({
+        workoutId: stale.id,
+        userId: ownerId,
+        expectedRevision: stale.revision,
+      }),
+    ).resolves.toMatchObject({ result: { status: "deleted" } });
+
+    await expect(
+      prisma.workout.findUnique({ where: { id: stale.id } }),
+    ).resolves.toBeNull();
+    await expect(
+      prisma.mesocycle.findUniqueOrThrow({ where: { id: fixture.mesocycle.id } }),
+    ).resolves.toMatchObject({
+      state: "AWAITING_HANDOFF",
+      isActive: before.isActive,
+      closedAt: before.closedAt,
+      handoffSummaryJson: before.handoffSummaryJson,
+      nextSeedDraftJson: before.nextSeedDraftJson,
+      completedSessions: before.completedSessions,
+      accumulationSessionsCompleted: before.accumulationSessionsCompleted,
+      deloadSessionsCompleted: before.deloadSessionsCompleted,
+    });
+  });
+
+  it("keeps strict forward and reconciliation counters equivalent for stale evidence", async () => {
+    const fixture = await createLegacyLifecycleFixture("strict-counter-equivalence");
+    const stale = await prisma.workout.create({
+      data: {
+        userId: ownerId,
+        mesocycleId: fixture.mesocycle.id,
+        scheduledDate: new Date("2026-08-20T12:00:00.000Z"),
+        status: "PLANNED",
+        selectionMode: "INTENT",
+        sessionIntent: "UPPER",
+        advancesSplit: true,
+        mesocycleWeekSnapshot: 6,
+        mesocyclePhaseSnapshot: "ACCUMULATION",
+        mesoSessionSnapshot: 1,
+      },
+    });
+
+    await saveLegacyTerminalStatus({
+      mesocycleId: fixture.mesocycle.id,
+      workoutId: stale.id,
+      expectedRevision: stale.revision,
+      finalStatus: "COMPLETED",
+    });
+    const stored = await prisma.mesocycle.findUniqueOrThrow({
+      where: { id: fixture.mesocycle.id },
+      include: { currentSeedRevision: true },
+    });
+    const reconciled = await prisma.$transaction((tx) =>
+      deriveReconciledMesocycleLifecycle(tx, stored),
+    );
+
+    expect(stored).toMatchObject({
+      state: "ACTIVE_DELOAD",
+      completedSessions: 19,
+      accumulationSessionsCompleted: 16,
+      deloadSessionsCompleted: 3,
+    });
+    expect(reconciled).toEqual({
+      state: stored.state,
+      completedSessions: stored.completedSessions,
+      accumulationSessionsCompleted: stored.accumulationSessionsCompleted,
+      deloadSessionsCompleted: stored.deloadSessionsCompleted,
+    });
   });
 
   it("closes when a later completion resolves the final obligation after an earlier authored skip", async () => {

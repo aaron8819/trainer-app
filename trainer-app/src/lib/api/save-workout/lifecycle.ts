@@ -3,6 +3,7 @@ import { deriveCurrentMesocycleSession } from "@/lib/api/mesocycle-lifecycle-mat
 import {
   claimSelectedPlanForTransitionInTransaction,
   completeOrEnterHandoffInTransaction,
+  resolveStrictFrozenLegacyAuthoredScheduleLifecycle,
   resolveActivePlanContextInTransaction,
   transitionMesocycleStateInTransaction,
   type TerminalTransitionLockProof,
@@ -26,6 +27,7 @@ export type SaveRouteMesocycle = {
   id: string;
   state: SaveRouteMesocycleState;
   durationWeeks: number;
+  completedSessions?: number;
   accumulationSessionsCompleted: number;
   deloadSessionsCompleted: number;
   sessionsPerWeek: number;
@@ -175,6 +177,7 @@ const mesocycleSelect = {
   macroCycleId: true,
   state: true,
   durationWeeks: true,
+  completedSessions: true,
   accumulationSessionsCompleted: true,
   deloadSessionsCompleted: true,
   sessionsPerWeek: true,
@@ -436,17 +439,29 @@ export async function applyPerformedLifecycleSideEffects(
     resolvedMesocycle: SaveRouteMesocycle;
     mesoSnapshot?: SaveRouteMesoSnapshot;
     isOptionalGapFill: boolean;
+    authoritativeCounters?: {
+      completedSessions: number;
+      accumulationSessionsCompleted: number;
+      deloadSessionsCompleted: number;
+    };
   },
 ): Promise<WeekCloseResult | null> {
   await tx.mesocycle.update({
     where: { id: input.resolvedMesocycleId },
-    data: buildPerformedLifecycleCounterUpdate(input.resolvedMesocycle.state),
+    data:
+      input.authoritativeCounters ??
+      buildPerformedLifecycleCounterUpdate(input.resolvedMesocycle.state),
   });
 
   const boundaryProgression = deriveAccumulationBoundaryAfterPerformedSave({
     state: input.resolvedMesocycle.state,
     accumulationSessionsCompleted:
-      input.resolvedMesocycle.accumulationSessionsCompleted,
+      input.authoritativeCounters
+        ? Math.max(
+            0,
+            input.authoritativeCounters.accumulationSessionsCompleted - 1,
+          )
+        : input.resolvedMesocycle.accumulationSessionsCompleted,
     sessionsPerWeek: input.resolvedMesocycle.sessionsPerWeek,
   });
   if (boundaryProgression.crossesBoundary && !input.isOptionalGapFill) {
@@ -501,6 +516,7 @@ export async function applyLegacyTerminalLifecycleSideEffects(
   tx: Prisma.TransactionClient,
   input: {
     userId: string;
+    workoutId: string;
     scheduledDate: Date;
     resolvedMesocycleId: string;
     resolvedMesocycle: SaveRouteMesocycle;
@@ -513,10 +529,74 @@ export async function applyLegacyTerminalLifecycleSideEffects(
   },
 ): Promise<WeekCloseResult | null> {
   const classification = classifyLegacyTerminalLifecycleResult(input);
-  if (classification.applyPerformedSideEffects) {
-    if (!input.wonCompletedTransition) {
-      throw new Error("WORKOUT_LIFECYCLE_TRANSITION_NOT_CLAIMED");
+  if (
+    !classification.applyPerformedSideEffects &&
+    !classification.reconcileAuthoredSchedule
+  ) {
+    return null;
+  }
+  if (classification.applyPerformedSideEffects && !input.wonCompletedTransition) {
+    throw new Error("WORKOUT_LIFECYCLE_TRANSITION_NOT_CLAIMED");
+  }
+
+  const workouts = await tx.workout.findMany({
+    where: { mesocycleId: input.resolvedMesocycleId },
+    select: {
+      id: true,
+      status: true,
+      mesocycleId: true,
+      mesocyclePhaseSnapshot: true,
+      mesocycleWeekSnapshot: true,
+      mesoSessionSnapshot: true,
+      advancesSplit: true,
+      selectionMode: true,
+      sessionIntent: true,
+      selectionMetadata: true,
+    },
+  });
+  const strictResolution =
+    resolveStrictFrozenLegacyAuthoredScheduleLifecycle({
+      mesocycle: input.resolvedMesocycle,
+      workouts,
+    });
+
+  if (strictResolution.status === "blocked") {
+    return null;
+  }
+  if (strictResolution.status === "available") {
+    const authoritativeCounters = {
+      completedSessions: strictResolution.performedCompletionCount,
+      accumulationSessionsCompleted:
+        strictResolution.accumulationCompletionCount,
+      deloadSessionsCompleted: strictResolution.deloadCompletionCount,
+    };
+    const acceptedClaim = strictResolution.claims.find(
+      (claim) => claim.workoutId === input.workoutId,
+    );
+    if (classification.applyPerformedSideEffects && acceptedClaim?.completed) {
+      return applyPerformedLifecycleSideEffects(tx, {
+        userId: input.userId,
+        scheduledDate: input.scheduledDate,
+        resolvedMesocycleId: input.resolvedMesocycleId,
+        resolvedMesocycle: input.resolvedMesocycle,
+        mesoSnapshot: input.mesoSnapshot,
+        isOptionalGapFill: input.isOptionalGapFill,
+        authoritativeCounters,
+      });
     }
+
+    await tx.mesocycle.update({
+      where: { id: input.resolvedMesocycleId },
+      data: authoritativeCounters,
+    });
+    await transitionMesocycleStateInTransaction(
+      tx,
+      input.resolvedMesocycleId,
+    );
+    return null;
+  }
+
+  if (classification.applyPerformedSideEffects) {
     return applyPerformedLifecycleSideEffects(tx, {
       userId: input.userId,
       scheduledDate: input.scheduledDate,

@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => {
   const workoutSetDeleteMany = vi.fn();
   const workoutExerciseDeleteMany = vi.fn();
   const reconcileMesocycleLifecycle = vi.fn();
+  const assessClosedHandoffDeletionInTransaction = vi.fn();
   const mesocycleFindUnique = vi.fn();
   const userUpdateMany = vi.fn();
 
@@ -60,6 +61,7 @@ const mocks = vi.hoisted(() => {
     workoutSetDeleteMany,
     workoutExerciseDeleteMany,
     reconcileMesocycleLifecycle,
+    assessClosedHandoffDeletionInTransaction,
     mesocycleFindUnique,
     userUpdateMany,
   };
@@ -75,6 +77,8 @@ vi.mock("@/lib/api/workout-context", () => ({
 
 vi.mock("@/lib/api/mesocycle-lifecycle-reconciliation", () => ({
   reconcileMesocycleLifecycle: (...args: unknown[]) => mocks.reconcileMesocycleLifecycle(...args),
+  assessClosedHandoffDeletionInTransaction: (...args: unknown[]) =>
+    mocks.assessClosedHandoffDeletionInTransaction(...args),
 }));
 
 import { POST } from "./route";
@@ -88,6 +92,9 @@ describe("POST /api/workouts/delete", () => {
     mocks.workoutExerciseFindMany.mockResolvedValue([]);
     mocks.workoutUpdateMany.mockResolvedValue({ count: 1 });
     mocks.reconcileMesocycleLifecycle.mockResolvedValue({});
+    mocks.assessClosedHandoffDeletionInTransaction.mockResolvedValue({
+      safe: true,
+    });
     mocks.mesocycleFindUnique.mockResolvedValue({ macroCycleId: "macro-1" });
     mocks.userUpdateMany.mockResolvedValue({ count: 1 });
   });
@@ -227,6 +234,108 @@ describe("POST /api/workouts/delete", () => {
         isActive: false,
       })
     );
+  });
+
+  it("rejects a closed-handoff deletion when reconciliation would reactivate it", async () => {
+    mocks.workoutFindFirst.mockResolvedValue({
+      id: "workout-1",
+      mesocycleId: "meso-1",
+      mesocycle: {
+        id: "meso-1",
+        durationWeeks: 5,
+        sessionsPerWeek: 4,
+        state: "AWAITING_HANDOFF",
+        isActive: false,
+        completedSessions: 19,
+        accumulationSessionsCompleted: 16,
+        deloadSessionsCompleted: 3,
+        slotSequenceJson: { version: 1 },
+        currentSeedRevision: null,
+      },
+    });
+    mocks.assessClosedHandoffDeletionInTransaction.mockResolvedValue({
+      safe: false,
+      reason: "authored_obligation_unresolved",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workoutId: "workout-1", expectedRevision: 1 }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "Cannot delete this workout because the closed mesocycle would become unresolved.",
+      code: "WORKOUT_DELETE_CLOSED_LIFECYCLE_REGRESSION",
+    });
+    expect(mocks.workoutDelete).toHaveBeenCalled();
+    expect(mocks.reconcileMesocycleLifecycle).not.toHaveBeenCalled();
+  });
+
+  it("allows closed-handoff deletion when strict obligations remain resolved", async () => {
+    mocks.workoutFindFirst.mockResolvedValue({
+      id: "workout-1",
+      mesocycleId: "meso-1",
+      mesocycle: {
+        id: "meso-1",
+        durationWeeks: 5,
+        sessionsPerWeek: 4,
+        state: "AWAITING_HANDOFF",
+        isActive: false,
+        completedSessions: 19,
+        accumulationSessionsCompleted: 16,
+        deloadSessionsCompleted: 3,
+        slotSequenceJson: { version: 1 },
+        currentSeedRevision: null,
+      },
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workoutId: "workout-1", expectedRevision: 1 }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.assessClosedHandoffDeletionInTransaction).toHaveBeenCalled();
+    expect(mocks.reconcileMesocycleLifecycle).toHaveBeenCalled();
+  });
+
+  it("leaves accepted V4 deletion dispatch unchanged", async () => {
+    mocks.workoutFindFirst.mockResolvedValue({
+      id: "workout-v4",
+      mesocycleId: "meso-v4",
+      mesocycle: {
+        id: "meso-v4",
+        durationWeeks: 5,
+        sessionsPerWeek: 4,
+        state: "AWAITING_HANDOFF",
+        isActive: false,
+        completedSessions: 20,
+        accumulationSessionsCompleted: 16,
+        deloadSessionsCompleted: 4,
+        slotSequenceJson: { version: 1 },
+        currentSeedRevision: { seedPayload: { version: 4 } },
+      },
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workoutId: "workout-v4", expectedRevision: 1 }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.assessClosedHandoffDeletionInTransaction).not.toHaveBeenCalled();
+    expect(mocks.reconcileMesocycleLifecycle).toHaveBeenCalled();
   });
 
   it.each([

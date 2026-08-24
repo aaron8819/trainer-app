@@ -1,5 +1,8 @@
 import { WorkoutStatus } from "@prisma/client";
-import { reconcileMesocycleLifecycle } from "./mesocycle-lifecycle-reconciliation";
+import {
+  assessClosedHandoffDeletionInTransaction,
+  reconcileMesocycleLifecycle,
+} from "./mesocycle-lifecycle-reconciliation";
 import { executeWorkoutMutation } from "./workout-mutation";
 import { isFinisherRolloutEnabled } from "@/lib/operations/finisher-rollout";
 
@@ -43,6 +46,11 @@ export async function deleteOwnedWorkout(input: {
               sessionsPerWeek: true,
               state: true,
               isActive: true,
+              completedSessions: true,
+              accumulationSessionsCompleted: true,
+              deloadSessionsCompleted: true,
+              slotSequenceJson: true,
+              currentSeedRevision: { select: { seedPayload: true } },
             },
           },
         },
@@ -96,6 +104,30 @@ export async function deleteOwnedWorkout(input: {
         workout.mesocycle &&
         (workout.mesocycle.isActive || workout.mesocycle.state !== "COMPLETED")
       ) {
+        const currentSeedPayload =
+          workout.mesocycle.currentSeedRevision?.seedPayload;
+        const isV4 =
+          currentSeedPayload != null &&
+          typeof currentSeedPayload === "object" &&
+          !Array.isArray(currentSeedPayload) &&
+          "version" in currentSeedPayload &&
+          currentSeedPayload.version === 4;
+        if (
+          workout.mesocycle.state === "AWAITING_HANDOFF" &&
+          !isV4
+        ) {
+          const deletionAssessment =
+            await assessClosedHandoffDeletionInTransaction(
+              tx,
+              workout.mesocycle,
+            );
+          if (!deletionAssessment.safe) {
+            throw new DeleteWorkoutError(
+              "Cannot delete this workout because the closed mesocycle would become unresolved.",
+              "WORKOUT_DELETE_CLOSED_LIFECYCLE_REGRESSION",
+            );
+          }
+        }
         await reconcileMesocycleLifecycle(tx, workout.mesocycle);
       }
       return { status: "deleted" as const };

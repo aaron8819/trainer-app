@@ -99,7 +99,7 @@ import {
   getWeeklyVolumeTarget,
   initializeNextMesocycle,
   loadActiveMesocycle,
-  resolveLegacyAuthoredScheduleLifecycle,
+  resolveStrictFrozenLegacyAuthoredScheduleLifecycle,
   transitionMesocycleState,
   transitionMesocycleStateInTransaction,
 } from "./mesocycle-lifecycle";
@@ -128,19 +128,69 @@ function buildLegacyScheduleWorkout(input: {
   id?: string;
   advancesSplit?: boolean;
   intent?: string;
+  selectionMetadata?: unknown;
 }) {
   const expectedIntent = input.session === 1 || input.session === 3 ? "UPPER" : "LOWER";
+  const slotIds = ["upper_a", "lower_a", "upper_b", "lower_b"];
+  const phase = input.week === 5 ? "DELOAD" : "ACCUMULATION";
   return {
     id: input.id ?? `legacy-${input.week}-${input.session}`,
     status: input.status ?? "COMPLETED",
     mesocycleId: "legacy-meso",
     mesocycleWeekSnapshot: input.week,
-    mesocyclePhaseSnapshot: input.week === 5 ? "DELOAD" : "ACCUMULATION",
+    mesocyclePhaseSnapshot: phase,
     mesoSessionSnapshot: input.session,
     advancesSplit: input.advancesSplit ?? true,
     selectionMode: "INTENT",
     sessionIntent: input.intent ?? expectedIntent,
-    selectionMetadata: null,
+    selectionMetadata:
+      input.selectionMetadata === undefined
+        ? {
+            sessionDecisionReceipt: {
+              version: 2,
+              cycleContext: {
+                weekInMeso: input.week,
+                weekInBlock: input.week,
+                mesocycleLength: 5,
+                phase: phase.toLowerCase(),
+                blockType: phase.toLowerCase(),
+                isDeload: phase === "DELOAD",
+                source: "computed",
+              },
+              sessionProvenance: {
+                mesocycleId: "legacy-meso",
+                compositionSource: "runtime_selection",
+              },
+              sessionSlot: {
+                slotId: slotIds[input.session - 1],
+                intent: expectedIntent.toLowerCase(),
+                sequenceIndex: input.session - 1,
+                sequenceLength: 4,
+                source: "mesocycle_slot_sequence",
+              },
+              lifecycleVolume: { source: "unknown" },
+              sorenessSuppressedMuscles: [],
+              deloadDecision: {
+                mode: phase === "DELOAD" ? "scheduled" : "none",
+                reason: [],
+                reductionPercent: 0,
+                appliedTo: "none",
+              },
+              readiness: {
+                wasAutoregulated: false,
+                signalAgeHours: null,
+                fatigueScoreOverall: null,
+                intensityScaling: {
+                  applied: false,
+                  exerciseIds: [],
+                  scaledUpCount: 0,
+                  scaledDownCount: 0,
+                },
+              },
+              exceptions: [],
+            },
+          }
+        : input.selectionMetadata,
   };
 }
 
@@ -157,6 +207,18 @@ function buildLegacyFiveWeekSchedule(
   ).flat();
   workouts.forEach((workout) => override?.(workout));
   return workouts;
+}
+
+function mutateLegacyReceipt(
+  workout: ReturnType<typeof buildLegacyScheduleWorkout>,
+  mutate: (receipt: Record<string, unknown>) => void,
+) {
+  const copy = structuredClone(workout);
+  const metadata = copy.selectionMetadata as {
+    sessionDecisionReceipt: Record<string, unknown>;
+  };
+  mutate(metadata.sessionDecisionReceipt);
+  return copy;
 }
 
 describe("mesocycle-lifecycle", () => {
@@ -183,7 +245,7 @@ describe("mesocycle-lifecycle", () => {
         }
       });
 
-      expect(resolveLegacyAuthoredScheduleLifecycle({ mesocycle, workouts })).toMatchObject({
+      expect(resolveStrictFrozenLegacyAuthoredScheduleLifecycle({ mesocycle, workouts })).toMatchObject({
         status: "available",
         expectedObligationCount: 20,
         resolvedObligationCount: 20,
@@ -202,7 +264,7 @@ describe("mesocycle-lifecycle", () => {
         }
       });
 
-      expect(resolveLegacyAuthoredScheduleLifecycle({ mesocycle, workouts })).toMatchObject({
+      expect(resolveStrictFrozenLegacyAuthoredScheduleLifecycle({ mesocycle, workouts })).toMatchObject({
         status: "available",
         resolvedObligationCount: 20,
         performedCompletionCount: 19,
@@ -217,7 +279,7 @@ describe("mesocycle-lifecycle", () => {
         }
       });
 
-      expect(resolveLegacyAuthoredScheduleLifecycle({ mesocycle, workouts })).toMatchObject({
+      expect(resolveStrictFrozenLegacyAuthoredScheduleLifecycle({ mesocycle, workouts })).toMatchObject({
         status: "available",
         resolvedObligationCount: 19,
         performedCompletionCount: 19,
@@ -248,7 +310,7 @@ describe("mesocycle-lifecycle", () => {
         }),
       ];
 
-      expect(resolveLegacyAuthoredScheduleLifecycle({ mesocycle, workouts })).toMatchObject({
+      expect(resolveStrictFrozenLegacyAuthoredScheduleLifecycle({ mesocycle, workouts })).toMatchObject({
         status: "available",
         expectedObligationCount: 20,
         resolvedObligationCount: 20,
@@ -267,7 +329,7 @@ describe("mesocycle-lifecycle", () => {
           id: "duplicate-lower-b",
         }),
       ];
-      expect(resolveLegacyAuthoredScheduleLifecycle({ mesocycle, workouts: duplicate })).toEqual({
+      expect(resolveStrictFrozenLegacyAuthoredScheduleLifecycle({ mesocycle, workouts: duplicate })).toEqual({
         status: "blocked",
         reason: "duplicate_legacy_authored_claim:5:4",
       });
@@ -277,10 +339,89 @@ describe("mesocycle-lifecycle", () => {
           workout.sessionIntent = "UPPER";
         }
       });
-      expect(resolveLegacyAuthoredScheduleLifecycle({ mesocycle, workouts: malformed })).toEqual({
+      expect(resolveStrictFrozenLegacyAuthoredScheduleLifecycle({ mesocycle, workouts: malformed })).toEqual({
         status: "blocked",
         reason: "legacy_intent_identity_conflict:legacy-5-4",
       });
+    });
+
+    it("requires canonical authoritative identity for every strict frozen claim", () => {
+      const valid = buildLegacyScheduleWorkout({ week: 5, session: 4 });
+      const cases: Array<{
+        label: string;
+        workout: ReturnType<typeof buildLegacyScheduleWorkout>;
+        reason: string;
+      }> = [
+        {
+          label: "receiptless in-range stale row",
+          workout: { ...valid, selectionMetadata: null },
+          reason: `strict_frozen_receipt_missing:${valid.id}`,
+        },
+        {
+          label: "missing session slot",
+          workout: mutateLegacyReceipt(valid, (receipt) => {
+            delete receipt.sessionSlot;
+          }),
+          reason: `strict_frozen_session_slot_missing:${valid.id}`,
+        },
+        {
+          label: "non-authoritative slot source",
+          workout: mutateLegacyReceipt(valid, (receipt) => {
+            (receipt.sessionSlot as Record<string, unknown>).source =
+              "legacy_weekly_schedule";
+          }),
+          reason: `strict_frozen_slot_source_non_authoritative:${valid.id}`,
+        },
+        {
+          label: "wrong frozen slot id",
+          workout: mutateLegacyReceipt(valid, (receipt) => {
+            (receipt.sessionSlot as Record<string, unknown>).slotId = "upper_a";
+          }),
+          reason: `legacy_slot_identity_conflict:${valid.id}`,
+        },
+        {
+          label: "wrong slot index",
+          workout: mutateLegacyReceipt(valid, (receipt) => {
+            (receipt.sessionSlot as Record<string, unknown>).sequenceIndex = 0;
+          }),
+          reason: `legacy_session_identity_conflict:${valid.id}`,
+        },
+        {
+          label: "wrong sequence length",
+          workout: mutateLegacyReceipt(valid, (receipt) => {
+            (receipt.sessionSlot as Record<string, unknown>).sequenceLength = 3;
+          }),
+          reason: `legacy_slot_identity_conflict:${valid.id}`,
+        },
+        {
+          label: "wrong mesocycle provenance",
+          workout: mutateLegacyReceipt(valid, (receipt) => {
+            (
+              receipt.sessionProvenance as Record<string, unknown>
+            ).mesocycleId = "other-mesocycle";
+          }),
+          reason: `strict_frozen_mesocycle_provenance_invalid:${valid.id}`,
+        },
+        {
+          label: "missing mesocycle provenance",
+          workout: mutateLegacyReceipt(valid, (receipt) => {
+            delete receipt.sessionProvenance;
+          }),
+          reason: `strict_frozen_mesocycle_provenance_invalid:${valid.id}`,
+        },
+      ];
+
+      for (const testCase of cases) {
+        const workouts = buildLegacyFiveWeekSchedule();
+        workouts[workouts.length - 1] = testCase.workout;
+        expect(
+          resolveStrictFrozenLegacyAuthoredScheduleLifecycle({
+            mesocycle,
+            workouts,
+          }),
+          testCase.label,
+        ).toEqual({ status: "blocked", reason: testCase.reason });
+      }
     });
   });
 

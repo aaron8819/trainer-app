@@ -705,6 +705,7 @@ export async function POST(request: Request) {
       ) {
         weekCloseResult = await applyLegacyTerminalLifecycleSideEffects(tx, {
           userId: user.id,
+          workoutId: workout.id,
           scheduledDate,
           resolvedMesocycleId,
           resolvedMesocycle,

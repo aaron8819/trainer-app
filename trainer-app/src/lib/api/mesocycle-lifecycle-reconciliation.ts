@@ -2,7 +2,7 @@ import type { MesocyclePhase, MesocycleState, Prisma } from "@prisma/client";
 import { getAccumulationWeeks, getDeloadWeek } from "@/lib/api/mesocycle-lifecycle-math";
 import { ADVANCEMENT_WORKOUT_STATUSES } from "@/lib/workout-status";
 import {
-  resolveLegacyAuthoredScheduleLifecycle,
+  resolveStrictFrozenLegacyAuthoredScheduleLifecycle,
   transitionMesocycleStateInTransaction,
   type LegacyAuthoredScheduleWorkout,
 } from "@/lib/api/mesocycle-lifecycle-state";
@@ -15,6 +15,9 @@ type MesocycleLifecycleRecord = {
   durationWeeks: number;
   sessionsPerWeek: number;
   state: MesocycleState;
+  completedSessions: number;
+  accumulationSessionsCompleted: number;
+  deloadSessionsCompleted: number;
   slotSequenceJson?: Prisma.JsonValue | null;
   currentSeedRevision?: { seedPayload: Prisma.JsonValue } | null;
 };
@@ -30,6 +33,13 @@ export type ReconciledMesocycleLifecycle = {
   deloadSessionsCompleted: number;
   state: MesocycleState;
 };
+
+export type ClosedHandoffDeletionAssessment =
+  | { safe: true }
+  | {
+      safe: false;
+      reason: "strict_identity_blocked" | "authored_obligation_unresolved";
+    };
 
 function isDeloadWorkout(
   workout: AdvancingWorkoutSnapshot,
@@ -68,7 +78,7 @@ export async function deriveReconciledMesocycleLifecycle(
     },
   });
 
-  const legacyResolution = resolveLegacyAuthoredScheduleLifecycle({
+  const legacyResolution = resolveStrictFrozenLegacyAuthoredScheduleLifecycle({
     mesocycle,
     workouts,
   });
@@ -88,6 +98,20 @@ export async function deriveReconciledMesocycleLifecycle(
     };
   }
 
+  if (legacyResolution.status === "blocked") {
+    return {
+      completedSessions: mesocycle.completedSessions,
+      accumulationSessionsCompleted:
+        mesocycle.accumulationSessionsCompleted,
+      deloadSessionsCompleted: mesocycle.deloadSessionsCompleted,
+      state: mesocycle.state,
+    };
+  }
+
+  // For `unavailable`, this is HISTORICAL_RECEIPTLESS_COUNTER_COMPATIBILITY:
+  // it retains the old counter rebuild without inferring authored obligations,
+  // so final-skip closure is not guaranteed. `not_legacy` retains the existing
+  // non-strict (including V4 deletion) reconciliation behavior unchanged.
   let accumulationSessionsCompleted = 0;
   let deloadSessionsCompleted = 0;
 
@@ -118,16 +142,6 @@ export async function deriveReconciledMesocycleLifecycle(
     accumulationSessionsCompleted += 1;
   }
 
-  if (legacyResolution.status === "blocked") {
-    return {
-      completedSessions:
-        accumulationSessionsCompleted + deloadSessionsCompleted,
-      accumulationSessionsCompleted,
-      deloadSessionsCompleted,
-      state: mesocycle.state,
-    };
-  }
-
   const accumulationThreshold =
     getAccumulationWeeks(mesocycle.durationWeeks) * Math.max(1, mesocycle.sessionsPerWeek);
   const deloadThreshold = Math.max(1, mesocycle.sessionsPerWeek);
@@ -145,6 +159,49 @@ export async function deriveReconciledMesocycleLifecycle(
     deloadSessionsCompleted,
     state,
   };
+}
+
+export async function assessClosedHandoffDeletionInTransaction(
+  tx: MesocycleLifecycleTx,
+  mesocycle: MesocycleLifecycleRecord,
+): Promise<ClosedHandoffDeletionAssessment> {
+  const workouts = await tx.workout.findMany({
+    where: { mesocycleId: mesocycle.id },
+    select: {
+      id: true,
+      status: true,
+      mesocycleId: true,
+      mesocyclePhaseSnapshot: true,
+      mesocycleWeekSnapshot: true,
+      mesoSessionSnapshot: true,
+      advancesSplit: true,
+      selectionMode: true,
+      sessionIntent: true,
+      selectionMetadata: true,
+    },
+  });
+  const strictResolution =
+    resolveStrictFrozenLegacyAuthoredScheduleLifecycle({
+      mesocycle,
+      workouts,
+    });
+  if (strictResolution.status === "blocked") {
+    return { safe: false, reason: "strict_identity_blocked" };
+  }
+  if (strictResolution.status === "available") {
+    return strictResolution.allResolved
+      ? { safe: true }
+      : { safe: false, reason: "authored_obligation_unresolved" };
+  }
+
+  const postDeleteLifecycle = await deriveReconciledMesocycleLifecycle(
+    tx,
+    mesocycle,
+  );
+  return postDeleteLifecycle.state === "ACTIVE_ACCUMULATION" ||
+    postDeleteLifecycle.state === "ACTIVE_DELOAD"
+    ? { safe: false, reason: "authored_obligation_unresolved" }
+    : { safe: true };
 }
 
 export async function reconcileMesocycleLifecycle(

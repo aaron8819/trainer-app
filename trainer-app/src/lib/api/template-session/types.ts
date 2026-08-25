@@ -43,6 +43,12 @@ export type GenerateTemplateSessionParams = {
   pinnedExerciseIds?: string[];
   autoFillUnpinned?: boolean;
   slotId?: string;
+  exerciseReplacements?: Array<{
+    placementId: string;
+    orderIndex: number;
+    originalExerciseId: string;
+    replacementExerciseId: string;
+  }>;
 };
 
 export type GenerateIntentSessionInput = {
@@ -83,6 +89,7 @@ export type PrescriptionConfidenceLoadSource =
   | "unknown";
 
 export type PrescriptionConfidenceReadout = {
+  placementId: string;
   exerciseId: string;
   exerciseName: string;
   targetLoad: number | null;
@@ -120,7 +127,7 @@ export type SessionGenerationResult =
       };
       filteredExercises?: FilteredExerciseSummary[];
       prescriptionReadouts?: PrescriptionConfidenceReadout[];
-      audit?: Pick<ApplyLoadsAudit, "progressionTraces" | "selectedAnchorEvidence"> & {
+      audit?: ApplyLoadsAudit & {
         deloadTrace?: DeloadTransformationTrace;
       };
     }

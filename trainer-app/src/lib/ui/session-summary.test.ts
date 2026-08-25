@@ -320,4 +320,39 @@ describe("buildSessionSummaryModel", () => {
     );
     expect(summary.truthNote?.value).toContain("saved workout");
   });
+
+  it.each([
+    "ambiguous_exercise_correlation",
+    "invalid_placement_correlation",
+  ] as const)("shows comparison unavailable for %s", (comparisonState) => {
+    const summary = buildSessionSummaryModel({
+      context: makeContext(),
+      receipt: makeReceipt(),
+      sessionIntent: "PUSH",
+      workoutStructureState: {
+        version: 1,
+        lastReconciledAt: "2026-08-25T10:00:00.000Z",
+        currentExercises: [],
+        reconciliation: {
+          version: 1,
+          comparisonState,
+          hasDrift: null,
+          changedFields: [],
+          addedExerciseIds: [],
+          removedExerciseIds: [],
+          exercisesWithSetCountChanges: [],
+          exercisesWithPrescriptionChanges: [],
+        },
+      },
+    });
+
+    expect(summary.tags).toContain("Comparison unavailable");
+    expect(summary.tags).not.toContain("Modified");
+    expect(summary.truthNote).toEqual(
+      expect.objectContaining({
+        label: "Current structure",
+        value: expect.stringContaining("cannot be matched safely"),
+      }),
+    );
+  });
 });

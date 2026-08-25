@@ -35,6 +35,7 @@ export type CanonicalDeloadStructureReasonCode =
   | "trimmed_density_cap";
 
 export type CanonicalDeloadStructureExercise = {
+  placementId?: string;
   exerciseId: string;
   exerciseName: string;
   orderIndex: number;

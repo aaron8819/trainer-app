@@ -66,6 +66,7 @@ export type SessionAuditSetSnapshot = {
 };
 
 export type SessionAuditExerciseSnapshot = {
+  placementId?: string;
   exerciseId: string;
   exerciseName: string;
   orderIndex: number;
@@ -148,6 +149,7 @@ export type ProgressionDecisionTrace = {
 };
 
 export type DeloadExerciseTransformationTrace = {
+  placementId?: string;
   exerciseId: string;
   exerciseName: string;
   isMainLift: boolean;
@@ -247,6 +249,8 @@ export type SessionAuditSavedState = {
     phase?: string | null;
   };
   semantics: SessionAuditSemanticsSnapshot;
+  /** Untrusted serialized metadata. Interpret only through the central resolver. */
+  placementCorrelations?: unknown;
 };
 
 export type SessionAuditSnapshot = {
@@ -267,13 +271,34 @@ export type SessionAuditMutationChangedField =
 
 export type SessionAuditMutationSummary = {
   version: 1;
-  comparisonState: "comparable" | "missing_generated_snapshot";
-  hasDrift: boolean;
+  comparisonState:
+    | "comparable"
+    | "missing_generated_snapshot"
+    | "ambiguous_exercise_correlation"
+    | "invalid_placement_correlation";
+  hasDrift: boolean | null;
   changedFields: SessionAuditMutationChangedField[];
   addedExerciseIds: string[];
   removedExerciseIds: string[];
   exercisesWithSetCountChanges: string[];
   exercisesWithPrescriptionChanges: string[];
+  placementsWithSetCountChanges?: string[];
+  placementsWithPrescriptionChanges?: string[];
+  ambiguousExerciseIds?: string[];
+  invalidPlacementCorrelations?: Array<{
+    code:
+      | "malformed_explicit_correlation"
+      | "unknown_generated_source"
+      | "invalid_explicit_target"
+      | "duplicate_explicit_source"
+      | "duplicate_explicit_target"
+      | "duplicate_generated_occurrence_id"
+      | "duplicate_persisted_occurrence_id";
+    recordIndexes: number[];
+    occurrenceIndexes?: number[];
+    generatedPlacementId?: string;
+    persistedWorkoutExerciseId?: string;
+  }>;
   generatedSelectionMode?: string;
   savedSelectionMode?: string;
   generatedSessionIntent?: string;

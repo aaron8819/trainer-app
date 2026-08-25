@@ -193,6 +193,7 @@ function buildSeedExerciseRows(
   exerciseNameById: Map<string, string>
 ): ActiveMesocycleSlotReseedExerciseSeedRow[] {
   return slot.exercises.map((exercise) => ({
+    ...(exercise.placementId ? { placementId: exercise.placementId } : {}),
     exerciseId: exercise.exerciseId,
     exerciseName: exerciseNameById.get(exercise.exerciseId) ?? exercise.exerciseId,
     role: exercise.role,
@@ -203,6 +204,7 @@ function buildSessionExerciseRows(workout: WorkoutPlan): ActiveMesocycleSlotRese
   return listWorkoutPlanExercisesInOrder(workout)
     .filter(({ section }) => section !== "warmup")
     .map(({ exercise, section }) => ({
+      placementId: exercise.id,
       exerciseId: exercise.exercise.id,
       exerciseName: exercise.exercise.name,
       role: section === "main" ? "CORE_COMPOUND" : "ACCESSORY",
@@ -264,11 +266,22 @@ function buildSetDiffRows(input: {
   before: WorkoutPlan;
   after: WorkoutPlan;
 }): ActiveMesocycleSlotReseedSetDiffRow[] {
-  const beforeByExerciseId = new Map(
-    buildSessionExerciseRows(input.before).map((exercise) => [exercise.exerciseId, exercise])
-  );
-  const afterByExerciseId = new Map(
-    buildSessionExerciseRows(input.after).map((exercise) => [exercise.exerciseId, exercise])
+  const sumSetsByCanonicalExercise = (workout: WorkoutPlan) => {
+    const totals = new Map<string, number>();
+    for (const exercise of buildSessionExerciseRows(workout)) {
+      totals.set(
+        exercise.exerciseId,
+        (totals.get(exercise.exerciseId) ?? 0) + exercise.setCount,
+      );
+    }
+    return totals;
+  };
+  const beforeByExerciseId = sumSetsByCanonicalExercise(input.before);
+  const afterByExerciseId = sumSetsByCanonicalExercise(input.after);
+  const exerciseNameById = new Map(
+    [...buildSessionExerciseRows(input.before), ...buildSessionExerciseRows(input.after)].map(
+      (exercise) => [exercise.exerciseId, exercise.exerciseName]
+    )
   );
   const allExerciseIds = Array.from(
     new Set([...beforeByExerciseId.keys(), ...afterByExerciseId.keys()])
@@ -276,14 +289,14 @@ function buildSetDiffRows(input: {
 
   return allExerciseIds
     .map((exerciseId) => {
-      const before = beforeByExerciseId.get(exerciseId);
-      const after = afterByExerciseId.get(exerciseId);
+      const before = beforeByExerciseId.get(exerciseId) ?? 0;
+      const after = afterByExerciseId.get(exerciseId) ?? 0;
       return {
         exerciseId,
-        exerciseName: after?.exerciseName ?? before?.exerciseName ?? exerciseId,
-        beforeSetCount: before?.setCount ?? 0,
-        afterSetCount: after?.setCount ?? 0,
-        delta: (after?.setCount ?? 0) - (before?.setCount ?? 0),
+        exerciseName: exerciseNameById.get(exerciseId) ?? exerciseId,
+        beforeSetCount: before,
+        afterSetCount: after,
+        delta: after - before,
       };
     })
     .sort((left, right) => right.delta - left.delta || left.exerciseName.localeCompare(right.exerciseName));
@@ -310,13 +323,41 @@ function buildExerciseDiff(input: {
   before: ActiveMesocycleSlotReseedExerciseSeedRow[];
   after: ActiveMesocycleSlotReseedExerciseSeedRow[];
 }) {
-  const beforeById = new Map(input.before.map((exercise) => [exercise.exerciseId, exercise]));
-  const afterById = new Map(input.after.map((exercise) => [exercise.exerciseId, exercise]));
+  const matchKey = (exercise: ActiveMesocycleSlotReseedExerciseSeedRow) =>
+    exercise.placementId
+      ? `placement:${exercise.placementId}`
+      : `legacy:${exercise.exerciseId}:${exercise.role}`;
+  const remainingBefore = new Map<string, number>();
+  for (const exercise of input.before) {
+    const key = matchKey(exercise);
+    remainingBefore.set(key, (remainingBefore.get(key) ?? 0) + 1);
+  }
+  const added: ActiveMesocycleSlotReseedExerciseSeedRow[] = [];
+  const retained: ActiveMesocycleSlotReseedExerciseSeedRow[] = [];
+  for (const exercise of input.after) {
+    const key = matchKey(exercise);
+    const remaining = remainingBefore.get(key) ?? 0;
+    if (remaining > 0) {
+      retained.push(exercise);
+      remainingBefore.set(key, remaining - 1);
+    } else {
+      added.push(exercise);
+    }
+  }
+  const removed: ActiveMesocycleSlotReseedExerciseSeedRow[] = [];
+  for (const exercise of input.before) {
+    const key = matchKey(exercise);
+    const remaining = remainingBefore.get(key) ?? 0;
+    if (remaining > 0) {
+      removed.push(exercise);
+      remainingBefore.set(key, remaining - 1);
+    }
+  }
 
   return {
-    added: input.after.filter((exercise) => !beforeById.has(exercise.exerciseId)),
-    removed: input.before.filter((exercise) => !afterById.has(exercise.exerciseId)),
-    retained: input.after.filter((exercise) => beforeById.has(exercise.exerciseId)),
+    added,
+    removed,
+    retained,
   };
 }
 

@@ -9631,6 +9631,7 @@ function buildRuntimeExerciseContexts(
   workout: ExplainWorkoutRow,
 ): RuntimeEditExerciseContext[] {
   return workout.exercises.map((workoutExercise) => ({
+    workoutExerciseId: workoutExercise.id,
     exerciseId: workoutExercise.exerciseId,
     exerciseName: workoutExercise.exercise.name,
     primaryMuscles: workoutExercise.exercise.exerciseMuscles

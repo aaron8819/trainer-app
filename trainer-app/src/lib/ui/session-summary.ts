@@ -245,6 +245,11 @@ export function buildSessionSummaryModel(input: {
   const isDeload =
     context.blockPhase.blockType === "deload" || hasCanonicalDeloadSignal(receipt);
   const hasStructureDrift = workoutStructureState?.reconciliation.hasDrift === true;
+  const hasUnavailableStructureComparison =
+    workoutStructureState?.reconciliation.comparisonState ===
+      "ambiguous_exercise_correlation" ||
+    workoutStructureState?.reconciliation.comparisonState ===
+      "invalid_placement_correlation";
   const isGapFill = isGapFillWorkout({
     selectionMetadata: { sessionDecisionReceipt: receipt },
     selectionMode,
@@ -319,6 +324,8 @@ export function buildSessionSummaryModel(input: {
   const tags = [sessionLabel, formatWeekTag({ context, receipt, displayWeek })];
   if (hasStructureDrift) {
     tags.splice(1, 0, "Modified");
+  } else if (hasUnavailableStructureComparison) {
+    tags.splice(1, 0, "Comparison unavailable");
   }
   if (isDeload) {
     tags.splice(1, 0, "Deload");
@@ -328,7 +335,10 @@ export function buildSessionSummaryModel(input: {
   }
 
   return {
-    title: hasStructureDrift ? "Original plan context" : "Why today looks like this",
+    title:
+      hasStructureDrift || hasUnavailableStructureComparison
+        ? "Original plan context"
+        : "Why today looks like this",
     summary: buildSummaryText({ context, receipt, selectionMode, sessionIntent, targetMuscles }),
     tags,
     items,
@@ -339,6 +349,13 @@ export function buildSessionSummaryModel(input: {
             "Workout structure changed after generation. The exercise list on this page is the saved workout; this card describes the original generated plan.",
           tone: "caution",
         }
+      : hasUnavailableStructureComparison
+        ? {
+            label: "Current structure",
+            value:
+              "Exercise placements cannot be matched safely to the original generated plan. The saved workout is authoritative for this page.",
+            tone: "caution",
+          }
       : undefined,
   };
 }

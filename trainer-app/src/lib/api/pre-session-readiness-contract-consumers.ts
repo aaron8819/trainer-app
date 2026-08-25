@@ -39,6 +39,8 @@ export type ReadinessSuppressedTarget = {
 export type ReadinessCalibrationWatchRow = {
   kind: "prescription_confidence" | "recovery_caveat" | "fatigue";
   message: string;
+  placementId?: PreSessionReadinessPrescriptionConfidenceWatchRow["placementId"];
+  placementCorrelationSource?: PreSessionReadinessPrescriptionConfidenceWatchRow["placementCorrelationSource"];
   displayMessage?: string;
   exerciseLabel?: string;
   reasonCode?: PreSessionReadinessPrescriptionConfidenceWatchRow["reasonCode"];
@@ -247,6 +249,10 @@ function toPrescriptionConfidenceWatchRow(
   return {
     kind: "prescription_confidence",
     message: watch.displayMessage ?? watch.exerciseLabel,
+    ...(watch.placementId === undefined ? {} : { placementId: watch.placementId }),
+    ...(watch.placementCorrelationSource === undefined
+      ? {}
+      : { placementCorrelationSource: watch.placementCorrelationSource }),
     ...(watch.displayMessage === undefined
       ? {}
       : { displayMessage: watch.displayMessage }),

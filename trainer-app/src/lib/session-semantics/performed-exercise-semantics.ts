@@ -1,4 +1,5 @@
 import type { ProgressionSet } from "@/lib/engine/progression";
+import type { MeasurementSemantics } from "@/lib/exercise-measurement/semantics";
 import {
   derivePlannedLoadStructure,
   resolveProgressionAnchorStrategy,
@@ -6,6 +7,7 @@ import {
   type ProgressionAnchorStrategy,
   type PlannedLoadStructure,
 } from "@/lib/progression/anchoring";
+import { isPartialExposureAdequateForProgression } from "@/lib/progression/progression-eligibility";
 import { classifySetLog } from "./set-classification";
 
 export type PerformedExerciseSetInput = {
@@ -35,6 +37,132 @@ export type PerformedExerciseSemantics = {
   hasUniformTargetLoad: boolean;
 };
 
+export type PerformedEvidenceCoverage =
+  | "complete"
+  | "adequate_partial"
+  | "inadequate_partial";
+
+export type NormalizedPerformedExerciseEvidence = {
+  evidenceId: string;
+  workoutId: string | null;
+  canonicalExerciseId: string;
+  performedAt: string;
+  status: "PLANNED" | "IN_PROGRESS" | "PARTIAL" | "COMPLETED" | "SKIPPED";
+  measurement: MeasurementSemantics | null;
+  measurementProvenance: "frozen" | "legacy_null";
+  performedSetCount: number;
+  plannedWorkingSetCount: number | null;
+  coverage: PerformedEvidenceCoverage;
+  representativeLoad: number | null;
+  representativeReps: number | null;
+  representativeRpe: number | null;
+  hasPerformedLoad: boolean;
+  hasPerformedReps: boolean;
+  hasPerformedEffort: boolean;
+  isDeload: boolean;
+  runtimeAdded: boolean;
+  substituted: boolean;
+  acceptedPlanProvenance: string | null;
+  confidence: number;
+  confidenceNotes: string[];
+  sets: ProgressionSet[];
+};
+
+export function normalizePerformedExerciseEvidence(input: {
+  workoutId?: string | null;
+  canonicalExerciseId: string;
+  performedAt: string;
+  status?: NormalizedPerformedExerciseEvidence["status"];
+  measurement: MeasurementSemantics | null;
+  plannedWorkingSetCount?: number | null;
+  isMainLiftEligible?: boolean | null;
+  isDeload?: boolean;
+  runtimeAdded?: boolean;
+  substituted?: boolean;
+  acceptedPlanProvenance?: string | null;
+  confidence?: number;
+  confidenceNotes?: string[];
+  sets: Array<{
+    setIndex: number;
+    load?: number | null;
+    reps?: number | null;
+    rpe?: number | null;
+    targetLoad?: number | null;
+    targetReps?: number | null;
+    targetRepMin?: number | null;
+    targetRepMax?: number | null;
+    targetRpe?: number | null;
+  }>;
+}): NormalizedPerformedExerciseEvidence {
+  const status = input.status ?? "COMPLETED";
+  const performedSets = input.sets.filter(
+    (set) => Number.isFinite(set.reps) && (set.reps ?? 0) > 0,
+  );
+  const semantics = derivePerformedExerciseSemantics({
+    isMainLiftEligible: input.isMainLiftEligible,
+    sets: input.sets.map((set) => ({
+      setIndex: set.setIndex,
+      actualLoad: set.load,
+      actualReps: set.reps,
+      actualRpe: set.rpe,
+      targetLoad: set.targetLoad,
+      targetReps: set.targetReps,
+      targetRepMin: set.targetRepMin,
+      targetRepMax: set.targetRepMax,
+      targetRpe: set.targetRpe,
+    })),
+  });
+  const plannedWorkingSetCount = Number.isInteger(input.plannedWorkingSetCount)
+    ? Math.max(0, input.plannedWorkingSetCount as number)
+    : null;
+  const performedSetCount = performedSets.length;
+  const coverage: PerformedEvidenceCoverage =
+    plannedWorkingSetCount != null && performedSetCount >= plannedWorkingSetCount
+      ? "complete"
+      : plannedWorkingSetCount == null
+        ? performedSetCount >= 1
+          ? "adequate_partial"
+          : "inadequate_partial"
+        : isPartialExposureAdequateForProgression({
+            plannedWorkingSetCount,
+            performedWorkingSetCount: performedSetCount,
+          })
+        ? "adequate_partial"
+        : "inadequate_partial";
+  const workoutId = input.workoutId ?? null;
+  const representativeSet = semantics?.signalSets.find(
+    (set) => set.load === semantics.workingSetLoad,
+  );
+
+  return {
+    evidenceId: `${workoutId ?? input.performedAt}:${input.canonicalExerciseId}`,
+    workoutId,
+    canonicalExerciseId: input.canonicalExerciseId,
+    performedAt: input.performedAt,
+    status,
+    measurement: input.measurement,
+    measurementProvenance: input.measurement ? "frozen" : "legacy_null",
+    performedSetCount,
+    plannedWorkingSetCount,
+    coverage,
+    representativeLoad: semantics?.workingSetLoad ?? null,
+    representativeReps: representativeSet?.reps ?? semantics?.medianReps ?? null,
+    representativeRpe: representativeSet?.rpe ?? semantics?.modalRpe ?? null,
+    hasPerformedLoad: performedSets.some((set) => Number.isFinite(set.load)),
+    hasPerformedReps: performedSetCount > 0,
+    hasPerformedEffort: performedSets.some((set) => Number.isFinite(set.rpe)),
+    isDeload: input.isDeload === true,
+    runtimeAdded: input.runtimeAdded === true,
+    substituted: input.substituted === true,
+    acceptedPlanProvenance: input.acceptedPlanProvenance ?? null,
+    confidence: Number.isFinite(input.confidence)
+      ? Math.min(1, Math.max(0, input.confidence as number))
+      : 1,
+    confidenceNotes: [...(input.confidenceNotes ?? [])],
+    sets: semantics?.signalSets ?? [],
+  };
+}
+
 export function derivePerformedExerciseSemantics(input: {
   isMainLiftEligible?: boolean | null;
   sets: PerformedExerciseSetInput[];
@@ -53,6 +181,7 @@ export function derivePerformedExerciseSemantics(input: {
         (set.actualLoad ?? 0) >= 0
     )
     .map((set) => ({
+      setIndex: set.setIndex,
       reps: set.actualReps as number,
       load: set.actualLoad as number,
       rpe: set.actualRpe ?? undefined,

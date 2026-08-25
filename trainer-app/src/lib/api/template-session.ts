@@ -29,6 +29,10 @@ import {
 } from "./workout-context";
 import type { SelectedAnchorLoadEvidence } from "@/lib/engine/apply-loads";
 import {
+  parseMeasurementColumns,
+  parseZeroLoadMeaningColumn,
+} from "@/lib/exercise-measurement/semantics";
+import {
   buildSelectionObjective,
   mapSelectionResult,
 } from "./template-session/selection-adapter";
@@ -2282,6 +2286,46 @@ export async function generateSessionFromTemplate(
   let templateExercises = mapTemplateExercises(template.exercises, mapped.exerciseLibrary);
   if (templateExercises.length === 0) {
     return { error: "Template has no exercises" };
+  }
+  const replacementByPlacementId = new Map(
+    (params.exerciseReplacements ?? []).map((replacement) => [replacement.placementId, replacement]),
+  );
+  if (replacementByPlacementId.size > 0) {
+    const exerciseById = new Map(
+      mapped.exerciseLibrary.map((exercise) => [exercise.id, exercise]),
+    );
+    for (const [placementId, replacement] of replacementByPlacementId) {
+      const placement = templateExercises.find((entry) => entry.placementId === placementId);
+      const replacementExercise = exerciseById.get(replacement.replacementExerciseId);
+      const rawReplacementExercise = mapped.rawExercises.find(
+        (exercise) => exercise.id === replacement.replacementExerciseId,
+      );
+      if (
+        !placement ||
+        placement.orderIndex !== replacement.orderIndex ||
+        placement.exercise.id !== replacement.originalExerciseId ||
+        !replacementExercise ||
+        !rawReplacementExercise
+      ) {
+        return { error: "Template exercise replacement is no longer valid. Regenerate and retry." };
+      }
+      const replacementMeasurement = parseMeasurementColumns(rawReplacementExercise);
+      const replacementZeroLoadMeaning = parseZeroLoadMeaningColumn(rawReplacementExercise);
+      templateExercises = templateExercises.map((entry) =>
+        entry.placementId === placementId
+          ? {
+              exercise: replacementExercise,
+              orderIndex: entry.orderIndex,
+              ...(entry.placementId ? { placementId: entry.placementId } : {}),
+              ...(entry.mesocycleRole ? { mesocycleRole: entry.mesocycleRole } : {}),
+              ...(replacementMeasurement ? { measurement: replacementMeasurement } : {}),
+              ...(replacementZeroLoadMeaning
+                ? { zeroLoadMeaning: replacementZeroLoadMeaning }
+                : {}),
+            }
+          : entry,
+      );
+    }
   }
 
   const sessionIntent = resolveTemplateSessionIntent(

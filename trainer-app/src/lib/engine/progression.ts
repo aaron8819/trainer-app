@@ -7,6 +7,8 @@ import { quantizeLoad } from "@/lib/units/load-quantization";
 import { isPositiveLoadProgressionEligible } from "@/lib/exercise-measurement/load-entry-policy";
 import { formatFrozenLoadValue } from "@/lib/exercise-measurement/load-entry-policy";
 import type { FrozenMeasurementSnapshot } from "@/lib/exercise-measurement/semantics";
+import { isPartialExposureAdequateForProgression } from "@/lib/progression/progression-eligibility";
+import { PRESCRIPTION_CONFIDENCE_POLICY } from "./load-prescription";
 
 export type ProgressionSet = {
   setIndex?: number;
@@ -48,6 +50,7 @@ export type BoundProgressionExposure = {
   selectionMode?: WorkoutHistoryEntry["selectionMode"];
   progressionEligible: boolean;
   comparable: boolean;
+  directionalActionEligible?: boolean;
   plannedWorkingSetCount?: number;
   representativeLoad?: number;
   sets: ProgressionSet[];
@@ -1173,7 +1176,11 @@ function resolveBoundExposureDecision(input: {
     .map((exposure) => evaluateBoundProgressionExposure(exposure, exposure.representativeLoad))
     .filter((item) => item.exposure.comparable && !item.incomplete);
   const repeatedSuccess = comparableEvaluations.filter((item) => item.successful).length >= 2;
-  const confidenceSufficient = input.progressionConfidenceScale >= 0.75;
+  const confidenceSufficient =
+    input.progressionConfidenceScale >=
+      PRESCRIPTION_CONFIDENCE_POLICY.directionalActionFloor ||
+    selected.directionalActionEligible === true;
+  const upwardActionBlocked = selected.directionalActionEligible === false;
 
   const translatedLoad = translateLoadToTargetContext({
     priorLoad: input.anchorLoad,
@@ -1184,13 +1191,16 @@ function resolveBoundExposureDecision(input: {
   });
   const lowerBound = input.anchorLoad - input.increment;
   const upperBound = input.anchorLoad + input.increment;
-  const candidate = !confidenceSufficient
+  const unguardedCandidate = !confidenceSufficient
     ? input.anchorLoad
     : evaluation.clearHard
     ? Math.min(translatedLoad, lowerBound)
     : evaluation.clearEasy || repeatedSuccess
       ? Math.max(translatedLoad, upperBound)
       : translatedLoad;
+  const candidate = upwardActionBlocked && unguardedCandidate > input.anchorLoad
+    ? input.anchorLoad
+    : unguardedCandidate;
   const boundedCandidate = clampNumber(candidate, lowerBound, upperBound);
   const nextLoad = clampNumber(
     quantizeRelativeToAnchor(boundedCandidate, input.anchorLoad, input.increment),
@@ -1203,6 +1213,9 @@ function resolveBoundExposureDecision(input: {
     "exact_exercise_bound_exposure",
     "bounded_single_increment",
     ...(!confidenceSufficient ? ["confidence_gated_hold"] : []),
+    ...(upwardActionBlocked && unguardedCandidate > input.anchorLoad
+      ? ["directional_action_gated_hold"]
+      : []),
     evaluation.clearHard
       ? "prior_prescription_clear_hard"
       : evaluation.clearEasy
@@ -1257,12 +1270,13 @@ function evaluateBoundProgressionExposure(
       Number.isFinite(resolveProgressionSetTargetReps(set)) &&
       Number.isFinite(set.targetRpe)
   );
-  const minimumCoverage = plannedWorkingSetCount <= 1 ? 1 : 2;
   const adequateCoverage =
     exposure.progressionEligible &&
     exposure.comparable &&
-    completeSets.length >= minimumCoverage &&
-    completeSets.length / Math.max(plannedWorkingSetCount, 1) >= 2 / 3;
+    isPartialExposureAdequateForProgression({
+      plannedWorkingSetCount,
+      performedWorkingSetCount: completeSets.length,
+    });
   const representativeLoad = exposure.representativeLoad ?? fallbackLoad ?? 0;
   const representativeSet = [...completeSets]
     .sort((left, right) => {

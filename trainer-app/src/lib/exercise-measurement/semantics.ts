@@ -238,7 +238,6 @@ export function permitsComputedLoadComparison(
   return (
     measurement == null ||
     (measurement.profile !== "REPS_BODYWEIGHT" &&
-      measurement.loadConvention !== "MACHINE_DISPLAYED" &&
       measurement.loadConvention !== "DISPLAYED_ASSISTANCE")
   );
 }

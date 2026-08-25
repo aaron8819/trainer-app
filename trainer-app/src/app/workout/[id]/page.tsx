@@ -295,7 +295,9 @@ export default async function WorkoutDetailPage({
                     });
                   const workingLoadDisplay = formatExerciseLoad(targetLoad);
 
-                  const progressionReceipt = explanation?.progressionReceipts.get(exercise.exerciseId);
+                  const progressionReceipt =
+                    explanation?.progressionReceipts.get(exercise.id) ??
+                    explanation?.progressionReceipts.get(exercise.exerciseId);
                   const loadNote = getLoadProvenanceNote({
                     targetLoad,
                     isBodyweightExercise,

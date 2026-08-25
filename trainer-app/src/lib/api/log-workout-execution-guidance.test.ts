@@ -45,6 +45,7 @@ function makeCard(
       targetRpeLabel: "RPE 8",
       exercises: [
         {
+          placementId: "row-1",
           exerciseId: "cable-row",
           exerciseName: "Cable Row",
           setCount: 3,
@@ -64,6 +65,7 @@ function makeCard(
     calibrationNotes: [
       {
         kind: "prescription_confidence",
+        placementId: "row-1",
         message:
           "Cable Row: Start at 80 lb; use 70-80 lb if first-set reps or RPE are off.",
         exerciseLabel: "Cable Row",
@@ -117,8 +119,7 @@ describe("log workout execution guidance", () => {
 
     expect(
       getLogWorkoutExecutionGuidanceForExercise(guidance, {
-        exerciseId: "cable-row",
-        name: "Cable Row",
+        placementId: "row-1",
       })
     ).toEqual([
       {
@@ -133,8 +134,7 @@ describe("log workout execution guidance", () => {
     ]);
     expect(
       getLogWorkoutExecutionGuidanceForExercise(guidance, {
-        exerciseId: "bench-press",
-        name: "Bench Press",
+        placementId: "other-row",
       })
     ).toEqual([]);
   });
@@ -144,6 +144,7 @@ describe("log workout execution guidance", () => {
       calibrationNotes: [
         {
           kind: "prescription_confidence",
+          placementId: "row-1",
           message:
             "Suggested load: 140 lb. Based on prior Barbell Bench Press history from Aug 3.",
           exerciseLabel: "Cable Row",
@@ -167,7 +168,7 @@ describe("log workout execution guidance", () => {
     expect(
       getLogWorkoutExecutionGuidanceForExercise(
         buildLogWorkoutExecutionGuidanceByExercise(card),
-        { exerciseId: "cable-row", name: "Cable Row" },
+        { placementId: "row-1" },
       ),
     ).toEqual([
       expect.objectContaining({
@@ -178,26 +179,20 @@ describe("log workout execution guidance", () => {
     ]);
   });
 
-  it("attaches by exercise id when duplicate display names would make name matching ambiguous", () => {
+  it("never attaches placement guidance by canonical exercise ID", () => {
     const guidance = buildLogWorkoutExecutionGuidanceByExercise(makeCard());
 
     expect(
       getLogWorkoutExecutionGuidanceForExercise(guidance, {
-        exerciseId: "cable-row",
-        name: "Cable Row",
-        hasAmbiguousName: true,
+        placementId: "row-1",
       })
     ).toHaveLength(1);
     expect(
-      getLogWorkoutExecutionGuidanceForExercise(guidance, {
-        exerciseId: "different-cable-row",
-        name: "Cable Row",
-        hasAmbiguousName: true,
-      })
+      getLogWorkoutExecutionGuidanceForExercise(guidance, {})
     ).toEqual([]);
   });
 
-  it("keeps legacy name fallback only when the workout exercise name is unambiguous", () => {
+  it("never attaches placement guidance by exercise name", () => {
     const guidance = buildLogWorkoutExecutionGuidanceByExercise(
       makeCard({
         workoutPreview: {
@@ -209,16 +204,7 @@ describe("log workout execution guidance", () => {
     );
 
     expect(
-      getLogWorkoutExecutionGuidanceForExercise(guidance, {
-        name: "Cable Row",
-        hasAmbiguousName: false,
-      })
-    ).toHaveLength(1);
-    expect(
-      getLogWorkoutExecutionGuidanceForExercise(guidance, {
-        name: "Cable Row",
-        hasAmbiguousName: true,
-      })
+      getLogWorkoutExecutionGuidanceForExercise(guidance, {})
     ).toEqual([]);
   });
 
@@ -252,15 +238,72 @@ describe("log workout execution guidance", () => {
 
     expect(
       getLogWorkoutExecutionGuidanceForExercise(guidance, {
-        exerciseId: "cable-row-a",
-        name: "Cable Row",
+        placementId: "row-a",
       })
     ).toEqual([]);
     expect(
+      getLogWorkoutExecutionGuidanceForExercise(guidance, {})
+    ).toEqual([]);
+  });
+
+  it("keeps duplicate canonical guidance scoped to persisted placements", () => {
+    const guidance = buildLogWorkoutExecutionGuidanceByExercise(
+      makeCard({
+        workoutPreview: {
+          source: "generated_session_audit_snapshot",
+          targetRpeLabel: "RPE 8",
+          exercises: [
+            {
+              placementId: "row-a",
+              exerciseId: "bench",
+              exerciseName: "Bench Press",
+              setCount: 3,
+              repTargetLabel: "8 reps",
+              targetLoadLabel: "105 lb",
+              targetRpeLabel: "RPE 8",
+            },
+            {
+              placementId: "row-b",
+              exerciseId: "bench",
+              exerciseName: "Bench Press",
+              setCount: 3,
+              repTargetLabel: "8 reps",
+              targetLoadLabel: "95 lb",
+              targetRpeLabel: "RPE 8",
+            },
+          ],
+        },
+        calibrationNotes: [
+          {
+            kind: "prescription_confidence",
+            placementId: "row-a",
+            exerciseLabel: "Bench Press",
+            message: "Placement A guidance",
+            displayActionCode: "hold_target_load",
+          },
+          {
+            kind: "prescription_confidence",
+            placementId: "row-b",
+            exerciseLabel: "Bench Press",
+            message: "Placement B guidance",
+            displayActionCode: "hold_target_load",
+          },
+        ],
+      }),
+    );
+
+    expect(
       getLogWorkoutExecutionGuidanceForExercise(guidance, {
-        name: "Cable Row",
-        hasAmbiguousName: false,
-      })
+        placementId: "row-a",
+      }),
+    ).toEqual([expect.objectContaining({ message: "Placement A guidance" })]);
+    expect(
+      getLogWorkoutExecutionGuidanceForExercise(guidance, {
+        placementId: "row-b",
+      }),
+    ).toEqual([expect.objectContaining({ message: "Placement B guidance" })]);
+    expect(
+      getLogWorkoutExecutionGuidanceForExercise(guidance, {}),
     ).toEqual([]);
   });
 
@@ -298,8 +341,8 @@ describe("log workout execution guidance", () => {
         workoutId: "workout-1",
       })
     ).resolves.toMatchObject({
-      byExerciseId: {
-        "cable-row": [expect.objectContaining({ sourceLabel: "History" })],
+      byPlacementId: {
+        "row-1": [expect.objectContaining({ sourceLabel: "History" })],
       },
     });
 
@@ -308,7 +351,7 @@ describe("log workout execution guidance", () => {
         userId: "user-1",
         workoutId: "other-workout",
       })
-    ).resolves.toEqual({ byExerciseId: {}, byExerciseName: {} });
+    ).resolves.toEqual({ byPlacementId: {} });
   });
 
   it("does not import audit artifacts, generation internals, or mutation writers", () => {

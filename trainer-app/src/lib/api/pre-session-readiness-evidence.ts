@@ -93,6 +93,38 @@ export type PreSessionReadinessWeeklyRetroEvidence = {
   };
 };
 
+export type PreSessionReadinessSavedWorkoutEvidence = {
+  sessionSnapshot: SessionAuditSnapshot;
+  persistedExercises: Array<{
+    id: string;
+    exerciseId: string;
+  }>;
+};
+
+export function selectPreSessionReadinessWorkoutEvidence(input: {
+  generatedSessionSnapshot?: SessionAuditSnapshot;
+  savedWorkoutEvidence?: PreSessionReadinessSavedWorkoutEvidence | null;
+}): Pick<
+  PreSessionReadinessContractBuildInput,
+  "sessionSnapshot" | "persistedExercises"
+> {
+  if (!input.savedWorkoutEvidence) {
+    return {
+      sessionSnapshot: input.generatedSessionSnapshot,
+    };
+  }
+
+  return {
+    sessionSnapshot: {
+      ...input.savedWorkoutEvidence.sessionSnapshot,
+      generated:
+        input.savedWorkoutEvidence.sessionSnapshot.generated ??
+        input.generatedSessionSnapshot?.generated,
+    },
+    persistedExercises: input.savedWorkoutEvidence.persistedExercises,
+  };
+}
+
 export type PreSessionReadinessContractBuildInput = {
   userId: string;
   ownerEmail?: string;
@@ -100,6 +132,10 @@ export type PreSessionReadinessContractBuildInput = {
   nextSession?: NextWorkoutContext;
   generation?: SessionGenerationResult;
   sessionSnapshot?: SessionAuditSnapshot;
+  persistedExercises?: Array<{
+    id: string;
+    exerciseId: string;
+  }>;
   generationPath?: PreSessionReadinessGenerationPathEvidence;
   seedConsistency?: AcceptedMesocycleSeedProvenanceConsistency;
   projectedWeek?: PreSessionReadinessProjectedWeekEvidence;

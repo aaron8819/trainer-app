@@ -76,6 +76,11 @@ import {
   type MeasurementSemantics,
 } from "@/lib/exercise-measurement/semantics";
 import { formatFrozenLoadValue } from "@/lib/exercise-measurement/load-entry-policy";
+import { resolvePlacementCorrelations } from "@/lib/session-semantics/placement-correlation";
+import type {
+  SessionAuditExerciseSnapshot,
+  SessionAuditGeneratedState,
+} from "@/lib/evidence/session-audit-types";
 
 const HISTORY_RECENCY_WINDOW_DAYS = 42;
 const CANONICAL_RATIONALE_COMPONENT_KEYS = [
@@ -218,6 +223,17 @@ export async function generateWorkoutExplanation(
   const exerciseRationales = new Map();
   const selectionObjective = buildSelectionObjective();
   const workoutExerciseIds = new Set(workout.exercises.map((exercise) => exercise.exerciseId));
+  const workoutExerciseCounts = new Map<string, number>();
+  for (const workoutExercise of workout.exercises) {
+    workoutExerciseCounts.set(
+      workoutExercise.exerciseId,
+      (workoutExerciseCounts.get(workoutExercise.exerciseId) ?? 0) + 1,
+    );
+  }
+  const getExplanationKey = (workoutExercise: (typeof workout.exercises)[number]) =>
+    workoutExerciseCounts.get(workoutExercise.exerciseId) === 1
+      ? workoutExercise.exerciseId
+      : workoutExercise.id;
   const storedRationaleByExerciseId = parseStoredRationale(
     workout.selectionMetadata,
     workoutExerciseIds
@@ -234,7 +250,7 @@ export async function generateWorkoutExplanation(
     );
     if (candidate) {
       const rationale = explainExerciseRationale(candidate, selectionObjective, mappedExercises);
-      exerciseRationales.set(workoutExercise.exerciseId, rationale);
+      exerciseRationales.set(getExplanationKey(workoutExercise), rationale);
     }
   }
 
@@ -251,6 +267,24 @@ export async function generateWorkoutExplanation(
     workout.selectionMetadata
   );
   const sessionAuditSnapshot = readSessionAuditSnapshot(workout.selectionMetadata);
+  const generatedExerciseByPersistedExercise = new Map<object, SessionAuditExerciseSnapshot>();
+  const generatedExercises = sessionAuditSnapshot?.generated?.exercises ?? [];
+  const placementCorrelation = resolvePlacementCorrelations({
+    generatedOccurrences: generatedExercises.map((exercise) => ({
+      occurrenceId: exercise.placementId,
+      exerciseId: exercise.exerciseId,
+      value: exercise,
+    })),
+    persistedOccurrences: workout.exercises.map((exercise) => ({
+      occurrenceId: exercise.id,
+      exerciseId: exercise.exerciseId,
+      value: exercise,
+    })),
+    rawCorrelations: sessionAuditSnapshot?.saved?.placementCorrelations,
+  });
+  for (const pair of placementCorrelation.pairs) {
+    generatedExerciseByPersistedExercise.set(pair.persisted.value, pair.generated.value);
+  }
   const explanationPeriodization = buildExplanationPeriodization({
     blockContext,
     weekInMeso,
@@ -304,7 +338,8 @@ export async function generateWorkoutExplanation(
       measurementSnapshot,
     });
 
-    prescriptionRationales.set(workoutExercise.exerciseId, rationale);
+    const explanationKey = getExplanationKey(workoutExercise);
+    prescriptionRationales.set(explanationKey, rationale);
 
     if (runtimeAddedExerciseIds.has(workoutExercise.id)) {
       continue;
@@ -353,11 +388,12 @@ export async function generateWorkoutExplanation(
     });
     const isReadinessScaled = sessionEvidence.readinessScaledExerciseIds.has(workoutExercise.exerciseId);
     const generatedProgressionEvidence = resolveGeneratedProgressionEvidence(
-      sessionAuditSnapshot,
-      workoutExercise.exerciseId
+      sessionAuditSnapshot?.generated,
+      generatedExerciseByPersistedExercise,
+      workoutExercise,
     );
     progressionReceipts.set(
-      workoutExercise.exerciseId,
+      explanationKey,
       buildProgressionReceipt(
         lastPerformed,
         todayPrescription,
@@ -418,7 +454,7 @@ export async function generateWorkoutExplanation(
       }
     );
     if (nextExposureDecision) {
-      nextExposureDecisions.set(workoutExercise.exerciseId, nextExposureDecision);
+      nextExposureDecisions.set(explanationKey, nextExposureDecision);
     }
   }
 
@@ -822,7 +858,7 @@ async function loadHistoricalExercisePerformance(
     }
     if (
       currentMeasurement?.profile !== "REPS_BODYWEIGHT" &&
-      !permitsComputedLoadComparison(currentMeasurement)
+      !permitsLegacyExplainabilityLoadComparison(currentMeasurement)
     ) {
       continue;
     }
@@ -1052,7 +1088,7 @@ async function loadLatestPerformedSetSummary(
   isCompound: boolean | undefined,
   client: ExplainabilityReader
 ): Promise<(ProgressionSetSummary & { decisionLog?: string[] }) | null> {
-  if (!permitsComputedLoadComparison(comparisonMeasurement)) {
+  if (!permitsLegacyExplainabilityLoadComparison(comparisonMeasurement)) {
     return null;
   }
   const previous = await findLatestProgressionEligibleWorkoutExercise({
@@ -1459,20 +1495,23 @@ function summarizeTodayTopSet(
 }
 
 function resolveGeneratedProgressionEvidence(
-  sessionAuditSnapshot: ReturnType<typeof readSessionAuditSnapshot>,
-  exerciseId: string
+  generated: SessionAuditGeneratedState | undefined,
+  generatedExerciseByPersistedExercise: Map<object, SessionAuditExerciseSnapshot>,
+  workoutExercise: object,
 ): GeneratedProgressionEvidence {
-  const generated = sessionAuditSnapshot?.generated;
   if (!generated) {
     return "unknown";
   }
 
-  const generatedExerciseIds = new Set(generated.exercises.map((exercise) => exercise.exerciseId));
-  if (!generatedExerciseIds.has(exerciseId)) {
+  const matchedExercise = generatedExerciseByPersistedExercise.get(workoutExercise);
+  if (!matchedExercise) {
     return "unknown";
   }
 
-  return generated.traces.progression[exerciseId] ? "confirmed" : "absent";
+  const trace = matchedExercise.placementId
+    ? generated.traces.progression[matchedExercise.placementId]
+    : generated.traces.progression[matchedExercise.exerciseId];
+  return trace ? "confirmed" : "absent";
 }
 
 function buildProgressionReceipt(
@@ -1539,7 +1578,7 @@ async function buildNextExposureDecision(
 ): Promise<NextExposureDecision | null> {
   if (
     !performedSemantics ||
-    !permitsComputedLoadComparison(input.comparisonMeasurement)
+    !permitsLegacyExplainabilityLoadComparison(input.comparisonMeasurement)
   ) {
     return null;
   }
@@ -1606,6 +1645,20 @@ async function buildNextExposureDecision(
     medianReps: performedSemantics.medianReps,
     decisionLog,
   };
+}
+
+// Migration boundary: explainability/progression receipts retain their
+// pre-Phase-1 machine behavior until they consume structured comparability.
+function permitsLegacyExplainabilityLoadComparison(
+  measurement: MeasurementSemantics | null,
+): boolean {
+  return (
+    permitsComputedLoadComparison(measurement) &&
+    !(
+      measurement?.profile === "REPS_EXTERNAL_LOAD" &&
+      measurement.loadConvention === "MACHINE_DISPLAYED"
+    )
+  );
 }
 
 function resolveNextExposureReviewQuality(input: {

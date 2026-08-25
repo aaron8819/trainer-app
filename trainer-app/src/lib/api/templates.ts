@@ -39,6 +39,7 @@ export interface TemplateListItem {
 }
 
 export interface TemplateExerciseDetail {
+  placementId: string;
   orderIndex: number;
   exerciseId: string;
   supersetGroup?: number | null;
@@ -116,6 +117,7 @@ export async function loadTemplateDetail(
     createdAt: template.createdAt.toISOString(),
     updatedAt: template.updatedAt.toISOString(),
     exercises: template.exercises.map((te) => ({
+      placementId: te.id,
       orderIndex: te.orderIndex,
       exerciseId: te.exerciseId,
       supersetGroup: te.supersetGroup,

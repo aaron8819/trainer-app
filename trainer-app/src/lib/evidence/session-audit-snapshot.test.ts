@@ -84,7 +84,7 @@ describe("session-audit-snapshot", () => {
       },
       advancesSplit: true,
       progressionTraces: {
-        bench: {
+        "bench-entry": {
           version: 1,
           decisionSource: "double_progression",
           repRange: { min: 6, max: 8 },
@@ -142,7 +142,7 @@ describe("session-audit-snapshot", () => {
     });
 
     expect(saved.generated?.exerciseCount).toBe(1);
-    expect(saved.generated?.traces.progression.bench.metrics.nextLoad).toBe(205);
+    expect(saved.generated?.traces.progression["bench-entry"].metrics.nextLoad).toBe(205);
     expect(saved.saved).toMatchObject({
       workoutId: "workout-1",
       revision: 2,
@@ -451,5 +451,256 @@ describe("session-audit-snapshot", () => {
     expect(mutation.exercisesWithPrescriptionChanges).toEqual(["bench"]);
     expect(saved.generated?.sessionIntent).toBe("PUSH");
     expect(saved.saved?.status).toBe("COMPLETED");
+  });
+
+  function buildDuplicateBenchSnapshot(options?: { withCorrelations?: boolean }) {
+    const duplicateWorkout = {
+      ...workout,
+      mainLifts: [
+        {
+          ...workout.mainLifts[0],
+          id: "bench-placement-a",
+          orderIndex: 0,
+          sets: [{ ...workout.mainLifts[0]!.sets[0]!, targetLoad: 105 }],
+        },
+        {
+          ...workout.mainLifts[0],
+          id: "bench-placement-b",
+          orderIndex: 1,
+          sets: [{ ...workout.mainLifts[0]!.sets[0]!, targetLoad: 95 }],
+        },
+      ],
+    } as unknown as WorkoutPlan;
+    const generated = buildGeneratedSessionAuditSnapshot({
+      workout: duplicateWorkout,
+      selectionMode: "AUTO",
+      sessionIntent: "PUSH",
+      selectionMetadata: { sessionDecisionReceipt: baseReceipt },
+      advancesSplit: false,
+    });
+    return buildSavedSessionAuditSnapshot({
+      selectionMetadata: attachSessionAuditSnapshotToSelectionMetadata({}, generated),
+      workoutId: "saved-workout",
+      status: "PLANNED",
+      advancesSplit: false,
+      selectionMode: "AUTO",
+      placementCorrelations: options?.withCorrelations
+        ? [
+            { generatedPlacementId: "bench-placement-a", persistedWorkoutExerciseId: "row-a" },
+            { generatedPlacementId: "bench-placement-b", persistedWorkoutExerciseId: "row-b" },
+          ]
+        : undefined,
+    });
+  }
+
+  function persistedBench(id: string | undefined, orderIndex: number, targetLoad: number) {
+    return {
+      ...(id ? { id } : {}),
+      exerciseId: "bench",
+      exercise: { name: "Bench Press" },
+      orderIndex,
+      section: "MAIN",
+      isMainLift: true,
+      role: "main",
+      sets: [{ setIndex: 1, targetReps: 8, targetRpe: 8, targetLoad, role: "main" }],
+    };
+  }
+
+  it("detects a saved mutation on one duplicate placement without collapsing its sibling", () => {
+    const mutation = buildSessionAuditMutationSummary({
+      snapshot: buildDuplicateBenchSnapshot({ withCorrelations: true }),
+      persistedExercises: [persistedBench("row-a", 0, 95), persistedBench("row-b", 1, 95)],
+    });
+
+    expect(mutation.comparisonState).toBe("comparable");
+    expect(mutation.hasDrift).toBe(true);
+    expect(mutation.placementsWithPrescriptionChanges).toEqual(["bench-placement-a"]);
+  });
+
+  it("keeps unchanged duplicate placements comparable and drift-free", () => {
+    const mutation = buildSessionAuditMutationSummary({
+      snapshot: buildDuplicateBenchSnapshot({ withCorrelations: true }),
+      persistedExercises: [persistedBench("row-a", 0, 105), persistedBench("row-b", 1, 95)],
+    });
+
+    expect(mutation).toMatchObject({ comparisonState: "comparable", hasDrift: false });
+    expect(mutation.placementsWithPrescriptionChanges).toEqual([]);
+  });
+
+  it("correlates reordered duplicate rows by placement and reports the reorder", () => {
+    const mutation = buildSessionAuditMutationSummary({
+      snapshot: buildDuplicateBenchSnapshot({ withCorrelations: true }),
+      persistedExercises: [persistedBench("row-b", 0, 95), persistedBench("row-a", 1, 105)],
+    });
+
+    expect(mutation.comparisonState).toBe("comparable");
+    expect(mutation.hasDrift).toBe(true);
+    expect(mutation.placementsWithPrescriptionChanges).toEqual([
+      "bench-placement-a",
+      "bench-placement-b",
+    ]);
+  });
+
+  it("fails closed when duplicate placement correlation is missing or legacy-ambiguous", () => {
+    for (const persistedExercises of [
+      [persistedBench("row-a", 0, 105), persistedBench("row-b", 1, 95)],
+      [persistedBench(undefined, 0, 105), persistedBench(undefined, 1, 95)],
+    ]) {
+      const mutation = buildSessionAuditMutationSummary({
+        snapshot: buildDuplicateBenchSnapshot(),
+        persistedExercises,
+      });
+      expect(mutation).toMatchObject({
+        comparisonState: "ambiguous_exercise_correlation",
+        hasDrift: null,
+        ambiguousExerciseIds: ["bench"],
+      });
+    }
+  });
+
+  it("retains canonical fallback for a single unique exercise", () => {
+    const generated = buildGeneratedSessionAuditSnapshot({
+      workout,
+      selectionMode: "AUTO",
+      sessionIntent: "PUSH",
+      selectionMetadata: { sessionDecisionReceipt: baseReceipt },
+      advancesSplit: false,
+    });
+    const mutation = buildSessionAuditMutationSummary({
+      snapshot: generated,
+      persistedExercises: [persistedBench("unrelated-row", 0, 195)],
+    });
+
+    expect(mutation.comparisonState).toBe("comparable");
+    expect(mutation.hasDrift).toBe(true);
+    expect(mutation.exercisesWithPrescriptionChanges).toEqual(["bench"]);
+  });
+
+  it("fails closed when an explicit target is unresolved instead of falling back canonically", () => {
+    const snapshot = buildDuplicateBenchSnapshot({ withCorrelations: true });
+    snapshot.saved!.placementCorrelations = [
+      { generatedPlacementId: "bench-placement-a", persistedWorkoutExerciseId: "NOPE" },
+      { generatedPlacementId: "bench-placement-b", persistedWorkoutExerciseId: "row-b" },
+    ];
+    const mutation = buildSessionAuditMutationSummary({
+      snapshot,
+      persistedExercises: [persistedBench("row-a", 0, 105), persistedBench("row-b", 1, 95)],
+    });
+
+    expect(mutation).toMatchObject({
+      comparisonState: "invalid_placement_correlation",
+      hasDrift: null,
+      changedFields: [],
+      invalidPlacementCorrelations: [
+        expect.objectContaining({
+          code: "invalid_explicit_target",
+          generatedPlacementId: "bench-placement-a",
+        }),
+      ],
+    });
+  });
+
+  it("preserves malformed serialized correlations for authoritative validation", () => {
+    const snapshot = buildDuplicateBenchSnapshot({ withCorrelations: true });
+    snapshot.saved!.placementCorrelations = [
+      { generatedPlacementId: "bench-placement-a" },
+    ];
+
+    const parsed = readSessionAuditSnapshot({ sessionAuditSnapshot: snapshot });
+    expect(parsed?.saved?.placementCorrelations).toEqual([
+      { generatedPlacementId: "bench-placement-a" },
+    ]);
+
+    const mutation = buildSessionAuditMutationSummary({
+      snapshot: parsed!,
+      persistedExercises: [persistedBench("row-a", 0, 105), persistedBench("row-b", 1, 95)],
+    });
+    expect(mutation).toMatchObject({
+      comparisonState: "invalid_placement_correlation",
+      hasDrift: null,
+      changedFields: [],
+      invalidPlacementCorrelations: [
+        expect.objectContaining({
+          code: "malformed_explicit_correlation",
+          generatedPlacementId: "bench-placement-a",
+        }),
+      ],
+    });
+  });
+
+  it.each([
+    {
+      label: "many-to-one target",
+      correlations: [
+        { generatedPlacementId: "bench-placement-a", persistedWorkoutExerciseId: "row-a" },
+        { generatedPlacementId: "bench-placement-b", persistedWorkoutExerciseId: "row-a" },
+      ],
+      issue: "duplicate_explicit_target",
+    },
+    {
+      label: "duplicate source",
+      correlations: [
+        { generatedPlacementId: "bench-placement-a", persistedWorkoutExerciseId: "row-a" },
+        { generatedPlacementId: "bench-placement-a", persistedWorkoutExerciseId: "row-b" },
+      ],
+      issue: "duplicate_explicit_source",
+    },
+  ])("rejects $label cardinality", ({ correlations, issue }) => {
+    const snapshot = buildDuplicateBenchSnapshot({ withCorrelations: true });
+    snapshot.saved!.placementCorrelations = correlations;
+    const mutation = buildSessionAuditMutationSummary({
+      snapshot,
+      persistedExercises: [persistedBench("row-a", 0, 105), persistedBench("row-b", 1, 95)],
+    });
+
+    expect(mutation.comparisonState).toBe("invalid_placement_correlation");
+    expect(mutation.hasDrift).toBeNull();
+    expect(mutation.invalidPlacementCorrelations).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: issue })]),
+    );
+  });
+
+  it("fails closed before comparison when generated occurrence IDs are duplicated", () => {
+    const snapshot = buildDuplicateBenchSnapshot({ withCorrelations: true });
+    snapshot.generated!.exercises[1]!.placementId = "bench-placement-a";
+
+    const mutation = buildSessionAuditMutationSummary({
+      snapshot,
+      persistedExercises: [persistedBench("row-a", 0, 105), persistedBench("row-b", 1, 95)],
+    });
+
+    expect(mutation).toMatchObject({
+      comparisonState: "invalid_placement_correlation",
+      hasDrift: null,
+      changedFields: [],
+      invalidPlacementCorrelations: [
+        expect.objectContaining({
+          code: "duplicate_generated_occurrence_id",
+          generatedPlacementId: "bench-placement-a",
+          occurrenceIndexes: [0, 1],
+        }),
+      ],
+    });
+  });
+
+  it("fails closed before comparison when persisted occurrence IDs are duplicated", () => {
+    const snapshot = buildDuplicateBenchSnapshot({ withCorrelations: true });
+    const mutation = buildSessionAuditMutationSummary({
+      snapshot,
+      persistedExercises: [persistedBench("row-a", 0, 105), persistedBench("row-a", 1, 95)],
+    });
+
+    expect(mutation).toMatchObject({
+      comparisonState: "invalid_placement_correlation",
+      hasDrift: null,
+      changedFields: [],
+      invalidPlacementCorrelations: [
+        expect.objectContaining({
+          code: "duplicate_persisted_occurrence_id",
+          persistedWorkoutExerciseId: "row-a",
+          occurrenceIndexes: [0, 1],
+        }),
+      ],
+    });
   });
 });

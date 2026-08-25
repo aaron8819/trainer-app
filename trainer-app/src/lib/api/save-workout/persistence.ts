@@ -1,4 +1,5 @@
 import { MovementPatternV2, Prisma } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import {
   buildExerciseStimulusSnapshot,
   toExerciseStimulusAccountingEvidence,
@@ -15,6 +16,7 @@ import {
 import { normalizeAcceptedSeedPayload } from "@/lib/api/mesocycle-seed-revision";
 
 export type SaveWorkoutExerciseInput = {
+  placementId?: string;
   exerciseId: string;
   section: "WARMUP" | "MAIN" | "ACCESSORY";
   measurement?: MeasurementSemantics;
@@ -32,6 +34,8 @@ export type SaveWorkoutExerciseInput = {
 };
 
 export type PersistedSaveWorkoutExercise = {
+  id?: string;
+  placementId?: string;
   exerciseId: string;
   orderIndex: number;
   section: "WARMUP" | "MAIN" | "ACCESSORY";
@@ -47,6 +51,7 @@ export type PersistedSaveWorkoutExercise = {
 };
 
 export type PreparedWorkoutExercise = SaveWorkoutExerciseInput & {
+  persistedWorkoutExerciseId?: string;
   movementPatterns: MovementPatternV2[];
   stimulusAccountingSnapshot: ExerciseStimulusSnapshot;
   zeroLoadMeaning: ZeroLoadMeaning | null;
@@ -115,6 +120,12 @@ export function buildPersistedExercisesForSave(
   exercises: SaveWorkoutExerciseInput[],
 ): PersistedSaveWorkoutExercise[] {
   return exercises.map((exercise, exerciseIndex) => ({
+    ...(exercise.placementId ? { placementId: exercise.placementId } : {}),
+    ...(typeof (exercise as Partial<PreparedWorkoutExercise>).persistedWorkoutExerciseId === "string"
+      ? {
+          id: (exercise as Partial<PreparedWorkoutExercise>).persistedWorkoutExerciseId,
+        }
+      : {}),
     exerciseId: exercise.exerciseId,
     orderIndex: exerciseIndex,
     section: exercise.section,
@@ -149,6 +160,7 @@ export async function prepareWorkoutExercisesForPersistence(
 
     prepared.push({
       ...exercise,
+      persistedWorkoutExerciseId: randomUUID(),
       zeroLoadMeaning: parseZeroLoadMeaningColumn(exerciseRecord),
       movementPatterns: exerciseRecord.movementPatterns,
       stimulusAccountingSnapshot: buildExerciseStimulusSnapshot(
@@ -269,6 +281,7 @@ export async function rewriteWorkoutExercises(
   for (const [exerciseIndex, exercise] of input.exercises.entries()) {
     const createdExercise = await tx.workoutExercise.create({
       data: {
+        id: exercise.persistedWorkoutExerciseId ?? randomUUID(),
         workoutId: input.workoutId,
         exerciseId: exercise.exerciseId,
         orderIndex: exerciseIndex,

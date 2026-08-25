@@ -34,6 +34,7 @@ import type {
   WeeklyRetroAuditSessionExecutionRow,
   WeeklyRetroAuditVolumeRow,
 } from "./types";
+import { resolvePlacementCorrelations } from "@/lib/session-semantics/placement-correlation";
 
 const DEFAULT_FALLBACK_LANDMARK = {
   mev: 0,
@@ -239,6 +240,42 @@ function buildSavedSetCounts(
       countPerformedOrStructuredSets(exercise.sets),
     ])
   );
+}
+
+function correlateWeeklyRetroExercises(input: {
+  session: HistoricalWeekAuditSession;
+  workout?: WeeklyRetroRuntimeWorkoutRow;
+}): Array<{
+  generatedExercise?: SessionAuditExerciseSnapshot;
+  savedExercise?: WeeklyRetroRuntimeWorkoutExercise;
+}> {
+  const generatedExercises = input.session.sessionSnapshot.generated?.exercises ?? [];
+  const savedExercises = input.workout?.exercises ?? [];
+  const correlation = resolvePlacementCorrelations({
+    generatedOccurrences: generatedExercises.map((exercise) => ({
+      occurrenceId: exercise.placementId,
+      exerciseId: exercise.exerciseId,
+      value: exercise,
+    })),
+    persistedOccurrences: savedExercises.map((exercise) => ({
+      occurrenceId: exercise.id,
+      exerciseId: exercise.exerciseId,
+      value: exercise,
+    })),
+    rawCorrelations: input.session.sessionSnapshot.saved?.placementCorrelations,
+  });
+  return [
+    ...correlation.pairs.map((pair) => ({
+      generatedExercise: pair.generated.value,
+      savedExercise: pair.persisted.value,
+    })),
+    ...correlation.unresolvedGenerated.map((entry) => ({
+      generatedExercise: entry.value,
+    })),
+    ...correlation.unresolvedPersisted.map((entry) => ({
+      savedExercise: entry.value,
+    })),
+  ];
 }
 
 function countPerformedOrStructuredSets(
@@ -859,6 +896,30 @@ function computePlannedSetCompletion(input: {
   completed: number;
   missed: number;
 } {
+  if (
+    input.session.reconciliation.comparisonState === "ambiguous_exercise_correlation" ||
+    input.session.reconciliation.comparisonState === "invalid_placement_correlation"
+  ) {
+    return { total: 0, completed: 0, missed: 0 };
+  }
+  const correlated = correlateWeeklyRetroExercises(input);
+  const hasDuplicateGeneratedExercise =
+    new Set(
+      (input.session.sessionSnapshot.generated?.exercises ?? []).map(
+        (exercise) => exercise.exerciseId,
+      ),
+    ).size !== (input.session.sessionSnapshot.generated?.exercises.length ?? 0);
+  if (hasDuplicateGeneratedExercise) {
+    const total = countGeneratedPlannedSets(input.session);
+    const completed = correlated.reduce((sum, pair) => {
+      if (!pair.generatedExercise || !pair.savedExercise) return sum;
+      return sum + Math.min(
+        pair.generatedExercise.prescribedSetCount,
+        countPerformedOrStructuredSets(pair.savedExercise.sets),
+      );
+    }, 0);
+    return { total, completed, missed: Math.max(0, total - completed) };
+  }
   const generatedSetCounts = buildGeneratedSetCounts(input.session);
   const generatedExercisesById = new Map(
     (input.session.sessionSnapshot.generated?.exercises ?? []).map((exercise) => [
@@ -916,10 +977,9 @@ function computePlannedSetCompletion(input: {
 function buildExerciseContexts(
   workouts: WeeklyRetroRuntimeWorkoutRow[]
 ): RuntimeEditExerciseContext[] {
-  const byId = new Map<string, RuntimeEditExerciseContext>();
-  for (const workout of workouts) {
-    for (const workoutExercise of workout.exercises) {
-      const context = {
+  return workouts.flatMap((workout) =>
+    workout.exercises.map((workoutExercise) => ({
+        workoutExerciseId: workoutExercise.id,
         exerciseId: workoutExercise.exerciseId,
         exerciseName: workoutExercise.exercise.name,
         primaryMuscles: workoutExercise.exercise.exerciseMuscles
@@ -931,14 +991,8 @@ function buildExerciseContexts(
         aliases: workoutExercise.exercise.aliases.map((alias) => alias.alias),
         stimulusAccountingSnapshot:
           workoutExercise.stimulusAccountingSnapshot,
-      };
-      byId.set(workoutExercise.id, context);
-      if (!byId.has(workoutExercise.exerciseId)) {
-        byId.set(workoutExercise.exerciseId, context);
-      }
-    }
-  }
-  return Array.from(byId.values());
+      }))
+  );
 }
 
 function buildTargetContext(
@@ -1158,12 +1212,14 @@ function buildExerciseLoadCalibrationRows(input: {
   const rows: WeeklyRetroExerciseLoadCalibrationRow[] = [];
 
   for (const session of input.sessions) {
+    if (
+      session.reconciliation.comparisonState === "ambiguous_exercise_correlation" ||
+      session.reconciliation.comparisonState === "invalid_placement_correlation"
+    ) {
+      continue;
+    }
     const workout = input.workoutsById.get(session.workoutId);
-    const savedExercisesById = new Map(
-      (workout?.exercises ?? []).map((exercise) => [exercise.exerciseId, exercise])
-    );
-    const generatedExercises = session.sessionSnapshot.generated?.exercises ?? [];
-    const generatedExerciseIds = new Set(generatedExercises.map((exercise) => exercise.exerciseId));
+    const correlatedExercises = correlateWeeklyRetroExercises({ session, workout });
     const slot = input.slotIdentityByWorkoutId.get(session.workoutId);
     const sessionLabel =
       slot?.slotId ??
@@ -1172,23 +1228,11 @@ function buildExerciseLoadCalibrationRows(input: {
         .join(":");
     const mesocycleSnapshot = session.sessionSnapshot.saved?.mesocycleSnapshot;
 
-    const exercisePairs: Array<{
-      generatedExercise?: SessionAuditExerciseSnapshot;
-      savedExercise?: WeeklyRetroRuntimeWorkoutExercise;
-    }> = [
-      ...generatedExercises
-        .slice()
-        .sort((left, right) => left.orderIndex - right.orderIndex)
-        .map((generatedExercise) => ({
-          generatedExercise,
-          savedExercise: savedExercisesById.get(generatedExercise.exerciseId),
-        })),
-      ...(workout?.exercises ?? [])
-        .filter((savedExercise) => !generatedExerciseIds.has(savedExercise.exerciseId))
-        .slice()
-        .sort((left, right) => left.orderIndex - right.orderIndex)
-        .map((savedExercise) => ({ savedExercise })),
-    ];
+    const exercisePairs = correlatedExercises.sort(
+      (left, right) =>
+        (left.generatedExercise?.orderIndex ?? left.savedExercise?.orderIndex ?? 0) -
+        (right.generatedExercise?.orderIndex ?? right.savedExercise?.orderIndex ?? 0),
+    );
 
     for (const pair of exercisePairs) {
       const plannedSetCount = pair.generatedExercise?.prescribedSetCount ?? 0;
@@ -1223,6 +1267,10 @@ function buildExerciseLoadCalibrationRows(input: {
         mesoSession: mesocycleSnapshot?.session ?? undefined,
         compositionSource: input.compositionSourceByWorkoutId.get(session.workoutId),
         reviewBucket: input.sessionReviewBucketByWorkoutId.get(session.workoutId),
+        ...(pair.generatedExercise?.placementId
+          ? { placementId: pair.generatedExercise.placementId }
+          : {}),
+        ...(pair.savedExercise?.id ? { workoutExerciseId: pair.savedExercise.id } : {}),
         exerciseId: pair.generatedExercise?.exerciseId ?? pair.savedExercise?.exerciseId ?? "unknown",
         exerciseName:
           pair.generatedExercise?.exerciseName ?? pair.savedExercise?.exercise.name ?? "Unknown exercise",
@@ -1252,8 +1300,10 @@ function applyReplacementLikePairing(
     byWorkoutId.set(row.workoutId, workoutRows);
   }
 
-  const replacementByExerciseId = new Map<string, WeeklyRetroReplacementLikePair>();
-  const usedAddedExerciseIds = new Set<string>();
+  const rowKey = (row: WeeklyRetroExerciseLoadCalibrationRow) =>
+    `${row.workoutId}:${row.placementId ?? row.workoutExerciseId ?? row.exerciseId}`;
+  const replacementByRowKey = new Map<string, WeeklyRetroReplacementLikePair>();
+  const usedAddedRowKeys = new Set<string>();
   for (const workoutRows of byWorkoutId.values()) {
     const plannedCandidates = workoutRows.filter(
       (row) =>
@@ -1270,7 +1320,7 @@ function applyReplacementLikePairing(
 
     for (const planned of plannedCandidates) {
       const added = addedCandidates.find((candidate) => {
-        if (usedAddedExerciseIds.has(candidate.exerciseId)) {
+        if (usedAddedRowKeys.has(rowKey(candidate))) {
           return false;
         }
         return Boolean(
@@ -1301,14 +1351,14 @@ function applyReplacementLikePairing(
       if (!plannedPair || !addedPair) {
         continue;
       }
-      replacementByExerciseId.set(planned.exerciseId, plannedPair);
-      replacementByExerciseId.set(added.exerciseId, addedPair);
-      usedAddedExerciseIds.add(added.exerciseId);
+      replacementByRowKey.set(rowKey(planned), plannedPair);
+      replacementByRowKey.set(rowKey(added), addedPair);
+      usedAddedRowKeys.add(rowKey(added));
     }
   }
 
   return rows.map((row) => {
-    const replacementLike = replacementByExerciseId.get(row.exerciseId);
+    const replacementLike = replacementByRowKey.get(rowKey(row));
     if (!replacementLike) {
       return row;
     }
@@ -1620,7 +1670,11 @@ export async function buildWeeklyRetroAuditPayload(input: {
       ].includes(field)
     )
   ).length;
-  const legacyLimitedSessionCount = historicalWeek.comparabilityCoverage.reconstructedSnapshotCount;
+  const legacyLimitedSessionCount =
+    historicalWeek.comparabilityCoverage.reconstructedSnapshotCount;
+  const invalidCorrelationSessionCount =
+    (historicalWeek.comparabilityCoverage.ambiguousCorrelationCount ?? 0) +
+    (historicalWeek.comparabilityCoverage.invalidCorrelationCount ?? 0);
   const planAdherence = buildPlanAdherence({
     sessions: historicalWeek.sessions,
     workoutsById: runtimeWorkoutsById,
@@ -1922,6 +1976,7 @@ export async function buildWeeklyRetroAuditPayload(input: {
       status:
         planAdherence.engineConfidenceImpact === "high" ||
         planAdherence.engineConfidenceImpact === "medium" ||
+        invalidCorrelationSessionCount > 0 ||
         legacyLimitedSessionCount > 0 ||
         belowMev.length > 0 ||
         nearMav.length > 0 ||
@@ -1949,6 +2004,7 @@ export async function buildWeeklyRetroAuditPayload(input: {
         planAdherence.engineConfidenceImpact === "high" ||
         (planAdherence.engineConfidenceImpact === "medium" &&
           legacyLimitedSessionCount === 0) ||
+        invalidCorrelationSessionCount > 0 ||
         selectionDriftCount > 0
           ? "attention_required"
           : legacyLimitedSessionCount > 0

@@ -227,6 +227,8 @@ export type RuntimeReplacedExerciseSummary = {
 };
 
 export type PersistedWorkoutStructureExerciseInput = {
+  id?: string;
+  placementId?: string;
   exerciseId: string;
   orderIndex: number;
   section?: string | null;
@@ -322,7 +324,8 @@ function parseWorkoutStructureState(value: unknown): WorkoutStructureState | und
     !reconciliationRecord ||
     reconciliationRecord.version !== 1 ||
     typeof reconciliationRecord.comparisonState !== "string" ||
-    typeof reconciliationRecord.hasDrift !== "boolean" ||
+    (typeof reconciliationRecord.hasDrift !== "boolean" &&
+      reconciliationRecord.hasDrift !== null) ||
     !Array.isArray(reconciliationRecord.changedFields) ||
     !Array.isArray(reconciliationRecord.addedExerciseIds) ||
     !Array.isArray(reconciliationRecord.removedExerciseIds) ||
@@ -1020,6 +1023,8 @@ export function buildWorkoutStructureState(input: {
       savedSelectionMode: input.selectionMode,
       savedSessionIntent: input.sessionIntent,
       persistedExercises: input.persistedExercises.map((exercise) => ({
+        id: exercise.id,
+        placementId: exercise.placementId,
         exerciseId: exercise.exerciseId,
         orderIndex: exercise.orderIndex,
         section: exercise.section,

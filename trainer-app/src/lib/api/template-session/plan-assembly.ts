@@ -93,6 +93,7 @@ export function applyTemplateAutoFillSelection(
     }
     const preserveSuperset = selectedId === templateEntry.exercise.id;
     return {
+      ...(templateEntry.placementId ? { placementId: templateEntry.placementId } : {}),
       exercise: selectedExercise,
       orderIndex: templateEntry.orderIndex,
       supersetGroup: preserveSuperset ? templateEntry.supersetGroup : undefined,
@@ -101,7 +102,12 @@ export function applyTemplateAutoFillSelection(
 }
 
 export function mapTemplateExercises(
-  templateExercises: { exerciseId: string; orderIndex: number; supersetGroup?: number | null }[],
+  templateExercises: {
+    placementId?: string;
+    exerciseId: string;
+    orderIndex: number;
+    supersetGroup?: number | null;
+  }[],
   exerciseLibrary: ReturnType<typeof mapExercises>
 ): TemplateExerciseInput[] {
   const exerciseById = new Map(exerciseLibrary.map((exercise) => [exercise.id, exercise]));
@@ -112,6 +118,7 @@ export function mapTemplateExercises(
       }
       return [
         {
+          ...(entry.placementId ? { placementId: entry.placementId } : {}),
           exercise,
           orderIndex: entry.orderIndex,
           supersetGroup: entry.supersetGroup ?? undefined,

@@ -65,6 +65,31 @@ export const generateFromTemplateSchema = z.object({
   pinnedExerciseIds: z.array(z.string()).optional(),
   autoFillUnpinned: z.boolean().optional(),
   slotId: z.string().optional(),
+  exerciseReplacements: z
+    .array(
+      z
+        .object({
+          placementId: z.string().min(1),
+          orderIndex: z.number().int().nonnegative(),
+          originalExerciseId: z.string().min(1),
+          replacementExerciseId: z.string().min(1),
+        })
+        .strict(),
+    )
+    .max(20)
+    .refine(
+      (replacements) =>
+        new Set(replacements.map((replacement) => replacement.placementId)).size ===
+        replacements.length,
+      "Exercise replacement placements must be unique",
+    )
+    .refine(
+      (replacements) =>
+        new Set(replacements.map((replacement) => replacement.orderIndex)).size ===
+        replacements.length,
+      "Exercise replacement order indexes must be unique",
+    )
+    .optional(),
 });
 
 export const sessionIntentSchema = z.enum([
@@ -175,6 +200,7 @@ const saveWorkoutPayloadSchema = z.object({
       .array(
         z.object({
           section: z.enum(WORKOUT_EXERCISE_SECTION_VALUES),
+          placementId: z.string().min(1).optional(),
           exerciseId: z.string(),
           measurement: measurementSemanticsSchema.optional(),
           sets: z

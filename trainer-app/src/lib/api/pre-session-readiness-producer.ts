@@ -16,9 +16,10 @@ import type { SessionIntent } from "@/lib/engine/session-types";
 import type { SessionSlotSnapshot } from "@/lib/evidence/types";
 import { buildGeneratedSessionAuditSnapshot } from "@/lib/evidence/session-audit-snapshot";
 import type { SessionAuditSnapshot } from "@/lib/evidence/session-audit-types";
-import type {
-  PreSessionReadinessEvidence,
-  PreSessionReadinessGenerationPathEvidence,
+import {
+  selectPreSessionReadinessWorkoutEvidence,
+  type PreSessionReadinessEvidence,
+  type PreSessionReadinessGenerationPathEvidence,
 } from "./pre-session-readiness-evidence";
 import {
   buildPreSessionReadinessProjectedWeekEvidence,
@@ -295,13 +296,23 @@ export async function preparePreSessionReadinessSnapshot(
           receiptCompositionSource,
         })
       : undefined;
+  if (nextSession.existingWorkoutId && !preparedIdentity.savedWorkoutEvidence) {
+    return blocked(
+      "invalid_contract",
+      "Saved workout evidence is unavailable for pre-session readiness."
+    );
+  }
+  const workoutEvidence = selectPreSessionReadinessWorkoutEvidence({
+    generatedSessionSnapshot: generated.sessionSnapshot,
+    savedWorkoutEvidence: preparedIdentity.savedWorkoutEvidence,
+  });
   const contract = buildPreSessionReadinessContract({
     userId,
     ownerEmail: options.ownerEmail,
     evidence: buildReadinessEvidence({ activeMesocycle }),
     nextSession,
     generation: generated.generation,
-    sessionSnapshot: generated.sessionSnapshot,
+    ...workoutEvidence,
     generationPath: generated.generationPath,
     seedConsistency,
     projectedWeek,

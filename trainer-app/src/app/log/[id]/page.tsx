@@ -19,7 +19,6 @@ import { getUiAuditFixtureForServer } from "@/lib/ui-audit-fixtures/server";
 import {
   getLogWorkoutExecutionGuidanceForExercise,
   loadLogWorkoutExecutionGuidance,
-  normalizeLogWorkoutGuidanceExerciseLabel,
   type LogWorkoutExecutionGuidanceByExercise,
 } from "@/lib/api/log-workout-execution-guidance";
 import { isFinisherRolloutEnabled } from "@/lib/operations/finisher-rollout";
@@ -116,29 +115,11 @@ function attachLogExerciseExecutionGuidance(
   exercises: SectionedExercises,
   guidanceByExercise: LogWorkoutExecutionGuidanceByExercise
 ): SectionedExercises {
-  const exerciseNameCounts = new Map<string, number>();
-  const allExercises = [
-    ...(exercises.warmup ?? []),
-    ...exercises.main,
-    ...(exercises.accessory ?? []),
-  ];
-  for (const exercise of allExercises) {
-    const key = normalizeLogWorkoutGuidanceExerciseLabel(exercise.name);
-    if (!key) {
-      continue;
-    }
-    exerciseNameCounts.set(key, (exerciseNameCounts.get(key) ?? 0) + 1);
-  }
-
   const attach = (exercise: LogExerciseInput): LogExerciseInput => {
-    const exerciseNameKey = normalizeLogWorkoutGuidanceExerciseLabel(exercise.name);
     const executionGuidance = getLogWorkoutExecutionGuidanceForExercise(
       guidanceByExercise,
       {
-        exerciseId: exercise.exerciseId,
-        name: exercise.name,
-        hasAmbiguousName:
-          exerciseNameKey != null && (exerciseNameCounts.get(exerciseNameKey) ?? 0) > 1,
+        placementId: exercise.workoutExerciseId,
       }
     );
     return executionGuidance.length > 0

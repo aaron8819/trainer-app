@@ -24,6 +24,8 @@ import { buildNextMesocycleHandoffDryRunAuditPayload } from "./next-mesocycle-ha
 import { buildNextMesocyclePostAcceptVerificationAuditPayload } from "./next-mesocycle-post-accept-verification";
 import { buildProgressionAnchorAuditPayload } from "./progression-anchor";
 import { buildPreSessionReadinessContract } from "@/lib/api/pre-session-readiness-contract-builder";
+import { selectPreSessionReadinessWorkoutEvidence } from "@/lib/api/pre-session-readiness-evidence";
+import { loadPreSessionReadinessSavedWorkoutEvidence } from "@/lib/api/pre-session-readiness-snapshot";
 import {
   toPreSessionReadinessEvidence,
   toPreSessionReadinessProjectedWeekEvidence,
@@ -446,6 +448,21 @@ export async function runWorkoutAuditGeneration(
         : undefined;
     const snapshotDiagnostics =
       await loadPreSessionReadinessSnapshotAuditDiagnostics(context.userId);
+    const savedWorkoutEvidence = context.nextSession?.existingWorkoutId
+      ? await loadPreSessionReadinessSavedWorkoutEvidence({
+          userId: context.userId,
+          workoutId: context.nextSession.existingWorkoutId,
+        })
+      : null;
+    if (context.nextSession?.existingWorkoutId && !savedWorkoutEvidence) {
+      throw new Error(
+        "Saved workout evidence is unavailable for pre-session readiness audit."
+      );
+    }
+    const workoutEvidence = selectPreSessionReadinessWorkoutEvidence({
+      generatedSessionSnapshot: generatedFields.sessionSnapshot,
+      savedWorkoutEvidence,
+    });
     const preSessionReadinessPayload = {
       readOnly: true,
       affectsScoringOrGeneration: false,
@@ -480,7 +497,7 @@ export async function runWorkoutAuditGeneration(
         evidence: toPreSessionReadinessEvidence(preSessionReadinessPayload),
         nextSession: context.nextSession,
         generation: generatedFields.generationResult,
-        sessionSnapshot: generatedFields.sessionSnapshot,
+        ...workoutEvidence,
         generationPath: generatedFields.generationPath,
         seedConsistency: generatedFields.acceptedSeedProvenanceConsistency,
         projectedWeek:

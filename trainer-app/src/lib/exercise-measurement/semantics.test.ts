@@ -316,7 +316,7 @@ describe("exercise measurement semantics", () => {
       });
       expect(measurementLoadLabel(measurement), name).toBe("Machine displayed value");
       expect(measurementRepsLabel(measurement), name).toBe("Reps");
-      expect(permitsComputedLoadComparison(measurement), name).toBe(false);
+      expect(permitsComputedLoadComparison(measurement), name).toBe(true);
       expect(quantizesAsPounds(measurement), name).toBe(false);
     }
 
@@ -334,6 +334,26 @@ describe("exercise measurement semantics", () => {
       repBasis: "TOTAL",
     });
     expect(byName.get("Standing Calf Raise")?.measurementProfile).toBeUndefined();
+  });
+
+  it("keeps the comparison-capability predicate coarse and measurement-only", () => {
+    expect(
+      permitsComputedLoadComparison({
+        profile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "MACHINE_DISPLAYED",
+        repBasis: "TOTAL",
+      }),
+    ).toBe(true);
+    expect(
+      permitsComputedLoadComparison({
+        profile: "REPS_ASSISTED",
+        loadConvention: "DISPLAYED_ASSISTANCE",
+        repBasis: "TOTAL",
+      }),
+    ).toBe(false);
+    expect(
+      permitsComputedLoadComparison({ profile: "REPS_BODYWEIGHT", repBasis: "TOTAL" }),
+    ).toBe(false);
   });
 
   it("keeps persisted legacy null snapshots readable without retroactive classification", () => {

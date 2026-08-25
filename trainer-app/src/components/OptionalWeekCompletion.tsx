@@ -170,6 +170,7 @@ export function OptionalWeekCompletion({
         ...workout.accessories.map((exercise) => ({ ...exercise, section: "ACCESSORY" as const })),
       ].map((exercise) => ({
         section: exercise.section,
+        placementId: exercise.id,
         exerciseId: exercise.exercise.id,
         ...(exercise.measurement ? { measurement: exercise.measurement } : {}),
         sets: exercise.sets.map((set) => ({

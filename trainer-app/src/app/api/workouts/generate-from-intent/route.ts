@@ -51,11 +51,15 @@ function isAcceptedV4Seed(value: unknown): boolean {
 
 function unchangedAutoregulation(
   workout: GenerateFromIntentResponse["workout"],
+  loadAudit: NonNullable<AutoregulationResult["loadAudit"]>,
+  prescriptionReadouts: NonNullable<AutoregulationResult["prescriptionReadouts"]>,
 ): AutoregulationResult {
   const reason = "Accepted custom plan prescriptions replay exactly as planned.";
   return {
     original: workout,
     adjusted: workout,
+    loadAudit,
+    prescriptionReadouts,
     modifications: [],
     fatigueScore: null,
     rationale: reason,
@@ -298,6 +302,9 @@ export async function POST(request: Request) {
   if ("error" in result) {
     return NextResponse.json({ error: result.error }, { status: 400 });
   }
+  if (!result.audit) {
+    throw new Error("GENERATION_LOAD_AUDIT_REQUIRED");
+  }
 
   // Phase 3: Apply autoregulation
   const generationReceipt = result.selection.sessionDecisionReceipt;
@@ -324,8 +331,12 @@ export async function POST(request: Request) {
       seedProvenance.hash === revision.payloadHash
   );
   const autoregulated = exactV4Replay
-    ? unchangedAutoregulation(result.workout)
-    : await applyAutoregulation(user.id, result.workout);
+    ? unchangedAutoregulation(
+        result.workout,
+        result.audit,
+        result.prescriptionReadouts ?? [],
+      )
+    : await applyAutoregulation(user.id, result.workout, result.audit);
   const selectionMetadata = buildCanonicalSelectionMetadata(result.selection, autoregulated);
 
   const selectionSummary: GenerateFromIntentResponse["selectionSummary"] = {
@@ -369,8 +380,9 @@ export async function POST(request: Request) {
     advancesSplit:
       shouldApplyOptionalGapFill || shouldApplySupplementalDeficitSession ? false : true,
     filteredExercises: result.filteredExercises,
-    progressionTraces: result.audit?.progressionTraces,
-    deloadTrace: result.audit?.deloadTrace,
+    progressionTraces:
+      autoregulated.loadAudit?.progressionTraces ?? result.audit.progressionTraces,
+    deloadTrace: result.audit.deloadTrace,
   });
   const fullPlanSelectionMetadata = attachSessionAuditSnapshotToSelectionMetadata(
     finalSelectionMetadata,
@@ -454,7 +466,8 @@ export async function POST(request: Request) {
     volumePlanByMuscle: result.volumePlanByMuscle,
     selectionMode: result.selectionMode,
     sessionIntent: result.sessionIntent,
-    prescriptionReadouts: result.prescriptionReadouts,
+    prescriptionReadouts:
+      autoregulated.prescriptionReadouts ?? result.prescriptionReadouts,
     selectionSummary,
     selectionMetadata: responseSelectionMetadata,
     filteredExercises: result.filteredExercises,

@@ -324,6 +324,8 @@ export type HistoricalWeekAuditPayload = {
   comparabilityCoverage: {
     comparableSessionCount: number;
     missingGeneratedSnapshotCount: number;
+    ambiguousCorrelationCount?: number;
+    invalidCorrelationCount?: number;
     persistedSnapshotCount: number;
     reconstructedSnapshotCount: number;
     generatedLayerCoverage: "full" | "partial" | "none";
@@ -484,6 +486,8 @@ export type WeeklyRetroExerciseLoadCalibrationRow = {
   mesoSession?: number;
   compositionSource?: SessionCompositionSource;
   reviewBucket?: WeeklyRetroExerciseReviewBucket;
+  placementId?: string;
+  workoutExerciseId?: string;
   exerciseId: string;
   exerciseName: string;
   role?: WeeklyRetroPostSessionCalibrationRole;
@@ -765,12 +769,14 @@ export type ActiveMesocycleSlotReseedRecommendation =
   | "needs_projection_fix_first";
 
 export type ActiveMesocycleSlotReseedExerciseSeedRow = {
+  placementId?: string;
   exerciseId: string;
   exerciseName: string;
   role: "CORE_COMPOUND" | "ACCESSORY";
 };
 
 export type ActiveMesocycleSlotReseedSessionExerciseRow = {
+  placementId: string;
   exerciseId: string;
   exerciseName: string;
   role: "CORE_COMPOUND" | "ACCESSORY";

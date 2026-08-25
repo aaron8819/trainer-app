@@ -280,9 +280,9 @@ describe("golden-path completed workout increase regression", () => {
       hasUniformTargetLoad: true,
     });
     expect(performedSemantics?.signalSets).toEqual([
-      { reps: 10, load: 155, rpe: 7, targetLoad: 155 },
-      { reps: 10, load: 155, rpe: 7, targetLoad: 155 },
-      { reps: 9, load: 155, rpe: 7.5, targetLoad: 155 },
+      { setIndex: 1, reps: 10, load: 155, rpe: 7, targetLoad: 155, targetReps: undefined, targetRepMin: undefined, targetRepMax: undefined, targetRpe: undefined },
+      { setIndex: 2, reps: 10, load: 155, rpe: 7, targetLoad: 155, targetReps: undefined, targetRepMin: undefined, targetRepMax: undefined, targetRpe: undefined },
+      { setIndex: 3, reps: 9, load: 155, rpe: 7.5, targetLoad: 155, targetReps: undefined, targetRepMin: undefined, targetRepMax: undefined, targetRpe: undefined },
     ]);
 
     const liveTopSetCue = getLoadRecommendation({

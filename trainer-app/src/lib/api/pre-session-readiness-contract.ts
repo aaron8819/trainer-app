@@ -6,6 +6,10 @@ import {
   isWeeklyMuscleClosureDecision,
   type WeeklyMuscleClosureDecision,
 } from "./weekly-volume-closure";
+import type {
+  PlacementCorrelationIssueCode,
+  ResolvedPlacementCorrelation,
+} from "@/lib/session-semantics/placement-correlation";
 
 export const PRE_SESSION_READINESS_CONTRACT_OWNER_SEAM =
   "api/pre-session-readiness-contract" as const;
@@ -58,6 +62,8 @@ export type PreSessionReadinessCoachingRecommendation = {
 };
 
 export type PreSessionReadinessPrescriptionConfidenceWatchRow = {
+  placementId?: string;
+  placementCorrelationSource?: "explicit" | "legacy_unique" | "generated_only";
   exerciseLabel: string;
   displayMessage?: string;
   watchType: "prescription_confidence";
@@ -99,6 +105,8 @@ export type PreSessionReadinessPrescriptionConfidenceWatch =
   | PreSessionReadinessPrescriptionConfidenceWatchRow;
 
 export type PreSessionReadinessWorkoutPreviewExercise = {
+  placementId?: string;
+  placementCorrelationSource?: "explicit" | "legacy_unique" | "generated_only";
   exerciseId: string;
   exerciseName: string;
   setCount: number;
@@ -111,6 +119,18 @@ export type PreSessionReadinessWorkoutPreview = {
   source: "generated_session_audit_snapshot";
   exercises: PreSessionReadinessWorkoutPreviewExercise[];
   targetRpeLabel: string | null;
+};
+
+export type PreSessionReadinessPlacementCorrelation = {
+  state: "generated_only" | ResolvedPlacementCorrelation<unknown, unknown>["state"];
+  rawCorrelationState: "absent" | "present";
+  provenPairCount: number;
+  explicitPairCount: number;
+  legacyUniquePairCount: number;
+  unresolvedGeneratedCount: number;
+  unresolvedPersistedCount: number;
+  ambiguousExerciseIds: string[];
+  issueCodes: PlacementCorrelationIssueCode[];
 };
 
 export type PreSessionReadinessContract = {
@@ -219,6 +239,7 @@ export type PreSessionReadinessContract = {
     recoveryCaveats: string[];
     fatigue: string[];
   };
+  placementCorrelation?: PreSessionReadinessPlacementCorrelation;
   workoutPreview?: PreSessionReadinessWorkoutPreview;
   consistencyChecks: PreSessionReadinessConsistencyCheck[];
   boundaries: {
@@ -505,6 +526,11 @@ function hasValidPrescriptionConfidenceWatch(
 
   return (
     isRecord(value) &&
+    (value.placementId == null || typeof value.placementId === "string") &&
+    (value.placementCorrelationSource == null ||
+      value.placementCorrelationSource === "explicit" ||
+      value.placementCorrelationSource === "legacy_unique" ||
+      value.placementCorrelationSource === "generated_only") &&
     typeof value.exerciseLabel === "string" &&
     (value.displayMessage == null || typeof value.displayMessage === "string") &&
     value.watchType === "prescription_confidence" &&
@@ -558,6 +584,11 @@ function hasValidCalibrationWatches(calibrationWatches: unknown): boolean {
 function hasValidWorkoutPreviewExercise(value: unknown): boolean {
   return (
     isRecord(value) &&
+    (value.placementId == null || typeof value.placementId === "string") &&
+    (value.placementCorrelationSource == null ||
+      value.placementCorrelationSource === "explicit" ||
+      value.placementCorrelationSource === "legacy_unique" ||
+      value.placementCorrelationSource === "generated_only") &&
     typeof value.exerciseId === "string" &&
     typeof value.exerciseName === "string" &&
     typeof value.setCount === "number" &&
@@ -567,6 +598,43 @@ function hasValidWorkoutPreviewExercise(value: unknown): boolean {
     (typeof value.targetLoadLabel === "string" ||
       value.targetLoadLabel === null) &&
     (typeof value.targetRpeLabel === "string" || value.targetRpeLabel === null)
+  );
+}
+
+function hasValidPlacementCorrelation(value: unknown): boolean {
+  if (value == null) return true;
+
+  const validStates = new Set([
+    "generated_only",
+    "resolved",
+    "ambiguous_legacy_correlation",
+    "invalid_explicit_correlation",
+    "invalid_occurrence_cardinality",
+  ]);
+  const validIssueCodes = new Set<PlacementCorrelationIssueCode>([
+    "malformed_explicit_correlation",
+    "unknown_generated_source",
+    "invalid_explicit_target",
+    "duplicate_explicit_source",
+    "duplicate_explicit_target",
+    "duplicate_generated_occurrence_id",
+    "duplicate_persisted_occurrence_id",
+  ]);
+
+  return (
+    isRecord(value) &&
+    validStates.has(value.state as string) &&
+    (value.rawCorrelationState === "absent" || value.rawCorrelationState === "present") &&
+    [
+      value.provenPairCount,
+      value.explicitPairCount,
+      value.legacyUniquePairCount,
+      value.unresolvedGeneratedCount,
+      value.unresolvedPersistedCount,
+    ].every((count) => Number.isInteger(count) && (count as number) >= 0) &&
+    isStringArray(value.ambiguousExerciseIds) &&
+    Array.isArray(value.issueCodes) &&
+    value.issueCodes.every((code) => validIssueCodes.has(code as PlacementCorrelationIssueCode))
   );
 }
 
@@ -618,6 +686,7 @@ export function isPreSessionReadinessContract(
     hasValidDoseClosure(value.doseClosure) &&
     hasValidSessionLocalCoaching(value.sessionLocalCoaching) &&
     hasValidCalibrationWatches(value.calibrationWatches) &&
+    hasValidPlacementCorrelation(value.placementCorrelation) &&
     (value.workoutPreview == null ||
       hasValidWorkoutPreview(value.workoutPreview)) &&
     Array.isArray(value.consistencyChecks) &&

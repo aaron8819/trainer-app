@@ -16,6 +16,7 @@ import type {
 } from "@/lib/exercise-measurement/semantics";
 
 export type ReviewedExerciseMeta = {
+  placementId?: string;
   exerciseId: string;
   exerciseName: string;
   isMainLift: boolean;
@@ -395,13 +396,15 @@ function buildDescriptiveKeyLiftInsights(
   explanation: WorkoutExplanation,
   exercises: ReviewedExerciseMeta[]
 ): PostWorkoutKeyLiftInsight[] {
+  const explanationKey = (exercise: ReviewedExerciseMeta) =>
+    exercise.placementId ?? exercise.exerciseId;
   if (hasCanonicalDeloadContext(explanation)) {
     const primary = exercises.filter((exercise) => exercise.isMainLift);
     const selected = (primary.length > 0 ? primary : exercises).slice(0, 3);
 
     return selected.map((exercise) => {
-      const decision = explanation.nextExposureDecisions.get(exercise.exerciseId);
-      const receipt = explanation.progressionReceipts.get(exercise.exerciseId);
+      const decision = explanation.nextExposureDecisions.get(explanationKey(exercise));
+      const receipt = explanation.progressionReceipts.get(explanationKey(exercise));
 
       return {
         exerciseId: exercise.exerciseId,
@@ -422,11 +425,11 @@ function buildDescriptiveKeyLiftInsights(
   const withDecision = exercises.filter(
     (exercise) =>
       exercise.isRuntimeAdded !== true &&
-      explanation.nextExposureDecisions.has(exercise.exerciseId)
+      explanation.nextExposureDecisions.has(explanationKey(exercise))
   );
   const selected = withDecision
     .map((exercise, index) => {
-      const decision = explanation.nextExposureDecisions.get(exercise.exerciseId);
+      const decision = explanation.nextExposureDecisions.get(explanationKey(exercise));
       return { exercise, decision, index };
     })
     .filter(
@@ -452,11 +455,11 @@ function buildDescriptiveKeyLiftInsights(
     .map((row) => row.exercise);
 
   return selected.flatMap((exercise) => {
-    const decision = explanation.nextExposureDecisions.get(exercise.exerciseId);
+    const decision = explanation.nextExposureDecisions.get(explanationKey(exercise));
     if (!decision) {
       return [];
     }
-    const receipt = explanation.progressionReceipts.get(exercise.exerciseId);
+    const receipt = explanation.progressionReceipts.get(explanationKey(exercise));
     return [
       {
         exerciseId: exercise.exerciseId,

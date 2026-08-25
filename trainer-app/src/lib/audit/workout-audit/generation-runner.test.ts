@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => {
   const loadProjectedWeekVolumeReport = vi.fn();
   const buildPreSessionReadinessProjectedWeekEvidence = vi.fn();
   const loadPreSessionReadinessSnapshotAuditDiagnostics = vi.fn();
+  const loadPreSessionReadinessSavedWorkoutEvidence = vi.fn();
   const generateSessionFromIntent = vi.fn();
   const generateDeloadSessionFromIntent = vi.fn();
   const buildWeeklyRetroAuditPayload = vi.fn();
@@ -22,6 +23,7 @@ const mocks = vi.hoisted(() => {
     loadProjectedWeekVolumeReport,
     buildPreSessionReadinessProjectedWeekEvidence,
     loadPreSessionReadinessSnapshotAuditDiagnostics,
+    loadPreSessionReadinessSavedWorkoutEvidence,
     generateSessionFromIntent,
     generateDeloadSessionFromIntent,
     buildWeeklyRetroAuditPayload,
@@ -55,6 +57,8 @@ vi.mock("@/lib/api/pre-session-readiness-evidence-builder", () => ({
 vi.mock("@/lib/api/pre-session-readiness-snapshot", () => ({
   loadPreSessionReadinessSnapshotAuditDiagnostics: (...args: unknown[]) =>
     mocks.loadPreSessionReadinessSnapshotAuditDiagnostics(...args),
+  loadPreSessionReadinessSavedWorkoutEvidence: (...args: unknown[]) =>
+    mocks.loadPreSessionReadinessSavedWorkoutEvidence(...args),
 }));
 
 vi.mock("@/lib/api/template-session", () => ({
@@ -128,6 +132,7 @@ describe("runWorkoutAuditGeneration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.loadActiveMesocycle.mockResolvedValue({ state: "ACTIVE_ACCUMULATION" });
+    mocks.loadPreSessionReadinessSavedWorkoutEvidence.mockResolvedValue(null);
     mocks.deriveCurrentMesocycleSession.mockReturnValue({ week: 4, session: 1 });
     mocks.loadProjectedWeekVolumeReport.mockResolvedValue({
       currentWeek: {
@@ -1248,6 +1253,128 @@ describe("runWorkoutAuditGeneration", () => {
       readOnly: true,
       affectsAcceptedSeed: false,
     });
+  });
+
+  it("supplies saved placement evidence at the audit readiness builder callsite", async () => {
+    mocks.generateSessionFromIntent.mockResolvedValueOnce({
+      ...okGenerationResult,
+      workout: {
+        ...okGenerationResult.workout,
+        mainLifts: [
+          {
+            id: "generated-a",
+            exercise: {
+              id: "bench",
+              name: "Bench Press",
+              movementPatterns: [],
+              splitTags: [],
+              jointStress: "low",
+              equipment: [],
+            },
+            orderIndex: 0,
+            isMainLift: true,
+            sets: [{ setIndex: 0, targetReps: 8, targetLoad: 105 }],
+          },
+        ],
+      },
+      prescriptionReadouts: [
+        {
+          placementId: "generated-a",
+          exerciseId: "bench",
+          exerciseName: "Bench Press",
+          targetLoad: 105,
+          targetReps: 8,
+          repRange: { min: 6, max: 10 },
+          targetRpe: 7,
+          targetRir: 3,
+          loadSource: "history",
+          confidence: "high",
+          cautionLevel: "none",
+          cautionReason: null,
+          suggestedAdjustmentRange: null,
+        },
+      ],
+    });
+    mocks.loadPreSessionReadinessSavedWorkoutEvidence.mockResolvedValueOnce({
+      sessionSnapshot: {
+        version: 1,
+        generated: {
+          selectionMode: "AUTO",
+          sessionIntent: "UPPER",
+          semantics: { kind: "standard" },
+          exerciseCount: 1,
+          hardSetCount: 1,
+          exercises: [
+            {
+              placementId: "generated-a",
+              exerciseId: "bench",
+              exerciseName: "Bench Press",
+              orderIndex: 0,
+              section: "main",
+              isMainLift: true,
+              prescribedSetCount: 1,
+              prescribedSets: [],
+            },
+          ],
+          traces: { progression: {} },
+        },
+        saved: {
+          workoutId: "workout-saved",
+          status: "PLANNED",
+          advancesSplit: true,
+          semantics: { kind: "standard" },
+          placementCorrelations: [
+            {
+              generatedPlacementId: "generated-a",
+              persistedWorkoutExerciseId: "row-x",
+            },
+          ],
+        },
+      },
+      persistedExercises: [{ id: "row-x", exerciseId: "bench" }],
+    });
+    const context: WorkoutAuditContext = {
+      mode: "pre-session-readiness",
+      requestedMode: "pre-session-readiness",
+      userId: "user-1",
+      plannerDiagnosticsMode: "standard",
+      generationInput: { intent: "upper" },
+      nextSession: {
+        intent: "upper",
+        slotId: "upper_a",
+        slotSequenceIndex: 0,
+        slotSequenceLength: 1,
+        slotSource: "mesocycle_slot_sequence",
+        existingWorkoutId: "workout-saved",
+        isExisting: true,
+        source: "existing_incomplete",
+        weekInMeso: 1,
+        sessionInWeek: 1,
+        derivationTrace: [],
+        selectedIncompleteStatus: "planned",
+      },
+      projectedWeekVolume: { enabled: true },
+      preSessionReadiness: { enabled: true },
+    };
+
+    const run = await runWorkoutAuditGeneration(context);
+
+    expect(mocks.loadPreSessionReadinessSavedWorkoutEvidence).toHaveBeenCalledWith({
+      userId: "user-1",
+      workoutId: "workout-saved",
+    });
+    const contract = run.preSessionReadiness?.contract;
+    expect(contract).toBeDefined();
+    expect(contract?.placementCorrelation).toMatchObject({
+      state: "resolved",
+      explicitPairCount: 1,
+    });
+    expect(contract?.workoutPreview?.exercises).toEqual([
+      expect.objectContaining({
+        placementId: "row-x",
+        placementCorrelationSource: "explicit",
+      }),
+    ]);
   });
 
   it("adds deload session progress to pre-session-readiness from lifecycle context", async () => {

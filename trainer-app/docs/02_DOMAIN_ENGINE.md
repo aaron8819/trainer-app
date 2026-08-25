@@ -1,5 +1,138 @@
 # 02 Domain Engine
 
+## Load prescription domain
+
+`src/lib/engine/load-prescription.ts` owns the versioned pure `PrescriptionResult`
+contract, structured comparability, selected evidence, and prescription
+confidence/action policy. `permitsComputedLoadComparison()` is only a coarse
+measurement capability: it does not establish exercise identity, frozen tuple
+equality, evidence quality, or progression eligibility. `apply-loads` is the
+Phase 1 structured-policy consumer. Legacy exercise-history, explainability,
+and load-entry progression callers keep `MACHINE_DISPLAYED` disabled behind
+explicit local migration gates until those contracts can consume the complete
+structured policy. The load-entry gate protects same-session adjustment, stall
+detection, and plateau/e1RM policy without weakening measurement capability.
+
+The non-exact production flow is performed evidence normalization ->
+comparability -> one selected exposure -> placement-scoped progression -> base
+`PrescriptionResult` for the workout-exercise placement -> readiness
+transformation for that placement -> final `PrescriptionResult` ->
+`toTargetLoad()` -> that placement's compatibility `targetLoad`, resolved-load
+audit, and prescription/readiness readout. `WorkoutExercise.id`, populated from
+the accepted V4 `placementId` during exact replay and otherwise generated for
+the session placement, rather than canonical `exercise.id`, keys prescription
+authority because accepted V4 may contain multiple placements of the same
+canonical exercise with different prescriptions. Canonical exercise identity
+continues to key exercise-library and longitudinal-history semantics. Exact
+accepted-V4 replay continues to bypass readiness and deterministically projects
+each accepted placement from its own canonical result. The selected exposure owns representative load,
+anchor-set reps and effort, coverage facts, frozen measurement, performed time,
+provenance, confidence, and reason codes. Invalid newer evidence is skipped in
+favor of the newest valid comparable exposure; progression sessions are rebound
+to that selection, so a numeric result and its audit projection cannot cite a
+different exposure from the load anchor. Every working exercise processed by
+`apply-loads` ends in exactly one numeric, semantic-zero,
+calibration-required, not-applicable, or unavailable result before set targets
+are written. Readiness can scale only a positive numeric result. It preserves
+exercise identity, measurement, source, confidence, evidence references, and
+prior reason codes, and adds `readiness_adjusted` plus the applied direction.
+Missing-effort, incomplete-coverage, runtime-added, and substituted results
+cannot be readiness-scaled upward; substitution also blocks an upward action at
+the base-progression authorization point regardless of measurement confidence.
+The existing policy may still apply a downward safety reduction.
+Calibration-required, semantic-zero,
+not-applicable, and unavailable results cannot become numeric. `targetLoad` is
+emitted only through `toTargetLoad()` from the final result; result-derived
+evidence also owns the compatibility audit citation, and readouts are rebuilt
+after readiness from the final result.
+
+Positive longitudinal comparison requires the exact canonical exercise id and
+the exact frozen measurement tuple. Exact barbell and dumbbell evidence is
+high-confidence. Exact `MACHINE_DISPLAYED` evidence is comparable at reduced
+confidence; the displayed scale is exercise-local and does not imply equipment
+instance equivalence. `PRESCRIPTION_CONFIDENCE_POLICY` is the single owner of
+the categorical/numeric/action relationship. Clean exact machine evidence is
+capped at `0.7` and remains categorically reduced, but it may increase, hold, or
+decrease through the existing bounded progression criteria. The exception does
+not raise weaker source confidence to the cap. Missing effort, incomplete
+coverage, runtime-added evidence, or substitution blocks directional action;
+the progression decision clamps any otherwise-upward substituted candidate to
+the selected anchor instead of relying on confidence caps or later readiness.
+Persisted runtime `replace_exercise` metadata is mapped onto the replacement's
+history exposure and normalized as `substituted`, so that provenance reaches
+the prescription policy instead of being inferred from exercise identity.
+`isPartialExposureAdequateForProgression()` owns the canonical minimum of two
+performed working sets and at least two-thirds coverage; evidence normalization
+only reports the resulting coverage fact.
+
+The existing legacy-null bridge remains restricted to
+`REPS_EXTERNAL_LOAD / BARBELL_TOTAL / TOTAL`. Legacy-null evidence for a current
+machine-displayed exercise is calibration-only: its normalized representative
+working-set load may be retained as a non-progressive hint but cannot feed
+progression. Newer exact machine evidence wins over that hint and does not
+inherit the hint's low confidence. Reps-only bodyweight is not applicable,
+displayed assistance is unsupported, and valid explicit zero semantics are
+resolved before an existing positive target can be preserved. Only semantically
+valid external-load work may retain a positive existing target.
+
+Template-preview exercise replacement is a pre-save canonical regeneration,
+not a local object rewrite. Each suggestion targets the stable
+`WorkoutTemplateExercise.id` placement; `orderIndex` and the original canonical
+exercise ID are validation facts, not substitute identities. The server validates
+that exact placement, installs the replacement's catalog measurement
+and zero-load semantics, clears incompatible carried placement state, and runs
+normal materialization, prescription, readiness, projection, audit, and readout
+construction before the returned workout can be saved. Applied and dismissed UI
+state use the same placement identity. A monotonic request sequence makes only
+the latest user-intended regeneration authoritative; stale success and failure
+responses cannot update the preview or applied state. The last completed preview
+remains visible while regeneration is pending, but save is disabled until that
+request completes. Failure retains the last completed canonical preview and does
+not mark the requested substitution applied. Active-workout swaps
+remain explicit session-local reconciliations outside canonical generation;
+their carried or adjusted targets are deviation evidence, not canonical
+replacement-exercise prescription authority.
+
+Save carries each generated `WorkoutExercise.id` as a placement correlation fact.
+The save owner assigns the persisted `WorkoutExercise.id` and stores the explicit
+generated-placement-to-persisted-row mapping in the saved session-audit layer.
+Those saved correlations are untrusted serialized metadata. The pure resolver in
+`src/lib/session-semantics/placement-correlation.ts` is the only business-rule
+owner for interpreting them across reconciliation, readiness/log guidance,
+explainability, weekly review, and deload history. It validates source and target
+existence plus one-to-one source/target cardinality before returning proven pairs.
+Generated and persisted occurrence IDs are cardinality-validated against the
+original arrays before ID maps can discard duplicate evidence; any duplicate ID
+invalidates the resolver scope before pair resolution. An explicit invalid mapping
+is quarantined and never becomes canonical fallback for that generated occurrence.
+A malformed record without a usable generated source blocks legacy fallback for
+the resolver scope because it cannot be safely attributed; an unknown source that
+is provably absent cannot steal a valid target from an otherwise unique legacy
+pair. Canonical exercise-ID fallback applies only inside the resolver to a genuinely
+unmapped legacy remainder with exactly one generated and one persisted occurrence.
+Duplicate legacy data returns `ambiguous_exercise_correlation`; malformed explicit
+data and duplicate occurrence IDs return `invalid_placement_correlation`. Both use
+`hasDrift=null` and cannot report false no-drift or supply unproven occurrence-specific
+guidance. Readiness persists resolver state and pair source, filters unproven saved
+placements from occurrence-specific preview/watch rows, and log guidance keys only
+by the resolver-proven persisted `WorkoutExercise.id`; exercise ID/name recovery is
+not a placement authority. The production readiness producer transports the
+committed saved audit snapshot and the saved workout's persisted
+`WorkoutExercise.id`/`exerciseId` occurrences to the builder. Saved contexts therefore
+resolve explicit or unique-legacy placement authority through the resolver;
+`generated_only` is reserved for genuinely unsaved generated previews.
+
+Deload evidence remains excluded from accumulation progression. Explicit zero
+continues to use only the existing `BODYWEIGHT_NO_ADDED_LOAD` and
+`MACHINE_DEFAULT_NO_ADDED_LOAD` meanings, including the isolated legacy
+bodyweight compatibility adapter. No `PrescriptionResult`, calibration state,
+or structured evidence is persisted or rendered in this phase. Releasing Phase
+1 alone can expose numeric targets from exact frozen machine history through the
+existing UI, while calibration-required work still projects to blank and the
+current review can still produce legacy false-warning behavior. Phase 1 is
+therefore mergeable as engine work but should be held from independent release
+until Phase 2 persists/renders calibration and updates review semantics.
+
 ## Frozen zero-load semantics
 
 `zeroLoadMeaning` is a nullable canonical logging capability. `BODYWEIGHT_NO_ADDED_LOAD` means explicit zero is bodyweight with no added load; `MACHINE_DEFAULT_NO_ADDED_LOAD` means explicit zero is the machine default or no added load and does not imply calibrated resistance. The capability affects explicit zero only. A capability is interpreted only with its compatible frozen measurement tuple; malformed measurement-null snapshots remain legacy-neutral. Measurement-aware ordinary generation combines the accepted measurement tuple with the compatible current catalog capability for proposal and preview semantics, while accepted seed serialization, hashing, and replay identity remain unchanged. Non-positive load is not load-PR or load-stall evidence, while true reps-only scoring is selected from the frozen measurement profile. Positive-load comparison continues to use the existing exact-exercise measurement tuple, so it does not split historical cohorts. Blank remains distinct from zero.
@@ -505,6 +638,7 @@ SetLog / logged performance
 - `src/lib/api/explainability.ts` should remain a facade over those seams. It should not become an alternate owner of session semantics or next-exposure progression policy.
 - Workout explanations include per-exercise progression receipts (`WorkoutExplanation.progressionReceipts` in `src/lib/engine/explainability/types.ts`), derived from performed history and current prescription in `src/lib/api/explainability.ts`.
 - Workout explanations also expose per-exercise `nextExposureDecisions` as a read model. These must consume performed semantics from `src/lib/session-semantics/performed-exercise-semantics.ts` and route canonical decision-input assembly through `buildCanonicalProgressionEvaluationInput()` before calling `computeDoubleProgressionDecision()`, so post-workout interpretation cannot drift from the next canonical load decision.
+- `PerformedExerciseSemantics.signalSets` uses the canonical `ProgressionSet[]` shape. Each retained signal set preserves `setIndex`, performed `reps` / `load` / `rpe`, and the available target fields (`targetLoad`, `targetReps`, `targetRepMin`, `targetRepMax`, `targetRpe`) so progression and review consumers share the same performed-evidence contract.
 - Session context now includes cycle provenance and readiness availability labels (`SessionContext.cycleSource`, `ReadinessStatus.availability`, `ReadinessStatus.label`) in `src/lib/engine/explainability/types.ts`, produced in `src/lib/engine/explainability/session-context.ts`.
 - Explainability is strictly receipt-first: it reads session-level cycle/readiness context only from `selectionMetadata.sessionDecisionReceipt`, and missing canonical receipt means missing session-level evidence (`src/lib/evidence/session-decision-receipt.ts`, `src/lib/api/explainability.ts`, `src/lib/ui/explainability.ts`). When canonical receipt cycle context includes `weekInBlock` and `blockDurationWeeks`, read-side summary/explainability copy should prefer block-relative semantics over mesocycle-relative wording.
 - Progression receipts only use recent performed evidence (42-day recency window) when loading `lastPerformed` in `loadLatestPerformedSetSummary()` within `src/lib/api/explainability.ts`.

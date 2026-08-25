@@ -16,10 +16,10 @@ export type WorkoutExplanation = {
   confidence: ExplainabilityConfidence;
   sessionContext: SessionContext;
   coachMessages: CoachMessage[];
-  exerciseRationales: Map<string, ExerciseRationale>; // exerciseId -> rationale
-  prescriptionRationales: Map<string, PrescriptionRationale>; // exerciseId -> rationale
-  progressionReceipts: Map<string, ProgressionReceipt>; // exerciseId -> prior-prescription receipt
-  nextExposureDecisions: Map<string, NextExposureDecision>; // exerciseId -> next-exposure read model
+  exerciseRationales: Map<string, ExerciseRationale>; // unique canonical ID, otherwise workout placement ID
+  prescriptionRationales: Map<string, PrescriptionRationale>; // unique canonical ID, otherwise workout placement ID
+  progressionReceipts: Map<string, ProgressionReceipt>; // unique canonical ID, otherwise workout placement ID
+  nextExposureDecisions: Map<string, NextExposureDecision>; // unique canonical ID, otherwise workout placement ID
   filteredExercises?: FilteredExerciseSummary[]; // Exercises filtered due to constraints (Phase 2)
   volumeCompliance: MuscleVolumeCompliance[]; // Per-muscle weekly volume compliance (post-generation)
 };

@@ -10,3 +10,18 @@ export function isProgressionEligibleWorkout(input: {
 }): boolean {
   return deriveSessionSemantics(input).countsTowardProgressionHistory;
 }
+
+export function isPartialExposureAdequateForProgression(input: {
+  plannedWorkingSetCount: number;
+  performedWorkingSetCount: number;
+}): boolean {
+  const plannedWorkingSetCount = Math.max(0, input.plannedWorkingSetCount);
+  const performedWorkingSetCount = Math.max(0, input.performedWorkingSetCount);
+  if (plannedWorkingSetCount === 0) return false;
+
+  const minimumPerformedSetCount = plannedWorkingSetCount <= 1 ? 1 : 2;
+  return (
+    performedWorkingSetCount >= minimumPerformedSetCount &&
+    performedWorkingSetCount / plannedWorkingSetCount >= 2 / 3
+  );
+}

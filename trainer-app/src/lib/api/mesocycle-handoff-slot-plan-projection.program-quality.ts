@@ -1293,13 +1293,13 @@ function tryAddCompatibleAlternative(input: {
 
 function replaceAccessoryExercise(
   workout: WorkoutPlan,
-  originalExerciseId: string,
+  placementId: string,
   replacement: WorkoutExercise
 ): WorkoutPlan {
   return reindexWorkout({
     ...workout,
     accessories: workout.accessories.map((exercise) =>
-      exercise.exercise.id === originalExerciseId ? replacement : exercise
+      exercise.id === placementId ? replacement : exercise
     ),
   });
 }
@@ -1423,7 +1423,7 @@ function applyLowerPairFatigueShaping(input: {
       const candidate = tryReplaceSlotWorkout({
         slots,
         slotIndex: lowerBIndex,
-        workout: replaceAccessoryExercise(lowerB.workout, accessory.exercise.id, replacement),
+        workout: replaceAccessoryExercise(lowerB.workout, accessory.id, replacement),
         slotSequenceEntries: input.slotSequenceEntries,
         weeklyObligationPlan: input.weeklyObligationPlan,
       });
@@ -2070,7 +2070,7 @@ function applyDeficitDrivenIsolation(input: {
         slotIndex: replacementCandidate.index,
         workout: replaceAccessoryExercise(
           replacementCandidate.slot.workout,
-          replacementCandidate.redundantExercise.exercise.id,
+          replacementCandidate.redundantExercise.id,
           replacement
         ),
         slotSequenceEntries: input.slotSequenceEntries,

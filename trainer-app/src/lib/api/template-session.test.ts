@@ -96,7 +96,7 @@ vi.mock("@/lib/api/mesocycle-lifecycle", async (importOriginal) => {
   };
 });
 
-import { generateSessionFromIntent } from "./template-session";
+import { generateSessionFromIntent, generateSessionFromTemplate } from "./template-session";
 
 function buildTestStimulusProfile(
   primaryMuscles: string[],
@@ -395,6 +395,156 @@ describe("generateSessionFromIntent", () => {
       mesocycleLength: 5,
     });
     mesocycleRoleFindManyMock.mockResolvedValue([]);
+  });
+
+  it("canonically re-prescribes a template preview replacement at its original placement", async () => {
+    const bench = makeCustomExercise({
+      id: "bench",
+      name: "Bench Press",
+      movementPatterns: ["horizontal_push"],
+      splitTags: ["push"],
+      primaryMuscles: ["Chest"],
+      equipment: ["barbell"],
+    });
+    const pushUp = makeCustomExercise({
+      id: "push-up",
+      name: "Push-Up",
+      movementPatterns: ["horizontal_push"],
+      splitTags: ["push"],
+      primaryMuscles: ["Chest"],
+      equipment: ["bodyweight"],
+    });
+    mapExercisesMock.mockReturnValue([bench, pushUp]);
+    loadWorkoutContextMock.mockResolvedValue({
+      profile: { id: "profile" },
+      goals: { primaryGoal: "HYPERTROPHY", secondaryGoal: "NONE" },
+      constraints: {
+        daysPerWeek: 4,
+        splitType: "UPPER_LOWER",
+        weeklySchedule: ["UPPER", "LOWER"],
+      },
+      injuries: [],
+      exercises: [
+        {
+          id: "bench",
+          measurementProfile: "REPS_EXTERNAL_LOAD",
+          loadConvention: "BARBELL_TOTAL",
+          repBasis: "TOTAL",
+          zeroLoadMeaning: null,
+        },
+        {
+          id: "push-up",
+          measurementProfile: "REPS_BODYWEIGHT",
+          loadConvention: null,
+          repBasis: "TOTAL",
+          zeroLoadMeaning: null,
+        },
+      ],
+      workouts: [],
+      preferences: null,
+      checkIns: [],
+    });
+    loadTemplateDetailMock.mockResolvedValue({
+      id: "template-1",
+      intent: "PUSH_PULL_LEGS",
+      targetMuscles: ["Chest"],
+      isStrict: false,
+      exercises: [{ placementId: "template-placement-bench", exerciseId: "bench", orderIndex: 0, supersetGroup: null }],
+    });
+
+    const result = await generateSessionFromTemplate("user-1", "template-1", {
+      exerciseReplacements: [{
+        placementId: "template-placement-bench",
+        orderIndex: 0,
+        originalExerciseId: "bench",
+        replacementExerciseId: "push-up",
+      }],
+    });
+
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+    const replacement = [...result.workout.mainLifts, ...result.workout.accessories][0];
+    expect(replacement).toMatchObject({
+      orderIndex: 0,
+      exercise: { id: "push-up", name: "Push-Up" },
+      measurement: { profile: "REPS_BODYWEIGHT", repBasis: "TOTAL" },
+    });
+    expect(replacement.sets.every((set) => set.targetLoad == null)).toBe(true);
+    expect(result.audit?.prescriptions[replacement.id]).toMatchObject({
+      canonicalExerciseId: "push-up",
+      kind: "not_applicable",
+    });
+    expect(result.audit?.resolvedLoads[replacement.id]).toMatchObject({
+      placementId: replacement.id,
+      canonicalExerciseId: "push-up",
+      resolvedTopSetLoad: null,
+    });
+    expect(result.prescriptionReadouts).toMatchObject([{
+      placementId: replacement.id,
+      exerciseId: "push-up",
+      targetLoad: null,
+    }]);
+    expect(Object.values(result.audit?.prescriptions ?? {})).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ canonicalExerciseId: "bench" })]),
+    );
+  });
+
+  it("replaces only the explicitly identified duplicate template placement", async () => {
+    const bench = makeCustomExercise({
+      id: "bench",
+      name: "Bench Press",
+      movementPatterns: ["horizontal_push"],
+      splitTags: ["push"],
+      primaryMuscles: ["Chest"],
+      equipment: ["barbell"],
+    });
+    const pushUp = makeCustomExercise({
+      id: "push-up",
+      name: "Push-Up",
+      movementPatterns: ["horizontal_push"],
+      splitTags: ["push"],
+      primaryMuscles: ["Chest"],
+      equipment: ["bodyweight"],
+    });
+    mapExercisesMock.mockReturnValue([bench, pushUp]);
+    loadWorkoutContextMock.mockResolvedValue({
+      profile: { id: "profile" },
+      goals: { primaryGoal: "HYPERTROPHY", secondaryGoal: "NONE" },
+      constraints: { daysPerWeek: 4, splitType: "UPPER_LOWER", weeklySchedule: ["UPPER", "LOWER"] },
+      injuries: [],
+      exercises: [
+        { id: "bench", measurementProfile: "REPS_EXTERNAL_LOAD", loadConvention: "BARBELL_TOTAL", repBasis: "TOTAL", zeroLoadMeaning: null },
+        { id: "push-up", measurementProfile: "REPS_BODYWEIGHT", loadConvention: null, repBasis: "TOTAL", zeroLoadMeaning: null },
+      ],
+      workouts: [],
+      preferences: null,
+      checkIns: [],
+    });
+    loadTemplateDetailMock.mockResolvedValue({
+      id: "template-duplicates",
+      intent: "PUSH_PULL_LEGS",
+      targetMuscles: ["Chest"],
+      isStrict: false,
+      exercises: [
+        { placementId: "bench-a", exerciseId: "bench", orderIndex: 0, supersetGroup: null },
+        { placementId: "bench-b", exerciseId: "bench", orderIndex: 1, supersetGroup: null },
+      ],
+    });
+
+    const result = await generateSessionFromTemplate("user-1", "template-duplicates", {
+      exerciseReplacements: [{
+        placementId: "bench-b",
+        orderIndex: 1,
+        originalExerciseId: "bench",
+        replacementExerciseId: "push-up",
+      }],
+    });
+
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+    const placements = [...result.workout.mainLifts, ...result.workout.accessories];
+    expect(placements.find((entry) => entry.id === "bench-a")?.exercise.id).toBe("bench");
+    expect(placements.find((entry) => entry.id === "bench-b")?.exercise.id).toBe("push-up");
   });
 
   it.each(["push", "pull", "legs", "upper", "lower", "full_body"] as const)(
@@ -2391,6 +2541,7 @@ describe("generateSessionFromIntent", () => {
   });
 
   it("keeps Lower B set-aware seed order in generated runtime order indexes", async () => {
+    const duplicateSldlRow = { ...v4Rows[0]!, setCount: 1 };
     const lowerLibrary = [
       makeCustomExercise({
         id: "sldl",
@@ -2489,6 +2640,7 @@ describe("generateSessionFromIntent", () => {
             slotId: "lower_b",
             exercises: [
               { exerciseId: "sldl", role: "CORE_COMPOUND", setCount: 3 },
+              { exerciseId: "sldl", role: "CORE_COMPOUND", setCount: 1 },
               { exerciseId: "leg-curl", role: "ACCESSORY", setCount: 3 },
               { exerciseId: "split-squat", role: "CORE_COMPOUND", setCount: 3 },
               { exerciseId: "calf-raise", role: "ACCESSORY", setCount: 3 },
@@ -2514,12 +2666,29 @@ describe("generateSessionFromIntent", () => {
             { slotId: "upper_a", name: "Upper A", focus: "UPPER" as const, rows: [v4Rows[0]!] },
             { slotId: "lower_a", name: "Lower A", focus: "LOWER" as const, rows: [v4Rows[0]!] },
             { slotId: "upper_b", name: "Upper B", focus: "UPPER" as const, rows: [v4Rows[2]!] },
-            { slotId: "lower_b", name: "Lower B", focus: "LOWER" as const, rows: v4Rows },
+            {
+              slotId: "lower_b",
+              name: "Lower B",
+              focus: "LOWER" as const,
+              rows: [v4Rows[0]!, duplicateSldlRow, ...v4Rows.slice(1)],
+            },
           ].map((slot) => ({
             slotId: slot.slotId,
             name: slot.name,
             focus: slot.focus,
-            exercises: slot.rows.map((row) => makeV4Exercise(slot.slotId, row)),
+            exercises: slot.rows.map((row, index) => {
+              const exercise = makeV4Exercise(slot.slotId, row);
+              return slot.slotId === "lower_b" && index === 1
+                ? {
+                    ...exercise,
+                    placementId: "lower_b-sldl-secondary",
+                    prescriptions: exercise.prescriptions.map((prescription) => ({
+                      ...prescription,
+                      reps: { kind: "EXACT" as const, reps: 10 },
+                    })),
+                  }
+                : exercise;
+            }),
           })),
         },
       },
@@ -2538,6 +2707,7 @@ describe("generateSessionFromIntent", () => {
       expect(selectSpy).not.toHaveBeenCalled();
       expect(result.selection.selectedExerciseIds).toEqual([
         "sldl",
+        "sldl",
         "leg-curl",
         "split-squat",
         "calf-raise",
@@ -2552,23 +2722,48 @@ describe("generateSessionFromIntent", () => {
         section: exercise.isMainLift ? "main" : "accessory",
       })).sort((left, right) => left.orderIndex - right.orderIndex)).toEqual([
         { exerciseId: "sldl", orderIndex: 0, setCount: 2, section: "main" },
-        { exerciseId: "leg-curl", orderIndex: 1, setCount: 1, section: "accessory" },
-        { exerciseId: "split-squat", orderIndex: 2, setCount: 4, section: "main" },
-        { exerciseId: "calf-raise", orderIndex: 3, setCount: 2, section: "accessory" },
+        { exerciseId: "sldl", orderIndex: 1, setCount: 1, section: "main" },
+        { exerciseId: "leg-curl", orderIndex: 2, setCount: 1, section: "accessory" },
+        { exerciseId: "split-squat", orderIndex: 3, setCount: 4, section: "main" },
+        { exerciseId: "calf-raise", orderIndex: 4, setCount: 2, section: "accessory" },
       ]);
       const ordered = [...result.workout.mainLifts, ...result.workout.accessories]
         .sort((left, right) => left.orderIndex - right.orderIndex);
+      expect(ordered.map((exercise) => exercise.id)).toEqual([
+        "lower_b-sldl",
+        "lower_b-sldl-secondary",
+        "lower_b-leg-curl",
+        "lower_b-split-squat",
+        "lower_b-calf-raise",
+      ]);
       expect(ordered[0]!.sets).toEqual([
         expect.objectContaining({ setIndex: 1, targetReps: 7, targetRpe: 8 }),
         expect.objectContaining({ setIndex: 2, targetReps: 7, targetRpe: 8 }),
       ]);
-      expect(ordered[1]!.sets[0]).toMatchObject({
+      expect(ordered[1]!.sets).toEqual([
+        expect.objectContaining({ setIndex: 1, targetReps: 10, targetRpe: 8 }),
+      ]);
+      expect(ordered[2]!.sets[0]).toMatchObject({
         targetReps: 10,
         targetRepRange: { min: 10, max: 12 },
         targetRpe: 8,
       });
       expect(result.workout.warmup).toEqual([]);
       expect(ordered.every((exercise) => !("warmupSets" in exercise))).toBe(true);
+      expect(Object.keys(result.audit!.prescriptions)).toEqual([
+        "lower_b-sldl",
+        "lower_b-sldl-secondary",
+        "lower_b-split-squat",
+        "lower_b-leg-curl",
+        "lower_b-calf-raise",
+      ]);
+      expect(result.prescriptionReadouts!.map((readout) => readout.placementId)).toEqual([
+        "lower_b-sldl",
+        "lower_b-sldl-secondary",
+        "lower_b-leg-curl",
+        "lower_b-split-squat",
+        "lower_b-calf-raise",
+      ]);
       expect(result.selection.sessionDecisionReceipt?.sessionProvenance).toEqual({
         mesocycleId: "meso-1",
         compositionSource: "persisted_slot_plan_seed",

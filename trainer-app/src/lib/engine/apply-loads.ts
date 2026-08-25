@@ -37,6 +37,7 @@ import type {
   MovementPatternV2,
   UserProfile,
   WorkoutHistoryEntry,
+  WorkoutExercise,
   WorkoutPlan,
   SplitDay,
 } from "./types";
@@ -50,6 +51,22 @@ import {
   permitsComputedLoadComparison,
   type MeasurementSemantics,
 } from "@/lib/exercise-measurement/semantics";
+import {
+  normalizePerformedExerciseEvidence,
+  type NormalizedPerformedExerciseEvidence,
+} from "@/lib/session-semantics/performed-exercise-semantics";
+import {
+  PRESCRIPTION_CONFIDENCE_POLICY,
+  PRESCRIPTION_RESULT_VERSION,
+  classifyPrescriptionComparability,
+  resolvePrescriptionResult,
+  selectedPrescriptionEvidence,
+  selectBestPrescriptionComparability,
+  toTargetLoad,
+  type NumericPrescription,
+  type PrescriptionComparabilityResult,
+  type PrescriptionResult,
+} from "./load-prescription";
 import {
   applyCalibrationToEstimate,
   resolveCalibrationConfidenceScale,
@@ -95,6 +112,14 @@ export type ApplyLoadsResolvedLoadSource =
   | "legacy_measurement_history"
   | "runtime_added_same_exercise_calibration_anchor";
 
+export type PrescriptionPlacementKey = WorkoutExercise["id"];
+
+export function getPrescriptionPlacementKey(
+  exercise: Pick<WorkoutExercise, "id">,
+): PrescriptionPlacementKey {
+  return exercise.id;
+}
+
 export type ApplyLoadsHistoryEvidence = {
   source: "exact_compatible_history" | "legacy_measurement_bridge";
   confidence: "high" | "reduced";
@@ -119,10 +144,13 @@ export type SelectedAnchorLoadEvidence = {
 };
 
 export type ApplyLoadsAudit = {
-  progressionTraces: Record<string, ProgressionDecisionTrace>;
+  progressionTraces: Record<PrescriptionPlacementKey, ProgressionDecisionTrace>;
+  prescriptions: Record<PrescriptionPlacementKey, PrescriptionResult>;
   resolvedLoads: Record<
-    string,
+    PrescriptionPlacementKey,
     {
+      placementId: PrescriptionPlacementKey;
+      canonicalExerciseId: string;
       source: ApplyLoadsResolvedLoadSource;
       canonicalSourceLoad: number | null;
       resolvedTopSetLoad: number | null;
@@ -194,6 +222,61 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
   return applyLoadsWithAudit(workout, options).workout;
 }
 
+export function projectFinalPrescriptionResults(input: {
+  workout: WorkoutPlan;
+  audit: ApplyLoadsAudit;
+  prescriptions: Record<PrescriptionPlacementKey, PrescriptionResult>;
+}): { workout: WorkoutPlan; audit: ApplyLoadsAudit } {
+  const projectExercise = (exercise: WorkoutPlan["mainLifts"][number]) => {
+    const placementId = getPrescriptionPlacementKey(exercise);
+    const prescription = input.prescriptions[placementId];
+    const resolvedLoad = input.audit.resolvedLoads[placementId];
+    if (!prescription || !resolvedLoad) {
+      throw new Error(`FINAL_PRESCRIPTION_PROJECTION_MISSING:${placementId}`);
+    }
+
+    const targetLoad = toTargetLoad(prescription);
+    const sets = exercise.sets.map((set) => ({
+      ...set,
+      targetLoad: targetLoad ?? undefined,
+    }));
+
+    return {
+      exercise: { ...exercise, sets },
+      resolvedLoad: {
+        ...resolvedLoad,
+        resolvedTopSetLoad: targetLoad,
+        resolvedSetLoads: sets.flatMap((set) =>
+          typeof set.targetLoad === "number" ? [set.targetLoad] : [],
+        ),
+      },
+    };
+  };
+
+  const projectedMainLifts = input.workout.mainLifts.map(projectExercise);
+  const projectedAccessories = input.workout.accessories.map(projectExercise);
+  const resolvedLoads = { ...input.audit.resolvedLoads };
+  for (const projected of [...projectedMainLifts, ...projectedAccessories]) {
+    resolvedLoads[getPrescriptionPlacementKey(projected.exercise)] = projected.resolvedLoad;
+  }
+
+  return {
+    workout: {
+      ...input.workout,
+      mainLifts: projectedMainLifts.map((entry) => entry.exercise),
+      accessories: projectedAccessories.map((entry) => entry.exercise),
+    },
+    audit: {
+      ...input.audit,
+      prescriptions: {
+        ...input.audit.prescriptions,
+        ...input.prescriptions,
+      },
+      resolvedLoads,
+    },
+  };
+}
+
 export function applyLoadsWithAudit(
   workout: WorkoutPlan,
   options: ApplyLoadsOptions
@@ -231,11 +314,13 @@ export function applyLoadsWithAudit(
 
   // Block-aware intensity multiplier (from periodization system v2)
   const intensityMultiplier = options.prescriptionModifiers?.intensityMultiplier ?? 1.0;
-  const progressionTraces: Record<string, ProgressionDecisionTrace> = {};
+  const progressionTraces: Record<PrescriptionPlacementKey, ProgressionDecisionTrace> = {};
+  const prescriptions: Record<PrescriptionPlacementKey, PrescriptionResult> = {};
   const resolvedLoads: ApplyLoadsAudit["resolvedLoads"] = {};
 
   const applyToExercise = (exerciseEntry: WorkoutPlan["mainLifts"][number]) => {
     const exercise = exerciseEntry.exercise;
+    const placementId = getPrescriptionPlacementKey(exerciseEntry);
     const usesLegacyMeasurement = exerciseEntry.measurement == null;
     const historyKey = measurementComparisonKey({
       exerciseId: exercise.id,
@@ -258,12 +343,38 @@ export function applyLoadsWithAudit(
       exerciseId: exercise.id,
       measurement: null,
     });
-    const legacyHistorySessions = canUseLegacyBridge
-      ? buildLegacyMeasurementBridgeSessions(historyIndex.get(legacyHistoryKey))
-      : undefined;
-    const legacyCrossIntentHistorySessions = canUseLegacyBridge
-      ? buildLegacyMeasurementBridgeSessions(crossIntentHistoryIndex.get(legacyHistoryKey))
-      : undefined;
+    const rawLegacyHistorySessions = historyIndex.get(legacyHistoryKey);
+    const rawLegacyCrossIntentHistorySessions = crossIntentHistoryIndex.get(legacyHistoryKey);
+    const runtimeAddedCalibrationSessions = runtimeAddedCalibrationHistoryIndex.get(historyKey);
+    const historyCandidates = buildPrescriptionHistoryCandidates({
+      canonicalExerciseId: exercise.id,
+      measurement: exerciseEntry.measurement ?? null,
+      exercise,
+      groups: [
+        { channel: "same_intent_exact", sessions: exactHistorySessions },
+        { channel: "cross_intent_exact", sessions: exactCrossIntentHistorySessions },
+        { channel: "runtime_added", sessions: runtimeAddedCalibrationSessions },
+        { channel: "same_intent_legacy", sessions: rawLegacyHistorySessions },
+        { channel: "cross_intent_legacy", sessions: rawLegacyCrossIntentHistorySessions },
+      ],
+    });
+    const comparability = selectBestPrescriptionComparability({
+      canonicalExerciseId: exercise.id,
+      measurement: exerciseEntry.measurement ?? null,
+      evidence: historyCandidates.map((candidate) => candidate.evidence),
+    });
+    const boundHistory = exerciseEntry.measurement == null
+      ? {
+          historyEvidenceSource: "exact_compatible_history" as const,
+          historySessions: exactHistorySessions,
+          crossIntentHistorySessions: exactCrossIntentHistorySessions,
+          runtimeAddedCalibrationSessions: runtimeAddedCalibrationSessions,
+        }
+      : selectBoundPrescriptionHistory({
+          comparability,
+          candidates: historyCandidates,
+          canUseLegacyBridge,
+        });
     const workingRole = exerciseEntry.isMainLift ? "main" : "accessory";
     const setsWithRole = exerciseEntry.sets.map((set) => ({
       ...set,
@@ -293,14 +404,13 @@ export function applyLoadsWithAudit(
           measurement: exerciseEntry.measurement ?? null,
           zeroLoadMeaning: exerciseEntry.zeroLoadMeaning ?? null,
         },
-        (hasUsableExactHistory ? exactHistorySessions : undefined) ?? legacyHistorySessions,
-        (hasUsableExactCrossIntentHistory ? exactCrossIntentHistorySessions : undefined) ??
-          legacyCrossIntentHistorySessions,
-        canUseLegacyBridge ? "legacy_measurement_bridge" : "exact_compatible_history",
+        boundHistory.historySessions,
+        boundHistory.crossIntentHistorySessions,
+        boundHistory.historyEvidenceSource,
         usesLegacyMeasurement ? baselineIndex.get(exercise.id) : undefined,
         usesLegacyMeasurement ? baselineLoadIndex : new Map<string, number>(),
         usesLegacyMeasurement ? historyTopLoadIndex : new Map<string, number>(),
-        runtimeAddedCalibrationHistoryIndex.get(historyKey),
+        boundHistory.runtimeAddedCalibrationSessions,
         options.exerciseById,
         options.profile?.weightKg,
         repRange,
@@ -313,7 +423,7 @@ export function applyLoadsWithAudit(
         preferredContext,
         options.sessionIntent,
         useNewMesocycleBaselineSource,
-        options.acceptedV4Calibration === true,
+        options.acceptedV4Calibration === true || exerciseEntry.measurement != null,
         options.loadIncrementByExerciseId?.[exercise.id]
       )
       : {
@@ -321,128 +431,95 @@ export function applyLoadsWithAudit(
           source: options.acceptedV4Calibration === true ? "none" as const : "estimate" as const,
         };
     if (resolvedLoad.progressionTrace) {
-      progressionTraces[exercise.id] = resolvedLoad.progressionTrace;
+      progressionTraces[placementId] = resolvedLoad.progressionTrace;
     }
     const deloadReferenceLoad = periodization?.isDeload
       ? resolveDeloadReferenceLoad(exercise, accumulationHistoryIndex.get(historyKey))
       : undefined;
-    // Deload still resolves the canonical source load first; the lighter
-    // deload prescription is applied here rather than upstream in generation.
-    const load =
-      periodization?.isDeload
-        ? (deloadReferenceLoad?.load ?? resolvedLoad.load ?? existingTopSetLoad)
-        : (existingTopSetLoad ?? resolvedLoad.load);
-    const loadSource =
-      !periodization?.isDeload && existingTopSetLoad !== undefined
+    // Progression supplies only a candidate. PrescriptionResult classifies
+    // measurement semantics and becomes the sole authority before any set is written.
+    const sourceLoad = periodization?.isDeload
+      ? deloadReferenceLoad?.load ?? resolvedLoad.load ?? existingTopSetLoad
+      : resolvedLoad.load;
+    const candidateValue =
+      sourceLoad != null && sourceLoad >= 0
+        ? sourceLoad === 0
+          ? 0
+          : periodization?.isDeload
+            ? roundToHalf(sourceLoad * backOffMultiplier * intensityMultiplier)
+            : roundToHalf(sourceLoad * intensityMultiplier)
+        : null;
+    const resolvedSource = deloadReferenceLoad?.source ?? resolvedLoad.source;
+    const candidateSource =
+      periodization?.isDeload && deloadReferenceLoad
+        ? "deload_history" as const
+        : mapPrescriptionSource(resolvedSource);
+    const prescription = resolvePrescriptionResult({
+      canonicalExerciseId: exercise.id,
+      measurement: exerciseEntry.measurement ?? null,
+      zeroLoadMeaning:
+        exerciseEntry.zeroLoadMeaning ??
+        (usesLegacyMeasurement && (exercise.equipment ?? []).includes("bodyweight")
+          ? "BODYWEIGHT_NO_ADDED_LOAD"
+          : null),
+      existingTargetLoad: existingTopSetLoad,
+      candidate:
+        candidateValue != null && candidateSource
+          ? { value: candidateValue, source: candidateSource }
+          : null,
+      comparability: deloadReferenceLoad ? null : comparability,
+      isDeload: periodization?.isDeload === true,
+    });
+    prescriptions[placementId] = prescription;
+
+    const projectedTargetLoad = toTargetLoad(prescription);
+    const projectedSets = setsWithRole.map((set) => ({
+      ...set,
+      targetLoad: projectedTargetLoad ?? undefined,
+    }));
+    const auditSource: ApplyLoadsResolvedLoadSource =
+      prescription.kind === "numeric" && prescription.source === "existing_target"
         ? "existing_target_load"
-        : (deloadReferenceLoad?.source ?? resolvedLoad.source);
-
-    if (
-      load === undefined ||
-      (exerciseEntry.measurement != null && load <= 0)
-    ) {
-      if (options.acceptedV4Calibration === true) {
-        resolvedLoads[exercise.id] = {
-          source: resolvedLoad.source,
-          canonicalSourceLoad: null,
-          resolvedTopSetLoad: null,
-          resolvedSetLoads: [],
-          ...(resolvedLoad.historyEvidence
-            ? { historyEvidence: resolvedLoad.historyEvidence }
-            : {}),
-        };
-      }
-      return exerciseEntry.isMainLift
-        ? { ...exerciseEntry, role: exerciseEntry.role ?? workingRole, sets: setsWithRole, warmupSets: undefined }
-        : { ...exerciseEntry, role: exerciseEntry.role ?? workingRole, sets: setsWithRole };
-    }
-
-    if (periodization?.isDeload) {
-      const deloadLoad = roundToHalf(load * backOffMultiplier * intensityMultiplier);
-      const deloadSets = setsWithRole.map((set) => ({ ...set, targetLoad: deloadLoad }));
-      const updatedEntry = exerciseEntry.isMainLift
-        ? {
-            ...exerciseEntry,
-            role: exerciseEntry.role ?? workingRole,
-            sets: deloadSets,
-            warmupSets: buildWarmupSets(deloadLoad, trainingAge),
-          }
-        : {
-            ...exerciseEntry,
-            role: exerciseEntry.role ?? workingRole,
-            sets: deloadSets,
-            warmupSets: undefined,
-          };
-      resolvedLoads[exercise.id] = {
-        source: loadSource,
-        canonicalSourceLoad: load,
-        resolvedTopSetLoad: deloadSets[0]?.targetLoad ?? null,
-        resolvedSetLoads: deloadSets.flatMap((set) =>
-          typeof set.targetLoad === "number" ? [set.targetLoad] : []
-        ),
-        ...(resolvedLoad.historyEvidence
-          ? { historyEvidence: resolvedLoad.historyEvidence }
-          : {}),
-      };
-      return updatedEntry;
-    }
+        : prescription.kind === "semantic_zero"
+          ? "existing_target_load"
+          : resolvedSource;
+    const projectedHistoryEvidence = historyEvidenceFromPrescription(prescription);
+    resolvedLoads[placementId] = {
+      placementId,
+      canonicalExerciseId: exercise.id,
+      source: auditSource,
+      canonicalSourceLoad:
+        sourceLoad ??
+        (prescription.kind === "numeric" || prescription.kind === "semantic_zero"
+          ? prescription.value
+          : null),
+      resolvedTopSetLoad: projectedTargetLoad,
+      resolvedSetLoads: projectedSets.flatMap((set) =>
+        "targetLoad" in set && typeof set.targetLoad === "number"
+          ? [set.targetLoad]
+          : [],
+      ),
+      ...(projectedHistoryEvidence
+        ? { historyEvidence: projectedHistoryEvidence }
+        : {}),
+    };
 
     if (exerciseEntry.isMainLift) {
-      const adjustedWorkingLoad = roundToHalf(load * intensityMultiplier);
-      const useUniformWorkingLoads = shouldUseUniformWorkingLoads({
-        primaryGoal: options.primaryGoal,
-      });
-      const updatedSets = setsWithRole.map((set) => {
-        if (set.targetLoad !== undefined) {
-          return set;
-        }
-        if (useUniformWorkingLoads || set.setIndex === 1) {
-          return { ...set, targetLoad: adjustedWorkingLoad };
-        }
-        return {
-          ...set,
-          targetLoad: roundToHalf(adjustedWorkingLoad * backOffMultiplier),
-        };
-      });
-      const updatedEntry = {
+      return {
         ...exerciseEntry,
         role: exerciseEntry.role ?? workingRole,
-        sets: updatedSets,
-        warmupSets: buildWarmupSets(adjustedWorkingLoad, trainingAge),
+        sets: projectedSets,
+        warmupSets:
+          projectedTargetLoad != null && projectedTargetLoad > 0
+            ? buildWarmupSets(projectedTargetLoad, trainingAge)
+            : undefined,
       };
-      resolvedLoads[exercise.id] = {
-        source: loadSource,
-        canonicalSourceLoad: load,
-        resolvedTopSetLoad: updatedSets[0]?.targetLoad ?? null,
-        resolvedSetLoads: updatedSets.flatMap((set) =>
-          typeof set.targetLoad === "number" ? [set.targetLoad] : []
-        ),
-        ...(resolvedLoad.historyEvidence
-          ? { historyEvidence: resolvedLoad.historyEvidence }
-          : {}),
-      };
-      return updatedEntry;
     }
-
-    const adjustedAccessoryLoad = roundToHalf(load * intensityMultiplier);
     const updatedEntry = {
       ...exerciseEntry,
       role: exerciseEntry.role ?? workingRole,
-      sets: setsWithRole.map((set) =>
-        set.targetLoad !== undefined ? set : { ...set, targetLoad: adjustedAccessoryLoad }
-      ),
+      sets: projectedSets,
       warmupSets: undefined,
-    };
-    resolvedLoads[exercise.id] = {
-      source: loadSource,
-      canonicalSourceLoad: load,
-      resolvedTopSetLoad: adjustedAccessoryLoad,
-      resolvedSetLoads: updatedEntry.sets.flatMap((set) =>
-        typeof set.targetLoad === "number" ? [set.targetLoad] : []
-      ),
-      ...(resolvedLoad.historyEvidence
-        ? { historyEvidence: resolvedLoad.historyEvidence }
-        : {}),
     };
     return updatedEntry;
   };
@@ -455,6 +532,16 @@ export function applyLoadsWithAudit(
       role: set.role ?? "warmup",
     })),
   }));
+  for (const exercise of warmup) {
+    prescriptions[getPrescriptionPlacementKey(exercise)] = {
+      version: PRESCRIPTION_RESULT_VERSION,
+      kind: "not_applicable",
+      canonicalExerciseId: exercise.exercise.id,
+      measurement: exercise.measurement ?? null,
+      reasonCodes: ["warmup_load_not_owned"],
+      evidence: [],
+    };
+  }
   const mainLifts = workout.mainLifts.map(applyToExercise);
   const accessories = workout.accessories.map(applyToExercise);
 
@@ -467,12 +554,235 @@ export function applyLoadsWithAudit(
     },
     audit: {
       progressionTraces,
+      prescriptions,
       resolvedLoads,
       ...(Object.keys(options.selectedAnchorEvidence ?? {}).length > 0
         ? { selectedAnchorEvidence: options.selectedAnchorEvidence }
         : {}),
     },
   };
+}
+
+function normalizeHistorySession(
+  session: WorkoutSessionHistory,
+  exercise: Exercise,
+): NormalizedPerformedExerciseEvidence {
+  return normalizePerformedExerciseEvidence({
+    workoutId: session.exposureId ?? null,
+    canonicalExerciseId: session.canonicalExerciseId,
+    performedAt: session.date ?? "unknown",
+    status: session.status,
+    measurement: session.measurement,
+    plannedWorkingSetCount: session.plannedWorkingSetCount,
+    isMainLiftEligible: exercise.isMainLiftEligible,
+    isDeload: session.isDeload,
+    runtimeAdded: session.runtimeAdded,
+    substituted: session.substituted,
+    confidence: session.confidence,
+    confidenceNotes: session.confidenceNotes,
+    sets: session.sets,
+  });
+}
+
+type PrescriptionHistoryChannel =
+  | "same_intent_exact"
+  | "cross_intent_exact"
+  | "runtime_added"
+  | "same_intent_legacy"
+  | "cross_intent_legacy";
+
+type PrescriptionHistoryCandidate = {
+  channel: PrescriptionHistoryChannel;
+  session: WorkoutSessionHistory;
+  evidence: NormalizedPerformedExerciseEvidence;
+  comparability: PrescriptionComparabilityResult;
+};
+
+function buildPrescriptionHistoryCandidates(input: {
+  canonicalExerciseId: string;
+  measurement: MeasurementSemantics | null;
+  exercise: Exercise;
+  groups: Array<{
+    channel: PrescriptionHistoryChannel;
+    sessions: WorkoutSessionHistory[] | undefined;
+  }>;
+}): PrescriptionHistoryCandidate[] {
+  return input.groups.flatMap(({ channel, sessions }) =>
+    (sessions ?? []).map((session) => {
+      const evidence = normalizeHistorySession(session, input.exercise);
+      return {
+        channel,
+        session,
+        evidence,
+        comparability: classifyPrescriptionComparability({
+          canonicalExerciseId: input.canonicalExerciseId,
+          measurement: input.measurement,
+          evidence,
+        }),
+      };
+    }),
+  );
+}
+
+function selectBoundPrescriptionHistory(input: {
+  comparability: PrescriptionComparabilityResult | null;
+  candidates: PrescriptionHistoryCandidate[];
+  canUseLegacyBridge: boolean;
+}): {
+  historyEvidenceSource: ApplyLoadsHistoryEvidence["source"];
+  historySessions?: WorkoutSessionHistory[];
+  crossIntentHistorySessions?: WorkoutSessionHistory[];
+  runtimeAddedCalibrationSessions?: WorkoutSessionHistory[];
+} {
+  const selected = selectedPrescriptionEvidence(input.comparability);
+  if (
+    !selected ||
+    (selected.comparability.kind !== "comparable" &&
+      selected.comparability.kind !== "comparable_reduced_confidence")
+  ) {
+    return {
+      historyEvidenceSource: "exact_compatible_history",
+    };
+  }
+
+  const selectedCandidate = input.candidates.find(
+    (candidate) => candidate.evidence.evidenceId === selected.evidence.evidenceId,
+  );
+  if (!selectedCandidate) {
+    return {
+      historyEvidenceSource: "exact_compatible_history",
+    };
+  }
+
+  const legacySelected = selectedCandidate.channel.includes("legacy");
+  if (legacySelected && !input.canUseLegacyBridge) {
+    return {
+      historyEvidenceSource: "legacy_measurement_bridge",
+    };
+  }
+
+  const selectedFamily = input.candidates.filter(
+    (candidate) =>
+      candidate.channel === selectedCandidate.channel &&
+      (candidate.comparability.kind === "comparable" ||
+        candidate.comparability.kind === "comparable_reduced_confidence"),
+  );
+  const selectedSessions = selectedFamily.flatMap((candidate) => {
+    const candidateComparability = candidate.comparability;
+    if (
+      candidateComparability.kind !== "comparable" &&
+      candidateComparability.kind !== "comparable_reduced_confidence"
+    ) {
+      return [];
+    }
+    return [{
+      ...candidate.session,
+      progressionEligible: candidateComparability.evidence.progressionEligible,
+      comparable: true,
+      representativeLoad: candidateComparability.evidence.representativeLoad ?? undefined,
+      directionalActionEligible:
+        candidateComparability.directionalActionEligible,
+    }];
+  });
+  const sessions = legacySelected
+    ? buildLegacyMeasurementBridgeSessions(selectedSessions) ?? []
+    : selectedSessions;
+  const historyEvidenceSource = legacySelected
+    ? "legacy_measurement_bridge" as const
+    : "exact_compatible_history" as const;
+
+  if (selectedCandidate.channel === "cross_intent_exact" ||
+      selectedCandidate.channel === "cross_intent_legacy") {
+    return {
+      historyEvidenceSource,
+      crossIntentHistorySessions: sessions,
+    };
+  }
+  if (selectedCandidate.channel === "runtime_added") {
+    return {
+      historyEvidenceSource,
+      runtimeAddedCalibrationSessions: sessions,
+    };
+  }
+  return {
+    historyEvidenceSource,
+    historySessions: sessions,
+  };
+}
+
+function mapPrescriptionSource(
+  source: ApplyLoadsResolvedLoadSource,
+): NumericPrescription["source"] | null {
+  switch (source) {
+    case "existing_target_load":
+      return "existing_target";
+    case "history":
+      return "exact_history";
+    case "legacy_measurement_history":
+      return "legacy_barbell_history";
+    case "baseline":
+      return "baseline";
+    case "estimate":
+      return "estimate";
+    case "runtime_added_same_exercise_calibration_anchor":
+      return "runtime_added_same_exercise";
+    default:
+      return null;
+  }
+}
+
+function historyEvidenceFromPrescription(
+  prescription: PrescriptionResult,
+): ApplyLoadsHistoryEvidence | undefined {
+  if (
+    prescription.kind !== "numeric" ||
+    (prescription.source !== "exact_history" &&
+      prescription.source !== "legacy_barbell_history")
+  ) {
+    return undefined;
+  }
+  const evidence = prescription.evidence[0];
+  if (
+    !evidence ||
+    !Number.isFinite(evidence.representativeLoad) ||
+    (evidence.representativeLoad ?? 0) <= 0 ||
+    !Number.isFinite(evidence.representativeReps) ||
+    (evidence.representativeReps ?? 0) <= 0
+  ) {
+    return undefined;
+  }
+  return {
+    source:
+      prescription.source === "legacy_barbell_history"
+        ? "legacy_measurement_bridge"
+        : "exact_compatible_history",
+    confidence: prescription.confidence === "high" ? "high" : "reduced",
+    date: evidence.performedAt === "unknown" ? null : evidence.performedAt,
+    load: evidence.representativeLoad as number,
+    reps: evidence.representativeReps as number,
+    rpe: Number.isFinite(evidence.representativeRpe)
+      ? evidence.representativeRpe as number
+      : null,
+  };
+}
+
+function isMachineDisplayedMeasurement(
+  measurement: MeasurementSemantics | null,
+): boolean {
+  return Boolean(
+    measurement?.profile === "REPS_EXTERNAL_LOAD" &&
+      measurement.loadConvention === "MACHINE_DISPLAYED",
+  );
+}
+
+function hasIncompletePerformedCoverage(input: {
+  plannedWorkingSetCount?: number;
+  sets: WorkoutSetHistory;
+}): boolean {
+  return Boolean(
+    Number.isInteger(input.plannedWorkingSetCount) &&
+      (input.plannedWorkingSetCount ?? 0) > input.sets.length,
+  );
 }
 
 type BuildHistoryIndexOptions = {
@@ -520,6 +830,12 @@ function buildRuntimeAddedCalibrationHistoryIndex(
         index.set(key, []);
       }
       index.get(key)?.push({
+        canonicalExerciseId: exercise.exerciseId,
+        measurement: exercise.measurement ?? null,
+        status: entry.status ?? (entry.completed ? "COMPLETED" : "IN_PROGRESS"),
+        isDeload: entry.isDeload === true || isDeloadPhaseEntry(entry),
+        runtimeAdded: true,
+        substituted: false,
         exposureId: entry.workoutId ?? `history:${entry.date}`,
         date: entry.date,
         source: "runtime_added_same_exercise",
@@ -574,15 +890,38 @@ function buildSessionHistoryIndex(
         index.set(key, []);
       }
       index.get(key)?.push({
+        canonicalExerciseId: exercise.exerciseId,
+        measurement: exercise.measurement ?? null,
+        status: entry.status ?? (entry.completed ? "COMPLETED" : "IN_PROGRESS"),
+        isDeload: entry.isDeload === true || isDeloadPhaseEntry(entry),
+        runtimeAdded: false,
+        substituted: exercise.substituted === true,
         exposureId: entry.workoutId ?? `history:${entry.date}`,
         date: entry.date,
         source: "exact_exercise_history",
         sets: exercise.sets,
         plannedWorkingSetCount: exercise.plannedWorkingSetCount,
-        confidence: entryConfidence,
+        confidence:
+          isMachineDisplayedMeasurement(exercise.measurement ?? null) ||
+          hasIncompletePerformedCoverage(exercise)
+            ? Math.min(
+                entryConfidence,
+                isMachineDisplayedMeasurement(exercise.measurement ?? null)
+                  ? PRESCRIPTION_CONFIDENCE_POLICY.exactMachineDisplayed.confidenceCap
+                  : PRESCRIPTION_CONFIDENCE_POLICY.incompleteEvidenceCap,
+              )
+            : entryConfidence,
         selectionMode: entry.selectionMode,
         sessionIntent: entry.sessionIntent,
-        confidenceNotes: entry.confidenceNotes ?? [],
+        confidenceNotes: [
+          ...(entry.confidenceNotes ?? []),
+          ...(isMachineDisplayedMeasurement(exercise.measurement ?? null)
+            ? ["Exact same-exercise displayed-load history has reduced confidence."]
+            : []),
+          ...(hasIncompletePerformedCoverage(exercise)
+            ? ["Incomplete performed-set coverage has reduced confidence."]
+            : []),
+        ],
       });
     }
   }
@@ -643,39 +982,6 @@ function buildLegacyMeasurementBridgeSessions(
     }];
   });
   return bridged && bridged.length > 0 ? bridged : undefined;
-}
-
-function buildHistoryEvidence(input: {
-  sessions: WorkoutSessionHistory[] | undefined;
-  source: ApplyLoadsHistoryEvidence["source"];
-  representativeLoad?: number;
-}): ApplyLoadsHistoryEvidence | undefined {
-  const selectedSession = input.sessions?.[0];
-  if (!selectedSession) {
-    return undefined;
-  }
-  const usableSets = [...selectedSession.sets]
-    .filter(
-      (set) =>
-        Number.isFinite(set.load) &&
-        (set.load ?? 0) > 0 &&
-        Number.isFinite(set.reps) &&
-        set.reps > 0,
-    )
-    .sort((left, right) => left.setIndex - right.setIndex);
-  const selectedSet =
-    usableSets.find((set) => set.load === input.representativeLoad) ?? usableSets[0];
-  if (!selectedSet || selectedSet.load == null) {
-    return undefined;
-  }
-  return {
-    source: input.source,
-    confidence: input.source === "legacy_measurement_bridge" ? "reduced" : "high",
-    date: selectedSession.date ?? null,
-    load: selectedSet.load,
-    reps: selectedSet.reps,
-    rpe: Number.isFinite(selectedSet.rpe) ? selectedSet.rpe as number : null,
-  };
 }
 
 function selectNewMesocycleBaselineHistory(
@@ -745,6 +1051,12 @@ type WorkoutSetHistory = {
   targetRpe?: number;
 }[];
 type WorkoutSessionHistory = CanonicalProgressionHistorySession & {
+  canonicalExerciseId: string;
+  measurement: MeasurementSemantics | null;
+  status: NonNullable<WorkoutHistoryEntry["status"]>;
+  isDeload: boolean;
+  runtimeAdded: boolean;
+  substituted: boolean;
   sets: WorkoutSetHistory;
   selectionMode?: WorkoutHistoryEntry["selectionMode"];
   sessionIntent?: WorkoutHistoryEntry["sessionIntent"];
@@ -922,7 +1234,6 @@ function resolveLoadForExercise(
     | "none"
     | "legacy_measurement_history"
     | typeof RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE;
-  historyEvidence?: ApplyLoadsHistoryEvidence;
 } {
   const historyLoadSource =
     historyEvidenceSource === "legacy_measurement_bridge"
@@ -956,22 +1267,13 @@ function resolveLoadForExercise(
     if (selectedExposure && workingSetLoad != null) {
       selectedExposure.representativeLoad = workingSetLoad;
     }
-    const historyEvidence = acceptedV4Calibration
-      ? buildHistoryEvidence({
-          sessions: historySessions,
-          source: historyEvidenceSource,
-          representativeLoad: workingSetLoad,
-        })
-      : undefined;
     if (
-      historyEvidenceSource === "legacy_measurement_bridge" &&
       workingSetLoad != null &&
       !latestSetsForDecision.some((set) => Number.isFinite(set.rpe))
     ) {
       return {
         load: quantizeLoad(workingSetLoad, loadIncrement),
         source: historyLoadSource,
-        ...(historyEvidence ? { historyEvidence } : {}),
       };
     }
     const progressionInput = buildCanonicalProgressionEvaluationInput({
@@ -1022,7 +1324,6 @@ function resolveLoadForExercise(
         load: exactHistoryContextCalibration.load,
         progressionTrace: exactHistoryContextCalibration.trace,
         source: historyLoadSource,
-        ...(historyEvidence ? { historyEvidence } : {}),
       };
     }
     if (
@@ -1035,7 +1336,6 @@ function resolveLoadForExercise(
         load: anchorLoad,
         progressionTrace: decision?.trace,
         source: historyLoadSource,
-        ...(historyEvidence ? { historyEvidence } : {}),
       };
     }
     if (decision) {
@@ -1043,7 +1343,6 @@ function resolveLoadForExercise(
         load: decision.nextLoad,
         progressionTrace: decision.trace,
         source: historyLoadSource,
-        ...(historyEvidence ? { historyEvidence } : {}),
       };
     }
     const recentSessions =
@@ -1063,7 +1362,6 @@ function resolveLoadForExercise(
         return {
           load: computed,
           source: historyLoadSource,
-          ...(historyEvidence ? { historyEvidence } : {}),
         };
       }
     }
@@ -1087,16 +1385,9 @@ function resolveLoadForExercise(
     estimatedLoad: estimatedLoadForFallback,
   });
   if (crossIntentFallbackLoad !== undefined) {
-    const historyEvidence = acceptedV4Calibration
-      ? buildHistoryEvidence({
-          sessions: crossIntentHistorySessions,
-          source: historyEvidenceSource,
-        })
-      : undefined;
     return {
       load: crossIntentFallbackLoad,
       source: historyLoadSource,
-      ...(historyEvidence ? { historyEvidence } : {}),
     };
   }
 
@@ -1717,12 +2008,6 @@ function getEquipmentDefault(exercise: Exercise) {
 
 function roundToHalf(value: number) {
   return quantizeLoad(value);
-}
-
-function shouldUseUniformWorkingLoads(input: {
-  primaryGoal: Goals["primary"];
-}) {
-  return input.primaryGoal === "hypertrophy";
 }
 
 function buildWarmupSets(

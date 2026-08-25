@@ -285,6 +285,7 @@ describe("runtime workout mutation CAS (PostgreSQL)", () => {
       },
     });
     return exercises.map((exercise) => ({
+      id: exercise.id,
       exerciseId: exercise.exerciseId,
       orderIndex: exercise.orderIndex,
       section: exercise.section ?? "MAIN",

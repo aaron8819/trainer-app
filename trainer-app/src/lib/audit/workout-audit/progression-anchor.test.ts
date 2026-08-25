@@ -395,7 +395,7 @@ describe("buildProgressionAnchorAuditPayload", () => {
     const audit = await buildProgressionAnchorAuditPayload({
       userId: "user-1", workoutId: "workout-parity", exerciseId: "bench",
     });
-    const runtimeTrace = runtime.audit.progressionTraces.bench;
+    const runtimeTrace = runtime.audit.progressionTraces["we-next"];
     expect(audit.trace.exposure).toEqual(runtimeTrace.exposure);
     expect(audit.trace.metrics).toEqual(runtimeTrace.metrics);
     expect(audit.trace.outcome).toEqual(runtimeTrace.outcome);
@@ -481,7 +481,7 @@ describe("buildProgressionAnchorAuditPayload", () => {
     const audit = await buildProgressionAnchorAuditPayload({
       userId: "user-1", workoutId: "upcoming", exerciseId: "bench",
     });
-    const runtimeTrace = runtime.audit.progressionTraces.bench;
+    const runtimeTrace = runtime.audit.progressionTraces["we-upcoming"];
     expect(audit.trace.exposure).toEqual(runtimeTrace.exposure);
     expect(audit.trace.metrics).toEqual(runtimeTrace.metrics);
     expect(audit.trace.confidence).toEqual(runtimeTrace.confidence);

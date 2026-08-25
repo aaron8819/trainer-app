@@ -236,6 +236,7 @@ export type WorkoutHistoryEntry = {
     exerciseId: string;
     measurement?: import("@/lib/exercise-measurement/semantics").MeasurementSemantics;
     zeroLoadMeaning?: import("@/lib/exercise-measurement/semantics").ZeroLoadMeaning | null;
+    substituted?: boolean;
     plannedWorkingSetCount?: number;
     primaryMuscles?: string[];
     secondaryMuscles?: string[];

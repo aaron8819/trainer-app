@@ -124,6 +124,7 @@ function buildSaveWorkoutPayload(input: {
     filteredExercises: input.metadata.filteredExercises,
     exercises: listWorkoutPlanExercisesInOrder(input.workout).map(({ exercise, section }) => ({
       section: toSaveExerciseSection(section),
+      placementId: exercise.id,
       exerciseId: exercise.exercise.id,
       ...(exercise.measurement ? { measurement: exercise.measurement } : {}),
       sets: exercise.sets.map((set) => ({

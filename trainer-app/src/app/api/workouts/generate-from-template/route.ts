@@ -94,14 +94,18 @@ export async function POST(request: Request) {
           pinnedExerciseIds: parsed.data.pinnedExerciseIds,
           autoFillUnpinned: parsed.data.autoFillUnpinned,
           slotId: parsed.data.slotId,
+          exerciseReplacements: parsed.data.exerciseReplacements,
         });
 
   if ("error" in result) {
     return NextResponse.json({ error: result.error }, { status: 400 });
   }
+  if (!result.audit) {
+    throw new Error("GENERATION_LOAD_AUDIT_REQUIRED");
+  }
 
   // Phase 3: Apply autoregulation
-  const autoregulated = await applyAutoregulation(user.id, result.workout);
+  const autoregulated = await applyAutoregulation(user.id, result.workout, result.audit);
   const selectionMetadata = attachSessionSlotMetadata(
     buildCanonicalSelectionMetadata(result.selection, autoregulated),
     nextWorkoutContext.source === "rotation" &&
@@ -136,8 +140,9 @@ export async function POST(request: Request) {
     selectionMetadata,
     advancesSplit: true,
     filteredExercises: result.filteredExercises,
-    progressionTraces: result.audit?.progressionTraces,
-    deloadTrace: result.audit?.deloadTrace,
+    progressionTraces:
+      autoregulated.loadAudit?.progressionTraces ?? result.audit.progressionTraces,
+    deloadTrace: result.audit.deloadTrace,
   });
   const responseSelectionMetadata = attachSessionAuditSnapshotToSelectionMetadata(
     selectionMetadata,
@@ -152,7 +157,8 @@ export async function POST(request: Request) {
     volumePlanByMuscle: result.volumePlanByMuscle,
     selectionMode: result.selectionMode,
     sessionIntent: result.sessionIntent,
-    prescriptionReadouts: result.prescriptionReadouts,
+    prescriptionReadouts:
+      autoregulated.prescriptionReadouts ?? result.prescriptionReadouts,
     selectionMetadata: responseSelectionMetadata,
   };
 

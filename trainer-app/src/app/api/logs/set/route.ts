@@ -216,6 +216,7 @@ export async function POST(request: Request) {
         where: { workoutId: workoutExercise.workout.id },
         orderBy: [{ orderIndex: "asc" }, { id: "asc" }],
         select: {
+          id: true,
           exerciseId: true,
           orderIndex: true,
           section: true,

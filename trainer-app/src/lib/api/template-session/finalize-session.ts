@@ -144,7 +144,11 @@ function attachResolvedLoadsToDeloadTrace(
   return {
     ...trace,
     exercises: trace.exercises.map((exerciseTrace) => {
-      const resolvedLoad = audit.resolvedLoads[exerciseTrace.exerciseId];
+      // Deload structural traces are identity-scoped and contain at most one row
+      // per canonical exercise. Load authority remains keyed by workout placement.
+      const resolvedLoad = Object.values(audit.resolvedLoads).find(
+        (entry) => entry.canonicalExerciseId === exerciseTrace.exerciseId,
+      );
       const resolvedSetLoads = resolvedLoad?.resolvedSetLoads ?? [];
       const resolvedTopSetLoad = resolvedLoad?.resolvedTopSetLoad ?? null;
       const resolvedBackoffLoad =
@@ -328,7 +332,7 @@ export function finalizeDeloadSessionResult(input: {
     filteredExercises: [],
     prescriptionReadouts,
     audit: {
-      progressionTraces: audit.progressionTraces,
+      ...audit,
       deloadTrace: attachResolvedLoadsToDeloadTrace(input.deloadTrace, audit),
     },
   };

@@ -342,7 +342,7 @@ export async function loadExerciseHistory(
     measurement: currentMeasurement,
   });
   const currentLoadComparable = currentMeasurement
-    ? permitsComputedLoadComparison(currentMeasurement)
+    ? permitsLegacyHistoryLoadComparison(currentMeasurement)
     : performedExposures[0]?.displayLoadConvention !== "not_comparable";
   const exposures: ExerciseExposure[] = performedExposures.map((exposure) => ({
     ...exposure,
@@ -371,7 +371,7 @@ export async function loadExerciseHistory(
       scope: "exact_exercise",
       loadConvention,
       note: currentMeasurement
-        ? permitsComputedLoadComparison(currentMeasurement)
+        ? permitsLegacyHistoryLoadComparison(currentMeasurement)
           ? "All performed work for this exact exercise is shown. Load records use only exposures with matching frozen measurement semantics."
           : "All performed work for this exact exercise is shown, but computed load records are disabled for this measurement convention."
         : hasBodyweight
@@ -382,4 +382,18 @@ export async function loadExerciseHistory(
     recentExposures: exposures.slice(0, limit),
     records: buildRecords(exposures.filter((exposure) => exposure.isRecordComparable)),
   };
+}
+
+// Migration boundary: exercise-history still exposes the pre-Phase-1 record
+// contract and cannot apply exact-id displayed-machine comparability policy.
+function permitsLegacyHistoryLoadComparison(
+  measurement: MeasurementSemantics | null,
+): boolean {
+  return (
+    permitsComputedLoadComparison(measurement) &&
+    !(
+      measurement?.profile === "REPS_EXTERNAL_LOAD" &&
+      measurement.loadConvention === "MACHINE_DISPLAYED"
+    )
+  );
 }

@@ -17,19 +17,11 @@ export type LogWorkoutExecutionGuidance = {
 };
 
 export type LogWorkoutExecutionGuidanceByExercise = {
-  byExerciseId: Record<string, LogWorkoutExecutionGuidance[]>;
-  byExerciseName: Record<string, LogWorkoutExecutionGuidance[]>;
+  byPlacementId: Record<string, LogWorkoutExecutionGuidance[]>;
 };
 
 function emptyLogWorkoutExecutionGuidanceByExercise(): LogWorkoutExecutionGuidanceByExercise {
-  return { byExerciseId: {}, byExerciseName: {} };
-}
-
-export function normalizeLogWorkoutGuidanceExerciseLabel(
-  value: string | null | undefined
-): string | null {
-  const normalized = value?.trim().toLocaleLowerCase();
-  return normalized ? normalized : null;
+  return { byPlacementId: {} };
 }
 
 function formatLoad(value: number): string {
@@ -117,34 +109,6 @@ function hasUsefulDisplaySignal(
   );
 }
 
-function buildUniquePreviewExerciseIdByLabel(
-  preview: PreSessionReadinessGymCardDto["workoutPreview"]
-): Map<string, string | null> {
-  const previewExercises =
-    preview.source === "generated_session_audit_snapshot"
-      ? preview.exercises
-      : [];
-  const exerciseIdsByLabel = new Map<string, Set<string>>();
-
-  for (const exercise of previewExercises) {
-    const key = normalizeLogWorkoutGuidanceExerciseLabel(exercise.exerciseName);
-    if (!key) {
-      continue;
-    }
-
-    const ids = exerciseIdsByLabel.get(key) ?? new Set<string>();
-    ids.add(exercise.exerciseId);
-    exerciseIdsByLabel.set(key, ids);
-  }
-
-  return new Map(
-    Array.from(exerciseIdsByLabel.entries()).map(([key, ids]) => [
-      key,
-      ids.size === 1 ? Array.from(ids)[0] : null,
-    ])
-  );
-}
-
 export function buildLogWorkoutExecutionGuidanceByExercise(
   card: PreSessionReadinessGymCardDto | null | undefined
 ): LogWorkoutExecutionGuidanceByExercise {
@@ -153,16 +117,21 @@ export function buildLogWorkoutExecutionGuidanceByExercise(
   }
 
   const rows: LogWorkoutExecutionGuidanceByExercise = {
-    byExerciseId: {},
-    byExerciseName: {},
+    byPlacementId: {},
   };
-  const previewExerciseIdByLabel = buildUniquePreviewExerciseIdByLabel(
-    card.workoutPreview
-  );
+  const previewPlacements = card.workoutPreview.source === "generated_session_audit_snapshot"
+    ? new Set(card.workoutPreview.exercises.flatMap((exercise) =>
+        exercise.placementId ? [exercise.placementId] : []
+      ))
+    : new Set<string>();
 
   for (const note of card.calibrationNotes) {
-    const key = normalizeLogWorkoutGuidanceExerciseLabel(note.exerciseLabel);
-    if (note.kind !== "prescription_confidence" || !key || !hasUsefulDisplaySignal(note)) {
+    if (
+      note.kind !== "prescription_confidence" ||
+      !note.placementId ||
+      !previewPlacements.has(note.placementId) ||
+      !hasUsefulDisplaySignal(note)
+    ) {
       continue;
     }
 
@@ -183,18 +152,10 @@ export function buildLogWorkoutExecutionGuidanceByExercise(
         : {}),
     };
 
-    const exerciseId = previewExerciseIdByLabel.get(key);
-    if (exerciseId) {
-      rows.byExerciseId[exerciseId] = [
-        ...(rows.byExerciseId[exerciseId] ?? []),
-        guidance,
-      ];
-    } else if (exerciseId === undefined) {
-      rows.byExerciseName[key] = [
-        ...(rows.byExerciseName[key] ?? []),
-        guidance,
-      ];
-    }
+    rows.byPlacementId[note.placementId] = [
+      ...(rows.byPlacementId[note.placementId] ?? []),
+      guidance,
+    ];
   }
 
   return rows;
@@ -203,24 +164,12 @@ export function buildLogWorkoutExecutionGuidanceByExercise(
 export function getLogWorkoutExecutionGuidanceForExercise(
   guidanceByExercise: LogWorkoutExecutionGuidanceByExercise,
   exercise: {
-    exerciseId?: string | null;
-    name: string;
-    hasAmbiguousName?: boolean;
+    placementId?: string | null;
   }
 ): LogWorkoutExecutionGuidance[] {
-  const idGuidance = exercise.exerciseId
-    ? guidanceByExercise.byExerciseId[exercise.exerciseId]
-    : undefined;
-  if (idGuidance) {
-    return idGuidance;
-  }
-
-  if (exercise.hasAmbiguousName) {
-    return [];
-  }
-
-  const key = normalizeLogWorkoutGuidanceExerciseLabel(exercise.name);
-  return key ? guidanceByExercise.byExerciseName[key] ?? [] : [];
+  return exercise.placementId
+    ? guidanceByExercise.byPlacementId[exercise.placementId] ?? []
+    : [];
 }
 
 export async function loadLogWorkoutExecutionGuidance(input: {

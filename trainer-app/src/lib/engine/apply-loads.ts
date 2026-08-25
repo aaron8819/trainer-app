@@ -211,6 +211,61 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
   return applyLoadsWithAudit(workout, options).workout;
 }
 
+export function projectFinalPrescriptionResults(input: {
+  workout: WorkoutPlan;
+  audit: ApplyLoadsAudit;
+  prescriptions: Record<string, PrescriptionResult>;
+}): { workout: WorkoutPlan; audit: ApplyLoadsAudit } {
+  const projectExercise = (exercise: WorkoutPlan["mainLifts"][number]) => {
+    const exerciseId = exercise.exercise.id;
+    const prescription = input.prescriptions[exerciseId];
+    const resolvedLoad = input.audit.resolvedLoads[exerciseId];
+    if (!prescription || !resolvedLoad) {
+      throw new Error(`FINAL_PRESCRIPTION_PROJECTION_MISSING:${exerciseId}`);
+    }
+
+    const targetLoad = toTargetLoad(prescription);
+    const sets = exercise.sets.map((set) => ({
+      ...set,
+      targetLoad: targetLoad ?? undefined,
+    }));
+
+    return {
+      exercise: { ...exercise, sets },
+      resolvedLoad: {
+        ...resolvedLoad,
+        resolvedTopSetLoad: targetLoad,
+        resolvedSetLoads: sets.flatMap((set) =>
+          typeof set.targetLoad === "number" ? [set.targetLoad] : [],
+        ),
+      },
+    };
+  };
+
+  const projectedMainLifts = input.workout.mainLifts.map(projectExercise);
+  const projectedAccessories = input.workout.accessories.map(projectExercise);
+  const resolvedLoads = { ...input.audit.resolvedLoads };
+  for (const projected of [...projectedMainLifts, ...projectedAccessories]) {
+    resolvedLoads[projected.exercise.exercise.id] = projected.resolvedLoad;
+  }
+
+  return {
+    workout: {
+      ...input.workout,
+      mainLifts: projectedMainLifts.map((entry) => entry.exercise),
+      accessories: projectedAccessories.map((entry) => entry.exercise),
+    },
+    audit: {
+      ...input.audit,
+      prescriptions: {
+        ...input.audit.prescriptions,
+        ...input.prescriptions,
+      },
+      resolvedLoads,
+    },
+  };
+}
+
 export function applyLoadsWithAudit(
   workout: WorkoutPlan,
   options: ApplyLoadsOptions

@@ -1,6 +1,7 @@
 // Phase 3: Autoregulation Orchestration
 
 import { computeFatigueScore, autoregulateWorkout } from "@/lib/engine";
+import type { ApplyLoadsAudit } from "@/lib/engine/apply-loads";
 import type { WorkoutPlan as EngineWorkoutPlan } from "@/lib/engine/types";
 import type {
   AutoregulationPolicy,
@@ -8,6 +9,8 @@ import type {
   AutoregulationModification,
 } from "@/lib/engine/readiness/types";
 import { DEFAULT_AUTOREGULATION_POLICY } from "@/lib/engine/readiness/types";
+import { buildPrescriptionConfidenceReadouts } from "./prescription-confidence-readout";
+import type { PrescriptionConfidenceReadout } from "./template-session/types";
 import {
   getLatestReadinessSignal,
   getSignalAgeHours,
@@ -17,6 +20,8 @@ import {
 export type AutoregulationResult = {
   original: EngineWorkoutPlan;
   adjusted: EngineWorkoutPlan;
+  loadAudit?: ApplyLoadsAudit;
+  prescriptionReadouts?: PrescriptionConfidenceReadout[];
   modifications: AutoregulationModification[];
   fatigueScore: FatigueScore | null;
   rationale: string;
@@ -27,99 +32,52 @@ export type AutoregulationResult = {
 };
 
 /**
- * Apply autoregulation to a workout based on latest readiness signal
- * Orchestrates the full pipeline:
- * 1. Fetch latest readiness signal from DB
- * 2. Compute fatigue score
- * 3. Apply readiness-based intensity autoregulation
- *
- * @param userId - User ID
- * @param workout - Original workout plan to autoregulate
- * @param policy - Autoregulation policy (optional, uses defaults)
- * @returns AutoregulationResult with original, adjusted workout, modifications, and rationale
+ * Fetch the latest readiness signal, transform canonical numeric load
+ * prescriptions, and rebuild projections from the final results.
  */
 export async function applyAutoregulation(
   userId: string,
   workout: EngineWorkoutPlan,
-  policy: AutoregulationPolicy = DEFAULT_AUTOREGULATION_POLICY
+  loadAudit: ApplyLoadsAudit,
+  policy: AutoregulationPolicy = DEFAULT_AUTOREGULATION_POLICY,
 ): Promise<AutoregulationResult> {
-  // 1. Get latest readiness signal
   const signal = await getLatestReadinessSignal(userId);
 
   if (!signal) {
+    const rationale = "No recent readiness signal. Workout left unchanged.";
     return {
       original: workout,
       adjusted: workout,
+      loadAudit,
+      prescriptionReadouts: buildPrescriptionConfidenceReadouts({ workout, loadAudit }),
       modifications: [],
       fatigueScore: null,
-      rationale: "No recent readiness signal. Workout left unchanged.",
+      rationale,
       wasAutoregulated: false,
       applied: false,
-      reason: "No recent readiness signal. Workout left unchanged.",
+      reason: rationale,
       signalAgeHours: null,
     };
   }
 
   const fatigueScore: FatigueScore = computeFatigueScore(signal);
-
-  // 3. Flatten workout to single exercises array for autoregulation
-  const flatExercises = [...workout.warmup, ...workout.mainLifts, ...workout.accessories];
-  const flatPlan = {
-    exercises: flatExercises.map((ex) => ({
-      id: ex.id,
-      name: ex.exercise.name,
-      isMainLift: ex.isMainLift,
-      sets: ex.sets,
-    })),
-    estimatedMinutes: workout.estimatedMinutes,
-    notes: workout.notes,
-  };
-
-  // 4. Apply post-generation readiness intensity scaling
-  const autoregPlan: Parameters<typeof autoregulateWorkout>[0] = flatPlan;
-  const { adjustedWorkout, modifications, rationale: baseRationale } = autoregulateWorkout(
-    autoregPlan,
-    fatigueScore,
-    policy
-  );
-
+  const transformed = autoregulateWorkout(workout, loadAudit, fatigueScore, policy);
   const signalAge = getSignalAgeHours(signal);
-  const rationale = `${baseRationale} (signal ${formatSignalAge(signalAge)})`;
-
-  // 5. Map adjusted exercises back to original structure
-  const warmupCount = workout.warmup.length;
-  const mainLiftsCount = workout.mainLifts.length;
-
-  const adjustedWarmup = workout.warmup.map((ex, idx) => ({
-    ...ex,
-    sets: adjustedWorkout.exercises[idx]?.sets ?? ex.sets,
-  }));
-
-  const adjustedMainLifts = workout.mainLifts.map((ex, idx) => ({
-    ...ex,
-    sets: adjustedWorkout.exercises[warmupCount + idx]?.sets ?? ex.sets,
-  }));
-
-  const adjustedAccessories = workout.accessories.map((ex, idx) => ({
-    ...ex,
-    sets: adjustedWorkout.exercises[warmupCount + mainLiftsCount + idx]?.sets ?? ex.sets,
-  }));
+  const rationale = `${transformed.rationale} (signal ${formatSignalAge(signalAge)})`;
 
   return {
     original: workout,
-    adjusted: {
-      ...workout,
-      warmup: adjustedWarmup,
-      mainLifts: adjustedMainLifts,
-      accessories: adjustedAccessories,
-      estimatedMinutes: adjustedWorkout.estimatedMinutes,
-      notes: adjustedWorkout.notes,
-    },
-    modifications,
+    adjusted: transformed.adjustedWorkout,
+    loadAudit: transformed.loadAudit,
+    prescriptionReadouts: buildPrescriptionConfidenceReadouts({
+      workout: transformed.adjustedWorkout,
+      loadAudit: transformed.loadAudit,
+    }),
+    modifications: transformed.modifications,
     fatigueScore,
     rationale,
-    wasAutoregulated: modifications.length > 0,
-    applied: modifications.length > 0,
+    wasAutoregulated: transformed.modifications.length > 0,
+    applied: transformed.modifications.length > 0,
     reason: rationale,
     signalAgeHours: signalAge,
   };

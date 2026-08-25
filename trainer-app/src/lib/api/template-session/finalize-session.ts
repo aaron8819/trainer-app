@@ -328,7 +328,7 @@ export function finalizeDeloadSessionResult(input: {
     filteredExercises: [],
     prescriptionReadouts,
     audit: {
-      progressionTraces: audit.progressionTraces,
+      ...audit,
       deloadTrace: attachResolvedLoadsToDeloadTrace(input.deloadTrace, audit),
     },
   };

@@ -3,6 +3,7 @@ import {
   RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE,
   type ApplyLoadsAudit,
 } from "@/lib/engine/apply-loads";
+import { toTargetLoad, type PrescriptionResult } from "@/lib/engine/load-prescription";
 import type { WorkoutExercise, WorkoutPlan, WorkoutSet } from "@/lib/engine/types";
 import { listWorkoutPlanExercisesInOrder } from "@/lib/engine/workout-plan-order";
 import { deriveLoadEntryPolicy } from "@/lib/exercise-measurement/load-entry-policy";
@@ -96,7 +97,7 @@ export function buildPrescriptionConfidenceReadouts(input: {
   loadAudit?: Pick<
     ApplyLoadsAudit,
     "progressionTraces" | "resolvedLoads" | "selectedAnchorEvidence"
-  >;
+  > & Partial<Pick<ApplyLoadsAudit, "prescriptions">>;
 }): PrescriptionConfidenceReadout[] {
   return listWorkoutPlanExercisesInOrder(input.workout).flatMap(
     ({ section, exercise }) => {
@@ -106,8 +107,9 @@ export function buildPrescriptionConfidenceReadouts(input: {
 
       const exerciseId = exercise.exercise.id;
       const trace = input.loadAudit?.progressionTraces[exerciseId];
+      const prescription = input.loadAudit?.prescriptions?.[exerciseId];
       const resolvedLoad = input.loadAudit?.resolvedLoads[exerciseId];
-      const target = resolveRepresentativeTarget(exercise, trace);
+      const target = resolveRepresentativeTarget(exercise, trace, prescription);
       const loadSource = resolveLoadSource({
         exercise,
         targetLoad: target.load,
@@ -161,7 +163,8 @@ function resolveFiniteNumber(value: number | undefined): number | null {
 
 function resolveRepresentativeTarget(
   exercise: WorkoutExercise,
-  trace: ProgressionDecisionTrace | undefined
+  trace: ProgressionDecisionTrace | undefined,
+  prescription: PrescriptionResult | undefined,
 ): RepresentativeTarget {
   const set = resolveRepresentativeSet(exercise);
   const repRange =
@@ -172,7 +175,9 @@ function resolveRepresentativeTarget(
           max: trace.repRange.max,
         }
       : null);
-  const targetLoad = resolveFiniteNumber(set?.targetLoad) ?? trace?.metrics.nextLoad ?? null;
+  const targetLoad = prescription
+    ? toTargetLoad(prescription)
+    : resolveFiniteNumber(set?.targetLoad) ?? trace?.metrics.nextLoad ?? null;
 
   return {
     load: Number.isFinite(targetLoad) ? targetLoad : null,

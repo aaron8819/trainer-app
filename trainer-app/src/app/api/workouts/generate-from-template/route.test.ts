@@ -43,17 +43,42 @@ vi.mock("@/lib/api/next-session", () => ({
   loadNextWorkoutContext: (...args: unknown[]) => mocks.loadNextWorkoutContext(...args),
 }));
 
-vi.mock("@/lib/api/template-session", () => ({
-  generateSessionFromTemplate: (...args: unknown[]) => mocks.generateSessionFromTemplate(...args),
-  generateDeloadSessionFromTemplate: (...args: unknown[]) =>
-    mocks.generateDeloadSessionFromTemplate(...args),
-}));
+vi.mock("@/lib/api/template-session", () => {
+  const withAudit = async (result: Promise<unknown>) => {
+    const resolved = await result;
+    if (
+      !resolved ||
+      typeof resolved !== "object" ||
+      "error" in resolved ||
+      "audit" in resolved
+    ) {
+      return resolved;
+    }
+    return {
+      ...resolved,
+      audit: { progressionTraces: {}, prescriptions: {}, resolvedLoads: {} },
+    };
+  };
+  return {
+    generateSessionFromTemplate: (...args: unknown[]) =>
+      withAudit(mocks.generateSessionFromTemplate(...args)),
+    generateDeloadSessionFromTemplate: (...args: unknown[]) =>
+      withAudit(mocks.generateDeloadSessionFromTemplate(...args)),
+  };
+});
 
 vi.mock("@/lib/api/autoregulation", () => ({
   applyAutoregulation: (...args: unknown[]) => mocks.applyAutoregulation(...args),
 }));
 
 import { POST } from "./route";
+import { autoregulateWorkout } from "@/lib/engine/readiness/autoregulate";
+import {
+  createNumericPrescription,
+  createSemanticZeroPrescription,
+} from "@/lib/engine/load-prescription";
+import type { ApplyLoadsAudit } from "@/lib/engine/apply-loads";
+import { buildPrescriptionConfidenceReadouts } from "@/lib/api/prescription-confidence-readout";
 
 describe("POST /api/workouts/generate-from-template", () => {
   beforeEach(() => {
@@ -90,6 +115,269 @@ describe("POST /api/workouts/generate-from-template", () => {
       rationale: null,
       wasAutoregulated: false,
     }));
+  });
+
+  it("projects a real readiness reduction through the template route's final authority", async () => {
+    const workout = {
+      id: "readiness-template",
+      scheduledDate: "2026-03-03T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [
+        {
+          id: "workout-exercise-1",
+          exercise: { id: "bench", name: "Bench Press" },
+          isMainLift: true,
+          orderIndex: 0,
+          sets: [{ setIndex: 1, targetReps: 8, targetLoad: 100, targetRpe: 8 }],
+        },
+      ],
+      accessories: [
+        {
+          id: "workout-exercise-2",
+          exercise: { id: "machine-hold", name: "Machine Hold" },
+          isMainLift: false,
+          orderIndex: 1,
+          sets: [{ setIndex: 1, targetReps: 10, targetLoad: 100, targetRpe: 8 }],
+        },
+        {
+          id: "workout-exercise-3",
+          exercise: { id: "calibration", name: "Calibration Machine" },
+          isMainLift: false,
+          orderIndex: 2,
+          sets: [{ setIndex: 1, targetReps: 10, targetRpe: 8 }],
+        },
+        {
+          id: "workout-exercise-4",
+          exercise: { id: "semantic-zero", name: "Bodyweight Movement" },
+          isMainLift: false,
+          orderIndex: 3,
+          zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD" as const,
+          sets: [{ setIndex: 1, targetReps: 10, targetLoad: 0, targetRpe: 8 }],
+        },
+        {
+          id: "workout-exercise-5",
+          exercise: { id: "unavailable", name: "Unavailable Load" },
+          isMainLift: false,
+          orderIndex: 4,
+          sets: [{ setIndex: 1, targetReps: 10, targetRpe: 8 }],
+        },
+        {
+          id: "workout-exercise-6",
+          exercise: { id: "not-applicable", name: "Not Applicable Load" },
+          isMainLift: false,
+          orderIndex: 5,
+          sets: [{ setIndex: 1, targetReps: 10, targetRpe: 8 }],
+        },
+      ],
+      estimatedMinutes: 45,
+    };
+    const prescription = createNumericPrescription({
+      canonicalExerciseId: "bench",
+      measurement: null,
+      value: 100,
+      source: "exact_history",
+      confidence: "high",
+      reasonCodes: ["same_exercise_same_measurement", "hold"],
+      evidence: [{ evidenceId: "selected-history-exposure" }] as never,
+    });
+    const constrainedMachine = createNumericPrescription({
+      canonicalExerciseId: "machine-hold",
+      measurement: null,
+      value: 100,
+      source: "exact_history",
+      confidence: "reduced",
+      reasonCodes: ["missing_effort", "hold"],
+      evidence: [{ evidenceId: "machine-history-exposure" }] as never,
+    });
+    const semanticZero = createSemanticZeroPrescription({
+      canonicalExerciseId: "semantic-zero",
+      measurement: null,
+      zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
+    });
+    const audit: ApplyLoadsAudit = {
+      progressionTraces: {},
+      prescriptions: {
+        bench: prescription,
+        "machine-hold": constrainedMachine,
+        calibration: {
+          version: 1,
+          kind: "calibration_required",
+          canonicalExerciseId: "calibration",
+          measurement: null,
+          confidence: "low",
+          reasonCodes: ["legacy_machine_calibration_only"],
+          evidence: [],
+        },
+        "semantic-zero": semanticZero,
+        unavailable: {
+          version: 1,
+          kind: "unavailable",
+          canonicalExerciseId: "unavailable",
+          measurement: null,
+          reasonCodes: ["no_comparable_history"],
+          evidence: [],
+          blockingFields: ["evidence"],
+        },
+        "not-applicable": {
+          version: 1,
+          kind: "not_applicable",
+          canonicalExerciseId: "not-applicable",
+          measurement: null,
+          reasonCodes: ["bodyweight_no_load_not_applicable"],
+          evidence: [],
+        },
+      },
+      resolvedLoads: {
+        bench: {
+          source: "history",
+          canonicalSourceLoad: 100,
+          resolvedTopSetLoad: 100,
+          resolvedSetLoads: [100],
+        },
+        "machine-hold": {
+          source: "history",
+          canonicalSourceLoad: 100,
+          resolvedTopSetLoad: 100,
+          resolvedSetLoads: [100],
+        },
+        calibration: {
+          source: "none",
+          canonicalSourceLoad: null,
+          resolvedTopSetLoad: null,
+          resolvedSetLoads: [],
+        },
+        "semantic-zero": {
+          source: "existing_target_load",
+          canonicalSourceLoad: 0,
+          resolvedTopSetLoad: 0,
+          resolvedSetLoads: [0],
+        },
+        unavailable: {
+          source: "none",
+          canonicalSourceLoad: null,
+          resolvedTopSetLoad: null,
+          resolvedSetLoads: [],
+        },
+        "not-applicable": {
+          source: "none",
+          canonicalSourceLoad: null,
+          resolvedTopSetLoad: null,
+          resolvedSetLoads: [],
+        },
+      },
+    };
+    let finalAudit: ApplyLoadsAudit | undefined;
+    mocks.generateSessionFromTemplate.mockResolvedValue({
+      workout,
+      templateId: "template-1",
+      selectionMode: "AUTO",
+      sessionIntent: "push",
+      sraWarnings: [],
+      substitutions: [],
+      volumePlanByMuscle: {},
+      prescriptionReadouts: [],
+      selection: {
+        selectedExerciseIds: ["bench"],
+        mainLiftIds: ["bench"],
+        accessoryIds: [
+          "machine-hold",
+          "calibration",
+          "semantic-zero",
+          "unavailable",
+          "not-applicable",
+        ],
+        perExerciseSetTargets: {
+          bench: 1,
+          "machine-hold": 1,
+          calibration: 1,
+          "semantic-zero": 1,
+          unavailable: 1,
+          "not-applicable": 1,
+        },
+        rationale: {},
+        volumePlanByMuscle: {},
+      },
+      audit,
+    });
+    mocks.applyAutoregulation.mockImplementationOnce(async (_userId, inputWorkout, inputAudit) => {
+      const fatigueScore = {
+        overall: 0.4,
+        perMuscle: {},
+        weights: { whoop: 0, subjective: 0.6, performance: 0.4 },
+        components: {
+          whoopContribution: 0,
+          subjectiveContribution: 0.2,
+          performanceContribution: 0.2,
+        },
+      };
+      const transformed = autoregulateWorkout(
+        inputWorkout as never,
+        inputAudit as ApplyLoadsAudit,
+        fatigueScore,
+      );
+      finalAudit = transformed.loadAudit;
+      return {
+        original: inputWorkout,
+        adjusted: transformed.adjustedWorkout,
+        loadAudit: transformed.loadAudit,
+        prescriptionReadouts: buildPrescriptionConfidenceReadouts({
+          workout: transformed.adjustedWorkout,
+          loadAudit: transformed.loadAudit,
+        }),
+        modifications: transformed.modifications,
+        fatigueScore,
+        rationale: transformed.rationale,
+        wasAutoregulated: true,
+        applied: true,
+        reason: transformed.rationale,
+        signalAgeHours: 1,
+      };
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/generate-from-template", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ templateId: "template-1" }),
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.workout.mainLifts[0].sets[0].targetLoad).toBe(90);
+    expect(body.prescriptionReadouts[0].targetLoad).toBe(90);
+    expect(finalAudit?.prescriptions.bench).toMatchObject({
+      kind: "numeric",
+      value: 90,
+      reasonCodes: expect.arrayContaining(["readiness_adjusted", "readiness_reduce"]),
+      evidence: [expect.objectContaining({ evidenceId: "selected-history-exposure" })],
+    });
+    expect(finalAudit?.resolvedLoads.bench.resolvedTopSetLoad).toBe(90);
+    expect(body.workout.accessories.map((exercise: { sets: Array<{ targetLoad?: number }> }) =>
+      exercise.sets[0].targetLoad ?? null,
+    )).toEqual([90, null, 0, null, null]);
+    expect(body.prescriptionReadouts.slice(1).map((readout: { targetLoad: number | null }) =>
+      readout.targetLoad,
+    )).toEqual([90, null, 0, null, null]);
+    expect(finalAudit?.prescriptions["machine-hold"]).toMatchObject({
+      kind: "numeric",
+      value: 90,
+      confidence: "reduced",
+      reasonCodes: expect.arrayContaining([
+        "missing_effort",
+        "hold",
+        "readiness_adjusted",
+        "readiness_reduce",
+      ]),
+    });
+    expect(finalAudit?.prescriptions.calibration.kind).toBe("calibration_required");
+    expect(finalAudit?.prescriptions["semantic-zero"]).toMatchObject({
+      kind: "semantic_zero",
+      value: 0,
+      zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
+    });
+    expect(finalAudit?.prescriptions.unavailable.kind).toBe("unavailable");
+    expect(finalAudit?.prescriptions["not-applicable"].kind).toBe("not_applicable");
   });
 
   it("returns 503 before owner resolution or workout materialization when writes are paused", async () => {

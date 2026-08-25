@@ -47,17 +47,39 @@ vi.mock("@/lib/api/mesocycle-week-close", () => ({
   findPendingWeekCloseForUser: (...args: unknown[]) => mocks.findPendingWeekCloseForUser(...args),
 }));
 
-vi.mock("@/lib/api/template-session", () => ({
-  generateSessionFromIntent: (...args: unknown[]) => mocks.generateSessionFromIntent(...args),
-  generateDeloadSessionFromIntent: (...args: unknown[]) =>
-    mocks.generateDeloadSessionFromIntent(...args),
-}));
+vi.mock("@/lib/api/template-session", () => {
+  const withAudit = async (result: Promise<unknown>) => {
+    const resolved = await result;
+    if (
+      !resolved ||
+      typeof resolved !== "object" ||
+      "error" in resolved ||
+      "audit" in resolved
+    ) {
+      return resolved;
+    }
+    return {
+      ...resolved,
+      audit: { progressionTraces: {}, prescriptions: {}, resolvedLoads: {} },
+    };
+  };
+  return {
+    generateSessionFromIntent: (...args: unknown[]) =>
+      withAudit(mocks.generateSessionFromIntent(...args)),
+    generateDeloadSessionFromIntent: (...args: unknown[]) =>
+      withAudit(mocks.generateDeloadSessionFromIntent(...args)),
+  };
+});
 
 vi.mock("@/lib/api/autoregulation", () => ({
   applyAutoregulation: (...args: unknown[]) => mocks.applyAutoregulation(...args),
 }));
 
 import { POST } from "./route";
+import { autoregulateWorkout } from "@/lib/engine/readiness/autoregulate";
+import { createNumericPrescription } from "@/lib/engine/load-prescription";
+import type { ApplyLoadsAudit } from "@/lib/engine/apply-loads";
+import { buildPrescriptionConfidenceReadouts } from "@/lib/api/prescription-confidence-readout";
 
 const V4_HASH = "a".repeat(64);
 
@@ -164,6 +186,120 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
       rationale: null,
       wasAutoregulated: false,
     }));
+  });
+
+  it("projects a real readiness reduction through the final prescription, target, audit, and readout", async () => {
+    const workout = {
+      id: "readiness-intent",
+      scheduledDate: "2026-03-03T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [
+        {
+          id: "workout-exercise-1",
+          exercise: { id: "bench", name: "Bench Press" },
+          isMainLift: true,
+          orderIndex: 0,
+          sets: [{ setIndex: 1, targetReps: 8, targetLoad: 100, targetRpe: 8 }],
+        },
+      ],
+      accessories: [],
+      estimatedMinutes: 45,
+    };
+    const prescription = createNumericPrescription({
+      canonicalExerciseId: "bench",
+      measurement: null,
+      value: 100,
+      source: "exact_history",
+      confidence: "high",
+      reasonCodes: ["same_exercise_same_measurement", "hold"],
+      evidence: [{ evidenceId: "selected-history-exposure" }] as never,
+    });
+    const audit: ApplyLoadsAudit = {
+      progressionTraces: {},
+      prescriptions: { bench: prescription },
+      resolvedLoads: {
+        bench: {
+          source: "history",
+          canonicalSourceLoad: 100,
+          resolvedTopSetLoad: 100,
+          resolvedSetLoads: [100],
+        },
+      },
+    };
+    let finalAudit: ApplyLoadsAudit | undefined;
+    mocks.generateSessionFromIntent.mockResolvedValue({
+      workout,
+      selectionMode: "INTENT",
+      sessionIntent: "push",
+      sraWarnings: [],
+      substitutions: [],
+      volumePlanByMuscle: {},
+      prescriptionReadouts: [],
+      selection: {
+        selectedExerciseIds: ["bench"],
+        mainLiftIds: ["bench"],
+        accessoryIds: [],
+        perExerciseSetTargets: { bench: 1 },
+        rationale: {},
+        volumePlanByMuscle: {},
+      },
+      filteredExercises: [],
+      audit,
+    });
+    mocks.applyAutoregulation.mockImplementationOnce(async (_userId, inputWorkout, inputAudit) => {
+      const fatigueScore = {
+        overall: 0.4,
+        perMuscle: {},
+        weights: { whoop: 0, subjective: 0.6, performance: 0.4 },
+        components: {
+          whoopContribution: 0,
+          subjectiveContribution: 0.2,
+          performanceContribution: 0.2,
+        },
+      };
+      const transformed = autoregulateWorkout(
+        inputWorkout as never,
+        inputAudit as ApplyLoadsAudit,
+        fatigueScore,
+      );
+      finalAudit = transformed.loadAudit;
+      return {
+        original: inputWorkout,
+        adjusted: transformed.adjustedWorkout,
+        loadAudit: transformed.loadAudit,
+        prescriptionReadouts: buildPrescriptionConfidenceReadouts({
+          workout: transformed.adjustedWorkout,
+          loadAudit: transformed.loadAudit,
+        }),
+        modifications: transformed.modifications,
+        fatigueScore,
+        rationale: transformed.rationale,
+        wasAutoregulated: true,
+        applied: true,
+        reason: transformed.rationale,
+        signalAgeHours: 1,
+      };
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/generate-from-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intent: "push" }),
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.workout.mainLifts[0].sets[0].targetLoad).toBe(90);
+    expect(body.prescriptionReadouts[0].targetLoad).toBe(90);
+    expect(finalAudit?.prescriptions.bench).toMatchObject({
+      kind: "numeric",
+      value: 90,
+      reasonCodes: expect.arrayContaining(["readiness_adjusted", "readiness_reduce"]),
+      evidence: [expect.objectContaining({ evidenceId: "selected-history-exposure" })],
+    });
+    expect(finalAudit?.resolvedLoads.bench.resolvedTopSetLoad).toBe(90);
   });
 
   it.each([

@@ -1,5 +1,15 @@
 // Phase 3: Autoregulation - Workout Intensity Scaling
 
+import {
+  projectFinalPrescriptionResults,
+  type ApplyLoadsAudit,
+} from "@/lib/engine/apply-loads";
+import type {
+  NumericPrescription,
+  PrescriptionReasonCode,
+  PrescriptionResult,
+} from "@/lib/engine/load-prescription";
+import type { WorkoutPlan } from "@/lib/engine/types";
 import type {
   FatigueScore,
   AutoregulationAction,
@@ -9,81 +19,100 @@ import type {
 } from "./types";
 import { DEFAULT_FATIGUE_CONFIG, DEFAULT_AUTOREGULATION_POLICY } from "./types";
 
+const READINESS_INCREASE_BLOCKING_REASONS = new Set<PrescriptionReasonCode>([
+  "missing_effort",
+  "incomplete_set_coverage",
+  "runtime_added_evidence",
+  "substituted_exposure",
+]);
+
+export function transformPrescriptionForReadiness(
+  prescription: PrescriptionResult,
+  action: AutoregulationAction,
+  config: FatigueConfig = DEFAULT_FATIGUE_CONFIG,
+): PrescriptionResult {
+  if (prescription.kind !== "numeric") {
+    return prescription;
+  }
+
+  if (
+    action === "maintain" ||
+    (action === "scale_up" &&
+      prescription.reasonCodes.some((reason) => READINESS_INCREASE_BLOCKING_REASONS.has(reason)))
+  ) {
+    return withReadinessReason(prescription, "readiness_hold");
+  }
+
+  const scalar = action === "scale_down" ? config.SCALE_DOWN_FACTOR : config.SCALE_UP_FACTOR;
+  const adjustedValue = Math.round(prescription.value * scalar * 2) / 2;
+  if (adjustedValue <= 0 || adjustedValue === prescription.value) {
+    return withReadinessReason(prescription, "readiness_hold");
+  }
+
+  return {
+    ...prescription,
+    value: adjustedValue,
+    reasonCodes: uniqueReasons([
+      ...prescription.reasonCodes,
+      "readiness_adjusted",
+      action === "scale_down" ? "readiness_reduce" : "readiness_increase",
+    ]),
+  };
+}
+
 /**
- * WorkoutPlan interface for autoregulation
- * Minimal interface needed for workout modifications
- * (Local types, not exported to avoid conflicts with engine/types.ts)
- */
-type WorkoutPlan = {
-  exercises: WorkoutExercise[];
-  estimatedMinutes: number;
-  notes?: string;
-};
-
-type WorkoutExercise = {
-  id: string;
-  name: string;
-  isMainLift: boolean;
-  sets: WorkoutSet[];
-};
-
-type WorkoutSet = {
-  setIndex: number;
-  targetReps: number;
-  targetLoad?: number;
-  targetRpe?: number;
-  isBackOff?: boolean;
-};
-
-/**
- * Apply autoregulation to a workout based on fatigue score
- * Returns adjusted workout with modification log and rationale.
- *
- * Runtime autoregulation is intentionally intensity-only here:
- * lifecycle volume progression, soreness suppression, and deload state are
- * decided upstream before generation.
+ * Apply readiness to canonical load prescriptions, project those final results
+ * to working sets, and retain the existing RPE adjustment for changed numeric work.
  */
 export function autoregulateWorkout(
   workout: WorkoutPlan,
+  loadAudit: ApplyLoadsAudit,
   fatigueScore: FatigueScore,
   policy: AutoregulationPolicy = DEFAULT_AUTOREGULATION_POLICY,
-  config: FatigueConfig = DEFAULT_FATIGUE_CONFIG
+  config: FatigueConfig = DEFAULT_FATIGUE_CONFIG,
 ): {
   adjustedWorkout: WorkoutPlan;
+  loadAudit: ApplyLoadsAudit;
   modifications: AutoregulationModification[];
   rationale: string;
 } {
   const action = selectAction(fatigueScore.overall, policy, config);
+  const finalPrescriptions = Object.fromEntries(
+    Object.entries(loadAudit.prescriptions).map(([exerciseId, prescription]) => [
+      exerciseId,
+      transformPrescriptionForReadiness(prescription, action, config),
+    ]),
+  );
+  const projected = projectFinalPrescriptionResults({
+    workout,
+    audit: loadAudit,
+    prescriptions: finalPrescriptions,
+  });
+  const modifications: AutoregulationModification[] = [];
+  const adjustedWorkout = applyRpeAdjustments({
+    workout: projected.workout,
+    basePrescriptions: loadAudit.prescriptions,
+    finalPrescriptions,
+    modifications,
+  });
 
-  if (action === "maintain") {
-    return {
-      adjustedWorkout: workout,
-      modifications: [],
-      rationale: `Fatigue score ${Math.round(fatigueScore.overall * 100)}% (recovered). No adjustments needed.`,
-    };
-  }
-
-  const { adjustedWorkout, modifications } = applyAction(workout, action, config);
-  const rationale = generateRationale(action, fatigueScore.overall, modifications);
-
-  return { adjustedWorkout, modifications, rationale };
+  return {
+    adjustedWorkout,
+    loadAudit: projected.audit,
+    modifications,
+    rationale: generateRationale(action, fatigueScore.overall, modifications),
+  };
 }
 
-/**
- * Select autoregulation action based on fatigue score and policy.
- * Volume and deload decisions are handled pre-generation, so runtime
- * autoregulation only scales intensity up or down.
- */
 function selectAction(
   fatigueScore: number,
   policy: AutoregulationPolicy,
-  config: FatigueConfig
+  config: FatigueConfig,
 ): AutoregulationAction {
   if (fatigueScore < config.SCALE_DOWN_THRESHOLD) {
     return policy.allowDownRegulation ? "scale_down" : "maintain";
   }
 
-  // Freshness alone is not enough evidence to push prescription above the planned dose.
   if (fatigueScore > config.SCALE_UP_THRESHOLD && policy.allowUpRegulation) {
     return "scale_up";
   }
@@ -91,150 +120,90 @@ function selectAction(
   return "maintain";
 }
 
-function applyAction(
-  workout: WorkoutPlan,
-  action: AutoregulationAction,
-  config: FatigueConfig
-): {
-  adjustedWorkout: WorkoutPlan;
+function applyRpeAdjustments(input: {
+  workout: WorkoutPlan;
+  basePrescriptions: Record<string, PrescriptionResult>;
+  finalPrescriptions: Record<string, PrescriptionResult>;
   modifications: AutoregulationModification[];
-} {
-  switch (action) {
-    case "scale_down":
-      return scaleDownIntensity(workout, config);
-    case "scale_up":
-      return scaleUpIntensity(workout, config);
-    default:
-      return { adjustedWorkout: workout, modifications: [] };
-  }
-}
+}): WorkoutPlan {
+  const adjustExercise = (exercise: WorkoutPlan["mainLifts"][number]) => {
+    const canonicalExerciseId = exercise.exercise.id;
+    const base = input.basePrescriptions[canonicalExerciseId];
+    const final = input.finalPrescriptions[canonicalExerciseId];
+    if (
+      base?.kind !== "numeric" ||
+      final?.kind !== "numeric" ||
+      base.value === final.value
+    ) {
+      return exercise;
+    }
 
-/**
- * Scale down intensity: -10% load, -1 RPE (easier)
- */
-function scaleDownIntensity(
-  workout: WorkoutPlan,
-  config: FatigueConfig
-): {
-  adjustedWorkout: WorkoutPlan;
-  modifications: AutoregulationModification[];
-} {
-  const modifications: AutoregulationModification[] = [];
-
-  const adjustedExercises = workout.exercises.map((exercise) => {
-    const adjustedSets = exercise.sets.map((set) => {
-      if (set.targetLoad === undefined) return set;
-
-      const originalLoad = set.targetLoad;
-      const adjustedLoad = Math.round(originalLoad * config.SCALE_DOWN_FACTOR * 2) / 2;
-      const originalRpe = set.targetRpe;
-      const adjustedRpe = originalRpe !== undefined ? Math.max(1, originalRpe - 1) : undefined;
-
-      const rpeDetail =
-        originalRpe !== undefined && adjustedRpe !== undefined
-          ? `, RPE ${originalRpe} -> ${adjustedRpe}`
-          : "";
-
-      modifications.push({
-        type: "intensity_scale",
-        exerciseId: exercise.id,
-        exerciseName: exercise.name,
-        direction: "down",
-        scalar: config.SCALE_DOWN_FACTOR,
-        originalLoad,
-        adjustedLoad,
-        originalRir: originalRpe !== undefined ? 10 - originalRpe : undefined,
-        adjustedRir: adjustedRpe !== undefined ? 10 - adjustedRpe : undefined,
-        reason: `Scaled down ${exercise.name} from ${originalLoad} lbs to ${adjustedLoad} lbs (-10%)${rpeDetail}`,
-      });
-
-      return {
-        ...set,
-        targetLoad: adjustedLoad,
-        ...(adjustedRpe !== undefined && { targetRpe: adjustedRpe }),
-      };
-    });
-
+    const direction = final.value < base.value ? "down" as const : "up" as const;
+    const scalar = final.value / base.value;
     return {
       ...exercise,
-      sets: adjustedSets,
+      sets: exercise.sets.map((set) => {
+        const originalRpe = set.targetRpe;
+        const adjustedRpe =
+          originalRpe === undefined
+            ? undefined
+            : direction === "down"
+              ? Math.max(1, originalRpe - 1)
+              : Math.min(10, originalRpe + 0.5);
+        const rpeDetail =
+          originalRpe !== undefined && adjustedRpe !== undefined
+            ? `, RPE ${originalRpe} -> ${adjustedRpe}`
+            : "";
+
+        input.modifications.push({
+          type: "intensity_scale",
+          exerciseId: exercise.id,
+          exerciseName: exercise.exercise.name,
+          direction,
+          scalar,
+          originalLoad: base.value,
+          adjustedLoad: final.value,
+          originalRir: originalRpe !== undefined ? 10 - originalRpe : undefined,
+          adjustedRir: adjustedRpe !== undefined ? 10 - adjustedRpe : undefined,
+          reason:
+            direction === "down"
+              ? `Scaled down ${exercise.exercise.name} from ${base.value} lbs to ${final.value} lbs (-10%)${rpeDetail}`
+              : `Scaled up ${exercise.exercise.name} from ${base.value} lbs to ${final.value} lbs (+5%)${rpeDetail}`,
+        });
+
+        return {
+          ...set,
+          ...(adjustedRpe !== undefined ? { targetRpe: adjustedRpe } : {}),
+        };
+      }),
     };
-  });
+  };
 
   return {
-    adjustedWorkout: {
-      ...workout,
-      exercises: adjustedExercises,
-    },
-    modifications,
+    ...input.workout,
+    mainLifts: input.workout.mainLifts.map(adjustExercise),
+    accessories: input.workout.accessories.map(adjustExercise),
   };
 }
 
-/**
- * Scale up intensity: +5% load, +0.5 RPE (harder)
- */
-function scaleUpIntensity(
-  workout: WorkoutPlan,
-  config: FatigueConfig
-): {
-  adjustedWorkout: WorkoutPlan;
-  modifications: AutoregulationModification[];
-} {
-  const modifications: AutoregulationModification[] = [];
-
-  const adjustedExercises = workout.exercises.map((exercise) => {
-    const adjustedSets = exercise.sets.map((set) => {
-      if (set.targetLoad === undefined) return set;
-
-      const originalLoad = set.targetLoad;
-      const adjustedLoad = Math.round(originalLoad * config.SCALE_UP_FACTOR * 2) / 2;
-      const originalRpe = set.targetRpe;
-      const adjustedRpe = originalRpe !== undefined ? Math.min(10, originalRpe + 0.5) : undefined;
-
-      const rpeDetail =
-        originalRpe !== undefined && adjustedRpe !== undefined
-          ? `, RPE ${originalRpe} -> ${adjustedRpe}`
-          : "";
-
-      modifications.push({
-        type: "intensity_scale",
-        exerciseId: exercise.id,
-        exerciseName: exercise.name,
-        direction: "up",
-        scalar: config.SCALE_UP_FACTOR,
-        originalLoad,
-        adjustedLoad,
-        originalRir: originalRpe !== undefined ? 10 - originalRpe : undefined,
-        adjustedRir: adjustedRpe !== undefined ? 10 - adjustedRpe : undefined,
-        reason: `Scaled up ${exercise.name} from ${originalLoad} lbs to ${adjustedLoad} lbs (+5%)${rpeDetail}`,
-      });
-
-      return {
-        ...set,
-        targetLoad: adjustedLoad,
-        ...(adjustedRpe !== undefined && { targetRpe: adjustedRpe }),
-      };
-    });
-
-    return {
-      ...exercise,
-      sets: adjustedSets,
-    };
-  });
-
+function withReadinessReason(
+  prescription: NumericPrescription,
+  reason: PrescriptionReasonCode,
+): NumericPrescription {
   return {
-    adjustedWorkout: {
-      ...workout,
-      exercises: adjustedExercises,
-    },
-    modifications,
+    ...prescription,
+    reasonCodes: uniqueReasons([...prescription.reasonCodes, reason]),
   };
+}
+
+function uniqueReasons(reasonCodes: PrescriptionReasonCode[]): PrescriptionReasonCode[] {
+  return [...new Set(reasonCodes)];
 }
 
 function generateRationale(
   action: AutoregulationAction,
   fatigueScore: number,
-  modifications: AutoregulationModification[]
+  modifications: AutoregulationModification[],
 ): string {
   const percentage = Math.round(fatigueScore * 100);
   const modificationCount = modifications.length;
@@ -242,11 +211,9 @@ function generateRationale(
   switch (action) {
     case "scale_down":
       return `Fatigue score ${percentage}% (moderately fatigued). Action: scale down intensity. ${modificationCount} exercises adjusted (-10% load, -1 RPE).`;
-
     case "scale_up":
       return `Fatigue score ${percentage}% (very fresh). Action: scale up intensity. ${modificationCount} exercises adjusted (+5% load, +0.5 RPE).`;
-
     default:
-      return `Fatigue score ${percentage}%. No adjustments needed.`;
+      return `Fatigue score ${percentage}% (recovered). No adjustments needed.`;
   }
 }

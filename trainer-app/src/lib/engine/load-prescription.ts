@@ -42,6 +42,10 @@ export type PrescriptionReasonCode =
   | "hold"
   | "decrease"
   | "existing_target_preserved"
+  | "readiness_adjusted"
+  | "readiness_hold"
+  | "readiness_increase"
+  | "readiness_reduce"
   | "no_comparable_history"
   | "measurement_unsupported"
   | "warmup_load_not_owned";

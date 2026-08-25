@@ -120,7 +120,7 @@ export type SessionGenerationResult =
       };
       filteredExercises?: FilteredExerciseSummary[];
       prescriptionReadouts?: PrescriptionConfidenceReadout[];
-      audit?: Pick<ApplyLoadsAudit, "progressionTraces" | "selectedAnchorEvidence"> & {
+      audit?: ApplyLoadsAudit & {
         deloadTrace?: DeloadTransformationTrace;
       };
     }

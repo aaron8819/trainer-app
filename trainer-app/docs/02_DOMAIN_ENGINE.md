@@ -13,9 +13,12 @@ explicit local migration gates until those contracts can consume the complete
 structured policy. The load-entry gate protects same-session adjustment, stall
 detection, and plateau/e1RM policy without weakening measurement capability.
 
-The production flow is performed evidence normalization -> comparability -> one
-selected exposure -> progression -> `PrescriptionResult` -> `toTargetLoad()` ->
-compatibility `targetLoad`. The selected exposure owns representative load,
+The non-exact production flow is performed evidence normalization ->
+comparability -> one selected exposure -> progression -> base
+`PrescriptionResult` -> readiness transformation -> final `PrescriptionResult`
+-> `toTargetLoad()` -> compatibility `targetLoad` and prescription readout.
+Exact accepted-V4 replay continues to bypass readiness and replays its accepted
+prescriptions unchanged. The selected exposure owns representative load,
 anchor-set reps and effort, coverage facts, frozen measurement, performed time,
 provenance, confidence, and reason codes. Invalid newer evidence is skipped in
 favor of the newest valid comparable exposure; progression sessions are rebound
@@ -23,8 +26,16 @@ to that selection, so a numeric result and its audit projection cannot cite a
 different exposure from the load anchor. Every working exercise processed by
 `apply-loads` ends in exactly one numeric, semantic-zero,
 calibration-required, not-applicable, or unavailable result before set targets
-are written. `targetLoad` is emitted only through `toTargetLoad()`; result-derived
-evidence also owns the compatibility audit citation.
+are written. Readiness can scale only a positive numeric result. It preserves
+exercise identity, measurement, source, confidence, evidence references, and
+prior reason codes, and adds `readiness_adjusted` plus the applied direction.
+Missing-effort, incomplete-coverage, runtime-added, and substituted results
+cannot be readiness-scaled upward; the existing policy may still apply a
+downward safety reduction. Calibration-required, semantic-zero,
+not-applicable, and unavailable results cannot become numeric. `targetLoad` is
+emitted only through `toTargetLoad()` from the final result; result-derived
+evidence also owns the compatibility audit citation, and readouts are rebuilt
+after readiness from the final result.
 
 Positive longitudinal comparison requires the exact canonical exercise id and
 the exact frozen measurement tuple. Exact barbell and dumbbell evidence is

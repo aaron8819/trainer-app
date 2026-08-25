@@ -508,6 +508,7 @@ function normalizeHistorySession(
     isMainLiftEligible: exercise.isMainLiftEligible,
     isDeload: session.isDeload,
     runtimeAdded: session.runtimeAdded,
+    substituted: session.substituted,
     confidence: session.confidence,
     confidenceNotes: session.confidenceNotes,
     sets: session.sets,
@@ -765,6 +766,7 @@ function buildRuntimeAddedCalibrationHistoryIndex(
         status: entry.status ?? (entry.completed ? "COMPLETED" : "IN_PROGRESS"),
         isDeload: entry.isDeload === true || isDeloadPhaseEntry(entry),
         runtimeAdded: true,
+        substituted: false,
         exposureId: entry.workoutId ?? `history:${entry.date}`,
         date: entry.date,
         source: "runtime_added_same_exercise",
@@ -824,6 +826,7 @@ function buildSessionHistoryIndex(
         status: entry.status ?? (entry.completed ? "COMPLETED" : "IN_PROGRESS"),
         isDeload: entry.isDeload === true || isDeloadPhaseEntry(entry),
         runtimeAdded: false,
+        substituted: exercise.substituted === true,
         exposureId: entry.workoutId ?? `history:${entry.date}`,
         date: entry.date,
         source: "exact_exercise_history",
@@ -984,6 +987,7 @@ type WorkoutSessionHistory = CanonicalProgressionHistorySession & {
   status: NonNullable<WorkoutHistoryEntry["status"]>;
   isDeload: boolean;
   runtimeAdded: boolean;
+  substituted: boolean;
   sets: WorkoutSetHistory;
   selectionMode?: WorkoutHistoryEntry["selectionMode"];
   sessionIntent?: WorkoutHistoryEntry["sessionIntent"];

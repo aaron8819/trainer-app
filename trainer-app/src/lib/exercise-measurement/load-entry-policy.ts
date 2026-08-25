@@ -2,6 +2,7 @@ import {
   isZeroLoadMeaningCompatible,
   permitsComputedLoadComparison,
   type FrozenMeasurementSnapshot,
+  type MeasurementSemantics,
 } from "./semantics";
 
 export type LoadEntryPolicy = {
@@ -11,6 +12,21 @@ export type LoadEntryPolicy = {
   zeroDisplayLabel: "Bodyweight" | "Machine default / no added load" | null;
   positiveLoadProgressionEligible: boolean;
 };
+
+// Temporary migration boundary: the measurement layer may compare exact
+// displayed-machine loads, but legacy adjustment/stall/plateau consumers of
+// this policy have not adopted structured prescription comparability yet.
+function permitsLegacyPositiveLoadProgression(
+  measurement: MeasurementSemantics | null,
+): boolean {
+  return (
+    permitsComputedLoadComparison(measurement) &&
+    !(
+      measurement?.profile === "REPS_EXTERNAL_LOAD" &&
+      measurement.loadConvention === "MACHINE_DISPLAYED"
+    )
+  );
+}
 
 export function deriveLoadEntryPolicy(
   snapshot: FrozenMeasurementSnapshot,
@@ -61,7 +77,7 @@ export function deriveLoadEntryPolicy(
         : "Machine default / no added load"
       : null,
     positiveLoadProgressionEligible:
-      permitsComputedLoadComparison(measurement),
+      permitsLegacyPositiveLoadProgression(measurement),
   };
 }
 

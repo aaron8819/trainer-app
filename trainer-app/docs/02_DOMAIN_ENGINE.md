@@ -7,9 +7,11 @@ contract, structured comparability, selected evidence, and prescription
 confidence/action policy. `permitsComputedLoadComparison()` is only a coarse
 measurement capability: it does not establish exercise identity, frozen tuple
 equality, evidence quality, or progression eligibility. `apply-loads` is the
-Phase 1 structured-policy consumer. Legacy exercise-history and explainability
-callers keep `MACHINE_DISPLAYED` disabled behind explicit local migration gates
-until those contracts can consume the complete structured policy.
+Phase 1 structured-policy consumer. Legacy exercise-history, explainability,
+and load-entry progression callers keep `MACHINE_DISPLAYED` disabled behind
+explicit local migration gates until those contracts can consume the complete
+structured policy. The load-entry gate protects same-session adjustment, stall
+detection, and plateau/e1RM policy without weakening measurement capability.
 
 The production flow is performed evidence normalization -> comparability -> one
 selected exposure -> progression -> `PrescriptionResult` -> `toTargetLoad()` ->
@@ -34,6 +36,9 @@ capped at `0.7` and remains categorically reduced, but it may increase, hold, or
 decrease through the existing bounded progression criteria. The exception does
 not raise weaker source confidence to the cap. Missing effort, incomplete
 coverage, runtime-added evidence, or substitution blocks directional action.
+Persisted runtime `replace_exercise` metadata is mapped onto the replacement's
+history exposure and normalized as `substituted`, so that provenance reaches
+the prescription policy instead of being inferred from exercise identity.
 `isPartialExposureAdequateForProgression()` owns the canonical minimum of two
 performed working sets and at least two-thirds coverage; evidence normalization
 only reports the resulting coverage fact.

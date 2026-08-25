@@ -26,7 +26,10 @@ import { mapLatestCheckIn, type CheckInRow } from "./checkin-staleness";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import { classifySetLog } from "@/lib/session-semantics/set-classification";
 import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
-import { readRuntimeAddedExerciseIds } from "@/lib/ui/selection-metadata";
+import {
+  readRuntimeAddedExerciseIds,
+  readRuntimeReplacedExercises,
+} from "@/lib/ui/selection-metadata";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import type {
   Constraints,
@@ -485,6 +488,9 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
     const runtimeAddedExerciseIds = readRuntimeAddedExerciseIds(
       workout.selectionMetadata
     );
+    const runtimeReplacedExercises = readRuntimeReplacedExercises(
+      workout.selectionMetadata
+    );
 
     // Keep deload sessions in performed history for compliance/volume context
     // while marking them out of progression and performance reads.
@@ -516,14 +522,19 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
           : undefined,
       exercises: workout.exercises
         .filter((exercise) => !runtimeAddedExerciseIds.has(exercise.id))
-        .map(mapWorkoutExerciseHistory),
+        .map((exercise) =>
+          mapWorkoutExerciseHistory(
+            exercise,
+            runtimeReplacedExercises.has(exercise.id)
+          )
+        ),
       calibrationExercises: workout.exercises
         .filter(
           (exercise) =>
             runtimeAddedExerciseIds.has(exercise.id) &&
             exercise.section !== "WARMUP"
         )
-        .map(mapWorkoutExerciseHistory)
+        .map((exercise) => mapWorkoutExerciseHistory(exercise))
         .filter((exercise) => exercise.sets.length > 0)
         .map((exercise) => ({
           exerciseId: exercise.exerciseId,
@@ -605,7 +616,8 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
 }
 
 function mapWorkoutExerciseHistory(
-  exercise: WorkoutWithRelations["exercises"][number]
+  exercise: WorkoutWithRelations["exercises"][number],
+  substituted = false
 ): WorkoutHistoryEntry["exercises"][number] {
   const accounting = resolveHistoricalStimulusAccounting({
     persistedSnapshot: exercise.stimulusAccountingSnapshot,
@@ -628,6 +640,7 @@ function mapWorkoutExerciseHistory(
       ? { measurement: parseMeasurementColumns(exercise)! }
       : {}),
     zeroLoadMeaning: parseZeroLoadMeaningColumn(exercise),
+    ...(substituted ? { substituted: true } : {}),
     plannedWorkingSetCount: exercise.sets.length,
     primaryMuscles: accounting.snapshot
       ? getRelationshipMusclesFromSnapshot(accounting.snapshot, "primary")

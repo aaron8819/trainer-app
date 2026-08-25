@@ -291,8 +291,11 @@ export type SessionAuditMutationSummary = {
       | "unknown_generated_source"
       | "invalid_explicit_target"
       | "duplicate_explicit_source"
-      | "duplicate_explicit_target";
+      | "duplicate_explicit_target"
+      | "duplicate_generated_occurrence_id"
+      | "duplicate_persisted_occurrence_id";
     recordIndexes: number[];
+    occurrenceIndexes?: number[];
     generatedPlacementId?: string;
     persistedWorkoutExerciseId?: string;
   }>;

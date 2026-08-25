@@ -7,6 +7,7 @@ import {
   type PreSessionReadinessCoachingRecommendation,
   type PreSessionReadinessConsistencyCheck,
   type PreSessionReadinessContract,
+  type PreSessionReadinessPlacementCorrelation,
   type PreSessionReadinessPrescriptionConfidenceWatchRow,
   type PreSessionReadinessWorkoutPreview,
 } from "./pre-session-readiness-contract";
@@ -29,6 +30,10 @@ type ProjectedWeekSession =
 type GeneratedSession = NonNullable<SessionAuditSnapshot["generated"]>;
 type GeneratedExercise = GeneratedSession["exercises"][number];
 type GeneratedSet = GeneratedExercise["prescribedSets"][number];
+type PlacementGuidanceAuthority = {
+  placementId: string;
+  source: "explicit" | "legacy_unique" | "generated_only";
+};
 type PrescriptionReadoutFields = Pick<
   PreSessionReadinessPrescriptionConfidenceWatchRow,
   | "targetLoad"
@@ -196,7 +201,8 @@ function formatRpeValues(values: number[]): string | null {
 
 function buildWorkoutPreview(
   generated: GeneratedSession | undefined,
-  persistedPlacementIdByGeneratedId: Map<string, string>,
+  placementAuthorityByGeneratedExercise: Map<GeneratedExercise, PlacementGuidanceAuthority>,
+  requireProvenPersistedPlacement: boolean,
 ): PreSessionReadinessWorkoutPreview | undefined {
   if (!generated?.exercises?.length) {
     return undefined;
@@ -205,7 +211,11 @@ function buildWorkoutPreview(
   const exercises = generated.exercises
     .slice()
     .sort((left, right) => left.orderIndex - right.orderIndex)
-    .map((exercise) => {
+    .flatMap((exercise) => {
+      const placementAuthority = placementAuthorityByGeneratedExercise.get(exercise);
+      if (requireProvenPersistedPlacement && !placementAuthority) {
+        return [];
+      }
       const prescribedSets = exercise.prescribedSets ?? [];
       const targetRpeLabel = formatRpeValues(
         prescribedSets
@@ -213,10 +223,11 @@ function buildWorkoutPreview(
           .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
       );
 
-      return {
-        ...(exercise.placementId
+      return [{
+        ...(placementAuthority
           ? {
-              placementId: persistedPlacementIdByGeneratedId.get(exercise.placementId),
+              placementId: placementAuthority.placementId,
+              placementCorrelationSource: placementAuthority.source,
             }
           : {}),
         exerciseId: exercise.exerciseId,
@@ -225,7 +236,7 @@ function buildWorkoutPreview(
         repTargetLabel: formatPreviewRepTarget(prescribedSets[0]),
         targetLoadLabel: formatCommonLoadLabel(prescribedSets),
         targetRpeLabel,
-      };
+      }];
     });
   const targetRpeLabel = formatRpeValues(
     generated.exercises.flatMap((exercise) =>
@@ -550,7 +561,8 @@ function buildAvoidList(input: {
 function buildPrescriptionConfidenceWatches(
   generated: SessionAuditSnapshot["generated"] | undefined,
   prescriptionReadouts: PrescriptionConfidenceReadout[] | undefined,
-  persistedPlacementIdByGeneratedId: Map<string, string>,
+  placementAuthorityByGeneratedExercise: Map<GeneratedExercise, PlacementGuidanceAuthority>,
+  requireProvenPersistedPlacement: boolean,
 ): PreSessionReadinessPrescriptionConfidenceWatchRow[] {
   const readoutsByPlacementId = new Map(
     (prescriptionReadouts ?? []).map((readout) => [readout.placementId, readout])
@@ -564,10 +576,11 @@ function buildPrescriptionConfidenceWatches(
   }
 
   return (generated?.exercises ?? []).flatMap<PreSessionReadinessPrescriptionConfidenceWatchRow>((exercise) => {
+    const placementAuthority = placementAuthorityByGeneratedExercise.get(exercise);
+    if (requireProvenPersistedPlacement && !placementAuthority) {
+      return [];
+    }
     const placementId = exercise.placementId;
-    const consumerPlacementId = placementId
-      ? persistedPlacementIdByGeneratedId.get(placementId)
-      : undefined;
     const trace = placementId
       ? generated?.traces.progression[placementId]
       : exercisePlacementCounts.get(exercise.exerciseId) === 1
@@ -584,7 +597,12 @@ function buildPrescriptionConfidenceWatches(
       (readout?.loadSource === "none" && readout.targetLoad == null)
     ) {
       const row: PreSessionReadinessPrescriptionConfidenceWatchRow = {
-        ...(consumerPlacementId ? { placementId: consumerPlacementId } : {}),
+        ...(placementAuthority
+          ? {
+              placementId: placementAuthority.placementId,
+              placementCorrelationSource: placementAuthority.source,
+            }
+          : {}),
         exerciseLabel: exercise.exerciseName,
         watchType: "prescription_confidence",
         reasonCode: "load_calibration",
@@ -608,7 +626,12 @@ function buildPrescriptionConfidenceWatches(
     if (!trace) {
       return [
         {
-          ...(consumerPlacementId ? { placementId: consumerPlacementId } : {}),
+          ...(placementAuthority
+            ? {
+                placementId: placementAuthority.placementId,
+                placementCorrelationSource: placementAuthority.source,
+              }
+            : {}),
           exerciseLabel: exercise.exerciseName,
           watchType: "prescription_confidence",
           reasonCode: "progression_trace_unavailable",
@@ -658,7 +681,12 @@ function buildPrescriptionConfidenceWatches(
 
       return [
         {
-          ...(consumerPlacementId ? { placementId: consumerPlacementId } : {}),
+          ...(placementAuthority
+            ? {
+                placementId: placementAuthority.placementId,
+                placementCorrelationSource: placementAuthority.source,
+              }
+            : {}),
           exerciseLabel: exercise.exerciseName,
           watchType: "prescription_confidence",
           reasonCode,
@@ -1103,37 +1131,79 @@ export function buildPreSessionReadinessContract(
     nextSession: nextProjectedSession,
     recommendations: doseClosure.recommendations,
   });
-  const persistedPlacementIdByGeneratedId = input.sessionSnapshot?.saved
-    ? resolvePlacementCorrelations({
-        generatedOccurrences: (generated?.exercises ?? []).map((exercise) => ({
-          occurrenceId: exercise.placementId,
-          exerciseId: exercise.exerciseId,
-          value: exercise,
-        })),
-        persistedOccurrences: (input.persistedExercises ?? []).map((exercise) => ({
-          occurrenceId: exercise.id,
-          exerciseId: exercise.exerciseId,
-          value: exercise,
-        })),
-        rawCorrelations: input.sessionSnapshot.saved.placementCorrelations,
-      }).generatedToPersisted
-    : new Map(
-        (generated?.exercises ?? []).flatMap((exercise) =>
-          exercise.placementId
-            ? [[exercise.placementId, exercise.placementId] as const]
-            : [],
-        ),
-      );
+  const requireProvenPersistedPlacement = Boolean(input.sessionSnapshot?.saved);
+  const placementAuthorityByGeneratedExercise = new Map<
+    GeneratedExercise,
+    PlacementGuidanceAuthority
+  >();
+  let placementCorrelation: PreSessionReadinessPlacementCorrelation;
+  if (input.sessionSnapshot?.saved) {
+    const resolved = resolvePlacementCorrelations({
+      generatedOccurrences: (generated?.exercises ?? []).map((exercise) => ({
+        occurrenceId: exercise.placementId,
+        exerciseId: exercise.exerciseId,
+        value: exercise,
+      })),
+      persistedOccurrences: (input.persistedExercises ?? []).map((exercise) => ({
+        occurrenceId: exercise.id,
+        exerciseId: exercise.exerciseId,
+        value: exercise,
+      })),
+      rawCorrelations: input.sessionSnapshot.saved.placementCorrelations,
+    });
+    for (const pair of resolved.pairs) {
+      if (!pair.persisted.occurrenceId) continue;
+      placementAuthorityByGeneratedExercise.set(pair.generated.value, {
+        placementId: pair.persisted.occurrenceId,
+        source: pair.source,
+      });
+    }
+    placementCorrelation = {
+      state: resolved.state,
+      rawCorrelationState: resolved.rawCorrelationState,
+      provenPairCount: resolved.pairs.length,
+      explicitPairCount: resolved.pairs.filter((pair) => pair.source === "explicit").length,
+      legacyUniquePairCount: resolved.pairs.filter((pair) => pair.source === "legacy_unique").length,
+      unresolvedGeneratedCount: resolved.unresolvedGenerated.length,
+      unresolvedPersistedCount: resolved.unresolvedPersisted.length,
+      ambiguousExerciseIds: resolved.ambiguousExerciseIds,
+      issueCodes: Array.from(
+        new Set(resolved.invalidExplicitMappings.map((issue) => issue.code)),
+      ),
+    };
+  } else {
+    for (const exercise of generated?.exercises ?? []) {
+      if (!exercise.placementId) continue;
+      placementAuthorityByGeneratedExercise.set(exercise, {
+        placementId: exercise.placementId,
+        source: "generated_only",
+      });
+    }
+    placementCorrelation = {
+      state: "generated_only",
+      rawCorrelationState: "absent",
+      provenPairCount: placementAuthorityByGeneratedExercise.size,
+      explicitPairCount: 0,
+      legacyUniquePairCount: 0,
+      unresolvedGeneratedCount:
+        (generated?.exercises.length ?? 0) - placementAuthorityByGeneratedExercise.size,
+      unresolvedPersistedCount: 0,
+      ambiguousExerciseIds: [],
+      issueCodes: [],
+    };
+  }
   const prescriptionConfidenceWatches = buildPrescriptionConfidenceWatches(
     generated,
     input.generation && !("error" in input.generation)
       ? input.generation.prescriptionReadouts
       : undefined,
-    persistedPlacementIdByGeneratedId,
+    placementAuthorityByGeneratedExercise,
+    requireProvenPersistedPlacement,
   );
   const workoutPreview = buildWorkoutPreview(
     generated,
-    persistedPlacementIdByGeneratedId,
+    placementAuthorityByGeneratedExercise,
+    requireProvenPersistedPlacement,
   );
   const diagnosticFatigue = doseDiagnostics.flatMap((diagnostic) => {
     if (diagnostic.fatigueDensityConcern.level === "none") {
@@ -1285,6 +1355,7 @@ export function buildPreSessionReadinessContract(
         ),
       fatigue: fatigueCautions,
     },
+    placementCorrelation,
     ...(workoutPreview ? { workoutPreview } : {}),
     boundaries: {
       readOnly: true as const,

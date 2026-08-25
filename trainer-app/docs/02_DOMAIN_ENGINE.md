@@ -100,13 +100,23 @@ Those saved correlations are untrusted serialized metadata. The pure resolver in
 `src/lib/session-semantics/placement-correlation.ts` is the only business-rule
 owner for interpreting them across reconciliation, readiness/log guidance,
 explainability, weekly review, and deload history. It validates source and target
-existence plus one-to-one source/target cardinality before returning exact pairs.
-An explicit invalid mapping is quarantined and never becomes canonical fallback
-for that generated occurrence. Canonical exercise-ID fallback applies only to a
-genuinely unmapped legacy remainder with exactly one generated and one persisted
-occurrence. Duplicate legacy data returns `ambiguous_exercise_correlation`; malformed
-explicit data returns `invalid_placement_correlation`. Both use `hasDrift=null` and
-cannot report false no-drift or supply unproven occurrence-specific guidance.
+existence plus one-to-one source/target cardinality before returning proven pairs.
+Generated and persisted occurrence IDs are cardinality-validated against the
+original arrays before ID maps can discard duplicate evidence; any duplicate ID
+invalidates the resolver scope before pair resolution. An explicit invalid mapping
+is quarantined and never becomes canonical fallback for that generated occurrence.
+A malformed record without a usable generated source blocks legacy fallback for
+the resolver scope because it cannot be safely attributed; an unknown source that
+is provably absent cannot steal a valid target from an otherwise unique legacy
+pair. Canonical exercise-ID fallback applies only inside the resolver to a genuinely
+unmapped legacy remainder with exactly one generated and one persisted occurrence.
+Duplicate legacy data returns `ambiguous_exercise_correlation`; malformed explicit
+data and duplicate occurrence IDs return `invalid_placement_correlation`. Both use
+`hasDrift=null` and cannot report false no-drift or supply unproven occurrence-specific
+guidance. Readiness persists resolver state and pair source, filters unproven saved
+placements from occurrence-specific preview/watch rows, and log guidance keys only
+by the resolver-proven persisted `WorkoutExercise.id`; exercise ID/name recovery is
+not a placement authority.
 
 Deload evidence remains excluded from accumulation progression. Explicit zero
 continues to use only the existing `BODYWEIGHT_NO_ADDED_LOAD` and
@@ -624,6 +634,7 @@ SetLog / logged performance
 - `src/lib/api/explainability.ts` should remain a facade over those seams. It should not become an alternate owner of session semantics or next-exposure progression policy.
 - Workout explanations include per-exercise progression receipts (`WorkoutExplanation.progressionReceipts` in `src/lib/engine/explainability/types.ts`), derived from performed history and current prescription in `src/lib/api/explainability.ts`.
 - Workout explanations also expose per-exercise `nextExposureDecisions` as a read model. These must consume performed semantics from `src/lib/session-semantics/performed-exercise-semantics.ts` and route canonical decision-input assembly through `buildCanonicalProgressionEvaluationInput()` before calling `computeDoubleProgressionDecision()`, so post-workout interpretation cannot drift from the next canonical load decision.
+- `PerformedExerciseSemantics.signalSets` uses the canonical `ProgressionSet[]` shape. Each retained signal set preserves `setIndex`, performed `reps` / `load` / `rpe`, and the available target fields (`targetLoad`, `targetReps`, `targetRepMin`, `targetRepMax`, `targetRpe`) so progression and review consumers share the same performed-evidence contract.
 - Session context now includes cycle provenance and readiness availability labels (`SessionContext.cycleSource`, `ReadinessStatus.availability`, `ReadinessStatus.label`) in `src/lib/engine/explainability/types.ts`, produced in `src/lib/engine/explainability/session-context.ts`.
 - Explainability is strictly receipt-first: it reads session-level cycle/readiness context only from `selectionMetadata.sessionDecisionReceipt`, and missing canonical receipt means missing session-level evidence (`src/lib/evidence/session-decision-receipt.ts`, `src/lib/api/explainability.ts`, `src/lib/ui/explainability.ts`). When canonical receipt cycle context includes `weekInBlock` and `blockDurationWeeks`, read-side summary/explainability copy should prefer block-relative semantics over mesocycle-relative wording.
 - Progression receipts only use recent performed evidence (42-day recency window) when loading `lastPerformed` in `loadLatestPerformedSetSummary()` within `src/lib/api/explainability.ts`.

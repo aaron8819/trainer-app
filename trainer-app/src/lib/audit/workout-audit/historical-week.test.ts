@@ -417,7 +417,8 @@ describe("buildHistoricalWeekAuditPayload", () => {
     expect(payload.comparabilityCoverage).toMatchObject({
       comparableSessionCount: 0,
       ambiguousCorrelationCount: 1,
-      generatedLayerCoverage: "none",
+      missingGeneratedSnapshotCount: 0,
+      generatedLayerCoverage: "full",
     });
     expect(payload.comparabilityCoverage.limitations).toEqual(
       expect.arrayContaining([expect.stringContaining("fails closed")]),
@@ -442,6 +443,8 @@ describe("buildHistoricalWeekAuditPayload", () => {
     expect(invalidPayload.comparabilityCoverage).toMatchObject({
       comparableSessionCount: 0,
       invalidCorrelationCount: 1,
+      missingGeneratedSnapshotCount: 0,
+      generatedLayerCoverage: "full",
     });
   });
 

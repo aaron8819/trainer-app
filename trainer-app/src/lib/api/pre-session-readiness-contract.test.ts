@@ -123,6 +123,32 @@ describe("pre-session readiness contract", () => {
     ).toBe(true);
   });
 
+  it("validates persisted placement-correlation authority metadata", () => {
+    const contract = makeContract({
+      mode: "pre-session-readiness",
+      ownerSeam: "api/pre-session-readiness-contract",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+    });
+    contract.placementCorrelation = {
+      state: "invalid_occurrence_cardinality",
+      rawCorrelationState: "present",
+      provenPairCount: 0,
+      explicitPairCount: 0,
+      legacyUniquePairCount: 0,
+      unresolvedGeneratedCount: 2,
+      unresolvedPersistedCount: 2,
+      ambiguousExerciseIds: [],
+      issueCodes: ["duplicate_generated_occurrence_id"],
+    };
+
+    expect(isPreSessionReadinessContract(contract, { userId: "user-1" })).toBe(true);
+
+    const invalid = structuredClone(contract) as PreSessionReadinessContract;
+    invalid.placementCorrelation!.issueCodes = ["not_a_resolver_issue" as never];
+    expect(isPreSessionReadinessContract(invalid, { userId: "user-1" })).toBe(false);
+  });
+
   it("accepts legacy audit owner metadata for compatibility", () => {
     const contract = makeContract({
       mode: "pre-session-readiness",

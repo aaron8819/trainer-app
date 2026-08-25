@@ -353,6 +353,11 @@ describe("canonical session decision receipt pipeline", () => {
         sessionDecisionReceipt: initialReceipt,
       },
       filteredExercises: [],
+      audit: {
+        progressionTraces: {},
+        prescriptions: {},
+        resolvedLoads: {},
+      },
     });
     mocks.applyAutoregulation.mockImplementation(async (_userId, workout) => ({
       original: workout,

@@ -659,4 +659,48 @@ describe("session-audit-snapshot", () => {
       expect.arrayContaining([expect.objectContaining({ code: issue })]),
     );
   });
+
+  it("fails closed before comparison when generated occurrence IDs are duplicated", () => {
+    const snapshot = buildDuplicateBenchSnapshot({ withCorrelations: true });
+    snapshot.generated!.exercises[1]!.placementId = "bench-placement-a";
+
+    const mutation = buildSessionAuditMutationSummary({
+      snapshot,
+      persistedExercises: [persistedBench("row-a", 0, 105), persistedBench("row-b", 1, 95)],
+    });
+
+    expect(mutation).toMatchObject({
+      comparisonState: "invalid_placement_correlation",
+      hasDrift: null,
+      changedFields: [],
+      invalidPlacementCorrelations: [
+        expect.objectContaining({
+          code: "duplicate_generated_occurrence_id",
+          generatedPlacementId: "bench-placement-a",
+          occurrenceIndexes: [0, 1],
+        }),
+      ],
+    });
+  });
+
+  it("fails closed before comparison when persisted occurrence IDs are duplicated", () => {
+    const snapshot = buildDuplicateBenchSnapshot({ withCorrelations: true });
+    const mutation = buildSessionAuditMutationSummary({
+      snapshot,
+      persistedExercises: [persistedBench("row-a", 0, 105), persistedBench("row-a", 1, 95)],
+    });
+
+    expect(mutation).toMatchObject({
+      comparisonState: "invalid_placement_correlation",
+      hasDrift: null,
+      changedFields: [],
+      invalidPlacementCorrelations: [
+        expect.objectContaining({
+          code: "duplicate_persisted_occurrence_id",
+          persistedWorkoutExerciseId: "row-a",
+          occurrenceIndexes: [0, 1],
+        }),
+      ],
+    });
+  });
 });

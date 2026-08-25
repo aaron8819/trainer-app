@@ -1671,7 +1671,8 @@ export async function buildWeeklyRetroAuditPayload(input: {
     )
   ).length;
   const legacyLimitedSessionCount =
-    historicalWeek.comparabilityCoverage.reconstructedSnapshotCount +
+    historicalWeek.comparabilityCoverage.reconstructedSnapshotCount;
+  const invalidCorrelationSessionCount =
     (historicalWeek.comparabilityCoverage.ambiguousCorrelationCount ?? 0) +
     (historicalWeek.comparabilityCoverage.invalidCorrelationCount ?? 0);
   const planAdherence = buildPlanAdherence({
@@ -1975,6 +1976,7 @@ export async function buildWeeklyRetroAuditPayload(input: {
       status:
         planAdherence.engineConfidenceImpact === "high" ||
         planAdherence.engineConfidenceImpact === "medium" ||
+        invalidCorrelationSessionCount > 0 ||
         legacyLimitedSessionCount > 0 ||
         belowMev.length > 0 ||
         nearMav.length > 0 ||
@@ -2002,6 +2004,7 @@ export async function buildWeeklyRetroAuditPayload(input: {
         planAdherence.engineConfidenceImpact === "high" ||
         (planAdherence.engineConfidenceImpact === "medium" &&
           legacyLimitedSessionCount === 0) ||
+        invalidCorrelationSessionCount > 0 ||
         selectionDriftCount > 0
           ? "attention_required"
           : legacyLimitedSessionCount > 0

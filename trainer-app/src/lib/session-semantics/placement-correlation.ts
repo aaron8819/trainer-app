@@ -8,11 +8,14 @@ export type PlacementCorrelationIssueCode =
   | "unknown_generated_source"
   | "invalid_explicit_target"
   | "duplicate_explicit_source"
-  | "duplicate_explicit_target";
+  | "duplicate_explicit_target"
+  | "duplicate_generated_occurrence_id"
+  | "duplicate_persisted_occurrence_id";
 
 export type PlacementCorrelationIssue = {
   code: PlacementCorrelationIssueCode;
   recordIndexes: number[];
+  occurrenceIndexes?: number[];
   generatedPlacementId?: string;
   persistedWorkoutExerciseId?: string;
 };
@@ -33,11 +36,10 @@ export type ResolvedPlacementCorrelation<TGenerated, TPersisted> = {
   state:
     | "resolved"
     | "ambiguous_legacy_correlation"
-    | "invalid_explicit_correlation";
+    | "invalid_explicit_correlation"
+    | "invalid_occurrence_cardinality";
   rawCorrelationState: "absent" | "present";
   pairs: Array<ResolvedPlacementCorrelationPair<TGenerated, TPersisted>>;
-  generatedToPersisted: Map<string, string>;
-  persistedToGenerated: Map<string, string>;
   unresolvedGenerated: Array<PlacementCorrelationOccurrence<TGenerated>>;
   unresolvedPersisted: Array<PlacementCorrelationOccurrence<TPersisted>>;
   ambiguousExerciseIds: string[];
@@ -58,6 +60,34 @@ function addGroupedIndex(map: Map<string, number[]>, key: string, index: number)
   map.set(key, indexes);
 }
 
+function findDuplicateOccurrenceIssues<T>(input: {
+  occurrences: Array<PlacementCorrelationOccurrence<T>>;
+  code:
+    | "duplicate_generated_occurrence_id"
+    | "duplicate_persisted_occurrence_id";
+}): PlacementCorrelationIssue[] {
+  const indexesById = new Map<string, number[]>();
+  for (const [index, occurrence] of input.occurrences.entries()) {
+    if (!occurrence.occurrenceId) continue;
+    addGroupedIndex(indexesById, occurrence.occurrenceId, index);
+  }
+
+  return [...indexesById.entries()].flatMap(([occurrenceId, occurrenceIndexes]) =>
+    occurrenceIndexes.length > 1
+      ? [
+          {
+            code: input.code,
+            recordIndexes: [],
+            occurrenceIndexes,
+            ...(input.code === "duplicate_generated_occurrence_id"
+              ? { generatedPlacementId: occurrenceId }
+              : { persistedWorkoutExerciseId: occurrenceId }),
+          },
+        ]
+      : [],
+  );
+}
+
 /**
  * The only business-rule owner for interpreting saved generated-to-persisted
  * placement correlations. Raw metadata is untrusted. Explicit records are
@@ -69,6 +99,28 @@ export function resolvePlacementCorrelations<TGenerated, TPersisted>(input: {
   rawCorrelations: unknown;
 }): ResolvedPlacementCorrelation<TGenerated, TPersisted> {
   const rawCorrelationState = input.rawCorrelations === undefined ? "absent" : "present";
+  const occurrenceCardinalityIssues = [
+    ...findDuplicateOccurrenceIssues({
+      occurrences: input.generatedOccurrences,
+      code: "duplicate_generated_occurrence_id",
+    }),
+    ...findDuplicateOccurrenceIssues({
+      occurrences: input.persistedOccurrences,
+      code: "duplicate_persisted_occurrence_id",
+    }),
+  ];
+  if (occurrenceCardinalityIssues.length > 0) {
+    return {
+      state: "invalid_occurrence_cardinality",
+      rawCorrelationState,
+      pairs: [],
+      unresolvedGenerated: [...input.generatedOccurrences],
+      unresolvedPersisted: [...input.persistedOccurrences],
+      ambiguousExerciseIds: [],
+      invalidExplicitMappings: occurrenceCardinalityIssues,
+    };
+  }
+
   const generatedById = new Map(
     input.generatedOccurrences.flatMap((occurrence) =>
       occurrence.occurrenceId ? [[occurrence.occurrenceId, occurrence] as const] : [],
@@ -104,7 +156,7 @@ export function resolvePlacementCorrelations<TGenerated, TPersisted>(input: {
         });
         if (generatedPlacementId) blockedGeneratedIds.add(generatedPlacementId);
         if (persistedWorkoutExerciseId) blockedPersistedIds.add(persistedWorkoutExerciseId);
-        if (!generatedPlacementId && !persistedWorkoutExerciseId) {
+        if (!generatedPlacementId) {
           blockAllLegacyFallback = true;
         }
         continue;
@@ -233,14 +285,6 @@ export function resolvePlacementCorrelations<TGenerated, TPersisted>(input: {
     }
   }
 
-  const generatedToPersisted = new Map<string, string>();
-  const persistedToGenerated = new Map<string, string>();
-  for (const pair of pairs) {
-    if (!pair.generated.occurrenceId || !pair.persisted.occurrenceId) continue;
-    generatedToPersisted.set(pair.generated.occurrenceId, pair.persisted.occurrenceId);
-    persistedToGenerated.set(pair.persisted.occurrenceId, pair.generated.occurrenceId);
-  }
-
   return {
     state:
       issues.length > 0
@@ -250,8 +294,6 @@ export function resolvePlacementCorrelations<TGenerated, TPersisted>(input: {
           : "resolved",
     rawCorrelationState,
     pairs,
-    generatedToPersisted,
-    persistedToGenerated,
     unresolvedGenerated: input.generatedOccurrences.filter(
       (occurrence) => !matchedGenerated.has(occurrence),
     ),

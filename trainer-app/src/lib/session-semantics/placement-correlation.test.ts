@@ -23,6 +23,16 @@ function resolve(input: {
   });
 }
 
+function resolvedIds(
+  result: ReturnType<typeof resolve>,
+): Array<[string | undefined, string | undefined, "explicit" | "legacy_unique"]> {
+  return result.pairs.map((pair) => [
+    pair.generated.occurrenceId,
+    pair.persisted.occurrenceId,
+    pair.source,
+  ]);
+}
+
 const generatedBench = [
   { id: "A", exerciseId: "bench" },
   { id: "B", exerciseId: "bench" },
@@ -44,9 +54,9 @@ describe("resolvePlacementCorrelations", () => {
     });
 
     expect(result.state).toBe("resolved");
-    expect([...result.generatedToPersisted]).toEqual([
-      ["A", "X"],
-      ["B", "Y"],
+    expect(resolvedIds(result)).toEqual([
+      ["A", "X", "explicit"],
+      ["B", "Y", "explicit"],
     ]);
     expect(result.pairs.every((pair) => pair.source === "explicit")).toBe(true);
   });
@@ -62,8 +72,7 @@ describe("resolvePlacementCorrelations", () => {
     });
 
     expect(result.state).toBe("invalid_explicit_correlation");
-    expect(result.generatedToPersisted.get("A")).toBeUndefined();
-    expect(result.generatedToPersisted.get("B")).toBe("Y");
+    expect(resolvedIds(result)).toEqual([["B", "Y", "explicit"]]);
     expect(result.unresolvedGenerated.map((entry) => entry.occurrenceId)).toContain("A");
     expect(result.invalidExplicitMappings).toEqual(
       expect.arrayContaining([
@@ -83,10 +92,30 @@ describe("resolvePlacementCorrelations", () => {
     });
 
     expect(result.state).toBe("invalid_explicit_correlation");
-    expect([...result.generatedToPersisted]).toEqual([]);
+    expect(result.pairs).toEqual([]);
     expect(result.invalidExplicitMappings).toEqual(
       expect.arrayContaining([expect.objectContaining({ code: "duplicate_explicit_target" })]),
     );
+  });
+
+  it("rejects many-to-one explicit targets across distinct canonical exercises", () => {
+    const result = resolve({
+      generated: [
+        { id: "A", exerciseId: "bench" },
+        { id: "B", exerciseId: "row" },
+      ],
+      persisted: [
+        { id: "X", exerciseId: "bench" },
+        { id: "Y", exerciseId: "row" },
+      ],
+      correlations: [
+        { generatedPlacementId: "A", persistedWorkoutExerciseId: "X" },
+        { generatedPlacementId: "B", persistedWorkoutExerciseId: "X" },
+      ],
+    });
+
+    expect(result.state).toBe("invalid_explicit_correlation");
+    expect(result.pairs).toEqual([]);
   });
 
   it("rejects one source mapped to conflicting targets", () => {
@@ -100,7 +129,7 @@ describe("resolvePlacementCorrelations", () => {
     });
 
     expect(result.state).toBe("invalid_explicit_correlation");
-    expect([...result.generatedToPersisted]).toEqual([]);
+    expect(result.pairs).toEqual([]);
     expect(result.invalidExplicitMappings).toEqual(
       expect.arrayContaining([expect.objectContaining({ code: "duplicate_explicit_source" })]),
     );
@@ -117,7 +146,7 @@ describe("resolvePlacementCorrelations", () => {
     });
 
     expect(result.state).toBe("invalid_explicit_correlation");
-    expect([...result.generatedToPersisted]).toEqual([]);
+    expect(result.pairs).toEqual([]);
     expect(result.invalidExplicitMappings.map((issue) => issue.code)).toEqual([
       "duplicate_explicit_source",
       "duplicate_explicit_target",
@@ -134,10 +163,7 @@ describe("resolvePlacementCorrelations", () => {
     });
 
     expect(result.state).toBe("invalid_explicit_correlation");
-    expect(result.persistedToGenerated.get("X")).toBe("A");
-    expect(result.pairs).toEqual([
-      expect.objectContaining({ source: "legacy_unique" }),
-    ]);
+    expect(resolvedIds(result)).toEqual([["A", "X", "legacy_unique"]]);
     expect(result.invalidExplicitMappings).toEqual(
       expect.arrayContaining([expect.objectContaining({ code: "unknown_generated_source" })]),
     );
@@ -163,11 +189,10 @@ describe("resolvePlacementCorrelations", () => {
     });
 
     expect(result.state).toBe("invalid_explicit_correlation");
-    expect([...result.generatedToPersisted]).toEqual([
-      ["A", "X"],
-      ["C", "Z"],
+    expect(resolvedIds(result)).toEqual([
+      ["A", "X", "explicit"],
+      ["C", "Z", "explicit"],
     ]);
-    expect(result.generatedToPersisted.get("B")).toBeUndefined();
     expect(result.unresolvedPersisted.map((entry) => entry.occurrenceId)).toContain("Y");
   });
 
@@ -177,7 +202,7 @@ describe("resolvePlacementCorrelations", () => {
       persisted: [{ id: "X", exerciseId: "bench" }],
     });
     expect(unique.state).toBe("resolved");
-    expect(unique.generatedToPersisted.get("A")).toBe("X");
+    expect(resolvedIds(unique)).toEqual([["A", "X", "legacy_unique"]]);
     expect(unique.pairs[0]?.source).toBe("legacy_unique");
 
     const duplicate = resolve({
@@ -185,7 +210,7 @@ describe("resolvePlacementCorrelations", () => {
       persisted: persistedBench,
     });
     expect(duplicate.state).toBe("ambiguous_legacy_correlation");
-    expect([...duplicate.generatedToPersisted]).toEqual([]);
+    expect(duplicate.pairs).toEqual([]);
     expect(duplicate.ambiguousExerciseIds).toEqual(["bench"]);
   });
 
@@ -197,9 +222,75 @@ describe("resolvePlacementCorrelations", () => {
     });
 
     expect(result.state).toBe("invalid_explicit_correlation");
-    expect(result.generatedToPersisted.get("A")).toBeUndefined();
+    expect(result.pairs).toEqual([]);
     expect(result.invalidExplicitMappings[0]?.code).toBe(
       "malformed_explicit_correlation",
     );
+  });
+
+  it("blocks all legacy fallback when a malformed record has no generated source", () => {
+    const result = resolve({
+      generated: [{ id: "A", exerciseId: "bench" }],
+      persisted: [{ id: "X", exerciseId: "bench" }],
+      correlations: [{ persistedWorkoutExerciseId: "NOPE" }],
+    });
+
+    expect(result.state).toBe("invalid_explicit_correlation");
+    expect(result.pairs).toEqual([]);
+    expect(result.unresolvedGenerated.map((entry) => entry.occurrenceId)).toEqual(["A"]);
+    expect(result.invalidExplicitMappings).toEqual([
+      expect.objectContaining({
+        code: "malformed_explicit_correlation",
+        persistedWorkoutExerciseId: "NOPE",
+      }),
+    ]);
+  });
+
+  it("rejects duplicate generated occurrence IDs before resolving any pair", () => {
+    const result = resolve({
+      generated: [
+        { id: "A", exerciseId: "bench" },
+        { id: "A", exerciseId: "bench" },
+      ],
+      persisted: [
+        { id: "X", exerciseId: "bench" },
+        { id: "Y", exerciseId: "bench" },
+      ],
+      correlations: [{ generatedPlacementId: "A", persistedWorkoutExerciseId: "X" }],
+    });
+
+    expect(result.state).toBe("invalid_occurrence_cardinality");
+    expect(result.pairs).toEqual([]);
+    expect(result.invalidExplicitMappings).toEqual([
+      expect.objectContaining({
+        code: "duplicate_generated_occurrence_id",
+        generatedPlacementId: "A",
+        occurrenceIndexes: [0, 1],
+      }),
+    ]);
+  });
+
+  it("rejects duplicate persisted occurrence IDs before resolving any pair", () => {
+    const result = resolve({
+      generated: [
+        { id: "A", exerciseId: "bench" },
+        { id: "B", exerciseId: "bench" },
+      ],
+      persisted: [
+        { id: "X", exerciseId: "bench" },
+        { id: "X", exerciseId: "bench" },
+      ],
+      correlations: [{ generatedPlacementId: "A", persistedWorkoutExerciseId: "X" }],
+    });
+
+    expect(result.state).toBe("invalid_occurrence_cardinality");
+    expect(result.pairs).toEqual([]);
+    expect(result.invalidExplicitMappings).toEqual([
+      expect.objectContaining({
+        code: "duplicate_persisted_occurrence_id",
+        persistedWorkoutExerciseId: "X",
+        occurrenceIndexes: [0, 1],
+      }),
+    ]);
   });
 });

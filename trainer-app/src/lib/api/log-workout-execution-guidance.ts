@@ -18,19 +18,10 @@ export type LogWorkoutExecutionGuidance = {
 
 export type LogWorkoutExecutionGuidanceByExercise = {
   byPlacementId: Record<string, LogWorkoutExecutionGuidance[]>;
-  byExerciseId: Record<string, LogWorkoutExecutionGuidance[]>;
-  byExerciseName: Record<string, LogWorkoutExecutionGuidance[]>;
 };
 
 function emptyLogWorkoutExecutionGuidanceByExercise(): LogWorkoutExecutionGuidanceByExercise {
-  return { byPlacementId: {}, byExerciseId: {}, byExerciseName: {} };
-}
-
-export function normalizeLogWorkoutGuidanceExerciseLabel(
-  value: string | null | undefined
-): string | null {
-  const normalized = value?.trim().toLocaleLowerCase();
-  return normalized ? normalized : null;
+  return { byPlacementId: {} };
 }
 
 function formatLoad(value: number): string {
@@ -118,34 +109,6 @@ function hasUsefulDisplaySignal(
   );
 }
 
-function buildUniquePreviewExerciseIdByLabel(
-  preview: PreSessionReadinessGymCardDto["workoutPreview"]
-): Map<string, string | null> {
-  const previewExercises =
-    preview.source === "generated_session_audit_snapshot"
-      ? preview.exercises
-      : [];
-  const exercisesByLabel = new Map<string, Array<{ exerciseId: string }>>();
-
-  for (const exercise of previewExercises) {
-    const key = normalizeLogWorkoutGuidanceExerciseLabel(exercise.exerciseName);
-    if (!key) {
-      continue;
-    }
-
-    const exercises = exercisesByLabel.get(key) ?? [];
-    exercises.push({ exerciseId: exercise.exerciseId });
-    exercisesByLabel.set(key, exercises);
-  }
-
-  return new Map(
-    Array.from(exercisesByLabel.entries()).map(([key, exercises]) => [
-      key,
-      exercises.length === 1 ? exercises[0]!.exerciseId : null,
-    ])
-  );
-}
-
 export function buildLogWorkoutExecutionGuidanceByExercise(
   card: PreSessionReadinessGymCardDto | null | undefined
 ): LogWorkoutExecutionGuidanceByExercise {
@@ -155,12 +118,7 @@ export function buildLogWorkoutExecutionGuidanceByExercise(
 
   const rows: LogWorkoutExecutionGuidanceByExercise = {
     byPlacementId: {},
-    byExerciseId: {},
-    byExerciseName: {},
   };
-  const previewExerciseIdByLabel = buildUniquePreviewExerciseIdByLabel(
-    card.workoutPreview
-  );
   const previewPlacements = card.workoutPreview.source === "generated_session_audit_snapshot"
     ? new Set(card.workoutPreview.exercises.flatMap((exercise) =>
         exercise.placementId ? [exercise.placementId] : []
@@ -168,8 +126,12 @@ export function buildLogWorkoutExecutionGuidanceByExercise(
     : new Set<string>();
 
   for (const note of card.calibrationNotes) {
-    const key = normalizeLogWorkoutGuidanceExerciseLabel(note.exerciseLabel);
-    if (note.kind !== "prescription_confidence" || !key || !hasUsefulDisplaySignal(note)) {
+    if (
+      note.kind !== "prescription_confidence" ||
+      !note.placementId ||
+      !previewPlacements.has(note.placementId) ||
+      !hasUsefulDisplaySignal(note)
+    ) {
       continue;
     }
 
@@ -190,28 +152,10 @@ export function buildLogWorkoutExecutionGuidanceByExercise(
         : {}),
     };
 
-    if (note.placementId) {
-      if (previewPlacements.has(note.placementId)) {
-        rows.byPlacementId[note.placementId] = [
-          ...(rows.byPlacementId[note.placementId] ?? []),
-          guidance,
-        ];
-      }
-      continue;
-    }
-
-    const exerciseId = previewExerciseIdByLabel.get(key);
-    if (exerciseId) {
-      rows.byExerciseId[exerciseId] = [
-        ...(rows.byExerciseId[exerciseId] ?? []),
-        guidance,
-      ];
-    } else if (exerciseId === undefined) {
-      rows.byExerciseName[key] = [
-        ...(rows.byExerciseName[key] ?? []),
-        guidance,
-      ];
-    }
+    rows.byPlacementId[note.placementId] = [
+      ...(rows.byPlacementId[note.placementId] ?? []),
+      guidance,
+    ];
   }
 
   return rows;
@@ -221,30 +165,11 @@ export function getLogWorkoutExecutionGuidanceForExercise(
   guidanceByExercise: LogWorkoutExecutionGuidanceByExercise,
   exercise: {
     placementId?: string | null;
-    exerciseId?: string | null;
-    name: string;
-    hasAmbiguousName?: boolean;
   }
 ): LogWorkoutExecutionGuidance[] {
-  const placementGuidance = exercise.placementId
-    ? guidanceByExercise.byPlacementId?.[exercise.placementId]
-    : undefined;
-  if (placementGuidance) {
-    return placementGuidance;
-  }
-  const idGuidance = exercise.exerciseId
-    ? guidanceByExercise.byExerciseId[exercise.exerciseId]
-    : undefined;
-  if (idGuidance) {
-    return idGuidance;
-  }
-
-  if (exercise.hasAmbiguousName) {
-    return [];
-  }
-
-  const key = normalizeLogWorkoutGuidanceExerciseLabel(exercise.name);
-  return key ? guidanceByExercise.byExerciseName[key] ?? [] : [];
+  return exercise.placementId
+    ? guidanceByExercise.byPlacementId[exercise.placementId] ?? []
+    : [];
 }
 
 export async function loadLogWorkoutExecutionGuidance(input: {

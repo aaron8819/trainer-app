@@ -342,13 +342,12 @@ export async function buildHistoricalWeekAuditPayload(input: {
     }
     if (session.reconciliation.comparisonState === "comparable") {
       comparableSessionCount += 1;
-    } else {
+    } else if (session.reconciliation.comparisonState === "missing_generated_snapshot") {
       missingGeneratedSnapshotCount += 1;
-      if (session.reconciliation.comparisonState === "ambiguous_exercise_correlation") {
-        ambiguousCorrelationCount += 1;
-      } else if (session.reconciliation.comparisonState === "invalid_placement_correlation") {
-        invalidCorrelationCount += 1;
-      }
+    } else if (session.reconciliation.comparisonState === "ambiguous_exercise_correlation") {
+      ambiguousCorrelationCount += 1;
+    } else if (session.reconciliation.comparisonState === "invalid_placement_correlation") {
+      invalidCorrelationCount += 1;
     }
     if (session.weekClose?.relevant) {
       weekCloseRelevantCount += 1;

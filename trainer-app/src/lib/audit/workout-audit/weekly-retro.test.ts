@@ -1585,7 +1585,7 @@ describe("buildWeeklyRetroAuditPayload", () => {
       ],
     };
     historicalPayload.comparabilityCoverage.comparableSessionCount = 0;
-    historicalPayload.comparabilityCoverage.missingGeneratedSnapshotCount = 1;
+    historicalPayload.comparabilityCoverage.missingGeneratedSnapshotCount = 0;
     Object.assign(historicalPayload.comparabilityCoverage, { invalidCorrelationCount: 1 });
 
     const malformedPayload = await buildWeeklyRetroAuditPayload({
@@ -1599,6 +1599,10 @@ describe("buildWeeklyRetroAuditPayload", () => {
       plannedWorkMissedSets: 0,
     });
     expect(malformedPayload.exerciseLoadCalibrationRows).toEqual([]);
+    expect(malformedPayload.loadCalibration).toMatchObject({
+      status: "attention_required",
+      legacyLimitedSessionCount: 0,
+    });
   });
 });
 

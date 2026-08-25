@@ -585,9 +585,9 @@ export function buildSessionAuditMutationSummary(input: {
     return {
       version: 1,
       comparisonState:
-        correlation.state === "invalid_explicit_correlation"
-          ? "invalid_placement_correlation"
-          : "ambiguous_exercise_correlation",
+        correlation.state === "ambiguous_legacy_correlation"
+          ? "ambiguous_exercise_correlation"
+          : "invalid_placement_correlation",
       hasDrift: null,
       changedFields: [],
       addedExerciseIds: [],

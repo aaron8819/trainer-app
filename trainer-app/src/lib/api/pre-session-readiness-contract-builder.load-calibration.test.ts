@@ -15,10 +15,7 @@ function buildContract(
   generatedSnapshot?: {
     exercises: Array<{ placementId?: string; exerciseId: string; exerciseName: string }>;
     traces: { progression: Record<string, unknown> };
-    placementCorrelations?: Array<{
-      generatedPlacementId: string;
-      persistedWorkoutExerciseId: string;
-    }>;
+    placementCorrelations?: unknown;
     persistedExercises?: Array<{ id: string; exerciseId: string }>;
   },
 ) {
@@ -57,8 +54,14 @@ function buildContract(
         })),
         traces: generatedSnapshot?.traces ?? { progression: {} },
       },
-      ...(generatedSnapshot?.placementCorrelations
-        ? { saved: { placementCorrelations: generatedSnapshot.placementCorrelations } }
+      ...(generatedSnapshot?.persistedExercises
+        ? {
+            saved: {
+              ...(generatedSnapshot.placementCorrelations === undefined
+                ? {}
+                : { placementCorrelations: generatedSnapshot.placementCorrelations }),
+            },
+          }
         : {}),
     } as never,
     persistedExercises: generatedSnapshot?.persistedExercises,
@@ -221,9 +224,27 @@ describe("V4 load-calibration presentation", () => {
       "row-a",
       "row-b",
     ]);
+    expect(contract.workoutPreview?.exercises.map((exercise) => exercise.placementCorrelationSource)).toEqual([
+      "explicit",
+      "explicit",
+    ]);
+    expect(contract.placementCorrelation).toMatchObject({
+      state: "resolved",
+      explicitPairCount: 2,
+      legacyUniquePairCount: 0,
+      provenPairCount: 2,
+    });
     expect(
       getCalibrationWatchRows(contract).map((row) => row.placementId),
     ).toEqual(["row-a", "row-b"]);
+    expect(
+      buildLogWorkoutExecutionGuidanceByExercise(
+        buildPreSessionReadinessGymCardDto(contract),
+      ).byPlacementId,
+    ).toEqual({
+      "row-a": [expect.objectContaining({ title: "Prescription guidance" })],
+      "row-b": [expect.objectContaining({ title: "Prescription guidance" })],
+    });
   });
 
   it("omits placement-specific readiness and log guidance for a many-to-one saved map", () => {
@@ -261,20 +282,17 @@ describe("V4 load-calibration presentation", () => {
       },
     );
 
-    expect(contract.workoutPreview?.exercises.map((exercise) => exercise.placementId)).toEqual([
-      undefined,
-      undefined,
-    ]);
-    expect(getCalibrationWatchRows(contract).map((row) => row.placementId)).toEqual([
-      undefined,
-      undefined,
-    ]);
+    expect(contract.workoutPreview?.exercises).toEqual([]);
+    expect(getCalibrationWatchRows(contract)).toEqual([]);
+    expect(contract.placementCorrelation).toMatchObject({
+      state: "invalid_explicit_correlation",
+      provenPairCount: 0,
+      unresolvedGeneratedCount: 2,
+    });
     const guidance = buildLogWorkoutExecutionGuidanceByExercise(
       buildPreSessionReadinessGymCardDto(contract),
     );
     expect(guidance.byPlacementId).toEqual({});
-    expect(guidance.byExerciseId).toEqual({});
-    expect(guidance.byExerciseName).toEqual({});
   });
 
   it("does not translate an occurrence whose explicit persisted target is missing", () => {
@@ -301,9 +319,134 @@ describe("V4 load-calibration presentation", () => {
     );
 
     expect(contract.workoutPreview?.exercises.map((exercise) => exercise.placementId)).toEqual([
-      undefined,
       "row-b",
     ]);
+    expect(getCalibrationWatchRows(contract).map((row) => row.placementId)).toEqual([
+      "row-b",
+    ]);
+    expect(contract.placementCorrelation).toMatchObject({
+      state: "invalid_explicit_correlation",
+      explicitPairCount: 1,
+      unresolvedGeneratedCount: 1,
+    });
+    expect(
+      buildLogWorkoutExecutionGuidanceByExercise(
+        buildPreSessionReadinessGymCardDto(contract),
+      ).byPlacementId,
+    ).toEqual({
+      "row-b": [expect.objectContaining({ title: "Prescription guidance" })],
+    });
+  });
+
+  it("does not recover distinct-canonical many-to-one guidance by exercise identity", () => {
+    const contract = buildContract(
+      [
+        readout({ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench", loadSource: "history" }),
+        readout({ placementId: "generated-b", exerciseId: "row", exerciseName: "Row", loadSource: "history" }),
+      ],
+      {
+        exercises: [
+          { placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench" },
+          { placementId: "generated-b", exerciseId: "row", exerciseName: "Row" },
+        ],
+        traces: { progression: {} },
+        placementCorrelations: [
+          { generatedPlacementId: "generated-a", persistedWorkoutExerciseId: "row-a" },
+          { generatedPlacementId: "generated-b", persistedWorkoutExerciseId: "row-a" },
+        ],
+        persistedExercises: [
+          { id: "row-a", exerciseId: "bench" },
+          { id: "row-b", exerciseId: "row" },
+        ],
+      },
+    );
+
+    expect(contract.placementCorrelation?.state).toBe("invalid_explicit_correlation");
+    expect(contract.workoutPreview?.exercises).toEqual([]);
+    expect(getCalibrationWatchRows(contract)).toEqual([]);
+    expect(buildLogWorkoutExecutionGuidanceByExercise(buildPreSessionReadinessGymCardDto(contract))).toEqual({
+      byPlacementId: {},
+    });
+  });
+
+  it("emits no placement guidance when generated occurrence IDs are duplicated", () => {
+    const contract = buildContract(
+      [readout({ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench", loadSource: "history" })],
+      {
+        exercises: [
+          { placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench 1" },
+          { placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench 2" },
+        ],
+        traces: { progression: {} },
+        placementCorrelations: [
+          { generatedPlacementId: "generated-a", persistedWorkoutExerciseId: "row-a" },
+        ],
+        persistedExercises: [
+          { id: "row-a", exerciseId: "bench" },
+          { id: "row-b", exerciseId: "bench" },
+        ],
+      },
+    );
+
+    expect(contract.placementCorrelation).toMatchObject({
+      state: "invalid_occurrence_cardinality",
+      provenPairCount: 0,
+      issueCodes: ["duplicate_generated_occurrence_id"],
+    });
+    expect(contract.workoutPreview?.exercises).toEqual([]);
+    expect(getCalibrationWatchRows(contract)).toEqual([]);
+  });
+
+  it("retains only resolver-proven unique legacy placement guidance", () => {
+    const unique = buildContract(
+      [readout({ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench", loadSource: "history" })],
+      {
+        exercises: [{ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench" }],
+        traces: { progression: {} },
+        persistedExercises: [{ id: "row-a", exerciseId: "bench" }],
+      },
+    );
+    expect(unique.placementCorrelation).toMatchObject({
+      state: "resolved",
+      legacyUniquePairCount: 1,
+    });
+    expect(unique.workoutPreview?.exercises).toEqual([
+      expect.objectContaining({
+        placementId: "row-a",
+        placementCorrelationSource: "legacy_unique",
+      }),
+    ]);
+    expect(getCalibrationWatchRows(unique)).toEqual([
+      expect.objectContaining({ placementId: "row-a" }),
+    ]);
+    expect(
+      buildLogWorkoutExecutionGuidanceByExercise(
+        buildPreSessionReadinessGymCardDto(unique),
+      ).byPlacementId,
+    ).toEqual({
+      "row-a": [expect.objectContaining({ title: "Prescription guidance" })],
+    });
+
+    const ambiguous = buildContract(
+      [
+        readout({ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench A", loadSource: "history" }),
+        readout({ placementId: "generated-b", exerciseId: "bench", exerciseName: "Bench B", loadSource: "history" }),
+      ],
+      {
+        exercises: [
+          { placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench A" },
+          { placementId: "generated-b", exerciseId: "bench", exerciseName: "Bench B" },
+        ],
+        traces: { progression: {} },
+        persistedExercises: [
+          { id: "row-a", exerciseId: "bench" },
+          { id: "row-b", exerciseId: "bench" },
+        ],
+      },
+    );
+    expect(ambiguous.placementCorrelation?.state).toBe("ambiguous_legacy_correlation");
+    expect(ambiguous.workoutPreview?.exercises).toEqual([]);
+    expect(getCalibrationWatchRows(ambiguous)).toEqual([]);
   });
 
   it("explains exact, legacy-bridged, and uncalibrated starting loads", () => {

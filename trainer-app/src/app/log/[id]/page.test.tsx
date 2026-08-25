@@ -75,8 +75,7 @@ describe("LogWorkoutPage", () => {
     mocks.findOwnerReadOnly.mockResolvedValue({ id: "user-1" });
     mocks.preSessionReadinessSnapshotFindFirst.mockResolvedValue(null);
     mocks.loadLogWorkoutExecutionGuidance.mockResolvedValue({
-      byExerciseId: {},
-      byExerciseName: {},
+      byPlacementId: {},
     });
     mocks.getUiAuditFixtureForServer.mockResolvedValue(null);
     mocks.isFinisherRolloutEnabled.mockReturnValue(false);

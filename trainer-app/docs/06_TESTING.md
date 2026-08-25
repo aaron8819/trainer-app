@@ -228,7 +228,7 @@ ruleset requires that exact status check for pull requests targeting `master`.
 `scripts/codex/trainer-policy.v1.json` owns the stage, invalidation, reuse, and qualification policy.
 `src/lib/operations/exact-tree-verification-evidence.ts` implements the evidence schema, deterministic
 hashes, job summary, repository-state inspection, untrusted-artifact validation, and reuse decision.
-Repository-owned definition inputs and `package-lock.json` are read from `HEAD:<path>` Git blobs;
+Repository-owned definition inputs, `package-lock.json`, and the classification source are read from `HEAD:<path>` Git blobs;
 checkout line-ending conversion never changes their hashes, and missing Git metadata or required
 blobs fails closed. Definition input paths are normalized, sorted, and unique. Classification hashing canonicalizes the semantic
 contents of `scripts/test-suite-environments.json`; incidental suite ordering does not change it.

@@ -242,7 +242,7 @@ function createDefinitionRepository(): { repositoryRoot: string; projectRoot: st
   const repositoryRoot = temporaryGitRepository();
   const projectRoot = path.join(repositoryRoot, "trainer-app");
   mkdirSync(path.join(repositoryRoot, "definition"), { recursive: true });
-  mkdirSync(projectRoot, { recursive: true });
+  mkdirSync(path.join(projectRoot, "scripts"), { recursive: true });
   writeFileSync(path.join(repositoryRoot, "definition", "a.txt"), "alpha\n", "utf8");
   writeFileSync(path.join(repositoryRoot, "definition", "b.txt"), "beta\n", "utf8");
   writeFileSync(
@@ -256,6 +256,11 @@ function createDefinitionRepository(): { repositoryRoot: string; projectRoot: st
       lockfileVersion: 3,
       packages: { "node_modules/vitest": { version: "4.0.18" } },
     })}\n`,
+    "utf8"
+  );
+  writeFileSync(
+    path.join(projectRoot, "scripts", "test-suite-environments.json"),
+    `${JSON.stringify(minimalManifest)}\n`,
     "utf8"
   );
   writeDefinitionPolicy(repositoryRoot, ["definition/b.txt", "definition/a.txt"]);
@@ -369,6 +374,55 @@ describe("exact-tree verification evidence", () => {
       })
     ).toThrow(/duplicated/i);
   });
+
+  it("fails closed when the committed classification source is missing, malformed, or conflicted", () => {
+    const missing = createDefinitionRepository();
+    git(missing.repositoryRoot, [
+      "rm",
+      "--quiet",
+      "trainer-app/scripts/test-suite-environments.json",
+    ]);
+    git(missing.repositoryRoot, ["commit", "--quiet", "-m", "missing classification"]);
+    expect(() =>
+      createEvidenceReuseRequest({
+        projectRoot: missing.projectRoot,
+        allowQualifiedPass: false,
+      })
+    ).toThrow(/committed credential-free classification source/i);
+
+    const malformed = createDefinitionRepository();
+    writeFileSync(
+      path.join(malformed.projectRoot, "scripts", "test-suite-environments.json"),
+      "{not-json",
+      "utf8"
+    );
+    git(malformed.repositoryRoot, ["add", "."]);
+    git(malformed.repositoryRoot, ["commit", "--quiet", "-m", "malformed classification"]);
+    expect(() =>
+      createEvidenceReuseRequest({
+        projectRoot: malformed.projectRoot,
+        allowQualifiedPass: false,
+      })
+    ).toThrow(/committed credential-free classification source/i);
+
+    const conflicted = createDefinitionRepository();
+    writeFileSync(
+      path.join(conflicted.projectRoot, "scripts", "test-suite-environments.json"),
+      `${JSON.stringify({
+        ...minimalManifest,
+        suites: [...minimalManifest.suites, ...minimalManifest.suites],
+      })}\n`,
+      "utf8"
+    );
+    git(conflicted.repositoryRoot, ["add", "."]);
+    git(conflicted.repositoryRoot, ["commit", "--quiet", "-m", "conflicted classification"]);
+    expect(() =>
+      createEvidenceReuseRequest({
+        projectRoot: conflicted.projectRoot,
+        allowQualifiedPass: false,
+      })
+    ).toThrow(/committed credential-free classification source/i);
+  }, 45_000);
 
   it("parses artifact JSON as untrusted input", () => {
     const value = evidence();
@@ -536,7 +590,6 @@ describe("exact-tree verification evidence", () => {
     const { repositoryRoot, projectRoot: fixtureProjectRoot } = createDefinitionRepository();
     const request = createEvidenceReuseRequest({
       projectRoot: fixtureProjectRoot,
-      classificationManifest: minimalManifest,
       allowQualifiedPass: false,
     });
     expect(request.currentRepositoryState).toMatchObject({

@@ -378,6 +378,26 @@ export function hashCommittedGitPath(
   return sha256(readCommittedGitBlob(repositoryRoot, relativePath, revision));
 }
 
+function readCommittedClassificationManifest(
+  repositoryRoot: string
+): TestSuiteEnvironmentManifest {
+  let manifest: unknown;
+  try {
+    manifest = JSON.parse(
+      readCommittedGitBlob(
+        repositoryRoot,
+        "trainer-app/scripts/test-suite-environments.json"
+      ).toString("utf8")
+    );
+  } catch (error) {
+    throw new Error("Unable to read the committed credential-free classification source.", {
+      cause: error,
+    });
+  }
+  computeClassificationHash(manifest as TestSuiteEnvironmentManifest);
+  return manifest as TestSuiteEnvironmentManifest;
+}
+
 function parsePorcelainStatus(output: string): CurrentRepositoryState["dirtyPaths"] {
   const records = output.split("\0");
   const dirtyPaths: CurrentRepositoryState["dirtyPaths"] = [];
@@ -463,7 +483,16 @@ export function computeVerificationDefinition(input: {
   classificationManifest: TestSuiteEnvironmentManifest;
 }): VerificationDefinition {
   const repositoryRoot = path.resolve(input.projectRoot, "..");
-  computeClassificationHash(input.classificationManifest);
+  const committedClassificationManifest =
+    readCommittedClassificationManifest(repositoryRoot);
+  if (
+    computeClassificationHash(input.classificationManifest) !==
+    computeClassificationHash(committedClassificationManifest)
+  ) {
+    throw new Error(
+      "Credential-free classification input does not match committed Git state."
+    );
+  }
   const policy = JSON.parse(
     readCommittedGitBlob(repositoryRoot, "scripts/codex/trainer-policy.v1.json").toString("utf8")
   ) as {
@@ -529,7 +558,7 @@ export function computeVerificationDefinition(input: {
   );
   const relevantCommandIds = new Set([
     ...(checkPolicy.definition?.registryCommandIds ?? []),
-    ...input.classificationManifest.suites
+    ...committedClassificationManifest.suites
       .map((suite) => suite.commandId)
       .filter((id): id is string => Boolean(id)),
   ]);
@@ -735,7 +764,9 @@ export function createCredentialFreeVerificationEvidence(
     baseSha: event.baseSha,
     verificationDefinitionHash: definition.hash,
     verificationDefinition: definition,
-    classificationHash: computeClassificationHash(input.manifest),
+    classificationHash: computeClassificationHash(
+      readCommittedClassificationManifest(repositoryRoot)
+    ),
     lockfileHash: definition.lockfileHash,
     status,
     qualification,
@@ -1353,16 +1384,19 @@ function committedVitestVersion(repositoryRoot: string): string {
 
 export function createEvidenceReuseRequest(input: {
   projectRoot: string;
-  classificationManifest: TestSuiteEnvironmentManifest;
   allowQualifiedPass: boolean;
 }): EvidenceReuseRequest {
   const repositoryRoot = path.resolve(input.projectRoot, "..");
-  const definition = computeVerificationDefinition(input);
+  const classificationManifest = readCommittedClassificationManifest(repositoryRoot);
+  const definition = computeVerificationDefinition({
+    projectRoot: input.projectRoot,
+    classificationManifest,
+  });
   return {
     checkId: CREDENTIAL_FREE_CHECK_ID,
     currentRepositoryState: readCurrentRepositoryState(repositoryRoot),
     verificationDefinitionHash: definition.hash,
-    classificationHash: computeClassificationHash(input.classificationManifest),
+    classificationHash: computeClassificationHash(classificationManifest),
     lockfileHash: definition.lockfileHash,
     toolchain: {
       nodeMajor: definition.nodeMajor,

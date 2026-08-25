@@ -12,7 +12,7 @@
         "test:preflight": "node scripts/test-environment-preflight.mjs",
         "test:verify-gate": "node scripts/test-environment-preflight.mjs --run-verify-gate",
         "test:inventory:credential-free": "node scripts/test-environment-preflight.mjs --run-credential-free-inventory",
-        "test:environment-classification": "vitest run src/lib/operations/test-environment-preflight.test.ts src/lib/operations/test-suite-environment-classification.test.ts src/lib/operations/import-only-placeholder-guard.test.ts",
+        "test:environment-classification": "vitest run src/lib/operations/test-environment-preflight.test.ts src/lib/operations/test-suite-environment-classification.test.ts src/lib/operations/import-only-placeholder-guard.test.ts src/lib/operations/exact-tree-verification-evidence.test.ts",
         "test:ui-audit": "node scripts/run-ui-audit.mjs",
         "test:ui-audit:update": "node scripts/run-ui-audit.mjs --update-snapshots",
         "test:audit:matrix": "vitest run src/lib/audit/workout-audit/future-week-explicit-intent-matrix.test.ts src/lib/audit/workout-audit/future-week-derived-intent-matrix.test.ts",

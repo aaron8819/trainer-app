@@ -1530,7 +1530,7 @@ describe("command coverage honesty", () => {
       "test:inventory:credential-free":
         "node scripts/test-environment-preflight.mjs --run-credential-free-inventory",
       "test:environment-classification":
-        "vitest run src/lib/operations/test-environment-preflight.test.ts src/lib/operations/test-suite-environment-classification.test.ts src/lib/operations/import-only-placeholder-guard.test.ts",
+        "vitest run src/lib/operations/test-environment-preflight.test.ts src/lib/operations/test-suite-environment-classification.test.ts src/lib/operations/import-only-placeholder-guard.test.ts src/lib/operations/exact-tree-verification-evidence.test.ts",
     });
     expect(packageJson.scripts).not.toHaveProperty("test:pure");
     expect(packageJson.scripts).not.toHaveProperty("test:full");

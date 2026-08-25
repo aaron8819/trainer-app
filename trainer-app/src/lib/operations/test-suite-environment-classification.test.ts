@@ -208,10 +208,13 @@ describe("test-suite environment manifest", () => {
       manifest: currentManifest,
       discoveredTestFiles,
     });
-    expect(discoveredTestFiles).toHaveLength(381);
-    expect(selection.credentialFree).toHaveLength(342);
+    expect(discoveredTestFiles).toHaveLength(382);
+    expect(selection.credentialFree).toHaveLength(343);
     expect(selection.credentialFree).toContain(
       "src/lib/operations/credential-free-inventory-runner.test.ts"
+    );
+    expect(selection.credentialFree).toContain(
+      "src/lib/operations/exact-tree-verification-evidence.test.ts"
     );
     expect(selection.credentialFree).toContain(
       "src/lib/engine/hypertrophy-plan-recommendations.test.ts"

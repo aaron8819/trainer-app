@@ -771,7 +771,7 @@ Invoke-Test 'path verification selection and deduplication' {
     finally { Remove-TestRepository -Fixture $fixture }
 }
 
-Invoke-Test 'pull-request workflow selects credential-free CI verification' {
+Invoke-Test 'pull-request workflow selects focused infrastructure verification and preserves CI evidence policy' {
     $fixture = New-TestRepository
     try {
         $result = Invoke-Inspector -Fixture $fixture -Json -ChangedPath @('.github/workflows/credential-free-inventory.yml')
@@ -781,13 +781,20 @@ Invoke-Test 'pull-request workflow selects credential-free CI verification' {
         foreach ($id in @(
                 'npm-test-environment-classification',
                 'codex-registry-validator',
-                'npm-test-inventory-credential-free',
                 'git-diff-check'
             )) {
             Assert-True ($implementationIds -contains $id) "Credential-free CI workflow did not select $id."
         }
+        Assert-True (-not ($implementationIds -contains 'npm-test-inventory-credential-free')) 'Expensive credential-free inventory must remain PR/release-class instead of local implementation verification.'
         Assert-True ($releaseIds -contains 'verify') 'Credential-free CI workflow did not preserve full release verification.'
         Assert-True ($manifest.pathPolicy.allowedPathRoots -contains '.github/workflows') 'Shared tooling path policy does not allow the workflow owner.'
+        $policy = Get-Content -Raw -LiteralPath (Join-Path $fixture.Repository 'scripts/codex/trainer-policy.v1.json') | ConvertFrom-Json
+        $evidenceCheck = @($policy.verification.exactTreeEvidence.checks | Where-Object { $_.id -eq 'credential-free-inventory' })
+        Assert-Equal $evidenceCheck.Count 1 'Credential-free exact-tree policy check missing or duplicated.'
+        Assert-True $evidenceCheck[0].hermetic 'Credential-free evidence must be classified as hermetic.'
+        Assert-Equal $evidenceCheck[0].cost 'expensive' 'Credential-free evidence cost classification drifted.'
+        Assert-Equal $evidenceCheck[0].stage 'pull-request-release-ci' 'Credential-free evidence stage drifted.'
+        Assert-True ($policy.verification.exactTreeEvidence.nonHermeticChecks -contains 'production-version') 'External-state non-reuse policy is incomplete.'
     }
     finally { Remove-TestRepository -Fixture $fixture }
 }

@@ -60,7 +60,7 @@
 - Default loop:
 - run a focused Vitest file for the changed seam
 - run related route/integration tests if the change crosses API boundaries
-- run `npm run verify` when you touch shared contracts, lifecycle, generation, or broadly reused helpers
+- use the repository verification plan for shared contracts, lifecycle, generation, or broadly reused helpers; run `npm run verify` only when selected and do not repeat equivalent exact-tree evidence
 - For generation/lifecycle questions, use the audit CLI before inventing debug code. Start with `trainer-app/docs/09_AUDIT_PLAYBOOK.md`.
 - Useful commands from `trainer-app/`:
 - `npm run test -- <path>`
@@ -79,7 +79,7 @@
 
 ## Validation Expectations
 - If you change API contracts, receipt shape, or validation enums, update tests and run `npm run verify:contracts`.
-- If you change shared engine/api seams, run the focused tests plus `npm run verify`.
+- If you change shared engine/api seams, run focused tests and the checks selected by repository policy. Reuse valid exact-tree evidence for expensive hermetic checks.
 - If you change Prisma schema or migrations, run `npm run prisma:generate` and keep migration state in sync before trusting runtime behavior.
 - Standalone Prisma scripts in this repo must follow the adapter pattern documented in `trainer-app/docs/07_OPERATIONS.md`; do not use bare `new PrismaClient()` here.
 
@@ -88,7 +88,7 @@
 - All callsites of modified symbols or behaviors have been reviewed for consistency.
 - No duplicate or conflicting semantics were introduced across route, orchestration, engine, UI, or audit layers.
 - Existing affected tests pass, and changed behavior is covered by new or updated nearby tests.
-- `npm run verify` is run when shared seams, lifecycle, generation, validation, or contracts are touched.
+- Repository-selected verification is complete, including reused valid exact-tree evidence and any checks invalidated by the change.
 - Docs are updated when behavior or contracts change, after the code and tests reflect the final behavior.
 
 ## Docs Updates

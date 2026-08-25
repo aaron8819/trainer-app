@@ -75,6 +75,52 @@
   },
   "verification": {
     "commandOrder": ["database-backup-tests", "codex-tooling-tests", "codex-registry-validator", "npm-test-environment-classification", "npm-test-inventory-credential-free", "git-diff-check", "test-fast", "verify-contracts", "verify-completed-review", "verify-version", "test-audit-matrix", "verify", "prisma-generate", "test-migration-integrity", "verify-finisher-schema-drift", "audit-future-week"],
+    "exactTreeEvidence": {
+      "schemaVersion": 1,
+      "statusValues": ["pass", "qualified_pass", "fail"],
+      "checks": [
+        {
+          "id": "credential-free-inventory",
+          "hermetic": true,
+          "cost": "expensive",
+          "stage": "pull-request-release-ci",
+          "requiredPullRequestRunsPerCandidateTree": 1,
+          "definition": {
+            "packageScript": "test:inventory:credential-free",
+            "nodeMajor": 22,
+            "workers": 1,
+            "classificationOwner": "trainer-app/scripts/test-suite-environments.json",
+            "includeLockfile": true,
+            "files": [
+              ".github/workflows/credential-free-inventory.yml",
+              "trainer-app/scripts/test-environment-preflight.mjs",
+              "trainer-app/scripts/test-environment-preflight.ts",
+              "trainer-app/src/lib/operations/test-environment-preflight.ts",
+              "trainer-app/src/lib/operations/credential-free-inventory-runner.ts",
+              "trainer-app/src/lib/operations/exact-tree-verification-evidence.ts",
+              "trainer-app/src/lib/operations/import-only-placeholder-guard.ts",
+              "trainer-app/vitest.config.ts",
+              "trainer-app/vitest.setup.ts",
+              "trainer-app/vitest.import-only-placeholder.setup.ts"
+            ],
+            "registryCommandIds": ["npm-test-inventory-credential-free"]
+          },
+          "reuse": {
+            "allowedStatuses": ["pass", "qualified_pass"],
+            "invalidatesOn": ["tree-sha", "verification-definition-hash", "classification-hash", "lockfile-hash", "dirty-worktree", "missing-ci-run-identity", "disallowed-qualification", "incomplete-evidence", "non-hermetic-check"],
+            "doesNotInvalidateOn": ["new-review-session", "commit-sha-with-identical-tree", "stale-local-refs", "elapsed-time"],
+            "releaseRule": "Reuse PR evidence only when the approved and released trees are exactly equal and the definition, classification, lockfile, and qualification remain valid."
+          },
+          "qualification": {
+            "eligibleFailure": "one-isolated-timeout-with-complete-reporters-and-no-safety-failure",
+            "retry": "exact-failed-test-or-file-once-on-unchanged-tree",
+            "passingRetryStatus": "qualified_pass",
+            "blockAtSameTestOccurrences": 2
+          }
+        }
+      ],
+      "nonHermeticChecks": ["production-version", "production-health", "deployment-status", "external-api", "remote-database", "live-audit"]
+    },
     "pathRules": [
       {
         "name": "database-backup-tooling",
@@ -141,6 +187,8 @@
           "trainer-app/package.json",
           "trainer-app/src/lib/operations/test-environment-preflight.ts",
           "trainer-app/src/lib/operations/test-environment-preflight.test.ts",
+          "trainer-app/src/lib/operations/exact-tree-verification-evidence.ts",
+          "trainer-app/src/lib/operations/exact-tree-verification-evidence.test.ts",
           "trainer-app/src/lib/operations/test-suite-environment-classification.test.ts",
           "trainer-app/src/lib/operations/import-only-placeholder-guard.ts",
           "trainer-app/src/lib/operations/import-only-placeholder-guard.test.ts",
@@ -148,7 +196,7 @@
           "trainer-app/vitest.import-only-placeholder.setup.ts",
           "trainer-app/docs/06_TESTING.md"
         ],
-        "implementation": ["npm-test-environment-classification", "codex-registry-validator", "npm-test-inventory-credential-free", "git-diff-check"],
+        "implementation": ["npm-test-environment-classification", "codex-registry-validator", "git-diff-check"],
         "release": ["verify"]
       },
       {
@@ -270,8 +318,8 @@
       "accessesDatabase": false,
       "writesLocalArtifacts": true,
       "explicitAuthorizationRequired": false,
-      "verificationTier": "implementation",
-      "executableInImplementationMode": true,
+      "verificationTier": "release",
+      "executableInImplementationMode": false,
       "requiresCleanWorktree": false,
       "requiresDependencies": true,
       "requiresDocker": false,
@@ -734,8 +782,8 @@
     { "id": "npm-test", "packageScript": "test", "command": "vitest run", "sourceLocation": "trainer-app/package.json#scripts.test", "entrypoint": null, "profile": "disposable-database-write", "flagEscalations": [], "notes": "Raw diagnostic inventory can select mutation-capable DB files; those files fail closed unless every target is valid and the disposable confirmation environment signal is present." },
     { "id": "npm-test-preflight", "packageScript": "test:preflight", "command": "node scripts/test-environment-preflight.mjs", "sourceLocation": "trainer-app/package.json#scripts.test:preflight", "entrypoint": "trainer-app/scripts/test-environment-preflight.mjs", "profile": "read-only", "flagEscalations": [], "notes": "Dependency-free launcher for sanitized local test capabilities; checks Docker CLI presence without contacting its daemon or any database." },
     { "id": "npm-test-verify-gate", "packageScript": "test:verify-gate", "command": "node scripts/test-environment-preflight.mjs --run-verify-gate", "sourceLocation": "trainer-app/package.json#scripts.test:verify-gate", "entrypoint": "trainer-app/scripts/test-environment-preflight.mjs", "profile": "local-artifact-write", "flagEscalations": [], "notes": "Runs the selective repository verification matrix with recognized database targets stripped; it is not a comprehensive pure-test inventory." },
-    { "id": "npm-test-inventory-credential-free", "packageScript": "test:inventory:credential-free", "command": "node scripts/test-environment-preflight.mjs --run-credential-free-inventory", "sourceLocation": "trainer-app/package.json#scripts.test:inventory:credential-free", "entrypoint": "trainer-app/scripts/test-environment-preflight.mjs", "profile": "local-artifact-write", "flagEscalations": [], "notes": "Runs classified credential-free and guarded import-only Vitest phases with registered DB-required suites excluded before collection; it creates and removes a temporary connection-attempt marker, and unexpected failures remain fatal." },
-    { "id": "npm-test-environment-classification", "packageScript": "test:environment-classification", "command": "vitest run src/lib/operations/test-environment-preflight.test.ts src/lib/operations/test-suite-environment-classification.test.ts src/lib/operations/import-only-placeholder-guard.test.ts", "sourceLocation": "trainer-app/package.json#scripts.test:environment-classification", "entrypoint": null, "profile": "read-only", "flagEscalations": [], "notes": "Focused offline suite-environment manifest, placeholder guard, subprocess boundary, summary, and comparison coverage." },
+    { "id": "npm-test-inventory-credential-free", "packageScript": "test:inventory:credential-free", "command": "node scripts/test-environment-preflight.mjs --run-credential-free-inventory", "sourceLocation": "trainer-app/package.json#scripts.test:inventory:credential-free", "entrypoint": "trainer-app/scripts/test-environment-preflight.mjs", "profile": "local-artifact-write", "flagEscalations": [], "notes": "Expensive PR/release-class CI check. Runs classified credential-free and guarded import-only Vitest phases with DB-required suites excluded; publishes exact-tree evidence and should not be rerun locally when equivalent successful evidence exists." },
+    { "id": "npm-test-environment-classification", "packageScript": "test:environment-classification", "command": "vitest run src/lib/operations/test-environment-preflight.test.ts src/lib/operations/test-suite-environment-classification.test.ts src/lib/operations/import-only-placeholder-guard.test.ts src/lib/operations/exact-tree-verification-evidence.test.ts", "sourceLocation": "trainer-app/package.json#scripts.test:environment-classification", "entrypoint": null, "profile": "read-only", "flagEscalations": [], "notes": "Focused offline suite-environment manifest, placeholder guard, subprocess boundary, summary, comparison, and exact-tree evidence coverage." },
     { "id": "npm-test-ui-audit", "packageScript": "test:ui-audit", "command": "node scripts/run-ui-audit.mjs", "sourceLocation": "trainer-app/package.json#scripts.test:ui-audit", "entrypoint": "trainer-app/scripts/run-ui-audit.mjs", "profile": "local-artifact-write", "flagEscalations": [], "notes": "Scrubs database target variables, then may write Playwright reports, screenshots, traces, and videos." },
     { "id": "npm-test-ui-audit-update", "packageScript": "test:ui-audit:update", "command": "node scripts/run-ui-audit.mjs --update-snapshots", "sourceLocation": "trainer-app/package.json#scripts.test:ui-audit:update", "entrypoint": "trainer-app/scripts/run-ui-audit.mjs", "profile": "local-tracked-file-write", "flagEscalations": [{ "flag": "--update-snapshots", "sideEffectClass": "local-artifact-write", "authorizationRequirement": "Explicit authorization to update tracked UI snapshots." }], "notes": "Naming trap: this database-free test command updates tracked snapshots." },
     { "id": "test-audit-matrix", "packageScript": "test:audit:matrix", "command": "vitest run src/lib/audit/workout-audit/future-week-explicit-intent-matrix.test.ts src/lib/audit/workout-audit/future-week-derived-intent-matrix.test.ts", "sourceLocation": "trainer-app/package.json#scripts.test:audit:matrix", "entrypoint": null, "profile": "read-only", "flagEscalations": [], "notes": "Deterministic local audit matrix tests." },

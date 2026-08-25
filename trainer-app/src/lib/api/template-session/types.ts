@@ -43,6 +43,11 @@ export type GenerateTemplateSessionParams = {
   pinnedExerciseIds?: string[];
   autoFillUnpinned?: boolean;
   slotId?: string;
+  exerciseReplacements?: Array<{
+    orderIndex: number;
+    originalExerciseId: string;
+    replacementExerciseId: string;
+  }>;
 };
 
 export type GenerateIntentSessionInput = {
@@ -83,6 +88,7 @@ export type PrescriptionConfidenceLoadSource =
   | "unknown";
 
 export type PrescriptionConfidenceReadout = {
+  placementId: string;
   exerciseId: string;
   exerciseName: string;
   targetLoad: number | null;

@@ -544,19 +544,33 @@ function buildPrescriptionConfidenceWatches(
   generated: SessionAuditSnapshot["generated"] | undefined,
   prescriptionReadouts: PrescriptionConfidenceReadout[] | undefined
 ): PreSessionReadinessPrescriptionConfidenceWatchRow[] {
-  const readoutsByExerciseId = new Map(
-    (prescriptionReadouts ?? []).map((readout) => [readout.exerciseId, readout])
+  const readoutsByPlacementId = new Map(
+    (prescriptionReadouts ?? []).map((readout) => [readout.placementId, readout])
   );
+  const exercisePlacementCounts = new Map<string, number>();
+  for (const exercise of generated?.exercises ?? []) {
+    exercisePlacementCounts.set(
+      exercise.exerciseId,
+      (exercisePlacementCounts.get(exercise.exerciseId) ?? 0) + 1,
+    );
+  }
 
   return (generated?.exercises ?? []).flatMap<PreSessionReadinessPrescriptionConfidenceWatchRow>((exercise) => {
-    const trace = generated?.traces.progression[exercise.exerciseId];
-    const readout = readoutsByExerciseId.get(exercise.exerciseId);
+    const placementId = exercise.placementId;
+    const traceKey = placementId ?? exercise.exerciseId;
+    const trace = generated?.traces.progression[traceKey];
+    const readout = placementId
+      ? readoutsByPlacementId.get(placementId)
+      : exercisePlacementCounts.get(exercise.exerciseId) === 1
+        ? (prescriptionReadouts ?? []).find((entry) => entry.exerciseId === exercise.exerciseId)
+        : undefined;
     const readoutFields = buildPrescriptionReadoutFields(readout);
     if (
       readout?.historyEvidence ||
       (readout?.loadSource === "none" && readout.targetLoad == null)
     ) {
       const row: PreSessionReadinessPrescriptionConfidenceWatchRow = {
+        ...(placementId ? { placementId } : {}),
         exerciseLabel: exercise.exerciseName,
         watchType: "prescription_confidence",
         reasonCode: "load_calibration",
@@ -580,6 +594,7 @@ function buildPrescriptionConfidenceWatches(
     if (!trace) {
       return [
         {
+          ...(placementId ? { placementId } : {}),
           exerciseLabel: exercise.exerciseName,
           watchType: "prescription_confidence",
           reasonCode: "progression_trace_unavailable",
@@ -629,6 +644,7 @@ function buildPrescriptionConfidenceWatches(
 
       return [
         {
+          ...(placementId ? { placementId } : {}),
           exerciseLabel: exercise.exerciseName,
           watchType: "prescription_confidence",
           reasonCode,

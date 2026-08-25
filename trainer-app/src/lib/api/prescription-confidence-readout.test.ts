@@ -88,7 +88,9 @@ describe("prescription confidence zero-load source", () => {
         progressionTraces: {},
         selectedAnchorEvidence: {},
         resolvedLoads: {
-          "exercise-1": {
+          "workout-exercise-1": {
+            placementId: "workout-exercise-1",
+            canonicalExerciseId: "exercise-1",
             source: "history",
           },
         },

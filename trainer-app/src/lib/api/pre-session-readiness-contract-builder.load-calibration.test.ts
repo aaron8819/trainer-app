@@ -37,6 +37,7 @@ function buildContract(readouts: PrescriptionConfidenceReadout[]) {
       version: 1,
       generated: {
         exercises: readouts.map((readout, orderIndex) => ({
+          placementId: readout.placementId,
           exerciseId: readout.exerciseId,
           exerciseName: readout.exerciseName,
           orderIndex,
@@ -68,6 +69,7 @@ function readout(
     Pick<PrescriptionConfidenceReadout, "exerciseId" | "exerciseName" | "loadSource">,
 ): PrescriptionConfidenceReadout {
   return {
+    placementId: input.exerciseId,
     targetLoad: 140,
     targetReps: 5,
     repRange: { min: 5, max: 8 },
@@ -82,6 +84,30 @@ function readout(
 }
 
 describe("V4 load-calibration presentation", () => {
+  it("keeps duplicate canonical exercises correlated to their placement readouts", () => {
+    const contract = buildContract([
+      readout({
+        placementId: "bench-placement-a",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        loadSource: "existing_target_load",
+        targetLoad: 105,
+      }),
+      readout({
+        placementId: "bench-placement-b",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        loadSource: "existing_target_load",
+        targetLoad: 95,
+      }),
+    ]);
+
+    expect(contract.calibrationWatches.prescriptionConfidence).toMatchObject([
+      { placementId: "bench-placement-a", targetLoad: 105 },
+      { placementId: "bench-placement-b", targetLoad: 95 },
+    ]);
+  });
+
   it("explains exact, legacy-bridged, and uncalibrated starting loads", () => {
     const contract = buildContract([
       readout({

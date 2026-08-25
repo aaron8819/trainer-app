@@ -37,6 +37,7 @@ import type {
   MovementPatternV2,
   UserProfile,
   WorkoutHistoryEntry,
+  WorkoutExercise,
   WorkoutPlan,
   SplitDay,
 } from "./types";
@@ -111,6 +112,14 @@ export type ApplyLoadsResolvedLoadSource =
   | "legacy_measurement_history"
   | "runtime_added_same_exercise_calibration_anchor";
 
+export type PrescriptionPlacementKey = WorkoutExercise["id"];
+
+export function getPrescriptionPlacementKey(
+  exercise: Pick<WorkoutExercise, "id">,
+): PrescriptionPlacementKey {
+  return exercise.id;
+}
+
 export type ApplyLoadsHistoryEvidence = {
   source: "exact_compatible_history" | "legacy_measurement_bridge";
   confidence: "high" | "reduced";
@@ -135,11 +144,13 @@ export type SelectedAnchorLoadEvidence = {
 };
 
 export type ApplyLoadsAudit = {
-  progressionTraces: Record<string, ProgressionDecisionTrace>;
-  prescriptions: Record<string, PrescriptionResult>;
+  progressionTraces: Record<PrescriptionPlacementKey, ProgressionDecisionTrace>;
+  prescriptions: Record<PrescriptionPlacementKey, PrescriptionResult>;
   resolvedLoads: Record<
-    string,
+    PrescriptionPlacementKey,
     {
+      placementId: PrescriptionPlacementKey;
+      canonicalExerciseId: string;
       source: ApplyLoadsResolvedLoadSource;
       canonicalSourceLoad: number | null;
       resolvedTopSetLoad: number | null;
@@ -214,14 +225,14 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
 export function projectFinalPrescriptionResults(input: {
   workout: WorkoutPlan;
   audit: ApplyLoadsAudit;
-  prescriptions: Record<string, PrescriptionResult>;
+  prescriptions: Record<PrescriptionPlacementKey, PrescriptionResult>;
 }): { workout: WorkoutPlan; audit: ApplyLoadsAudit } {
   const projectExercise = (exercise: WorkoutPlan["mainLifts"][number]) => {
-    const exerciseId = exercise.exercise.id;
-    const prescription = input.prescriptions[exerciseId];
-    const resolvedLoad = input.audit.resolvedLoads[exerciseId];
+    const placementId = getPrescriptionPlacementKey(exercise);
+    const prescription = input.prescriptions[placementId];
+    const resolvedLoad = input.audit.resolvedLoads[placementId];
     if (!prescription || !resolvedLoad) {
-      throw new Error(`FINAL_PRESCRIPTION_PROJECTION_MISSING:${exerciseId}`);
+      throw new Error(`FINAL_PRESCRIPTION_PROJECTION_MISSING:${placementId}`);
     }
 
     const targetLoad = toTargetLoad(prescription);
@@ -246,7 +257,7 @@ export function projectFinalPrescriptionResults(input: {
   const projectedAccessories = input.workout.accessories.map(projectExercise);
   const resolvedLoads = { ...input.audit.resolvedLoads };
   for (const projected of [...projectedMainLifts, ...projectedAccessories]) {
-    resolvedLoads[projected.exercise.exercise.id] = projected.resolvedLoad;
+    resolvedLoads[getPrescriptionPlacementKey(projected.exercise)] = projected.resolvedLoad;
   }
 
   return {
@@ -303,12 +314,13 @@ export function applyLoadsWithAudit(
 
   // Block-aware intensity multiplier (from periodization system v2)
   const intensityMultiplier = options.prescriptionModifiers?.intensityMultiplier ?? 1.0;
-  const progressionTraces: Record<string, ProgressionDecisionTrace> = {};
-  const prescriptions: Record<string, PrescriptionResult> = {};
+  const progressionTraces: Record<PrescriptionPlacementKey, ProgressionDecisionTrace> = {};
+  const prescriptions: Record<PrescriptionPlacementKey, PrescriptionResult> = {};
   const resolvedLoads: ApplyLoadsAudit["resolvedLoads"] = {};
 
   const applyToExercise = (exerciseEntry: WorkoutPlan["mainLifts"][number]) => {
     const exercise = exerciseEntry.exercise;
+    const placementId = getPrescriptionPlacementKey(exerciseEntry);
     const usesLegacyMeasurement = exerciseEntry.measurement == null;
     const historyKey = measurementComparisonKey({
       exerciseId: exercise.id,
@@ -419,7 +431,7 @@ export function applyLoadsWithAudit(
           source: options.acceptedV4Calibration === true ? "none" as const : "estimate" as const,
         };
     if (resolvedLoad.progressionTrace) {
-      progressionTraces[exercise.id] = resolvedLoad.progressionTrace;
+      progressionTraces[placementId] = resolvedLoad.progressionTrace;
     }
     const deloadReferenceLoad = periodization?.isDeload
       ? resolveDeloadReferenceLoad(exercise, accumulationHistoryIndex.get(historyKey))
@@ -458,7 +470,7 @@ export function applyLoadsWithAudit(
       comparability: deloadReferenceLoad ? null : comparability,
       isDeload: periodization?.isDeload === true,
     });
-    prescriptions[exercise.id] = prescription;
+    prescriptions[placementId] = prescription;
 
     const projectedTargetLoad = toTargetLoad(prescription);
     const projectedSets = setsWithRole.map((set) => ({
@@ -472,7 +484,9 @@ export function applyLoadsWithAudit(
           ? "existing_target_load"
           : resolvedSource;
     const projectedHistoryEvidence = historyEvidenceFromPrescription(prescription);
-    resolvedLoads[exercise.id] = {
+    resolvedLoads[placementId] = {
+      placementId,
+      canonicalExerciseId: exercise.id,
       source: auditSource,
       canonicalSourceLoad:
         sourceLoad ??
@@ -519,7 +533,7 @@ export function applyLoadsWithAudit(
     })),
   }));
   for (const exercise of warmup) {
-    prescriptions[exercise.exercise.id] = {
+    prescriptions[getPrescriptionPlacementKey(exercise)] = {
       version: PRESCRIPTION_RESULT_VERSION,
       kind: "not_applicable",
       canonicalExerciseId: exercise.exercise.id,

@@ -216,9 +216,11 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     });
     const audit: ApplyLoadsAudit = {
       progressionTraces: {},
-      prescriptions: { bench: prescription },
+      prescriptions: { "workout-exercise-1": prescription },
       resolvedLoads: {
-        bench: {
+        "workout-exercise-1": {
+          placementId: "workout-exercise-1",
+          canonicalExerciseId: "bench",
           source: "history",
           canonicalSourceLoad: 100,
           resolvedTopSetLoad: 100,
@@ -293,13 +295,13 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     expect(response.status).toBe(200);
     expect(body.workout.mainLifts[0].sets[0].targetLoad).toBe(90);
     expect(body.prescriptionReadouts[0].targetLoad).toBe(90);
-    expect(finalAudit?.prescriptions.bench).toMatchObject({
+    expect(finalAudit?.prescriptions["workout-exercise-1"]).toMatchObject({
       kind: "numeric",
       value: 90,
       reasonCodes: expect.arrayContaining(["readiness_adjusted", "readiness_reduce"]),
       evidence: [expect.objectContaining({ evidenceId: "selected-history-exposure" })],
     });
-    expect(finalAudit?.resolvedLoads.bench.resolvedTopSetLoad).toBe(90);
+    expect(finalAudit?.resolvedLoads["workout-exercise-1"].resolvedTopSetLoad).toBe(90);
   });
 
   it.each([
@@ -626,31 +628,82 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
       sequenceLength: 4,
       source: "mesocycle_slot_sequence",
     });
-    mocks.generateSessionFromIntent.mockResolvedValue({
-      workout: {
-        id: "w-v4-accumulation",
-        scheduledDate: new Date().toISOString(),
-        warmup: [],
-        mainLifts: [{
-          id: "ex",
-          exercise: { id: "ex", name: "Bench" },
+    const exactWorkout = {
+      id: "w-v4-accumulation",
+      scheduledDate: new Date().toISOString(),
+      warmup: [],
+      mainLifts: [
+        {
+          id: "bench-placement-a",
+          exercise: { id: "bench", name: "Bench" },
           isMainLift: true,
           orderIndex: 0,
-          sets: [{ setIndex: 1, targetReps: 8, targetRpe: 7.5 }],
-        }],
-        accessories: [],
-        estimatedMinutes: 30,
+          sets: [{ setIndex: 1, targetReps: 6, targetLoad: 105, targetRpe: 7.5 }],
+        },
+        {
+          id: "bench-placement-b",
+          exercise: { id: "bench", name: "Bench" },
+          isMainLift: true,
+          orderIndex: 1,
+          sets: [{ setIndex: 1, targetReps: 10, targetLoad: 95, targetRpe: 7.5 }],
+        },
+      ],
+      accessories: [],
+      estimatedMinutes: 30,
+    };
+    const exactAudit: ApplyLoadsAudit = {
+      progressionTraces: {},
+      prescriptions: {
+        "bench-placement-a": createNumericPrescription({
+          canonicalExerciseId: "bench",
+          measurement: null,
+          value: 105,
+          source: "existing_target",
+          confidence: "high",
+          reasonCodes: ["existing_target_preserved"],
+          evidence: [],
+        }),
+        "bench-placement-b": createNumericPrescription({
+          canonicalExerciseId: "bench",
+          measurement: null,
+          value: 95,
+          source: "existing_target",
+          confidence: "high",
+          reasonCodes: ["existing_target_preserved"],
+          evidence: [],
+        }),
       },
+      resolvedLoads: {
+        "bench-placement-a": {
+          placementId: "bench-placement-a",
+          canonicalExerciseId: "bench",
+          source: "existing_target_load",
+          canonicalSourceLoad: 105,
+          resolvedTopSetLoad: 105,
+          resolvedSetLoads: [105],
+        },
+        "bench-placement-b": {
+          placementId: "bench-placement-b",
+          canonicalExerciseId: "bench",
+          source: "existing_target_load",
+          canonicalSourceLoad: 95,
+          resolvedTopSetLoad: 95,
+          resolvedSetLoads: [95],
+        },
+      },
+    };
+    mocks.generateSessionFromIntent.mockResolvedValue({
+      workout: exactWorkout,
       selectionMode: "INTENT",
       sessionIntent: "upper",
       sraWarnings: [],
       substitutions: [],
       volumePlanByMuscle: {},
       selection: {
-        selectedExerciseIds: ["ex"],
-        mainLiftIds: ["ex"],
+        selectedExerciseIds: ["bench", "bench"],
+        mainLiftIds: ["bench", "bench"],
         accessoryIds: [],
-        perExerciseSetTargets: { ex: 1 },
+        perExerciseSetTargets: { bench: 1 },
         rationale: {},
         volumePlanByMuscle: {},
         sessionDecisionReceipt: exactV4Receipt({
@@ -661,6 +714,11 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
         }),
       },
       filteredExercises: [],
+      audit: exactAudit,
+      prescriptionReadouts: buildPrescriptionConfidenceReadouts({
+        workout: exactWorkout as never,
+        loadAudit: exactAudit,
+      }),
     });
 
     const response = await POST(
@@ -671,8 +729,18 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
       }),
     );
 
+    const body = await response.json();
     expect(response.status).toBe(200);
     expect(mocks.applyAutoregulation).not.toHaveBeenCalled();
+    expect(body.workout.mainLifts.map((entry: { sets: Array<{ targetLoad: number }> }) =>
+      entry.sets[0].targetLoad,
+    )).toEqual([105, 95]);
+    expect(body.prescriptionReadouts).toMatchObject([
+      { placementId: "bench-placement-a", exerciseId: "bench", targetLoad: 105 },
+      { placementId: "bench-placement-b", exerciseId: "bench", targetLoad: 95 },
+    ]);
+    expect(exactAudit.resolvedLoads["bench-placement-a"].resolvedTopSetLoad).toBe(105);
+    expect(exactAudit.resolvedLoads["bench-placement-b"].resolvedTopSetLoad).toBe(95);
   });
 
   it("keeps autoregulation for body-part fallback under an active V4 plan", async () => {

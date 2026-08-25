@@ -127,7 +127,7 @@ describe("accepted V4 load calibration", () => {
     expect(result.workout.mainLifts[0].sets.map((set) => set.targetLoad)).toEqual([
       140, 140, 140, 140,
     ]);
-    expect(result.audit.resolvedLoads.bench).toMatchObject({
+    expect(result.audit.resolvedLoads["workout-exercise-bench"]).toMatchObject({
       source: "legacy_measurement_history",
       canonicalSourceLoad: 140,
       historyEvidence: {
@@ -155,10 +155,10 @@ describe("accepted V4 load calibration", () => {
       ],
     });
 
-    expect(result.audit.resolvedLoads.bench?.source).toBe("history");
-    expect(result.audit.resolvedLoads.bench?.historyEvidence?.source).toBe(
-      "exact_compatible_history",
-    );
+    expect(result.audit.resolvedLoads["workout-exercise-bench"]?.source).toBe("history");
+    expect(
+      result.audit.resolvedLoads["workout-exercise-bench"]?.historyEvidence?.source,
+    ).toBe("exact_compatible_history");
     expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(140);
   });
 
@@ -175,7 +175,7 @@ describe("accepted V4 load calibration", () => {
     });
 
     expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(140);
-    expect(result.audit.resolvedLoads.bench?.source).toBe(
+    expect(result.audit.resolvedLoads["workout-exercise-bench"]?.source).toBe(
       "legacy_measurement_history",
     );
   });
@@ -193,23 +193,23 @@ describe("accepted V4 load calibration", () => {
   it("excludes skipped or otherwise unperformed work", () => {
     const result = calibrate({ history: [history({ status: "SKIPPED", rpe: 8 })] });
     expect(result.workout.mainLifts[0].sets[0].targetLoad).toBeUndefined();
-    expect(result.audit.resolvedLoads.bench?.source).toBe("none");
+    expect(result.audit.resolvedLoads["workout-exercise-bench"]?.source).toBe("none");
   });
 
   it("holds the historical anchor when legacy evidence has no RPE", () => {
     const result = calibrate({ history: [history()] });
     expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(135);
-    expect(result.audit.progressionTraces.bench).toBeUndefined();
+    expect(result.audit.progressionTraces["workout-exercise-bench"]).toBeUndefined();
   });
 
   it("returns no target instead of an equipment default without defensible evidence", () => {
     const result = calibrate({ history: [] });
     expect(result.workout.mainLifts[0].sets[0].targetLoad).toBeUndefined();
-    expect(result.audit.resolvedLoads.bench).toMatchObject({
+    expect(result.audit.resolvedLoads["workout-exercise-bench"]).toMatchObject({
       source: "none",
       canonicalSourceLoad: null,
     });
-    expect(result.audit.prescriptions.bench).toMatchObject({
+    expect(result.audit.prescriptions["workout-exercise-bench"]).toMatchObject({
       kind: "unavailable",
       blockingFields: ["evidence"],
       reasonCodes: ["no_comparable_history"],
@@ -230,7 +230,7 @@ describe("accepted V4 load calibration", () => {
 
     const result = calibrate({ workout: zeroWorkout, history: [] });
     expect(result.workout.mainLifts[0].sets.map((set) => set.targetLoad)).toEqual([0, 0, 0, 0]);
-    expect(result.audit.prescriptions.bench).toMatchObject({
+    expect(result.audit.prescriptions["workout-exercise-bench"]).toMatchObject({
       kind: "semantic_zero",
       value: 0,
       zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD",
@@ -241,7 +241,7 @@ describe("accepted V4 load calibration", () => {
       workout: workoutFor(bench, zeroWorkout.mainLifts[0].measurement),
       history: [],
     });
-    expect(absent.audit.prescriptions.bench.kind).toBe("unavailable");
+    expect(absent.audit.prescriptions["workout-exercise-bench"].kind).toBe("unavailable");
   });
 
   it("rejects legacy history for a different exercise identity", () => {

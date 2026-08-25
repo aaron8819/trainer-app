@@ -66,6 +66,7 @@ export type SessionAuditSetSnapshot = {
 };
 
 export type SessionAuditExerciseSnapshot = {
+  placementId?: string;
   exerciseId: string;
   exerciseName: string;
   orderIndex: number;

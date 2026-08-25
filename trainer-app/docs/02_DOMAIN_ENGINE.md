@@ -14,11 +14,18 @@ structured policy. The load-entry gate protects same-session adjustment, stall
 detection, and plateau/e1RM policy without weakening measurement capability.
 
 The non-exact production flow is performed evidence normalization ->
-comparability -> one selected exposure -> progression -> base
-`PrescriptionResult` -> readiness transformation -> final `PrescriptionResult`
--> `toTargetLoad()` -> compatibility `targetLoad` and prescription readout.
-Exact accepted-V4 replay continues to bypass readiness and replays its accepted
-prescriptions unchanged. The selected exposure owns representative load,
+comparability -> one selected exposure -> placement-scoped progression -> base
+`PrescriptionResult` for the workout-exercise placement -> readiness
+transformation for that placement -> final `PrescriptionResult` ->
+`toTargetLoad()` -> that placement's compatibility `targetLoad`, resolved-load
+audit, and prescription/readiness readout. `WorkoutExercise.id`, populated from
+the accepted V4 `placementId` during exact replay and otherwise generated for
+the session placement, rather than canonical `exercise.id`, keys prescription
+authority because accepted V4 may contain multiple placements of the same
+canonical exercise with different prescriptions. Canonical exercise identity
+continues to key exercise-library and longitudinal-history semantics. Exact
+accepted-V4 replay continues to bypass readiness and deterministically projects
+each accepted placement from its own canonical result. The selected exposure owns representative load,
 anchor-set reps and effort, coverage facts, frozen measurement, performed time,
 provenance, confidence, and reason codes. Invalid newer evidence is skipped in
 favor of the newest valid comparable exposure; progression sessions are rebound
@@ -30,8 +37,10 @@ are written. Readiness can scale only a positive numeric result. It preserves
 exercise identity, measurement, source, confidence, evidence references, and
 prior reason codes, and adds `readiness_adjusted` plus the applied direction.
 Missing-effort, incomplete-coverage, runtime-added, and substituted results
-cannot be readiness-scaled upward; the existing policy may still apply a
-downward safety reduction. Calibration-required, semantic-zero,
+cannot be readiness-scaled upward; substitution also blocks an upward action at
+the base-progression authorization point regardless of measurement confidence.
+The existing policy may still apply a downward safety reduction.
+Calibration-required, semantic-zero,
 not-applicable, and unavailable results cannot become numeric. `targetLoad` is
 emitted only through `toTargetLoad()` from the final result; result-derived
 evidence also owns the compatibility audit citation, and readouts are rebuilt
@@ -46,7 +55,9 @@ the categorical/numeric/action relationship. Clean exact machine evidence is
 capped at `0.7` and remains categorically reduced, but it may increase, hold, or
 decrease through the existing bounded progression criteria. The exception does
 not raise weaker source confidence to the cap. Missing effort, incomplete
-coverage, runtime-added evidence, or substitution blocks directional action.
+coverage, runtime-added evidence, or substitution blocks directional action;
+the progression decision clamps any otherwise-upward substituted candidate to
+the selected anchor instead of relying on confidence caps or later readiness.
 Persisted runtime `replace_exercise` metadata is mapped onto the replacement's
 history exposure and normalized as `substituted`, so that provenance reaches
 the prescription policy instead of being inferred from exercise identity.
@@ -63,6 +74,17 @@ inherit the hint's low confidence. Reps-only bodyweight is not applicable,
 displayed assistance is unsupported, and valid explicit zero semantics are
 resolved before an existing positive target can be preserved. Only semantically
 valid external-load work may retain a positive existing target.
+
+Template-preview exercise replacement is a pre-save canonical regeneration,
+not a local object rewrite. The client identifies the original template
+placement by its explicit `orderIndex` and original canonical exercise ID; the
+server validates that placement, installs the replacement's catalog measurement
+and zero-load semantics, clears incompatible carried placement state, and runs
+normal materialization, prescription, readiness, projection, audit, and readout
+construction before the returned workout can be saved. Active-workout swaps
+remain explicit session-local reconciliations outside canonical generation;
+their carried or adjusted targets are deviation evidence, not canonical
+replacement-exercise prescription authority.
 
 Deload evidence remains excluded from accumulation progression. Explicit zero
 continues to use only the existing `BODYWEIGHT_NO_ADDED_LOAD` and

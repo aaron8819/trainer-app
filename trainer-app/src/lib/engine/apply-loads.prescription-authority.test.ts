@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { MeasurementSemantics } from "@/lib/exercise-measurement/semantics";
 import { applyLoadsWithAudit } from "./apply-loads";
+import { autoregulateWorkout } from "./readiness/autoregulate";
 import { toTargetLoad } from "./load-prescription";
+import { buildPrescriptionConfidenceReadouts } from "@/lib/api/prescription-confidence-readout";
 import type { Exercise, WorkoutHistoryEntry, WorkoutPlan } from "./types";
 
 const machine = {
@@ -35,6 +37,7 @@ const exercise: Exercise = {
   equipment: ["machine"],
   primaryMuscles: ["Quads"],
 };
+const placementId = "next-leg-press";
 
 function workout(
   measurement: MeasurementSemantics,
@@ -143,7 +146,7 @@ describe("PrescriptionResult production authority", () => {
       })],
     });
 
-    expect(result.audit.prescriptions[exercise.id]).toMatchObject({
+    expect(result.audit.prescriptions[placementId]).toMatchObject({
       kind: "numeric",
       value: expected,
       confidence: "reduced",
@@ -163,7 +166,7 @@ describe("PrescriptionResult production authority", () => {
       })],
     });
     expect(emittedTargets(missingEffort)).toEqual([100, 100, 100]);
-    expect(missingEffort.audit.prescriptions[exercise.id].reasonCodes).toContain("missing_effort");
+    expect(missingEffort.audit.prescriptions[placementId].reasonCodes).toContain("missing_effort");
 
     const weak = generate({
       history: [history({
@@ -177,7 +180,7 @@ describe("PrescriptionResult production authority", () => {
       })],
     });
     expect(emittedTargets(weak)).toEqual([100, 100, 100]);
-    expect(weak.audit.prescriptions[exercise.id]).toMatchObject({
+    expect(weak.audit.prescriptions[placementId]).toMatchObject({
       kind: "numeric",
       evidence: [expect.objectContaining({ confidence: 0.4 })],
     });
@@ -204,7 +207,7 @@ describe("PrescriptionResult production authority", () => {
       ],
     });
 
-    expect(result.audit.prescriptions[exercise.id]).toMatchObject({
+    expect(result.audit.prescriptions[placementId]).toMatchObject({
       kind: "numeric",
       value: 120,
       evidence: [expect.objectContaining({
@@ -212,7 +215,7 @@ describe("PrescriptionResult production authority", () => {
         representativeLoad: 120,
       })],
     });
-    expect(result.audit.resolvedLoads[exercise.id].historyEvidence).toMatchObject({
+    expect(result.audit.resolvedLoads[placementId].historyEvidence).toMatchObject({
       load: 120,
       date: "2026-08-10T00:00:00.000Z",
     });
@@ -221,11 +224,11 @@ describe("PrescriptionResult production authority", () => {
 
   it("classifies measurement semantics before preserving stale targets", () => {
     const bodyweightResult = generate({ plan: workout(bodyweight, [75, 75, 75]) });
-    expect(bodyweightResult.audit.prescriptions[exercise.id].kind).toBe("not_applicable");
+    expect(bodyweightResult.audit.prescriptions[placementId].kind).toBe("not_applicable");
     expect(emittedTargets(bodyweightResult)).toEqual([null, null, null]);
 
     const assistanceResult = generate({ plan: workout(assistance, [75, 75, 75]) });
-    expect(assistanceResult.audit.prescriptions[exercise.id]).toMatchObject({
+    expect(assistanceResult.audit.prescriptions[placementId]).toMatchObject({
       kind: "unavailable",
       reasonCodes: ["displayed_assistance_unsupported"],
     });
@@ -234,11 +237,11 @@ describe("PrescriptionResult production authority", () => {
     const zeroResult = generate({
       plan: workout(machine, [0, 75, 75], "MACHINE_DEFAULT_NO_ADDED_LOAD"),
     });
-    expect(zeroResult.audit.prescriptions[exercise.id].kind).toBe("semantic_zero");
+    expect(zeroResult.audit.prescriptions[placementId].kind).toBe("semantic_zero");
     expect(emittedTargets(zeroResult)).toEqual([0, 0, 0]);
 
     const externalResult = generate({ plan: workout(barbell, [75, 80, 80]) });
-    expect(externalResult.audit.prescriptions[exercise.id]).toMatchObject({
+    expect(externalResult.audit.prescriptions[placementId]).toMatchObject({
       kind: "numeric",
       source: "existing_target",
       value: 75,
@@ -254,22 +257,119 @@ describe("PrescriptionResult production authority", () => {
       generate({ plan: workout(bodyweight, [75, 75, 75]) }),
       generate({ history: [history({ workoutId: "unavailable", date: "2026-08-15", measurement: machine, load: 100, reps: 0 })] }),
     ];
-    expect(cases.map((result) => result.audit.prescriptions[exercise.id].kind)).toEqual([
+    expect(cases.map((result) => result.audit.prescriptions[placementId].kind)).toEqual([
       "numeric",
       "semantic_zero",
       "calibration_required",
       "not_applicable",
       "unavailable",
     ]);
-    expect(cases[4].audit.prescriptions[exercise.id]).toMatchObject({
+    expect(cases[4].audit.prescriptions[placementId]).toMatchObject({
       kind: "unavailable",
       reasonCodes: expect.arrayContaining(["missing_reps"]),
       blockingFields: expect.arrayContaining(["performedReps"]),
     });
     for (const result of cases) {
-      const prescription = result.audit.prescriptions[exercise.id];
+      const prescription = result.audit.prescriptions[placementId];
       const projected = toTargetLoad(prescription);
       expect(emittedTargets(result)).toEqual([projected, projected, projected]);
     }
+  });
+
+  it("keeps duplicate canonical exercises distinct through base authority and readiness projection", () => {
+    const duplicateWorkout: WorkoutPlan = {
+      id: "duplicate-bench-workout",
+      scheduledDate: "2026-08-20T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [
+        {
+          id: "bench-placement-a",
+          exercise: { ...exercise, id: "bench", name: "Bench Press", equipment: ["barbell"] },
+          orderIndex: 0,
+          isMainLift: true,
+          measurement: barbell,
+          sets: [{ setIndex: 1, targetReps: 6, targetRpe: 8, targetLoad: 105 }],
+        },
+        {
+          id: "bench-placement-b",
+          exercise: { ...exercise, id: "bench", name: "Bench Press", equipment: ["barbell"] },
+          orderIndex: 1,
+          isMainLift: true,
+          measurement: barbell,
+          sets: [{ setIndex: 1, targetReps: 10, targetRpe: 8, targetLoad: 95 }],
+        },
+      ],
+      accessories: [],
+      estimatedMinutes: 30,
+    };
+    const base = applyLoadsWithAudit(duplicateWorkout, {
+      history: [],
+      baselines: [],
+      exerciseById: { bench: duplicateWorkout.mainLifts[0].exercise },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "upper",
+      acceptedV4Calibration: true,
+    });
+
+    expect(Object.keys(base.audit.prescriptions)).toEqual([
+      "bench-placement-a",
+      "bench-placement-b",
+    ]);
+    expect(base.audit.prescriptions["bench-placement-a"]).toMatchObject({
+      canonicalExerciseId: "bench",
+      kind: "numeric",
+      value: 105,
+    });
+    expect(base.audit.prescriptions["bench-placement-b"]).toMatchObject({
+      canonicalExerciseId: "bench",
+      kind: "numeric",
+      value: 95,
+    });
+    expect(base.audit.resolvedLoads["bench-placement-a"]).toMatchObject({
+      placementId: "bench-placement-a",
+      canonicalExerciseId: "bench",
+      resolvedTopSetLoad: 105,
+    });
+    expect(base.audit.resolvedLoads["bench-placement-b"]).toMatchObject({
+      placementId: "bench-placement-b",
+      canonicalExerciseId: "bench",
+      resolvedTopSetLoad: 95,
+    });
+    expect(buildPrescriptionConfidenceReadouts({ workout: base.workout, loadAudit: base.audit }))
+      .toMatchObject([
+        { placementId: "bench-placement-a", exerciseId: "bench", targetLoad: 105 },
+        { placementId: "bench-placement-b", exerciseId: "bench", targetLoad: 95 },
+      ]);
+
+    const readiness = autoregulateWorkout(
+      base.workout,
+      base.audit,
+      {
+        overall: 0.4,
+        perMuscle: {},
+        weights: { whoop: 0, subjective: 0.6, performance: 0.4 },
+        components: {
+          whoopContribution: 0,
+          subjectiveContribution: 0.2,
+          performanceContribution: 0.2,
+        },
+      },
+    );
+    expect(readiness.adjustedWorkout.mainLifts.map((entry) => entry.sets[0].targetLoad)).toEqual([
+      94.5,
+      85.5,
+    ]);
+    expect(readiness.loadAudit.prescriptions["bench-placement-a"]).toMatchObject({ value: 94.5 });
+    expect(readiness.loadAudit.prescriptions["bench-placement-b"]).toMatchObject({ value: 85.5 });
+    expect(readiness.loadAudit.resolvedLoads["bench-placement-a"].resolvedTopSetLoad).toBe(94.5);
+    expect(readiness.loadAudit.resolvedLoads["bench-placement-b"].resolvedTopSetLoad).toBe(85.5);
+    expect(buildPrescriptionConfidenceReadouts({
+      workout: readiness.adjustedWorkout,
+      loadAudit: readiness.loadAudit,
+    })).toMatchObject([
+      { placementId: "bench-placement-a", exerciseId: "bench", targetLoad: 94.5 },
+      { placementId: "bench-placement-b", exerciseId: "bench", targetLoad: 85.5 },
+    ]);
   });
 });

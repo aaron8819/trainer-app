@@ -167,18 +167,18 @@ describe("Lower A Week 1 to Week 3 prescription regression", () => {
       [week1],
     );
 
-    expect(week2.audit.prescriptions["barbell-back-squat"]).toMatchObject({
+    expect(week2.audit.prescriptions["week-2-generation:barbell-back-squat"]).toMatchObject({
       kind: "numeric",
       source: "legacy_barbell_history",
       confidence: "reduced",
     });
-    expect(week2.audit.prescriptions["barbell-rdl"]).toMatchObject({
+    expect(week2.audit.prescriptions["week-2-generation:barbell-rdl"]).toMatchObject({
       kind: "numeric",
       source: "legacy_barbell_history",
       confidence: "reduced",
     });
     for (const id of ["leg-press", "hip-abduction", "lying-leg-curl", "cable-crunch"]) {
-      expect(week2.audit.prescriptions[id], id).toMatchObject({
+      expect(week2.audit.prescriptions[`week-2-generation:${id}`], id).toMatchObject({
         kind: "calibration_required",
         confidence: "low",
         reasonCodes: expect.arrayContaining(["legacy_machine_calibration_only"]),
@@ -199,7 +199,7 @@ describe("Lower A Week 1 to Week 3 prescription regression", () => {
     );
 
     for (const [id, , , measurement] of definitions) {
-      expect(week3.audit.prescriptions[id], id).toMatchObject({
+      expect(week3.audit.prescriptions[`week-3-generation:${id}`], id).toMatchObject({
         kind: "numeric",
         source: "exact_history",
         evidence: [
@@ -212,11 +212,11 @@ describe("Lower A Week 1 to Week 3 prescription regression", () => {
       });
     }
     for (const id of ["leg-press", "hip-abduction", "lying-leg-curl", "cable-crunch"]) {
-      expect(week3.audit.prescriptions[id], id).toMatchObject({
+      expect(week3.audit.prescriptions[`week-3-generation:${id}`], id).toMatchObject({
         confidence: "reduced",
         reasonCodes: expect.arrayContaining(["same_exercise_displayed_load"]),
       });
-      expect(week3.audit.prescriptions[id]?.evidence).not.toEqual(
+      expect(week3.audit.prescriptions[`week-3-generation:${id}`]?.evidence).not.toEqual(
         expect.arrayContaining([
           expect.objectContaining({ measurementProvenance: "legacy_null" }),
         ]),
@@ -234,7 +234,7 @@ describe("Lower A Week 1 to Week 3 prescription regression", () => {
       [withoutExactWeek2MachineEvidence, week1],
     );
     for (const id of ["leg-press", "hip-abduction", "lying-leg-curl", "cable-crunch"]) {
-      expect(negativeControl.audit.prescriptions[id], id).toMatchObject({
+      expect(negativeControl.audit.prescriptions[`week-3-negative-control:${id}`], id).toMatchObject({
         kind: "calibration_required",
         reasonCodes: expect.arrayContaining(["legacy_machine_calibration_only"]),
       });

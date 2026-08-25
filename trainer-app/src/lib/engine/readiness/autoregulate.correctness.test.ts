@@ -55,6 +55,8 @@ function loadAuditFor(
     prescriptions: { [exerciseId]: prescription },
     resolvedLoads: {
       [exerciseId]: {
+        placementId: exerciseId,
+        canonicalExerciseId: prescription.canonicalExerciseId,
         source: "history",
         canonicalSourceLoad: projectedLoad,
         resolvedTopSetLoad: projectedLoad,
@@ -103,14 +105,14 @@ describe("autoregulation correctness", () => {
       performanceCompliance: 0.9,
     });
 
-    const audit = loadAuditFor("bench", numericPrescription("bench", 200));
+    const audit = loadAuditFor("e1", numericPrescription("bench", 200));
     const fresh = await applyAutoregulation("user-1", workout as never, audit);
     const adjustedLoad = fresh.adjusted.mainLifts[0].sets[0].targetLoad ?? 0;
 
     expect(fresh.applied).toBe(true);
     expect(adjustedLoad).toBe(180);
     expect(adjustedLoad).toBeGreaterThanOrEqual(200 * 0.9);
-    expect(fresh.loadAudit?.prescriptions.bench).toMatchObject({
+    expect(fresh.loadAudit?.prescriptions.e1).toMatchObject({
       kind: "numeric",
       value: 180,
       source: "exact_history",
@@ -118,7 +120,7 @@ describe("autoregulation correctness", () => {
       reasonCodes: expect.arrayContaining(["hold", "readiness_adjusted", "readiness_reduce"]),
       evidence: [expect.objectContaining({ evidenceId: "history-1" })],
     });
-    expect(fresh.loadAudit?.resolvedLoads.bench.resolvedTopSetLoad).toBe(180);
+    expect(fresh.loadAudit?.resolvedLoads.e1.resolvedTopSetLoad).toBe(180);
     expect(fresh.prescriptionReadouts?.[0]?.targetLoad).toBe(180);
 
     mocks.readinessFindFirst.mockResolvedValueOnce({
@@ -182,7 +184,7 @@ describe("autoregulation correctness", () => {
     const result = await applyAutoregulation(
       "user-1",
       workout as never,
-      loadAuditFor("bench", numericPrescription("bench", 225)),
+      loadAuditFor("e1", numericPrescription("bench", 225)),
     );
 
     expect(result.applied).toBe(false);

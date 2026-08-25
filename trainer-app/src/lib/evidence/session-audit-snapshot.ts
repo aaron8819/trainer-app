@@ -68,6 +68,7 @@ function parseExerciseSnapshot(value: unknown): SessionAuditExerciseSnapshot | u
     .filter((entry): entry is SessionAuditSetSnapshot => Boolean(entry));
 
   return {
+    placementId: typeof record.placementId === "string" ? record.placementId : undefined,
     exerciseId: record.exerciseId,
     exerciseName: record.exerciseName,
     orderIndex: record.orderIndex,
@@ -302,6 +303,7 @@ function mapSetSnapshot(
 
 function buildExerciseSnapshots(workout: WorkoutPlan): SessionAuditExerciseSnapshot[] {
   return listWorkoutPlanExercisesInOrder(workout).map(({ exercise, section }) => ({
+    placementId: exercise.id,
     exerciseId: exercise.exercise.id,
     exerciseName: exercise.exercise.name,
     orderIndex: exercise.orderIndex,

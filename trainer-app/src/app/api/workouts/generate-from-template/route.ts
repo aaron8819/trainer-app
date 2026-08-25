@@ -94,6 +94,7 @@ export async function POST(request: Request) {
           pinnedExerciseIds: parsed.data.pinnedExerciseIds,
           autoFillUnpinned: parsed.data.autoFillUnpinned,
           slotId: parsed.data.slotId,
+          exerciseReplacements: parsed.data.exerciseReplacements,
         });
 
   if ("error" in result) {

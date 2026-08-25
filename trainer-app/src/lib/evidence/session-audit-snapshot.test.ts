@@ -84,7 +84,7 @@ describe("session-audit-snapshot", () => {
       },
       advancesSplit: true,
       progressionTraces: {
-        bench: {
+        "bench-entry": {
           version: 1,
           decisionSource: "double_progression",
           repRange: { min: 6, max: 8 },
@@ -142,7 +142,7 @@ describe("session-audit-snapshot", () => {
     });
 
     expect(saved.generated?.exerciseCount).toBe(1);
-    expect(saved.generated?.traces.progression.bench.metrics.nextLoad).toBe(205);
+    expect(saved.generated?.traces.progression["bench-entry"].metrics.nextLoad).toBe(205);
     expect(saved.saved).toMatchObject({
       workoutId: "workout-1",
       revision: 2,

@@ -58,6 +58,7 @@ export type PreSessionReadinessCoachingRecommendation = {
 };
 
 export type PreSessionReadinessPrescriptionConfidenceWatchRow = {
+  placementId?: string;
   exerciseLabel: string;
   displayMessage?: string;
   watchType: "prescription_confidence";
@@ -505,6 +506,7 @@ function hasValidPrescriptionConfidenceWatch(
 
   return (
     isRecord(value) &&
+    (value.placementId == null || typeof value.placementId === "string") &&
     typeof value.exerciseLabel === "string" &&
     (value.displayMessage == null || typeof value.displayMessage === "string") &&
     value.watchType === "prescription_confidence" &&

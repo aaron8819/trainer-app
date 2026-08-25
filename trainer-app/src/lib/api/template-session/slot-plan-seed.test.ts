@@ -125,6 +125,10 @@ describe("resolveRequiredSeededSlotPlan", () => {
         reps: { kind: "EXACT", reps: 7 },
         targetRpe: 8.5,
       }],
+      templateExercises: [{
+        placementId: "upper_a-placement",
+        orderIndex: 0,
+      }],
     });
   });
 

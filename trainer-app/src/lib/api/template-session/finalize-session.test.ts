@@ -115,10 +115,13 @@ function loadAuditFor(input: {
   ApplyLoadsAudit,
   "progressionTraces" | "resolvedLoads" | "selectedAnchorEvidence"
 > {
+  const placementId = `${input.exerciseId}-entry`;
   return {
-    progressionTraces: input.trace ? { [input.exerciseId]: input.trace } : {},
+    progressionTraces: input.trace ? { [placementId]: input.trace } : {},
     resolvedLoads: {
-      [input.exerciseId]: {
+      [placementId]: {
+        placementId,
+        canonicalExerciseId: input.exerciseId,
         source: input.source,
         canonicalSourceLoad: input.targetLoad,
         resolvedTopSetLoad: input.targetLoad,

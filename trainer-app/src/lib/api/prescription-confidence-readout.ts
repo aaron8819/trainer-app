@@ -1,6 +1,7 @@
 import {
   EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE,
   RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE,
+  getPrescriptionPlacementKey,
   type ApplyLoadsAudit,
 } from "@/lib/engine/apply-loads";
 import { toTargetLoad, type PrescriptionResult } from "@/lib/engine/load-prescription";
@@ -106,9 +107,10 @@ export function buildPrescriptionConfidenceReadouts(input: {
       }
 
       const exerciseId = exercise.exercise.id;
-      const trace = input.loadAudit?.progressionTraces[exerciseId];
-      const prescription = input.loadAudit?.prescriptions?.[exerciseId];
-      const resolvedLoad = input.loadAudit?.resolvedLoads[exerciseId];
+      const placementId = getPrescriptionPlacementKey(exercise);
+      const trace = input.loadAudit?.progressionTraces[placementId];
+      const prescription = input.loadAudit?.prescriptions?.[placementId];
+      const resolvedLoad = input.loadAudit?.resolvedLoads[placementId];
       const target = resolveRepresentativeTarget(exercise, trace, prescription);
       const loadSource = resolveLoadSource({
         exercise,
@@ -122,6 +124,7 @@ export function buildPrescriptionConfidenceReadouts(input: {
       const caution = resolveCaution({ confidence, loadSource, mismatch });
 
       return [{
+        placementId,
         exerciseId,
         exerciseName: exercise.exercise.name,
         targetLoad: target.load,

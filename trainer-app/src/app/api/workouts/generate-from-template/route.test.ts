@@ -197,9 +197,9 @@ describe("POST /api/workouts/generate-from-template", () => {
     const audit: ApplyLoadsAudit = {
       progressionTraces: {},
       prescriptions: {
-        bench: prescription,
-        "machine-hold": constrainedMachine,
-        calibration: {
+        "workout-exercise-1": prescription,
+        "workout-exercise-2": constrainedMachine,
+        "workout-exercise-3": {
           version: 1,
           kind: "calibration_required",
           canonicalExerciseId: "calibration",
@@ -208,8 +208,8 @@ describe("POST /api/workouts/generate-from-template", () => {
           reasonCodes: ["legacy_machine_calibration_only"],
           evidence: [],
         },
-        "semantic-zero": semanticZero,
-        unavailable: {
+        "workout-exercise-4": semanticZero,
+        "workout-exercise-5": {
           version: 1,
           kind: "unavailable",
           canonicalExerciseId: "unavailable",
@@ -218,7 +218,7 @@ describe("POST /api/workouts/generate-from-template", () => {
           evidence: [],
           blockingFields: ["evidence"],
         },
-        "not-applicable": {
+        "workout-exercise-6": {
           version: 1,
           kind: "not_applicable",
           canonicalExerciseId: "not-applicable",
@@ -228,37 +228,49 @@ describe("POST /api/workouts/generate-from-template", () => {
         },
       },
       resolvedLoads: {
-        bench: {
+        "workout-exercise-1": {
+          placementId: "workout-exercise-1",
+          canonicalExerciseId: "bench",
           source: "history",
           canonicalSourceLoad: 100,
           resolvedTopSetLoad: 100,
           resolvedSetLoads: [100],
         },
-        "machine-hold": {
+        "workout-exercise-2": {
+          placementId: "workout-exercise-2",
+          canonicalExerciseId: "machine-hold",
           source: "history",
           canonicalSourceLoad: 100,
           resolvedTopSetLoad: 100,
           resolvedSetLoads: [100],
         },
-        calibration: {
+        "workout-exercise-3": {
+          placementId: "workout-exercise-3",
+          canonicalExerciseId: "calibration",
           source: "none",
           canonicalSourceLoad: null,
           resolvedTopSetLoad: null,
           resolvedSetLoads: [],
         },
-        "semantic-zero": {
+        "workout-exercise-4": {
+          placementId: "workout-exercise-4",
+          canonicalExerciseId: "semantic-zero",
           source: "existing_target_load",
           canonicalSourceLoad: 0,
           resolvedTopSetLoad: 0,
           resolvedSetLoads: [0],
         },
-        unavailable: {
+        "workout-exercise-5": {
+          placementId: "workout-exercise-5",
+          canonicalExerciseId: "unavailable",
           source: "none",
           canonicalSourceLoad: null,
           resolvedTopSetLoad: null,
           resolvedSetLoads: [],
         },
-        "not-applicable": {
+        "workout-exercise-6": {
+          placementId: "workout-exercise-6",
+          canonicalExerciseId: "not-applicable",
           source: "none",
           canonicalSourceLoad: null,
           resolvedTopSetLoad: null,
@@ -346,20 +358,20 @@ describe("POST /api/workouts/generate-from-template", () => {
     expect(response.status).toBe(200);
     expect(body.workout.mainLifts[0].sets[0].targetLoad).toBe(90);
     expect(body.prescriptionReadouts[0].targetLoad).toBe(90);
-    expect(finalAudit?.prescriptions.bench).toMatchObject({
+    expect(finalAudit?.prescriptions["workout-exercise-1"]).toMatchObject({
       kind: "numeric",
       value: 90,
       reasonCodes: expect.arrayContaining(["readiness_adjusted", "readiness_reduce"]),
       evidence: [expect.objectContaining({ evidenceId: "selected-history-exposure" })],
     });
-    expect(finalAudit?.resolvedLoads.bench.resolvedTopSetLoad).toBe(90);
+    expect(finalAudit?.resolvedLoads["workout-exercise-1"].resolvedTopSetLoad).toBe(90);
     expect(body.workout.accessories.map((exercise: { sets: Array<{ targetLoad?: number }> }) =>
       exercise.sets[0].targetLoad ?? null,
     )).toEqual([90, null, 0, null, null]);
     expect(body.prescriptionReadouts.slice(1).map((readout: { targetLoad: number | null }) =>
       readout.targetLoad,
     )).toEqual([90, null, 0, null, null]);
-    expect(finalAudit?.prescriptions["machine-hold"]).toMatchObject({
+    expect(finalAudit?.prescriptions["workout-exercise-2"]).toMatchObject({
       kind: "numeric",
       value: 90,
       confidence: "reduced",
@@ -370,14 +382,14 @@ describe("POST /api/workouts/generate-from-template", () => {
         "readiness_reduce",
       ]),
     });
-    expect(finalAudit?.prescriptions.calibration.kind).toBe("calibration_required");
-    expect(finalAudit?.prescriptions["semantic-zero"]).toMatchObject({
+    expect(finalAudit?.prescriptions["workout-exercise-3"].kind).toBe("calibration_required");
+    expect(finalAudit?.prescriptions["workout-exercise-4"]).toMatchObject({
       kind: "semantic_zero",
       value: 0,
       zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
     });
-    expect(finalAudit?.prescriptions.unavailable.kind).toBe("unavailable");
-    expect(finalAudit?.prescriptions["not-applicable"].kind).toBe("not_applicable");
+    expect(finalAudit?.prescriptions["workout-exercise-5"].kind).toBe("unavailable");
+    expect(finalAudit?.prescriptions["workout-exercise-6"].kind).toBe("not_applicable");
   });
 
   it("returns 503 before owner resolution or workout materialization when writes are paused", async () => {
@@ -540,6 +552,7 @@ describe("POST /api/workouts/generate-from-template", () => {
       volumePlanByMuscle: {},
       prescriptionReadouts: [
         {
+          placementId: "we-1",
           exerciseId: "ex-1",
           exerciseName: "Bench Press",
           targetLoad: 185,
@@ -606,13 +619,31 @@ describe("POST /api/workouts/generate-from-template", () => {
       new Request("http://localhost/api/workouts/generate-from-template", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ templateId: "template-1" }),
+        body: JSON.stringify({
+          templateId: "template-1",
+          exerciseReplacements: [{
+            orderIndex: 0,
+            originalExerciseId: "barbell-bench",
+            replacementExerciseId: "push-up",
+          }],
+        }),
       })
     );
     const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(body.selectionMetadata).toBeDefined();
+    expect(mocks.generateSessionFromTemplate).toHaveBeenCalledWith(
+      "user-1",
+      "template-1",
+      expect.objectContaining({
+        exerciseReplacements: [{
+          orderIndex: 0,
+          originalExerciseId: "barbell-bench",
+          replacementExerciseId: "push-up",
+        }],
+      }),
+    );
     expect(body.selection).toBeUndefined();
     expect(body.autoregulation).toBeUndefined();
     expect(body.prescriptionReadouts).toEqual([

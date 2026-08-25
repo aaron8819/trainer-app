@@ -1180,6 +1180,7 @@ function resolveBoundExposureDecision(input: {
     input.progressionConfidenceScale >=
       PRESCRIPTION_CONFIDENCE_POLICY.directionalActionFloor ||
     selected.directionalActionEligible === true;
+  const upwardActionBlocked = selected.directionalActionEligible === false;
 
   const translatedLoad = translateLoadToTargetContext({
     priorLoad: input.anchorLoad,
@@ -1190,13 +1191,16 @@ function resolveBoundExposureDecision(input: {
   });
   const lowerBound = input.anchorLoad - input.increment;
   const upperBound = input.anchorLoad + input.increment;
-  const candidate = !confidenceSufficient
+  const unguardedCandidate = !confidenceSufficient
     ? input.anchorLoad
     : evaluation.clearHard
     ? Math.min(translatedLoad, lowerBound)
     : evaluation.clearEasy || repeatedSuccess
       ? Math.max(translatedLoad, upperBound)
       : translatedLoad;
+  const candidate = upwardActionBlocked && unguardedCandidate > input.anchorLoad
+    ? input.anchorLoad
+    : unguardedCandidate;
   const boundedCandidate = clampNumber(candidate, lowerBound, upperBound);
   const nextLoad = clampNumber(
     quantizeRelativeToAnchor(boundedCandidate, input.anchorLoad, input.increment),
@@ -1209,6 +1213,9 @@ function resolveBoundExposureDecision(input: {
     "exact_exercise_bound_exposure",
     "bounded_single_increment",
     ...(!confidenceSufficient ? ["confidence_gated_hold"] : []),
+    ...(upwardActionBlocked && unguardedCandidate > input.anchorLoad
+      ? ["directional_action_gated_hold"]
+      : []),
     evaluation.clearHard
       ? "prior_prescription_clear_hard"
       : evaluation.clearEasy

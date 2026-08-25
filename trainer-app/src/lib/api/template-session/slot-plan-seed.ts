@@ -252,6 +252,7 @@ function resolveSeededSlotPlan(input: {
         catalogZeroLoadMeaning: catalogExercise.zeroLoadMeaning ?? null,
       });
       return {
+        ...(exercise.placementId ? { placementId: exercise.placementId } : {}),
         exercise: catalogExercise,
         orderIndex,
         mesocycleRole: exercise.role,

@@ -65,6 +65,12 @@ type SubstitutionSuggestion = {
   alternatives: SubstitutionAlternative[];
 };
 
+type AppliedTemplateSubstitution = {
+  orderIndex: number;
+  originalExerciseId: string;
+  replacementExerciseId: string;
+};
+
 type TemplateSummary = {
   id: string;
   name: string;
@@ -164,31 +170,6 @@ function toDbSessionIntent(
     | "BODY_PART";
 }
 
-function applyExerciseSwap(
-  workout: WorkoutPlan,
-  originalExerciseId: string,
-  replacement: SubstitutionAlternative
-): WorkoutPlan {
-  const swapExercises = (exercises: WorkoutExercise[]) =>
-    exercises.map((exercise) =>
-      exercise.exercise.id === originalExerciseId
-        ? {
-            ...exercise,
-            exercise: {
-              id: replacement.id,
-              name: replacement.name,
-            },
-          }
-        : exercise
-    );
-
-  return {
-    ...workout,
-    mainLifts: swapExercises(workout.mainLifts),
-    accessories: swapExercises(workout.accessories),
-  };
-}
-
 const BLOCK_PHASE_STYLE: Record<string, string> = {
   accumulation: "border-blue-200 bg-blue-50 text-blue-800",
   intensification: "border-purple-200 bg-purple-50 text-purple-800",
@@ -221,7 +202,9 @@ export function GenerateFromTemplateCard({ templates, blockPhase }: GenerateFrom
   const [sraWarnings, setSraWarnings] = useState<SraWarning[]>([]);
   const [substitutions, setSubstitutions] = useState<SubstitutionSuggestion[]>([]);
   const [dismissedSubstitutions, setDismissedSubstitutions] = useState<Set<string>>(new Set());
-  const [appliedSubstitutions, setAppliedSubstitutions] = useState<Set<string>>(new Set());
+  const [appliedSubstitutions, setAppliedSubstitutions] = useState<
+    AppliedTemplateSubstitution[]
+  >([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -229,11 +212,16 @@ export function GenerateFromTemplateCard({ templates, blockPhase }: GenerateFrom
   const [showCheckIn, setShowCheckIn] = useState(false);
   const [generatedMetadata, setGeneratedMetadata] = useState<GeneratedMetadata | null>(null);
 
-  const generateWorkout = async () => {
+  const generateWorkout = async (
+    exerciseReplacements: AppliedTemplateSubstitution[] = [],
+  ) => {
     const response = await fetch("/api/workouts/generate-from-template", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ templateId: selectedTemplateId }),
+      body: JSON.stringify({
+        templateId: selectedTemplateId,
+        ...(exerciseReplacements.length > 0 ? { exerciseReplacements } : {}),
+      }),
     });
 
     if (!response.ok) {
@@ -252,7 +240,7 @@ export function GenerateFromTemplateCard({ templates, blockPhase }: GenerateFrom
       selectionMetadata: buildCanonicalSelectionMetadata(body.selectionMetadata),
     });
     setDismissedSubstitutions(new Set());
-    setAppliedSubstitutions(new Set());
+    setAppliedSubstitutions(exerciseReplacements);
     return true;
   };
 
@@ -268,7 +256,7 @@ export function GenerateFromTemplateCard({ templates, blockPhase }: GenerateFrom
     setSubstitutions([]);
     setGeneratedMetadata(null);
     setDismissedSubstitutions(new Set());
-    setAppliedSubstitutions(new Set());
+    setAppliedSubstitutions([]);
     setShowCheckIn(true);
   };
 
@@ -280,21 +268,33 @@ export function GenerateFromTemplateCard({ templates, blockPhase }: GenerateFrom
     });
   };
 
-  const handleApplySubstitution = (
+  const handleApplySubstitution = async (
     suggestion: SubstitutionSuggestion,
     replacement: SubstitutionAlternative
   ) => {
     if (!workout) {
       return;
     }
-    setWorkout((prev) =>
-      prev ? applyExerciseSwap(prev, suggestion.originalExerciseId, replacement) : prev
+    const placement = [...workout.mainLifts, ...workout.accessories].find(
+      (exercise) => exercise.exercise.id === suggestion.originalExerciseId,
     );
-    setAppliedSubstitutions((prev) => {
-      const next = new Set(prev);
-      next.add(suggestion.originalExerciseId);
-      return next;
-    });
+    if (!placement) {
+      setError("The exercise placement changed. Regenerate and retry the substitution.");
+      return;
+    }
+
+    const nextSubstitutions = [
+      ...appliedSubstitutions,
+      {
+        orderIndex: placement.orderIndex,
+        originalExerciseId: suggestion.originalExerciseId,
+        replacementExerciseId: replacement.id,
+      },
+    ];
+    setLoading(true);
+    setError(null);
+    await generateWorkout(nextSubstitutions);
+    setLoading(false);
   };
 
   const handleCheckInSubmit = async (payload: SessionCheckInPayload) => {
@@ -407,7 +407,9 @@ export function GenerateFromTemplateCard({ templates, blockPhase }: GenerateFrom
     (suggestion) =>
       suggestion.alternatives.length > 0 &&
       !dismissedSubstitutions.has(suggestion.originalExerciseId) &&
-      !appliedSubstitutions.has(suggestion.originalExerciseId)
+      !appliedSubstitutions.some(
+        (replacement) => replacement.originalExerciseId === suggestion.originalExerciseId,
+      )
   );
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId);
   const normalizedBlockType = normalizeBlockPhaseType(blockPhase?.blockType);

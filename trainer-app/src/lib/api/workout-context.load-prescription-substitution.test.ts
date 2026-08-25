@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { WorkoutStatus } from "@prisma/client";
 import { applyLoadsWithAudit } from "@/lib/engine/apply-loads";
+import { autoregulateWorkout } from "@/lib/engine/readiness/autoregulate";
 import type { Exercise, WorkoutPlan } from "@/lib/engine/types";
 import type { MeasurementSemantics } from "@/lib/exercise-measurement/semantics";
 import { mapHistory } from "./workout-context";
@@ -10,6 +11,11 @@ vi.mock("@/lib/db/prisma", () => ({ prisma: {} }));
 const machine = {
   profile: "REPS_EXTERNAL_LOAD",
   loadConvention: "MACHINE_DISPLAYED",
+  repBasis: "TOTAL",
+} as const satisfies MeasurementSemantics;
+const barbell = {
+  profile: "REPS_EXTERNAL_LOAD",
+  loadConvention: "BARBELL_TOTAL",
   repBasis: "TOTAL",
 } as const satisfies MeasurementSemantics;
 
@@ -25,8 +31,23 @@ const exercise: Exercise = {
   primaryMuscles: ["Quads"],
 };
 
-function persistedHistoryRow(substituted: boolean) {
-  const workoutExerciseId = "we-leg-press";
+const barbellExercise: Exercise = {
+  ...exercise,
+  id: "barbell-bench-press",
+  name: "Barbell Bench Press",
+  movementPatterns: ["horizontal_push"],
+  splitTags: ["push"],
+  isMainLiftEligible: true,
+  equipment: ["barbell"],
+  primaryMuscles: ["Chest"],
+};
+
+function persistedHistoryRow(
+  substituted: boolean,
+  selectedExercise: Exercise = exercise,
+  measurement: MeasurementSemantics = machine,
+) {
+  const workoutExerciseId = `we-${selectedExercise.id}`;
   return {
     id: substituted ? "substituted-machine" : "clean-machine",
     userId: "u1",
@@ -58,8 +79,8 @@ function persistedHistoryRow(substituted: boolean) {
                 workoutExerciseId,
                 fromExerciseId: "hack-squat",
                 fromExerciseName: "Hack Squat",
-                toExerciseId: exercise.id,
-                toExerciseName: exercise.name,
+                toExerciseId: selectedExercise.id,
+                toExerciseName: selectedExercise.name,
                 reason: "equipment_availability_equivalent_pull_swap",
                 setCount: 3,
               },
@@ -79,21 +100,21 @@ function persistedHistoryRow(substituted: boolean) {
     exercises: [{
       id: workoutExerciseId,
       workoutId: substituted ? "substituted-machine" : "clean-machine",
-      exerciseId: exercise.id,
+      exerciseId: selectedExercise.id,
       orderIndex: 0,
       section: "ACCESSORY",
       isMainLift: false,
       movementPatterns: ["SQUAT"],
-      measurementProfile: machine.profile,
-      loadConvention: machine.loadConvention,
-      repBasis: machine.repBasis,
+      measurementProfile: measurement.profile,
+      loadConvention: "loadConvention" in measurement ? measurement.loadConvention : null,
+      repBasis: measurement.repBasis,
       zeroLoadMeaning: null,
       stimulusAccountingSnapshot: null,
       notes: null,
       exercise: {
-        id: exercise.id,
-        name: exercise.name,
-        exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Quads" } }],
+        id: selectedExercise.id,
+        name: selectedExercise.name,
+        exerciseMuscles: [{ role: "PRIMARY", muscle: { name: selectedExercise.primaryMuscles?.[0] ?? "Quads" } }],
       },
       sets: [1, 2, 3].map((setIndex) => ({
         id: `set-${setIndex}`,
@@ -120,18 +141,21 @@ function persistedHistoryRow(substituted: boolean) {
   } as never;
 }
 
-function nextWorkout(): WorkoutPlan {
+function nextWorkout(
+  selectedExercise: Exercise = exercise,
+  measurement: MeasurementSemantics = machine,
+): WorkoutPlan {
   return {
     id: "next-workout",
     scheduledDate: "2026-08-22T00:00:00.000Z",
     warmup: [],
     mainLifts: [],
     accessories: [{
-      id: "next-leg-press",
-      exercise,
+      id: `next-${selectedExercise.id}`,
+      exercise: selectedExercise,
       orderIndex: 0,
       isMainLift: false,
-      measurement: machine,
+      measurement,
       sets: [1, 2, 3].map((setIndex) => ({
         setIndex,
         targetReps: 10,
@@ -143,21 +167,29 @@ function nextWorkout(): WorkoutPlan {
   };
 }
 
-function prescribeFromPersistedHistory(substituted: boolean) {
-  const history = mapHistory([persistedHistoryRow(substituted)]);
-  const result = applyLoadsWithAudit(nextWorkout(), {
+function prescribeFromPersistedHistory(
+  substituted: boolean,
+  selectedExercise: Exercise = exercise,
+  measurement: MeasurementSemantics = machine,
+) {
+  const history = mapHistory([persistedHistoryRow(substituted, selectedExercise, measurement)]);
+  const result = applyLoadsWithAudit(nextWorkout(selectedExercise, measurement), {
     history,
     baselines: [],
-    exerciseById: { [exercise.id]: exercise },
+    exerciseById: { [selectedExercise.id]: selectedExercise },
     primaryGoal: "hypertrophy",
     profile: { trainingAge: "intermediate" },
     sessionIntent: "lower",
     acceptedV4Calibration: true,
     accumulationSessionsCompleted: 1,
     isFirstSessionInMesocycle: false,
-    loadIncrementByExerciseId: { [exercise.id]: 5 },
+    loadIncrementByExerciseId: { [selectedExercise.id]: 5 },
   });
-  return { history, prescription: result.audit.prescriptions[exercise.id] };
+  return {
+    history,
+    result,
+    prescription: result.audit.prescriptions[`next-${selectedExercise.id}`],
+  };
 }
 
 describe("runtime replacement provenance into load prescription", () => {
@@ -196,6 +228,55 @@ describe("runtime replacement provenance into load prescription", () => {
         "double_progression_increase",
       ]),
       evidence: [expect.objectContaining({ substituted: false, confidence: 0.7 })],
+    });
+  });
+
+  it("blocks a high-confidence substituted barbell increase before readiness projection", () => {
+    const { history, result, prescription } = prescribeFromPersistedHistory(
+      true,
+      barbellExercise,
+      barbell,
+    );
+
+    expect(history[0].exercises[0]).toMatchObject({
+      exerciseId: barbellExercise.id,
+      substituted: true,
+      measurement: barbell,
+    });
+    expect(history[0].confidence).toBe(1);
+    expect(prescription).toMatchObject({
+      kind: "numeric",
+      value: 100,
+      confidence: "reduced",
+      reasonCodes: expect.arrayContaining([
+        "same_exercise_same_measurement",
+        "substituted_exposure",
+        "hold",
+      ]),
+      evidence: [expect.objectContaining({ substituted: true, confidence: 1 })],
+    });
+    expect(prescription.reasonCodes).not.toContain("double_progression_increase");
+
+    const readiness = autoregulateWorkout(
+      result.workout,
+      result.audit,
+      {
+        overall: 1,
+        perMuscle: {},
+        weights: { whoop: 0, subjective: 0.6, performance: 0.4 },
+        components: {
+          whoopContribution: 0,
+          subjectiveContribution: 0.6,
+          performanceContribution: 0.4,
+        },
+      },
+      { aggressiveness: "aggressive", allowUpRegulation: true, allowDownRegulation: true },
+    );
+    expect(readiness.adjustedWorkout.accessories[0].sets[0].targetLoad).toBe(100);
+    expect(readiness.loadAudit.prescriptions[`next-${barbellExercise.id}`]).toMatchObject({
+      kind: "numeric",
+      value: 100,
+      reasonCodes: expect.arrayContaining(["substituted_exposure", "readiness_hold"]),
     });
   });
 });

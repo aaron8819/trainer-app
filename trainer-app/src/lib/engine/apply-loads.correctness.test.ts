@@ -727,7 +727,7 @@ describe("applyLoads correctness", () => {
       sessionIntent: "upper",
     });
 
-    const trace = result.audit.progressionTraces["cable-curl"];
+    const trace = Object.values(result.audit.progressionTraces)[0];
     expect(trace.anchor.anchorLoad).toBe(40);
     expect(trace.confidence.priorSessionCount).toBe(1);
     expect(trace.confidence.historyScale).toBe(0.85);
@@ -764,7 +764,7 @@ describe("applyLoads correctness", () => {
       sessionIntent: "upper",
     });
 
-    const trace = result.audit.progressionTraces["cable-curl"];
+    const trace = Object.values(result.audit.progressionTraces)[0];
     expect(trace.confidence.priorSessionCount).toBe(3);
     expect(trace.confidence.historyScale).toBe(1);
     expect(trace.confidence.combinedScale).toBe(1);
@@ -833,10 +833,10 @@ describe("applyLoads correctness", () => {
     });
 
     expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(135);
-    expect(result.audit.progressionTraces.sldl.outcome.reasonCodes).toContain(
+    expect(Object.values(result.audit.progressionTraces)[0].outcome.reasonCodes).toContain(
       "prescription_evidence_incomplete"
     );
-    expect(result.audit.progressionTraces.sldl.outcome.reasonCodes).toContain(
+    expect(Object.values(result.audit.progressionTraces)[0].outcome.reasonCodes).toContain(
       "conservative_anchor_hold"
     );
   });
@@ -921,9 +921,9 @@ describe("applyLoads correctness", () => {
     });
 
     const targetLoad = result.workout.mainLifts[0].sets[0].targetLoad;
-    expect(result.audit.resolvedLoads["close-grip-cable-row"]?.source).toBe("history");
+    expect(Object.values(result.audit.resolvedLoads)[0]?.source).toBe("history");
     expect(targetLoad).toBe(57.5);
-    expect(result.audit.progressionTraces["close-grip-cable-row"].outcome.reasonCodes).toContain(
+    expect(Object.values(result.audit.progressionTraces)[0].outcome.reasonCodes).toContain(
       "prescription_evidence_incomplete"
     );
   });
@@ -1329,8 +1329,8 @@ describe("applyLoads correctness", () => {
     });
 
     expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(145);
-    expect(result.audit.progressionTraces["back-squat"]?.outcome.action).toBe("decrease");
-    expect(result.audit.progressionTraces["back-squat"]?.outcome.reasonCodes).toContain(
+    expect(Object.values(result.audit.progressionTraces)[0]?.outcome.action).toBe("decrease");
+    expect(Object.values(result.audit.progressionTraces)[0]?.outcome.reasonCodes).toContain(
       "intent_drift_detected"
     );
   });
@@ -1759,7 +1759,7 @@ describe("applyLoads correctness", () => {
       sessionIntent: "upper",
     });
 
-    expect(result.audit.resolvedLoads["db-ohp"]?.source).toBe("history");
+    expect(Object.values(result.audit.resolvedLoads)[0]?.source).toBe("history");
     expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(40);
     expect(result.workout.mainLifts[0].sets[1].targetLoad).toBe(40);
   });
@@ -1793,7 +1793,7 @@ describe("applyLoads correctness", () => {
     });
 
     const topLoad = result.workout.mainLifts[0].sets[0].targetLoad ?? 0;
-    expect(result.audit.resolvedLoads["db-ohp"]?.source).toBe("history");
+    expect(Object.values(result.audit.resolvedLoads)[0]?.source).toBe("history");
     expect(topLoad).toBe(37.5);
     expect(topLoad).toBeGreaterThan(25);
     expect(topLoad).toBeLessThan(45);
@@ -1848,7 +1848,7 @@ describe("applyLoads correctness", () => {
       sessionIntent: "lower",
     });
 
-    expect(result.audit.resolvedLoads["back-squat"]?.source).toBe("history");
+    expect(Object.values(result.audit.resolvedLoads)[0]?.source).toBe("history");
     expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(160);
     expect(result.workout.mainLifts[0].sets[1].targetLoad).toBe(160);
   });
@@ -1880,7 +1880,7 @@ describe("applyLoads correctness", () => {
       sessionIntent: "lower",
     });
 
-    expect(result.audit.resolvedLoads["belt-squat"]?.source).toBe("history");
+    expect(Object.values(result.audit.resolvedLoads)[0]?.source).toBe("history");
     expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(150);
     expect(result.workout.mainLifts[0].sets[0].targetLoad).toBeLessThan(180);
     expect(result.workout.mainLifts[0].sets[1].targetLoad).toBe(150);
@@ -1915,7 +1915,7 @@ describe("applyLoads correctness", () => {
       sessionIntent: "lower",
     });
 
-    expect(result.audit.resolvedLoads["belt-squat"]?.source).toBe("estimate");
+    expect(Object.values(result.audit.resolvedLoads)[0]?.source).toBe("estimate");
     expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(57.5);
   });
 
@@ -1965,7 +1965,7 @@ describe("applyLoads correctness", () => {
       sessionIntent: "upper",
     });
 
-    expect(result.audit.resolvedLoads["lat-pulldown"]?.source).toBe("history");
+    expect(Object.values(result.audit.resolvedLoads)[0]?.source).toBe("history");
     expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(50);
   });
 
@@ -2015,7 +2015,7 @@ describe("applyLoads correctness", () => {
       sessionIntent: "lower",
     });
 
-    expect(result.audit.resolvedLoads["sldl"]?.source).toBe("history");
+    expect(Object.values(result.audit.resolvedLoads)[0]?.source).toBe("history");
     expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(82.5);
   });
 
@@ -2045,7 +2045,7 @@ describe("applyLoads correctness", () => {
       sessionIntent: "upper",
     });
 
-    expect(result.audit.resolvedLoads["cable-curl"]?.source).toBe("estimate");
+    expect(Object.values(result.audit.resolvedLoads)[0]?.source).toBe("estimate");
     expect(result.workout.accessories[0].sets[0].targetLoad).toBe(35);
   });
 
@@ -2090,11 +2090,11 @@ describe("applyLoads correctness", () => {
       sessionIntent: "push",
     });
 
-    expect(result.audit.resolvedLoads["cable-lateral-raise"]?.source).toBe(
+    expect(Object.values(result.audit.resolvedLoads)[0]?.source).toBe(
       RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE
     );
     expect(result.workout.accessories[0].sets[0].targetLoad).toBe(10);
-    expect(result.audit.progressionTraces["cable-lateral-raise"]).toBeUndefined();
+    expect(Object.values(result.audit.progressionTraces)).toEqual([]);
   });
 
   it("uses exact runtime-added cable crossover calibration instead of cold estimates", () => {
@@ -2126,7 +2126,7 @@ describe("applyLoads correctness", () => {
       sessionIntent: "push",
     });
 
-    expect(result.audit.resolvedLoads["cable-crossover"]?.source).toBe(
+    expect(Object.values(result.audit.resolvedLoads)[0]?.source).toBe(
       RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE
     );
     expect(result.workout.accessories[0].sets[0].targetLoad).toBe(12.5);
@@ -2169,7 +2169,7 @@ describe("applyLoads correctness", () => {
       sessionIntent: "push",
     });
 
-    expect(result.audit.resolvedLoads["cable-lateral-raise"]?.source).toBe("history");
+    expect(Object.values(result.audit.resolvedLoads)[0]?.source).toBe("history");
     expect(result.workout.accessories[0].sets[0].targetLoad).toBeGreaterThanOrEqual(20);
   });
 
@@ -2199,7 +2199,7 @@ describe("applyLoads correctness", () => {
       profile: { trainingAge: "intermediate" },
     });
 
-    expect(result.audit.resolvedLoads["cable-machine-curl"]?.source).toBe("estimate");
+    expect(Object.values(result.audit.resolvedLoads)[0]?.source).toBe("estimate");
     expect(result.workout.accessories[0].sets[0].targetLoad).toBe(35);
   });
 
@@ -2213,7 +2213,7 @@ describe("applyLoads correctness", () => {
       sessionIntent: "upper",
     });
 
-    expect(result.audit.resolvedLoads["cable-curl"]?.source).toBe("baseline");
+    expect(Object.values(result.audit.resolvedLoads)[0]?.source).toBe("baseline");
     expect(result.workout.accessories[0].sets[0].targetLoad).toBe(40);
   });
 
@@ -2553,7 +2553,7 @@ describe("applyLoads correctness", () => {
     });
 
     expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(testCase.expected);
-    expect(result.audit.progressionTraces.bench?.outcome.reasonCodes).toContain(
+    expect(Object.values(result.audit.progressionTraces)[0]?.outcome.reasonCodes).toContain(
       "exact_exercise_bound_exposure"
     );
   });
@@ -2610,7 +2610,7 @@ describe("applyLoads correctness", () => {
       ...options,
       history: [baseHistory],
     });
-    expect(legacyOnly.audit.progressionTraces.bench).toBeUndefined();
+    expect(Object.values(legacyOnly.audit.progressionTraces)).toEqual([]);
 
     const exact = applyLoadsWithAudit(classifiedWorkout, {
       ...options,
@@ -2662,7 +2662,7 @@ describe("applyLoads correctness", () => {
       },
     );
     expect(machine.workout.mainLifts[0].sets[0].targetLoad).toBe(185);
-    expect(machine.audit.prescriptions.bench).toMatchObject({
+    expect(Object.values(machine.audit.prescriptions)[0]).toMatchObject({
       kind: "numeric",
       source: "exact_history",
       confidence: "reduced",

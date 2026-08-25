@@ -28,6 +28,7 @@ import { estimateStrengthSessionTiming } from "./strength-session-timing";
 import { assertFrozenMeasurementSnapshotInvariant } from "@/lib/exercise-measurement/semantics";
 
 export type TemplateExerciseInput = {
+  placementId?: string;
   exercise: Exercise;
   measurement?: import("@/lib/exercise-measurement/semantics").MeasurementSemantics;
   zeroLoadMeaning?: import("@/lib/exercise-measurement/semantics").ZeroLoadMeaning | null;
@@ -327,7 +328,7 @@ function buildTemplateExercise(
   });
 
   return {
-    id: createId(),
+    id: input.placementId ?? createId(),
     exercise,
     orderIndex,
     isMainLift,

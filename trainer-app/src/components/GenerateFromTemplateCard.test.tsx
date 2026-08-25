@@ -243,4 +243,81 @@ describe("GenerateFromTemplateCard", () => {
       savePayload.selectionMetadata.sessionDecisionReceipt,
     ).not.toHaveProperty("scheduledSlotReceipt");
   });
+
+  it("regenerates a preview substitution before saving bodyweight semantics without stale load", async () => {
+    const initial = makeTemplateGenerationResponse();
+    initial.workout.mainLifts[0] = {
+      ...initial.workout.mainLifts[0],
+      exercise: { id: "bench-press", name: "Bench Press", equipment: ["barbell"] },
+      measurement: {
+        profile: "REPS_EXTERNAL_LOAD",
+        loadConvention: "BARBELL_TOTAL",
+        repBasis: "TOTAL",
+      },
+      sets: [{ setIndex: 1, targetReps: 8, targetLoad: 185, targetRpe: 8 }],
+    } as never;
+    initial.substitutions = [{
+      originalExerciseId: "bench-press",
+      originalName: "Bench Press",
+      reason: "Equipment unavailable",
+      alternatives: [{ id: "push-up", name: "Push-Up", score: 0.9 }],
+    }] as never;
+
+    const replacement = makeTemplateGenerationResponse();
+    replacement.workout.id = "workout-2";
+    replacement.workout.mainLifts[0] = {
+      ...replacement.workout.mainLifts[0],
+      id: "replacement-placement",
+      exercise: {
+        id: "push-up",
+        name: "Push-Up",
+        equipment: ["bodyweight"],
+      },
+      measurement: {
+        profile: "REPS_BODYWEIGHT",
+        repBasis: "TOTAL",
+      },
+      sets: [{ setIndex: 1, targetReps: 10, targetRpe: 8 }],
+    } as never;
+    replacement.substitutions = [];
+    replacement.selectionMetadata.selectedExerciseIds = ["push-up"];
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => initial })
+      .mockResolvedValueOnce({ ok: true, json: async () => replacement })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ workoutId: "workout-2" }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<GenerateFromTemplateCard templates={templates} />);
+    fireEvent.click(screen.getByRole("button", { name: "Generate Workout" }));
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    await screen.findByText("Bench Press");
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await screen.findByText("Push-Up");
+    fireEvent.click(screen.getByRole("button", { name: "Save Workout" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body as string)).toEqual({
+      templateId: "template-1",
+      exerciseReplacements: [{
+        orderIndex: 0,
+        originalExerciseId: "bench-press",
+        replacementExerciseId: "push-up",
+      }],
+    });
+    const savePayload = JSON.parse(fetchMock.mock.calls[2][1].body as string);
+    expect(savePayload.exercises).toEqual([
+      expect.objectContaining({
+        exerciseId: "push-up",
+        measurement: {
+          profile: "REPS_BODYWEIGHT",
+          repBasis: "TOTAL",
+        },
+        sets: [expect.not.objectContaining({ targetLoad: expect.anything() })],
+      }),
+    ]);
+    expect(JSON.stringify(savePayload)).not.toContain("BARBELL_TOTAL");
+    expect(JSON.stringify(savePayload)).not.toContain("185");
+  });
 });

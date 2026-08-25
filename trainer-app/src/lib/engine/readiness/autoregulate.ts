@@ -1,8 +1,10 @@
 // Phase 3: Autoregulation - Workout Intensity Scaling
 
 import {
+  getPrescriptionPlacementKey,
   projectFinalPrescriptionResults,
   type ApplyLoadsAudit,
+  type PrescriptionPlacementKey,
 } from "@/lib/engine/apply-loads";
 import type {
   NumericPrescription,
@@ -78,11 +80,11 @@ export function autoregulateWorkout(
 } {
   const action = selectAction(fatigueScore.overall, policy, config);
   const finalPrescriptions = Object.fromEntries(
-    Object.entries(loadAudit.prescriptions).map(([exerciseId, prescription]) => [
-      exerciseId,
+    Object.entries(loadAudit.prescriptions).map(([placementId, prescription]) => [
+      placementId,
       transformPrescriptionForReadiness(prescription, action, config),
     ]),
-  );
+  ) as Record<PrescriptionPlacementKey, PrescriptionResult>;
   const projected = projectFinalPrescriptionResults({
     workout,
     audit: loadAudit,
@@ -122,14 +124,14 @@ function selectAction(
 
 function applyRpeAdjustments(input: {
   workout: WorkoutPlan;
-  basePrescriptions: Record<string, PrescriptionResult>;
-  finalPrescriptions: Record<string, PrescriptionResult>;
+  basePrescriptions: Record<PrescriptionPlacementKey, PrescriptionResult>;
+  finalPrescriptions: Record<PrescriptionPlacementKey, PrescriptionResult>;
   modifications: AutoregulationModification[];
 }): WorkoutPlan {
   const adjustExercise = (exercise: WorkoutPlan["mainLifts"][number]) => {
-    const canonicalExerciseId = exercise.exercise.id;
-    const base = input.basePrescriptions[canonicalExerciseId];
-    const final = input.finalPrescriptions[canonicalExerciseId];
+    const placementId = getPrescriptionPlacementKey(exercise);
+    const base = input.basePrescriptions[placementId];
+    const final = input.finalPrescriptions[placementId];
     if (
       base?.kind !== "numeric" ||
       final?.kind !== "numeric" ||

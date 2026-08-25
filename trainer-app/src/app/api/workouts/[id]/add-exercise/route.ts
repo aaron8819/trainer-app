@@ -482,6 +482,7 @@ export async function POST(
         where: { workoutId },
         orderBy: [{ orderIndex: "asc" }, { id: "asc" }],
         select: {
+          id: true,
           exerciseId: true,
           orderIndex: true,
           section: true,

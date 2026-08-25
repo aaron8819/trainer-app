@@ -194,7 +194,8 @@ function formatRpeValues(values: number[]): string | null {
 }
 
 function buildWorkoutPreview(
-  generated: GeneratedSession | undefined
+  generated: GeneratedSession | undefined,
+  persistedPlacementIdByGeneratedId: Map<string, string>,
 ): PreSessionReadinessWorkoutPreview | undefined {
   if (!generated?.exercises?.length) {
     return undefined;
@@ -212,6 +213,13 @@ function buildWorkoutPreview(
       );
 
       return {
+        ...(exercise.placementId
+          ? {
+              placementId:
+                persistedPlacementIdByGeneratedId.get(exercise.placementId) ??
+                exercise.placementId,
+            }
+          : {}),
         exerciseId: exercise.exerciseId,
         exerciseName: exercise.exerciseName,
         setCount: exercise.prescribedSetCount,
@@ -542,7 +550,8 @@ function buildAvoidList(input: {
 
 function buildPrescriptionConfidenceWatches(
   generated: SessionAuditSnapshot["generated"] | undefined,
-  prescriptionReadouts: PrescriptionConfidenceReadout[] | undefined
+  prescriptionReadouts: PrescriptionConfidenceReadout[] | undefined,
+  persistedPlacementIdByGeneratedId: Map<string, string>,
 ): PreSessionReadinessPrescriptionConfidenceWatchRow[] {
   const readoutsByPlacementId = new Map(
     (prescriptionReadouts ?? []).map((readout) => [readout.placementId, readout])
@@ -557,8 +566,14 @@ function buildPrescriptionConfidenceWatches(
 
   return (generated?.exercises ?? []).flatMap<PreSessionReadinessPrescriptionConfidenceWatchRow>((exercise) => {
     const placementId = exercise.placementId;
-    const traceKey = placementId ?? exercise.exerciseId;
-    const trace = generated?.traces.progression[traceKey];
+    const consumerPlacementId = placementId
+      ? persistedPlacementIdByGeneratedId.get(placementId) ?? placementId
+      : undefined;
+    const trace = placementId
+      ? generated?.traces.progression[placementId]
+      : exercisePlacementCounts.get(exercise.exerciseId) === 1
+        ? generated?.traces.progression[exercise.exerciseId]
+        : undefined;
     const readout = placementId
       ? readoutsByPlacementId.get(placementId)
       : exercisePlacementCounts.get(exercise.exerciseId) === 1
@@ -570,7 +585,7 @@ function buildPrescriptionConfidenceWatches(
       (readout?.loadSource === "none" && readout.targetLoad == null)
     ) {
       const row: PreSessionReadinessPrescriptionConfidenceWatchRow = {
-        ...(placementId ? { placementId } : {}),
+        ...(consumerPlacementId ? { placementId: consumerPlacementId } : {}),
         exerciseLabel: exercise.exerciseName,
         watchType: "prescription_confidence",
         reasonCode: "load_calibration",
@@ -594,7 +609,7 @@ function buildPrescriptionConfidenceWatches(
     if (!trace) {
       return [
         {
-          ...(placementId ? { placementId } : {}),
+          ...(consumerPlacementId ? { placementId: consumerPlacementId } : {}),
           exerciseLabel: exercise.exerciseName,
           watchType: "prescription_confidence",
           reasonCode: "progression_trace_unavailable",
@@ -644,7 +659,7 @@ function buildPrescriptionConfidenceWatches(
 
       return [
         {
-          ...(placementId ? { placementId } : {}),
+          ...(consumerPlacementId ? { placementId: consumerPlacementId } : {}),
           exerciseLabel: exercise.exerciseName,
           watchType: "prescription_confidence",
           reasonCode,
@@ -1089,13 +1104,23 @@ export function buildPreSessionReadinessContract(
     nextSession: nextProjectedSession,
     recommendations: doseClosure.recommendations,
   });
+  const persistedPlacementIdByGeneratedId = new Map(
+    (input.sessionSnapshot?.saved?.placementCorrelations ?? []).map((correlation) => [
+      correlation.generatedPlacementId,
+      correlation.persistedWorkoutExerciseId,
+    ]),
+  );
   const prescriptionConfidenceWatches = buildPrescriptionConfidenceWatches(
     generated,
     input.generation && !("error" in input.generation)
       ? input.generation.prescriptionReadouts
-      : undefined
+      : undefined,
+    persistedPlacementIdByGeneratedId,
   );
-  const workoutPreview = buildWorkoutPreview(generated);
+  const workoutPreview = buildWorkoutPreview(
+    generated,
+    persistedPlacementIdByGeneratedId,
+  );
   const diagnosticFatigue = doseDiagnostics.flatMap((diagnostic) => {
     if (diagnostic.fatigueDensityConcern.level === "none") {
       return [];

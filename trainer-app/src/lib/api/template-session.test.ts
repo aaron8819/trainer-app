@@ -449,11 +449,12 @@ describe("generateSessionFromIntent", () => {
       intent: "PUSH_PULL_LEGS",
       targetMuscles: ["Chest"],
       isStrict: false,
-      exercises: [{ exerciseId: "bench", orderIndex: 0, supersetGroup: null }],
+      exercises: [{ placementId: "template-placement-bench", exerciseId: "bench", orderIndex: 0, supersetGroup: null }],
     });
 
     const result = await generateSessionFromTemplate("user-1", "template-1", {
       exerciseReplacements: [{
+        placementId: "template-placement-bench",
         orderIndex: 0,
         originalExerciseId: "bench",
         replacementExerciseId: "push-up",
@@ -486,6 +487,64 @@ describe("generateSessionFromIntent", () => {
     expect(Object.values(result.audit?.prescriptions ?? {})).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ canonicalExerciseId: "bench" })]),
     );
+  });
+
+  it("replaces only the explicitly identified duplicate template placement", async () => {
+    const bench = makeCustomExercise({
+      id: "bench",
+      name: "Bench Press",
+      movementPatterns: ["horizontal_push"],
+      splitTags: ["push"],
+      primaryMuscles: ["Chest"],
+      equipment: ["barbell"],
+    });
+    const pushUp = makeCustomExercise({
+      id: "push-up",
+      name: "Push-Up",
+      movementPatterns: ["horizontal_push"],
+      splitTags: ["push"],
+      primaryMuscles: ["Chest"],
+      equipment: ["bodyweight"],
+    });
+    mapExercisesMock.mockReturnValue([bench, pushUp]);
+    loadWorkoutContextMock.mockResolvedValue({
+      profile: { id: "profile" },
+      goals: { primaryGoal: "HYPERTROPHY", secondaryGoal: "NONE" },
+      constraints: { daysPerWeek: 4, splitType: "UPPER_LOWER", weeklySchedule: ["UPPER", "LOWER"] },
+      injuries: [],
+      exercises: [
+        { id: "bench", measurementProfile: "REPS_EXTERNAL_LOAD", loadConvention: "BARBELL_TOTAL", repBasis: "TOTAL", zeroLoadMeaning: null },
+        { id: "push-up", measurementProfile: "REPS_BODYWEIGHT", loadConvention: null, repBasis: "TOTAL", zeroLoadMeaning: null },
+      ],
+      workouts: [],
+      preferences: null,
+      checkIns: [],
+    });
+    loadTemplateDetailMock.mockResolvedValue({
+      id: "template-duplicates",
+      intent: "PUSH_PULL_LEGS",
+      targetMuscles: ["Chest"],
+      isStrict: false,
+      exercises: [
+        { placementId: "bench-a", exerciseId: "bench", orderIndex: 0, supersetGroup: null },
+        { placementId: "bench-b", exerciseId: "bench", orderIndex: 1, supersetGroup: null },
+      ],
+    });
+
+    const result = await generateSessionFromTemplate("user-1", "template-duplicates", {
+      exerciseReplacements: [{
+        placementId: "bench-b",
+        orderIndex: 1,
+        originalExerciseId: "bench",
+        replacementExerciseId: "push-up",
+      }],
+    });
+
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+    const placements = [...result.workout.mainLifts, ...result.workout.accessories];
+    expect(placements.find((entry) => entry.id === "bench-a")?.exercise.id).toBe("bench");
+    expect(placements.find((entry) => entry.id === "bench-b")?.exercise.id).toBe("push-up");
   });
 
   it.each(["push", "pull", "legs", "upper", "lower", "full_body"] as const)(

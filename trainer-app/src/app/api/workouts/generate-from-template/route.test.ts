@@ -622,6 +622,7 @@ describe("POST /api/workouts/generate-from-template", () => {
         body: JSON.stringify({
           templateId: "template-1",
           exerciseReplacements: [{
+            placementId: "template-placement-bench",
             orderIndex: 0,
             originalExerciseId: "barbell-bench",
             replacementExerciseId: "push-up",
@@ -638,6 +639,7 @@ describe("POST /api/workouts/generate-from-template", () => {
       "template-1",
       expect.objectContaining({
         exerciseReplacements: [{
+          placementId: "template-placement-bench",
           orderIndex: 0,
           originalExerciseId: "barbell-bench",
           replacementExerciseId: "push-up",

@@ -14,6 +14,7 @@ type WorkoutExerciseSection = "WARMUP" | "MAIN" | "ACCESSORY";
 
 export type SaveWorkoutExerciseInput = {
   section: WorkoutExerciseSection;
+  placementId?: string;
   exerciseId: string;
   measurement?: import("@/lib/exercise-measurement/semantics").MeasurementSemantics;
   sets: Array<{

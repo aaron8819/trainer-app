@@ -2287,21 +2287,22 @@ export async function generateSessionFromTemplate(
   if (templateExercises.length === 0) {
     return { error: "Template has no exercises" };
   }
-  const replacementByOrderIndex = new Map(
-    (params.exerciseReplacements ?? []).map((replacement) => [replacement.orderIndex, replacement]),
+  const replacementByPlacementId = new Map(
+    (params.exerciseReplacements ?? []).map((replacement) => [replacement.placementId, replacement]),
   );
-  if (replacementByOrderIndex.size > 0) {
+  if (replacementByPlacementId.size > 0) {
     const exerciseById = new Map(
       mapped.exerciseLibrary.map((exercise) => [exercise.id, exercise]),
     );
-    for (const [orderIndex, replacement] of replacementByOrderIndex) {
-      const placement = templateExercises.find((entry) => entry.orderIndex === orderIndex);
+    for (const [placementId, replacement] of replacementByPlacementId) {
+      const placement = templateExercises.find((entry) => entry.placementId === placementId);
       const replacementExercise = exerciseById.get(replacement.replacementExerciseId);
       const rawReplacementExercise = mapped.rawExercises.find(
         (exercise) => exercise.id === replacement.replacementExerciseId,
       );
       if (
         !placement ||
+        placement.orderIndex !== replacement.orderIndex ||
         placement.exercise.id !== replacement.originalExerciseId ||
         !replacementExercise ||
         !rawReplacementExercise
@@ -2311,7 +2312,7 @@ export async function generateSessionFromTemplate(
       const replacementMeasurement = parseMeasurementColumns(rawReplacementExercise);
       const replacementZeroLoadMeaning = parseZeroLoadMeaningColumn(rawReplacementExercise);
       templateExercises = templateExercises.map((entry) =>
-        entry.orderIndex === orderIndex
+        entry.placementId === placementId
           ? {
               exercise: replacementExercise,
               orderIndex: entry.orderIndex,

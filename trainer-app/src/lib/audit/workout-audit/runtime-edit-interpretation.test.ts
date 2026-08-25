@@ -54,6 +54,34 @@ const exerciseContexts = [
 ];
 
 describe("interpretRuntimeEdits", () => {
+  it("resolves duplicate canonical exercise context only by workout placement id", () => {
+    const interpretations = interpretRuntimeEdits({
+      runtimeEditReconciliation: reconciliation([{
+        kind: "add_set",
+        source: "api_workouts_add_set",
+        appliedAt: "2026-04-01T12:00:00.000Z",
+        scope: "current_workout_only",
+        facts: {
+          workoutExerciseId: "bench-b",
+          exerciseId: "bench",
+          workoutSetId: "set-b",
+          setIndex: 2,
+          clonedFromSetIndex: 1,
+        },
+      }]),
+      exerciseContexts: [
+        { workoutExerciseId: "bench-a", exerciseId: "bench", primaryMuscles: ["Chest A"] },
+        { workoutExerciseId: "bench-b", exerciseId: "bench", primaryMuscles: ["Chest B"] },
+      ],
+      targetContext: [
+        { muscle: "Chest A", actualEffectiveSets: 0, weeklyTarget: 10, mev: 6 },
+        { muscle: "Chest B", actualEffectiveSets: 0, weeklyTarget: 10, mev: 6 },
+      ],
+    });
+
+    expect(interpretations[0]?.muscles).toEqual(["Chest B"]);
+  });
+
   it("classifies add exercise with clear under-target muscle as high-confidence target gap closure", () => {
     const interpretations = interpretRuntimeEdits({
       runtimeEditReconciliation: reconciliation([

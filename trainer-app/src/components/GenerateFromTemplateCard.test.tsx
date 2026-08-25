@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { GenerateFromTemplateCard } from "./GenerateFromTemplateCard";
@@ -86,6 +86,39 @@ function makeTemplateGenerationResponse() {
       },
     },
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+function makeDuplicateSuggestionResponse() {
+  const response = makeTemplateGenerationResponse();
+  response.workout.mainLifts = [
+    { ...response.workout.mainLifts[0]!, id: "bench-a", orderIndex: 0 },
+    { ...response.workout.mainLifts[0]!, id: "bench-b", orderIndex: 1 },
+  ];
+  response.substitutions = [
+    {
+      placementId: "bench-a",
+      originalExerciseId: "bench-press",
+      originalName: "Bench Press",
+      reason: "Placement A",
+      alternatives: [{ id: "push-up", name: "Push-Up", score: 0.9 }],
+    },
+    {
+      placementId: "bench-b",
+      originalExerciseId: "bench-press",
+      originalName: "Bench Press",
+      reason: "Placement B",
+      alternatives: [{ id: "dip", name: "Dip", score: 0.9 }],
+    },
+  ] as never;
+  return response;
 }
 
 describe("GenerateFromTemplateCard", () => {
@@ -257,6 +290,7 @@ describe("GenerateFromTemplateCard", () => {
       sets: [{ setIndex: 1, targetReps: 8, targetLoad: 185, targetRpe: 8 }],
     } as never;
     initial.substitutions = [{
+      placementId: "workout-exercise-1",
       originalExerciseId: "bench-press",
       originalName: "Bench Press",
       reason: "Equipment unavailable",
@@ -301,6 +335,7 @@ describe("GenerateFromTemplateCard", () => {
     expect(JSON.parse(fetchMock.mock.calls[1][1].body as string)).toEqual({
       templateId: "template-1",
       exerciseReplacements: [{
+        placementId: "workout-exercise-1",
         orderIndex: 0,
         originalExerciseId: "bench-press",
         replacementExerciseId: "push-up",
@@ -309,6 +344,7 @@ describe("GenerateFromTemplateCard", () => {
     const savePayload = JSON.parse(fetchMock.mock.calls[2][1].body as string);
     expect(savePayload.exercises).toEqual([
       expect.objectContaining({
+        placementId: "replacement-placement",
         exerciseId: "push-up",
         measurement: {
           profile: "REPS_BODYWEIGHT",
@@ -319,5 +355,180 @@ describe("GenerateFromTemplateCard", () => {
     ]);
     expect(JSON.stringify(savePayload)).not.toContain("BARBELL_TOTAL");
     expect(JSON.stringify(savePayload)).not.toContain("185");
+  });
+
+  it("keeps only the latest overlapping regeneration authoritative", async () => {
+    const requestB = deferred<{ ok: boolean; json: () => Promise<unknown> }>();
+    const requestC = deferred<{ ok: boolean; json: () => Promise<unknown> }>();
+    const stale = makeDuplicateSuggestionResponse();
+    stale.workout.mainLifts[0] = {
+      ...stale.workout.mainLifts[0]!,
+      exercise: { id: "push-up", name: "Stale Preview B" },
+    };
+    const newest = makeDuplicateSuggestionResponse();
+    newest.workout.id = "workout-c";
+    newest.workout.mainLifts = [
+      { ...newest.workout.mainLifts[0]!, exercise: { id: "push-up", name: "Push-Up" } },
+      { ...newest.workout.mainLifts[1]!, exercise: { id: "dip", name: "Newest Preview C" } },
+    ];
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => makeDuplicateSuggestionResponse() })
+      .mockImplementationOnce(() => requestB.promise)
+      .mockImplementationOnce(() => requestC.promise)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ workoutId: "workout-c" }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<GenerateFromTemplateCard templates={templates} />);
+    fireEvent.click(screen.getByRole("button", { name: "Generate Workout" }));
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    await screen.findByText("Placement A:");
+    const applyButtons = screen.getAllByRole("button", { name: "Apply" });
+    fireEvent.click(applyButtons[0]!);
+    fireEvent.click(applyButtons[1]!);
+
+    await act(async () => {
+      requestC.resolve({ ok: true, json: async () => newest });
+    });
+    expect(await screen.findByText("Newest Preview C")).toBeInTheDocument();
+    await act(async () => {
+      requestB.resolve({ ok: true, json: async () => stale });
+    });
+
+    expect(screen.queryByText("Stale Preview B")).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("button", { name: "Apply" })).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Save Workout" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    const savePayload = JSON.parse(fetchMock.mock.calls[3]![1].body as string);
+    expect(savePayload.workoutId).toBe("workout-c");
+    expect(savePayload.exercises.map((entry: { exerciseId: string }) => entry.exerciseId)).toEqual([
+      "push-up",
+      "dip",
+    ]);
+  });
+
+  it("ignores a stale failure after a newer regeneration succeeds", async () => {
+    const staleRequest = deferred<{ ok: boolean; json: () => Promise<unknown> }>();
+    const newestRequest = deferred<{ ok: boolean; json: () => Promise<unknown> }>();
+    const newest = makeDuplicateSuggestionResponse();
+    newest.workout.mainLifts[1] = {
+      ...newest.workout.mainLifts[1]!,
+      exercise: { id: "dip", name: "Newest Preview C" },
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => makeDuplicateSuggestionResponse() })
+      .mockImplementationOnce(() => staleRequest.promise)
+      .mockImplementationOnce(() => newestRequest.promise);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<GenerateFromTemplateCard templates={templates} />);
+    fireEvent.click(screen.getByRole("button", { name: "Generate Workout" }));
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    await screen.findByText("Placement A:");
+    const applyButtons = screen.getAllByRole("button", { name: "Apply" });
+    fireEvent.click(applyButtons[0]!);
+    fireEvent.click(applyButtons[1]!);
+    await act(async () => newestRequest.resolve({ ok: true, json: async () => newest }));
+    await screen.findByText("Newest Preview C");
+    await act(async () => staleRequest.resolve({
+      ok: false,
+      json: async () => ({ error: "stale failure" }),
+    }));
+
+    expect(screen.queryByText("stale failure")).not.toBeInTheDocument();
+    expect(screen.getByText("Newest Preview C")).toBeInTheDocument();
+  });
+
+  it("blocks save while regeneration is pending and saves the new canonical preview after success", async () => {
+    const regeneration = deferred<{ ok: boolean; json: () => Promise<unknown> }>();
+    const replacement = makeTemplateGenerationResponse();
+    replacement.workout.id = "workout-new";
+    replacement.workout.mainLifts[0] = {
+      ...replacement.workout.mainLifts[0]!,
+      exercise: { id: "push-up", name: "Push-Up" },
+    };
+    const initial = makeTemplateGenerationResponse();
+    initial.substitutions = [{
+      placementId: "workout-exercise-1",
+      originalExerciseId: "bench-press",
+      originalName: "Bench Press",
+      reason: "Equipment unavailable",
+      alternatives: [{ id: "push-up", name: "Push-Up", score: 0.9 }],
+    }] as never;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => initial })
+      .mockImplementationOnce(() => regeneration.promise)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ workoutId: "workout-new" }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<GenerateFromTemplateCard templates={templates} />);
+    fireEvent.click(screen.getByRole("button", { name: "Generate Workout" }));
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    await screen.findByText("Bench Press");
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    const pendingSave = screen.getByRole("button", { name: "Regenerating..." });
+    expect(pendingSave).toBeDisabled();
+    fireEvent.click(pendingSave);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    await act(async () => regeneration.resolve({ ok: true, json: async () => replacement }));
+    expect(await screen.findByText("Push-Up")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save Workout" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(JSON.parse(fetchMock.mock.calls[2]![1].body as string).workoutId).toBe("workout-new");
+  });
+
+  it("retains the last canonical preview and unapplied state after regeneration failure", async () => {
+    const initial = makeDuplicateSuggestionResponse();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => initial })
+      .mockResolvedValueOnce({ ok: false, json: async () => ({ error: "regeneration failed" }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ workoutId: "workout-1" }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<GenerateFromTemplateCard templates={templates} />);
+    fireEvent.click(screen.getByRole("button", { name: "Generate Workout" }));
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    await screen.findByText("Placement A:");
+    fireEvent.click(screen.getAllByRole("button", { name: "Apply" })[0]!);
+    expect(await screen.findByText("regeneration failed")).toBeInTheDocument();
+    expect(screen.getAllByText("Bench Press")).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Apply" })).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "Save Workout" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    const savePayload = JSON.parse(fetchMock.mock.calls[2]![1].body as string);
+    expect(savePayload.workoutId).toBe("workout-1");
+    expect(savePayload.exercises.every((entry: { exerciseId: string }) => entry.exerciseId === "bench-press")).toBe(true);
+  });
+
+  it("keys duplicate suggestion dismiss and apply actions independently by placement", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => makeDuplicateSuggestionResponse() });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<GenerateFromTemplateCard templates={templates} />);
+    fireEvent.click(screen.getByRole("button", { name: "Generate Workout" }));
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    await screen.findByText("Placement A:");
+    fireEvent.click(screen.getAllByRole("button", { name: "Dismiss" })[0]!);
+    expect(screen.queryByText("Placement A:")).not.toBeInTheDocument();
+    expect(screen.getByText("Placement B:")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(JSON.parse(fetchMock.mock.calls[1]![1].body as string)).toEqual({
+      templateId: "template-1",
+      exerciseReplacements: [{
+        placementId: "bench-b",
+        orderIndex: 1,
+        originalExerciseId: "bench-press",
+        replacementExerciseId: "dip",
+      }],
+    });
   });
 });

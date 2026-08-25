@@ -3762,6 +3762,87 @@ describe("POST /api/workouts/save", () => {
     expect(createMetadata.runtimeEditReconciliation).toBeUndefined();
   });
 
+  it("persists generated-to-row placement correlations and detects one changed duplicate", async () => {
+    const selectionMetadata = buildGeneratedSnapshotSelectionMetadata() as ReturnType<
+      typeof buildGeneratedSnapshotSelectionMetadata
+    > & {
+      sessionAuditSnapshot: {
+        generated: {
+          exerciseCount: number;
+          hardSetCount: number;
+          exercises: Array<Record<string, unknown>>;
+        };
+      };
+    };
+    const generated = selectionMetadata.sessionAuditSnapshot.generated;
+    generated.exerciseCount = 2;
+    generated.hardSetCount = 2;
+    generated.exercises = [
+      {
+        placementId: "bench-a",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        orderIndex: 0,
+        section: "main",
+        isMainLift: true,
+        prescribedSetCount: 1,
+        prescribedSets: [{ setIndex: 1, targetReps: 8, targetRpe: 8, targetLoad: 105 }],
+      },
+      {
+        placementId: "bench-b",
+        exerciseId: "bench",
+        exerciseName: "Bench Press",
+        orderIndex: 1,
+        section: "main",
+        isMainLift: true,
+        prescribedSetCount: 1,
+        prescribedSets: [{ setIndex: 1, targetReps: 8, targetRpe: 8, targetLoad: 95 }],
+      },
+    ];
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-duplicates",
+          selectionMode: "INTENT",
+          sessionIntent: "PUSH",
+          selectionMetadata,
+          exercises: [
+            {
+              placementId: "bench-a",
+              section: "MAIN",
+              exerciseId: "bench",
+              sets: [{ setIndex: 1, targetReps: 8, targetRpe: 8, targetLoad: 95 }],
+            },
+            {
+              placementId: "bench-b",
+              section: "MAIN",
+              exerciseId: "bench",
+              sets: [{ setIndex: 1, targetReps: 8, targetRpe: 8, targetLoad: 95 }],
+            },
+          ],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const metadata = mocks.workoutUpsert.mock.calls[0]![0].create.selectionMetadata;
+    const createdRowIds = mocks.workoutExerciseCreate.mock.calls.map(
+      (call) => call[0].data.id,
+    );
+    expect(metadata.sessionAuditSnapshot.saved.placementCorrelations).toEqual([
+      { generatedPlacementId: "bench-a", persistedWorkoutExerciseId: createdRowIds[0] },
+      { generatedPlacementId: "bench-b", persistedWorkoutExerciseId: createdRowIds[1] },
+    ]);
+    expect(metadata.workoutStructureState.reconciliation).toMatchObject({
+      comparisonState: "comparable",
+      hasDrift: true,
+      placementsWithPrescriptionChanges: ["bench-a"],
+    });
+  });
+
   it("rejects save_plan when canonical receipt metadata is missing", async () => {
     const response = await POST(
       new Request("http://localhost/api/workouts/save", {

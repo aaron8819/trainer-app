@@ -136,6 +136,7 @@ export async function buildHistoricalWeekAuditPayload(input: {
       exercises: {
         orderBy: [{ orderIndex: "asc" }, { id: "asc" }],
         select: {
+          id: true,
           exerciseId: true,
           orderIndex: true,
           section: true,
@@ -315,6 +316,7 @@ export async function buildHistoricalWeekAuditPayload(input: {
   let reconstructedSnapshotCount = 0;
   let comparableSessionCount = 0;
   let missingGeneratedSnapshotCount = 0;
+  let ambiguousCorrelationCount = 0;
   let mutationDriftCount = 0;
   let exactSeedProvenanceCount = 0;
   let legacyUnknownSeedProvenanceCount = 0;
@@ -341,6 +343,9 @@ export async function buildHistoricalWeekAuditPayload(input: {
       comparableSessionCount += 1;
     } else {
       missingGeneratedSnapshotCount += 1;
+      if (session.reconciliation.comparisonState === "ambiguous_exercise_correlation") {
+        ambiguousCorrelationCount += 1;
+      }
     }
     if (session.weekClose?.relevant) {
       weekCloseRelevantCount += 1;
@@ -395,6 +400,11 @@ export async function buildHistoricalWeekAuditPayload(input: {
       `${reconstructedSnapshotCount} session(s) were reconstructed from saved workout state only. ${AUDIT_RECONSTRUCTION_GUARDRAIL}`
     );
   }
+  if (ambiguousCorrelationCount > 0) {
+    limitations.push(
+      `${ambiguousCorrelationCount} session(s) have ambiguous duplicate exercise placement correlation; generated-vs-saved drift fails closed for those sessions.`
+    );
+  }
 
   return {
     version: HISTORICAL_WEEK_AUDIT_PAYLOAD_VERSION,
@@ -425,6 +435,7 @@ export async function buildHistoricalWeekAuditPayload(input: {
     comparabilityCoverage: {
       comparableSessionCount,
       missingGeneratedSnapshotCount,
+      ...(ambiguousCorrelationCount > 0 ? { ambiguousCorrelationCount } : {}),
       persistedSnapshotCount,
       reconstructedSnapshotCount,
       generatedLayerCoverage:

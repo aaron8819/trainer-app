@@ -69,6 +69,7 @@ export const generateFromTemplateSchema = z.object({
     .array(
       z
         .object({
+          placementId: z.string().min(1),
           orderIndex: z.number().int().nonnegative(),
           originalExerciseId: z.string().min(1),
           replacementExerciseId: z.string().min(1),
@@ -78,9 +79,15 @@ export const generateFromTemplateSchema = z.object({
     .max(20)
     .refine(
       (replacements) =>
-        new Set(replacements.map((replacement) => replacement.orderIndex)).size ===
+        new Set(replacements.map((replacement) => replacement.placementId)).size ===
         replacements.length,
       "Exercise replacement placements must be unique",
+    )
+    .refine(
+      (replacements) =>
+        new Set(replacements.map((replacement) => replacement.orderIndex)).size ===
+        replacements.length,
+      "Exercise replacement order indexes must be unique",
     )
     .optional(),
 });
@@ -193,6 +200,7 @@ const saveWorkoutPayloadSchema = z.object({
       .array(
         z.object({
           section: z.enum(WORKOUT_EXERCISE_SECTION_VALUES),
+          placementId: z.string().min(1).optional(),
           exerciseId: z.string(),
           measurement: measurementSemanticsSchema.optional(),
           sets: z

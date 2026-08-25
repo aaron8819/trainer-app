@@ -74,8 +74,19 @@ function buildTargetEffortLoadMismatchWarnings(
   }
 
   const warnings: string[] = [];
+  const canonicalCounts = new Map<string, number>();
   for (const exercise of generated.exercises) {
-    const trace = generated.traces.progression[exercise.exerciseId];
+    canonicalCounts.set(
+      exercise.exerciseId,
+      (canonicalCounts.get(exercise.exerciseId) ?? 0) + 1,
+    );
+  }
+  for (const exercise of generated.exercises) {
+    const trace = exercise.placementId
+      ? generated.traces.progression[exercise.placementId]
+      : canonicalCounts.get(exercise.exerciseId) === 1
+        ? generated.traces.progression[exercise.exerciseId]
+        : undefined;
     const target = resolveRepresentativeTarget(exercise, trace);
     if (!trace || !target) {
       continue;

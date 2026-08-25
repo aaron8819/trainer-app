@@ -7,6 +7,7 @@ import {
   buildSavedSessionAuditSnapshot,
 } from "@/lib/evidence/session-audit-snapshot";
 import { reconcileRuntimeEditSelectionMetadata } from "@/lib/api/runtime-edit-reconciliation";
+import type { SessionAuditSavedState } from "@/lib/evidence/session-audit-types";
 
 export {
   extractSessionDecisionReceipt,
@@ -64,6 +65,7 @@ export function attachSavedSessionAuditSnapshot(input: {
   mesocycleWeekSnapshot?: number | null;
   mesoSessionSnapshot?: number | null;
   mesocyclePhaseSnapshot?: string | null;
+  placementCorrelations?: SessionAuditSavedState["placementCorrelations"];
 }): JsonObject {
   return attachSessionAuditSnapshotToSelectionMetadata(
     input.selectionMetadata,

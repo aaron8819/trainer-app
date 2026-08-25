@@ -40,6 +40,7 @@ export type TemplateExerciseInput = {
 export type { VolumePlanByMuscle } from "./volume";
 
 export type SubstitutionSuggestion = {
+  placementId: string;
   originalExerciseId: string;
   originalName: string;
   reason: string;
@@ -135,6 +136,7 @@ export function generateWorkoutFromTemplate(
         );
         if (subs.length > 0) {
           substitutions.push({
+            placementId: we.id,
             originalExerciseId: we.exercise.id,
             originalName: we.exercise.name,
             reason: `${formatPainFlag(conflictingBodyParts[0])} pain flagged`,
@@ -230,11 +232,11 @@ export function generateWorkoutFromTemplate(
     notes: notesParts.length > 0 ? notesParts.join(". ") : undefined,
   };
 
-  const finalExerciseIds = new Set(
-    [...workout.mainLifts, ...workout.accessories].map((exercise) => exercise.exercise.id)
+  const finalPlacementIds = new Set(
+    [...workout.mainLifts, ...workout.accessories].map((exercise) => exercise.id)
   );
   const filteredSubstitutions = substitutions.filter((suggestion) =>
-    finalExerciseIds.has(suggestion.originalExerciseId)
+    finalPlacementIds.has(suggestion.placementId)
   );
 
   return {

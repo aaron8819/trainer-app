@@ -591,6 +591,14 @@ export async function POST(request: Request) {
           mesoSnapshot?.session ?? existingWorkout?.mesoSessionSnapshot,
         mesocyclePhaseSnapshot:
           mesoSnapshot?.phase ?? existingWorkout?.mesocyclePhaseSnapshot,
+        placementCorrelations: preparedExercises?.flatMap((exercise) =>
+          exercise.placementId && exercise.persistedWorkoutExerciseId
+            ? [{
+                generatedPlacementId: exercise.placementId,
+                persistedWorkoutExerciseId: exercise.persistedWorkoutExerciseId,
+              }]
+            : [],
+        ),
       });
       if (hasExerciseRewrite) {
         selectionMetadata = reconcileRuntimeEditSelectionMetadata({
@@ -598,7 +606,7 @@ export async function POST(request: Request) {
           selectionMode: effectiveSelectionMode,
           sessionIntent: effectiveSessionIntent,
           persistedExercises: buildPersistedExercisesForSave(
-            parsed.data.exercises!,
+            preparedExercises!,
           ),
           mutation: {
             kind: "rewrite_structure",

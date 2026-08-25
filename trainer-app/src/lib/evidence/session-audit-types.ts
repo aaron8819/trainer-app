@@ -149,6 +149,7 @@ export type ProgressionDecisionTrace = {
 };
 
 export type DeloadExerciseTransformationTrace = {
+  placementId?: string;
   exerciseId: string;
   exerciseName: string;
   isMainLift: boolean;
@@ -248,6 +249,10 @@ export type SessionAuditSavedState = {
     phase?: string | null;
   };
   semantics: SessionAuditSemanticsSnapshot;
+  placementCorrelations?: Array<{
+    generatedPlacementId: string;
+    persistedWorkoutExerciseId: string;
+  }>;
 };
 
 export type SessionAuditSnapshot = {
@@ -268,13 +273,19 @@ export type SessionAuditMutationChangedField =
 
 export type SessionAuditMutationSummary = {
   version: 1;
-  comparisonState: "comparable" | "missing_generated_snapshot";
-  hasDrift: boolean;
+  comparisonState:
+    | "comparable"
+    | "missing_generated_snapshot"
+    | "ambiguous_exercise_correlation";
+  hasDrift: boolean | null;
   changedFields: SessionAuditMutationChangedField[];
   addedExerciseIds: string[];
   removedExerciseIds: string[];
   exercisesWithSetCountChanges: string[];
   exercisesWithPrescriptionChanges: string[];
+  placementsWithSetCountChanges?: string[];
+  placementsWithPrescriptionChanges?: string[];
+  ambiguousExerciseIds?: string[];
   generatedSelectionMode?: string;
   savedSelectionMode?: string;
   generatedSessionIntent?: string;

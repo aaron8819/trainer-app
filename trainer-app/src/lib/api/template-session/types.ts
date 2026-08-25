@@ -44,6 +44,7 @@ export type GenerateTemplateSessionParams = {
   autoFillUnpinned?: boolean;
   slotId?: string;
   exerciseReplacements?: Array<{
+    placementId: string;
     orderIndex: number;
     originalExerciseId: string;
     replacementExerciseId: string;

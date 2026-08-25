@@ -1342,6 +1342,7 @@ function applyRuntimeEditMetadata(input: {
 }) {
   let selectionMetadata = input.selectionMetadata;
   const persistedExercises = input.persistedExercises.map((exercise) => ({
+    id: exercise.workoutExerciseId,
     exerciseId: exercise.exerciseId,
     orderIndex: exercise.orderIndex,
     section: exercise.section,

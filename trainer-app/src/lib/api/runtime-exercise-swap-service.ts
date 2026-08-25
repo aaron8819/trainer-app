@@ -90,6 +90,7 @@ type SwapContext = {
 };
 
 type PersistedExerciseRecord = {
+  id: string;
   exerciseId: string;
   orderIndex: number;
   section: string | null;
@@ -771,6 +772,7 @@ async function resolveRuntimeExerciseSwap(input: {
 function mapPersistedExercises(
   persistedExercises: PersistedExerciseRecord[],
 ): Array<{
+  id: string;
   exerciseId: string;
   orderIndex: number;
   section: RuntimeExerciseSwapExercisePayload["section"];
@@ -786,6 +788,7 @@ function mapPersistedExercises(
   }>;
 }> {
   return persistedExercises.map((exercise) => ({
+    id: exercise.id,
     exerciseId: exercise.exerciseId,
     orderIndex: exercise.orderIndex,
     section: normalizeWorkoutSection(exercise.section),
@@ -998,6 +1001,7 @@ export async function applyRuntimeExerciseSwap(input: {
       where: { workoutId: resolution.context.workout.id },
       orderBy: [{ orderIndex: "asc" }, { id: "asc" }],
       select: {
+        id: true,
         exerciseId: true,
         orderIndex: true,
         section: true,

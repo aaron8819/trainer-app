@@ -15,6 +15,7 @@ import type { DeloadTransformationTrace } from "@/lib/evidence/session-audit-typ
 import type { SessionCompositionSource } from "@/lib/evidence/types";
 import type { MappedGenerationContext } from "./types";
 import { resolveRequiredSeededSlotPlan } from "./slot-plan-seed";
+import { readSessionAuditSnapshot } from "@/lib/evidence/session-audit-snapshot";
 
 function modalNumber(values: number[]): number | undefined {
   const freq = new Map<number, number>();
@@ -180,9 +181,6 @@ export async function generateDeloadSessionFromIntentContext(
       ? "legacy_fallback"
       : "deload_seed_replay"
     : "legacy_fallback";
-  const seededRoleById = new Map(
-    (orderedSeedExercises ?? []).map((exercise) => [exercise.exerciseId, exercise.role] as const)
-  );
   const fallbackRoleMap =
     orderedSeedExercises == null
       ? mapped.mesocycleRoleMapByIntent?.[sessionIntent] ?? new Map<string, "CORE_COMPOUND" | "ACCESSORY">()
@@ -192,17 +190,29 @@ export async function generateDeloadSessionFromIntentContext(
       .filter(([, role]) => role === "CORE_COMPOUND")
       .map(([exerciseId]) => exerciseId)
   );
-  const orderedExerciseIds = orderedSeedExercises
-    ? orderedSeedExercises.map((exercise) => exercise.exerciseId)
+  const orderedPlacements = orderedSeedExercises
+    ? orderedSeedExercises.map((exercise, orderIndex) => ({
+        placementId: exercise.placementId ?? `legacy-seed:${orderIndex}:${exercise.exerciseId}`,
+        exerciseId: exercise.exerciseId,
+        role: exercise.role as "CORE_COMPOUND" | "ACCESSORY" | undefined,
+      }))
     : (() => {
-        const baselineExerciseIds = latestAccumWorkout.exercises.map((exercise) => exercise.exerciseId);
-        const fallbackOrderedExerciseIds = [...baselineExerciseIds];
+        const baselinePlacements = latestAccumWorkout.exercises.map((exercise, orderIndex) => ({
+          placementId: exercise.id ?? `legacy-workout:${orderIndex}:${exercise.exerciseId}`,
+          exerciseId: exercise.exerciseId,
+          role: undefined as "CORE_COMPOUND" | "ACCESSORY" | undefined,
+        }));
+        const fallbackOrderedPlacements = [...baselinePlacements];
         for (const coreId of fallbackCoreIds) {
-          if (!fallbackOrderedExerciseIds.includes(coreId)) {
-            fallbackOrderedExerciseIds.push(coreId);
+          if (!fallbackOrderedPlacements.some((entry) => entry.exerciseId === coreId)) {
+            fallbackOrderedPlacements.push({
+              placementId: `legacy-fallback:${coreId}`,
+              exerciseId: coreId,
+              role: undefined,
+            });
           }
         }
-        return fallbackOrderedExerciseIds;
+        return fallbackOrderedPlacements;
       })();
 
   const exerciseById = new Map(mapped.exerciseLibrary.map((exercise) => [exercise.id, exercise]));
@@ -212,6 +222,7 @@ export async function generateDeloadSessionFromIntentContext(
   const baselineExerciseDetails = new Map<
     string,
     {
+      placementId: string;
       exerciseId: string;
       exerciseName: string;
       orderIndex: number;
@@ -232,18 +243,35 @@ export async function generateDeloadSessionFromIntentContext(
     }
   >();
 
-  for (const [orderIndex, exerciseId] of orderedExerciseIds.entries()) {
+  const findWorkoutPlacement = (
+    workout: typeof latestAccumWorkout,
+    placementId: string,
+    exerciseId: string,
+  ) => {
+    const persistedId = readSessionAuditSnapshot(workout.selectionMetadata)?.saved
+      ?.placementCorrelations?.find((entry) => entry.generatedPlacementId === placementId)
+      ?.persistedWorkoutExerciseId;
+    if (persistedId) {
+      return workout.exercises.find((entry) => entry.id === persistedId);
+    }
+    const canonicalMatches = workout.exercises.filter((entry) => entry.exerciseId === exerciseId);
+    return canonicalMatches.length === 1 ? canonicalMatches[0] : undefined;
+  };
+
+  for (const [orderIndex, placement] of orderedPlacements.entries()) {
+    const { placementId, exerciseId } = placement;
     const exercise = exerciseById.get(exerciseId);
     if (!exercise) continue;
 
-    const latestExerciseEntry = latestAccumWorkout.exercises.find((entry) => entry.exerciseId === exerciseId);
+    const latestExerciseEntry = findWorkoutPlacement(latestAccumWorkout, placementId, exerciseId);
     const baselineExerciseEntry =
       latestExerciseEntry ??
-      peakAccumulationSource
-        .flatMap((workout) => workout.exercises)
-        .find((entry) => entry.exerciseId === exerciseId);
+      peakAccumulationSource.flatMap((workout) => {
+        const entry = findWorkoutPlacement(workout, placementId, exerciseId);
+        return entry ? [entry] : [];
+      })[0];
     const mesocycleRole =
-      seededRoleById.get(exerciseId) ??
+      placement.role ??
       fallbackRoleMap.get(exerciseId);
     const isMainLift =
       mesocycleRole != null
@@ -259,8 +287,10 @@ export async function generateDeloadSessionFromIntentContext(
       ? getPositiveLoggedLoads(latestExerciseEntry.sets)
       : [];
     const peakAccumulationLoads = peakAccumulationSource
-      .flatMap((workout) => workout.exercises)
-      .filter((entry) => entry.exerciseId === exerciseId)
+      .flatMap((workout) => {
+        const entry = findWorkoutPlacement(workout, placementId, exerciseId);
+        return entry ? [entry] : [];
+      })
       .flatMap((entry) => getPositiveLoggedLoads(entry.sets));
     const accumulationAnchor = resolveAccumulationAnchor({
       latestLoads: latestAccumulationLoads,
@@ -269,7 +299,8 @@ export async function generateDeloadSessionFromIntentContext(
       isMainLift,
     });
 
-    baselineExerciseDetails.set(exerciseId, {
+    baselineExerciseDetails.set(placementId, {
+      placementId,
       exerciseId,
       exerciseName: exercise.name,
       orderIndex,
@@ -295,7 +326,9 @@ export async function generateDeloadSessionFromIntentContext(
   const workoutExercises: WorkoutExercise[] = [];
   const traceExercises: DeloadTransformationTrace["exercises"] = [];
   for (const keptExercise of structuralPolicy.keptExercises) {
-    const detail = baselineExerciseDetails.get(keptExercise.exerciseId);
+    const detail = keptExercise.placementId
+      ? baselineExerciseDetails.get(keptExercise.placementId)
+      : undefined;
     const exercise = exerciseById.get(keptExercise.exerciseId);
     if (!detail || !exercise) {
       continue;
@@ -309,7 +342,7 @@ export async function generateDeloadSessionFromIntentContext(
     );
 
     workoutExercises.push({
-      id: createId(),
+      id: detail.placementId ?? createId(),
       exercise,
       orderIndex: detail.orderIndex,
       isMainLift: keptExercise.isMainLift,
@@ -317,6 +350,7 @@ export async function generateDeloadSessionFromIntentContext(
       sets: setPlan,
     });
     traceExercises.push({
+      placementId: detail.placementId,
       exerciseId: detail.exerciseId,
       exerciseName: detail.exerciseName,
       isMainLift: keptExercise.isMainLift,
@@ -373,6 +407,7 @@ export async function generateDeloadSessionFromIntentContext(
     maxAccessoryCount: structuralPolicy.policy.maxAccessoryCount,
     exercises: traceExercises,
     trimmedExercises: structuralPolicy.droppedExercises.map((exercise) => ({
+      ...(exercise.placementId ? { placementId: exercise.placementId } : {}),
       exerciseId: exercise.exerciseId,
       exerciseName: exercise.exerciseName,
       isMainLift: exercise.isMainLift,

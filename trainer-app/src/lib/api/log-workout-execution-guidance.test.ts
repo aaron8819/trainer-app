@@ -264,6 +264,75 @@ describe("log workout execution guidance", () => {
     ).toEqual([]);
   });
 
+  it("keeps duplicate canonical guidance scoped to persisted placements", () => {
+    const guidance = buildLogWorkoutExecutionGuidanceByExercise(
+      makeCard({
+        workoutPreview: {
+          source: "generated_session_audit_snapshot",
+          targetRpeLabel: "RPE 8",
+          exercises: [
+            {
+              placementId: "row-a",
+              exerciseId: "bench",
+              exerciseName: "Bench Press",
+              setCount: 3,
+              repTargetLabel: "8 reps",
+              targetLoadLabel: "105 lb",
+              targetRpeLabel: "RPE 8",
+            },
+            {
+              placementId: "row-b",
+              exerciseId: "bench",
+              exerciseName: "Bench Press",
+              setCount: 3,
+              repTargetLabel: "8 reps",
+              targetLoadLabel: "95 lb",
+              targetRpeLabel: "RPE 8",
+            },
+          ],
+        },
+        calibrationNotes: [
+          {
+            kind: "prescription_confidence",
+            placementId: "row-a",
+            exerciseLabel: "Bench Press",
+            message: "Placement A guidance",
+            displayActionCode: "hold_target_load",
+          },
+          {
+            kind: "prescription_confidence",
+            placementId: "row-b",
+            exerciseLabel: "Bench Press",
+            message: "Placement B guidance",
+            displayActionCode: "hold_target_load",
+          },
+        ],
+      }),
+    );
+
+    expect(
+      getLogWorkoutExecutionGuidanceForExercise(guidance, {
+        placementId: "row-a",
+        exerciseId: "bench",
+        name: "Bench Press",
+      }),
+    ).toEqual([expect.objectContaining({ message: "Placement A guidance" })]);
+    expect(
+      getLogWorkoutExecutionGuidanceForExercise(guidance, {
+        placementId: "row-b",
+        exerciseId: "bench",
+        name: "Bench Press",
+      }),
+    ).toEqual([expect.objectContaining({ message: "Placement B guidance" })]);
+    expect(
+      getLogWorkoutExecutionGuidanceForExercise(guidance, {
+        exerciseId: "bench",
+        name: "Bench Press",
+        hasAmbiguousName: true,
+      }),
+    ).toEqual([]);
+  });
+
   it("does not leak raw classifications, evidence codes, traces, or mutation flags", () => {
     const json = JSON.stringify(buildLogWorkoutExecutionGuidanceByExercise(makeCard()));
 
@@ -308,7 +377,7 @@ describe("log workout execution guidance", () => {
         userId: "user-1",
         workoutId: "other-workout",
       })
-    ).resolves.toEqual({ byExerciseId: {}, byExerciseName: {} });
+    ).resolves.toEqual({ byPlacementId: {}, byExerciseId: {}, byExerciseName: {} });
   });
 
   it("does not import audit artifacts, generation internals, or mutation writers", () => {

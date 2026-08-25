@@ -218,6 +218,17 @@ export async function generateWorkoutExplanation(
   const exerciseRationales = new Map();
   const selectionObjective = buildSelectionObjective();
   const workoutExerciseIds = new Set(workout.exercises.map((exercise) => exercise.exerciseId));
+  const workoutExerciseCounts = new Map<string, number>();
+  for (const workoutExercise of workout.exercises) {
+    workoutExerciseCounts.set(
+      workoutExercise.exerciseId,
+      (workoutExerciseCounts.get(workoutExercise.exerciseId) ?? 0) + 1,
+    );
+  }
+  const getExplanationKey = (workoutExercise: (typeof workout.exercises)[number]) =>
+    workoutExerciseCounts.get(workoutExercise.exerciseId) === 1
+      ? workoutExercise.exerciseId
+      : workoutExercise.id;
   const storedRationaleByExerciseId = parseStoredRationale(
     workout.selectionMetadata,
     workoutExerciseIds
@@ -234,7 +245,7 @@ export async function generateWorkoutExplanation(
     );
     if (candidate) {
       const rationale = explainExerciseRationale(candidate, selectionObjective, mappedExercises);
-      exerciseRationales.set(workoutExercise.exerciseId, rationale);
+      exerciseRationales.set(getExplanationKey(workoutExercise), rationale);
     }
   }
 
@@ -304,7 +315,8 @@ export async function generateWorkoutExplanation(
       measurementSnapshot,
     });
 
-    prescriptionRationales.set(workoutExercise.exerciseId, rationale);
+    const explanationKey = getExplanationKey(workoutExercise);
+    prescriptionRationales.set(explanationKey, rationale);
 
     if (runtimeAddedExerciseIds.has(workoutExercise.id)) {
       continue;
@@ -354,10 +366,11 @@ export async function generateWorkoutExplanation(
     const isReadinessScaled = sessionEvidence.readinessScaledExerciseIds.has(workoutExercise.exerciseId);
     const generatedProgressionEvidence = resolveGeneratedProgressionEvidence(
       sessionAuditSnapshot,
+      workoutExercise.id,
       workoutExercise.exerciseId
     );
     progressionReceipts.set(
-      workoutExercise.exerciseId,
+      explanationKey,
       buildProgressionReceipt(
         lastPerformed,
         todayPrescription,
@@ -418,7 +431,7 @@ export async function generateWorkoutExplanation(
       }
     );
     if (nextExposureDecision) {
-      nextExposureDecisions.set(workoutExercise.exerciseId, nextExposureDecision);
+      nextExposureDecisions.set(explanationKey, nextExposureDecision);
     }
   }
 
@@ -1460,6 +1473,7 @@ function summarizeTodayTopSet(
 
 function resolveGeneratedProgressionEvidence(
   sessionAuditSnapshot: ReturnType<typeof readSessionAuditSnapshot>,
+  workoutExerciseId: string,
   exerciseId: string
 ): GeneratedProgressionEvidence {
   const generated = sessionAuditSnapshot?.generated;
@@ -1467,12 +1481,28 @@ function resolveGeneratedProgressionEvidence(
     return "unknown";
   }
 
-  const generatedExerciseIds = new Set(generated.exercises.map((exercise) => exercise.exerciseId));
-  if (!generatedExerciseIds.has(exerciseId)) {
+  const generatedPlacementId =
+    sessionAuditSnapshot?.saved?.placementCorrelations?.find(
+      (entry) => entry.persistedWorkoutExerciseId === workoutExerciseId,
+    )?.generatedPlacementId ?? workoutExerciseId;
+  const exactPlacement = generated.exercises.find(
+    (exercise) => exercise.placementId === generatedPlacementId,
+  );
+  const canonicalMatches = generated.exercises.filter(
+    (exercise) => exercise.exerciseId === exerciseId,
+  );
+  const matchedExercise = exactPlacement ??
+    (canonicalMatches.length === 1 ? canonicalMatches[0] : undefined);
+  if (!matchedExercise) {
     return "unknown";
   }
 
-  return generated.traces.progression[exerciseId] ? "confirmed" : "absent";
+  const trace = matchedExercise.placementId
+    ? generated.traces.progression[matchedExercise.placementId]
+    : canonicalMatches.length === 1
+      ? generated.traces.progression[exerciseId]
+      : undefined;
+  return trace ? "confirmed" : "absent";
 }
 
 function buildProgressionReceipt(

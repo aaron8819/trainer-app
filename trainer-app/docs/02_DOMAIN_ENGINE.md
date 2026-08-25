@@ -76,15 +76,33 @@ resolved before an existing positive target can be preserved. Only semantically
 valid external-load work may retain a positive existing target.
 
 Template-preview exercise replacement is a pre-save canonical regeneration,
-not a local object rewrite. The client identifies the original template
-placement by its explicit `orderIndex` and original canonical exercise ID; the
-server validates that placement, installs the replacement's catalog measurement
+not a local object rewrite. Each suggestion targets the stable
+`WorkoutTemplateExercise.id` placement; `orderIndex` and the original canonical
+exercise ID are validation facts, not substitute identities. The server validates
+that exact placement, installs the replacement's catalog measurement
 and zero-load semantics, clears incompatible carried placement state, and runs
 normal materialization, prescription, readiness, projection, audit, and readout
-construction before the returned workout can be saved. Active-workout swaps
+construction before the returned workout can be saved. Applied and dismissed UI
+state use the same placement identity. A monotonic request sequence makes only
+the latest user-intended regeneration authoritative; stale success and failure
+responses cannot update the preview or applied state. The last completed preview
+remains visible while regeneration is pending, but save is disabled until that
+request completes. Failure retains the last completed canonical preview and does
+not mark the requested substitution applied. Active-workout swaps
 remain explicit session-local reconciliations outside canonical generation;
 their carried or adjusted targets are deviation evidence, not canonical
 replacement-exercise prescription authority.
+
+Save carries each generated `WorkoutExercise.id` as a placement correlation fact.
+The save owner assigns the persisted `WorkoutExercise.id` and stores the explicit
+generated-placement-to-persisted-row mapping in the saved session-audit layer.
+Generated-vs-saved reconciliation matches those occurrence identities, so
+duplicate canonical exercise placements cannot overwrite one another. Canonical
+exercise-ID fallback is permitted only for a one-generated/one-persisted unique
+occurrence. Legacy or incomplete duplicate data without an unambiguous mapping
+returns `ambiguous_exercise_correlation` with `hasDrift=null`; it never reports
+false no-drift. Readiness trace/readout canonical-ID fallback follows the same
+uniqueness rule and omits ambiguous duplicate correlation.
 
 Deload evidence remains excluded from accumulation progression. Explicit zero
 continues to use only the existing `BODYWEIGHT_NO_ADDED_LOAD` and

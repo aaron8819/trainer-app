@@ -361,6 +361,69 @@ describe("buildHistoricalWeekAuditPayload", () => {
     });
   });
 
+  it("reports ambiguous duplicate placement correlation as non-comparable", async () => {
+    const duplicatePlan = {
+      ...workoutPlan,
+      mainLifts: [
+        { ...workoutPlan.mainLifts[0], id: "bench-a", orderIndex: 0 },
+        { ...workoutPlan.mainLifts[0], id: "bench-b", orderIndex: 1 },
+      ],
+    } as unknown as WorkoutPlan;
+    const generated = buildGeneratedSessionAuditSnapshot({
+      workout: duplicatePlan,
+      selectionMode: "INTENT",
+      sessionIntent: "PUSH",
+      selectionMetadata: { sessionDecisionReceipt: receipt },
+      advancesSplit: true,
+    });
+    const saved = buildSavedSessionAuditSnapshot({
+      selectionMetadata: attachSessionAuditSnapshotToSelectionMetadata({}, generated),
+      workoutId: "ambiguous-workout",
+      status: "COMPLETED",
+      advancesSplit: true,
+      selectionMode: "INTENT",
+      sessionIntent: "PUSH",
+    });
+    mocks.workoutFindMany.mockResolvedValue([{
+      id: "ambiguous-workout",
+      scheduledDate: new Date("2026-03-12T00:00:00.000Z"),
+      status: "COMPLETED",
+      revision: 1,
+      advancesSplit: true,
+      selectionMode: "INTENT",
+      sessionIntent: "PUSH",
+      selectionMetadata: { sessionAuditSnapshot: saved },
+      seedRevisionId: null,
+      seedRevisionNumber: null,
+      seedPayloadHash: null,
+      mesocycleId: "meso-1",
+      mesocycleWeekSnapshot: 4,
+      mesoSessionSnapshot: 1,
+      mesocyclePhaseSnapshot: "ACCUMULATION",
+      exercises: [
+        { id: "row-a", exerciseId: "bench", orderIndex: 0, section: "MAIN", isMainLift: true, role: "main", exercise: { name: "Bench Press" }, sets: [{ setIndex: 1, targetReps: 8, targetRpe: 8, targetLoad: 200, role: "main" }] },
+        { id: "row-b", exerciseId: "bench", orderIndex: 1, section: "MAIN", isMainLift: true, role: "main", exercise: { name: "Bench Press" }, sets: [{ setIndex: 1, targetReps: 8, targetRpe: 8, targetLoad: 200, role: "main" }] },
+      ],
+    }]);
+    mocks.mesocycleWeekCloseFindMany.mockResolvedValue([]);
+
+    const payload = await buildHistoricalWeekAuditPayload({ userId: "user-1", week: 4, mesocycleId: "meso-1" });
+
+    expect(payload.sessions[0]?.reconciliation).toMatchObject({
+      comparisonState: "ambiguous_exercise_correlation",
+      hasDrift: null,
+      ambiguousExerciseIds: ["bench"],
+    });
+    expect(payload.comparabilityCoverage).toMatchObject({
+      comparableSessionCount: 0,
+      ambiguousCorrelationCount: 1,
+      generatedLayerCoverage: "none",
+    });
+    expect(payload.comparabilityCoverage.limitations).toEqual(
+      expect.arrayContaining([expect.stringContaining("fails closed")]),
+    );
+  });
+
   it("flags missing workout provenance when a seeded receipt is present", async () => {
     mocks.workoutFindMany.mockResolvedValue([{
       id: "seeded-without-workout-provenance",

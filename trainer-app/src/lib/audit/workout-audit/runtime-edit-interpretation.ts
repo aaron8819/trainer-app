@@ -15,6 +15,7 @@ import type {
 } from "./types";
 
 export type RuntimeEditExerciseContext = {
+  workoutExerciseId?: string;
   exerciseId: string;
   exerciseName?: string;
   primaryMuscles?: string[];
@@ -62,9 +63,21 @@ function normalizeMuscles(muscles: Iterable<string>): string[] {
 function buildExerciseMap(
   contexts: Iterable<RuntimeEditExerciseContext> | undefined
 ): Map<string, RuntimeEditExerciseContext> {
-  return new Map(
-    Array.from(contexts ?? []).map((context) => [context.exerciseId, context])
-  );
+  const rows = Array.from(contexts ?? []);
+  const canonicalCounts = new Map<string, number>();
+  for (const context of rows) {
+    canonicalCounts.set(context.exerciseId, (canonicalCounts.get(context.exerciseId) ?? 0) + 1);
+  }
+  const byId = new Map<string, RuntimeEditExerciseContext>();
+  for (const context of rows) {
+    if (context.workoutExerciseId) {
+      byId.set(context.workoutExerciseId, context);
+    }
+    if (canonicalCounts.get(context.exerciseId) === 1) {
+      byId.set(context.exerciseId, context);
+    }
+  }
+  return byId;
 }
 
 function buildTargetMap(

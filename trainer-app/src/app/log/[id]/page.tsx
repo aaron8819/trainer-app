@@ -135,6 +135,7 @@ function attachLogExerciseExecutionGuidance(
     const executionGuidance = getLogWorkoutExecutionGuidanceForExercise(
       guidanceByExercise,
       {
+        placementId: exercise.workoutExerciseId,
         exerciseId: exercise.exerciseId,
         name: exercise.name,
         hasAmbiguousName:

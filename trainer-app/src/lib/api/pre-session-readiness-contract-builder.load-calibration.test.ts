@@ -10,7 +10,17 @@ vi.mock("./home-pre-session-readiness", () => ({
   resolveHomePreSessionReadinessContract: vi.fn(),
 }));
 
-function buildContract(readouts: PrescriptionConfidenceReadout[]) {
+function buildContract(
+  readouts: PrescriptionConfidenceReadout[],
+  generatedSnapshot?: {
+    exercises: Array<{ placementId?: string; exerciseId: string; exerciseName: string }>;
+    traces: { progression: Record<string, unknown> };
+    placementCorrelations?: Array<{
+      generatedPlacementId: string;
+      persistedWorkoutExerciseId: string;
+    }>;
+  },
+) {
   return buildPreSessionReadinessContract({
     userId: "user-1",
     evidence: {
@@ -36,16 +46,19 @@ function buildContract(readouts: PrescriptionConfidenceReadout[]) {
     sessionSnapshot: {
       version: 1,
       generated: {
-        exercises: readouts.map((readout, orderIndex) => ({
-          placementId: readout.placementId,
-          exerciseId: readout.exerciseId,
-          exerciseName: readout.exerciseName,
+        exercises: (generatedSnapshot?.exercises ?? readouts).map((exercise, orderIndex) => ({
+          ...(exercise.placementId ? { placementId: exercise.placementId } : {}),
+          exerciseId: exercise.exerciseId,
+          exerciseName: exercise.exerciseName,
           orderIndex,
           prescribedSetCount: 1,
           prescribedSets: [],
         })),
-        traces: { progression: {} },
+        traces: generatedSnapshot?.traces ?? { progression: {} },
       },
+      ...(generatedSnapshot?.placementCorrelations
+        ? { saved: { placementCorrelations: generatedSnapshot.placementCorrelations } }
+        : {}),
     } as never,
     projectedWeek: {
       version: 1,
@@ -84,6 +97,11 @@ function readout(
 }
 
 describe("V4 load-calibration presentation", () => {
+  const legacyTrace = {
+    confidence: { combinedScale: 0.5, reasons: ["low signal"] },
+    outcome: { action: "hold" },
+  };
+
   it("keeps duplicate canonical exercises correlated to their placement readouts", () => {
     const contract = buildContract([
       readout({
@@ -106,6 +124,100 @@ describe("V4 load-calibration presentation", () => {
       { placementId: "bench-placement-a", targetLoad: 105 },
       { placementId: "bench-placement-b", targetLoad: 95 },
     ]);
+  });
+
+  it("uses legacy canonical trace fallback only for a unique occurrence", () => {
+    const contract = buildContract([], {
+      exercises: [{ exerciseId: "bench", exerciseName: "Bench Press" }],
+      traces: { progression: { bench: legacyTrace } },
+    });
+
+    expect(contract.calibrationWatches.prescriptionConfidence).toEqual([
+      expect.objectContaining({
+        exerciseLabel: "Bench Press",
+        reasonCode: "estimate_or_low_signal",
+        confidence: 0.5,
+      }),
+    ]);
+  });
+
+  it("fails closed instead of sharing a legacy canonical trace across duplicates", () => {
+    const contract = buildContract([], {
+      exercises: [
+        { exerciseId: "bench", exerciseName: "Bench Press A" },
+        { exerciseId: "bench", exerciseName: "Bench Press B" },
+      ],
+      traces: { progression: { bench: legacyTrace } },
+    });
+
+    expect(contract.calibrationWatches.prescriptionConfidence).toEqual([
+      expect.objectContaining({ exerciseLabel: "Bench Press A", reasonCode: "progression_trace_unavailable" }),
+      expect.objectContaining({ exerciseLabel: "Bench Press B", reasonCode: "progression_trace_unavailable" }),
+    ]);
+    expect(contract.calibrationWatches.prescriptionConfidence).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ confidence: 0.5 })]),
+    );
+  });
+
+  it("correlates current and mixed readiness traces only by exact placement", () => {
+    const contract = buildContract([], {
+      exercises: [
+        { placementId: "bench-a", exerciseId: "bench", exerciseName: "Bench Press A" },
+        { exerciseId: "bench", exerciseName: "Bench Press Legacy" },
+        { placementId: "curl-a", exerciseId: "curl", exerciseName: "Curl" },
+      ],
+      traces: {
+        progression: {
+          "bench-a": legacyTrace,
+          bench: { ...legacyTrace, confidence: { combinedScale: 0.25, reasons: ["low signal"] } },
+          "curl-a": { ...legacyTrace, confidence: { combinedScale: 0.6, reasons: ["low signal"] } },
+        },
+      },
+    });
+
+    expect(contract.calibrationWatches.prescriptionConfidence).toEqual([
+      expect.objectContaining({ placementId: "bench-a", confidence: 0.5 }),
+      expect.objectContaining({ exerciseLabel: "Bench Press Legacy", reasonCode: "progression_trace_unavailable" }),
+      expect.objectContaining({ placementId: "curl-a", confidence: 0.6 }),
+    ]);
+  });
+
+  it("projects saved placement correlations into downstream preview and guidance identity", () => {
+    const contract = buildContract(
+      [
+        readout({
+          placementId: "generated-a",
+          exerciseId: "bench",
+          exerciseName: "Bench Press",
+          loadSource: "history",
+        }),
+        readout({
+          placementId: "generated-b",
+          exerciseId: "bench",
+          exerciseName: "Bench Press",
+          loadSource: "history",
+        }),
+      ],
+      {
+        exercises: [
+          { placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench Press" },
+          { placementId: "generated-b", exerciseId: "bench", exerciseName: "Bench Press" },
+        ],
+        traces: { progression: {} },
+        placementCorrelations: [
+          { generatedPlacementId: "generated-a", persistedWorkoutExerciseId: "row-a" },
+          { generatedPlacementId: "generated-b", persistedWorkoutExerciseId: "row-b" },
+        ],
+      },
+    );
+
+    expect(contract.workoutPreview?.exercises.map((exercise) => exercise.placementId)).toEqual([
+      "row-a",
+      "row-b",
+    ]);
+    expect(
+      getCalibrationWatchRows(contract).map((row) => row.placementId),
+    ).toEqual(["row-a", "row-b"]);
   });
 
   it("explains exact, legacy-bridged, and uncalibrated starting loads", () => {
@@ -222,7 +334,7 @@ describe("V4 load-calibration presentation", () => {
       "Suggested load: 140 lb. Based on prior Barbell Bench Press history from Aug 3.",
       "No calibrated load yet. Enter a starting load for this exercise.",
     ]);
-    expect(guidance.byExerciseId).toEqual({
+    expect(guidance.byPlacementId).toEqual({
       "exact-bench": [
         expect.objectContaining({
           message:
@@ -245,7 +357,7 @@ describe("V4 load-calibration presentation", () => {
       ],
     });
     expect(
-      guidance.byExerciseId["uncalibrated-bench"]?.[0]?.message
+      guidance.byPlacementId["uncalibrated-bench"]?.[0]?.message
     ).not.toMatch(/start at|use the target/i);
   });
 });

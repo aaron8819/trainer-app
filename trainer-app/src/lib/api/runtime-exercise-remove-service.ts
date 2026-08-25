@@ -16,6 +16,7 @@ type RemovedWorkoutExerciseSnapshot = {
 };
 
 type PersistedExerciseRecord = {
+  id: string;
   exerciseId: string;
   orderIndex: number;
   section: string | null;
@@ -72,6 +73,7 @@ function normalizeWorkoutSection(
 
 function mapPersistedExercises(persistedExercises: PersistedExerciseRecord[]) {
   return persistedExercises.map((exercise) => ({
+    id: exercise.id,
     exerciseId: exercise.exerciseId,
     orderIndex: exercise.orderIndex,
     section: normalizeWorkoutSection(exercise.section),
@@ -219,6 +221,7 @@ export async function removeRuntimeAddedWorkoutExercise(input: {
       where: { workoutId: workoutExercise.workout.id },
       orderBy: [{ orderIndex: "asc" }, { id: "asc" }],
       select: {
+        id: true,
         exerciseId: true,
         orderIndex: true,
         section: true,

@@ -89,6 +89,42 @@ function makeBlockContext(
 }
 
 describe("template-session block-aware bridge", () => {
+  it("emits independent substitution suggestions for duplicate canonical placements", () => {
+    const painfulBench: Exercise = {
+      ...bench,
+      contraindications: { shoulder: true },
+    };
+    const pushUp: Exercise = {
+      ...bench,
+      id: "push-up",
+      name: "Push-Up",
+      equipment: ["bodyweight"],
+      jointStress: "low",
+      contraindications: {},
+    };
+    const result = generateWorkoutFromTemplate(
+      [
+        { placementId: "bench-a", exercise: painfulBench, orderIndex: 0 },
+        { placementId: "bench-b", exercise: painfulBench, orderIndex: 1 },
+      ],
+      {
+        ...commonOptions,
+        exerciseLibrary: [painfulBench, pushUp],
+        isStrict: false,
+        checkIn: {
+          date: "2026-08-25T12:00:00.000Z",
+          readiness: 3,
+          painFlags: { shoulder: 2 },
+        },
+      },
+    );
+
+    expect(result.substitutions).toEqual([
+      expect.objectContaining({ placementId: "bench-a", originalExerciseId: "bench" }),
+      expect.objectContaining({ placementId: "bench-b", originalExerciseId: "bench" }),
+    ]);
+  });
+
   it("lowers target RPE in accumulation week 1 versus baseline and intensification is higher", () => {
     const baseline = generateWorkoutFromTemplate(templateExercises, {
       ...commonOptions,

@@ -364,6 +364,95 @@ describe("deload-session generation", () => {
     });
   });
 
+  it("preserves duplicate legacy seeded exercises and fails closed on ambiguous history", async () => {
+    const makeBenchRow = (id: string, load: number) => ({
+      id,
+      exerciseId: "bench",
+      isMainLift: true,
+      sets: Array.from({ length: 4 }, () => ({ logs: [{ actualReps: 8, actualLoad: load }] })),
+    });
+    mocks.workoutFindFirst.mockResolvedValue({
+      exercises: [makeBenchRow("bench-placement-a", 200), makeBenchRow("bench-placement-b", 180)],
+    });
+    mocks.workoutFindMany.mockResolvedValue([
+      {
+        exercises: [makeBenchRow("bench-placement-a", 200), makeBenchRow("bench-placement-b", 180)],
+      },
+    ]);
+
+    const result = await generateDeloadSessionFromIntentContext(
+      "user-1",
+      makeMappedContext({
+        exerciseLibrary: [
+          {
+            id: "bench",
+            name: "Bench Press",
+            movementPatterns: ["horizontal_push"],
+            splitTags: ["push"],
+            jointStress: "medium",
+            isMainLiftEligible: true,
+            isCompound: true,
+            fatigueCost: 4,
+            equipment: ["barbell"],
+            primaryMuscles: ["Chest"],
+            secondaryMuscles: ["Triceps"],
+          },
+        ],
+        slotSequenceJson: {
+          version: 1,
+          source: "handoff_draft",
+          sequenceMode: "ordered_flexible",
+          slots: [{ slotId: "push_a", intent: "PUSH" }],
+        },
+        slotPlanSeedJson: {
+          version: 1,
+          source: "handoff_slot_plan_projection",
+          acceptedPlannerIntent: buildV2AcceptedPlannerIntentDto(),
+          slots: [
+            {
+              slotId: "push_a",
+              exercises: [
+                {
+                  placementId: "bench-placement-a",
+                  exerciseId: "bench",
+                  role: "CORE_COMPOUND",
+                  setCount: 4,
+                },
+                {
+                  placementId: "bench-placement-b",
+                  exerciseId: "bench",
+                  role: "CORE_COMPOUND",
+                  setCount: 4,
+                },
+              ],
+            },
+          ],
+        },
+      }),
+      "push"
+    );
+
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect(result.workout.mainLifts.map((entry) => entry.id)).toEqual([
+      "legacy-seed:0:bench",
+      "legacy-seed:1:bench",
+    ]);
+    expect(result.trace.exercises).toEqual([
+      expect.objectContaining({
+        placementId: "legacy-seed:0:bench",
+        anchoredLoad: null,
+        anchoredLoadSource: "none",
+      }),
+      expect.objectContaining({
+        placementId: "legacy-seed:1:bench",
+        anchoredLoad: null,
+        anchoredLoadSource: "none",
+      }),
+    ]);
+  });
+
   it("does not fall back to legacy mesocycle roles when a seeded deload slot-plan seed is unresolvable", async () => {
     mocks.workoutFindFirst.mockResolvedValue({
       exercises: [

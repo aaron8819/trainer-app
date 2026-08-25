@@ -17,12 +17,13 @@ export type LogWorkoutExecutionGuidance = {
 };
 
 export type LogWorkoutExecutionGuidanceByExercise = {
+  byPlacementId: Record<string, LogWorkoutExecutionGuidance[]>;
   byExerciseId: Record<string, LogWorkoutExecutionGuidance[]>;
   byExerciseName: Record<string, LogWorkoutExecutionGuidance[]>;
 };
 
 function emptyLogWorkoutExecutionGuidanceByExercise(): LogWorkoutExecutionGuidanceByExercise {
-  return { byExerciseId: {}, byExerciseName: {} };
+  return { byPlacementId: {}, byExerciseId: {}, byExerciseName: {} };
 }
 
 export function normalizeLogWorkoutGuidanceExerciseLabel(
@@ -124,7 +125,7 @@ function buildUniquePreviewExerciseIdByLabel(
     preview.source === "generated_session_audit_snapshot"
       ? preview.exercises
       : [];
-  const exerciseIdsByLabel = new Map<string, Set<string>>();
+  const exercisesByLabel = new Map<string, Array<{ exerciseId: string }>>();
 
   for (const exercise of previewExercises) {
     const key = normalizeLogWorkoutGuidanceExerciseLabel(exercise.exerciseName);
@@ -132,15 +133,15 @@ function buildUniquePreviewExerciseIdByLabel(
       continue;
     }
 
-    const ids = exerciseIdsByLabel.get(key) ?? new Set<string>();
-    ids.add(exercise.exerciseId);
-    exerciseIdsByLabel.set(key, ids);
+    const exercises = exercisesByLabel.get(key) ?? [];
+    exercises.push({ exerciseId: exercise.exerciseId });
+    exercisesByLabel.set(key, exercises);
   }
 
   return new Map(
-    Array.from(exerciseIdsByLabel.entries()).map(([key, ids]) => [
+    Array.from(exercisesByLabel.entries()).map(([key, exercises]) => [
       key,
-      ids.size === 1 ? Array.from(ids)[0] : null,
+      exercises.length === 1 ? exercises[0]!.exerciseId : null,
     ])
   );
 }
@@ -153,12 +154,18 @@ export function buildLogWorkoutExecutionGuidanceByExercise(
   }
 
   const rows: LogWorkoutExecutionGuidanceByExercise = {
+    byPlacementId: {},
     byExerciseId: {},
     byExerciseName: {},
   };
   const previewExerciseIdByLabel = buildUniquePreviewExerciseIdByLabel(
     card.workoutPreview
   );
+  const previewPlacements = card.workoutPreview.source === "generated_session_audit_snapshot"
+    ? new Set(card.workoutPreview.exercises.flatMap((exercise) =>
+        exercise.placementId ? [exercise.placementId] : []
+      ))
+    : new Set<string>();
 
   for (const note of card.calibrationNotes) {
     const key = normalizeLogWorkoutGuidanceExerciseLabel(note.exerciseLabel);
@@ -183,6 +190,16 @@ export function buildLogWorkoutExecutionGuidanceByExercise(
         : {}),
     };
 
+    if (note.placementId) {
+      if (previewPlacements.has(note.placementId)) {
+        rows.byPlacementId[note.placementId] = [
+          ...(rows.byPlacementId[note.placementId] ?? []),
+          guidance,
+        ];
+      }
+      continue;
+    }
+
     const exerciseId = previewExerciseIdByLabel.get(key);
     if (exerciseId) {
       rows.byExerciseId[exerciseId] = [
@@ -203,11 +220,18 @@ export function buildLogWorkoutExecutionGuidanceByExercise(
 export function getLogWorkoutExecutionGuidanceForExercise(
   guidanceByExercise: LogWorkoutExecutionGuidanceByExercise,
   exercise: {
+    placementId?: string | null;
     exerciseId?: string | null;
     name: string;
     hasAmbiguousName?: boolean;
   }
 ): LogWorkoutExecutionGuidance[] {
+  const placementGuidance = exercise.placementId
+    ? guidanceByExercise.byPlacementId?.[exercise.placementId]
+    : undefined;
+  if (placementGuidance) {
+    return placementGuidance;
+  }
   const idGuidance = exercise.exerciseId
     ? guidanceByExercise.byExerciseId[exercise.exerciseId]
     : undefined;

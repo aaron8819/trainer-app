@@ -100,6 +100,7 @@ export type PreSessionReadinessPrescriptionConfidenceWatch =
   | PreSessionReadinessPrescriptionConfidenceWatchRow;
 
 export type PreSessionReadinessWorkoutPreviewExercise = {
+  placementId?: string;
   exerciseId: string;
   exerciseName: string;
   setCount: number;
@@ -560,6 +561,7 @@ function hasValidCalibrationWatches(calibrationWatches: unknown): boolean {
 function hasValidWorkoutPreviewExercise(value: unknown): boolean {
   return (
     isRecord(value) &&
+    (value.placementId == null || typeof value.placementId === "string") &&
     typeof value.exerciseId === "string" &&
     typeof value.exerciseName === "string" &&
     typeof value.setCount === "number" &&

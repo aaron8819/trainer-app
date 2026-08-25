@@ -307,6 +307,45 @@ describe("generateWorkoutExplanation progression receipt", () => {
     expect(receipt?.decisionLog?.length).toBeGreaterThan(0);
   });
 
+  it("keys duplicate canonical exercise readouts by persisted placement", async () => {
+    const currentWorkout = await mocks.workoutFindUnique();
+    const generatedMetadata = buildGeneratedSelectionMetadata({});
+    const generated = generatedMetadata.sessionAuditSnapshot.generated;
+    generated.exerciseCount = 2;
+    generated.exercises = [
+      { ...generated.exercises[0]!, placementId: "generated-a", orderIndex: 0 },
+      { ...generated.exercises[0]!, placementId: "generated-b", orderIndex: 1 },
+    ] as unknown as typeof generated.exercises;
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      ...currentWorkout,
+      selectionMetadata: {
+        ...generatedMetadata,
+        sessionAuditSnapshot: {
+          ...generatedMetadata.sessionAuditSnapshot,
+          saved: {
+            placementCorrelations: [
+              { generatedPlacementId: "generated-a", persistedWorkoutExerciseId: "row-a" },
+              { generatedPlacementId: "generated-b", persistedWorkoutExerciseId: "row-b" },
+            ],
+          },
+        },
+      },
+      exercises: [
+        { ...currentWorkout.exercises[0], id: "row-a", orderIndex: 0 },
+        { ...currentWorkout.exercises[0], id: "row-b", orderIndex: 1 },
+      ],
+    });
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect([...result.exerciseRationales.keys()]).toEqual(["row-a", "row-b"]);
+    expect([...result.prescriptionRationales.keys()]).toEqual(["row-a", "row-b"]);
+    expect([...result.progressionReceipts.keys()]).toEqual(["row-a", "row-b"]);
+    expect(result.progressionReceipts.has("ex1")).toBe(false);
+  });
+
   it("does not use machine-displayed history for progression receipts or next-exposure decisions", async () => {
     const currentWorkout = await mocks.workoutFindUnique();
     mocks.workoutFindUnique.mockResolvedValueOnce({

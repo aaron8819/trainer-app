@@ -1,16 +1,30 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { TestSuiteEnvironmentManifest } from "./test-environment-preflight";
 import type { VitestPhaseResult } from "./credential-free-inventory-runner";
 import {
   assessExactTreeEvidenceReuse,
+  computeVerificationDefinition,
   computeClassificationHash,
   createCredentialFreeVerificationEvidence,
+  createEvidenceReuseRequest,
   CREDENTIAL_FREE_CHECK_ID,
+  credentialFreeEvidenceArtifactName,
+  hashCommittedGitPath,
   hashCanonicalValue,
+  parseCredentialFreeVerificationEvidenceJson,
   publishCredentialFreeVerificationEvidence,
+  readCurrentRepositoryState,
+  validateCredentialFreeVerificationEvidence,
   type CredentialFreeVerificationEvidence,
 } from "./exact-tree-verification-evidence";
 
@@ -80,7 +94,9 @@ function timedOutPhase(files: number): VitestPhaseResult {
   };
 }
 
-function evidence(
+let cachedEvidence: CredentialFreeVerificationEvidence | null = null;
+
+function createEvidenceFixture(
   environment: Partial<NodeJS.ProcessEnv> = {}
 ): CredentialFreeVerificationEvidence {
   const value = createCredentialFreeVerificationEvidence({
@@ -100,25 +116,157 @@ function evidence(
       TZ: "America/Chicago",
       GITHUB_REPOSITORY: "owner/repository",
       GITHUB_RUN_ID: "123",
+      GITHUB_RUN_ATTEMPT: "1",
       GITHUB_SERVER_URL: "https://github.com",
+      GITHUB_WORKFLOW: "Trainer pull request checks",
+      GITHUB_JOB: "credential-free-inventory",
       ...environment,
     },
     completedAt: "2026-08-25T20:00:00.000Z",
   });
-  return { ...value, repositoryState: { worktreeClean: true } };
+  return {
+    ...value,
+    repositoryState: { worktreeClean: true },
+    environment: { ...value.environment, node: "v22.20.0" },
+  };
+}
+
+function evidence(
+  environment: Partial<NodeJS.ProcessEnv> = {}
+): CredentialFreeVerificationEvidence {
+  if (environment.GITHUB_EVENT_PATH || environment.GITHUB_REF) {
+    return createEvidenceFixture(environment);
+  }
+  cachedEvidence ??= createEvidenceFixture();
+  const value = structuredClone(cachedEvidence);
+  if (environment.GITHUB_RUN_ATTEMPT) {
+    value.run.runAttempt = environment.GITHUB_RUN_ATTEMPT;
+  }
+  return value;
 }
 
 function requestFor(value: CredentialFreeVerificationEvidence) {
   return {
     checkId: CREDENTIAL_FREE_CHECK_ID,
-    treeSha: value.treeSha,
+    currentRepositoryState: {
+      commitSha: value.checkedOutCommitSha,
+      treeSha: value.treeSha,
+      worktreeClean: true,
+      dirtyPaths: [],
+    },
     verificationDefinitionHash: value.verificationDefinitionHash,
     classificationHash: value.classificationHash,
     lockfileHash: value.lockfileHash,
+    toolchain: {
+      nodeMajor: value.verificationDefinition.nodeMajor,
+      vitest: value.environment.vitest,
+      workers: value.verificationDefinition.workers,
+    },
     hermetic: true,
     allowQualifiedPass: true,
   };
 }
+
+function git(repositoryRoot: string, args: string[]): string {
+  const result = spawnSync("git", args, {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  if (result.status !== 0) {
+    throw new Error(`git ${args.join(" ")} failed: ${result.stderr}`);
+  }
+  return result.stdout.trim();
+}
+
+function temporaryGitRepository(): string {
+  const directory = mkdtempSync(path.join(tmpdir(), "trainer-evidence-git-"));
+  temporaryDirectories.push(directory);
+  git(directory, ["init", "--quiet"]);
+  git(directory, ["config", "user.email", "trainer-test@example.invalid"]);
+  git(directory, ["config", "user.name", "Trainer Evidence Test"]);
+  return directory;
+}
+
+const minimalManifest: TestSuiteEnvironmentManifest = {
+  schema: "trainer-test-suite-environments",
+  version: 1,
+  suites: [
+    {
+      path: "src/example.test.ts",
+      environment: "import-only-placeholder",
+      owner: "test",
+      reason: "portable fixture",
+    },
+  ],
+};
+
+function writeDefinitionPolicy(repositoryRoot: string, files: string[]): void {
+  const policyPath = path.join(repositoryRoot, "scripts", "codex", "trainer-policy.v1.json");
+  mkdirSync(path.dirname(policyPath), { recursive: true });
+  writeFileSync(
+    policyPath,
+    `${JSON.stringify({
+      verification: {
+        exactTreeEvidence: {
+          schemaVersion: 1,
+          checks: [
+            {
+              id: CREDENTIAL_FREE_CHECK_ID,
+              definition: {
+                packageScript: "test:inventory:credential-free",
+                nodeMajor: 22,
+                workers: 1,
+                classificationOwner: "trainer-app/scripts/test-suite-environments.json",
+                includeLockfile: true,
+                files,
+                registryCommandIds: ["npm-test-inventory-credential-free"],
+              },
+            },
+          ],
+        },
+      },
+      commandRegistry: [
+        {
+          id: "npm-test-inventory-credential-free",
+          packageScript: "test:inventory:credential-free",
+          profile: "local-artifact-write",
+        },
+      ],
+    })}\n`,
+    "utf8"
+  );
+}
+
+function createDefinitionRepository(): { repositoryRoot: string; projectRoot: string } {
+  const repositoryRoot = temporaryGitRepository();
+  const projectRoot = path.join(repositoryRoot, "trainer-app");
+  mkdirSync(path.join(repositoryRoot, "definition"), { recursive: true });
+  mkdirSync(projectRoot, { recursive: true });
+  writeFileSync(path.join(repositoryRoot, "definition", "a.txt"), "alpha\n", "utf8");
+  writeFileSync(path.join(repositoryRoot, "definition", "b.txt"), "beta\n", "utf8");
+  writeFileSync(
+    path.join(projectRoot, "package.json"),
+    `${JSON.stringify({ scripts: { "test:inventory:credential-free": "node inventory.js" } })}\n`,
+    "utf8"
+  );
+  writeFileSync(
+    path.join(projectRoot, "package-lock.json"),
+    `${JSON.stringify({
+      lockfileVersion: 3,
+      packages: { "node_modules/vitest": { version: "4.0.18" } },
+    })}\n`,
+    "utf8"
+  );
+  writeDefinitionPolicy(repositoryRoot, ["definition/b.txt", "definition/a.txt"]);
+  git(repositoryRoot, ["add", "."]);
+  git(repositoryRoot, ["commit", "--quiet", "-m", "fixture"]);
+  return { repositoryRoot, projectRoot };
+}
+
+beforeAll(() => {
+  cachedEvidence = createEvidenceFixture();
+}, 30_000);
 
 describe("exact-tree verification evidence", () => {
   it("hashes equivalent classification semantics independently of suite ordering", () => {
@@ -129,6 +277,108 @@ describe("exact-tree verification evidence", () => {
     expect(hashCanonicalValue({ b: 2, a: 1 })).toBe(
       hashCanonicalValue({ a: 1, b: 2 })
     );
+  });
+
+  it("binds definition and lockfile hashes to committed blobs across LF and CRLF checkouts", () => {
+    const { repositoryRoot, projectRoot: fixtureProjectRoot } = createDefinitionRepository();
+    const linuxStyle = computeVerificationDefinition({
+      projectRoot: fixtureProjectRoot,
+      classificationManifest: minimalManifest,
+    });
+    const committedInputHash = hashCommittedGitPath(repositoryRoot, "definition/a.txt");
+    const committedLockHash = hashCommittedGitPath(
+      repositoryRoot,
+      "trainer-app/package-lock.json"
+    );
+
+    git(repositoryRoot, ["config", "core.autocrlf", "true"]);
+    writeFileSync(path.join(repositoryRoot, "definition", "a.txt"), "alpha\r\n", "utf8");
+    const lockfilePath = path.join(fixtureProjectRoot, "package-lock.json");
+    writeFileSync(
+      lockfilePath,
+      readFileSync(lockfilePath, "utf8").replaceAll("\n", "\r\n"),
+      "utf8"
+    );
+    expect(readFileSync(path.join(repositoryRoot, "definition", "a.txt"), "utf8")).toContain(
+      "\r\n"
+    );
+
+    const windowsStyle = computeVerificationDefinition({
+      projectRoot: fixtureProjectRoot,
+      classificationManifest: minimalManifest,
+    });
+    expect(windowsStyle.hash).toBe(linuxStyle.hash);
+    expect(windowsStyle.lockfileHash).toBe(linuxStyle.lockfileHash);
+    expect(windowsStyle.inputs.find((entry) => entry.path === "definition/a.txt")?.sha256).toBe(
+      committedInputHash
+    );
+    expect(windowsStyle.lockfileHash).toBe(committedLockHash);
+  }, 30_000);
+
+  it("canonicalizes definition path order and separators and fails closed on duplicates or missing blobs", () => {
+    const { repositoryRoot, projectRoot: fixtureProjectRoot } = createDefinitionRepository();
+    const first = computeVerificationDefinition({
+      projectRoot: fixtureProjectRoot,
+      classificationManifest: minimalManifest,
+    });
+    expect(first.inputs.map((entry) => entry.path)).toEqual([
+      "definition/a.txt",
+      "definition/b.txt",
+    ]);
+
+    writeDefinitionPolicy(repositoryRoot, ["definition\\a.txt", "definition\\b.txt"]);
+    git(repositoryRoot, ["add", "."]);
+    git(repositoryRoot, ["commit", "--quiet", "-m", "separator variant"]);
+    const separatorVariant = computeVerificationDefinition({
+      projectRoot: fixtureProjectRoot,
+      classificationManifest: minimalManifest,
+    });
+    expect(separatorVariant.hash).toBe(first.hash);
+
+    writeDefinitionPolicy(repositoryRoot, ["definition/a.txt", "definition\\a.txt"]);
+    git(repositoryRoot, ["add", "."]);
+    git(repositoryRoot, ["commit", "--quiet", "-m", "duplicate variant"]);
+    expect(() =>
+      computeVerificationDefinition({
+        projectRoot: fixtureProjectRoot,
+        classificationManifest: minimalManifest,
+      })
+    ).toThrow(/duplicate input paths/i);
+
+    writeDefinitionPolicy(repositoryRoot, ["definition/missing.txt"]);
+    git(repositoryRoot, ["add", "."]);
+    git(repositoryRoot, ["commit", "--quiet", "-m", "missing variant"]);
+    expect(() =>
+      computeVerificationDefinition({
+        projectRoot: fixtureProjectRoot,
+        classificationManifest: minimalManifest,
+      })
+    ).toThrow(/committed Git state|Git blob/i);
+  }, 30_000);
+
+  it("rejects malformed and conflicting classification sources", () => {
+    expect(() =>
+      computeClassificationHash(
+        { ...minimalManifest, schema: "wrong" } as unknown as TestSuiteEnvironmentManifest
+      )
+    ).toThrow(/malformed/i);
+    expect(() =>
+      computeClassificationHash({
+        ...minimalManifest,
+        suites: [...minimalManifest.suites, ...minimalManifest.suites],
+      })
+    ).toThrow(/duplicated/i);
+  });
+
+  it("parses artifact JSON as untrusted input", () => {
+    const value = evidence();
+    expect(parseCredentialFreeVerificationEvidenceJson(JSON.stringify(value))).toMatchObject({
+      valid: true,
+    });
+    expect(parseCredentialFreeVerificationEvidenceJson("{not-json")).toEqual({
+      valid: false,
+      errors: ["evidence JSON is malformed"],
+    });
   });
 
   it("publishes the canonical definition inputs, lockfile, versions, and exact tested tree", () => {
@@ -178,34 +428,34 @@ describe("exact-tree verification evidence", () => {
     expect(summary).toContain(value.treeSha);
     expect(summary).toContain(value.verificationDefinitionHash);
     expect(summary).toContain("Import safety: pass");
+    expect(summary).toContain(credentialFreeEvidenceArtifactName(value));
   });
 
-  it("records PR head and merge-ref identities without claiming an unequal head tree", () => {
+  it("records coherent PR head and merge-ref identities", () => {
     const directory = mkdtempSync(path.join(tmpdir(), "trainer-evidence-event-"));
     temporaryDirectories.push(directory);
     const eventPath = path.join(directory, "event.json");
-    const unequalHead = "0000000000000000000000000000000000000000";
+    const currentCommit = git(path.resolve(projectRoot, ".."), ["rev-parse", "HEAD"]);
     writeFileSync(
       eventPath,
       JSON.stringify({
         pull_request: {
-          head: { sha: unequalHead },
-          base: { sha: "1111111111111111111111111111111111111111", ref: "master" },
+          head: { sha: currentCommit },
+          base: { sha: currentCommit, ref: "master" },
         },
       })
     );
     const value = evidence({
       GITHUB_EVENT_PATH: eventPath,
       GITHUB_REF: "refs/pull/99/merge",
-      GITHUB_SHA: "2222222222222222222222222222222222222222",
+      GITHUB_SHA: currentCommit,
     });
-    expect(value.prHeadSha).toBe(unequalHead);
-    expect(value.prHeadTreeSha).toBeNull();
-    expect(value.prHeadTreeMatchesTestedTree).toBeNull();
-    expect(value.mergeRefSha).toBe("2222222222222222222222222222222222222222");
-    expect(value.mergeRefTreeSha).toBeNull();
-    expect(value.treeSha).not.toBe(value.prHeadSha);
-  });
+    expect(value.prHeadSha).toBe(currentCommit);
+    expect(value.prHeadTreeSha).toBe(value.treeSha);
+    expect(value.prHeadTreeMatchesTestedTree).toBe(true);
+    expect(value.mergeRefSha).toBe(currentCommit);
+    expect(value.mergeRefTreeSha).toBe(value.treeSha);
+  }, 20_000);
 
   it("reuses a complete pass for the same tree and equivalent definition", () => {
     const value = evidence();
@@ -215,7 +465,93 @@ describe("exact-tree verification evidence", () => {
     });
   });
 
-  it("rejects dirty or non-durable local evidence as incomplete", () => {
+  it("derives consumer cleanliness from Git status while respecting ignored files", () => {
+    const repositoryRoot = temporaryGitRepository();
+    writeFileSync(path.join(repositoryRoot, ".gitignore"), "cache/\n", "utf8");
+    writeFileSync(path.join(repositoryRoot, "tracked.ts"), "export const value = 1;\n", "utf8");
+    git(repositoryRoot, ["add", "."]);
+    git(repositoryRoot, ["commit", "--quiet", "-m", "consumer fixture"]);
+
+    const clean = readCurrentRepositoryState(repositoryRoot);
+    const value = { ...evidence(), treeSha: clean.treeSha };
+    expect(
+      assessExactTreeEvidenceReuse(value, {
+        ...requestFor(value),
+        currentRepositoryState: clean,
+      })
+    ).toEqual({ reusable: true, reason: "reusable" });
+
+    writeFileSync(path.join(repositoryRoot, "tracked.ts"), "export const value = 2;\n", "utf8");
+    const tracked = readCurrentRepositoryState(repositoryRoot);
+    expect(tracked.dirtyPaths).toEqual([
+      { path: "tracked.ts", categories: ["tracked"] },
+    ]);
+    expect(
+      assessExactTreeEvidenceReuse(value, {
+        ...requestFor(value),
+        currentRepositoryState: tracked,
+      }).reason
+    ).toBe("dirty-current-checkout");
+
+    git(repositoryRoot, ["add", "tracked.ts"]);
+    const staged = readCurrentRepositoryState(repositoryRoot);
+    expect(staged.dirtyPaths).toEqual([
+      { path: "tracked.ts", categories: ["staged"] },
+    ]);
+    expect(
+      assessExactTreeEvidenceReuse(value, {
+        ...requestFor(value),
+        currentRepositoryState: staged,
+      }).reason
+    ).toBe("dirty-current-checkout");
+
+    git(repositoryRoot, ["restore", "--staged", "tracked.ts"]);
+    git(repositoryRoot, ["restore", "tracked.ts"]);
+    writeFileSync(path.join(repositoryRoot, "untracked.test.ts"), "test('x', () => {});\n", "utf8");
+    const untracked = readCurrentRepositoryState(repositoryRoot);
+    expect(untracked.dirtyPaths).toEqual([
+      { path: "untracked.test.ts", categories: ["untracked"] },
+    ]);
+    expect(
+      assessExactTreeEvidenceReuse(value, {
+        ...requestFor(value),
+        currentRepositoryState: untracked,
+      }).reason
+    ).toBe("dirty-current-checkout");
+
+    rmSync(path.join(repositoryRoot, "untracked.test.ts"));
+    mkdirSync(path.join(repositoryRoot, "cache"));
+    writeFileSync(path.join(repositoryRoot, "cache", "artifact.bin"), "ignored", "utf8");
+    const ignored = readCurrentRepositoryState(repositoryRoot);
+    expect(ignored).toMatchObject({ worktreeClean: true, dirtyPaths: [] });
+    expect(
+      assessExactTreeEvidenceReuse(value, {
+        ...requestFor(value),
+        currentRepositoryState: ignored,
+      }).reusable
+    ).toBe(true);
+  }, 30_000);
+
+  it("builds reuse compatibility from committed policy, lockfile, and current Git state", () => {
+    const { repositoryRoot, projectRoot: fixtureProjectRoot } = createDefinitionRepository();
+    const request = createEvidenceReuseRequest({
+      projectRoot: fixtureProjectRoot,
+      classificationManifest: minimalManifest,
+      allowQualifiedPass: false,
+    });
+    expect(request.currentRepositoryState).toMatchObject({
+      commitSha: git(repositoryRoot, ["rev-parse", "HEAD"]),
+      treeSha: git(repositoryRoot, ["rev-parse", "HEAD^{tree}"]),
+      worktreeClean: true,
+      dirtyPaths: [],
+    });
+    expect(request.toolchain).toEqual({ nodeMajor: 22, vitest: "4.0.18", workers: 1 });
+    expect(request.lockfileHash).toBe(
+      hashCommittedGitPath(repositoryRoot, "trainer-app/package-lock.json")
+    );
+  }, 20_000);
+
+  it("rejects dirty or non-durable producer evidence as incomplete", () => {
     const value = evidence();
     expect(
       assessExactTreeEvidenceReuse(
@@ -232,23 +568,188 @@ describe("exact-tree verification evidence", () => {
   });
 
   it.each([
-    ["treeSha", "tree-mismatch", "a".repeat(40)],
-    ["verificationDefinitionHash", "definition-mismatch", "definition-changed"],
-    ["classificationHash", "classification-mismatch", "classification-changed"],
-    ["lockfileHash", "lockfile-mismatch", "lockfile-changed"],
+    [
+      "pass with failure payload",
+      (value: CredentialFreeVerificationEvidence) => ({
+        ...value,
+        failure: {
+          phase: "credential-free suites",
+          kind: "test-assertion",
+          reporterComplete: true,
+          selectedCoverageCompleted: true,
+          failures: [{ file: "src/example.test.ts", test: "fails", message: "failure" }],
+          retryEligibility: {
+            eligible: false,
+            reason: "not eligible",
+            file: null,
+            test: null,
+          },
+        },
+      }),
+    ],
+    [
+      "pass with failed tests",
+      (value: CredentialFreeVerificationEvidence) => ({
+        ...value,
+        counts: {
+          ...value.counts,
+          testsPassed: value.counts.testsPassed - 1,
+          testsFailed: 1,
+        },
+      }),
+    ],
+    [
+      "invalid completedAt",
+      (value: CredentialFreeVerificationEvidence) => ({ ...value, completedAt: "not-a-date" }),
+    ],
+    [
+      "contradictory nested definition hash",
+      (value: CredentialFreeVerificationEvidence) => ({
+        ...value,
+        verificationDefinition: { ...value.verificationDefinition, hash: "f".repeat(64) },
+      }),
+    ],
+    [
+      "invalid SHA and hash format",
+      (value: CredentialFreeVerificationEvidence) => ({
+        ...value,
+        treeSha: "not-a-sha",
+        classificationHash: "not-a-hash",
+      }),
+    ],
+    [
+      "negative counts and durations",
+      (value: CredentialFreeVerificationEvidence) => ({
+        ...value,
+        counts: { ...value.counts, filesExecuted: -1 },
+        durations: { ...value.durations, totalMs: -1 },
+      }),
+    ],
+    [
+      "qualified pass without qualification",
+      (value: CredentialFreeVerificationEvidence) => ({
+        ...value,
+        status: "qualified_pass",
+        qualification: null,
+      }),
+    ],
+    [
+      "impossible Node identity",
+      (value: CredentialFreeVerificationEvidence) => ({
+        ...value,
+        environment: { ...value.environment, node: "v999" },
+      }),
+    ],
+    [
+      "incomplete required import-safety phase",
+      (value: CredentialFreeVerificationEvidence) => ({
+        ...value,
+        importSafety: { status: "not_run", connectionAttempted: false },
+      }),
+    ],
+  ])("fails closed for malformed evidence: %s", (_label, mutate) => {
+    const value = evidence();
+    const malformed = mutate(value) as unknown;
+    expect(validateCredentialFreeVerificationEvidence(malformed).valid).toBe(false);
+    expect(assessExactTreeEvidenceReuse(malformed, requestFor(value))).toEqual({
+      reusable: false,
+      reason: "malformed-evidence",
+    });
+  });
+
+  it("rejects an otherwise coherent incompatible requested toolchain", () => {
+    const value = evidence();
+    expect(
+      assessExactTreeEvidenceReuse(value, {
+        ...requestFor(value),
+        toolchain: { ...requestFor(value).toolchain, nodeMajor: 23 },
+      }).reason
+    ).toBe("incompatible-toolchain");
+    expect(
+      assessExactTreeEvidenceReuse(value, {
+        ...requestFor(value),
+        toolchain: { ...requestFor(value).toolchain, vitest: "99.0.0" },
+      }).reason
+    ).toBe("incompatible-toolchain");
+  });
+
+  it("does not require producer and consumer operating-system identity", () => {
+    const value = evidence();
+    const ubuntuEvidence = {
+      ...value,
+      environment: {
+        ...value.environment,
+        os: "linux 6.11.0",
+        architecture: "x64",
+        runnerImage: "ubuntu24",
+      },
+    };
+    expect(assessExactTreeEvidenceReuse(ubuntuEvidence, requestFor(value)).reusable).toBe(true);
+  });
+
+  it("fails closed outside Git, without HEAD, and when a required blob is unavailable", () => {
+    const nonRepository = mkdtempSync(path.join(tmpdir(), "trainer-evidence-no-git-"));
+    temporaryDirectories.push(nonRepository);
+    expect(() => readCurrentRepositoryState(nonRepository)).toThrow(/Git commit and tree/i);
+
+    const repositoryWithoutHead = temporaryGitRepository();
+    expect(() => readCurrentRepositoryState(repositoryWithoutHead)).toThrow(/Git commit and tree/i);
+    expect(() => hashCommittedGitPath(repositoryWithoutHead, "missing.txt")).toThrow(
+      /committed Git state/i
+    );
+  });
+
+  it.each([
+    ["verificationDefinitionHash", "definition-mismatch", "b".repeat(64)],
+    ["classificationHash", "classification-mismatch", "c".repeat(64)],
+    ["lockfileHash", "lockfile-mismatch", "d".repeat(64)],
   ] as const)("rejects %s mismatch", (field, reason, replacement) => {
     const value = evidence();
     const request = { ...requestFor(value), [field]: replacement };
     expect(assessExactTreeEvidenceReuse(value, request).reason).toBe(reason);
   });
 
-  it("never reuses failure or external-state checks from tree evidence", () => {
+  it("rejects a current consumer tree mismatch", () => {
     const value = evidence();
     expect(
-      assessExactTreeEvidenceReuse(
-        { ...value, status: "fail" },
-        requestFor(value)
-      ).reason
+      assessExactTreeEvidenceReuse(value, {
+        ...requestFor(value),
+        currentRepositoryState: {
+          ...requestFor(value).currentRepositoryState,
+          treeSha: "a".repeat(40),
+        },
+      }).reason
+    ).toBe("tree-mismatch");
+  });
+
+  it("never reuses coherent failure or external-state checks from tree evidence", () => {
+    const value = evidence();
+    const failed = {
+      ...value,
+      status: "fail" as const,
+      counts: {
+        ...value.counts,
+        filesPassed: value.counts.filesPassed - 1,
+        filesFailed: 1,
+        testsPassed: value.counts.testsPassed - 1,
+        testsFailed: 1,
+      },
+      failure: {
+        phase: "credential-free suites",
+        kind: "test-assertion" as const,
+        reporterComplete: true,
+        selectedCoverageCompleted: true,
+        failures: [{ file: "src/example.test.ts", test: "fails", message: "failure" }],
+        retryEligibility: {
+          eligible: false,
+          reason: "not eligible",
+          file: null,
+          test: null,
+        },
+      },
+    };
+    expect(
+      assessExactTreeEvidenceReuse(failed, requestFor(value)).reason
     ).toBe("failed-evidence");
     expect(
       assessExactTreeEvidenceReuse(value, {
@@ -305,7 +806,7 @@ describe("exact-tree verification evidence", () => {
       environment: { NODE_ENV: "test", TZ: "America/Chicago" },
     });
     expect(assertionEvidence.failure?.retryEligibility.eligible).toBe(false);
-  });
+  }, 30_000);
 
   it("accepts only a permitted non-recurring qualified timeout retry", () => {
     const value = evidence();
@@ -343,19 +844,28 @@ describe("exact-tree verification evidence", () => {
         },
         requestFor(value)
       ).reason
-    ).toBe("qualification-invalid");
+    ).toBe("malformed-evidence");
   });
 
-  it("does not use PR head equality as a substitute for tested-tree equality", () => {
+  it("allows different commits with the same tree but never substitutes commit identity for tree equality", () => {
     const value = evidence();
-    const differentHead = { ...value, prHeadSha: "f".repeat(40) };
+    const differentCommit = { ...value, checkedOutCommitSha: "f".repeat(40) };
     expect(
-      assessExactTreeEvidenceReuse(differentHead, requestFor(value)).reusable
+      assessExactTreeEvidenceReuse(differentCommit, {
+        ...requestFor(value),
+        currentRepositoryState: {
+          ...requestFor(value).currentRepositoryState,
+          commitSha: "e".repeat(40),
+        },
+      }).reusable
     ).toBe(true);
     expect(
-      assessExactTreeEvidenceReuse(differentHead, {
+      assessExactTreeEvidenceReuse(differentCommit, {
         ...requestFor(value),
-        treeSha: "e".repeat(40),
+        currentRepositoryState: {
+          ...requestFor(value).currentRepositoryState,
+          treeSha: "e".repeat(40),
+        },
       }).reason
     ).toBe("tree-mismatch");
   });
@@ -370,6 +880,9 @@ describe("exact-tree verification evidence", () => {
     expect(workflow).toContain("steps.tested_identity.outputs.tree_sha");
     expect(workflow).toContain("if: ${{ always() }}");
     expect(workflow).toContain("retention-days: 30");
+    expect(workflow).toContain(
+      "name: credential-free-inventory-evidence-tree-${{ steps.tested_identity.outputs.tree_sha }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}"
+    );
     expect(workflow).toContain(
       "trainer-app/artifacts/credential-free-inventory/evidence/credential-free-inventory-evidence.json"
     );

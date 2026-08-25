@@ -107,15 +107,16 @@
           },
           "reuse": {
             "allowedStatuses": ["pass", "qualified_pass"],
-            "invalidatesOn": ["tree-sha", "verification-definition-hash", "classification-hash", "lockfile-hash", "dirty-worktree", "missing-ci-run-identity", "disallowed-qualification", "incomplete-evidence", "non-hermetic-check"],
-            "doesNotInvalidateOn": ["new-review-session", "commit-sha-with-identical-tree", "stale-local-refs", "elapsed-time"],
+            "invalidatesOn": ["tree-sha", "verification-definition-hash", "classification-hash", "lockfile-hash", "producer-dirty-worktree", "consumer-dirty-worktree", "malformed-evidence", "incompatible-toolchain", "missing-ci-run-identity", "disallowed-qualification", "incomplete-evidence", "non-hermetic-check"],
+            "doesNotInvalidateOn": ["new-review-session", "commit-sha-with-identical-tree", "producer-os-different-from-consumer-os", "stale-local-refs", "elapsed-time"],
             "releaseRule": "Reuse PR evidence only when the approved and released trees are exactly equal and the definition, classification, lockfile, and qualification remain valid."
           },
           "qualification": {
             "eligibleFailure": "one-isolated-timeout-with-complete-reporters-and-no-safety-failure",
             "retry": "exact-failed-test-or-file-once-on-unchanged-tree",
             "passingRetryStatus": "qualified_pass",
-            "blockAtSameTestOccurrences": 2
+            "blockAtSameTestOccurrences": 2,
+            "automationStatus": "policy-and-schema-only; automatic targeted retry orchestration and recurrence storage are deferred"
           }
         }
       ],

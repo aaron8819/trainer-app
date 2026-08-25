@@ -227,19 +227,28 @@ ruleset requires that exact status check for pull requests targeting `master`.
 
 `scripts/codex/trainer-policy.v1.json` owns the stage, invalidation, reuse, and qualification policy.
 `src/lib/operations/exact-tree-verification-evidence.ts` implements the evidence schema, deterministic
-hashes, job summary, and pure reuse decision. Classification hashing canonicalizes the semantic
+hashes, job summary, repository-state inspection, untrusted-artifact validation, and reuse decision.
+Repository-owned definition inputs and `package-lock.json` are read from `HEAD:<path>` Git blobs;
+checkout line-ending conversion never changes their hashes, and missing Git metadata or required
+blobs fails closed. Definition input paths are normalized, sorted, and unique. Classification hashing canonicalizes the semantic
 contents of `scripts/test-suite-environments.json`; incidental suite ordering does not change it.
 The verification-definition hash covers the policy-selected workflow, package-script composition,
 launcher/orchestrator, runner, preflight/classifier, Vitest config and setup/guard files, relevant
 command-registry entries, Node major, worker count, and lockfile identity.
 
-Before running an expensive hermetic check, compare the current `HEAD^{tree}` with the artifact's
-`treeSha`, then require a clean tested checkout, durable CI run identity, matching definition,
-classification, and lockfile hashes, plus an allowed successful status. A different commit SHA does not invalidate evidence when its tree is exactly
+Before running an expensive hermetic check, derive the current consumer commit, `HEAD^{tree}`, and
+cleanliness with Git, then compare the tree with the artifact's `treeSha`. Reuse requires both the
+historical producer checkout and current consumer checkout to be clean, durable CI run identity,
+schema/coherence-valid evidence, compatible Node/Vitest/worker semantics, matching definition,
+classification, and lockfile hashes, plus an allowed successful status. Consumer cleanliness uses
+porcelain status with untracked files included and ignored files excluded: tracked, staged, and
+untracked source/config/test changes invalidate reuse; ignored caches and artifacts do not. A different commit SHA does not invalidate evidence when its tree is exactly
 equal; PR head, merge ref, and released commit remain separately recorded and tree equality is never
 inferred from ancestry. A new agent/reviewer session, stale local refs, or elapsed time do not
-invalidate immutable-tree evidence. A dirty tested checkout, missing CI identity, missing/incomplete evidence, a different tree or hash, a failed
-run, a disallowed qualification, or a non-hermetic check does.
+invalidate immutable-tree evidence. A dirty producer or consumer checkout, malformed or contradictory
+evidence, missing CI identity, missing/incomplete evidence, an incompatible toolchain, a different tree
+or hash, a failed run, a disallowed qualification, or a non-hermetic check does. Producer OS,
+architecture, runner image, and timezone remain descriptive and do not require an equal consumer OS.
 
 Reusable checks include credential-free inventory, import-only safety, TypeScript, lint, contracts,
 static invariants, and deterministic credential-free unit/integration suites when their exact
@@ -248,7 +257,8 @@ health, Vercel deployment state, live external APIs, remote database state, live
 mechanics.
 
 To discover credential-free evidence for tree `T`, inspect the PR check summary or list workflow-run
-artifacts whose name begins `credential-free-inventory-evidence-tree-T-`; validate the downloaded JSON
+artifacts whose name begins `credential-free-inventory-evidence-tree-T-`; the job summary prints the
+exact uploaded artifact name. Validate the downloaded JSON
 with the policy rules before reuse. If the approved PR tree, released tree, and evidence tree are all
 `T` and every definition input remains equal, release review consumes the CI evidence instead of
 rerunning the inventory locally. Release still independently verifies exact tree equality, merge and
@@ -260,11 +270,13 @@ One timeout in exactly one file/test is eligible for one targeted retry only whe
 complete enough to prove every other selected file ran, the process did not terminate abnormally,
 no credential/import-socket/classification safety failure occurred, and the tree is unchanged. Retry
 that exact file/test once under the same credential-free environment and verification definition. A
-passing retry records `qualified_pass` while retaining the original timeout and retry evidence; it
-does not trigger a second full inventory. A failed retry blocks. Assertions, incomplete reporters,
+passing retry can be represented as `qualified_pass` while retaining the original timeout and retry evidence;
+it does not require a second full inventory. A failed retry blocks. Assertions, incomplete reporters,
 worker crashes, and safety failures are never qualified. The same test qualifying twice (including
-two consecutive candidate runs) blocks and requires a flake fix; recurrence is policy-only until a
-future reviewed persistence mechanism exists.
+two consecutive candidate runs) blocks and requires a flake fix. Retry eligibility and the evidence
+schema are implemented policy; automatic targeted retry orchestration and recurrence storage are not.
+Until that orchestration exists, `qualified_pass` may be produced only through the documented/manual
+CI process when supported, with the original failure and unchanged-tree retry evidence supplied explicitly.
 
 ## Test-environment safety contract
 

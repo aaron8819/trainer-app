@@ -421,7 +421,7 @@ describe("exact-tree verification evidence", () => {
         projectRoot: conflicted.projectRoot,
         allowQualifiedPass: false,
       })
-    ).toThrow(/committed credential-free classification source/i);
+    ).toThrow(/duplicated/i);
   }, 45_000);
 
   it("parses artifact JSON as untrusted input", () => {

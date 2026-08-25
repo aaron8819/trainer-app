@@ -422,6 +422,27 @@ describe("buildHistoricalWeekAuditPayload", () => {
     expect(payload.comparabilityCoverage.limitations).toEqual(
       expect.arrayContaining([expect.stringContaining("fails closed")]),
     );
+
+    saved.saved!.placementCorrelations = [
+      { generatedPlacementId: "bench-a", persistedWorkoutExerciseId: "row-a" },
+      { generatedPlacementId: "bench-b", persistedWorkoutExerciseId: "row-a" },
+    ];
+    const invalidPayload = await buildHistoricalWeekAuditPayload({
+      userId: "user-1",
+      week: 4,
+      mesocycleId: "meso-1",
+    });
+    expect(invalidPayload.sessions[0]?.reconciliation).toMatchObject({
+      comparisonState: "invalid_placement_correlation",
+      hasDrift: null,
+      invalidPlacementCorrelations: [
+        expect.objectContaining({ code: "duplicate_explicit_target" }),
+      ],
+    });
+    expect(invalidPayload.comparabilityCoverage).toMatchObject({
+      comparableSessionCount: 0,
+      invalidCorrelationCount: 1,
+    });
   });
 
   it("flags missing workout provenance when a seeded receipt is present", async () => {

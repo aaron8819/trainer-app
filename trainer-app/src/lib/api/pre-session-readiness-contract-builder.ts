@@ -19,6 +19,7 @@ import type { NextWorkoutContext } from "@/lib/api/next-session";
 import type { AcceptedMesocycleSeedProvenanceConsistency } from "@/lib/api/accepted-mesocycle-seed-provenance";
 import type { SessionAuditSnapshot } from "@/lib/evidence/session-audit-types";
 import type { WeeklyMuscleClosureDecision } from "./weekly-volume-closure";
+import { resolvePlacementCorrelations } from "@/lib/session-semantics/placement-correlation";
 
 type PreSessionDoseDiagnostic = NonNullable<
   PreSessionReadinessProjectedWeekEvidence["runtimeDoseAdjustmentDiagnostics"]
@@ -215,9 +216,7 @@ function buildWorkoutPreview(
       return {
         ...(exercise.placementId
           ? {
-              placementId:
-                persistedPlacementIdByGeneratedId.get(exercise.placementId) ??
-                exercise.placementId,
+              placementId: persistedPlacementIdByGeneratedId.get(exercise.placementId),
             }
           : {}),
         exerciseId: exercise.exerciseId,
@@ -567,7 +566,7 @@ function buildPrescriptionConfidenceWatches(
   return (generated?.exercises ?? []).flatMap<PreSessionReadinessPrescriptionConfidenceWatchRow>((exercise) => {
     const placementId = exercise.placementId;
     const consumerPlacementId = placementId
-      ? persistedPlacementIdByGeneratedId.get(placementId) ?? placementId
+      ? persistedPlacementIdByGeneratedId.get(placementId)
       : undefined;
     const trace = placementId
       ? generated?.traces.progression[placementId]
@@ -1104,12 +1103,27 @@ export function buildPreSessionReadinessContract(
     nextSession: nextProjectedSession,
     recommendations: doseClosure.recommendations,
   });
-  const persistedPlacementIdByGeneratedId = new Map(
-    (input.sessionSnapshot?.saved?.placementCorrelations ?? []).map((correlation) => [
-      correlation.generatedPlacementId,
-      correlation.persistedWorkoutExerciseId,
-    ]),
-  );
+  const persistedPlacementIdByGeneratedId = input.sessionSnapshot?.saved
+    ? resolvePlacementCorrelations({
+        generatedOccurrences: (generated?.exercises ?? []).map((exercise) => ({
+          occurrenceId: exercise.placementId,
+          exerciseId: exercise.exerciseId,
+          value: exercise,
+        })),
+        persistedOccurrences: (input.persistedExercises ?? []).map((exercise) => ({
+          occurrenceId: exercise.id,
+          exerciseId: exercise.exerciseId,
+          value: exercise,
+        })),
+        rawCorrelations: input.sessionSnapshot.saved.placementCorrelations,
+      }).generatedToPersisted
+    : new Map(
+        (generated?.exercises ?? []).flatMap((exercise) =>
+          exercise.placementId
+            ? [[exercise.placementId, exercise.placementId] as const]
+            : [],
+        ),
+      );
   const prescriptionConfidenceWatches = buildPrescriptionConfidenceWatches(
     generated,
     input.generation && !("error" in input.generation)

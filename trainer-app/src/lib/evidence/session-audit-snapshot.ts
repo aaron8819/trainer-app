@@ -11,6 +11,10 @@ import type {
   SessionAuditSetSnapshot,
   SessionAuditSnapshot,
 } from "./session-audit-types";
+import {
+  resolvePlacementCorrelations,
+  type PlacementCorrelationRecord,
+} from "@/lib/session-semantics/placement-correlation";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 
 type JsonRecord = Record<string, unknown>;
@@ -224,22 +228,6 @@ function parseSavedState(value: unknown): SessionAuditSavedState | undefined {
   }
 
   const mesocycleSnapshot = toObject(record.mesocycleSnapshot);
-  const placementCorrelations = Array.isArray(record.placementCorrelations)
-    ? record.placementCorrelations.flatMap((entry) => {
-        const correlation = toObject(entry);
-        if (
-          !correlation ||
-          typeof correlation.generatedPlacementId !== "string" ||
-          typeof correlation.persistedWorkoutExerciseId !== "string"
-        ) {
-          return [];
-        }
-        return [{
-          generatedPlacementId: correlation.generatedPlacementId,
-          persistedWorkoutExerciseId: correlation.persistedWorkoutExerciseId,
-        }];
-      })
-    : undefined;
   return {
     workoutId: record.workoutId,
     revision: typeof record.revision === "number" ? record.revision : undefined,
@@ -261,7 +249,9 @@ function parseSavedState(value: unknown): SessionAuditSavedState | undefined {
         }
       : undefined,
     semantics: record.semantics as SessionAuditSavedState["semantics"],
-    placementCorrelations,
+    ...(Object.prototype.hasOwnProperty.call(record, "placementCorrelations")
+      ? { placementCorrelations: record.placementCorrelations }
+      : {}),
   };
 }
 
@@ -411,125 +401,6 @@ function serializeExercisePrescription(exercise: SessionAuditExerciseSnapshot): 
   });
 }
 
-type CorrelatedExercisePair = {
-  generated: SessionAuditExerciseSnapshot;
-  persisted: SessionAuditExerciseSnapshot;
-};
-
-function correlateExercisePlacements(input: {
-  generatedExercises: SessionAuditExerciseSnapshot[];
-  persistedExercises: SessionAuditExerciseSnapshot[];
-  placementCorrelations?: SessionAuditSavedState["placementCorrelations"];
-}): {
-  pairs: CorrelatedExercisePair[];
-  added: SessionAuditExerciseSnapshot[];
-  removed: SessionAuditExerciseSnapshot[];
-  ambiguousExerciseIds: string[];
-} {
-  const persistedByPlacementId = new Map(
-    input.persistedExercises.flatMap((exercise) =>
-      exercise.placementId ? [[exercise.placementId, exercise] as const] : [],
-    ),
-  );
-  const persistedIdByGeneratedId = new Map<string, string>();
-  const duplicateCorrelationIds = new Set<string>();
-  const claimedPersistedIds = new Set<string>();
-  for (const correlation of input.placementCorrelations ?? []) {
-    if (
-      persistedIdByGeneratedId.has(correlation.generatedPlacementId) ||
-      claimedPersistedIds.has(correlation.persistedWorkoutExerciseId)
-    ) {
-      duplicateCorrelationIds.add(correlation.generatedPlacementId);
-      continue;
-    }
-    persistedIdByGeneratedId.set(
-      correlation.generatedPlacementId,
-      correlation.persistedWorkoutExerciseId,
-    );
-    claimedPersistedIds.add(correlation.persistedWorkoutExerciseId);
-  }
-
-  const pairs: CorrelatedExercisePair[] = [];
-  const matchedGenerated = new Set<SessionAuditExerciseSnapshot>();
-  const matchedPersisted = new Set<SessionAuditExerciseSnapshot>();
-  const ambiguousExerciseIds = new Set<string>();
-
-  for (const generated of input.generatedExercises) {
-    if (!generated.placementId) continue;
-    if (duplicateCorrelationIds.has(generated.placementId)) {
-      ambiguousExerciseIds.add(generated.exerciseId);
-      continue;
-    }
-    const persistedPlacementId =
-      persistedIdByGeneratedId.get(generated.placementId) ?? generated.placementId;
-    const persisted = persistedByPlacementId.get(persistedPlacementId);
-    if (!persisted || matchedPersisted.has(persisted)) continue;
-    pairs.push({ generated, persisted });
-    matchedGenerated.add(generated);
-    matchedPersisted.add(persisted);
-  }
-
-  const unmatchedGenerated = input.generatedExercises.filter(
-    (exercise) => !matchedGenerated.has(exercise),
-  );
-  const unmatchedPersisted = input.persistedExercises.filter(
-    (exercise) => !matchedPersisted.has(exercise),
-  );
-  const generatedByCanonicalId = new Map<string, SessionAuditExerciseSnapshot[]>();
-  const persistedByCanonicalId = new Map<string, SessionAuditExerciseSnapshot[]>();
-  for (const exercise of unmatchedGenerated) {
-    const placements = generatedByCanonicalId.get(exercise.exerciseId) ?? [];
-    placements.push(exercise);
-    generatedByCanonicalId.set(exercise.exerciseId, placements);
-  }
-  for (const exercise of unmatchedPersisted) {
-    const placements = persistedByCanonicalId.get(exercise.exerciseId) ?? [];
-    placements.push(exercise);
-    persistedByCanonicalId.set(exercise.exerciseId, placements);
-  }
-
-  const added: SessionAuditExerciseSnapshot[] = [];
-  const removed: SessionAuditExerciseSnapshot[] = [];
-  const canonicalIds = new Set([
-    ...generatedByCanonicalId.keys(),
-    ...persistedByCanonicalId.keys(),
-  ]);
-  for (const exerciseId of canonicalIds) {
-    const generatedPlacements = generatedByCanonicalId.get(exerciseId) ?? [];
-    const persistedPlacements = persistedByCanonicalId.get(exerciseId) ?? [];
-    if (generatedPlacements.length === 1 && persistedPlacements.length === 1) {
-      pairs.push({
-        generated: generatedPlacements[0]!,
-        persisted: persistedPlacements[0]!,
-      });
-      continue;
-    }
-    if (generatedPlacements.length === 0) {
-      added.push(...persistedPlacements);
-      continue;
-    }
-    if (persistedPlacements.length === 0) {
-      removed.push(...generatedPlacements);
-      continue;
-    }
-    ambiguousExerciseIds.add(exerciseId);
-  }
-
-  for (const { generated, persisted } of pairs) {
-    if (generated.exerciseId !== persisted.exerciseId) {
-      removed.push(generated);
-      added.push(persisted);
-    }
-  }
-
-  return {
-    pairs,
-    added,
-    removed,
-    ambiguousExerciseIds: [...ambiguousExerciseIds].sort(),
-  };
-}
-
 export function buildGeneratedSessionAuditSnapshot(input: {
   workout: WorkoutPlan;
   selectionMode: string;
@@ -588,7 +459,7 @@ export function buildSavedSessionAuditSnapshot(input: {
   mesocycleWeekSnapshot?: number | null;
   mesoSessionSnapshot?: number | null;
   mesocyclePhaseSnapshot?: string | null;
-  placementCorrelations?: SessionAuditSavedState["placementCorrelations"];
+  placementCorrelations?: PlacementCorrelationRecord[];
 }): SessionAuditSnapshot {
   const existing = readSessionAuditSnapshot(input.selectionMetadata);
   const semantics = deriveSessionSemantics({
@@ -697,15 +568,26 @@ export function buildSessionAuditMutationSummary(input: {
   const persistedExercises = input.persistedExercises
     ? buildPersistedExerciseSnapshots(input.persistedExercises)
     : [];
-  const correlation = correlateExercisePlacements({
-    generatedExercises,
-    persistedExercises,
-    placementCorrelations: input.snapshot.saved?.placementCorrelations,
+  const correlation = resolvePlacementCorrelations({
+    generatedOccurrences: generatedExercises.map((exercise) => ({
+      occurrenceId: exercise.placementId,
+      exerciseId: exercise.exerciseId,
+      value: exercise,
+    })),
+    persistedOccurrences: persistedExercises.map((exercise) => ({
+      occurrenceId: exercise.placementId,
+      exerciseId: exercise.exerciseId,
+      value: exercise,
+    })),
+    rawCorrelations: input.snapshot.saved?.placementCorrelations,
   });
-  if (correlation.ambiguousExerciseIds.length > 0) {
+  if (correlation.state !== "resolved") {
     return {
       version: 1,
-      comparisonState: "ambiguous_exercise_correlation",
+      comparisonState:
+        correlation.state === "invalid_explicit_correlation"
+          ? "invalid_placement_correlation"
+          : "ambiguous_exercise_correlation",
       hasDrift: null,
       changedFields: [],
       addedExerciseIds: [],
@@ -715,6 +597,7 @@ export function buildSessionAuditMutationSummary(input: {
       placementsWithSetCountChanges: [],
       placementsWithPrescriptionChanges: [],
       ambiguousExerciseIds: correlation.ambiguousExerciseIds,
+      invalidPlacementCorrelations: correlation.invalidExplicitMappings,
       generatedSelectionMode: input.snapshot.generated.selectionMode,
       savedSelectionMode:
         typeof input.savedSelectionMode === "string" ? input.savedSelectionMode : undefined,
@@ -726,21 +609,31 @@ export function buildSessionAuditMutationSummary(input: {
     };
   }
 
-  const addedExerciseIds = correlation.added.map((exercise) => exercise.exerciseId);
+  const mismatchedPairs = correlation.pairs.filter(
+    ({ generated, persisted }) => generated.exerciseId !== persisted.exerciseId,
+  );
+  const addedExerciseIds = [
+    ...correlation.unresolvedPersisted.map((occurrence) => occurrence.exerciseId),
+    ...mismatchedPairs.map(({ persisted }) => persisted.exerciseId),
+  ];
   const removedExerciseIds =
     persistedExercises.length > 0
-      ? correlation.removed.map((exercise) => exercise.exerciseId)
+      ? [
+          ...correlation.unresolvedGenerated.map((occurrence) => occurrence.exerciseId),
+          ...mismatchedPairs.map(({ generated }) => generated.exerciseId),
+        ]
       : [];
   const sharedPairs = correlation.pairs.filter(
     ({ generated, persisted }) => generated.exerciseId === persisted.exerciseId,
   );
   const setCountChangePairs = sharedPairs.filter(
     ({ generated, persisted }) =>
-      generated.prescribedSetCount !== persisted.prescribedSetCount,
+      generated.value.prescribedSetCount !== persisted.value.prescribedSetCount,
   );
   const prescriptionChangePairs = sharedPairs.filter(
     ({ generated, persisted }) =>
-      serializeExercisePrescription(generated) !== serializeExercisePrescription(persisted),
+      serializeExercisePrescription(generated.value) !==
+      serializeExercisePrescription(persisted.value),
   );
   const exercisesWithSetCountChanges = setCountChangePairs.map(
     ({ generated }) => generated.exerciseId,
@@ -750,11 +643,11 @@ export function buildSessionAuditMutationSummary(input: {
   );
   const placementsWithSetCountChanges = setCountChangePairs.map(
     ({ generated, persisted }) =>
-      generated.placementId ?? persisted.placementId ?? generated.exerciseId,
+      generated.occurrenceId ?? persisted.occurrenceId ?? generated.exerciseId,
   );
   const placementsWithPrescriptionChanges = prescriptionChangePairs.map(
     ({ generated, persisted }) =>
-      generated.placementId ?? persisted.placementId ?? generated.exerciseId,
+      generated.occurrenceId ?? persisted.occurrenceId ?? generated.exerciseId,
   );
 
   if (addedExerciseIds.length > 0) {

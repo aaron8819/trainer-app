@@ -1258,8 +1258,9 @@ Read these fields in this order unless the audit type says otherwise.
 - Generated-vs-saved mutation summary.
 - `comparisonState="missing_generated_snapshot"` means no real generated-vs-saved comparison was possible.
 - `comparisonState="ambiguous_exercise_correlation"` means duplicate occurrences lacked an unambiguous placement mapping. `hasDrift=null` is intentional fail-closed behavior; do not interpret it as no drift.
+- `comparisonState="invalid_placement_correlation"` means explicit saved correlation metadata failed source, target, shape, or one-to-one cardinality validation. `hasDrift=null` means comparison is unavailable, not drift-free; field-level changes are intentionally omitted.
 - `hasDrift=true` means the saved workout diverged materially from the generated layer.
-- Modern saves correlate generated placement IDs to persisted workout-exercise row IDs. Canonical exercise-ID fallback is accepted only for a unique one-to-one occurrence.
+- Modern saves correlate generated placement IDs to persisted workout-exercise row IDs. Raw correlation JSON is untrusted and is resolved centrally through `src/lib/session-semantics/placement-correlation.ts`. Explicit invalid mapping never falls back canonically. Canonical exercise-ID fallback is accepted only when correlation is genuinely absent for that occurrence and the unmatched generated/persisted canonical identity is unique on both sides.
 - `changedFields` is the first field to read.
 - In `weekly-retro`, read `planAdherence.interpretations` before treating drift as engine instability. Runtime additions can be classified as `final_weekly_opportunity_mev_closure`, `target_gap_closure`, `opportunistic_extra`, substitutions, pain/fatigue deviations, or unclassified drift without rewriting the original generated plan.
 

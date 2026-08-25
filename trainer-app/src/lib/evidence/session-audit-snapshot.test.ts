@@ -575,4 +575,88 @@ describe("session-audit-snapshot", () => {
     expect(mutation.hasDrift).toBe(true);
     expect(mutation.exercisesWithPrescriptionChanges).toEqual(["bench"]);
   });
+
+  it("fails closed when an explicit target is unresolved instead of falling back canonically", () => {
+    const snapshot = buildDuplicateBenchSnapshot({ withCorrelations: true });
+    snapshot.saved!.placementCorrelations = [
+      { generatedPlacementId: "bench-placement-a", persistedWorkoutExerciseId: "NOPE" },
+      { generatedPlacementId: "bench-placement-b", persistedWorkoutExerciseId: "row-b" },
+    ];
+    const mutation = buildSessionAuditMutationSummary({
+      snapshot,
+      persistedExercises: [persistedBench("row-a", 0, 105), persistedBench("row-b", 1, 95)],
+    });
+
+    expect(mutation).toMatchObject({
+      comparisonState: "invalid_placement_correlation",
+      hasDrift: null,
+      changedFields: [],
+      invalidPlacementCorrelations: [
+        expect.objectContaining({
+          code: "invalid_explicit_target",
+          generatedPlacementId: "bench-placement-a",
+        }),
+      ],
+    });
+  });
+
+  it("preserves malformed serialized correlations for authoritative validation", () => {
+    const snapshot = buildDuplicateBenchSnapshot({ withCorrelations: true });
+    snapshot.saved!.placementCorrelations = [
+      { generatedPlacementId: "bench-placement-a" },
+    ];
+
+    const parsed = readSessionAuditSnapshot({ sessionAuditSnapshot: snapshot });
+    expect(parsed?.saved?.placementCorrelations).toEqual([
+      { generatedPlacementId: "bench-placement-a" },
+    ]);
+
+    const mutation = buildSessionAuditMutationSummary({
+      snapshot: parsed!,
+      persistedExercises: [persistedBench("row-a", 0, 105), persistedBench("row-b", 1, 95)],
+    });
+    expect(mutation).toMatchObject({
+      comparisonState: "invalid_placement_correlation",
+      hasDrift: null,
+      changedFields: [],
+      invalidPlacementCorrelations: [
+        expect.objectContaining({
+          code: "malformed_explicit_correlation",
+          generatedPlacementId: "bench-placement-a",
+        }),
+      ],
+    });
+  });
+
+  it.each([
+    {
+      label: "many-to-one target",
+      correlations: [
+        { generatedPlacementId: "bench-placement-a", persistedWorkoutExerciseId: "row-a" },
+        { generatedPlacementId: "bench-placement-b", persistedWorkoutExerciseId: "row-a" },
+      ],
+      issue: "duplicate_explicit_target",
+    },
+    {
+      label: "duplicate source",
+      correlations: [
+        { generatedPlacementId: "bench-placement-a", persistedWorkoutExerciseId: "row-a" },
+        { generatedPlacementId: "bench-placement-a", persistedWorkoutExerciseId: "row-b" },
+      ],
+      issue: "duplicate_explicit_source",
+    },
+  ])("rejects $label cardinality", ({ correlations, issue }) => {
+    const snapshot = buildDuplicateBenchSnapshot({ withCorrelations: true });
+    snapshot.saved!.placementCorrelations = correlations;
+    const mutation = buildSessionAuditMutationSummary({
+      snapshot,
+      persistedExercises: [persistedBench("row-a", 0, 105), persistedBench("row-b", 1, 95)],
+    });
+
+    expect(mutation.comparisonState).toBe("invalid_placement_correlation");
+    expect(mutation.hasDrift).toBeNull();
+    expect(mutation.invalidPlacementCorrelations).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: issue })]),
+    );
+  });
 });

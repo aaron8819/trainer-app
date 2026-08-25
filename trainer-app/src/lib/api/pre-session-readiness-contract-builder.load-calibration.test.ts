@@ -19,6 +19,7 @@ function buildContract(
       generatedPlacementId: string;
       persistedWorkoutExerciseId: string;
     }>;
+    persistedExercises?: Array<{ id: string; exerciseId: string }>;
   },
 ) {
   return buildPreSessionReadinessContract({
@@ -60,6 +61,7 @@ function buildContract(
         ? { saved: { placementCorrelations: generatedSnapshot.placementCorrelations } }
         : {}),
     } as never,
+    persistedExercises: generatedSnapshot?.persistedExercises,
     projectedWeek: {
       version: 1,
       currentWeek: {
@@ -208,6 +210,10 @@ describe("V4 load-calibration presentation", () => {
           { generatedPlacementId: "generated-a", persistedWorkoutExerciseId: "row-a" },
           { generatedPlacementId: "generated-b", persistedWorkoutExerciseId: "row-b" },
         ],
+        persistedExercises: [
+          { id: "row-a", exerciseId: "bench" },
+          { id: "row-b", exerciseId: "bench" },
+        ],
       },
     );
 
@@ -218,6 +224,86 @@ describe("V4 load-calibration presentation", () => {
     expect(
       getCalibrationWatchRows(contract).map((row) => row.placementId),
     ).toEqual(["row-a", "row-b"]);
+  });
+
+  it("omits placement-specific readiness and log guidance for a many-to-one saved map", () => {
+    const contract = buildContract(
+      [
+        readout({
+          placementId: "generated-a",
+          exerciseId: "bench",
+          exerciseName: "Bench Press",
+          loadSource: "history",
+          targetLoad: 105,
+        }),
+        readout({
+          placementId: "generated-b",
+          exerciseId: "bench",
+          exerciseName: "Bench Press",
+          loadSource: "history",
+          targetLoad: 95,
+        }),
+      ],
+      {
+        exercises: [
+          { placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench Press" },
+          { placementId: "generated-b", exerciseId: "bench", exerciseName: "Bench Press" },
+        ],
+        traces: { progression: {} },
+        placementCorrelations: [
+          { generatedPlacementId: "generated-a", persistedWorkoutExerciseId: "row-a" },
+          { generatedPlacementId: "generated-b", persistedWorkoutExerciseId: "row-a" },
+        ],
+        persistedExercises: [
+          { id: "row-a", exerciseId: "bench" },
+          { id: "row-b", exerciseId: "bench" },
+        ],
+      },
+    );
+
+    expect(contract.workoutPreview?.exercises.map((exercise) => exercise.placementId)).toEqual([
+      undefined,
+      undefined,
+    ]);
+    expect(getCalibrationWatchRows(contract).map((row) => row.placementId)).toEqual([
+      undefined,
+      undefined,
+    ]);
+    const guidance = buildLogWorkoutExecutionGuidanceByExercise(
+      buildPreSessionReadinessGymCardDto(contract),
+    );
+    expect(guidance.byPlacementId).toEqual({});
+    expect(guidance.byExerciseId).toEqual({});
+    expect(guidance.byExerciseName).toEqual({});
+  });
+
+  it("does not translate an occurrence whose explicit persisted target is missing", () => {
+    const contract = buildContract(
+      [
+        readout({ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench A", loadSource: "history" }),
+        readout({ placementId: "generated-b", exerciseId: "row", exerciseName: "Row B", loadSource: "history" }),
+      ],
+      {
+        exercises: [
+          { placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench A" },
+          { placementId: "generated-b", exerciseId: "row", exerciseName: "Row B" },
+        ],
+        traces: { progression: {} },
+        placementCorrelations: [
+          { generatedPlacementId: "generated-a", persistedWorkoutExerciseId: "NOPE" },
+          { generatedPlacementId: "generated-b", persistedWorkoutExerciseId: "row-b" },
+        ],
+        persistedExercises: [
+          { id: "row-a", exerciseId: "bench" },
+          { id: "row-b", exerciseId: "row" },
+        ],
+      },
+    );
+
+    expect(contract.workoutPreview?.exercises.map((exercise) => exercise.placementId)).toEqual([
+      undefined,
+      "row-b",
+    ]);
   });
 
   it("explains exact, legacy-bridged, and uncalibrated starting loads", () => {

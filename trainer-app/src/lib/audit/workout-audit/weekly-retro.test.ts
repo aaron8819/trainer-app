@@ -58,6 +58,7 @@ vi.mock("./historical-week", () => ({
 }));
 
 import { buildWeeklyRetroAuditPayload } from "./weekly-retro";
+import type { HistoricalWeekAuditSession } from "./types";
 
 describe("buildWeeklyRetroAuditPayload", () => {
   beforeEach(() => {
@@ -1487,9 +1488,10 @@ describe("buildWeeklyRetroAuditPayload", () => {
         makeGeneratedExercise("bench", "Bench Press", 1, 2),
       ],
       addedExerciseIds: [],
-    }) as ReturnType<typeof makeHistoricalSession>;
-    const generatedExercises = session.sessionSnapshot.generated.exercises as Array<
-      (typeof session.sessionSnapshot.generated.exercises)[number] & { placementId?: string }
+    }) as unknown as HistoricalWeekAuditSession;
+    const generatedSnapshot = session.sessionSnapshot.generated!;
+    const generatedExercises = generatedSnapshot.exercises as Array<
+      (typeof generatedSnapshot.exercises)[number] & { placementId?: string }
     >;
     generatedExercises[0]!.placementId = "bench-a";
     generatedExercises[1]!.placementId = "bench-b";
@@ -1503,7 +1505,7 @@ describe("buildWeeklyRetroAuditPayload", () => {
       { generatedPlacementId: "bench-a", persistedWorkoutExerciseId: "bench-0" },
       { generatedPlacementId: "bench-b", persistedWorkoutExerciseId: "bench-1" },
     ];
-    mocks.buildHistoricalWeekAuditPayload.mockResolvedValue({
+    const historicalPayload = {
       version: 1,
       week: 1,
       mesocycleId: "meso-1",
@@ -1531,7 +1533,8 @@ describe("buildWeeklyRetroAuditPayload", () => {
         generatedLayerCoverage: "full",
         limitations: [],
       },
-    });
+    };
+    mocks.buildHistoricalWeekAuditPayload.mockResolvedValue(historicalPayload);
     mocks.loadMesocycleWeekMuscleVolume.mockResolvedValue({});
     mocks.getWeeklyVolumeTarget.mockReturnValue(0);
     mocks.workoutFindMany.mockResolvedValue([{
@@ -1564,6 +1567,38 @@ describe("buildWeeklyRetroAuditPayload", () => {
       expect.objectContaining({ placementId: "bench-a", workoutExerciseId: "bench-0", performedSetCount: 1 }),
       expect.objectContaining({ placementId: "bench-b", workoutExerciseId: "bench-1", performedSetCount: 2 }),
     ]);
+
+    savedSnapshot.placementCorrelations = [
+      { generatedPlacementId: "bench-a", persistedWorkoutExerciseId: "bench-0" },
+      { generatedPlacementId: "bench-b", persistedWorkoutExerciseId: "bench-0" },
+    ];
+    session.reconciliation = {
+      ...session.reconciliation,
+      comparisonState: "invalid_placement_correlation",
+      hasDrift: null,
+      invalidPlacementCorrelations: [
+        {
+          code: "duplicate_explicit_target",
+          recordIndexes: [0, 1],
+          persistedWorkoutExerciseId: "bench-0",
+        },
+      ],
+    };
+    historicalPayload.comparabilityCoverage.comparableSessionCount = 0;
+    historicalPayload.comparabilityCoverage.missingGeneratedSnapshotCount = 1;
+    Object.assign(historicalPayload.comparabilityCoverage, { invalidCorrelationCount: 1 });
+
+    const malformedPayload = await buildWeeklyRetroAuditPayload({
+      userId: "user-1",
+      week: 1,
+      mesocycleId: "meso-1",
+    });
+    expect(malformedPayload.planAdherence).toMatchObject({
+      plannedWorkTotalSets: 0,
+      plannedWorkCompletedSets: 0,
+      plannedWorkMissedSets: 0,
+    });
+    expect(malformedPayload.exerciseLoadCalibrationRows).toEqual([]);
   });
 });
 

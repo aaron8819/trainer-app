@@ -346,6 +346,83 @@ describe("generateWorkoutExplanation progression receipt", () => {
     expect(result.progressionReceipts.has("ex1")).toBe(false);
   });
 
+  it("does not attach occurrence-specific progression evidence through a malformed many-to-one map", async () => {
+    const currentWorkout = await mocks.workoutFindUnique();
+    const generatedMetadata = buildGeneratedSelectionMetadata({});
+    const generated = generatedMetadata.sessionAuditSnapshot.generated;
+    generated.exerciseCount = 2;
+    generated.exercises = [
+      { ...generated.exercises[0]!, placementId: "generated-a", orderIndex: 0 },
+      { ...generated.exercises[0]!, placementId: "generated-b", orderIndex: 1 },
+    ] as unknown as typeof generated.exercises;
+    generated.traces.progression = {
+      "generated-b": buildGeneratedProgressionTrace({
+        anchorLoad: 200,
+        nextLoad: 205,
+        anchorSource: "working_set",
+        action: "increase",
+        path: "path_3",
+      }),
+    } as never;
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      ...currentWorkout,
+      selectionMetadata: {
+        ...generatedMetadata,
+        sessionDecisionReceipt: {
+          version: 1,
+          cycleContext: {
+            weekInMeso: 5,
+            weekInBlock: 1,
+            phase: "deload",
+            blockType: "deload",
+            isDeload: true,
+            source: "computed",
+          },
+          lifecycleVolume: { source: "unknown" },
+          sorenessSuppressedMuscles: [],
+          deloadDecision: {
+            mode: "scheduled",
+            reason: ["Scheduled deload week."],
+            reductionPercent: 50,
+            appliedTo: "volume",
+          },
+          readiness: {
+            wasAutoregulated: false,
+            signalAgeHours: null,
+            fatigueScoreOverall: null,
+            intensityScaling: {
+              applied: false,
+              exerciseIds: [],
+              scaledUpCount: 0,
+              scaledDownCount: 0,
+            },
+          },
+          exceptions: [],
+        },
+        sessionAuditSnapshot: {
+          ...generatedMetadata.sessionAuditSnapshot,
+          saved: {
+            placementCorrelations: [
+              { generatedPlacementId: "generated-a", persistedWorkoutExerciseId: "row-a" },
+              { generatedPlacementId: "generated-b", persistedWorkoutExerciseId: "row-a" },
+            ],
+          },
+        },
+      },
+      exercises: [
+        { ...currentWorkout.exercises[0], id: "row-a", orderIndex: 0 },
+        { ...currentWorkout.exercises[0], id: "row-b", orderIndex: 1 },
+      ],
+    });
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect(result.progressionReceipts.get("row-a")?.lastPerformed?.load).toBe(200);
+    expect(result.progressionReceipts.get("row-b")?.lastPerformed?.load).toBe(200);
+  });
+
   it("does not use machine-displayed history for progression receipts or next-exposure decisions", async () => {
     const currentWorkout = await mocks.workoutFindUnique();
     mocks.workoutFindUnique.mockResolvedValueOnce({

@@ -16,6 +16,7 @@ import type { SessionCompositionSource } from "@/lib/evidence/types";
 import type { MappedGenerationContext } from "./types";
 import { resolveRequiredSeededSlotPlan } from "./slot-plan-seed";
 import { readSessionAuditSnapshot } from "@/lib/evidence/session-audit-snapshot";
+import { resolvePlacementCorrelations } from "@/lib/session-semantics/placement-correlation";
 
 function modalNumber(values: number[]): number | undefined {
   const freq = new Map<number, number>();
@@ -243,31 +244,52 @@ export async function generateDeloadSessionFromIntentContext(
     }
   >();
 
+  const resolvedWorkoutPlacements = new Map<
+    typeof latestAccumWorkout,
+    Map<string, (typeof latestAccumWorkout.exercises)[number]>
+  >();
+  const resolveWorkoutPlacements = (workout: typeof latestAccumWorkout) => {
+    const cached = resolvedWorkoutPlacements.get(workout);
+    if (cached) return cached;
+    const snapshot = readSessionAuditSnapshot(workout.selectionMetadata);
+    const correlation = resolvePlacementCorrelations({
+      generatedOccurrences: orderedPlacements.map((placement) => ({
+        occurrenceId: placement.placementId,
+        exerciseId: placement.exerciseId,
+        value: placement,
+      })),
+      persistedOccurrences: workout.exercises.map((exercise) => ({
+        occurrenceId: exercise.id,
+        exerciseId: exercise.exerciseId,
+        value: exercise,
+      })),
+      rawCorrelations: snapshot?.saved?.placementCorrelations,
+    });
+    const byGeneratedPlacementId = new Map(
+      correlation.pairs.flatMap((pair) =>
+        pair.generated.occurrenceId
+          ? [[pair.generated.occurrenceId, pair.persisted.value] as const]
+          : [],
+      ),
+    );
+    resolvedWorkoutPlacements.set(workout, byGeneratedPlacementId);
+    return byGeneratedPlacementId;
+  };
   const findWorkoutPlacement = (
     workout: typeof latestAccumWorkout,
     placementId: string,
-    exerciseId: string,
-  ) => {
-    const persistedId = readSessionAuditSnapshot(workout.selectionMetadata)?.saved
-      ?.placementCorrelations?.find((entry) => entry.generatedPlacementId === placementId)
-      ?.persistedWorkoutExerciseId;
-    if (persistedId) {
-      return workout.exercises.find((entry) => entry.id === persistedId);
-    }
-    const canonicalMatches = workout.exercises.filter((entry) => entry.exerciseId === exerciseId);
-    return canonicalMatches.length === 1 ? canonicalMatches[0] : undefined;
-  };
+  ) => resolveWorkoutPlacements(workout).get(placementId);
 
   for (const [orderIndex, placement] of orderedPlacements.entries()) {
     const { placementId, exerciseId } = placement;
     const exercise = exerciseById.get(exerciseId);
     if (!exercise) continue;
 
-    const latestExerciseEntry = findWorkoutPlacement(latestAccumWorkout, placementId, exerciseId);
+    const latestExerciseEntry = findWorkoutPlacement(latestAccumWorkout, placementId);
     const baselineExerciseEntry =
       latestExerciseEntry ??
       peakAccumulationSource.flatMap((workout) => {
-        const entry = findWorkoutPlacement(workout, placementId, exerciseId);
+        const entry = findWorkoutPlacement(workout, placementId);
         return entry ? [entry] : [];
       })[0];
     const mesocycleRole =
@@ -288,7 +310,7 @@ export async function generateDeloadSessionFromIntentContext(
       : [];
     const peakAccumulationLoads = peakAccumulationSource
       .flatMap((workout) => {
-        const entry = findWorkoutPlacement(workout, placementId, exerciseId);
+        const entry = findWorkoutPlacement(workout, placementId);
         return entry ? [entry] : [];
       })
       .flatMap((entry) => getPositiveLoggedLoads(entry.sets));

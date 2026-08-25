@@ -249,10 +249,8 @@ export type SessionAuditSavedState = {
     phase?: string | null;
   };
   semantics: SessionAuditSemanticsSnapshot;
-  placementCorrelations?: Array<{
-    generatedPlacementId: string;
-    persistedWorkoutExerciseId: string;
-  }>;
+  /** Untrusted serialized metadata. Interpret only through the central resolver. */
+  placementCorrelations?: unknown;
 };
 
 export type SessionAuditSnapshot = {
@@ -276,7 +274,8 @@ export type SessionAuditMutationSummary = {
   comparisonState:
     | "comparable"
     | "missing_generated_snapshot"
-    | "ambiguous_exercise_correlation";
+    | "ambiguous_exercise_correlation"
+    | "invalid_placement_correlation";
   hasDrift: boolean | null;
   changedFields: SessionAuditMutationChangedField[];
   addedExerciseIds: string[];
@@ -286,6 +285,17 @@ export type SessionAuditMutationSummary = {
   placementsWithSetCountChanges?: string[];
   placementsWithPrescriptionChanges?: string[];
   ambiguousExerciseIds?: string[];
+  invalidPlacementCorrelations?: Array<{
+    code:
+      | "malformed_explicit_correlation"
+      | "unknown_generated_source"
+      | "invalid_explicit_target"
+      | "duplicate_explicit_source"
+      | "duplicate_explicit_target";
+    recordIndexes: number[];
+    generatedPlacementId?: string;
+    persistedWorkoutExerciseId?: string;
+  }>;
   generatedSelectionMode?: string;
   savedSelectionMode?: string;
   generatedSessionIntent?: string;

@@ -76,6 +76,11 @@ import {
   type MeasurementSemantics,
 } from "@/lib/exercise-measurement/semantics";
 import { formatFrozenLoadValue } from "@/lib/exercise-measurement/load-entry-policy";
+import { resolvePlacementCorrelations } from "@/lib/session-semantics/placement-correlation";
+import type {
+  SessionAuditExerciseSnapshot,
+  SessionAuditGeneratedState,
+} from "@/lib/evidence/session-audit-types";
 
 const HISTORY_RECENCY_WINDOW_DAYS = 42;
 const CANONICAL_RATIONALE_COMPONENT_KEYS = [
@@ -262,6 +267,24 @@ export async function generateWorkoutExplanation(
     workout.selectionMetadata
   );
   const sessionAuditSnapshot = readSessionAuditSnapshot(workout.selectionMetadata);
+  const generatedExerciseByPersistedExercise = new Map<object, SessionAuditExerciseSnapshot>();
+  const generatedExercises = sessionAuditSnapshot?.generated?.exercises ?? [];
+  const placementCorrelation = resolvePlacementCorrelations({
+    generatedOccurrences: generatedExercises.map((exercise) => ({
+      occurrenceId: exercise.placementId,
+      exerciseId: exercise.exerciseId,
+      value: exercise,
+    })),
+    persistedOccurrences: workout.exercises.map((exercise) => ({
+      occurrenceId: exercise.id,
+      exerciseId: exercise.exerciseId,
+      value: exercise,
+    })),
+    rawCorrelations: sessionAuditSnapshot?.saved?.placementCorrelations,
+  });
+  for (const pair of placementCorrelation.pairs) {
+    generatedExerciseByPersistedExercise.set(pair.persisted.value, pair.generated.value);
+  }
   const explanationPeriodization = buildExplanationPeriodization({
     blockContext,
     weekInMeso,
@@ -365,9 +388,9 @@ export async function generateWorkoutExplanation(
     });
     const isReadinessScaled = sessionEvidence.readinessScaledExerciseIds.has(workoutExercise.exerciseId);
     const generatedProgressionEvidence = resolveGeneratedProgressionEvidence(
-      sessionAuditSnapshot,
-      workoutExercise.id,
-      workoutExercise.exerciseId
+      sessionAuditSnapshot?.generated,
+      generatedExerciseByPersistedExercise,
+      workoutExercise,
     );
     progressionReceipts.set(
       explanationKey,
@@ -1472,36 +1495,22 @@ function summarizeTodayTopSet(
 }
 
 function resolveGeneratedProgressionEvidence(
-  sessionAuditSnapshot: ReturnType<typeof readSessionAuditSnapshot>,
-  workoutExerciseId: string,
-  exerciseId: string
+  generated: SessionAuditGeneratedState | undefined,
+  generatedExerciseByPersistedExercise: Map<object, SessionAuditExerciseSnapshot>,
+  workoutExercise: object,
 ): GeneratedProgressionEvidence {
-  const generated = sessionAuditSnapshot?.generated;
   if (!generated) {
     return "unknown";
   }
 
-  const generatedPlacementId =
-    sessionAuditSnapshot?.saved?.placementCorrelations?.find(
-      (entry) => entry.persistedWorkoutExerciseId === workoutExerciseId,
-    )?.generatedPlacementId ?? workoutExerciseId;
-  const exactPlacement = generated.exercises.find(
-    (exercise) => exercise.placementId === generatedPlacementId,
-  );
-  const canonicalMatches = generated.exercises.filter(
-    (exercise) => exercise.exerciseId === exerciseId,
-  );
-  const matchedExercise = exactPlacement ??
-    (canonicalMatches.length === 1 ? canonicalMatches[0] : undefined);
+  const matchedExercise = generatedExerciseByPersistedExercise.get(workoutExercise);
   if (!matchedExercise) {
     return "unknown";
   }
 
   const trace = matchedExercise.placementId
     ? generated.traces.progression[matchedExercise.placementId]
-    : canonicalMatches.length === 1
-      ? generated.traces.progression[exerciseId]
-      : undefined;
+    : generated.traces.progression[matchedExercise.exerciseId];
   return trace ? "confirmed" : "absent";
 }
 

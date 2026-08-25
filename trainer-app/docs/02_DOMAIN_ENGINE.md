@@ -96,13 +96,17 @@ replacement-exercise prescription authority.
 Save carries each generated `WorkoutExercise.id` as a placement correlation fact.
 The save owner assigns the persisted `WorkoutExercise.id` and stores the explicit
 generated-placement-to-persisted-row mapping in the saved session-audit layer.
-Generated-vs-saved reconciliation matches those occurrence identities, so
-duplicate canonical exercise placements cannot overwrite one another. Canonical
-exercise-ID fallback is permitted only for a one-generated/one-persisted unique
-occurrence. Legacy or incomplete duplicate data without an unambiguous mapping
-returns `ambiguous_exercise_correlation` with `hasDrift=null`; it never reports
-false no-drift. Readiness trace/readout canonical-ID fallback follows the same
-uniqueness rule and omits ambiguous duplicate correlation.
+Those saved correlations are untrusted serialized metadata. The pure resolver in
+`src/lib/session-semantics/placement-correlation.ts` is the only business-rule
+owner for interpreting them across reconciliation, readiness/log guidance,
+explainability, weekly review, and deload history. It validates source and target
+existence plus one-to-one source/target cardinality before returning exact pairs.
+An explicit invalid mapping is quarantined and never becomes canonical fallback
+for that generated occurrence. Canonical exercise-ID fallback applies only to a
+genuinely unmapped legacy remainder with exactly one generated and one persisted
+occurrence. Duplicate legacy data returns `ambiguous_exercise_correlation`; malformed
+explicit data returns `invalid_placement_correlation`. Both use `hasDrift=null` and
+cannot report false no-drift or supply unproven occurrence-specific guidance.
 
 Deload evidence remains excluded from accumulation progression. Explicit zero
 continues to use only the existing `BODYWEIGHT_NO_ADDED_LOAD` and

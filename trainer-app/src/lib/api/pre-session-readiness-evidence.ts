@@ -100,6 +100,10 @@ export type PreSessionReadinessContractBuildInput = {
   nextSession?: NextWorkoutContext;
   generation?: SessionGenerationResult;
   sessionSnapshot?: SessionAuditSnapshot;
+  persistedExercises?: Array<{
+    id: string;
+    exerciseId: string;
+  }>;
   generationPath?: PreSessionReadinessGenerationPathEvidence;
   seedConsistency?: AcceptedMesocycleSeedProvenanceConsistency;
   projectedWeek?: PreSessionReadinessProjectedWeekEvidence;

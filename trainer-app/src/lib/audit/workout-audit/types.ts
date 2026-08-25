@@ -325,6 +325,7 @@ export type HistoricalWeekAuditPayload = {
     comparableSessionCount: number;
     missingGeneratedSnapshotCount: number;
     ambiguousCorrelationCount?: number;
+    invalidCorrelationCount?: number;
     persistedSnapshotCount: number;
     reconstructedSnapshotCount: number;
     generatedLayerCoverage: "full" | "partial" | "none";

@@ -364,7 +364,7 @@ describe("deload-session generation", () => {
     });
   });
 
-  it("preserves duplicate legacy seeded exercises and fails closed on ambiguous history", async () => {
+  it("preserves duplicate seeded exercises and fails closed on ambiguous or malformed history", async () => {
     const makeBenchRow = (id: string, load: number) => ({
       id,
       exerciseId: "bench",
@@ -380,9 +380,7 @@ describe("deload-session generation", () => {
       },
     ]);
 
-    const result = await generateDeloadSessionFromIntentContext(
-      "user-1",
-      makeMappedContext({
+    const mapped = makeMappedContext({
         exerciseLibrary: [
           {
             id: "bench",
@@ -428,7 +426,10 @@ describe("deload-session generation", () => {
             },
           ],
         },
-      }),
+      });
+    const result = await generateDeloadSessionFromIntentContext(
+      "user-1",
+      mapped,
       "push"
     );
 
@@ -440,6 +441,60 @@ describe("deload-session generation", () => {
       "legacy-seed:1:bench",
     ]);
     expect(result.trace.exercises).toEqual([
+      expect.objectContaining({
+        placementId: "legacy-seed:0:bench",
+        anchoredLoad: null,
+        anchoredLoadSource: "none",
+      }),
+      expect.objectContaining({
+        placementId: "legacy-seed:1:bench",
+        anchoredLoad: null,
+        anchoredLoadSource: "none",
+      }),
+    ]);
+
+    const malformedSelectionMetadata = {
+      sessionAuditSnapshot: {
+        version: 1,
+        saved: {
+          workoutId: "accumulation-workout",
+          status: "COMPLETED",
+          advancesSplit: true,
+          semantics: { kind: "advancing" },
+          placementCorrelations: [
+            {
+              generatedPlacementId: "legacy-seed:0:bench",
+              persistedWorkoutExerciseId: "row-x",
+            },
+            {
+              generatedPlacementId: "legacy-seed:1:bench",
+              persistedWorkoutExerciseId: "row-x",
+            },
+          ],
+        },
+      },
+    };
+    mocks.workoutFindFirst.mockResolvedValueOnce({
+      id: "latest",
+      selectionMetadata: malformedSelectionMetadata,
+      exercises: [makeBenchRow("row-x", 200), makeBenchRow("row-y", 180)],
+    });
+    mocks.workoutFindMany.mockResolvedValueOnce([
+      {
+        id: "peak",
+        selectionMetadata: malformedSelectionMetadata,
+        exercises: [makeBenchRow("row-x", 200), makeBenchRow("row-y", 180)],
+      },
+    ]);
+
+    const malformedResult = await generateDeloadSessionFromIntentContext(
+      "user-1",
+      mapped,
+      "push",
+    );
+    expect("error" in malformedResult).toBe(false);
+    if ("error" in malformedResult) return;
+    expect(malformedResult.trace.exercises).toEqual([
       expect.objectContaining({
         placementId: "legacy-seed:0:bench",
         anchoredLoad: null,

@@ -297,8 +297,45 @@ describe("pre-session readiness snapshot persistence", () => {
       status: "PLANNED",
       sessionIntent: "LOWER",
       selectionMode: "AUTO",
-      selectionMetadata: {},
-      exercises: [],
+      advancesSplit: true,
+      selectionMetadata: {
+        sessionAuditSnapshot: {
+          version: 1,
+          generated: {
+            selectionMode: "AUTO",
+            sessionIntent: "LOWER",
+            semantics: { kind: "standard" },
+            exerciseCount: 1,
+            hardSetCount: 1,
+            exercises: [
+              {
+                placementId: "generated-a",
+                exerciseId: "bench",
+                exerciseName: "Bench Press",
+                orderIndex: 0,
+                section: "main",
+                isMainLift: true,
+                prescribedSetCount: 1,
+                prescribedSets: [],
+              },
+            ],
+            traces: { progression: {} },
+          },
+          saved: {
+            workoutId: "workout-1",
+            status: "PLANNED",
+            advancesSplit: true,
+            semantics: { kind: "standard" },
+            placementCorrelations: [
+              {
+                generatedPlacementId: "generated-a",
+                persistedWorkoutExerciseId: "row-a",
+              },
+            ],
+          },
+        },
+      },
+      exercises: [{ id: "row-a", exerciseId: "bench", sets: [] }],
     });
     const identity = await loadCurrentPreSessionReadinessSnapshotIdentity("user-1");
     expect(identity?.identity.target).toMatchObject({
@@ -306,6 +343,19 @@ describe("pre-session readiness snapshot persistence", () => {
       workoutId: "workout-1",
       workoutRevision: 7,
       prescriptionFingerprint: expect.any(String),
+    });
+    expect(identity?.savedWorkoutEvidence).toMatchObject({
+      persistedExercises: [{ id: "row-a", exerciseId: "bench" }],
+      sessionSnapshot: {
+        saved: {
+          placementCorrelations: [
+            {
+              generatedPlacementId: "generated-a",
+              persistedWorkoutExerciseId: "row-a",
+            },
+          ],
+        },
+      },
     });
   });
 

@@ -6,6 +6,8 @@ import type {
 import { prisma } from "@/lib/db/prisma";
 import { SIGNAL_STALENESS_THRESHOLD_MS } from "./readiness";
 import { loadNextWorkoutContext } from "./next-session";
+import { buildSavedSessionAuditSnapshot } from "@/lib/evidence/session-audit-snapshot";
+import type { PreSessionReadinessSavedWorkoutEvidence } from "./pre-session-readiness-evidence";
 import {
   isPreSessionReadinessContract,
   type PreSessionReadinessContract,
@@ -50,6 +52,7 @@ export type PreSessionReadinessCurrentSnapshotIdentity = SnapshotIdentity & {
   seedRevisionNumber: number | null;
   seedPayloadHash: string | null;
   prescriptionFingerprint: string | null;
+  savedWorkoutEvidence: PreSessionReadinessSavedWorkoutEvidence | null;
 };
 
 export type ActivatePreSessionReadinessSnapshotInput = {
@@ -150,6 +153,7 @@ const workoutPrescriptionSelect = {
   sessionIntent: true,
   selectionMode: true,
   selectionMetadata: true,
+  advancesSplit: true,
   exercises: {
     orderBy: [{ orderIndex: "asc" as const }, { id: "asc" as const }],
     select: {
@@ -225,6 +229,37 @@ type BoundaryEvidence = {
   seedPayloadHash: string | null;
   prescriptionFingerprint: string | null;
 };
+
+function buildSavedWorkoutEvidence(
+  workout: NonNullable<BoundaryEvidence["plannedWorkout"]>
+): PreSessionReadinessSavedWorkoutEvidence {
+  return {
+    sessionSnapshot: buildSavedSessionAuditSnapshot({
+      selectionMetadata: workout.selectionMetadata,
+      workoutId: workout.id,
+      revision: workout.revision,
+      status: workout.status,
+      advancesSplit: workout.advancesSplit,
+      selectionMode: workout.selectionMode,
+      sessionIntent: workout.sessionIntent,
+    }),
+    persistedExercises: workout.exercises.map((exercise) => ({
+      id: exercise.id,
+      exerciseId: exercise.exerciseId,
+    })),
+  };
+}
+
+export async function loadPreSessionReadinessSavedWorkoutEvidence(input: {
+  userId: string;
+  workoutId: string;
+}): Promise<PreSessionReadinessSavedWorkoutEvidence | null> {
+  const workout = await prisma.workout.findFirst({
+    where: { id: input.workoutId, userId: input.userId },
+    select: workoutPrescriptionSelect,
+  });
+  return workout ? buildSavedWorkoutEvidence(workout) : null;
+}
 
 async function loadBoundaryEvidenceRows(
   reader: SnapshotReader,
@@ -346,7 +381,15 @@ async function loadBoundaryEvidence(
       ? null
       : hashPreSessionReadinessValue(rows.mesocycle.slotSequenceJson);
   const prescriptionFingerprint = rows.plannedWorkout
-    ? hashPreSessionReadinessValue(rows.plannedWorkout)
+    ? hashPreSessionReadinessValue({
+        id: rows.plannedWorkout.id,
+        revision: rows.plannedWorkout.revision,
+        status: rows.plannedWorkout.status,
+        sessionIntent: rows.plannedWorkout.sessionIntent,
+        selectionMode: rows.plannedWorkout.selectionMode,
+        selectionMetadata: rows.plannedWorkout.selectionMetadata,
+        exercises: rows.plannedWorkout.exercises,
+      })
     : null;
 
   return {
@@ -489,6 +532,9 @@ export async function loadCurrentPreSessionReadinessSnapshotIdentity(
     seedRevisionNumber: boundary.seedRevisionNumber,
     seedPayloadHash: boundary.seedPayloadHash,
     prescriptionFingerprint: boundary.prescriptionFingerprint,
+    savedWorkoutEvidence: boundary.plannedWorkout
+      ? buildSavedWorkoutEvidence(boundary.plannedWorkout)
+      : null,
   };
 }
 

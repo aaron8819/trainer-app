@@ -142,6 +142,7 @@ function makeCurrentIdentity(overrides: Record<string, unknown> = {}) {
     seedRevisionNumber: null,
     seedPayloadHash: "seed-hash",
     prescriptionFingerprint: null,
+    savedWorkoutEvidence: null,
     ...overrides,
   };
 }
@@ -450,6 +451,34 @@ describe("preparePreSessionReadinessSnapshot", () => {
     expect(mocks.activatePreSessionReadinessSnapshot).not.toHaveBeenCalled();
   });
 
+  it("does not build a generated-only contract for a saved workout with missing evidence", async () => {
+    mocks.loadCurrentPreSessionReadinessSnapshotIdentity.mockResolvedValue(
+      makeCurrentIdentity({
+        plannedWorkoutId: "planned-1",
+        plannedWorkoutRevision: 7,
+        savedWorkoutEvidence: null,
+      })
+    );
+    mocks.loadNextWorkoutContext.mockResolvedValue({
+      intent: "lower",
+      slotId: "lower_a",
+      existingWorkoutId: "planned-1",
+      source: "existing_incomplete",
+      weekInMeso: 2,
+      sessionInWeek: 2,
+      derivationTrace: [],
+    });
+
+    const result = await preparePreSessionReadinessSnapshot("user-1");
+
+    expect(result).toMatchObject({
+      status: "blocked",
+      reason: "invalid_contract",
+    });
+    expect(mocks.buildPreSessionReadinessContract).not.toHaveBeenCalled();
+    expect(mocks.activatePreSessionReadinessSnapshot).not.toHaveBeenCalled();
+  });
+
   it("returns the authoritative snapshot for an equivalent retry", async () => {
     mocks.activatePreSessionReadinessSnapshot.mockResolvedValue({
       outcome: "reused",
@@ -488,6 +517,18 @@ describe("preparePreSessionReadinessSnapshot", () => {
       makeCurrentIdentity({
         plannedWorkoutId: "planned-1",
         plannedWorkoutRevision: 7,
+        savedWorkoutEvidence: {
+          sessionSnapshot: {
+            version: 1,
+            saved: {
+              workoutId: "planned-1",
+              status: "PLANNED",
+              advancesSplit: true,
+              semantics: { kind: "standard" },
+            },
+          },
+          persistedExercises: [],
+        },
       })
     );
     mocks.loadNextWorkoutContext.mockResolvedValue({

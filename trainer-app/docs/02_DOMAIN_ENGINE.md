@@ -116,7 +116,11 @@ data and duplicate occurrence IDs return `invalid_placement_correlation`. Both u
 guidance. Readiness persists resolver state and pair source, filters unproven saved
 placements from occurrence-specific preview/watch rows, and log guidance keys only
 by the resolver-proven persisted `WorkoutExercise.id`; exercise ID/name recovery is
-not a placement authority.
+not a placement authority. The production readiness producer transports the
+committed saved audit snapshot and the saved workout's persisted
+`WorkoutExercise.id`/`exerciseId` occurrences to the builder. Saved contexts therefore
+resolve explicit or unique-legacy placement authority through the resolver;
+`generated_only` is reserved for genuinely unsaved generated previews.
 
 Deload evidence remains excluded from accumulation progression. Explicit zero
 continues to use only the existing `BODYWEIGHT_NO_ADDED_LOAD` and

@@ -117,20 +117,30 @@ function sensitiveEnvironmentValues(environment) {
 const allowedBooleanFlags = new Set([
   "--debug",
   "--json",
+  "--run-credential-free-aggregate",
   "--run-credential-free-inventory",
+  "--run-credential-free-shard",
+  "--run-import-safety",
   "--run-verify-gate",
+]);
+const allowedValueFlags = new Set([
+  "--base-ref",
+  "--credential-shards-result",
+  "--import-safety-result",
+  "--shard",
 ]);
 const args = process.argv.slice(2);
 const unknownFlags = [];
-let baseRef;
+const values = new Map();
 for (let index = 0; index < args.length; index += 1) {
   const argument = args[index];
   if (allowedBooleanFlags.has(argument)) continue;
-  if (argument === "--base-ref") {
+  if (allowedValueFlags.has(argument)) {
     const value = args[index + 1];
     if (!value || value.startsWith("--")) unknownFlags.push(argument);
     else {
-      baseRef = value;
+      if (values.has(argument)) unknownFlags.push(argument);
+      values.set(argument, value);
       index += 1;
     }
     continue;
@@ -138,15 +148,23 @@ for (let index = 0; index < args.length; index += 1) {
   unknownFlags.push(argument);
 }
 const runFlags = args.filter((argument) => argument.startsWith("--run-"));
+const shardRun = args.includes("--run-credential-free-shard");
+const aggregateRun = args.includes("--run-credential-free-aggregate");
+const baseRef = values.get("--base-ref");
 
 if (
   unknownFlags.length > 0 ||
   runFlags.length > 1 ||
-  (baseRef && !args.includes("--run-credential-free-inventory")) ||
+  (baseRef &&
+    !args.includes("--run-credential-free-inventory") &&
+    !aggregateRun) ||
+  (shardRun !== values.has("--shard")) ||
+  (aggregateRun !== values.has("--credential-shards-result")) ||
+  (aggregateRun !== values.has("--import-safety-result")) ||
   (args.includes("--json") && runFlags.length > 0) ||
   (args.includes("--debug") && args.includes("--json"))
 ) {
-  console.error("Invalid invocation. Supported flags: --debug, --json, --run-credential-free-inventory [--base-ref <git-ref>], --run-verify-gate.");
+  console.error("Invalid invocation. Supported flags: --debug, --json, --run-credential-free-inventory [--base-ref <git-ref>], --run-credential-free-shard --shard <N/4>, --run-import-safety, --run-credential-free-aggregate --credential-shards-result <result> --import-safety-result <result>, --run-verify-gate.");
   process.exit(EXIT.invalidInvocation);
 }
 

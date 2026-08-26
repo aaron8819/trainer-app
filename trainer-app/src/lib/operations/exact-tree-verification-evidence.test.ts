@@ -11,6 +11,14 @@ import path from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { TestSuiteEnvironmentManifest } from "./test-environment-preflight";
 import type { VitestPhaseResult } from "./credential-free-inventory-runner";
+import { DATABASE_TARGET_ENV_VARS } from "./test-environment-preflight";
+import {
+  CREDENTIAL_SAFE_PROFILE,
+  INVENTORY_COMPONENT_SCHEMA,
+  INVENTORY_COMPONENT_SCHEMA_VERSION,
+  type CredentialFreeShardSummary,
+  type ImportSafetySummary,
+} from "./credential-free-inventory-sharding";
 import {
   assessExactTreeEvidenceReuse,
   computeVerificationDefinition,
@@ -166,6 +174,131 @@ function requestFor(value: CredentialFreeVerificationEvidence) {
     },
     hermetic: true,
     allowQualifiedPass: true,
+    coverage: value.executionTopology
+      ? {
+          credentialFreeFiles:
+            value.executionTopology.coverage.credentialFreeExpected,
+          importOnlyFiles: value.executionTopology.coverage.importOnlyExpected,
+          databaseRequiredFiles:
+            value.executionTopology.coverage.databaseRequiredExcluded,
+        }
+      : undefined,
+  };
+}
+
+function shardedEvidenceFixture(): CredentialFreeVerificationEvidence {
+  const value = evidence();
+  const identity = {
+    treeSha: value.treeSha,
+    checkedOutCommitSha: value.checkedOutCommitSha,
+    verificationDefinitionHash: value.verificationDefinitionHash,
+    classificationHash: value.classificationHash,
+    lockfileHash: value.lockfileHash,
+    workflow: value.run.workflow!,
+    workflowRunId: value.run.runId!,
+    runAttempt: value.run.runAttempt!,
+    execution: {
+      nodeVersion: value.environment.node,
+      vitestVersion: value.environment.vitest,
+      pool: "forks" as const,
+      isolation: true as const,
+      workerCount: 1 as const,
+      timezone: value.environment.timezone,
+    },
+    security: {
+      profile: CREDENTIAL_SAFE_PROFILE,
+      credentialStripping: true as const,
+      databaseTargetsRemoved: [...DATABASE_TARGET_ENV_VARS].sort(),
+      dotenvSuppressed: true as const,
+    },
+  };
+  const files = ["src/a.test.ts", "src/b.test.ts"];
+  const shard = (index: number, shardFiles: string[]): CredentialFreeShardSummary => ({
+    schema: INVENTORY_COMPONENT_SCHEMA,
+    schemaVersion: INVENTORY_COMPONENT_SCHEMA_VERSION,
+    componentType: "credential-free-shard",
+    ...identity,
+    job: "credential-free-shard",
+    shardIndex: index,
+    shardCount: 4,
+    files: shardFiles,
+    fileDurations: shardFiles.map((file) => ({ file, durationMs: 30 })),
+    counts: {
+      selectedFiles: shardFiles.length,
+      executedFiles: shardFiles.length,
+      passedFiles: shardFiles.length,
+      failedFiles: 0,
+      skippedFiles: 0,
+      totalTests: shardFiles.length * 2,
+      passedTests: shardFiles.length * 2,
+      failedTests: 0,
+      skippedTests: 0,
+    },
+    durationMs: 30,
+    status: "pass",
+    reporterState: "available",
+    failureClassification: "none",
+  });
+  const importFile = "src/import-only.test.ts";
+  const importSafety: ImportSafetySummary = {
+    schema: INVENTORY_COMPONENT_SCHEMA,
+    schemaVersion: INVENTORY_COMPONENT_SCHEMA_VERSION,
+    componentType: "import-safety",
+    ...identity,
+    job: "import-safety",
+    files: [importFile],
+    fileDurations: [{ file: importFile, durationMs: 120 }],
+    counts: {
+      selectedFiles: 1,
+      executedFiles: 1,
+      passedFiles: 1,
+      failedFiles: 0,
+      skippedFiles: 0,
+      totalTests: 2,
+      passedTests: 2,
+      failedTests: 0,
+      skippedTests: 0,
+    },
+    durationMs: 120,
+    status: "pass",
+    reporterState: "available",
+    failureClassification: "none",
+    placeholderValidationPassed: true,
+    socketGuardCompleted: true,
+    connectionAttempted: false,
+  };
+  const components = [shard(1, [files[0]]), shard(2, [files[1]]), shard(3, []), shard(4, [])];
+  return {
+    ...value,
+    schemaVersion: 2,
+    environment: {
+      ...value.environment,
+      pool: "forks",
+      isolation: true,
+    },
+    durations: {
+      totalMs: 130,
+      credentialFreeMs: 120,
+      importOnlyMs: 120,
+      aggregateMs: 10,
+      criticalPathMs: 120,
+      componentTotalMs: 240,
+    },
+    executionTopology: {
+      kind: "sharded",
+      credentialFree: { shardCount: 4, components },
+      importSafety,
+      coverage: {
+        credentialFreeExpected: files,
+        credentialFreeUnion: files,
+        importOnlyExpected: [importFile],
+        databaseRequiredExcluded: [],
+        unionExact: true,
+        noOverlap: true,
+        importExact: true,
+        databaseExcluded: true,
+      },
+    },
   };
 }
 
@@ -1259,7 +1392,7 @@ describe("exact-tree verification evidence", () => {
     ).toBe("tree-mismatch");
   });
 
-  it("keeps workflow publication durable, exact-tree keyed, and always-on", () => {
+  it("keeps aggregate publication durable, exact-tree keyed, and success-only", () => {
     const workflow = readFileSync(
       path.resolve(projectRoot, "..", ".github", "workflows", "credential-free-inventory.yml"),
       "utf8"
@@ -1267,7 +1400,12 @@ describe("exact-tree verification evidence", () => {
     expect(workflow).toContain("id: tested_identity");
     expect(workflow).toContain("git rev-parse HEAD^{tree}");
     expect(workflow).toContain("steps.tested_identity.outputs.tree_sha");
+    expect(workflow).toContain("credential-free-inventory:");
+    expect(workflow).toContain("name: credential-free-inventory");
     expect(workflow).toContain("if: ${{ always() }}");
+    expect(workflow).toContain("fail-fast: false");
+    expect(workflow).toContain("max-parallel: 4");
+    expect(workflow).toContain("if: ${{ steps.aggregate.outcome == 'success' }}");
     expect(workflow).toContain("retention-days: 30");
     expect(workflow).toContain(
       "name: credential-free-inventory-evidence-tree-${{ steps.tested_identity.outputs.tree_sha }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}"
@@ -1275,5 +1413,79 @@ describe("exact-tree verification evidence", () => {
     expect(workflow).toContain(
       "trainer-app/artifacts/credential-free-inventory/evidence/credential-free-inventory-evidence.json"
     );
+  });
+});
+
+describe("sharded exact-tree evidence", () => {
+  it("strictly validates and reuses a complete synthetic aggregate", () => {
+    const value = shardedEvidenceFixture();
+    expect(validateCredentialFreeVerificationEvidence(value)).toEqual({
+      valid: true,
+      evidence: value,
+    });
+    expect(assessExactTreeEvidenceReuse(value, requestFor(value))).toEqual({
+      reusable: true,
+      reason: "reusable",
+    });
+  });
+
+  it("rejects missing, overlapping, or wrong-tree shard topology", () => {
+    const missing = shardedEvidenceFixture();
+    missing.executionTopology!.credentialFree.components.pop();
+    expect(validateCredentialFreeVerificationEvidence(missing).valid).toBe(false);
+    expect(assessExactTreeEvidenceReuse(missing, requestFor(missing)).reason).toBe(
+      "malformed-evidence"
+    );
+
+    const overlap = shardedEvidenceFixture();
+    overlap.executionTopology!.credentialFree.components[1].files = [
+      overlap.executionTopology!.credentialFree.components[0].files[0],
+    ];
+    expect(validateCredentialFreeVerificationEvidence(overlap).valid).toBe(false);
+
+    const wrongTree = shardedEvidenceFixture();
+    wrongTree.executionTopology!.credentialFree.components[2].treeSha = "f".repeat(40);
+    expect(validateCredentialFreeVerificationEvidence(wrongTree).valid).toBe(false);
+    expect(
+      assessExactTreeEvidenceReuse(wrongTree, requestFor(wrongTree)).reusable
+    ).toBe(false);
+  });
+
+  it("recomputes canonical coverage instead of trusting coherent omissions", () => {
+    const original = shardedEvidenceFixture();
+    const request = requestFor(original);
+    const omission = structuredClone(original);
+    const first = omission.executionTopology!.credentialFree.components[0];
+    first.files = [];
+    first.fileDurations = [];
+    first.counts = {
+      selectedFiles: 0,
+      executedFiles: 0,
+      passedFiles: 0,
+      failedFiles: 0,
+      skippedFiles: 0,
+      totalTests: 0,
+      passedTests: 0,
+      failedTests: 0,
+      skippedTests: 0,
+    };
+    omission.executionTopology!.coverage.credentialFreeExpected = [
+      "src/b.test.ts",
+    ];
+    omission.executionTopology!.coverage.credentialFreeUnion = [
+      "src/b.test.ts",
+    ];
+    omission.counts.filesDiscovered = 2;
+    omission.counts.filesSelected = 2;
+    omission.counts.filesExecuted = 2;
+    omission.counts.filesPassed = 2;
+    omission.counts.testsCollected = 4;
+    omission.counts.testsPassed = 4;
+
+    expect(validateCredentialFreeVerificationEvidence(omission).valid).toBe(true);
+    expect(assessExactTreeEvidenceReuse(omission, request)).toEqual({
+      reusable: false,
+      reason: "incomplete-evidence",
+    });
   });
 });

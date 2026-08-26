@@ -66,6 +66,11 @@ Sources of truth:
 - `npm run test:inventory:credential-free -- --base-ref <git-ref>`: runs the same inventory and
   reports added, removed, and changed environment classifications relative to the named base.
   Equal branch/base failures are not accepted; only explicit classifications can compare cleanly.
+- CI partitions the full credential-free selection with
+  `npm run test:inventory:credential-free:shard -- --shard N/4`, runs
+  `npm run test:inventory:import-safety` independently, and promotes evidence only through
+  `npm run test:inventory:aggregate`. These are CI topology commands; local agents run focused contract
+  tests and do not launch all four shards.
 - `npm run test:environment-classification`: focused manifest, sanitizer, placeholder-guard,
   subprocess-boundary, exact-lock integrity, summary-count, and branch/base-delta coverage. The
   recursive database-target source inventory test alone has a
@@ -158,24 +163,27 @@ Sources of truth:
 Every pull request targeting `master` runs the `credential-free-inventory` GitHub Actions check
 from `.github/workflows/credential-free-inventory.yml`. The workflow checks out full Git history,
 uses Node.js 22, fixes `TZ` to `America/Chicago` for the repository's local-week test semantics,
-installs the exact lockfile with `npm ci`, and delegates all classification and execution behavior
-to the canonical command. The check remains required by the active `Protect master` ruleset and
-runs the full inventory once per PR candidate tree. The runner keeps each Vitest phase at one worker so the full
-jsdom/happy-dom inventory stays within hosted-runner memory. It streams Vitest's native dot reporter
-for basic progress while extracting the built-in JSON reporter from the redacted stdout pipe, reports phase and total
-elapsed time, emits a structured final summary, and always writes
-`artifacts/credential-free-inventory/evidence/credential-free-inventory-evidence.json`.
-The GitHub job summary exposes the tested tree, commit/PR/merge-ref distinction, counts, timing,
-import-safety result, definition/classification/lockfile hashes, qualification, and run URL. CI
-uploads the small JSON artifact for 30 days under an unambiguous name containing the exact tree,
-run ID, and attempt. Successful phases still remove large disposable captures. Failed phases retain
-complete redacted stdout, stderr, reporter output when present, and failure metadata under
-`artifacts/credential-free-inventory/<unique-run>/`; CI uploads that diagnostic bundle separately
-for seven days.
+installs the exact lockfile with `npm ci`, and runs four native Vitest credential-free shards plus
+one concurrent import-safety job on separate hosted runners. Each component still uses forks,
+isolation, and `maxWorkers=1` through the credential-safe launcher. Sharding partitions files only:
+it is not affected-test selection and does not reduce the canonical candidate set.
 
-```text
-npm run test:inventory:credential-free -- --base-ref origin/master
-```
+Each component uploads a strict non-canonical summary. The required
+`credential-free-inventory` aggregate job runs with `always()`, rejects failed, cancelled, skipped,
+missing, duplicate, malformed, cross-attempt, or identity-inconsistent inputs, and mechanically
+proves exact credential-file union, empty pairwise intersections, exact import-only coverage, and
+DB-required exclusion from executed reporter identities. Only that aggregate writes
+`artifacts/credential-free-inventory/evidence/credential-free-inventory-evidence.json` and uploads
+the 30-day exact-tree artifact. The job summary includes component counts/durations and coverage
+invariants. Successful components remove large reporter captures; failed components retain the
+existing redacted diagnostic bundle for seven days with shard identity.
+The aggregate also compares the released base tree by exact file identity: every released
+credential-free, import-only, and DB-required file must remain present in the same class, while new
+candidate tests are classified by the current canonical owner and included in the exact union.
+
+All component summaries must belong to the same workflow run and current run attempt. A partial
+failed-job rerun that cannot supply every component for the new attempt fails closed and requires
+rerunning all jobs; cross-attempt artifact recovery is intentionally deferred.
 
 The gate proves that every unclassified suite runs credential-free, every registered import-only
 suite runs with the exact guarded TEST-NET placeholder and no socket attempt, every registered
@@ -232,9 +240,10 @@ Repository-owned definition inputs, `package-lock.json`, and the classification 
 checkout line-ending conversion never changes their hashes, and missing Git metadata or required
 blobs fails closed. Definition input paths are normalized, sorted, and unique. Classification hashing canonicalizes the semantic
 contents of `scripts/test-suite-environments.json`; incidental suite ordering does not change it.
-The verification-definition hash covers the policy-selected workflow, package-script composition,
-launcher/orchestrator, runner, preflight/classifier, Vitest config and setup/guard files, relevant
-command-registry entries, Node major, worker count, and lockfile identity.
+The verification-definition hash covers the policy-selected workflow, four-shard topology,
+component and aggregate commands, launcher/orchestrator, runner and aggregation implementation,
+preflight/classifier, Vitest config and setup/guard files, relevant command-registry entries, Node
+major, worker count, fork/isolation semantics, import-safety topology, and lockfile identity.
 
 The dependency-free launcher keeps an explicit environment allowlist. For evidence publication it
 passes only `GITHUB_ACTIONS`, `GITHUB_EVENT_NAME`, `GITHUB_EVENT_PATH`, `GITHUB_JOB`, `GITHUB_REF`,
@@ -274,7 +283,8 @@ mechanics.
 To discover credential-free evidence for tree `T`, inspect the PR check summary or list workflow-run
 artifacts whose name begins `credential-free-inventory-evidence-tree-T-`; the job summary prints the
 exact uploaded artifact name. Validate the downloaded JSON
-with the policy rules before reuse. If the approved PR tree, released tree, and evidence tree are all
+with the policy rules before reuse. Downstream release agents consume this one validated aggregate,
+not raw component artifacts. If the approved PR tree, released tree, and evidence tree are all
 `T` and every definition input remains equal, release review consumes the CI evidence instead of
 rerunning the inventory locally. Release still independently verifies exact tree equality, merge and
 deployment state, production version/availability, and other external-state gates.

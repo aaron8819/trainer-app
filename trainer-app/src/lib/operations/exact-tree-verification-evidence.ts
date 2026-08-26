@@ -8,15 +8,28 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { TestSuiteEnvironmentManifest } from "./test-environment-preflight";
+import {
+  DATABASE_TARGET_ENV_VARS,
+  selectTestSuitesByEnvironment,
+  type TestSuiteEnvironmentManifest,
+} from "./test-environment-preflight";
 import type {
   VitestFailureKind,
   VitestPhaseResult,
 } from "./credential-free-inventory-runner";
+import {
+  CREDENTIAL_FREE_SHARD_COUNT,
+  CREDENTIAL_SAFE_PROFILE,
+  validateCredentialFreeAggregate,
+  type CredentialFreeAggregateValidation,
+  type CredentialFreeShardSummary,
+  type ImportSafetySummary,
+} from "./credential-free-inventory-sharding";
 
 export const CREDENTIAL_FREE_CHECK_ID = "credential-free-inventory" as const;
 export const VERIFICATION_EVIDENCE_SCHEMA = "trainer-verification-evidence" as const;
 export const VERIFICATION_EVIDENCE_VERSION = 1 as const;
+export const SHARDED_VERIFICATION_EVIDENCE_VERSION = 2 as const;
 export const CREDENTIAL_FREE_EVIDENCE_RELATIVE_PATH =
   "artifacts/credential-free-inventory/evidence/credential-free-inventory-evidence.json";
 
@@ -83,7 +96,9 @@ export type CurrentRepositoryState = {
 
 export type CredentialFreeVerificationEvidence = {
   schema: typeof VERIFICATION_EVIDENCE_SCHEMA;
-  schemaVersion: typeof VERIFICATION_EVIDENCE_VERSION;
+  schemaVersion:
+    | typeof VERIFICATION_EVIDENCE_VERSION
+    | typeof SHARDED_VERIFICATION_EVIDENCE_VERSION;
   checkId: typeof CREDENTIAL_FREE_CHECK_ID;
   hermetic: true;
   checkedOutCommitSha: string;
@@ -121,6 +136,9 @@ export type CredentialFreeVerificationEvidence = {
     totalMs: number;
     credentialFreeMs: number | null;
     importOnlyMs: number | null;
+    aggregateMs?: number;
+    criticalPathMs?: number;
+    componentTotalMs?: number;
   };
   importSafety: {
     status: "pass" | "fail" | "not_run";
@@ -146,6 +164,8 @@ export type CredentialFreeVerificationEvidence = {
     vitest: string;
     timezone: string;
     workers: 1;
+    pool?: "forks";
+    isolation?: true;
     runnerImage: string | null;
   };
   run: {
@@ -157,6 +177,15 @@ export type CredentialFreeVerificationEvidence = {
     url: string | null;
   };
   completedAt: string;
+  executionTopology?: {
+    kind: "sharded";
+    credentialFree: {
+      shardCount: typeof CREDENTIAL_FREE_SHARD_COUNT;
+      components: CredentialFreeShardSummary[];
+    };
+    importSafety: ImportSafetySummary;
+    coverage: CredentialFreeAggregateValidation["coverage"];
+  };
 };
 
 export type CredentialFreeEvidenceRunInput = {
@@ -179,6 +208,16 @@ export type CredentialFreeEvidenceRunInput = {
   completedAt?: string;
 };
 
+export type ShardedCredentialFreeEvidenceInput = {
+  projectRoot: string;
+  manifest: TestSuiteEnvironmentManifest;
+  aggregate: CredentialFreeAggregateValidation;
+  aggregateDurationMs: number;
+  baseRef?: string;
+  environment?: NodeJS.ProcessEnv;
+  completedAt?: string;
+};
+
 export type EvidenceReuseRequest = {
   checkId: string;
   currentRepositoryState: CurrentRepositoryState;
@@ -192,6 +231,11 @@ export type EvidenceReuseRequest = {
   };
   hermetic: boolean;
   allowQualifiedPass: boolean;
+  coverage?: {
+    credentialFreeFiles: string[];
+    importOnlyFiles: string[];
+    databaseRequiredFiles: string[];
+  };
 };
 
 export type EvidenceReuseDecision = {
@@ -401,6 +445,23 @@ function readCommittedClassificationManifest(
   }
   computeClassificationHash(manifest as TestSuiteEnvironmentManifest);
   return manifest as TestSuiteEnvironmentManifest;
+}
+
+function readCommittedTestSelection(
+  repositoryRoot: string,
+  manifest: TestSuiteEnvironmentManifest
+) {
+  const discoveredTestFiles = runGitBuffer(
+    repositoryRoot,
+    ["ls-tree", "-r", "--name-only", "HEAD", "--", "trainer-app/src"],
+    "discover committed Trainer test files"
+  )
+    .toString("utf8")
+    .split(/\r?\n/)
+    .filter((file) => /^trainer-app\/src\/.+\.test\.tsx?$/.test(file))
+    .map((file) => normalizeRepositoryPath(file.slice("trainer-app/".length)))
+    .sort(compareText);
+  return selectTestSuitesByEnvironment({ manifest, discoveredTestFiles });
 }
 
 function parsePorcelainStatus(output: string): CurrentRepositoryState["dirtyPaths"] {
@@ -953,6 +1014,143 @@ export function createCredentialFreeVerificationEvidence(
   };
 }
 
+function successfulAggregatePhase(input: {
+  phase: string;
+  files: {
+    total: number;
+    passed: number;
+    failed: number;
+    skipped: number;
+  };
+  tests: {
+    total: number;
+    passed: number;
+    failed: number;
+    skipped: number;
+  };
+  durationMs: number;
+}): VitestPhaseResult {
+  return {
+    phase: input.phase,
+    success: true,
+    status: 0,
+    exitCode: 0,
+    signal: null,
+    abnormalTermination: false,
+    terminationError: null,
+    externalFailure: null,
+    durationMs: input.durationMs,
+    summary: { files: input.files, tests: input.tests },
+    reporterState: "available",
+    failureKind: "none",
+    failures: [],
+    artifactDiagnostics: [],
+    artifacts: {
+      root: "aggregate",
+      directory: "aggregate",
+      stdout: "aggregate",
+      stderr: "aggregate",
+      reporter: "aggregate",
+      metadata: "aggregate",
+    },
+    artifactsRetained: false,
+  };
+}
+
+export function createShardedCredentialFreeVerificationEvidence(
+  input: ShardedCredentialFreeEvidenceInput
+): CredentialFreeVerificationEvidence {
+  const credentialComponents = input.aggregate.components.credentialFree;
+  const credentialCounts = credentialComponents.reduce(
+    (total, component) => ({
+      files: {
+        total: total.files.total + component.counts.executedFiles,
+        passed: total.files.passed + component.counts.passedFiles,
+        failed: total.files.failed + component.counts.failedFiles,
+        skipped: total.files.skipped + component.counts.skippedFiles,
+      },
+      tests: {
+        total: total.tests.total + component.counts.totalTests,
+        passed: total.tests.passed + component.counts.passedTests,
+        failed: total.tests.failed + component.counts.failedTests,
+        skipped: total.tests.skipped + component.counts.skippedTests,
+      },
+    }),
+    emptyCounts()
+  );
+  const importComponent = input.aggregate.components.importSafety;
+  const importCounts = {
+    files: {
+      total: importComponent.counts.executedFiles,
+      passed: importComponent.counts.passedFiles,
+      failed: importComponent.counts.failedFiles,
+      skipped: importComponent.counts.skippedFiles,
+    },
+    tests: {
+      total: importComponent.counts.totalTests,
+      passed: importComponent.counts.passedTests,
+      failed: importComponent.counts.failedTests,
+      skipped: importComponent.counts.skippedTests,
+    },
+  };
+  const credentialResult = successfulAggregatePhase({
+    phase: "credential-free sharded suites",
+    ...credentialCounts,
+    durationMs: input.aggregate.durations.credentialFreeMs,
+  });
+  const importOnlyResult = successfulAggregatePhase({
+    phase: "import-only placeholder suites",
+    ...importCounts,
+    durationMs: input.aggregate.durations.importOnlyMs,
+  });
+  const base = createCredentialFreeVerificationEvidence({
+    projectRoot: input.projectRoot,
+    manifest: input.manifest,
+    filesDiscovered: input.aggregate.counts.filesDiscovered,
+    credentialFreeSelected:
+      input.aggregate.coverage.credentialFreeExpected.length,
+    importOnlySelected: input.aggregate.coverage.importOnlyExpected.length,
+    databaseRequiredExcluded:
+      input.aggregate.counts.databaseRequiredExcluded,
+    credentialFreeResult: credentialResult,
+    importOnlyResult,
+    placeholderConnectionAttempted: false,
+    exitCode: 0,
+    qualification: null,
+    totalDurationMs:
+      input.aggregate.durations.criticalPathMs + input.aggregateDurationMs,
+    baseRef: input.baseRef,
+    environment: input.environment,
+    completedAt: input.completedAt,
+  });
+  return {
+    ...base,
+    schemaVersion: SHARDED_VERIFICATION_EVIDENCE_VERSION,
+    durations: {
+      totalMs: input.aggregate.durations.criticalPathMs + input.aggregateDurationMs,
+      credentialFreeMs: input.aggregate.durations.credentialFreeMs,
+      importOnlyMs: input.aggregate.durations.importOnlyMs,
+      aggregateMs: input.aggregateDurationMs,
+      criticalPathMs: input.aggregate.durations.criticalPathMs,
+      componentTotalMs: input.aggregate.durations.componentTotalMs,
+    },
+    environment: {
+      ...base.environment,
+      pool: "forks",
+      isolation: true,
+    },
+    executionTopology: {
+      kind: "sharded",
+      credentialFree: {
+        shardCount: CREDENTIAL_FREE_SHARD_COUNT,
+        components: credentialComponents,
+      },
+      importSafety: importComponent,
+      coverage: input.aggregate.coverage,
+    },
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -1036,6 +1234,160 @@ function validateQualification(
   return errors.length === 0;
 }
 
+function validateShardedExecutionTopology(
+  evidence: Record<string, unknown>,
+  errors: string[]
+): void {
+  const topology = evidence.executionTopology;
+  const environment = evidence.environment;
+  const run = evidence.run;
+  const counts = evidence.counts;
+  const durations = evidence.durations;
+  if (
+    !isRecord(topology) ||
+    topology.kind !== "sharded" ||
+    !isRecord(topology.credentialFree) ||
+    topology.credentialFree.shardCount !== CREDENTIAL_FREE_SHARD_COUNT ||
+    !Array.isArray(topology.credentialFree.components) ||
+    !isRecord(topology.importSafety) ||
+    !isRecord(topology.coverage)
+  ) {
+    errors.push("sharded execution topology is malformed");
+    return;
+  }
+  if (
+    !isRecord(environment) ||
+    environment.pool !== "forks" ||
+    environment.isolation !== true ||
+    typeof environment.node !== "string" ||
+    typeof environment.vitest !== "string" ||
+    environment.workers !== 1 ||
+    typeof environment.timezone !== "string" ||
+    !isRecord(run) ||
+    typeof run.runId !== "string" ||
+    typeof run.runAttempt !== "string" ||
+    typeof run.workflow !== "string" ||
+    run.job !== CREDENTIAL_FREE_CHECK_ID ||
+    typeof evidence.treeSha !== "string" ||
+    typeof evidence.checkedOutCommitSha !== "string" ||
+    typeof evidence.verificationDefinitionHash !== "string" ||
+    typeof evidence.classificationHash !== "string" ||
+    typeof evidence.lockfileHash !== "string"
+  ) {
+    errors.push("sharded execution identity is incomplete");
+    return;
+  }
+  const coverage = topology.coverage;
+  const validation = validateCredentialFreeAggregate({
+    untrustedComponents: [
+      ...topology.credentialFree.components,
+      topology.importSafety,
+    ],
+    expected: {
+      treeSha: evidence.treeSha,
+      checkedOutCommitSha: evidence.checkedOutCommitSha,
+      verificationDefinitionHash: evidence.verificationDefinitionHash,
+      classificationHash: evidence.classificationHash,
+      lockfileHash: evidence.lockfileHash,
+      workflow: run.workflow,
+      workflowRunId: run.runId,
+      runAttempt: run.runAttempt,
+      job: CREDENTIAL_FREE_CHECK_ID,
+      execution: {
+        nodeVersion: environment.node,
+        vitestVersion: environment.vitest,
+        pool: "forks",
+        isolation: true,
+        workerCount: 1,
+        timezone: environment.timezone,
+      },
+      security: {
+        profile: CREDENTIAL_SAFE_PROFILE,
+        credentialStripping: true,
+        databaseTargetsRemoved: [...DATABASE_TARGET_ENV_VARS].sort(),
+        dotenvSuppressed: true,
+      },
+      credentialFreeFiles: Array.isArray(coverage.credentialFreeExpected)
+        ? (coverage.credentialFreeExpected as string[])
+        : [],
+      importOnlyFiles: Array.isArray(coverage.importOnlyExpected)
+        ? (coverage.importOnlyExpected as string[])
+        : [],
+      databaseRequiredFiles: Array.isArray(coverage.databaseRequiredExcluded)
+        ? (coverage.databaseRequiredExcluded as string[])
+        : [],
+      dependencyResults: {
+        credentialShards: "success",
+        importSafety: "success",
+      },
+    },
+  });
+  if (!validation.valid) {
+    errors.push(
+      ...validation.errors.map((error) => `sharded topology: ${error}`)
+    );
+    return;
+  }
+  pushError(
+    errors,
+    JSON.stringify(topology.coverage) ===
+      JSON.stringify(validation.aggregate.coverage),
+    "sharded coverage claims do not match validated topology"
+  );
+  if (isRecord(counts)) {
+    const aggregateCounts = validation.aggregate.counts;
+    for (const [evidenceName, aggregateName] of [
+      ["filesDiscovered", "filesDiscovered"],
+      ["filesSelected", "selectedFiles"],
+      ["filesExecuted", "executedFiles"],
+      ["filesPassed", "passedFiles"],
+      ["filesSkipped", "skippedFiles"],
+      ["filesFailed", "failedFiles"],
+      ["testsCollected", "totalTests"],
+      ["testsPassed", "passedTests"],
+      ["testsSkipped", "skippedTests"],
+      ["testsFailed", "failedTests"],
+      ["databaseRequiredExcluded", "databaseRequiredExcluded"],
+    ] as const) {
+      pushError(
+        errors,
+        counts[evidenceName] === aggregateCounts[aggregateName],
+        `sharded ${evidenceName} does not reconcile`
+      );
+    }
+  }
+  if (isRecord(durations)) {
+    const aggregateDurations = validation.aggregate.durations;
+    pushError(
+      errors,
+      durations.credentialFreeMs === aggregateDurations.credentialFreeMs,
+      "sharded credential-free duration does not reconcile"
+    );
+    pushError(
+      errors,
+      durations.importOnlyMs === aggregateDurations.importOnlyMs,
+      "sharded import-only duration does not reconcile"
+    );
+    pushError(
+      errors,
+      durations.componentTotalMs === aggregateDurations.componentTotalMs,
+      "sharded component duration does not reconcile"
+    );
+    pushError(
+      errors,
+      durations.criticalPathMs === aggregateDurations.criticalPathMs,
+      "sharded critical-path duration does not reconcile"
+    );
+    pushError(
+      errors,
+      isNonNegativeFinite(durations.aggregateMs) &&
+        durations.totalMs ===
+          aggregateDurations.criticalPathMs + Number(durations.aggregateMs),
+      "sharded aggregate duration does not reconcile"
+    );
+  }
+}
+
 export function validateCredentialFreeVerificationEvidence(
   input: unknown
 ): ExactTreeEvidenceValidationResult {
@@ -1047,7 +1399,8 @@ export function validateCredentialFreeVerificationEvidence(
   pushError(errors, evidence.schema === VERIFICATION_EVIDENCE_SCHEMA, "schema is invalid");
   pushError(
     errors,
-    evidence.schemaVersion === VERIFICATION_EVIDENCE_VERSION,
+    evidence.schemaVersion === VERIFICATION_EVIDENCE_VERSION ||
+      evidence.schemaVersion === SHARDED_VERIFICATION_EVIDENCE_VERSION,
     "schema version is invalid"
   );
   pushError(errors, evidence.checkId === CREDENTIAL_FREE_CHECK_ID, "check id is invalid");
@@ -1518,6 +1871,9 @@ export function validateCredentialFreeVerificationEvidence(
     }
   }
   pushError(errors, validIsoTimestamp(evidence.completedAt), "completion timestamp is invalid");
+  if (evidence.schemaVersion === SHARDED_VERIFICATION_EVIDENCE_VERSION) {
+    validateShardedExecutionTopology(evidence, errors);
+  }
 
   return errors.length === 0
     ? { valid: true, evidence: input as CredentialFreeVerificationEvidence }
@@ -1555,6 +1911,10 @@ export function createEvidenceReuseRequest(input: {
     projectRoot: input.projectRoot,
     classificationManifest,
   });
+  const selection = readCommittedTestSelection(
+    repositoryRoot,
+    classificationManifest
+  );
   return {
     checkId: CREDENTIAL_FREE_CHECK_ID,
     currentRepositoryState: readCurrentRepositoryState(repositoryRoot),
@@ -1568,13 +1928,19 @@ export function createEvidenceReuseRequest(input: {
     },
     hermetic: true,
     allowQualifiedPass: input.allowQualifiedPass,
+    coverage: {
+      credentialFreeFiles: selection.credentialFree,
+      importOnlyFiles: selection.importOnlyPlaceholder.map((entry) => entry.path),
+      databaseRequiredFiles: selection.databaseRequired.map((entry) => entry.path),
+    },
   };
 }
 
 function validReuseRequest(request: EvidenceReuseRequest): boolean {
   const state = request.currentRepositoryState;
-  return Boolean(
-    state &&
+  try {
+    return Boolean(
+      state &&
       GIT_SHA_PATTERN.test(state.commitSha) &&
       GIT_SHA_PATTERN.test(state.treeSha) &&
       typeof state.worktreeClean === "boolean" &&
@@ -1596,8 +1962,27 @@ function validReuseRequest(request: EvidenceReuseRequest): boolean {
       request.toolchain.nodeMajor > 0 &&
       TOOL_VERSION_PATTERN.test(request.toolchain.vitest) &&
       Number.isInteger(request.toolchain.workers) &&
-      request.toolchain.workers > 0
-  );
+      request.toolchain.workers > 0 &&
+      (request.coverage === undefined ||
+        [
+          request.coverage.credentialFreeFiles,
+          request.coverage.importOnlyFiles,
+          request.coverage.databaseRequiredFiles,
+        ].every(
+          (files) =>
+            Array.isArray(files) &&
+            files.every(
+              (file, index) =>
+                typeof file === "string" &&
+                normalizeRepositoryPath(file) === file &&
+                (index === 0 || files[index - 1] < file)
+            ) &&
+            new Set(files).size === files.length
+        ))
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function assessExactTreeEvidenceReuse(
@@ -1647,6 +2032,23 @@ export function assessExactTreeEvidenceReuse(
   }
   if (evidence.lockfileHash !== request.lockfileHash) {
     return { reusable: false, reason: "lockfile-mismatch" };
+  }
+  if (evidence.schemaVersion === SHARDED_VERIFICATION_EVIDENCE_VERSION) {
+    const coverage = evidence.executionTopology?.coverage;
+    if (!request.coverage) {
+      return { reusable: false, reason: "current-repository-invalid" };
+    }
+    if (
+      !coverage ||
+      JSON.stringify(coverage.credentialFreeExpected) !==
+        JSON.stringify(request.coverage.credentialFreeFiles) ||
+      JSON.stringify(coverage.importOnlyExpected) !==
+        JSON.stringify(request.coverage.importOnlyFiles) ||
+      JSON.stringify(coverage.databaseRequiredExcluded) !==
+        JSON.stringify(request.coverage.databaseRequiredFiles)
+    ) {
+      return { reusable: false, reason: "incomplete-evidence" };
+    }
   }
   if (evidence.status === "fail") return { reusable: false, reason: "failed-evidence" };
   if (evidence.status === "qualified_pass" && !request.allowQualifiedPass) {
@@ -1701,6 +2103,28 @@ export function renderCredentialFreeEvidenceSummary(
     `- Uploaded artifact: ${artifactName ? `\`${artifactName}\`` : "not applicable"}`,
     `- Machine evidence: \`${CREDENTIAL_FREE_EVIDENCE_RELATIVE_PATH}\``,
   ];
+  if (evidence.executionTopology?.kind === "sharded") {
+    lines.push(
+      "",
+      "| Component | Files | Tests | Duration | Result |",
+      "| --- | ---: | ---: | ---: | --- |"
+    );
+    for (const component of evidence.executionTopology.credentialFree.components) {
+      lines.push(
+        `| Credential ${component.shardIndex}/${component.shardCount} | ${component.counts.executedFiles} | ${component.counts.totalTests} | ${(component.durationMs / 1000).toFixed(1)}s | ${component.status.toUpperCase()} |`
+      );
+    }
+    const importSafety = evidence.executionTopology.importSafety;
+    lines.push(
+      `| Import safety | ${importSafety.counts.executedFiles} | ${importSafety.counts.totalTests} | ${(importSafety.durationMs / 1000).toFixed(1)}s | ${importSafety.status.toUpperCase()} |`,
+      "",
+      "- Coverage union: exact",
+      "- Pairwise shard overlap: empty",
+      "- DB-required exclusion: exact",
+      "- Import-only coverage: exact",
+      `- Component critical path: ${((evidence.durations.criticalPathMs ?? 0) / 1000).toFixed(1)}s; aggregate validation: ${((evidence.durations.aggregateMs ?? 0) / 1000).toFixed(1)}s; component runner total: ${((evidence.durations.componentTotalMs ?? 0) / 1000).toFixed(1)}s`
+    );
+  }
   if (evidence.failure) {
     lines.push(
       `- Failure: phase=${evidence.failure.phase}; kind=${evidence.failure.kind}; reporter-complete=${evidence.failure.reporterComplete}; selected-coverage-complete=${evidence.failure.selectedCoverageCompleted}`,

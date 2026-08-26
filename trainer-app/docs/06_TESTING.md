@@ -236,6 +236,21 @@ The verification-definition hash covers the policy-selected workflow, package-sc
 launcher/orchestrator, runner, preflight/classifier, Vitest config and setup/guard files, relevant
 command-registry entries, Node major, worker count, and lockfile identity.
 
+The dependency-free launcher keeps an explicit environment allowlist. For evidence publication it
+passes only `GITHUB_ACTIONS`, `GITHUB_EVENT_NAME`, `GITHUB_EVENT_PATH`, `GITHUB_JOB`, `GITHUB_REF`,
+`GITHUB_REPOSITORY`, `GITHUB_RUN_ATTEMPT`, `GITHUB_RUN_ID`, `GITHUB_SERVER_URL`, `GITHUB_SHA`,
+`GITHUB_STEP_SUMMARY`, and `GITHUB_WORKFLOW` in addition to the pre-existing platform/runtime
+essentials. It does not pass `GITHUB_TOKEN`, `GH_TOKEN`, GitHub API endpoints, head/base branch-name
+convenience variables, arbitrary `GITHUB_*` values, database targets, deployment tokens, or the
+arbitrary parent environment. The event payload is read only for pull-request head SHA, base SHA,
+and base ref; SHA formats and Git resolvability are checked, and Git `HEAD`/`HEAD^{tree}` remain the
+tested-content authority. `baseSha` means the pull request's base-tip commit from the GitHub event,
+not the base branch name, merge base, or a local `origin/master` guess. The run URL is derived only
+from a validated HTTPS `GITHUB_SERVER_URL` origin, `GITHUB_REPOSITORY`, and numeric `GITHUB_RUN_ID`.
+GitHub Actions PR evidence fails closed when required run/PR context is incomplete, and publication
+also fails when the Actions job-summary destination is unavailable. Local evidence may omit GitHub
+identity and the summary destination, but it cannot satisfy durable PR evidence reuse.
+
 Before running an expensive hermetic check, derive the current consumer commit, `HEAD^{tree}`, and
 cleanliness with Git, then compare the tree with the artifact's `treeSha`. Reuse requires both the
 historical producer checkout and current consumer checkout to be clean, durable CI run identity,

@@ -32,6 +32,11 @@ const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const GIT_SHA_PATTERN = /^[0-9a-f]{40}$/;
 const NODE_VERSION_PATTERN = /^v(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?$/;
 const TOOL_VERSION_PATTERN = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
+const GITHUB_REPOSITORY_PATTERN =
+  /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
+const GITHUB_RUN_NUMBER_PATTERN = /^[1-9]\d*$/;
+const GITHUB_EVENT_NAME_PATTERN = /^[A-Za-z0-9_]+$/;
+const GITHUB_JOB_PATTERN = /^[A-Za-z_][A-Za-z0-9_-]{0,99}$/;
 
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
@@ -478,6 +483,77 @@ function eventMetadata(environment: NodeJS.ProcessEnv): {
   }
 }
 
+function validGitHubText(value: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9 ._\/-]{0,255}$/.test(value);
+}
+
+function validGitHubBaseRef(value: string): boolean {
+  return (
+    /^[A-Za-z0-9._\/-]{1,255}$/.test(value) &&
+    !value.startsWith("/") &&
+    !value.endsWith("/") &&
+    !value.endsWith(".") &&
+    !value.includes("..") &&
+    !value.includes("@{") &&
+    !value.includes("//")
+  );
+}
+
+function githubRunUrl(input: {
+  repository: string | null;
+  runId: string | null;
+  serverUrl: string | null;
+}): string | null {
+  const values = [input.repository, input.runId, input.serverUrl];
+  if (values.every((value) => value === null)) return null;
+  if (values.some((value) => value === null)) {
+    throw new Error("GitHub run URL metadata is incomplete.");
+  }
+  if (!GITHUB_REPOSITORY_PATTERN.test(input.repository!)) {
+    throw new Error("GitHub repository identity is invalid.");
+  }
+  if (!GITHUB_RUN_NUMBER_PATTERN.test(input.runId!)) {
+    throw new Error("GitHub run ID is invalid.");
+  }
+  let server: URL;
+  try {
+    server = new URL(input.serverUrl!);
+  } catch {
+    throw new Error("GitHub server URL is invalid.");
+  }
+  if (
+    server.protocol !== "https:" ||
+    server.username ||
+    server.password ||
+    (server.pathname !== "/" && server.pathname !== "") ||
+    server.search ||
+    server.hash
+  ) {
+    throw new Error("GitHub server URL must be an HTTPS origin.");
+  }
+  return `${server.origin}/${input.repository}/actions/runs/${input.runId}`;
+}
+
+function coherentGitHubRunUrl(
+  url: string,
+  repository: string,
+  runId: string
+): boolean {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === "https:" &&
+      !parsed.username &&
+      !parsed.password &&
+      parsed.pathname === `/${repository}/actions/runs/${runId}` &&
+      !parsed.search &&
+      !parsed.hash
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function computeVerificationDefinition(input: {
   projectRoot: string;
   classificationManifest: TestSuiteEnvironmentManifest;
@@ -697,7 +773,14 @@ export function createCredentialFreeVerificationEvidence(
   });
   const checkedOutCommitSha = repositoryState.commitSha;
   const treeSha = repositoryState.treeSha;
-  const event = eventMetadata(environment);
+  const githubActions = environment.GITHUB_ACTIONS === "true";
+  const eventName = environment.GITHUB_EVENT_NAME ?? null;
+  const githubRef = environment.GITHUB_REF ?? null;
+  const isMergeRef = /^refs\/pull\/\d+\/merge$/.test(githubRef ?? "");
+  const isPullRequest = eventName === "pull_request" || isMergeRef;
+  const event = isPullRequest
+    ? eventMetadata(environment)
+    : { prHeadSha: null, baseSha: null, baseRef: null };
   if (
     (event.prHeadSha !== null && !GIT_SHA_PATTERN.test(event.prHeadSha)) ||
     (event.baseSha !== null && !GIT_SHA_PATTERN.test(event.baseSha))
@@ -710,11 +793,20 @@ export function createCredentialFreeVerificationEvidence(
   if (event.prHeadSha && !prHeadTreeSha) {
     throw new Error("Unable to resolve the pull-request head tree.");
   }
-  const isMergeRef = /^refs\/pull\/\d+\/merge$/.test(environment.GITHUB_REF ?? "");
-  const mergeRefSha = isMergeRef ? environment.GITHUB_SHA ?? checkedOutCommitSha : null;
-  if (mergeRefSha !== null && !GIT_SHA_PATTERN.test(mergeRefSha)) {
-    throw new Error("GitHub merge ref contains an invalid commit identity.");
+  if (event.baseSha && gitValue(repositoryRoot, `${event.baseSha}^{commit}`) !== event.baseSha) {
+    throw new Error("Unable to resolve the pull-request base commit.");
   }
+  if (event.baseRef !== null && !validGitHubBaseRef(event.baseRef)) {
+    throw new Error("GitHub event contains an invalid base ref.");
+  }
+  const githubSha = environment.GITHUB_SHA ?? null;
+  if (githubSha !== null && !GIT_SHA_PATTERN.test(githubSha)) {
+    throw new Error("GitHub checkout identity is invalid.");
+  }
+  if (githubSha !== null && githubSha !== checkedOutCommitSha) {
+    throw new Error("GitHub checkout identity contradicts Git HEAD.");
+  }
+  const mergeRefSha = isMergeRef ? checkedOutCommitSha : null;
   const mergeRefTreeSha = mergeRefSha
     ? gitValue(repositoryRoot, `${mergeRefSha}^{tree}`)
     : null;
@@ -732,9 +824,52 @@ export function createCredentialFreeVerificationEvidence(
   const repository = environment.GITHUB_REPOSITORY ?? null;
   const runId = environment.GITHUB_RUN_ID ?? null;
   const serverUrl = environment.GITHUB_SERVER_URL ?? null;
-  const runUrl = repository && runId && serverUrl
-    ? `${serverUrl}/${repository}/actions/runs/${runId}`
-    : null;
+  const runAttempt = environment.GITHUB_RUN_ATTEMPT ?? null;
+  const workflow = environment.GITHUB_WORKFLOW ?? null;
+  const job = environment.GITHUB_JOB ?? null;
+  const runUrl = githubRunUrl({ repository, runId, serverUrl });
+  if (runAttempt !== null && !GITHUB_RUN_NUMBER_PATTERN.test(runAttempt)) {
+    throw new Error("GitHub run attempt is invalid.");
+  }
+  if (workflow !== null && !validGitHubText(workflow)) {
+    throw new Error("GitHub workflow identity is invalid.");
+  }
+  if (job !== null && !GITHUB_JOB_PATTERN.test(job)) {
+    throw new Error("GitHub job identity is invalid.");
+  }
+  if (eventName !== null && !GITHUB_EVENT_NAME_PATTERN.test(eventName)) {
+    throw new Error("GitHub event name is invalid.");
+  }
+  if (githubActions) {
+    if (
+      !eventName ||
+      !githubRef ||
+      !githubSha ||
+      !repository ||
+      !workflow ||
+      !runId ||
+      !runAttempt ||
+      !job ||
+      !runUrl
+    ) {
+      throw new Error("GitHub Actions run metadata is incomplete.");
+    }
+    if (!validGitHubText(githubRef)) {
+      throw new Error("GitHub ref is invalid.");
+    }
+    if (eventName === "pull_request") {
+      if (
+        !isMergeRef ||
+        !event.prHeadSha ||
+        !event.baseSha ||
+        !event.baseRef ||
+        !mergeRefSha ||
+        !mergeRefTreeSha
+      ) {
+        throw new Error("GitHub pull-request metadata is incomplete.");
+      }
+    }
+  }
   let vitestVersion = "unknown";
   try {
     vitestVersion = readJson<{ version: string }>(
@@ -808,10 +943,10 @@ export function createCredentialFreeVerificationEvidence(
     },
     run: {
       repository,
-      workflow: environment.GITHUB_WORKFLOW ?? null,
+      workflow,
       runId,
-      runAttempt: environment.GITHUB_RUN_ATTEMPT ?? null,
-      job: environment.GITHUB_JOB ?? null,
+      runAttempt,
+      job,
       url: runUrl,
     },
     completedAt: input.completedAt ?? new Date().toISOString(),
@@ -952,7 +1087,12 @@ export function validateCredentialFreeVerificationEvidence(
       `${field} is invalid`
     );
   }
-  pushError(errors, isNullableString(evidence.baseRef), "base ref is invalid");
+  pushError(
+    errors,
+    evidence.baseRef === null ||
+      (typeof evidence.baseRef === "string" && validGitHubBaseRef(evidence.baseRef)),
+    "base ref is invalid"
+  );
   pushError(
     errors,
     evidence.prHeadTreeMatchesTestedTree === null ||
@@ -1345,13 +1485,36 @@ export function validateCredentialFreeVerificationEvidence(
     for (const name of ["repository", "workflow", "runId", "runAttempt", "job", "url"] as const) {
       pushError(errors, isNullableString(run[name]), `run ${name} is invalid`);
     }
-    if (typeof run.url === "string") {
-      try {
-        const parsedUrl = new URL(run.url);
-        pushError(errors, parsedUrl.protocol === "https:", "run URL is not HTTPS");
-      } catch {
-        errors.push("run URL is malformed");
+    if (typeof run.repository === "string") {
+      pushError(
+        errors,
+        GITHUB_REPOSITORY_PATTERN.test(run.repository),
+        "run repository is malformed"
+      );
+    }
+    if (typeof run.workflow === "string") {
+      pushError(errors, validGitHubText(run.workflow), "run workflow is malformed");
+    }
+    if (typeof run.job === "string") {
+      pushError(errors, GITHUB_JOB_PATTERN.test(run.job), "run job is malformed");
+    }
+    for (const name of ["runId", "runAttempt"] as const) {
+      if (typeof run[name] === "string") {
+        pushError(
+          errors,
+          GITHUB_RUN_NUMBER_PATTERN.test(run[name]),
+          `run ${name} is malformed`
+        );
       }
+    }
+    if (typeof run.url === "string") {
+      pushError(
+        errors,
+        typeof run.repository === "string" &&
+          typeof run.runId === "string" &&
+          coherentGitHubRunUrl(run.url, run.repository, run.runId),
+        "run URL is malformed or contradicts the run identity"
+      );
     }
   }
   pushError(errors, validIsoTimestamp(evidence.completedAt), "completion timestamp is invalid");
@@ -1455,11 +1618,20 @@ export function assessExactTreeEvidenceReuse(
   }
   if (
     !evidence.repositoryState.worktreeClean ||
+    !evidence.prHeadSha ||
+    !evidence.prHeadTreeSha ||
+    evidence.prHeadTreeMatchesTestedTree !== true ||
+    !evidence.mergeRefSha ||
+    !evidence.mergeRefTreeSha ||
+    !evidence.baseRef ||
+    !evidence.baseSha ||
+    !evidence.run.repository ||
     !evidence.run.url ||
     !evidence.run.runId ||
     !evidence.run.runAttempt ||
     !evidence.run.workflow ||
-    !evidence.run.job
+    !evidence.run.job ||
+    evidence.run.job !== evidence.checkId
   ) {
     return { reusable: false, reason: "incomplete-evidence" };
   }
@@ -1515,6 +1687,8 @@ export function renderCredentialFreeEvidenceSummary(
     `- PR head: ${evidence.prHeadSha ? `\`${evidence.prHeadSha}\`` : "not applicable"}`,
     `- PR head tree matches tested tree: ${evidence.prHeadTreeMatchesTestedTree ?? "not applicable"}`,
     `- Merge ref: ${evidence.mergeRefSha ? `\`${evidence.mergeRefSha}\`` : "not applicable"}`,
+    `- Base: ${evidence.baseSha ? `\`${evidence.baseSha}\`` : "not applicable"}${evidence.baseRef ? ` (${evidence.baseRef})` : ""}`,
+    `- Workflow job: ${evidence.run.repository && evidence.run.workflow && evidence.run.job ? `${evidence.run.repository} / ${evidence.run.workflow} / ${evidence.run.job}` : "not applicable"}`,
     `- Verification definition: \`${evidence.verificationDefinitionHash}\``,
     `- Classification: \`${evidence.classificationHash}\``,
     `- Lockfile: \`${evidence.lockfileHash}\``,
@@ -1550,6 +1724,8 @@ export function publishCredentialFreeVerificationEvidence(input: {
   const summaryPath = (input.environment ?? process.env).GITHUB_STEP_SUMMARY;
   if (summaryPath) {
     appendFileSync(summaryPath, renderCredentialFreeEvidenceSummary(input.evidence), "utf8");
+  } else if ((input.environment ?? process.env).GITHUB_ACTIONS === "true") {
+    throw new Error("GitHub job summary destination is unavailable.");
   }
   return evidencePath;
 }

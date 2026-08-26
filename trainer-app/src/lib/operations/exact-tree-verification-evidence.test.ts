@@ -95,6 +95,7 @@ function timedOutPhase(files: number): VitestPhaseResult {
 }
 
 let cachedEvidence: CredentialFreeVerificationEvidence | null = null;
+let canonicalPrEnvironment: Partial<NodeJS.ProcessEnv> = {};
 
 function createEvidenceFixture(
   environment: Partial<NodeJS.ProcessEnv> = {}
@@ -120,6 +121,7 @@ function createEvidenceFixture(
       GITHUB_SERVER_URL: "https://github.com",
       GITHUB_WORKFLOW: "Trainer pull request checks",
       GITHUB_JOB: "credential-free-inventory",
+      ...canonicalPrEnvironment,
       ...environment,
     },
     completedAt: "2026-08-25T20:00:00.000Z",
@@ -258,6 +260,13 @@ function createDefinitionRepository(): { repositoryRoot: string; projectRoot: st
     })}\n`,
     "utf8"
   );
+  const installedVitestRoot = path.join(projectRoot, "node_modules", "vitest");
+  mkdirSync(installedVitestRoot, { recursive: true });
+  writeFileSync(
+    path.join(installedVitestRoot, "package.json"),
+    `${JSON.stringify({ name: "vitest", version: "4.0.18" })}\n`,
+    "utf8"
+  );
   writeFileSync(
     path.join(projectRoot, "scripts", "test-suite-environments.json"),
     `${JSON.stringify(minimalManifest)}\n`,
@@ -269,7 +278,79 @@ function createDefinitionRepository(): { repositoryRoot: string; projectRoot: st
   return { repositoryRoot, projectRoot };
 }
 
+function sanitizeThroughDependencyFreeLauncher(
+  environment: Record<string, string>
+): NodeJS.ProcessEnv {
+  const fixture = mkdtempSync(path.join(tmpdir(), "trainer-evidence-launcher-"));
+  temporaryDirectories.push(fixture);
+  mkdirSync(path.join(fixture, "scripts"), { recursive: true });
+  mkdirSync(path.join(fixture, "node_modules", "tsx", "dist"), { recursive: true });
+  writeFileSync(path.join(fixture, "package.json"), '{"scripts":{}}');
+  writeFileSync(path.join(fixture, "package-lock.json"), "{}");
+  writeFileSync(path.join(fixture, "scripts", "test-environment-preflight.ts"), "export {};");
+  writeFileSync(
+    path.join(fixture, "node_modules", "tsx", "dist", "cli.mjs"),
+    [
+      'console.log("Trainer test environment preflight");',
+      "console.log(JSON.stringify(process.env));",
+    ].join("\n")
+  );
+  const launcher = path.join(projectRoot, "scripts", "test-environment-preflight.mjs");
+  const result = spawnSync(process.execPath, [launcher], {
+    cwd: fixture,
+    env: { ...process.env, ...environment },
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  if (result.status !== 0) {
+    throw new Error(`launcher fixture failed: ${result.stderr}`);
+  }
+  return JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1) ?? "null") as NodeJS.ProcessEnv;
+}
+
+function createPullRequestMergeFixture(): {
+  repositoryRoot: string;
+  projectRoot: string;
+  baseSha: string;
+  baseRef: string;
+  prHeadSha: string;
+  mergeRefSha: string;
+} {
+  const fixture = createDefinitionRepository();
+  const baseBranch = git(fixture.repositoryRoot, ["branch", "--show-current"]);
+  const baseSha = git(fixture.repositoryRoot, ["rev-parse", "HEAD"]);
+  git(fixture.repositoryRoot, ["checkout", "--quiet", "-b", "pr-head"]);
+  writeFileSync(path.join(fixture.repositoryRoot, "pr-change.txt"), "candidate\n", "utf8");
+  git(fixture.repositoryRoot, ["add", "pr-change.txt"]);
+  git(fixture.repositoryRoot, ["commit", "--quiet", "-m", "candidate"]);
+  const prHeadSha = git(fixture.repositoryRoot, ["rev-parse", "HEAD"]);
+  git(fixture.repositoryRoot, ["checkout", "--quiet", baseBranch]);
+  git(fixture.repositoryRoot, ["merge", "--quiet", "--no-ff", "pr-head", "-m", "merge ref"]);
+  const mergeRefSha = git(fixture.repositoryRoot, ["rev-parse", "HEAD"]);
+  return { ...fixture, baseSha, baseRef: baseBranch, prHeadSha, mergeRefSha };
+}
+
 beforeAll(() => {
+  const directory = mkdtempSync(path.join(tmpdir(), "trainer-evidence-default-event-"));
+  temporaryDirectories.push(directory);
+  const currentCommit = git(path.resolve(projectRoot, ".."), ["rev-parse", "HEAD"]);
+  const eventPath = path.join(directory, "event.json");
+  writeFileSync(
+    eventPath,
+    JSON.stringify({
+      pull_request: {
+        head: { sha: currentCommit },
+        base: { sha: currentCommit, ref: "master" },
+      },
+    })
+  );
+  canonicalPrEnvironment = {
+    GITHUB_ACTIONS: "true",
+    GITHUB_EVENT_NAME: "pull_request",
+    GITHUB_EVENT_PATH: eventPath,
+    GITHUB_REF: "refs/pull/73/merge",
+    GITHUB_SHA: currentCommit,
+  };
   cachedEvidence = createEvidenceFixture();
 }, 30_000);
 
@@ -511,6 +592,251 @@ describe("exact-tree verification evidence", () => {
     expect(value.mergeRefTreeSha).toBe(value.treeSha);
   }, 20_000);
 
+  it("keeps non-PR context nullable without fabricating CI identity", () => {
+    const currentCommit = git(path.resolve(projectRoot, ".."), ["rev-parse", "HEAD"]);
+    const push = createEvidenceFixture({
+      GITHUB_ACTIONS: "true",
+      GITHUB_EVENT_NAME: "push",
+      GITHUB_EVENT_PATH: undefined,
+      GITHUB_REF: "refs/heads/master",
+      GITHUB_SHA: currentCommit,
+    });
+    expect(push).toMatchObject({
+      prHeadSha: null,
+      prHeadTreeSha: null,
+      prHeadTreeMatchesTestedTree: null,
+      mergeRefSha: null,
+      mergeRefTreeSha: null,
+      baseSha: null,
+      run: {
+        repository: "owner/repository",
+        url: "https://github.com/owner/repository/actions/runs/123",
+      },
+    });
+
+    const local = createCredentialFreeVerificationEvidence({
+      projectRoot,
+      manifest,
+      filesDiscovered: 3,
+      credentialFreeSelected: 2,
+      importOnlySelected: 1,
+      databaseRequiredExcluded: 0,
+      credentialFreeResult: phase("credential-free suites", 2),
+      importOnlyResult: phase("import-only placeholder suites", 1),
+      placeholderConnectionAttempted: false,
+      exitCode: 0,
+      totalDurationMs: 240,
+      environment: { NODE_ENV: "test", TZ: "America/Chicago" },
+    });
+    expect(local.run).toEqual({
+      repository: null,
+      workflow: null,
+      runId: null,
+      runAttempt: null,
+      job: null,
+      url: null,
+    });
+    expect(local.prHeadSha).toBeNull();
+  }, 20_000);
+
+  it("rejects malformed or contradictory GitHub run context", () => {
+    expect(() =>
+      createEvidenceFixture({ GITHUB_REPOSITORY: "owner/repository/extra" })
+    ).toThrow(/repository identity is invalid/i);
+    expect(() =>
+      createEvidenceFixture({ GITHUB_SERVER_URL: "https://github.com/untrusted-path" })
+    ).toThrow(/HTTPS origin/i);
+    expect(() =>
+      createEvidenceFixture({ GITHUB_SHA: "f".repeat(40) })
+    ).toThrow(/contradicts Git HEAD/i);
+  }, 20_000);
+
+  it("propagates a realistic PR context through the launcher into valid reusable evidence and a non-empty summary", () => {
+    const fixture = createPullRequestMergeFixture();
+    const outputRoot = mkdtempSync(path.join(tmpdir(), "trainer-evidence-output-"));
+    temporaryDirectories.push(outputRoot);
+    const eventRoot = mkdtempSync(path.join(tmpdir(), "trainer-evidence-pr-event-"));
+    temporaryDirectories.push(eventRoot);
+    const eventPath = path.join(eventRoot, "event.json");
+    const summaryPath = path.join(outputRoot, "summary.md");
+    writeFileSync(
+      eventPath,
+      JSON.stringify({
+        pull_request: {
+          head: { sha: fixture.prHeadSha, label: "untrusted markdown `ignored`" },
+          base: { sha: fixture.baseSha, ref: fixture.baseRef },
+          title: "untrusted title ignored",
+        },
+      })
+    );
+    const sanitized = sanitizeThroughDependencyFreeLauncher({
+      CI: "true",
+      TZ: "America/Chicago",
+      RUNNER_OS: "Linux",
+      GITHUB_ACTIONS: "true",
+      GITHUB_EVENT_NAME: "pull_request",
+      GITHUB_EVENT_PATH: eventPath,
+      GITHUB_REF: "refs/pull/73/merge",
+      GITHUB_REPOSITORY: "owner/repository",
+      GITHUB_RUN_ID: "32915674363",
+      GITHUB_RUN_ATTEMPT: "2",
+      GITHUB_SERVER_URL: "https://github.com",
+      GITHUB_SHA: fixture.mergeRefSha,
+      GITHUB_STEP_SUMMARY: summaryPath,
+      GITHUB_WORKFLOW: "Trainer pull request checks",
+      GITHUB_JOB: "credential-free-inventory",
+      GITHUB_TOKEN: "github-token-sentinel-never-publish",
+      GH_TOKEN: "gh-token-sentinel-never-publish",
+      DATABASE_URL: "database-sentinel-never-publish",
+      VERCEL_TOKEN: "vercel-token-sentinel-never-publish",
+      GITHUB_UNREVIEWED_CONTEXT: "must-remain-stripped",
+    });
+
+    expect(sanitized.GITHUB_STEP_SUMMARY).toBe(summaryPath);
+    expect(sanitized.GITHUB_TOKEN).toBeUndefined();
+    expect(sanitized.GH_TOKEN).toBeUndefined();
+    expect(sanitized.DATABASE_URL).toBeUndefined();
+    expect(sanitized.VERCEL_TOKEN).toBeUndefined();
+    expect(sanitized.GITHUB_UNREVIEWED_CONTEXT).toBeUndefined();
+
+    const produced = createCredentialFreeVerificationEvidence({
+      projectRoot: fixture.projectRoot,
+      manifest: minimalManifest,
+      filesDiscovered: 3,
+      credentialFreeSelected: 2,
+      importOnlySelected: 1,
+      databaseRequiredExcluded: 0,
+      credentialFreeResult: phase("credential-free suites", 2),
+      importOnlyResult: phase("import-only placeholder suites", 1),
+      placeholderConnectionAttempted: false,
+      exitCode: 0,
+      totalDurationMs: 240,
+      environment: sanitized,
+      completedAt: "2026-08-25T20:00:00.000Z",
+    });
+    const ubuntuEvidence: CredentialFreeVerificationEvidence = {
+      ...produced,
+      environment: {
+        ...produced.environment,
+        os: "linux 6.11.0",
+        architecture: "x64",
+        node: "v22.20.0",
+        runnerImage: "ubuntu24",
+      },
+    };
+    const evidencePath = publishCredentialFreeVerificationEvidence({
+      projectRoot: outputRoot,
+      evidence: ubuntuEvidence,
+      environment: sanitized,
+    });
+    const serialized = readFileSync(evidencePath, "utf8");
+    const summary = readFileSync(summaryPath, "utf8");
+    const artifactName = credentialFreeEvidenceArtifactName(ubuntuEvidence);
+
+    expect(ubuntuEvidence).toMatchObject({
+      checkedOutCommitSha: fixture.mergeRefSha,
+      prHeadSha: fixture.prHeadSha,
+      mergeRefSha: fixture.mergeRefSha,
+      baseSha: fixture.baseSha,
+      baseRef: fixture.baseRef,
+      prHeadTreeMatchesTestedTree: true,
+      run: {
+        repository: "owner/repository",
+        workflow: "Trainer pull request checks",
+        job: "credential-free-inventory",
+        url: "https://github.com/owner/repository/actions/runs/32915674363",
+      },
+    });
+    expect(fixture.mergeRefSha).not.toBe(fixture.prHeadSha);
+    expect(ubuntuEvidence.mergeRefTreeSha).toBe(ubuntuEvidence.treeSha);
+    expect(ubuntuEvidence.prHeadTreeSha).toBe(ubuntuEvidence.treeSha);
+    const validation = parseCredentialFreeVerificationEvidenceJson(serialized);
+    if (!validation.valid) throw new Error(validation.errors.join("; "));
+    expect(summary).toContain("Status: **pass**");
+    expect(summary).toContain(artifactName);
+    expect(summary).toContain(ubuntuEvidence.run.url);
+    expect(summary).not.toContain("sentinel-never-publish");
+    expect(artifactName).toBe(
+      `credential-free-inventory-evidence-tree-${ubuntuEvidence.treeSha}-run-32915674363-attempt-2`
+    );
+
+    const cleanWindowsConsumer = createEvidenceReuseRequest({
+      projectRoot: fixture.projectRoot,
+      allowQualifiedPass: false,
+    });
+    expect(assessExactTreeEvidenceReuse(JSON.parse(serialized), cleanWindowsConsumer)).toEqual({
+      reusable: true,
+      reason: "reusable",
+    });
+
+    const missingPrMetadata = {
+      ...ubuntuEvidence,
+      prHeadSha: null,
+      prHeadTreeSha: null,
+      prHeadTreeMatchesTestedTree: null,
+      mergeRefSha: null,
+      mergeRefTreeSha: null,
+      baseRef: null,
+      baseSha: null,
+    };
+    expect(assessExactTreeEvidenceReuse(missingPrMetadata, cleanWindowsConsumer)).toEqual({
+      reusable: false,
+      reason: "incomplete-evidence",
+    });
+
+    const missingEventPath = sanitizeThroughDependencyFreeLauncher({
+      ...Object.fromEntries(
+        Object.entries(sanitized).filter(([name]) => name !== "GITHUB_EVENT_PATH")
+      ) as Record<string, string>,
+    });
+    expect(() =>
+      createCredentialFreeVerificationEvidence({
+        projectRoot: fixture.projectRoot,
+        manifest: minimalManifest,
+        filesDiscovered: 3,
+        credentialFreeSelected: 2,
+        importOnlySelected: 1,
+        databaseRequiredExcluded: 0,
+        credentialFreeResult: phase("credential-free suites", 2),
+        importOnlyResult: phase("import-only placeholder suites", 1),
+        placeholderConnectionAttempted: false,
+        exitCode: 0,
+        totalDurationMs: 240,
+        environment: missingEventPath,
+      })
+    ).toThrow(/pull-request metadata is incomplete/i);
+
+    writeFileSync(path.join(fixture.repositoryRoot, "consumer-dirty.txt"), "dirty\n");
+    const dirtyWindowsConsumer = createEvidenceReuseRequest({
+      projectRoot: fixture.projectRoot,
+      allowQualifiedPass: false,
+    });
+    expect(assessExactTreeEvidenceReuse(ubuntuEvidence, dirtyWindowsConsumer)).toEqual({
+      reusable: false,
+      reason: "dirty-current-checkout",
+    });
+  }, 45_000);
+
+  it("allows summary absence outside GitHub Actions but fails closed when Actions loses its destination", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "trainer-evidence-summary-context-"));
+    temporaryDirectories.push(directory);
+    const value = evidence();
+    expect(() =>
+      publishCredentialFreeVerificationEvidence({
+        projectRoot: directory,
+        evidence: value,
+        environment: { NODE_ENV: "test" },
+      })
+    ).not.toThrow();
+    expect(() =>
+      publishCredentialFreeVerificationEvidence({
+        projectRoot: directory,
+        evidence: value,
+        environment: { NODE_ENV: "test", GITHUB_ACTIONS: "true" },
+      })
+    ).toThrow(/summary destination is unavailable/i);
+  });
+
   it("reuses a complete pass for the same tree and equivalent definition", () => {
     const value = evidence();
     expect(assessExactTreeEvidenceReuse(value, requestFor(value))).toEqual({
@@ -527,7 +853,13 @@ describe("exact-tree verification evidence", () => {
     git(repositoryRoot, ["commit", "--quiet", "-m", "consumer fixture"]);
 
     const clean = readCurrentRepositoryState(repositoryRoot);
-    const value = { ...evidence(), treeSha: clean.treeSha };
+    const value = {
+      ...evidence(),
+      treeSha: clean.treeSha,
+      prHeadTreeSha: clean.treeSha,
+      prHeadTreeMatchesTestedTree: true,
+      mergeRefTreeSha: clean.treeSha,
+    };
     expect(
       assessExactTreeEvidenceReuse(value, {
         ...requestFor(value),
@@ -902,7 +1234,11 @@ describe("exact-tree verification evidence", () => {
 
   it("allows different commits with the same tree but never substitutes commit identity for tree equality", () => {
     const value = evidence();
-    const differentCommit = { ...value, checkedOutCommitSha: "f".repeat(40) };
+    const differentCommit = {
+      ...value,
+      checkedOutCommitSha: "f".repeat(40),
+      mergeRefSha: "f".repeat(40),
+    };
     expect(
       assessExactTreeEvidenceReuse(differentCommit, {
         ...requestFor(value),

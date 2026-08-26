@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -16,6 +17,10 @@ import {
   CREDENTIAL_SAFE_PROFILE,
   INVENTORY_COMPONENT_SCHEMA,
   INVENTORY_COMPONENT_SCHEMA_VERSION,
+  MAX_INVENTORY_COMPONENT_DURATION_MS,
+  validateCredentialFreeAggregate,
+  type AggregateValidationExpectation,
+  type CredentialFreeAggregateValidation,
   type CredentialFreeShardSummary,
   type ImportSafetySummary,
 } from "./credential-free-inventory-sharding";
@@ -25,7 +30,9 @@ import {
   computeClassificationHash,
   createCredentialFreeVerificationEvidence,
   createEvidenceReuseRequest,
+  createShardedCredentialFreeVerificationEvidence,
   CREDENTIAL_FREE_CHECK_ID,
+  CREDENTIAL_FREE_EVIDENCE_RELATIVE_PATH,
   credentialFreeEvidenceArtifactName,
   hashCommittedGitPath,
   hashCanonicalValue,
@@ -300,6 +307,62 @@ function shardedEvidenceFixture(): CredentialFreeVerificationEvidence {
       },
     },
   };
+}
+
+function aggregateExpectationFor(
+  value: CredentialFreeVerificationEvidence
+): AggregateValidationExpectation {
+  const topology = value.executionTopology;
+  if (!topology || !value.run.workflow || !value.run.runId || !value.run.runAttempt) {
+    throw new Error("Synthetic sharded evidence identity is incomplete.");
+  }
+  return {
+    treeSha: value.treeSha,
+    checkedOutCommitSha: value.checkedOutCommitSha,
+    verificationDefinitionHash: value.verificationDefinitionHash,
+    classificationHash: value.classificationHash,
+    lockfileHash: value.lockfileHash,
+    workflow: value.run.workflow,
+    workflowRunId: value.run.runId,
+    runAttempt: value.run.runAttempt,
+    job: CREDENTIAL_FREE_CHECK_ID,
+    execution: {
+      nodeVersion: value.environment.node,
+      vitestVersion: value.environment.vitest,
+      pool: "forks",
+      isolation: true,
+      workerCount: 1,
+      timezone: value.environment.timezone,
+    },
+    security: {
+      profile: CREDENTIAL_SAFE_PROFILE,
+      credentialStripping: true,
+      databaseTargetsRemoved: [...DATABASE_TARGET_ENV_VARS].sort(),
+      dotenvSuppressed: true,
+    },
+    credentialFreeFiles: topology.coverage.credentialFreeExpected,
+    importOnlyFiles: topology.coverage.importOnlyExpected,
+    databaseRequiredFiles: topology.coverage.databaseRequiredExcluded,
+    dependencyResults: {
+      credentialShards: "success",
+      importSafety: "success",
+    },
+  };
+}
+
+function validatedAggregateFixture(
+  value = shardedEvidenceFixture()
+): CredentialFreeAggregateValidation {
+  const topology = value.executionTopology!;
+  const validation = validateCredentialFreeAggregate({
+    untrustedComponents: [
+      ...topology.credentialFree.components,
+      topology.importSafety,
+    ],
+    expected: aggregateExpectationFor(value),
+  });
+  if (!validation.valid) throw new Error(validation.errors.join("; "));
+  return validation.aggregate;
 }
 
 function git(repositoryRoot: string, args: string[]): string {
@@ -1427,6 +1490,137 @@ describe("sharded exact-tree evidence", () => {
       reusable: true,
       reason: "reusable",
     });
+  });
+
+  it("self-validates a constructed sharded PASS before publishing and reuses the serialized artifact", () => {
+    const source = shardedEvidenceFixture();
+    const aggregate = validatedAggregateFixture(source);
+    const outputRoot = mkdtempSync(path.join(tmpdir(), "trainer-sharded-publish-"));
+    temporaryDirectories.push(outputRoot);
+    const summaryPath = path.join(outputRoot, "summary.md");
+    const created = createShardedCredentialFreeVerificationEvidence({
+      projectRoot,
+      manifest,
+      aggregate,
+      aggregateDurationMs: 10,
+      environment: {
+        NODE_ENV: "test",
+        TZ: "America/Chicago",
+        GITHUB_REPOSITORY: source.run.repository!,
+        GITHUB_RUN_ID: source.run.runId!,
+        GITHUB_RUN_ATTEMPT: source.run.runAttempt!,
+        GITHUB_SERVER_URL: "https://github.com",
+        GITHUB_WORKFLOW: source.run.workflow!,
+        GITHUB_JOB: CREDENTIAL_FREE_CHECK_ID,
+      },
+      completedAt: "2026-08-25T20:00:00.000Z",
+    });
+    const publishable: CredentialFreeVerificationEvidence = {
+      ...created,
+      repositoryState: { worktreeClean: true },
+      prHeadSha: source.prHeadSha,
+      prHeadTreeSha: source.prHeadTreeSha,
+      prHeadTreeMatchesTestedTree: source.prHeadTreeMatchesTestedTree,
+      mergeRefSha: source.mergeRefSha,
+      mergeRefTreeSha: source.mergeRefTreeSha,
+      baseRef: source.baseRef,
+      baseSha: source.baseSha,
+      environment: { ...created.environment, node: source.environment.node },
+    };
+
+    const evidencePath = publishCredentialFreeVerificationEvidence({
+      projectRoot: outputRoot,
+      evidence: publishable,
+      environment: { NODE_ENV: "test", GITHUB_STEP_SUMMARY: summaryPath },
+    });
+    const serialized = readFileSync(evidencePath, "utf8");
+    const parsed = parseCredentialFreeVerificationEvidenceJson(serialized);
+
+    expect(parsed.valid).toBe(true);
+    expect(readFileSync(summaryPath, "utf8")).toContain("Status: **pass**");
+    expect(assessExactTreeEvidenceReuse(JSON.parse(serialized), requestFor(publishable))).toEqual({
+      reusable: true,
+      reason: "reusable",
+    });
+  }, 30_000);
+
+  it("rejects unsafe canonical counts and out-of-domain durations", () => {
+    for (const unsafeCount of [
+      Number.MAX_VALUE,
+      Number.MAX_SAFE_INTEGER + 1,
+      1e100,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      Number.NaN,
+    ]) {
+      const unsafe = evidence();
+      unsafe.counts.testsCollected = unsafeCount;
+      unsafe.counts.testsPassed = unsafeCount;
+      expect(validateCredentialFreeVerificationEvidence(unsafe).valid).toBe(false);
+    }
+
+    for (const unsafeDuration of [
+      MAX_INVENTORY_COMPONENT_DURATION_MS + 1,
+      Number.MAX_VALUE,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      Number.NaN,
+    ]) {
+      const unsafe = evidence();
+      unsafe.durations.importOnlyMs = unsafeDuration;
+      expect(validateCredentialFreeVerificationEvidence(unsafe).valid).toBe(false);
+    }
+  });
+
+  it("fails the prior malicious complete topology and publishes no canonical PASS artifact", () => {
+    const value = shardedEvidenceFixture();
+    const topology = value.executionTopology!;
+    const maliciousComponents = structuredClone([
+      ...topology.credentialFree.components,
+      topology.importSafety,
+    ]);
+    for (const component of maliciousComponents) {
+      component.durationMs = Number.MAX_VALUE;
+      component.counts.totalTests = Number.MAX_VALUE;
+      component.counts.passedTests = Number.MAX_VALUE;
+    }
+
+    const aggregate = validateCredentialFreeAggregate({
+      untrustedComponents: maliciousComponents,
+      expected: aggregateExpectationFor(value),
+    });
+    expect(aggregate.valid).toBe(false);
+    if (!aggregate.valid) {
+      expect(aggregate.errors.join("\n")).toMatch(/totalTests is invalid/);
+      expect(aggregate.errors.join("\n")).toMatch(/duration is invalid/);
+    }
+
+    const malformedPass = structuredClone(value);
+    malformedPass.executionTopology!.credentialFree.components =
+      maliciousComponents.slice(0, 4) as CredentialFreeShardSummary[];
+    malformedPass.executionTopology!.importSafety =
+      maliciousComponents[4] as ImportSafetySummary;
+    malformedPass.counts.testsCollected = Number.POSITIVE_INFINITY;
+    malformedPass.counts.testsPassed = Number.POSITIVE_INFINITY;
+    malformedPass.durations.totalMs = Number.POSITIVE_INFINITY;
+    expect(JSON.parse(JSON.stringify(malformedPass)).counts.testsCollected).toBeNull();
+
+    const outputRoot = mkdtempSync(path.join(tmpdir(), "trainer-malicious-publish-"));
+    temporaryDirectories.push(outputRoot);
+    const evidencePath = path.join(
+      outputRoot,
+      CREDENTIAL_FREE_EVIDENCE_RELATIVE_PATH
+    );
+    const summaryPath = path.join(outputRoot, "summary.md");
+    expect(() =>
+      publishCredentialFreeVerificationEvidence({
+        projectRoot: outputRoot,
+        evidence: malformedPass,
+        environment: { NODE_ENV: "test", GITHUB_STEP_SUMMARY: summaryPath },
+      })
+    ).toThrow(/non-finite number/i);
+    expect(existsSync(evidencePath)).toBe(false);
+    expect(existsSync(summaryPath)).toBe(false);
   });
 
   it("rejects missing, overlapping, or wrong-tree shard topology", () => {

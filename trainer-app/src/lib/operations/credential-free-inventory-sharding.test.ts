@@ -5,6 +5,7 @@ import {
   CREDENTIAL_SAFE_PROFILE,
   INVENTORY_COMPONENT_SCHEMA,
   INVENTORY_COMPONENT_SCHEMA_VERSION,
+  MAX_INVENTORY_COMPONENT_DURATION_MS,
   buildCredentialFreeShardVitestArgs,
   buildImportSafetyVitestArgs,
   normalizeExecutedReporterFile,
@@ -355,6 +356,126 @@ describe("credential-free inventory aggregate validation", () => {
     };
     expect(invalidErrors(duplicate).join("\n")).toContain(
       "file identities are duplicated"
+    );
+  });
+
+  it("rejects every unsafe numeric representation in every component count field", () => {
+    const countKeys = [
+      "selectedFiles",
+      "executedFiles",
+      "passedFiles",
+      "failedFiles",
+      "skippedFiles",
+      "totalTests",
+      "passedTests",
+      "failedTests",
+      "skippedTests",
+    ] as const;
+    const unsafeValues = [
+      Number.MAX_VALUE,
+      Number.MAX_SAFE_INTEGER + 1,
+      1e100,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      Number.NaN,
+    ];
+
+    for (const key of countKeys) {
+      for (const unsafeValue of unsafeValues) {
+        const values = components();
+        values[0] = {
+          ...values[0],
+          counts: { ...values[0].counts, [key]: unsafeValue },
+        } as CredentialFreeShardSummary;
+        expect(invalidErrors(values)).toContain(`component 1 ${key} is invalid`);
+      }
+    }
+  });
+
+  it("accepts the safe-integer count boundary when checked aggregate addition remains safe", () => {
+    const values = components().map((component, index) => ({
+      ...component,
+      counts: {
+        ...component.counts,
+        totalTests: index === 0 ? Number.MAX_SAFE_INTEGER : 0,
+        passedTests: index === 0 ? Number.MAX_SAFE_INTEGER : 0,
+      },
+    })) as InventoryComponentSummary[];
+
+    const result = validateCredentialFreeAggregate({
+      untrustedComponents: values,
+      expected: expectation(),
+    });
+    expect(result.valid).toBe(true);
+    if (result.valid) {
+      expect(result.aggregate.counts.totalTests).toBe(Number.MAX_SAFE_INTEGER);
+      expect(result.aggregate.counts.passedTests).toBe(Number.MAX_SAFE_INTEGER);
+    }
+  });
+
+  it("rejects individually safe component counts when aggregate addition overflows", () => {
+    const largeSafeCount = Math.floor(Number.MAX_SAFE_INTEGER / 2) + 1;
+    const values = components().map((component, index) => ({
+      ...component,
+      counts: {
+        ...component.counts,
+        totalTests: index < 2 ? largeSafeCount : 0,
+        passedTests: index < 2 ? largeSafeCount : 0,
+      },
+    })) as InventoryComponentSummary[];
+
+    const errors = invalidErrors(values);
+    expect(errors).toContain("aggregate totalTests exceeds the safe integer range");
+    expect(errors).toContain("aggregate passedTests exceeds the safe integer range");
+  });
+
+  it("bounds component and per-file durations in milliseconds", () => {
+    for (const unsafeValue of [
+      MAX_INVENTORY_COMPONENT_DURATION_MS + 1,
+      Number.MAX_VALUE,
+      1e100,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      Number.NaN,
+    ]) {
+      const invalidComponent = components();
+      invalidComponent[0] = {
+        ...invalidComponent[0],
+        durationMs: unsafeValue,
+      } as CredentialFreeShardSummary;
+      expect(invalidErrors(invalidComponent)).toContain("component 1 duration is invalid");
+
+      const invalidFile = components();
+      invalidFile[0] = {
+        ...invalidFile[0],
+        fileDurations: [
+          { file: invalidFile[0].files[0], durationMs: unsafeValue },
+        ],
+      } as CredentialFreeShardSummary;
+      expect(invalidErrors(invalidFile)).toContain("component 1 file duration is invalid");
+    }
+
+    const boundary = components();
+    boundary.forEach((component) => {
+      component.durationMs = 0;
+    });
+    boundary[0].durationMs = MAX_INVENTORY_COMPONENT_DURATION_MS;
+    expect(
+      validateCredentialFreeAggregate({
+        untrustedComponents: boundary,
+        expected: expectation(),
+      }).valid
+    ).toBe(true);
+  });
+
+  it("rejects bounded component durations whose checked aggregate exceeds its domain", () => {
+    const values = components();
+    values.forEach((component) => {
+      component.durationMs = MAX_INVENTORY_COMPONENT_DURATION_MS;
+    });
+
+    expect(invalidErrors(values)).toContain(
+      "aggregate component duration exceeds its bounded domain"
     );
   });
 

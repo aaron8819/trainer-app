@@ -6,6 +6,14 @@ import type {
 } from "./credential-free-inventory-runner";
 
 export const CREDENTIAL_FREE_SHARD_COUNT = 4 as const;
+const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
+
+// GitHub-hosted jobs are limited to hours and self-hosted jobs to days. Seven days
+// leaves headroom for legitimate CI while bounding every untrusted millisecond value.
+export const MAX_INVENTORY_COMPONENT_DURATION_MS = 7 * MILLISECONDS_PER_DAY;
+// The retained component-total diagnostic may span five jobs, but values above
+// thirty component-days are not credible CI evidence and are rejected on addition.
+export const MAX_INVENTORY_AGGREGATE_DURATION_MS = 30 * MILLISECONDS_PER_DAY;
 export const INVENTORY_COMPONENT_SCHEMA =
   "trainer-credential-free-inventory-component" as const;
 export const INVENTORY_COMPONENT_SCHEMA_VERSION = 1 as const;
@@ -67,6 +75,7 @@ type InventoryComponentBase = InventoryComponentIdentity & {
   schema: typeof INVENTORY_COMPONENT_SCHEMA;
   schemaVersion: typeof INVENTORY_COMPONENT_SCHEMA_VERSION;
   files: string[];
+  // All component and per-file durations are elapsed milliseconds.
   fileDurations: Array<{ file: string; durationMs: number }>;
   counts: InventoryResultCounts;
   durationMs: number;
@@ -140,7 +149,7 @@ export function buildCredentialFreeShardVitestArgs(input: {
 }): string[] {
   if (
     input.shardCount !== CREDENTIAL_FREE_SHARD_COUNT ||
-    !Number.isInteger(input.shardIndex) ||
+    !Number.isSafeInteger(input.shardIndex) ||
     input.shardIndex < 1 ||
     input.shardIndex > CREDENTIAL_FREE_SHARD_COUNT
   ) {
@@ -309,12 +318,48 @@ function exactKeys(
   );
 }
 
-function nonNegativeInteger(value: unknown): value is number {
-  return Number.isInteger(value) && Number(value) >= 0;
+export function isNonNegativeSafeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
-function nonNegativeFinite(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+export function isBoundedDurationMs(
+  value: unknown,
+  maximumMs = MAX_INVENTORY_COMPONENT_DURATION_MS
+): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= maximumMs
+  );
+}
+
+export function sumNonNegativeSafeIntegers(
+  values: readonly number[]
+): number | null {
+  let total = 0;
+  for (const value of values) {
+    if (!isNonNegativeSafeInteger(value)) return null;
+    const next = total + value;
+    if (!Number.isSafeInteger(next)) return null;
+    total = next;
+  }
+  return total;
+}
+
+export function sumBoundedDurationsMs(
+  values: readonly number[],
+  maximumMs: number
+): number | null {
+  if (!isBoundedDurationMs(maximumMs, Number.MAX_SAFE_INTEGER)) return null;
+  let total = 0;
+  for (const value of values) {
+    if (!isBoundedDurationMs(value, maximumMs)) return null;
+    const next = total + value;
+    if (!Number.isFinite(next) || next > maximumMs) return null;
+    total = next;
+  }
+  return total;
 }
 
 function safeFileIdentity(value: unknown): value is string {
@@ -468,24 +513,36 @@ function validateCounts(
     errors.push(`${label} counts are malformed`);
     return null;
   }
+  let valuesAreValid = true;
   for (const key of COUNT_KEYS) {
-    if (!nonNegativeInteger(value[key])) errors.push(`${label} ${key} is invalid`);
+    if (!isNonNegativeSafeInteger(value[key])) {
+      errors.push(`${label} ${key} is invalid`);
+      valuesAreValid = false;
+    }
   }
-  if (errors.some((entry) => entry.startsWith(`${label} `))) return null;
+  if (!valuesAreValid) return null;
   const counts = value as InventoryResultCounts;
   if (files && counts.executedFiles !== files.length) {
     errors.push(`${label} executed file count differs from file identities`);
   }
-  if (
-    counts.passedFiles + counts.failedFiles + counts.skippedFiles !==
-    counts.executedFiles
-  ) {
+  const fileResultTotal = sumNonNegativeSafeIntegers([
+    counts.passedFiles,
+    counts.failedFiles,
+    counts.skippedFiles,
+  ]);
+  if (fileResultTotal === null) {
+    errors.push(`${label} file result counts overflow the safe integer range`);
+  } else if (fileResultTotal !== counts.executedFiles) {
     errors.push(`${label} file result counts do not reconcile`);
   }
-  if (
-    counts.passedTests + counts.failedTests + counts.skippedTests !==
-    counts.totalTests
-  ) {
+  const testResultTotal = sumNonNegativeSafeIntegers([
+    counts.passedTests,
+    counts.failedTests,
+    counts.skippedTests,
+  ]);
+  if (testResultTotal === null) {
+    errors.push(`${label} test result counts overflow the safe integer range`);
+  } else if (testResultTotal !== counts.totalTests) {
     errors.push(`${label} test result counts do not reconcile`);
   }
   if (
@@ -560,7 +617,7 @@ function validateComponent(
   const security = validateSecurity(value.security, label, errors);
   const files = validateStringFiles(value.files, label, errors);
   const counts = validateCounts(value.counts, files, value.status, label, errors);
-  if (!nonNegativeFinite(value.durationMs)) {
+  if (!isBoundedDurationMs(value.durationMs)) {
     errors.push(`${label} duration is invalid`);
   }
   if (value.status !== "pass" && value.status !== "fail") {
@@ -598,7 +655,7 @@ function validateComponent(
         !isRecord(entry) ||
         !exactKeys(entry, ["file", "durationMs"]) ||
         !safeFileIdentity(entry.file) ||
-        !nonNegativeFinite(entry.durationMs)
+        !isBoundedDurationMs(entry.durationMs)
       ) {
         errors.push(`${label} file duration is invalid`);
         continue;
@@ -613,10 +670,10 @@ function validateComponent(
     }
   }
   if (componentType === "credential-free-shard") {
-    if (!nonNegativeInteger(value.shardIndex) || value.shardIndex < 1) {
+    if (!isNonNegativeSafeInteger(value.shardIndex) || value.shardIndex < 1) {
       errors.push(`${label} shard index is invalid`);
     }
-    if (!nonNegativeInteger(value.shardCount) || value.shardCount < 1) {
+    if (!isNonNegativeSafeInteger(value.shardCount) || value.shardCount < 1) {
       errors.push(`${label} shard count is invalid`);
     }
   } else if (
@@ -682,14 +739,24 @@ function identityMismatch(
   return errors;
 }
 
-function sumCounts(components: readonly InventoryComponentSummary[]): InventoryResultCounts {
-  return components.reduce<InventoryResultCounts>(
-    (total, component) => {
-      for (const key of COUNT_KEYS) total[key] += component.counts[key];
-      return total;
-    },
-    Object.fromEntries(COUNT_KEYS.map((key) => [key, 0])) as InventoryResultCounts
-  );
+function sumCounts(
+  components: readonly InventoryComponentSummary[],
+  errors: string[]
+): InventoryResultCounts | null {
+  const totals = {} as InventoryResultCounts;
+  let valid = true;
+  for (const key of COUNT_KEYS) {
+    const total = sumNonNegativeSafeIntegers(
+      components.map((component) => component.counts[key])
+    );
+    if (total === null) {
+      errors.push(`aggregate ${key} exceeds the safe integer range`);
+      valid = false;
+    } else {
+      totals[key] = total;
+    }
+  }
+  return valid ? totals : null;
 }
 
 export function validateCredentialFreeAggregate(input: {
@@ -800,12 +867,25 @@ export function validateCredentialFreeAggregate(input: {
   }
   if (errors.length > 0 || !imports[0]) return { valid: false, errors };
 
-  const counts = sumCounts(components);
-  const credentialFreeMs = shards.reduce(
-    (total, component) => total + component.durationMs,
-    0
+  const counts = sumCounts(components, errors);
+  const credentialFreeMs = sumBoundedDurationsMs(
+    shards.map((component) => component.durationMs),
+    CREDENTIAL_FREE_SHARD_COUNT * MAX_INVENTORY_COMPONENT_DURATION_MS
   );
   const componentDurations = components.map((component) => component.durationMs);
+  const componentTotalMs = sumBoundedDurationsMs(
+    componentDurations,
+    MAX_INVENTORY_AGGREGATE_DURATION_MS
+  );
+  if (credentialFreeMs === null) {
+    errors.push("aggregate credential-free duration exceeds its bounded domain");
+  }
+  if (componentTotalMs === null) {
+    errors.push("aggregate component duration exceeds its bounded domain");
+  }
+  if (!counts || credentialFreeMs === null || componentTotalMs === null) {
+    return { valid: false, errors };
+  }
   return {
     valid: true,
     aggregate: {
@@ -828,7 +908,7 @@ export function validateCredentialFreeAggregate(input: {
       durations: {
         credentialFreeMs,
         importOnlyMs: imports[0].durationMs,
-        componentTotalMs: componentDurations.reduce((total, value) => total + value, 0),
+        componentTotalMs,
         criticalPathMs: Math.max(0, ...componentDurations),
       },
     },

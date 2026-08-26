@@ -20,6 +20,12 @@ import type {
 import {
   CREDENTIAL_FREE_SHARD_COUNT,
   CREDENTIAL_SAFE_PROFILE,
+  MAX_INVENTORY_AGGREGATE_DURATION_MS,
+  MAX_INVENTORY_COMPONENT_DURATION_MS,
+  isBoundedDurationMs,
+  isNonNegativeSafeInteger,
+  sumBoundedDurationsMs,
+  sumNonNegativeSafeIntegers,
   validateCredentialFreeAggregate,
   type CredentialFreeAggregateValidation,
   type CredentialFreeShardSummary,
@@ -50,6 +56,11 @@ const GITHUB_REPOSITORY_PATTERN =
 const GITHUB_RUN_NUMBER_PATTERN = /^[1-9]\d*$/;
 const GITHUB_EVENT_NAME_PATTERN = /^[A-Za-z0-9_]+$/;
 const GITHUB_JOB_PATTERN = /^[A-Za-z_][A-Za-z0-9_-]{0,99}$/;
+// Aggregation only parses five small summaries; one day is deliberately generous
+// while preventing a hostile aggregate duration from escaping into evidence.
+const MAX_AGGREGATE_VALIDATION_DURATION_MS = 24 * 60 * 60 * 1000;
+const MAX_SHARDED_TOTAL_DURATION_MS =
+  MAX_INVENTORY_COMPONENT_DURATION_MS + MAX_AGGREGATE_VALIDATION_DURATION_MS;
 
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
@@ -665,9 +676,9 @@ export function computeVerificationDefinition(input: {
     !packageScriptName ||
     !Array.isArray(rawDefinitionPaths) ||
     rawDefinitionPaths.length === 0 ||
-    !Number.isInteger(nodeMajor) ||
+    !Number.isSafeInteger(nodeMajor) ||
     (nodeMajor as number) <= 0 ||
-    !Number.isInteger(workers) ||
+    !Number.isSafeInteger(workers) ||
     (workers as number) <= 0 ||
     checkPolicy?.definition?.classificationOwner !==
       "trainer-app/scripts/test-suite-environments.json" ||
@@ -750,6 +761,44 @@ export function computeVerificationDefinition(input: {
 
 function emptyCounts() {
   return { files: { total: 0, passed: 0, failed: 0, skipped: 0 }, tests: { total: 0, passed: 0, failed: 0, skipped: 0 } };
+}
+
+function requireNonNegativeSafeInteger(value: number, label: string): number {
+  if (!isNonNegativeSafeInteger(value)) {
+    throw new Error(`${label} must be a non-negative safe integer.`);
+  }
+  return value;
+}
+
+function requireSafeIntegerSum(values: readonly number[], label: string): number {
+  const total = sumNonNegativeSafeIntegers(values);
+  if (total === null) {
+    throw new Error(`${label} exceeds the safe integer range.`);
+  }
+  return total;
+}
+
+function requireBoundedDuration(
+  value: number,
+  maximumMs: number,
+  label: string
+): number {
+  if (!isBoundedDurationMs(value, maximumMs)) {
+    throw new Error(`${label} exceeds its bounded millisecond domain.`);
+  }
+  return value;
+}
+
+function requireBoundedDurationSum(
+  values: readonly number[],
+  maximumMs: number,
+  label: string
+): number {
+  const total = sumBoundedDurationsMs(values, maximumMs);
+  if (total === null) {
+    throw new Error(`${label} exceeds its bounded millisecond domain.`);
+  }
+  return total;
 }
 
 function phaseReporterComplete(result: VitestPhaseResult | null, selected: number): boolean {
@@ -940,6 +989,76 @@ export function createCredentialFreeVerificationEvidence(
     // Dependency readiness failures still publish evidence without inventing a version.
   }
 
+  const evidenceCounts = {
+    filesDiscovered: requireNonNegativeSafeInteger(
+      input.filesDiscovered,
+      "Discovered file count"
+    ),
+    filesSelected: requireSafeIntegerSum(
+      [input.credentialFreeSelected, input.importOnlySelected],
+      "Selected file count"
+    ),
+    filesExecuted: requireSafeIntegerSum(
+      [credential.files.total, importOnly.files.total],
+      "Executed file count"
+    ),
+    filesPassed: requireSafeIntegerSum(
+      [credential.files.passed, importOnly.files.passed],
+      "Passed file count"
+    ),
+    filesSkipped: requireSafeIntegerSum(
+      [credential.files.skipped, importOnly.files.skipped],
+      "Skipped file count"
+    ),
+    filesFailed: requireSafeIntegerSum(
+      [credential.files.failed, importOnly.files.failed],
+      "Failed file count"
+    ),
+    testsCollected: requireSafeIntegerSum(
+      [credential.tests.total, importOnly.tests.total],
+      "Collected test count"
+    ),
+    testsPassed: requireSafeIntegerSum(
+      [credential.tests.passed, importOnly.tests.passed],
+      "Passed test count"
+    ),
+    testsSkipped: requireSafeIntegerSum(
+      [credential.tests.skipped, importOnly.tests.skipped],
+      "Skipped test count"
+    ),
+    testsFailed: requireSafeIntegerSum(
+      [credential.tests.failed, importOnly.tests.failed],
+      "Failed test count"
+    ),
+    databaseRequiredExcluded: requireNonNegativeSafeInteger(
+      input.databaseRequiredExcluded,
+      "Database-required exclusion count"
+    ),
+  };
+  const evidenceDurations = {
+    totalMs: requireBoundedDuration(
+      input.totalDurationMs,
+      MAX_INVENTORY_AGGREGATE_DURATION_MS,
+      "Total evidence duration"
+    ),
+    credentialFreeMs:
+      input.credentialFreeResult === null
+        ? null
+        : requireBoundedDuration(
+            input.credentialFreeResult.durationMs,
+            MAX_INVENTORY_AGGREGATE_DURATION_MS,
+            "Credential-free duration"
+          ),
+    importOnlyMs:
+      input.importOnlyResult === null
+        ? null
+        : requireBoundedDuration(
+            input.importOnlyResult.durationMs,
+            MAX_INVENTORY_COMPONENT_DURATION_MS,
+            "Import-only duration"
+          ),
+  };
+
   return {
     schema: VERIFICATION_EVIDENCE_SCHEMA,
     schemaVersion: VERIFICATION_EVIDENCE_VERSION,
@@ -966,24 +1085,8 @@ export function createCredentialFreeVerificationEvidence(
     lockfileHash: definition.lockfileHash,
     status,
     qualification,
-    counts: {
-      filesDiscovered: input.filesDiscovered,
-      filesSelected: input.credentialFreeSelected + input.importOnlySelected,
-      filesExecuted: credential.files.total + importOnly.files.total,
-      filesPassed: credential.files.passed + importOnly.files.passed,
-      filesSkipped: credential.files.skipped + importOnly.files.skipped,
-      filesFailed: credential.files.failed + importOnly.files.failed,
-      testsCollected: credential.tests.total + importOnly.tests.total,
-      testsPassed: credential.tests.passed + importOnly.tests.passed,
-      testsSkipped: credential.tests.skipped + importOnly.tests.skipped,
-      testsFailed: credential.tests.failed + importOnly.tests.failed,
-      databaseRequiredExcluded: input.databaseRequiredExcluded,
-    },
-    durations: {
-      totalMs: Math.max(0, input.totalDurationMs),
-      credentialFreeMs: input.credentialFreeResult?.durationMs ?? null,
-      importOnlyMs: input.importOnlyResult?.durationMs ?? null,
-    },
+    counts: evidenceCounts,
+    durations: evidenceDurations,
     importSafety: {
       status: input.importOnlyResult
         ? input.importOnlyResult.success && !input.placeholderConnectionAttempted
@@ -1061,38 +1164,77 @@ export function createShardedCredentialFreeVerificationEvidence(
   input: ShardedCredentialFreeEvidenceInput
 ): CredentialFreeVerificationEvidence {
   const credentialComponents = input.aggregate.components.credentialFree;
-  const credentialCounts = credentialComponents.reduce(
-    (total, component) => ({
-      files: {
-        total: total.files.total + component.counts.executedFiles,
-        passed: total.files.passed + component.counts.passedFiles,
-        failed: total.files.failed + component.counts.failedFiles,
-        skipped: total.files.skipped + component.counts.skippedFiles,
-      },
-      tests: {
-        total: total.tests.total + component.counts.totalTests,
-        passed: total.tests.passed + component.counts.passedTests,
-        failed: total.tests.failed + component.counts.failedTests,
-        skipped: total.tests.skipped + component.counts.skippedTests,
-      },
-    }),
-    emptyCounts()
-  );
+  const credentialCount = (
+    key: keyof CredentialFreeShardSummary["counts"],
+    label: string
+  ) =>
+    requireSafeIntegerSum(
+      credentialComponents.map((component) => component.counts[key]),
+      label
+    );
+  const credentialCounts = {
+    files: {
+      total: credentialCount("executedFiles", "Credential executed file count"),
+      passed: credentialCount("passedFiles", "Credential passed file count"),
+      failed: credentialCount("failedFiles", "Credential failed file count"),
+      skipped: credentialCount("skippedFiles", "Credential skipped file count"),
+    },
+    tests: {
+      total: credentialCount("totalTests", "Credential collected test count"),
+      passed: credentialCount("passedTests", "Credential passed test count"),
+      failed: credentialCount("failedTests", "Credential failed test count"),
+      skipped: credentialCount("skippedTests", "Credential skipped test count"),
+    },
+  };
   const importComponent = input.aggregate.components.importSafety;
   const importCounts = {
     files: {
-      total: importComponent.counts.executedFiles,
-      passed: importComponent.counts.passedFiles,
-      failed: importComponent.counts.failedFiles,
-      skipped: importComponent.counts.skippedFiles,
+      total: requireNonNegativeSafeInteger(
+        importComponent.counts.executedFiles,
+        "Import executed file count"
+      ),
+      passed: requireNonNegativeSafeInteger(
+        importComponent.counts.passedFiles,
+        "Import passed file count"
+      ),
+      failed: requireNonNegativeSafeInteger(
+        importComponent.counts.failedFiles,
+        "Import failed file count"
+      ),
+      skipped: requireNonNegativeSafeInteger(
+        importComponent.counts.skippedFiles,
+        "Import skipped file count"
+      ),
     },
     tests: {
-      total: importComponent.counts.totalTests,
-      passed: importComponent.counts.passedTests,
-      failed: importComponent.counts.failedTests,
-      skipped: importComponent.counts.skippedTests,
+      total: requireNonNegativeSafeInteger(
+        importComponent.counts.totalTests,
+        "Import collected test count"
+      ),
+      passed: requireNonNegativeSafeInteger(
+        importComponent.counts.passedTests,
+        "Import passed test count"
+      ),
+      failed: requireNonNegativeSafeInteger(
+        importComponent.counts.failedTests,
+        "Import failed test count"
+      ),
+      skipped: requireNonNegativeSafeInteger(
+        importComponent.counts.skippedTests,
+        "Import skipped test count"
+      ),
     },
   };
+  const aggregateDurationMs = requireBoundedDuration(
+    input.aggregateDurationMs,
+    MAX_AGGREGATE_VALIDATION_DURATION_MS,
+    "Aggregate validation duration"
+  );
+  const totalDurationMs = requireBoundedDurationSum(
+    [input.aggregate.durations.criticalPathMs, aggregateDurationMs],
+    MAX_SHARDED_TOTAL_DURATION_MS,
+    "Sharded total duration"
+  );
   const credentialResult = successfulAggregatePhase({
     phase: "credential-free sharded suites",
     ...credentialCounts,
@@ -1117,8 +1259,7 @@ export function createShardedCredentialFreeVerificationEvidence(
     placeholderConnectionAttempted: false,
     exitCode: 0,
     qualification: null,
-    totalDurationMs:
-      input.aggregate.durations.criticalPathMs + input.aggregateDurationMs,
+    totalDurationMs,
     baseRef: input.baseRef,
     environment: input.environment,
     completedAt: input.completedAt,
@@ -1127,10 +1268,10 @@ export function createShardedCredentialFreeVerificationEvidence(
     ...base,
     schemaVersion: SHARDED_VERIFICATION_EVIDENCE_VERSION,
     durations: {
-      totalMs: input.aggregate.durations.criticalPathMs + input.aggregateDurationMs,
+      totalMs: totalDurationMs,
       credentialFreeMs: input.aggregate.durations.credentialFreeMs,
       importOnlyMs: input.aggregate.durations.importOnlyMs,
-      aggregateMs: input.aggregateDurationMs,
+      aggregateMs: aggregateDurationMs,
       criticalPathMs: input.aggregate.durations.criticalPathMs,
       componentTotalMs: input.aggregate.durations.componentTotalMs,
     },
@@ -1156,11 +1297,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isNonNegativeInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+  return isNonNegativeSafeInteger(value);
 }
 
 function isNonNegativeFinite(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+  return isBoundedDurationMs(value, MAX_INVENTORY_AGGREGATE_DURATION_MS);
 }
 
 function isNullableString(value: unknown): value is string | null {
@@ -1378,11 +1519,22 @@ function validateShardedExecutionTopology(
       durations.criticalPathMs === aggregateDurations.criticalPathMs,
       "sharded critical-path duration does not reconcile"
     );
+    const aggregateMs = isBoundedDurationMs(
+      durations.aggregateMs,
+      MAX_AGGREGATE_VALIDATION_DURATION_MS
+    )
+      ? durations.aggregateMs
+      : null;
+    const recomputedTotalMs =
+      aggregateMs === null
+        ? null
+        : sumBoundedDurationsMs(
+            [aggregateDurations.criticalPathMs, aggregateMs],
+            MAX_SHARDED_TOTAL_DURATION_MS
+          );
     pushError(
       errors,
-      isNonNegativeFinite(durations.aggregateMs) &&
-        durations.totalMs ===
-          aggregateDurations.criticalPathMs + Number(durations.aggregateMs),
+      recomputedTotalMs !== null && durations.totalMs === recomputedTotalMs,
       "sharded aggregate duration does not reconcile"
     );
   }
@@ -1528,12 +1680,12 @@ export function validateCredentialFreeVerificationEvidence(
     );
     pushError(
       errors,
-      Number.isInteger(definition.nodeMajor) && (definition.nodeMajor as number) > 0,
+      Number.isSafeInteger(definition.nodeMajor) && (definition.nodeMajor as number) > 0,
       "definition Node major is invalid"
     );
     pushError(
       errors,
-      Number.isInteger(definition.workers) && (definition.workers as number) > 0,
+      Number.isSafeInteger(definition.workers) && (definition.workers as number) > 0,
       "definition worker count is invalid"
     );
     pushError(
@@ -1637,8 +1789,10 @@ export function validateCredentialFreeVerificationEvidence(
     if (countNames.every((name) => isNonNegativeInteger(counts[name]))) {
       pushError(
         errors,
-        (counts.filesSelected as number) + (counts.databaseRequiredExcluded as number) ===
-          counts.filesDiscovered,
+        sumNonNegativeSafeIntegers([
+          counts.filesSelected as number,
+          counts.databaseRequiredExcluded as number,
+        ]) === counts.filesDiscovered,
         "selected and excluded file counts do not reconcile with discovery"
       );
       pushError(
@@ -1648,18 +1802,20 @@ export function validateCredentialFreeVerificationEvidence(
       );
       pushError(
         errors,
-        (counts.filesPassed as number) +
-          (counts.filesSkipped as number) +
-          (counts.filesFailed as number) ===
-          counts.filesExecuted,
+        sumNonNegativeSafeIntegers([
+          counts.filesPassed as number,
+          counts.filesSkipped as number,
+          counts.filesFailed as number,
+        ]) === counts.filesExecuted,
         "file result counts do not reconcile"
       );
       pushError(
         errors,
-        (counts.testsPassed as number) +
-          (counts.testsSkipped as number) +
-          (counts.testsFailed as number) ===
-          counts.testsCollected,
+        sumNonNegativeSafeIntegers([
+          counts.testsPassed as number,
+          counts.testsSkipped as number,
+          counts.testsFailed as number,
+        ]) === counts.testsCollected,
         "test result counts do not reconcile"
       );
       if (status === "pass" || status === "qualified_pass") {
@@ -1678,15 +1834,27 @@ export function validateCredentialFreeVerificationEvidence(
     for (const name of ["credentialFreeMs", "importOnlyMs"] as const) {
       pushError(
         errors,
-        durations[name] === null || isNonNegativeFinite(durations[name]),
+        durations[name] === null ||
+          isBoundedDurationMs(
+            durations[name],
+            name === "importOnlyMs"
+              ? MAX_INVENTORY_COMPONENT_DURATION_MS
+              : MAX_INVENTORY_AGGREGATE_DURATION_MS
+          ),
         `${name} is invalid`
       );
     }
     if (status === "pass" || status === "qualified_pass") {
       pushError(
         errors,
-        isNonNegativeFinite(durations.credentialFreeMs) &&
-          isNonNegativeFinite(durations.importOnlyMs),
+        isBoundedDurationMs(
+          durations.credentialFreeMs,
+          MAX_INVENTORY_AGGREGATE_DURATION_MS
+        ) &&
+          isBoundedDurationMs(
+            durations.importOnlyMs,
+            MAX_INVENTORY_COMPONENT_DURATION_MS
+          ),
         "successful evidence has an incomplete phase duration"
       );
     }
@@ -1813,7 +1981,7 @@ export function validateCredentialFreeVerificationEvidence(
       typeof environment.timezone === "string" && environment.timezone.length > 0,
       "producer timezone is invalid"
     );
-    pushError(errors, Number.isInteger(environment.workers) && (environment.workers as number) > 0, "producer workers are invalid");
+    pushError(errors, Number.isSafeInteger(environment.workers) && (environment.workers as number) > 0, "producer workers are invalid");
     pushError(errors, isNullableString(environment.runnerImage), "producer runner image is invalid");
     const nodeMatch =
       typeof environment.node === "string" ? NODE_VERSION_PATTERN.exec(environment.node) : null;
@@ -1958,10 +2126,10 @@ function validReuseRequest(request: EvidenceReuseRequest): boolean {
       SHA256_PATTERN.test(request.verificationDefinitionHash) &&
       SHA256_PATTERN.test(request.classificationHash) &&
       SHA256_PATTERN.test(request.lockfileHash) &&
-      Number.isInteger(request.toolchain.nodeMajor) &&
+      Number.isSafeInteger(request.toolchain.nodeMajor) &&
       request.toolchain.nodeMajor > 0 &&
       TOOL_VERSION_PATTERN.test(request.toolchain.vitest) &&
-      Number.isInteger(request.toolchain.workers) &&
+      Number.isSafeInteger(request.toolchain.workers) &&
       request.toolchain.workers > 0 &&
       (request.coverage === undefined ||
         [
@@ -2134,22 +2302,64 @@ export function renderCredentialFreeEvidenceSummary(
   return `${lines.join("\n")}\n`;
 }
 
+function assertFiniteEvidenceNumbers(
+  value: unknown,
+  location = "evidence",
+  ancestors = new WeakSet<object>()
+): void {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new Error(`${location} contains a non-finite number.`);
+    }
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  if (ancestors.has(value)) {
+    throw new Error(`${location} contains a circular reference.`);
+  }
+  ancestors.add(value);
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) =>
+      assertFiniteEvidenceNumbers(entry, `${location}[${index}]`, ancestors)
+    );
+  } else {
+    for (const [key, entry] of Object.entries(value)) {
+      assertFiniteEvidenceNumbers(entry, `${location}.${key}`, ancestors);
+    }
+  }
+  ancestors.delete(value);
+}
+
 export function publishCredentialFreeVerificationEvidence(input: {
   projectRoot: string;
   evidence: CredentialFreeVerificationEvidence;
   environment?: NodeJS.ProcessEnv;
 }): string {
+  const environment = input.environment ?? process.env;
+  const summaryPath = environment.GITHUB_STEP_SUMMARY;
+  if (!summaryPath && environment.GITHUB_ACTIONS === "true") {
+    throw new Error("GitHub job summary destination is unavailable.");
+  }
+  assertFiniteEvidenceNumbers(input.evidence);
+  const serialized = JSON.stringify(input.evidence, null, 2);
+  const validation = parseCredentialFreeVerificationEvidenceJson(serialized);
+  if (!validation.valid) {
+    throw new Error(
+      `Canonical credential-free evidence is invalid: ${validation.errors.join("; ")}`
+    );
+  }
   const evidencePath = path.join(input.projectRoot, CREDENTIAL_FREE_EVIDENCE_RELATIVE_PATH);
   mkdirSync(path.dirname(evidencePath), { recursive: true });
-  writeFileSync(evidencePath, `${JSON.stringify(input.evidence, null, 2)}\n`, {
+  writeFileSync(evidencePath, `${serialized}\n`, {
     encoding: "utf8",
     flag: "w",
   });
-  const summaryPath = (input.environment ?? process.env).GITHUB_STEP_SUMMARY;
   if (summaryPath) {
-    appendFileSync(summaryPath, renderCredentialFreeEvidenceSummary(input.evidence), "utf8");
-  } else if ((input.environment ?? process.env).GITHUB_ACTIONS === "true") {
-    throw new Error("GitHub job summary destination is unavailable.");
+    appendFileSync(
+      summaryPath,
+      renderCredentialFreeEvidenceSummary(validation.evidence),
+      "utf8"
+    );
   }
   return evidencePath;
 }

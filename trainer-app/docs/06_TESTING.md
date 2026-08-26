@@ -159,16 +159,19 @@ Every pull request targeting `master` runs the `credential-free-inventory` GitHu
 from `.github/workflows/credential-free-inventory.yml`. The workflow checks out full Git history,
 uses Node.js 22, fixes `TZ` to `America/Chicago` for the repository's local-week test semantics,
 installs the exact lockfile with `npm ci`, and delegates all classification and execution behavior
-to the canonical command. The runner keeps each Vitest phase at one worker so the full
+to the canonical command. The check remains required by the active `Protect master` ruleset and
+runs the full inventory once per PR candidate tree. The runner keeps each Vitest phase at one worker so the full
 jsdom/happy-dom inventory stays within hosted-runner memory. It streams Vitest's native dot reporter
 for basic progress while extracting the built-in JSON reporter from the redacted stdout pipe, reports phase and total
-elapsed time, and emits a structured final summary. Successful phases remove their disposable
-captures. Failed phases retain complete stdout, stderr, reporter output when present, and
-  machine-readable failure metadata under `artifacts/credential-free-inventory/<unique-run>/` and
-  print every retained path. GitHub Actions uploads that narrowly scoped directory only after a failed
-  inventory. Download it from the specific workflow run's **Artifacts** section under the name
-  `credential-free-inventory-<run-id>-<attempt>`; CI retains it for seven days. Successful phases remove
-  their unique local directory and therefore upload nothing:
+elapsed time, emits a structured final summary, and always writes
+`artifacts/credential-free-inventory/evidence/credential-free-inventory-evidence.json`.
+The GitHub job summary exposes the tested tree, commit/PR/merge-ref distinction, counts, timing,
+import-safety result, definition/classification/lockfile hashes, qualification, and run URL. CI
+uploads the small JSON artifact for 30 days under an unambiguous name containing the exact tree,
+run ID, and attempt. Successful phases still remove large disposable captures. Failed phases retain
+complete redacted stdout, stderr, reporter output when present, and failure metadata under
+`artifacts/credential-free-inventory/<unique-run>/`; CI uploads that diagnostic bundle separately
+for seven days.
 
 ```text
 npm run test:inventory:credential-free -- --base-ref origin/master
@@ -217,10 +220,78 @@ malformed base manifest fails closed. Reproduce a different comparison locally b
 command; Vitest output identifies collection, setup, import, and test failures; the final summary
 separately identifies nonzero phases and malformed results.
 
-The workflow creates and runs the stable `credential-free-inventory` check. Repository code cannot
-make a GitHub check merge-required. As of 2026-07-26, `master` has no classic branch protection or
-branch ruleset, so the check is running but awaits a separate GitHub settings change before merge
-enforcement can be claimed.
+The workflow creates the stable `credential-free-inventory` check. The active `Protect master`
+ruleset requires that exact status check for pull requests targeting `master`.
+
+### Exact-tree evidence reuse
+
+`scripts/codex/trainer-policy.v1.json` owns the stage, invalidation, reuse, and qualification policy.
+`src/lib/operations/exact-tree-verification-evidence.ts` implements the evidence schema, deterministic
+hashes, job summary, repository-state inspection, untrusted-artifact validation, and reuse decision.
+Repository-owned definition inputs, `package-lock.json`, and the classification source are read from `HEAD:<path>` Git blobs;
+checkout line-ending conversion never changes their hashes, and missing Git metadata or required
+blobs fails closed. Definition input paths are normalized, sorted, and unique. Classification hashing canonicalizes the semantic
+contents of `scripts/test-suite-environments.json`; incidental suite ordering does not change it.
+The verification-definition hash covers the policy-selected workflow, package-script composition,
+launcher/orchestrator, runner, preflight/classifier, Vitest config and setup/guard files, relevant
+command-registry entries, Node major, worker count, and lockfile identity.
+
+The dependency-free launcher keeps an explicit environment allowlist. For evidence publication it
+passes only `GITHUB_ACTIONS`, `GITHUB_EVENT_NAME`, `GITHUB_EVENT_PATH`, `GITHUB_JOB`, `GITHUB_REF`,
+`GITHUB_REPOSITORY`, `GITHUB_RUN_ATTEMPT`, `GITHUB_RUN_ID`, `GITHUB_SERVER_URL`, `GITHUB_SHA`,
+`GITHUB_STEP_SUMMARY`, and `GITHUB_WORKFLOW` in addition to the pre-existing platform/runtime
+essentials. It does not pass `GITHUB_TOKEN`, `GH_TOKEN`, GitHub API endpoints, head/base branch-name
+convenience variables, arbitrary `GITHUB_*` values, database targets, deployment tokens, or the
+arbitrary parent environment. The event payload is read only for pull-request head SHA, base SHA,
+and base ref; SHA formats and Git resolvability are checked, and Git `HEAD`/`HEAD^{tree}` remain the
+tested-content authority. `baseSha` means the pull request's base-tip commit from the GitHub event,
+not the base branch name, merge base, or a local `origin/master` guess. The run URL is derived only
+from a validated HTTPS `GITHUB_SERVER_URL` origin, `GITHUB_REPOSITORY`, and numeric `GITHUB_RUN_ID`.
+GitHub Actions PR evidence fails closed when required run/PR context is incomplete, and publication
+also fails when the Actions job-summary destination is unavailable. Local evidence may omit GitHub
+identity and the summary destination, but it cannot satisfy durable PR evidence reuse.
+
+Before running an expensive hermetic check, derive the current consumer commit, `HEAD^{tree}`, and
+cleanliness with Git, then compare the tree with the artifact's `treeSha`. Reuse requires both the
+historical producer checkout and current consumer checkout to be clean, durable CI run identity,
+schema/coherence-valid evidence, compatible Node/Vitest/worker semantics, matching definition,
+classification, and lockfile hashes, plus an allowed successful status. Consumer cleanliness uses
+porcelain status with untracked files included and ignored files excluded: tracked, staged, and
+untracked source/config/test changes invalidate reuse; ignored caches and artifacts do not. A different commit SHA does not invalidate evidence when its tree is exactly
+equal; PR head, merge ref, and released commit remain separately recorded and tree equality is never
+inferred from ancestry. A new agent/reviewer session, stale local refs, or elapsed time do not
+invalidate immutable-tree evidence. A dirty producer or consumer checkout, malformed or contradictory
+evidence, missing CI identity, missing/incomplete evidence, an incompatible toolchain, a different tree
+or hash, a failed run, a disallowed qualification, or a non-hermetic check does. Producer OS,
+architecture, runner image, and timezone remain descriptive and do not require an equal consumer OS.
+
+Reusable checks include credential-free inventory, import-only safety, TypeScript, lint, contracts,
+static invariants, and deterministic credential-free unit/integration suites when their exact
+definition is represented. Tree evidence alone never satisfies production `/api/version`, public
+health, Vercel deployment state, live external APIs, remote database state, live audits, or deployment
+mechanics.
+
+To discover credential-free evidence for tree `T`, inspect the PR check summary or list workflow-run
+artifacts whose name begins `credential-free-inventory-evidence-tree-T-`; the job summary prints the
+exact uploaded artifact name. Validate the downloaded JSON
+with the policy rules before reuse. If the approved PR tree, released tree, and evidence tree are all
+`T` and every definition input remains equal, release review consumes the CI evidence instead of
+rerunning the inventory locally. Release still independently verifies exact tree equality, merge and
+deployment state, production version/availability, and other external-state gates.
+
+### Isolated timeout qualification
+
+One timeout in exactly one file/test is eligible for one targeted retry only when both reporters are
+complete enough to prove every other selected file ran, the process did not terminate abnormally,
+no credential/import-socket/classification safety failure occurred, and the tree is unchanged. Retry
+that exact file/test once under the same credential-free environment and verification definition. A
+passing retry can be represented as `qualified_pass` while retaining the original timeout and retry evidence;
+it does not require a second full inventory. A failed retry blocks. Assertions, incomplete reporters,
+worker crashes, and safety failures are never qualified. The same test qualifying twice (including
+two consecutive candidate runs) blocks and requires a flake fix. Retry eligibility and the evidence
+schema are implemented policy; automatic targeted retry orchestration and recurrence storage are not.
+Until that orchestration exists, `qualified_pass` may be produced only through the documented/manual
+CI process when supported, with the original failure and unchanged-tree retry evidence supplied explicitly.
 
 ## Test-environment safety contract
 
@@ -246,7 +317,8 @@ enforcement can be claimed.
   `DATABASE_URL` error text, so unrelated import, setup, collection, and test failures remain
   unexpected and fatal. To classify a new suite, first decide whether it is truly DB-required or
   only import-coupled, add one manifest entry when required, confirm its separate command profile,
-  then run `npm run test:environment-classification` and the full credential-free inventory.
+  then run `npm run test:environment-classification`. The final PR candidate receives one new full
+  credential-free CI run; do not repeatedly run it locally during implementation.
 
 - Canonical DB-target inventory: `DATABASE_URL`, `TEST_DATABASE_URL`, `DIRECT_URL`,
   `SHADOW_DATABASE_URL`, and `SHADOW_URL`. A repository guard scans test workflow sources for

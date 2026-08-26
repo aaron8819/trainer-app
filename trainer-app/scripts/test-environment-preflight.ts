@@ -34,9 +34,15 @@ import { IMPORT_ONLY_CONNECTION_ATTEMPT_MARKER_ENV } from "../src/lib/operations
 import {
   formatElapsed,
   formatVitestPhaseFailure,
+  redactSensitiveValues,
   runVitestPhase,
   type VitestPhaseResult,
 } from "../src/lib/operations/credential-free-inventory-runner";
+import {
+  createCredentialFreeVerificationEvidence,
+  publishCredentialFreeVerificationEvidence,
+  type CredentialFreeEvidenceRunInput,
+} from "../src/lib/operations/exact-tree-verification-evidence";
 
 function capability(available: boolean): CapabilityStatus {
   return available ? "available" : "missing";
@@ -239,8 +245,42 @@ function printPhaseSummary(
 async function runCredentialFreeInventory(input: {
   projectRoot: string;
   vitestCli: string;
-}): Promise<number> {
+}): Promise<Omit<CredentialFreeEvidenceRunInput, "projectRoot" | "environment" | "completedAt">> {
   const totalStartedAt = Date.now();
+  let manifest: TestSuiteEnvironmentManifest = {
+    schema: "trainer-test-suite-environments",
+    version: 1,
+    suites: [],
+  };
+  let filesDiscovered = 0;
+  let credentialFreeSelected = 0;
+  let importOnlySelected = 0;
+  let databaseRequiredExcluded = 0;
+  let credentialFreeResult: VitestPhaseResult | null = null;
+  let importOnlyResult: VitestPhaseResult | null = null;
+  let placeholderConnectionAttempted = false;
+  const finish = (
+    exitCode: number,
+    failure?: {
+      stage: "classification" | "dependency-readiness" | "unexpected";
+      message: string;
+    }
+  ): Omit<CredentialFreeEvidenceRunInput, "projectRoot" | "environment" | "completedAt"> => ({
+    manifest,
+    filesDiscovered,
+    credentialFreeSelected,
+    importOnlySelected,
+    databaseRequiredExcluded,
+    credentialFreeResult,
+    importOnlyResult,
+    placeholderConnectionAttempted,
+    exitCode,
+    failureStage: failure?.stage,
+    failureMessage: failure?.message,
+    qualification: null,
+    totalDurationMs: Date.now() - totalStartedAt,
+    baseRef: baseRefFromArgs(),
+  });
   try {
     const vitestArgs = ["--maxWorkers", "1"];
     const manifestPath = path.join(
@@ -255,9 +295,10 @@ async function runCredentialFreeInventory(input: {
       "codex",
       "trainer-policy.v1.json"
     );
-    const manifest = readJson<TestSuiteEnvironmentManifest>(manifestPath);
+    manifest = readJson<TestSuiteEnvironmentManifest>(manifestPath);
     const policy = readJson<{ commandRegistry: TestCommandRegistryEntry[] }>(policyPath);
     const discoveredTestFiles = discoverVitestFiles(input.projectRoot);
+    filesDiscovered = discoveredTestFiles.length;
     const validationErrors = validateTestSuiteEnvironmentManifest({
       manifest,
       discoveredTestFiles,
@@ -268,7 +309,10 @@ async function runCredentialFreeInventory(input: {
       for (const error of validationErrors) {
         console.error(`- ${error.code}: ${error.message}`);
       }
-      return 1;
+      return finish(1, {
+        stage: "classification",
+        message: validationErrors.map((error) => `${error.code}: ${error.message}`).join(" | "),
+      });
     }
     const baseRef = baseRefFromArgs();
     let baseManifest: TestSuiteEnvironmentManifest | undefined;
@@ -277,7 +321,10 @@ async function runCredentialFreeInventory(input: {
       if (baseResult.error) {
         console.error("Unexpected branch/base comparison failure:");
         console.error(`- ${baseResult.error}`);
-        return 1;
+        return finish(1, {
+          stage: "classification",
+          message: baseResult.error,
+        });
       }
       baseManifest = baseResult.manifest;
     }
@@ -286,6 +333,9 @@ async function runCredentialFreeInventory(input: {
     manifest,
     discoveredTestFiles,
   });
+  credentialFreeSelected = selection.credentialFree.length;
+  importOnlySelected = selection.importOnlyPlaceholder.length;
+  databaseRequiredExcluded = selection.databaseRequired.length;
   const excludedPaths = manifest.suites.map((entry) => entry.path);
 
   console.log("Credential-free inventory classification");
@@ -317,7 +367,7 @@ async function runCredentialFreeInventory(input: {
     );
   }
 
-  const credentialFreeResult = await runVitestPhase({
+  credentialFreeResult = await runVitestPhase({
     phase: "credential-free suites",
     projectRoot: input.projectRoot,
     vitestCli: input.vitestCli,
@@ -335,15 +385,16 @@ async function runCredentialFreeInventory(input: {
   if (placeholderErrors.length > 0) {
     console.error("Import-only placeholder environment validation failed.");
     for (const error of placeholderErrors) console.error(`- ${error}`);
-    return 1;
+    return finish(1, {
+      stage: "classification",
+      message: placeholderErrors.join(" | "),
+    });
   }
   const markerDirectory = mkdtempSync(
     path.join(tmpdir(), "trainer-import-only-connection-")
   );
   const attemptMarker = path.join(markerDirectory, "attempted");
   placeholderEnvironment[IMPORT_ONLY_CONNECTION_ATTEMPT_MARKER_ENV] = attemptMarker;
-  let importOnlyResult: VitestPhaseResult;
-  let placeholderConnectionAttempted = false;
   try {
     importOnlyResult =
       selection.importOnlyPlaceholder.length === 0
@@ -461,7 +512,14 @@ async function runCredentialFreeInventory(input: {
     console.log("Branch/base classification delta: not requested (use --base-ref <git-ref>)");
   }
 
-  return outcome.exitCode;
+  return finish(outcome.exitCode);
+  } catch (error) {
+    const message = redactSensitiveValues(
+      error instanceof Error ? `${error.name}: ${error.message}` : "Unknown inventory runner error.",
+      sensitiveVerificationValues
+    );
+    console.error(`Credential-free inventory failed unexpectedly: ${message}`);
+    return finish(1, { stage: "unexpected", message });
   } finally {
     console.log(
       `Credential-free inventory total elapsed: ${formatElapsed(Date.now() - totalStartedAt)}`
@@ -580,13 +638,56 @@ if (process.argv.includes("--json")) {
 }
 
 async function main(): Promise<void> {
-  if (!report.success) {
+  if (process.argv.includes("--run-credential-free-inventory")) {
+    const manifestPath = path.join(projectRoot, "scripts", "test-suite-environments.json");
+    const execution = report.success
+      ? await runCredentialFreeInventory({
+          projectRoot,
+          vitestCli: path.join(nodeModulesPath, "vitest", "vitest.mjs"),
+        })
+      : {
+          manifest: readJson<TestSuiteEnvironmentManifest>(manifestPath),
+          filesDiscovered: 0,
+          credentialFreeSelected: 0,
+          importOnlySelected: 0,
+          databaseRequiredExcluded: 0,
+          credentialFreeResult: null,
+          importOnlyResult: null,
+          placeholderConnectionAttempted: false,
+          exitCode: 1,
+          failureStage: "dependency-readiness" as const,
+          failureMessage: "Dependency readiness preflight did not pass.",
+          qualification: null,
+          totalDurationMs: 0,
+          baseRef: baseRefFromArgs(),
+        };
+    process.exitCode = execution.exitCode;
+    try {
+      const evidence = createCredentialFreeVerificationEvidence({
+        projectRoot,
+        ...execution,
+        environment: process.env,
+      });
+      const evidencePath = publishCredentialFreeVerificationEvidence({
+        projectRoot,
+        evidence,
+        environment: process.env,
+      });
+      console.log(`Credential-free verification evidence: ${evidencePath}`);
+      console.log(`Credential-free tested tree: ${evidence.treeSha}`);
+      console.log(`Credential-free verification definition: ${evidence.verificationDefinitionHash}`);
+      console.log(`Credential-free classification: ${evidence.classificationHash}`);
+      console.log(`Credential-free evidence status: ${evidence.status}`);
+    } catch (error) {
+      const message = redactSensitiveValues(
+        error instanceof Error ? `${error.name}: ${error.message}` : "Unknown evidence publication error.",
+        sensitiveVerificationValues
+      );
+      console.error(`Credential-free evidence publication failed: ${message}`);
+      process.exitCode = 1;
+    }
+  } else if (!report.success) {
     process.exitCode = 1;
-  } else if (process.argv.includes("--run-credential-free-inventory")) {
-    process.exitCode = await runCredentialFreeInventory({
-      projectRoot,
-      vitestCli: path.join(nodeModulesPath, "vitest", "vitest.mjs"),
-    });
   } else if (process.argv.includes("--run-verify-gate")) {
     const npmCli = process.env.npm_execpath;
     if (!npmCli || !existsSync(npmCli)) {

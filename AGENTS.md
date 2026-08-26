@@ -67,6 +67,8 @@ Repair is a safety net, not a plan author.
 - Search before editing. Use `rg` for symbols and `rg --files` for file discovery; inspect the current surface, owning implementation, nearby tests, and callsites before changing behavior.
 - Use repository-local dependencies, package scripts, and deterministic tooling. Do not recommend routine ad hoc `npx` execution or silently fall back to global or network-fetched tools.
 - Prefer the smallest focused verification that exercises the owning seam. Expand to TypeScript, integration, contract, audit, or full verification only when shared shapes, cross-layer behavior, persistence, or release risk justify it.
+- Before running an expensive hermetic check, inspect durable evidence for the exact current Git tree and equivalent verification definition. Reuse valid evidence; rerun only when it is absent, incomplete, insufficiently qualified, or invalidated.
+- The full credential-free inventory is an expensive PR/release-class CI check. Independent review covers ownership, assumptions, implementation, tests, and missing cases; it does not require mechanically rerunning that inventory for an unchanged verified tree.
 - Compare branch failures with the base revision by test identity and environment before classifying them as regressions or baseline failures.
 - When detailed command selection matters, use repository-owned verification policy and scripts rather than copying long command recipes into this file.
 - Update canonical documentation only when behavior or contracts change, and only after code and tests establish the final behavior.

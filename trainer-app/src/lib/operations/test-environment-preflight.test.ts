@@ -957,8 +957,9 @@ describe("dependency-free launcher", () => {
         'import { readFileSync } from "node:fs";',
         `const sentinel = ${JSON.stringify(sentinel)};`,
         'const values = JSON.parse(readFileSync(0, "utf8"));',
+        'const githubKeys = ["GITHUB_ACTIONS", "GITHUB_EVENT_NAME", "GITHUB_EVENT_PATH", "GITHUB_JOB", "GITHUB_REF", "GITHUB_REPOSITORY", "GITHUB_RUN_ATTEMPT", "GITHUB_RUN_ID", "GITHUB_SERVER_URL", "GITHUB_SHA", "GITHUB_STEP_SUMMARY", "GITHUB_WORKFLOW"];',
         'console.log("Trainer test environment preflight");',
-        'console.log(JSON.stringify({ inherited: Object.keys(process.env).some((name) => name.toUpperCase() === "GH_TOKEN"), arbitrary: process.env.TRAINER_APP_DIAGNOSTIC ?? null, path: Boolean(process.env.PATH), restricted: process.env.TRAINER_RESTRICTED_VERIFICATION_LAUNCHER === "1", channel: values.includes(sentinel) }));',
+        'console.log(JSON.stringify({ inherited: ["GITHUB_TOKEN", "GH_TOKEN", "DATABASE_URL", "VERCEL_TOKEN"].some((name) => process.env[name] !== undefined), arbitrary: process.env.TRAINER_APP_DIAGNOSTIC ?? null, unreviewedGithub: process.env.GITHUB_UNREVIEWED_CONTEXT ?? null, githubApi: process.env.GITHUB_API_URL ?? null, githubHeadRef: process.env.GITHUB_HEAD_REF ?? null, github: Object.fromEntries(githubKeys.map((name) => [name, process.env[name] ?? null])), path: Boolean(process.env.PATH), restricted: process.env.TRAINER_RESTRICTED_VERIFICATION_LAUNCHER === "1", channel: values.includes(sentinel) }));',
       ].join("\n"),
     });
     const result = spawnSync(process.execPath, [launcher], {
@@ -967,7 +968,25 @@ describe("dependency-free launcher", () => {
       env: {
         ...process.env,
         Gh_ToKeN: sentinel,
+        GITHUB_TOKEN: "github-token-sentinel-123456",
+        DATABASE_URL: "database-url-sentinel-123456",
+        VERCEL_TOKEN: "vercel-token-sentinel-123456",
         TRAINER_APP_DIAGNOSTIC: "unrelated-parent-value",
+        GITHUB_UNREVIEWED_CONTEXT: "unreviewed-github-value",
+        GITHUB_API_URL: "https://api.github.com",
+        GITHUB_HEAD_REF: "codex/untrusted-head-ref",
+        GITHUB_ACTIONS: "true",
+        GITHUB_EVENT_NAME: "pull_request",
+        GITHUB_EVENT_PATH: "C:/runner/event.json",
+        GITHUB_JOB: "credential-free-inventory",
+        GITHUB_REF: "refs/pull/73/merge",
+        GITHUB_REPOSITORY: "owner/repository",
+        GITHUB_RUN_ATTEMPT: "2",
+        GITHUB_RUN_ID: "32915674363",
+        GITHUB_SERVER_URL: "https://github.com",
+        GITHUB_SHA: "a".repeat(40),
+        GITHUB_STEP_SUMMARY: "C:/runner/summary.md",
+        GITHUB_WORKFLOW: "Trainer pull request checks",
       },
     });
     const details = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1) ?? "null");
@@ -976,6 +995,23 @@ describe("dependency-free launcher", () => {
     expect(details).toEqual({
       inherited: false,
       arbitrary: null,
+      unreviewedGithub: null,
+      githubApi: null,
+      githubHeadRef: null,
+      github: {
+        GITHUB_ACTIONS: "true",
+        GITHUB_EVENT_NAME: "pull_request",
+        GITHUB_EVENT_PATH: "C:/runner/event.json",
+        GITHUB_JOB: "credential-free-inventory",
+        GITHUB_REF: "refs/pull/73/merge",
+        GITHUB_REPOSITORY: "owner/repository",
+        GITHUB_RUN_ATTEMPT: "2",
+        GITHUB_RUN_ID: "32915674363",
+        GITHUB_SERVER_URL: "https://github.com",
+        GITHUB_SHA: "a".repeat(40),
+        GITHUB_STEP_SUMMARY: "C:/runner/summary.md",
+        GITHUB_WORKFLOW: "Trainer pull request checks",
+      },
       path: true,
       restricted: true,
       channel: true,
@@ -1530,7 +1566,7 @@ describe("command coverage honesty", () => {
       "test:inventory:credential-free":
         "node scripts/test-environment-preflight.mjs --run-credential-free-inventory",
       "test:environment-classification":
-        "vitest run src/lib/operations/test-environment-preflight.test.ts src/lib/operations/test-suite-environment-classification.test.ts src/lib/operations/import-only-placeholder-guard.test.ts",
+        "vitest run src/lib/operations/test-environment-preflight.test.ts src/lib/operations/test-suite-environment-classification.test.ts src/lib/operations/import-only-placeholder-guard.test.ts src/lib/operations/exact-tree-verification-evidence.test.ts",
     });
     expect(packageJson.scripts).not.toHaveProperty("test:pure");
     expect(packageJson.scripts).not.toHaveProperty("test:full");

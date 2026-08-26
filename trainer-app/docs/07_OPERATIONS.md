@@ -386,6 +386,10 @@ Migration hygiene:
 - Routine verification must not use `npx`: it can download a missing package. Missing dependencies fail nonzero with instructions to run `npm ci` deliberately instead of using a network-capable fallback.
 - `npm run verify`: `verify:fast` (preflight, lint, `tsc --noEmit`, catalog invariants, focused engine tests, Finisher catalog generation, contracts) plus completed-review, version, workout-mutation ownership, and production-write-gate verification
 - Before an expensive hermetic verification run, inspect exact-tree CI evidence as documented in `docs/06_TESTING.md`. Reuse requires a clean current Git checkout plus a valid, coherent producer-clean pass for the same tree and equivalent definition/classification/lockfile/toolchain semantics; a new operator, OS, or review session alone is not a rerun reason.
+- Pull-request credential verification runs as four coverage-preserving credential-free shards plus
+  one concurrent import-safety job. `credential-free-inventory` remains the required aggregate
+  check and the sole canonical evidence publisher. Local operators do not reproduce all four CI
+  shards; exact-tree reuse still consumes the single validated aggregate artifact.
 - `npm run verify:exercise-library`: validates exercise library integrity
 - `npm run report:stimulus-coverage`: reports planner-eligible exercise stimulus-profile coverage and remaining centralized fallback usage
 - `npm run audit:workout` is the unified workout-audit CLI entrypoint. Recurring audit workflow lives in `docs/09_AUDIT_PLAYBOOK.md`; direct DB-backed CLI validation lives in `docs/08_AUDIT_CLI_DB_VALIDATION.md`.

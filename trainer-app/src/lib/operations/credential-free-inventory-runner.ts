@@ -36,6 +36,12 @@ export type VitestFailedTest = {
   stackTrace: string;
 };
 
+export type VitestExecutedFile = {
+  file: string;
+  status: "passed" | "failed" | "skipped";
+  durationMs: number | null;
+};
+
 export type VitestPhaseArtifactPaths = {
   root: string;
   directory: string;
@@ -76,6 +82,7 @@ export type VitestPhaseResult = {
   reporterState: "available" | "missing" | "malformed";
   failureKind: VitestFailureKind;
   failures: VitestFailedTest[];
+  executedFiles?: VitestExecutedFile[];
   artifactDiagnostics: ArtifactDiagnostic[];
   artifacts: VitestPhaseArtifactPaths;
   artifactsRetained: boolean;
@@ -140,11 +147,14 @@ type VitestJsonFile = {
   status?: unknown;
   message?: unknown;
   assertionResults?: unknown;
+  startTime?: unknown;
+  endTime?: unknown;
 };
 
 type ParsedVitestReporter = {
   summary: VitestSummaryCounts | null;
   failures: VitestFailedTest[];
+  executedFiles: VitestExecutedFile[];
   malformed: boolean;
 };
 
@@ -322,20 +332,21 @@ function parseVitestReporter(
   try {
     value = JSON.parse(source);
   } catch {
-    return { summary: null, failures: [], malformed: true };
+    return { summary: null, failures: [], executedFiles: [], malformed: true };
   }
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return { summary: null, failures: [], malformed: true };
+    return { summary: null, failures: [], executedFiles: [], malformed: true };
   }
 
   const summary = parseVitestSummary(source);
   const testResults = (value as { testResults?: unknown }).testResults;
   if (!Array.isArray(testResults)) {
-    return { summary, failures: [], malformed: true };
+    return { summary, failures: [], executedFiles: [], malformed: true };
   }
 
   let malformed = summary === null;
   const failures: VitestFailedTest[] = [];
+  const executedFiles: VitestExecutedFile[] = [];
   for (const rawFile of testResults) {
     if (!rawFile || typeof rawFile !== "object" || Array.isArray(rawFile)) {
       malformed = true;
@@ -347,6 +358,26 @@ function parseVitestReporter(
       continue;
     }
     const fileName = redactSensitiveValues(file.name, sensitiveValues);
+    const fileStatus =
+      file.status === "passed"
+        ? "passed"
+        : file.status === "failed"
+          ? "failed"
+          : file.status === "pending" || file.status === "skipped"
+            ? "skipped"
+            : null;
+    if (fileStatus === null) malformed = true;
+    const durationMs =
+      typeof file.startTime === "number" &&
+      Number.isFinite(file.startTime) &&
+      typeof file.endTime === "number" &&
+      Number.isFinite(file.endTime) &&
+      file.endTime >= file.startTime
+        ? file.endTime - file.startTime
+        : null;
+    if (fileStatus !== null) {
+      executedFiles.push({ file: fileName, status: fileStatus, durationMs });
+    }
     const fileFailureCount = failures.length;
     for (const rawAssertion of file.assertionResults) {
       if (!rawAssertion || typeof rawAssertion !== "object" || Array.isArray(rawAssertion)) {
@@ -378,7 +409,7 @@ function parseVitestReporter(
       });
     }
   }
-  return { summary, failures, malformed };
+  return { summary, failures, executedFiles, malformed };
 }
 
 function classifyFailure(input: {
@@ -629,6 +660,7 @@ export function finalizeVitestPhaseArtifacts(input: {
     reporterState,
     failureKind,
     failures,
+    executedFiles: parsedReporter?.executedFiles ?? [],
     artifactDiagnostics,
     artifacts: input.paths,
     artifactsRetained: !success,

@@ -8,15 +8,34 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { TestSuiteEnvironmentManifest } from "./test-environment-preflight";
+import {
+  DATABASE_TARGET_ENV_VARS,
+  selectTestSuitesByEnvironment,
+  type TestSuiteEnvironmentManifest,
+} from "./test-environment-preflight";
 import type {
   VitestFailureKind,
   VitestPhaseResult,
 } from "./credential-free-inventory-runner";
+import {
+  CREDENTIAL_FREE_SHARD_COUNT,
+  CREDENTIAL_SAFE_PROFILE,
+  MAX_INVENTORY_AGGREGATE_DURATION_MS,
+  MAX_INVENTORY_COMPONENT_DURATION_MS,
+  isBoundedDurationMs,
+  isNonNegativeSafeInteger,
+  sumBoundedDurationsMs,
+  sumNonNegativeSafeIntegers,
+  validateCredentialFreeAggregate,
+  type CredentialFreeAggregateValidation,
+  type CredentialFreeShardSummary,
+  type ImportSafetySummary,
+} from "./credential-free-inventory-sharding";
 
 export const CREDENTIAL_FREE_CHECK_ID = "credential-free-inventory" as const;
 export const VERIFICATION_EVIDENCE_SCHEMA = "trainer-verification-evidence" as const;
 export const VERIFICATION_EVIDENCE_VERSION = 1 as const;
+export const SHARDED_VERIFICATION_EVIDENCE_VERSION = 2 as const;
 export const CREDENTIAL_FREE_EVIDENCE_RELATIVE_PATH =
   "artifacts/credential-free-inventory/evidence/credential-free-inventory-evidence.json";
 
@@ -37,6 +56,11 @@ const GITHUB_REPOSITORY_PATTERN =
 const GITHUB_RUN_NUMBER_PATTERN = /^[1-9]\d*$/;
 const GITHUB_EVENT_NAME_PATTERN = /^[A-Za-z0-9_]+$/;
 const GITHUB_JOB_PATTERN = /^[A-Za-z_][A-Za-z0-9_-]{0,99}$/;
+// Aggregation only parses five small summaries; one day is deliberately generous
+// while preventing a hostile aggregate duration from escaping into evidence.
+const MAX_AGGREGATE_VALIDATION_DURATION_MS = 24 * 60 * 60 * 1000;
+const MAX_SHARDED_TOTAL_DURATION_MS =
+  MAX_INVENTORY_COMPONENT_DURATION_MS + MAX_AGGREGATE_VALIDATION_DURATION_MS;
 
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
@@ -83,7 +107,9 @@ export type CurrentRepositoryState = {
 
 export type CredentialFreeVerificationEvidence = {
   schema: typeof VERIFICATION_EVIDENCE_SCHEMA;
-  schemaVersion: typeof VERIFICATION_EVIDENCE_VERSION;
+  schemaVersion:
+    | typeof VERIFICATION_EVIDENCE_VERSION
+    | typeof SHARDED_VERIFICATION_EVIDENCE_VERSION;
   checkId: typeof CREDENTIAL_FREE_CHECK_ID;
   hermetic: true;
   checkedOutCommitSha: string;
@@ -121,6 +147,9 @@ export type CredentialFreeVerificationEvidence = {
     totalMs: number;
     credentialFreeMs: number | null;
     importOnlyMs: number | null;
+    aggregateMs?: number;
+    criticalPathMs?: number;
+    componentTotalMs?: number;
   };
   importSafety: {
     status: "pass" | "fail" | "not_run";
@@ -146,6 +175,8 @@ export type CredentialFreeVerificationEvidence = {
     vitest: string;
     timezone: string;
     workers: 1;
+    pool?: "forks";
+    isolation?: true;
     runnerImage: string | null;
   };
   run: {
@@ -157,6 +188,15 @@ export type CredentialFreeVerificationEvidence = {
     url: string | null;
   };
   completedAt: string;
+  executionTopology?: {
+    kind: "sharded";
+    credentialFree: {
+      shardCount: typeof CREDENTIAL_FREE_SHARD_COUNT;
+      components: CredentialFreeShardSummary[];
+    };
+    importSafety: ImportSafetySummary;
+    coverage: CredentialFreeAggregateValidation["coverage"];
+  };
 };
 
 export type CredentialFreeEvidenceRunInput = {
@@ -179,6 +219,16 @@ export type CredentialFreeEvidenceRunInput = {
   completedAt?: string;
 };
 
+export type ShardedCredentialFreeEvidenceInput = {
+  projectRoot: string;
+  manifest: TestSuiteEnvironmentManifest;
+  aggregate: CredentialFreeAggregateValidation;
+  aggregateDurationMs: number;
+  baseRef?: string;
+  environment?: NodeJS.ProcessEnv;
+  completedAt?: string;
+};
+
 export type EvidenceReuseRequest = {
   checkId: string;
   currentRepositoryState: CurrentRepositoryState;
@@ -192,6 +242,11 @@ export type EvidenceReuseRequest = {
   };
   hermetic: boolean;
   allowQualifiedPass: boolean;
+  coverage?: {
+    credentialFreeFiles: string[];
+    importOnlyFiles: string[];
+    databaseRequiredFiles: string[];
+  };
 };
 
 export type EvidenceReuseDecision = {
@@ -403,6 +458,23 @@ function readCommittedClassificationManifest(
   return manifest as TestSuiteEnvironmentManifest;
 }
 
+function readCommittedTestSelection(
+  repositoryRoot: string,
+  manifest: TestSuiteEnvironmentManifest
+) {
+  const discoveredTestFiles = runGitBuffer(
+    repositoryRoot,
+    ["ls-tree", "-r", "--name-only", "HEAD", "--", "trainer-app/src"],
+    "discover committed Trainer test files"
+  )
+    .toString("utf8")
+    .split(/\r?\n/)
+    .filter((file) => /^trainer-app\/src\/.+\.test\.tsx?$/.test(file))
+    .map((file) => normalizeRepositoryPath(file.slice("trainer-app/".length)))
+    .sort(compareText);
+  return selectTestSuitesByEnvironment({ manifest, discoveredTestFiles });
+}
+
 function parsePorcelainStatus(output: string): CurrentRepositoryState["dirtyPaths"] {
   const records = output.split("\0");
   const dirtyPaths: CurrentRepositoryState["dirtyPaths"] = [];
@@ -604,9 +676,9 @@ export function computeVerificationDefinition(input: {
     !packageScriptName ||
     !Array.isArray(rawDefinitionPaths) ||
     rawDefinitionPaths.length === 0 ||
-    !Number.isInteger(nodeMajor) ||
+    !Number.isSafeInteger(nodeMajor) ||
     (nodeMajor as number) <= 0 ||
-    !Number.isInteger(workers) ||
+    !Number.isSafeInteger(workers) ||
     (workers as number) <= 0 ||
     checkPolicy?.definition?.classificationOwner !==
       "trainer-app/scripts/test-suite-environments.json" ||
@@ -689,6 +761,44 @@ export function computeVerificationDefinition(input: {
 
 function emptyCounts() {
   return { files: { total: 0, passed: 0, failed: 0, skipped: 0 }, tests: { total: 0, passed: 0, failed: 0, skipped: 0 } };
+}
+
+function requireNonNegativeSafeInteger(value: number, label: string): number {
+  if (!isNonNegativeSafeInteger(value)) {
+    throw new Error(`${label} must be a non-negative safe integer.`);
+  }
+  return value;
+}
+
+function requireSafeIntegerSum(values: readonly number[], label: string): number {
+  const total = sumNonNegativeSafeIntegers(values);
+  if (total === null) {
+    throw new Error(`${label} exceeds the safe integer range.`);
+  }
+  return total;
+}
+
+function requireBoundedDuration(
+  value: number,
+  maximumMs: number,
+  label: string
+): number {
+  if (!isBoundedDurationMs(value, maximumMs)) {
+    throw new Error(`${label} exceeds its bounded millisecond domain.`);
+  }
+  return value;
+}
+
+function requireBoundedDurationSum(
+  values: readonly number[],
+  maximumMs: number,
+  label: string
+): number {
+  const total = sumBoundedDurationsMs(values, maximumMs);
+  if (total === null) {
+    throw new Error(`${label} exceeds its bounded millisecond domain.`);
+  }
+  return total;
 }
 
 function phaseReporterComplete(result: VitestPhaseResult | null, selected: number): boolean {
@@ -879,6 +989,76 @@ export function createCredentialFreeVerificationEvidence(
     // Dependency readiness failures still publish evidence without inventing a version.
   }
 
+  const evidenceCounts = {
+    filesDiscovered: requireNonNegativeSafeInteger(
+      input.filesDiscovered,
+      "Discovered file count"
+    ),
+    filesSelected: requireSafeIntegerSum(
+      [input.credentialFreeSelected, input.importOnlySelected],
+      "Selected file count"
+    ),
+    filesExecuted: requireSafeIntegerSum(
+      [credential.files.total, importOnly.files.total],
+      "Executed file count"
+    ),
+    filesPassed: requireSafeIntegerSum(
+      [credential.files.passed, importOnly.files.passed],
+      "Passed file count"
+    ),
+    filesSkipped: requireSafeIntegerSum(
+      [credential.files.skipped, importOnly.files.skipped],
+      "Skipped file count"
+    ),
+    filesFailed: requireSafeIntegerSum(
+      [credential.files.failed, importOnly.files.failed],
+      "Failed file count"
+    ),
+    testsCollected: requireSafeIntegerSum(
+      [credential.tests.total, importOnly.tests.total],
+      "Collected test count"
+    ),
+    testsPassed: requireSafeIntegerSum(
+      [credential.tests.passed, importOnly.tests.passed],
+      "Passed test count"
+    ),
+    testsSkipped: requireSafeIntegerSum(
+      [credential.tests.skipped, importOnly.tests.skipped],
+      "Skipped test count"
+    ),
+    testsFailed: requireSafeIntegerSum(
+      [credential.tests.failed, importOnly.tests.failed],
+      "Failed test count"
+    ),
+    databaseRequiredExcluded: requireNonNegativeSafeInteger(
+      input.databaseRequiredExcluded,
+      "Database-required exclusion count"
+    ),
+  };
+  const evidenceDurations = {
+    totalMs: requireBoundedDuration(
+      input.totalDurationMs,
+      MAX_INVENTORY_AGGREGATE_DURATION_MS,
+      "Total evidence duration"
+    ),
+    credentialFreeMs:
+      input.credentialFreeResult === null
+        ? null
+        : requireBoundedDuration(
+            input.credentialFreeResult.durationMs,
+            MAX_INVENTORY_AGGREGATE_DURATION_MS,
+            "Credential-free duration"
+          ),
+    importOnlyMs:
+      input.importOnlyResult === null
+        ? null
+        : requireBoundedDuration(
+            input.importOnlyResult.durationMs,
+            MAX_INVENTORY_COMPONENT_DURATION_MS,
+            "Import-only duration"
+          ),
+  };
+
   return {
     schema: VERIFICATION_EVIDENCE_SCHEMA,
     schemaVersion: VERIFICATION_EVIDENCE_VERSION,
@@ -905,24 +1085,8 @@ export function createCredentialFreeVerificationEvidence(
     lockfileHash: definition.lockfileHash,
     status,
     qualification,
-    counts: {
-      filesDiscovered: input.filesDiscovered,
-      filesSelected: input.credentialFreeSelected + input.importOnlySelected,
-      filesExecuted: credential.files.total + importOnly.files.total,
-      filesPassed: credential.files.passed + importOnly.files.passed,
-      filesSkipped: credential.files.skipped + importOnly.files.skipped,
-      filesFailed: credential.files.failed + importOnly.files.failed,
-      testsCollected: credential.tests.total + importOnly.tests.total,
-      testsPassed: credential.tests.passed + importOnly.tests.passed,
-      testsSkipped: credential.tests.skipped + importOnly.tests.skipped,
-      testsFailed: credential.tests.failed + importOnly.tests.failed,
-      databaseRequiredExcluded: input.databaseRequiredExcluded,
-    },
-    durations: {
-      totalMs: Math.max(0, input.totalDurationMs),
-      credentialFreeMs: input.credentialFreeResult?.durationMs ?? null,
-      importOnlyMs: input.importOnlyResult?.durationMs ?? null,
-    },
+    counts: evidenceCounts,
+    durations: evidenceDurations,
     importSafety: {
       status: input.importOnlyResult
         ? input.importOnlyResult.success && !input.placeholderConnectionAttempted
@@ -953,16 +1117,191 @@ export function createCredentialFreeVerificationEvidence(
   };
 }
 
+function successfulAggregatePhase(input: {
+  phase: string;
+  files: {
+    total: number;
+    passed: number;
+    failed: number;
+    skipped: number;
+  };
+  tests: {
+    total: number;
+    passed: number;
+    failed: number;
+    skipped: number;
+  };
+  durationMs: number;
+}): VitestPhaseResult {
+  return {
+    phase: input.phase,
+    success: true,
+    status: 0,
+    exitCode: 0,
+    signal: null,
+    abnormalTermination: false,
+    terminationError: null,
+    externalFailure: null,
+    durationMs: input.durationMs,
+    summary: { files: input.files, tests: input.tests },
+    reporterState: "available",
+    failureKind: "none",
+    failures: [],
+    artifactDiagnostics: [],
+    artifacts: {
+      root: "aggregate",
+      directory: "aggregate",
+      stdout: "aggregate",
+      stderr: "aggregate",
+      reporter: "aggregate",
+      metadata: "aggregate",
+    },
+    artifactsRetained: false,
+  };
+}
+
+export function createShardedCredentialFreeVerificationEvidence(
+  input: ShardedCredentialFreeEvidenceInput
+): CredentialFreeVerificationEvidence {
+  const credentialComponents = input.aggregate.components.credentialFree;
+  const credentialCount = (
+    key: keyof CredentialFreeShardSummary["counts"],
+    label: string
+  ) =>
+    requireSafeIntegerSum(
+      credentialComponents.map((component) => component.counts[key]),
+      label
+    );
+  const credentialCounts = {
+    files: {
+      total: credentialCount("executedFiles", "Credential executed file count"),
+      passed: credentialCount("passedFiles", "Credential passed file count"),
+      failed: credentialCount("failedFiles", "Credential failed file count"),
+      skipped: credentialCount("skippedFiles", "Credential skipped file count"),
+    },
+    tests: {
+      total: credentialCount("totalTests", "Credential collected test count"),
+      passed: credentialCount("passedTests", "Credential passed test count"),
+      failed: credentialCount("failedTests", "Credential failed test count"),
+      skipped: credentialCount("skippedTests", "Credential skipped test count"),
+    },
+  };
+  const importComponent = input.aggregate.components.importSafety;
+  const importCounts = {
+    files: {
+      total: requireNonNegativeSafeInteger(
+        importComponent.counts.executedFiles,
+        "Import executed file count"
+      ),
+      passed: requireNonNegativeSafeInteger(
+        importComponent.counts.passedFiles,
+        "Import passed file count"
+      ),
+      failed: requireNonNegativeSafeInteger(
+        importComponent.counts.failedFiles,
+        "Import failed file count"
+      ),
+      skipped: requireNonNegativeSafeInteger(
+        importComponent.counts.skippedFiles,
+        "Import skipped file count"
+      ),
+    },
+    tests: {
+      total: requireNonNegativeSafeInteger(
+        importComponent.counts.totalTests,
+        "Import collected test count"
+      ),
+      passed: requireNonNegativeSafeInteger(
+        importComponent.counts.passedTests,
+        "Import passed test count"
+      ),
+      failed: requireNonNegativeSafeInteger(
+        importComponent.counts.failedTests,
+        "Import failed test count"
+      ),
+      skipped: requireNonNegativeSafeInteger(
+        importComponent.counts.skippedTests,
+        "Import skipped test count"
+      ),
+    },
+  };
+  const aggregateDurationMs = requireBoundedDuration(
+    input.aggregateDurationMs,
+    MAX_AGGREGATE_VALIDATION_DURATION_MS,
+    "Aggregate validation duration"
+  );
+  const totalDurationMs = requireBoundedDurationSum(
+    [input.aggregate.durations.criticalPathMs, aggregateDurationMs],
+    MAX_SHARDED_TOTAL_DURATION_MS,
+    "Sharded total duration"
+  );
+  const credentialResult = successfulAggregatePhase({
+    phase: "credential-free sharded suites",
+    ...credentialCounts,
+    durationMs: input.aggregate.durations.credentialFreeMs,
+  });
+  const importOnlyResult = successfulAggregatePhase({
+    phase: "import-only placeholder suites",
+    ...importCounts,
+    durationMs: input.aggregate.durations.importOnlyMs,
+  });
+  const base = createCredentialFreeVerificationEvidence({
+    projectRoot: input.projectRoot,
+    manifest: input.manifest,
+    filesDiscovered: input.aggregate.counts.filesDiscovered,
+    credentialFreeSelected:
+      input.aggregate.coverage.credentialFreeExpected.length,
+    importOnlySelected: input.aggregate.coverage.importOnlyExpected.length,
+    databaseRequiredExcluded:
+      input.aggregate.counts.databaseRequiredExcluded,
+    credentialFreeResult: credentialResult,
+    importOnlyResult,
+    placeholderConnectionAttempted: false,
+    exitCode: 0,
+    qualification: null,
+    totalDurationMs,
+    baseRef: input.baseRef,
+    environment: input.environment,
+    completedAt: input.completedAt,
+  });
+  return {
+    ...base,
+    schemaVersion: SHARDED_VERIFICATION_EVIDENCE_VERSION,
+    durations: {
+      totalMs: totalDurationMs,
+      credentialFreeMs: input.aggregate.durations.credentialFreeMs,
+      importOnlyMs: input.aggregate.durations.importOnlyMs,
+      aggregateMs: aggregateDurationMs,
+      criticalPathMs: input.aggregate.durations.criticalPathMs,
+      componentTotalMs: input.aggregate.durations.componentTotalMs,
+    },
+    environment: {
+      ...base.environment,
+      pool: "forks",
+      isolation: true,
+    },
+    executionTopology: {
+      kind: "sharded",
+      credentialFree: {
+        shardCount: CREDENTIAL_FREE_SHARD_COUNT,
+        components: credentialComponents,
+      },
+      importSafety: importComponent,
+      coverage: input.aggregate.coverage,
+    },
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function isNonNegativeInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+  return isNonNegativeSafeInteger(value);
 }
 
 function isNonNegativeFinite(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+  return isBoundedDurationMs(value, MAX_INVENTORY_AGGREGATE_DURATION_MS);
 }
 
 function isNullableString(value: unknown): value is string | null {
@@ -1036,6 +1375,171 @@ function validateQualification(
   return errors.length === 0;
 }
 
+function validateShardedExecutionTopology(
+  evidence: Record<string, unknown>,
+  errors: string[]
+): void {
+  const topology = evidence.executionTopology;
+  const environment = evidence.environment;
+  const run = evidence.run;
+  const counts = evidence.counts;
+  const durations = evidence.durations;
+  if (
+    !isRecord(topology) ||
+    topology.kind !== "sharded" ||
+    !isRecord(topology.credentialFree) ||
+    topology.credentialFree.shardCount !== CREDENTIAL_FREE_SHARD_COUNT ||
+    !Array.isArray(topology.credentialFree.components) ||
+    !isRecord(topology.importSafety) ||
+    !isRecord(topology.coverage)
+  ) {
+    errors.push("sharded execution topology is malformed");
+    return;
+  }
+  if (
+    !isRecord(environment) ||
+    environment.pool !== "forks" ||
+    environment.isolation !== true ||
+    typeof environment.node !== "string" ||
+    typeof environment.vitest !== "string" ||
+    environment.workers !== 1 ||
+    typeof environment.timezone !== "string" ||
+    !isRecord(run) ||
+    typeof run.runId !== "string" ||
+    typeof run.runAttempt !== "string" ||
+    typeof run.workflow !== "string" ||
+    run.job !== CREDENTIAL_FREE_CHECK_ID ||
+    typeof evidence.treeSha !== "string" ||
+    typeof evidence.checkedOutCommitSha !== "string" ||
+    typeof evidence.verificationDefinitionHash !== "string" ||
+    typeof evidence.classificationHash !== "string" ||
+    typeof evidence.lockfileHash !== "string"
+  ) {
+    errors.push("sharded execution identity is incomplete");
+    return;
+  }
+  const coverage = topology.coverage;
+  const validation = validateCredentialFreeAggregate({
+    untrustedComponents: [
+      ...topology.credentialFree.components,
+      topology.importSafety,
+    ],
+    expected: {
+      treeSha: evidence.treeSha,
+      checkedOutCommitSha: evidence.checkedOutCommitSha,
+      verificationDefinitionHash: evidence.verificationDefinitionHash,
+      classificationHash: evidence.classificationHash,
+      lockfileHash: evidence.lockfileHash,
+      workflow: run.workflow,
+      workflowRunId: run.runId,
+      runAttempt: run.runAttempt,
+      job: CREDENTIAL_FREE_CHECK_ID,
+      execution: {
+        nodeVersion: environment.node,
+        vitestVersion: environment.vitest,
+        pool: "forks",
+        isolation: true,
+        workerCount: 1,
+        timezone: environment.timezone,
+      },
+      security: {
+        profile: CREDENTIAL_SAFE_PROFILE,
+        credentialStripping: true,
+        databaseTargetsRemoved: [...DATABASE_TARGET_ENV_VARS].sort(),
+        dotenvSuppressed: true,
+      },
+      credentialFreeFiles: Array.isArray(coverage.credentialFreeExpected)
+        ? (coverage.credentialFreeExpected as string[])
+        : [],
+      importOnlyFiles: Array.isArray(coverage.importOnlyExpected)
+        ? (coverage.importOnlyExpected as string[])
+        : [],
+      databaseRequiredFiles: Array.isArray(coverage.databaseRequiredExcluded)
+        ? (coverage.databaseRequiredExcluded as string[])
+        : [],
+      dependencyResults: {
+        credentialShards: "success",
+        importSafety: "success",
+      },
+    },
+  });
+  if (!validation.valid) {
+    errors.push(
+      ...validation.errors.map((error) => `sharded topology: ${error}`)
+    );
+    return;
+  }
+  pushError(
+    errors,
+    JSON.stringify(topology.coverage) ===
+      JSON.stringify(validation.aggregate.coverage),
+    "sharded coverage claims do not match validated topology"
+  );
+  if (isRecord(counts)) {
+    const aggregateCounts = validation.aggregate.counts;
+    for (const [evidenceName, aggregateName] of [
+      ["filesDiscovered", "filesDiscovered"],
+      ["filesSelected", "selectedFiles"],
+      ["filesExecuted", "executedFiles"],
+      ["filesPassed", "passedFiles"],
+      ["filesSkipped", "skippedFiles"],
+      ["filesFailed", "failedFiles"],
+      ["testsCollected", "totalTests"],
+      ["testsPassed", "passedTests"],
+      ["testsSkipped", "skippedTests"],
+      ["testsFailed", "failedTests"],
+      ["databaseRequiredExcluded", "databaseRequiredExcluded"],
+    ] as const) {
+      pushError(
+        errors,
+        counts[evidenceName] === aggregateCounts[aggregateName],
+        `sharded ${evidenceName} does not reconcile`
+      );
+    }
+  }
+  if (isRecord(durations)) {
+    const aggregateDurations = validation.aggregate.durations;
+    pushError(
+      errors,
+      durations.credentialFreeMs === aggregateDurations.credentialFreeMs,
+      "sharded credential-free duration does not reconcile"
+    );
+    pushError(
+      errors,
+      durations.importOnlyMs === aggregateDurations.importOnlyMs,
+      "sharded import-only duration does not reconcile"
+    );
+    pushError(
+      errors,
+      durations.componentTotalMs === aggregateDurations.componentTotalMs,
+      "sharded component duration does not reconcile"
+    );
+    pushError(
+      errors,
+      durations.criticalPathMs === aggregateDurations.criticalPathMs,
+      "sharded critical-path duration does not reconcile"
+    );
+    const aggregateMs = isBoundedDurationMs(
+      durations.aggregateMs,
+      MAX_AGGREGATE_VALIDATION_DURATION_MS
+    )
+      ? durations.aggregateMs
+      : null;
+    const recomputedTotalMs =
+      aggregateMs === null
+        ? null
+        : sumBoundedDurationsMs(
+            [aggregateDurations.criticalPathMs, aggregateMs],
+            MAX_SHARDED_TOTAL_DURATION_MS
+          );
+    pushError(
+      errors,
+      recomputedTotalMs !== null && durations.totalMs === recomputedTotalMs,
+      "sharded aggregate duration does not reconcile"
+    );
+  }
+}
+
 export function validateCredentialFreeVerificationEvidence(
   input: unknown
 ): ExactTreeEvidenceValidationResult {
@@ -1047,7 +1551,8 @@ export function validateCredentialFreeVerificationEvidence(
   pushError(errors, evidence.schema === VERIFICATION_EVIDENCE_SCHEMA, "schema is invalid");
   pushError(
     errors,
-    evidence.schemaVersion === VERIFICATION_EVIDENCE_VERSION,
+    evidence.schemaVersion === VERIFICATION_EVIDENCE_VERSION ||
+      evidence.schemaVersion === SHARDED_VERIFICATION_EVIDENCE_VERSION,
     "schema version is invalid"
   );
   pushError(errors, evidence.checkId === CREDENTIAL_FREE_CHECK_ID, "check id is invalid");
@@ -1175,12 +1680,12 @@ export function validateCredentialFreeVerificationEvidence(
     );
     pushError(
       errors,
-      Number.isInteger(definition.nodeMajor) && (definition.nodeMajor as number) > 0,
+      Number.isSafeInteger(definition.nodeMajor) && (definition.nodeMajor as number) > 0,
       "definition Node major is invalid"
     );
     pushError(
       errors,
-      Number.isInteger(definition.workers) && (definition.workers as number) > 0,
+      Number.isSafeInteger(definition.workers) && (definition.workers as number) > 0,
       "definition worker count is invalid"
     );
     pushError(
@@ -1284,8 +1789,10 @@ export function validateCredentialFreeVerificationEvidence(
     if (countNames.every((name) => isNonNegativeInteger(counts[name]))) {
       pushError(
         errors,
-        (counts.filesSelected as number) + (counts.databaseRequiredExcluded as number) ===
-          counts.filesDiscovered,
+        sumNonNegativeSafeIntegers([
+          counts.filesSelected as number,
+          counts.databaseRequiredExcluded as number,
+        ]) === counts.filesDiscovered,
         "selected and excluded file counts do not reconcile with discovery"
       );
       pushError(
@@ -1295,18 +1802,20 @@ export function validateCredentialFreeVerificationEvidence(
       );
       pushError(
         errors,
-        (counts.filesPassed as number) +
-          (counts.filesSkipped as number) +
-          (counts.filesFailed as number) ===
-          counts.filesExecuted,
+        sumNonNegativeSafeIntegers([
+          counts.filesPassed as number,
+          counts.filesSkipped as number,
+          counts.filesFailed as number,
+        ]) === counts.filesExecuted,
         "file result counts do not reconcile"
       );
       pushError(
         errors,
-        (counts.testsPassed as number) +
-          (counts.testsSkipped as number) +
-          (counts.testsFailed as number) ===
-          counts.testsCollected,
+        sumNonNegativeSafeIntegers([
+          counts.testsPassed as number,
+          counts.testsSkipped as number,
+          counts.testsFailed as number,
+        ]) === counts.testsCollected,
         "test result counts do not reconcile"
       );
       if (status === "pass" || status === "qualified_pass") {
@@ -1325,15 +1834,27 @@ export function validateCredentialFreeVerificationEvidence(
     for (const name of ["credentialFreeMs", "importOnlyMs"] as const) {
       pushError(
         errors,
-        durations[name] === null || isNonNegativeFinite(durations[name]),
+        durations[name] === null ||
+          isBoundedDurationMs(
+            durations[name],
+            name === "importOnlyMs"
+              ? MAX_INVENTORY_COMPONENT_DURATION_MS
+              : MAX_INVENTORY_AGGREGATE_DURATION_MS
+          ),
         `${name} is invalid`
       );
     }
     if (status === "pass" || status === "qualified_pass") {
       pushError(
         errors,
-        isNonNegativeFinite(durations.credentialFreeMs) &&
-          isNonNegativeFinite(durations.importOnlyMs),
+        isBoundedDurationMs(
+          durations.credentialFreeMs,
+          MAX_INVENTORY_AGGREGATE_DURATION_MS
+        ) &&
+          isBoundedDurationMs(
+            durations.importOnlyMs,
+            MAX_INVENTORY_COMPONENT_DURATION_MS
+          ),
         "successful evidence has an incomplete phase duration"
       );
     }
@@ -1460,7 +1981,7 @@ export function validateCredentialFreeVerificationEvidence(
       typeof environment.timezone === "string" && environment.timezone.length > 0,
       "producer timezone is invalid"
     );
-    pushError(errors, Number.isInteger(environment.workers) && (environment.workers as number) > 0, "producer workers are invalid");
+    pushError(errors, Number.isSafeInteger(environment.workers) && (environment.workers as number) > 0, "producer workers are invalid");
     pushError(errors, isNullableString(environment.runnerImage), "producer runner image is invalid");
     const nodeMatch =
       typeof environment.node === "string" ? NODE_VERSION_PATTERN.exec(environment.node) : null;
@@ -1518,6 +2039,9 @@ export function validateCredentialFreeVerificationEvidence(
     }
   }
   pushError(errors, validIsoTimestamp(evidence.completedAt), "completion timestamp is invalid");
+  if (evidence.schemaVersion === SHARDED_VERIFICATION_EVIDENCE_VERSION) {
+    validateShardedExecutionTopology(evidence, errors);
+  }
 
   return errors.length === 0
     ? { valid: true, evidence: input as CredentialFreeVerificationEvidence }
@@ -1555,6 +2079,10 @@ export function createEvidenceReuseRequest(input: {
     projectRoot: input.projectRoot,
     classificationManifest,
   });
+  const selection = readCommittedTestSelection(
+    repositoryRoot,
+    classificationManifest
+  );
   return {
     checkId: CREDENTIAL_FREE_CHECK_ID,
     currentRepositoryState: readCurrentRepositoryState(repositoryRoot),
@@ -1568,13 +2096,19 @@ export function createEvidenceReuseRequest(input: {
     },
     hermetic: true,
     allowQualifiedPass: input.allowQualifiedPass,
+    coverage: {
+      credentialFreeFiles: selection.credentialFree,
+      importOnlyFiles: selection.importOnlyPlaceholder.map((entry) => entry.path),
+      databaseRequiredFiles: selection.databaseRequired.map((entry) => entry.path),
+    },
   };
 }
 
 function validReuseRequest(request: EvidenceReuseRequest): boolean {
   const state = request.currentRepositoryState;
-  return Boolean(
-    state &&
+  try {
+    return Boolean(
+      state &&
       GIT_SHA_PATTERN.test(state.commitSha) &&
       GIT_SHA_PATTERN.test(state.treeSha) &&
       typeof state.worktreeClean === "boolean" &&
@@ -1592,12 +2126,31 @@ function validReuseRequest(request: EvidenceReuseRequest): boolean {
       SHA256_PATTERN.test(request.verificationDefinitionHash) &&
       SHA256_PATTERN.test(request.classificationHash) &&
       SHA256_PATTERN.test(request.lockfileHash) &&
-      Number.isInteger(request.toolchain.nodeMajor) &&
+      Number.isSafeInteger(request.toolchain.nodeMajor) &&
       request.toolchain.nodeMajor > 0 &&
       TOOL_VERSION_PATTERN.test(request.toolchain.vitest) &&
-      Number.isInteger(request.toolchain.workers) &&
-      request.toolchain.workers > 0
-  );
+      Number.isSafeInteger(request.toolchain.workers) &&
+      request.toolchain.workers > 0 &&
+      (request.coverage === undefined ||
+        [
+          request.coverage.credentialFreeFiles,
+          request.coverage.importOnlyFiles,
+          request.coverage.databaseRequiredFiles,
+        ].every(
+          (files) =>
+            Array.isArray(files) &&
+            files.every(
+              (file, index) =>
+                typeof file === "string" &&
+                normalizeRepositoryPath(file) === file &&
+                (index === 0 || files[index - 1] < file)
+            ) &&
+            new Set(files).size === files.length
+        ))
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function assessExactTreeEvidenceReuse(
@@ -1647,6 +2200,23 @@ export function assessExactTreeEvidenceReuse(
   }
   if (evidence.lockfileHash !== request.lockfileHash) {
     return { reusable: false, reason: "lockfile-mismatch" };
+  }
+  if (evidence.schemaVersion === SHARDED_VERIFICATION_EVIDENCE_VERSION) {
+    const coverage = evidence.executionTopology?.coverage;
+    if (!request.coverage) {
+      return { reusable: false, reason: "current-repository-invalid" };
+    }
+    if (
+      !coverage ||
+      JSON.stringify(coverage.credentialFreeExpected) !==
+        JSON.stringify(request.coverage.credentialFreeFiles) ||
+      JSON.stringify(coverage.importOnlyExpected) !==
+        JSON.stringify(request.coverage.importOnlyFiles) ||
+      JSON.stringify(coverage.databaseRequiredExcluded) !==
+        JSON.stringify(request.coverage.databaseRequiredFiles)
+    ) {
+      return { reusable: false, reason: "incomplete-evidence" };
+    }
   }
   if (evidence.status === "fail") return { reusable: false, reason: "failed-evidence" };
   if (evidence.status === "qualified_pass" && !request.allowQualifiedPass) {
@@ -1701,6 +2271,28 @@ export function renderCredentialFreeEvidenceSummary(
     `- Uploaded artifact: ${artifactName ? `\`${artifactName}\`` : "not applicable"}`,
     `- Machine evidence: \`${CREDENTIAL_FREE_EVIDENCE_RELATIVE_PATH}\``,
   ];
+  if (evidence.executionTopology?.kind === "sharded") {
+    lines.push(
+      "",
+      "| Component | Files | Tests | Duration | Result |",
+      "| --- | ---: | ---: | ---: | --- |"
+    );
+    for (const component of evidence.executionTopology.credentialFree.components) {
+      lines.push(
+        `| Credential ${component.shardIndex}/${component.shardCount} | ${component.counts.executedFiles} | ${component.counts.totalTests} | ${(component.durationMs / 1000).toFixed(1)}s | ${component.status.toUpperCase()} |`
+      );
+    }
+    const importSafety = evidence.executionTopology.importSafety;
+    lines.push(
+      `| Import safety | ${importSafety.counts.executedFiles} | ${importSafety.counts.totalTests} | ${(importSafety.durationMs / 1000).toFixed(1)}s | ${importSafety.status.toUpperCase()} |`,
+      "",
+      "- Coverage union: exact",
+      "- Pairwise shard overlap: empty",
+      "- DB-required exclusion: exact",
+      "- Import-only coverage: exact",
+      `- Component critical path: ${((evidence.durations.criticalPathMs ?? 0) / 1000).toFixed(1)}s; aggregate validation: ${((evidence.durations.aggregateMs ?? 0) / 1000).toFixed(1)}s; component runner total: ${((evidence.durations.componentTotalMs ?? 0) / 1000).toFixed(1)}s`
+    );
+  }
   if (evidence.failure) {
     lines.push(
       `- Failure: phase=${evidence.failure.phase}; kind=${evidence.failure.kind}; reporter-complete=${evidence.failure.reporterComplete}; selected-coverage-complete=${evidence.failure.selectedCoverageCompleted}`,
@@ -1710,22 +2302,64 @@ export function renderCredentialFreeEvidenceSummary(
   return `${lines.join("\n")}\n`;
 }
 
+function assertFiniteEvidenceNumbers(
+  value: unknown,
+  location = "evidence",
+  ancestors = new WeakSet<object>()
+): void {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new Error(`${location} contains a non-finite number.`);
+    }
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  if (ancestors.has(value)) {
+    throw new Error(`${location} contains a circular reference.`);
+  }
+  ancestors.add(value);
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) =>
+      assertFiniteEvidenceNumbers(entry, `${location}[${index}]`, ancestors)
+    );
+  } else {
+    for (const [key, entry] of Object.entries(value)) {
+      assertFiniteEvidenceNumbers(entry, `${location}.${key}`, ancestors);
+    }
+  }
+  ancestors.delete(value);
+}
+
 export function publishCredentialFreeVerificationEvidence(input: {
   projectRoot: string;
   evidence: CredentialFreeVerificationEvidence;
   environment?: NodeJS.ProcessEnv;
 }): string {
+  const environment = input.environment ?? process.env;
+  const summaryPath = environment.GITHUB_STEP_SUMMARY;
+  if (!summaryPath && environment.GITHUB_ACTIONS === "true") {
+    throw new Error("GitHub job summary destination is unavailable.");
+  }
+  assertFiniteEvidenceNumbers(input.evidence);
+  const serialized = JSON.stringify(input.evidence, null, 2);
+  const validation = parseCredentialFreeVerificationEvidenceJson(serialized);
+  if (!validation.valid) {
+    throw new Error(
+      `Canonical credential-free evidence is invalid: ${validation.errors.join("; ")}`
+    );
+  }
   const evidencePath = path.join(input.projectRoot, CREDENTIAL_FREE_EVIDENCE_RELATIVE_PATH);
   mkdirSync(path.dirname(evidencePath), { recursive: true });
-  writeFileSync(evidencePath, `${JSON.stringify(input.evidence, null, 2)}\n`, {
+  writeFileSync(evidencePath, `${serialized}\n`, {
     encoding: "utf8",
     flag: "w",
   });
-  const summaryPath = (input.environment ?? process.env).GITHUB_STEP_SUMMARY;
   if (summaryPath) {
-    appendFileSync(summaryPath, renderCredentialFreeEvidenceSummary(input.evidence), "utf8");
-  } else if ((input.environment ?? process.env).GITHUB_ACTIONS === "true") {
-    throw new Error("GitHub job summary destination is unavailable.");
+    appendFileSync(
+      summaryPath,
+      renderCredentialFreeEvidenceSummary(validation.evidence),
+      "utf8"
+    );
   }
   return evidencePath;
 }

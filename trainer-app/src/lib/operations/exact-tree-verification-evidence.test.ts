@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -11,13 +12,27 @@ import path from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { TestSuiteEnvironmentManifest } from "./test-environment-preflight";
 import type { VitestPhaseResult } from "./credential-free-inventory-runner";
+import { DATABASE_TARGET_ENV_VARS } from "./test-environment-preflight";
+import {
+  CREDENTIAL_SAFE_PROFILE,
+  INVENTORY_COMPONENT_SCHEMA,
+  INVENTORY_COMPONENT_SCHEMA_VERSION,
+  MAX_INVENTORY_COMPONENT_DURATION_MS,
+  validateCredentialFreeAggregate,
+  type AggregateValidationExpectation,
+  type CredentialFreeAggregateValidation,
+  type CredentialFreeShardSummary,
+  type ImportSafetySummary,
+} from "./credential-free-inventory-sharding";
 import {
   assessExactTreeEvidenceReuse,
   computeVerificationDefinition,
   computeClassificationHash,
   createCredentialFreeVerificationEvidence,
   createEvidenceReuseRequest,
+  createShardedCredentialFreeVerificationEvidence,
   CREDENTIAL_FREE_CHECK_ID,
+  CREDENTIAL_FREE_EVIDENCE_RELATIVE_PATH,
   credentialFreeEvidenceArtifactName,
   hashCommittedGitPath,
   hashCanonicalValue,
@@ -166,7 +181,188 @@ function requestFor(value: CredentialFreeVerificationEvidence) {
     },
     hermetic: true,
     allowQualifiedPass: true,
+    coverage: value.executionTopology
+      ? {
+          credentialFreeFiles:
+            value.executionTopology.coverage.credentialFreeExpected,
+          importOnlyFiles: value.executionTopology.coverage.importOnlyExpected,
+          databaseRequiredFiles:
+            value.executionTopology.coverage.databaseRequiredExcluded,
+        }
+      : undefined,
   };
+}
+
+function shardedEvidenceFixture(): CredentialFreeVerificationEvidence {
+  const value = evidence();
+  const identity = {
+    treeSha: value.treeSha,
+    checkedOutCommitSha: value.checkedOutCommitSha,
+    verificationDefinitionHash: value.verificationDefinitionHash,
+    classificationHash: value.classificationHash,
+    lockfileHash: value.lockfileHash,
+    workflow: value.run.workflow!,
+    workflowRunId: value.run.runId!,
+    runAttempt: value.run.runAttempt!,
+    execution: {
+      nodeVersion: value.environment.node,
+      vitestVersion: value.environment.vitest,
+      pool: "forks" as const,
+      isolation: true as const,
+      workerCount: 1 as const,
+      timezone: value.environment.timezone,
+    },
+    security: {
+      profile: CREDENTIAL_SAFE_PROFILE,
+      credentialStripping: true as const,
+      databaseTargetsRemoved: [...DATABASE_TARGET_ENV_VARS].sort(),
+      dotenvSuppressed: true as const,
+    },
+  };
+  const files = ["src/a.test.ts", "src/b.test.ts"];
+  const shard = (index: number, shardFiles: string[]): CredentialFreeShardSummary => ({
+    schema: INVENTORY_COMPONENT_SCHEMA,
+    schemaVersion: INVENTORY_COMPONENT_SCHEMA_VERSION,
+    componentType: "credential-free-shard",
+    ...identity,
+    job: "credential-free-shard",
+    shardIndex: index,
+    shardCount: 4,
+    files: shardFiles,
+    fileDurations: shardFiles.map((file) => ({ file, durationMs: 30 })),
+    counts: {
+      selectedFiles: shardFiles.length,
+      executedFiles: shardFiles.length,
+      passedFiles: shardFiles.length,
+      failedFiles: 0,
+      skippedFiles: 0,
+      totalTests: shardFiles.length * 2,
+      passedTests: shardFiles.length * 2,
+      failedTests: 0,
+      skippedTests: 0,
+    },
+    durationMs: 30,
+    status: "pass",
+    reporterState: "available",
+    failureClassification: "none",
+  });
+  const importFile = "src/import-only.test.ts";
+  const importSafety: ImportSafetySummary = {
+    schema: INVENTORY_COMPONENT_SCHEMA,
+    schemaVersion: INVENTORY_COMPONENT_SCHEMA_VERSION,
+    componentType: "import-safety",
+    ...identity,
+    job: "import-safety",
+    files: [importFile],
+    fileDurations: [{ file: importFile, durationMs: 120 }],
+    counts: {
+      selectedFiles: 1,
+      executedFiles: 1,
+      passedFiles: 1,
+      failedFiles: 0,
+      skippedFiles: 0,
+      totalTests: 2,
+      passedTests: 2,
+      failedTests: 0,
+      skippedTests: 0,
+    },
+    durationMs: 120,
+    status: "pass",
+    reporterState: "available",
+    failureClassification: "none",
+    placeholderValidationPassed: true,
+    socketGuardCompleted: true,
+    connectionAttempted: false,
+  };
+  const components = [shard(1, [files[0]]), shard(2, [files[1]]), shard(3, []), shard(4, [])];
+  return {
+    ...value,
+    schemaVersion: 2,
+    environment: {
+      ...value.environment,
+      pool: "forks",
+      isolation: true,
+    },
+    durations: {
+      totalMs: 130,
+      credentialFreeMs: 120,
+      importOnlyMs: 120,
+      aggregateMs: 10,
+      criticalPathMs: 120,
+      componentTotalMs: 240,
+    },
+    executionTopology: {
+      kind: "sharded",
+      credentialFree: { shardCount: 4, components },
+      importSafety,
+      coverage: {
+        credentialFreeExpected: files,
+        credentialFreeUnion: files,
+        importOnlyExpected: [importFile],
+        databaseRequiredExcluded: [],
+        unionExact: true,
+        noOverlap: true,
+        importExact: true,
+        databaseExcluded: true,
+      },
+    },
+  };
+}
+
+function aggregateExpectationFor(
+  value: CredentialFreeVerificationEvidence
+): AggregateValidationExpectation {
+  const topology = value.executionTopology;
+  if (!topology || !value.run.workflow || !value.run.runId || !value.run.runAttempt) {
+    throw new Error("Synthetic sharded evidence identity is incomplete.");
+  }
+  return {
+    treeSha: value.treeSha,
+    checkedOutCommitSha: value.checkedOutCommitSha,
+    verificationDefinitionHash: value.verificationDefinitionHash,
+    classificationHash: value.classificationHash,
+    lockfileHash: value.lockfileHash,
+    workflow: value.run.workflow,
+    workflowRunId: value.run.runId,
+    runAttempt: value.run.runAttempt,
+    job: CREDENTIAL_FREE_CHECK_ID,
+    execution: {
+      nodeVersion: value.environment.node,
+      vitestVersion: value.environment.vitest,
+      pool: "forks",
+      isolation: true,
+      workerCount: 1,
+      timezone: value.environment.timezone,
+    },
+    security: {
+      profile: CREDENTIAL_SAFE_PROFILE,
+      credentialStripping: true,
+      databaseTargetsRemoved: [...DATABASE_TARGET_ENV_VARS].sort(),
+      dotenvSuppressed: true,
+    },
+    credentialFreeFiles: topology.coverage.credentialFreeExpected,
+    importOnlyFiles: topology.coverage.importOnlyExpected,
+    databaseRequiredFiles: topology.coverage.databaseRequiredExcluded,
+    dependencyResults: {
+      credentialShards: "success",
+      importSafety: "success",
+    },
+  };
+}
+
+function validatedAggregateFixture(
+  value = shardedEvidenceFixture()
+): CredentialFreeAggregateValidation {
+  const topology = value.executionTopology!;
+  const validation = validateCredentialFreeAggregate({
+    untrustedComponents: [
+      ...topology.credentialFree.components,
+      topology.importSafety,
+    ],
+    expected: aggregateExpectationFor(value),
+  });
+  if (!validation.valid) throw new Error(validation.errors.join("; "));
+  return validation.aggregate;
 }
 
 function git(repositoryRoot: string, args: string[]): string {
@@ -1259,7 +1455,7 @@ describe("exact-tree verification evidence", () => {
     ).toBe("tree-mismatch");
   });
 
-  it("keeps workflow publication durable, exact-tree keyed, and always-on", () => {
+  it("keeps aggregate publication durable, exact-tree keyed, and success-only", () => {
     const workflow = readFileSync(
       path.resolve(projectRoot, "..", ".github", "workflows", "credential-free-inventory.yml"),
       "utf8"
@@ -1267,7 +1463,12 @@ describe("exact-tree verification evidence", () => {
     expect(workflow).toContain("id: tested_identity");
     expect(workflow).toContain("git rev-parse HEAD^{tree}");
     expect(workflow).toContain("steps.tested_identity.outputs.tree_sha");
+    expect(workflow).toContain("credential-free-inventory:");
+    expect(workflow).toContain("name: credential-free-inventory");
     expect(workflow).toContain("if: ${{ always() }}");
+    expect(workflow).toContain("fail-fast: false");
+    expect(workflow).toContain("max-parallel: 4");
+    expect(workflow).toContain("if: ${{ steps.aggregate.outcome == 'success' }}");
     expect(workflow).toContain("retention-days: 30");
     expect(workflow).toContain(
       "name: credential-free-inventory-evidence-tree-${{ steps.tested_identity.outputs.tree_sha }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}"
@@ -1275,5 +1476,210 @@ describe("exact-tree verification evidence", () => {
     expect(workflow).toContain(
       "trainer-app/artifacts/credential-free-inventory/evidence/credential-free-inventory-evidence.json"
     );
+  });
+});
+
+describe("sharded exact-tree evidence", () => {
+  it("strictly validates and reuses a complete synthetic aggregate", () => {
+    const value = shardedEvidenceFixture();
+    expect(validateCredentialFreeVerificationEvidence(value)).toEqual({
+      valid: true,
+      evidence: value,
+    });
+    expect(assessExactTreeEvidenceReuse(value, requestFor(value))).toEqual({
+      reusable: true,
+      reason: "reusable",
+    });
+  });
+
+  it("self-validates a constructed sharded PASS before publishing and reuses the serialized artifact", () => {
+    const source = shardedEvidenceFixture();
+    const aggregate = validatedAggregateFixture(source);
+    const outputRoot = mkdtempSync(path.join(tmpdir(), "trainer-sharded-publish-"));
+    temporaryDirectories.push(outputRoot);
+    const summaryPath = path.join(outputRoot, "summary.md");
+    const created = createShardedCredentialFreeVerificationEvidence({
+      projectRoot,
+      manifest,
+      aggregate,
+      aggregateDurationMs: 10,
+      environment: {
+        NODE_ENV: "test",
+        TZ: "America/Chicago",
+        GITHUB_REPOSITORY: source.run.repository!,
+        GITHUB_RUN_ID: source.run.runId!,
+        GITHUB_RUN_ATTEMPT: source.run.runAttempt!,
+        GITHUB_SERVER_URL: "https://github.com",
+        GITHUB_WORKFLOW: source.run.workflow!,
+        GITHUB_JOB: CREDENTIAL_FREE_CHECK_ID,
+      },
+      completedAt: "2026-08-25T20:00:00.000Z",
+    });
+    const publishable: CredentialFreeVerificationEvidence = {
+      ...created,
+      repositoryState: { worktreeClean: true },
+      prHeadSha: source.prHeadSha,
+      prHeadTreeSha: source.prHeadTreeSha,
+      prHeadTreeMatchesTestedTree: source.prHeadTreeMatchesTestedTree,
+      mergeRefSha: source.mergeRefSha,
+      mergeRefTreeSha: source.mergeRefTreeSha,
+      baseRef: source.baseRef,
+      baseSha: source.baseSha,
+      environment: { ...created.environment, node: source.environment.node },
+    };
+
+    const evidencePath = publishCredentialFreeVerificationEvidence({
+      projectRoot: outputRoot,
+      evidence: publishable,
+      environment: { NODE_ENV: "test", GITHUB_STEP_SUMMARY: summaryPath },
+    });
+    const serialized = readFileSync(evidencePath, "utf8");
+    const parsed = parseCredentialFreeVerificationEvidenceJson(serialized);
+
+    expect(parsed.valid).toBe(true);
+    expect(readFileSync(summaryPath, "utf8")).toContain("Status: **pass**");
+    expect(assessExactTreeEvidenceReuse(JSON.parse(serialized), requestFor(publishable))).toEqual({
+      reusable: true,
+      reason: "reusable",
+    });
+  }, 30_000);
+
+  it("rejects unsafe canonical counts and out-of-domain durations", () => {
+    for (const unsafeCount of [
+      Number.MAX_VALUE,
+      Number.MAX_SAFE_INTEGER + 1,
+      1e100,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      Number.NaN,
+    ]) {
+      const unsafe = evidence();
+      unsafe.counts.testsCollected = unsafeCount;
+      unsafe.counts.testsPassed = unsafeCount;
+      expect(validateCredentialFreeVerificationEvidence(unsafe).valid).toBe(false);
+    }
+
+    for (const unsafeDuration of [
+      MAX_INVENTORY_COMPONENT_DURATION_MS + 1,
+      Number.MAX_VALUE,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      Number.NaN,
+    ]) {
+      const unsafe = evidence();
+      unsafe.durations.importOnlyMs = unsafeDuration;
+      expect(validateCredentialFreeVerificationEvidence(unsafe).valid).toBe(false);
+    }
+  });
+
+  it("fails the prior malicious complete topology and publishes no canonical PASS artifact", () => {
+    const value = shardedEvidenceFixture();
+    const topology = value.executionTopology!;
+    const maliciousComponents = structuredClone([
+      ...topology.credentialFree.components,
+      topology.importSafety,
+    ]);
+    for (const component of maliciousComponents) {
+      component.durationMs = Number.MAX_VALUE;
+      component.counts.totalTests = Number.MAX_VALUE;
+      component.counts.passedTests = Number.MAX_VALUE;
+    }
+
+    const aggregate = validateCredentialFreeAggregate({
+      untrustedComponents: maliciousComponents,
+      expected: aggregateExpectationFor(value),
+    });
+    expect(aggregate.valid).toBe(false);
+    if (!aggregate.valid) {
+      expect(aggregate.errors.join("\n")).toMatch(/totalTests is invalid/);
+      expect(aggregate.errors.join("\n")).toMatch(/duration is invalid/);
+    }
+
+    const malformedPass = structuredClone(value);
+    malformedPass.executionTopology!.credentialFree.components =
+      maliciousComponents.slice(0, 4) as CredentialFreeShardSummary[];
+    malformedPass.executionTopology!.importSafety =
+      maliciousComponents[4] as ImportSafetySummary;
+    malformedPass.counts.testsCollected = Number.POSITIVE_INFINITY;
+    malformedPass.counts.testsPassed = Number.POSITIVE_INFINITY;
+    malformedPass.durations.totalMs = Number.POSITIVE_INFINITY;
+    expect(JSON.parse(JSON.stringify(malformedPass)).counts.testsCollected).toBeNull();
+
+    const outputRoot = mkdtempSync(path.join(tmpdir(), "trainer-malicious-publish-"));
+    temporaryDirectories.push(outputRoot);
+    const evidencePath = path.join(
+      outputRoot,
+      CREDENTIAL_FREE_EVIDENCE_RELATIVE_PATH
+    );
+    const summaryPath = path.join(outputRoot, "summary.md");
+    expect(() =>
+      publishCredentialFreeVerificationEvidence({
+        projectRoot: outputRoot,
+        evidence: malformedPass,
+        environment: { NODE_ENV: "test", GITHUB_STEP_SUMMARY: summaryPath },
+      })
+    ).toThrow(/non-finite number/i);
+    expect(existsSync(evidencePath)).toBe(false);
+    expect(existsSync(summaryPath)).toBe(false);
+  });
+
+  it("rejects missing, overlapping, or wrong-tree shard topology", () => {
+    const missing = shardedEvidenceFixture();
+    missing.executionTopology!.credentialFree.components.pop();
+    expect(validateCredentialFreeVerificationEvidence(missing).valid).toBe(false);
+    expect(assessExactTreeEvidenceReuse(missing, requestFor(missing)).reason).toBe(
+      "malformed-evidence"
+    );
+
+    const overlap = shardedEvidenceFixture();
+    overlap.executionTopology!.credentialFree.components[1].files = [
+      overlap.executionTopology!.credentialFree.components[0].files[0],
+    ];
+    expect(validateCredentialFreeVerificationEvidence(overlap).valid).toBe(false);
+
+    const wrongTree = shardedEvidenceFixture();
+    wrongTree.executionTopology!.credentialFree.components[2].treeSha = "f".repeat(40);
+    expect(validateCredentialFreeVerificationEvidence(wrongTree).valid).toBe(false);
+    expect(
+      assessExactTreeEvidenceReuse(wrongTree, requestFor(wrongTree)).reusable
+    ).toBe(false);
+  });
+
+  it("recomputes canonical coverage instead of trusting coherent omissions", () => {
+    const original = shardedEvidenceFixture();
+    const request = requestFor(original);
+    const omission = structuredClone(original);
+    const first = omission.executionTopology!.credentialFree.components[0];
+    first.files = [];
+    first.fileDurations = [];
+    first.counts = {
+      selectedFiles: 0,
+      executedFiles: 0,
+      passedFiles: 0,
+      failedFiles: 0,
+      skippedFiles: 0,
+      totalTests: 0,
+      passedTests: 0,
+      failedTests: 0,
+      skippedTests: 0,
+    };
+    omission.executionTopology!.coverage.credentialFreeExpected = [
+      "src/b.test.ts",
+    ];
+    omission.executionTopology!.coverage.credentialFreeUnion = [
+      "src/b.test.ts",
+    ];
+    omission.counts.filesDiscovered = 2;
+    omission.counts.filesSelected = 2;
+    omission.counts.filesExecuted = 2;
+    omission.counts.filesPassed = 2;
+    omission.counts.testsCollected = 4;
+    omission.counts.testsPassed = 4;
+
+    expect(validateCredentialFreeVerificationEvidence(omission).valid).toBe(true);
+    expect(assessExactTreeEvidenceReuse(omission, request)).toEqual({
+      reusable: false,
+      reason: "incomplete-evidence",
+    });
   });
 });

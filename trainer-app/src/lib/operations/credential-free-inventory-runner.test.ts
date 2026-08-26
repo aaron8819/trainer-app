@@ -40,6 +40,8 @@ function reporter(input?: {
         {
           name: "C:/repo/passing.test.ts",
           status: "passed",
+          startTime: 1_000,
+          endTime: 1_025,
           message: "",
           assertionResults: [
             {
@@ -109,6 +111,13 @@ describe("credential-free Vitest failure artifacts", () => {
       success: true,
       failureKind: "none",
       artifactsRetained: false,
+      executedFiles: [
+        {
+          file: "C:/repo/passing.test.ts",
+          status: "passed",
+          durationMs: 25,
+        },
+      ],
     });
     expect(existsSync(result.artifacts.directory)).toBe(false);
   });

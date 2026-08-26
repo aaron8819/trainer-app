@@ -1018,6 +1018,43 @@ describe("dependency-free launcher", () => {
     });
   });
 
+  it.each([
+    ["credential shard", ["--run-credential-free-shard", "--shard", "1/4"]],
+    ["import safety", ["--run-import-safety"]],
+    [
+      "aggregate",
+      [
+        "--run-credential-free-aggregate",
+        "--credential-shards-result",
+        "success",
+        "--import-safety-result",
+        "success",
+      ],
+    ],
+  ])("keeps the %s mode behind the restricted sanitizer", (_label, modeArgs) => {
+    const sentinel = "component-secret-sentinel-123456";
+    const fixture = createLauncherFixture({
+      tsxLauncherSource: [
+        'import { readFileSync } from "node:fs";',
+        'const values = JSON.parse(readFileSync(0, "utf8"));',
+        `if (process.env.DATABASE_URL || process.env.GITHUB_TOKEN || process.env.VERCEL_TOKEN || !values.includes(${JSON.stringify(sentinel)}) || process.env.TRAINER_RESTRICTED_VERIFICATION_LAUNCHER !== "1") process.exit(9);`,
+        'console.log("Trainer test environment preflight");',
+      ].join("\n"),
+    });
+    const result = spawnSync(process.execPath, [launcher, ...modeArgs], {
+      cwd: fixture,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        DATABASE_URL: sentinel,
+        GITHUB_TOKEN: "github-token-sentinel-123456",
+        VERCEL_TOKEN: "vercel-token-sentinel-123456",
+      },
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toContain(sentinel);
+  });
+
   it.skipIf(process.platform === "win32")(
     "classifies signal termination without exposing a stack",
     () => {
@@ -1565,8 +1602,14 @@ describe("command coverage honesty", () => {
       "test:verify-gate": "node scripts/test-environment-preflight.mjs --run-verify-gate",
       "test:inventory:credential-free":
         "node scripts/test-environment-preflight.mjs --run-credential-free-inventory",
+      "test:inventory:credential-free:shard":
+        "node scripts/test-environment-preflight.mjs --run-credential-free-shard",
+      "test:inventory:import-safety":
+        "node scripts/test-environment-preflight.mjs --run-import-safety",
+      "test:inventory:aggregate":
+        "node scripts/test-environment-preflight.mjs --run-credential-free-aggregate",
       "test:environment-classification":
-        "vitest run src/lib/operations/test-environment-preflight.test.ts src/lib/operations/test-suite-environment-classification.test.ts src/lib/operations/import-only-placeholder-guard.test.ts src/lib/operations/exact-tree-verification-evidence.test.ts",
+        "vitest run src/lib/operations/test-environment-preflight.test.ts src/lib/operations/test-suite-environment-classification.test.ts src/lib/operations/import-only-placeholder-guard.test.ts src/lib/operations/credential-free-inventory-sharding.test.ts src/lib/operations/exact-tree-verification-evidence.test.ts",
     });
     expect(packageJson.scripts).not.toHaveProperty("test:pure");
     expect(packageJson.scripts).not.toHaveProperty("test:full");
@@ -1574,6 +1617,9 @@ describe("command coverage honesty", () => {
       "test:preflight",
       "test:verify-gate",
       "test:inventory:credential-free",
+      "test:inventory:credential-free:shard",
+      "test:inventory:import-safety",
+      "test:inventory:aggregate",
       "test:environment-classification",
     ]) {
       expect(docs).toContain(`npm run ${command}`);

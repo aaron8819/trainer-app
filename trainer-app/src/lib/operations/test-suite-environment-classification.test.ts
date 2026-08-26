@@ -52,6 +52,13 @@ type CredentialFreeWorkflow = {
     {
       name?: unknown;
       env?: Record<string, unknown>;
+      needs?: unknown;
+      if?: unknown;
+      strategy?: {
+        "fail-fast"?: unknown;
+        "max-parallel"?: unknown;
+        matrix?: { shard?: unknown };
+      };
       steps?: WorkflowStep[];
     }
   >;
@@ -67,64 +74,110 @@ function parseWorkflow(source: string): CredentialFreeWorkflow {
 
 function workflowStep(
   workflow: CredentialFreeWorkflow,
+  jobId: string,
   name: string
 ): WorkflowStep | undefined {
-  return workflow.jobs?.["credential-free-inventory"]?.steps?.find(
+  return workflow.jobs?.[jobId]?.steps?.find(
     (step) => step.name === name
   );
 }
 
 function validateCredentialFreeWorkflow(workflow: CredentialFreeWorkflow): string[] {
   const errors: string[] = [];
-  const job = workflow.jobs?.["credential-free-inventory"];
+  const shard = workflow.jobs?.["credential-free-shard"];
+  const importSafety = workflow.jobs?.["import-safety"];
+  const aggregate = workflow.jobs?.["credential-free-inventory"];
   const branches = workflow.on?.pull_request?.branches;
   if (!Array.isArray(branches) || !branches.includes("master")) errors.push("pull-request-branch");
   if (workflow.permissions?.contents !== "read") errors.push("permissions");
-  if (job?.name !== "credential-free-inventory") errors.push("job-name");
-  if (job?.env?.CI !== true || job.env.TZ !== "America/Chicago") errors.push("job-env");
-
-  const checkout = workflowStep(workflow, "Check out repository");
-  if (checkout?.uses !== "actions/checkout@v7" || checkout.with?.["fetch-depth"] !== 0) {
-    errors.push("checkout-step");
-  }
-  const setupNode = workflowStep(workflow, "Set up Node.js");
-  if (setupNode?.uses !== "actions/setup-node@v7" || setupNode.with?.["node-version"] !== 22) {
-    errors.push("node-step");
-  }
-  if (workflowStep(workflow, "Install exact dependencies")?.run !== "npm ci") {
-    errors.push("install-step");
-  }
-
-  const inventory = workflowStep(workflow, "Run credential-free inventory");
-  if (inventory?.id !== "credential_free_inventory") errors.push("inventory-id");
+  if (aggregate?.name !== "credential-free-inventory") errors.push("aggregate-name");
+  if (aggregate?.if !== "${{ always() }}") errors.push("aggregate-always");
   if (
-    inventory?.run !==
-    "npm run test:inventory:credential-free -- --base-ref origin/master"
+    !Array.isArray(aggregate?.needs) ||
+    aggregate.needs.length !== 2 ||
+    !aggregate.needs.includes("credential-free-shard") ||
+    !aggregate.needs.includes("import-safety")
   ) {
-    errors.push("inventory-run");
+    errors.push("aggregate-needs");
   }
-
-  const upload = workflowStep(workflow, "Upload credential-free failure bundle");
+  if (JSON.stringify(aggregate?.needs ?? []).toLowerCase().includes("vercel")) {
+    errors.push("vercel-dependency");
+  }
   if (
-    upload?.if !==
-    "${{ always() && steps.credential_free_inventory.outcome == 'failure' }}"
+    shard?.strategy?.["fail-fast"] !== false ||
+    shard.strategy["max-parallel"] !== 4 ||
+    JSON.stringify(shard.strategy.matrix?.shard) !==
+      JSON.stringify(["1/4", "2/4", "3/4", "4/4"])
   ) {
-    errors.push("upload-if");
+    errors.push("shard-matrix");
   }
-  if (upload?.uses !== "actions/upload-artifact@v4") errors.push("upload-action");
+  if (!importSafety) errors.push("import-job");
+  for (const [jobId, job] of [
+    ["credential-free-shard", shard],
+    ["import-safety", importSafety],
+    ["credential-free-inventory", aggregate],
+  ] as const) {
+    if (job?.env?.CI !== true || job.env.TZ !== "America/Chicago") {
+      errors.push(`${jobId}-env`);
+    }
+    const checkout = workflowStep(workflow, jobId, "Check out repository");
+    if (checkout?.uses !== "actions/checkout@v7" || checkout.with?.["fetch-depth"] !== 0) {
+      errors.push(`${jobId}-checkout`);
+    }
+    const setupNode = workflowStep(workflow, jobId, "Set up Node.js");
+    if (setupNode?.uses !== "actions/setup-node@v7" || setupNode.with?.["node-version"] !== 22) {
+      errors.push(`${jobId}-node`);
+    }
+    if (workflowStep(workflow, jobId, "Install exact dependencies")?.run !== "npm ci") {
+      errors.push(`${jobId}-install`);
+    }
+  }
+  const shardRun = workflowStep(workflow, "credential-free-shard", "Run credential-free shard");
   if (
-    upload?.with?.name !==
-    "credential-free-inventory-${{ github.run_id }}-${{ github.run_attempt }}"
+    shardRun?.run !==
+    'npm run test:inventory:credential-free:shard -- --shard "${{ matrix.shard }}"'
   ) {
-    errors.push("upload-name");
+    errors.push("shard-run");
   }
-  if (upload?.with?.path !== "trainer-app/artifacts/credential-free-inventory/") {
-    errors.push("upload-path");
+  if (
+    workflowStep(workflow, "import-safety", "Run import safety")?.run !==
+    "npm run test:inventory:import-safety"
+  ) {
+    errors.push("import-run");
   }
-  if (upload?.with?.["if-no-files-found"] !== "error") errors.push("upload-missing-files");
-  if (upload?.with?.["retention-days"] !== 7) errors.push("upload-retention");
-  if (job?.steps?.some((step) => step["continue-on-error"] !== undefined)) {
-    errors.push("continue-on-error");
+  const aggregateRun = workflowStep(
+    workflow,
+    "credential-free-inventory",
+    "Validate and aggregate credential-free inventory"
+  );
+  if (
+    aggregateRun?.if !== "${{ always() }}" ||
+    typeof aggregateRun.run !== "string" ||
+    !aggregateRun.run.startsWith("npm run test:inventory:aggregate -- ") ||
+    !aggregateRun.run.includes("--base-ref origin/master") ||
+    !aggregateRun.run.includes("needs.credential-free-shard.result") ||
+    !aggregateRun.run.includes("needs.import-safety.result")
+  ) {
+    errors.push("aggregate-run");
+  }
+  const evidenceUpload = workflowStep(
+    workflow,
+    "credential-free-inventory",
+    "Upload exact-tree verification evidence"
+  );
+  if (
+    evidenceUpload?.if !== "${{ steps.aggregate.outcome == 'success' }}" ||
+    evidenceUpload.uses !== "actions/upload-artifact@v4" ||
+    evidenceUpload.with?.path !==
+      "trainer-app/artifacts/credential-free-inventory/evidence/credential-free-inventory-evidence.json" ||
+    evidenceUpload.with?.["retention-days"] !== 30
+  ) {
+    errors.push("aggregate-evidence-upload");
+  }
+  for (const job of [shard, importSafety, aggregate]) {
+    if (job?.steps?.some((step) => step["continue-on-error"] !== undefined)) {
+      errors.push("continue-on-error");
+    }
   }
   return errors;
 }
@@ -208,13 +261,16 @@ describe("test-suite environment manifest", () => {
       manifest: currentManifest,
       discoveredTestFiles,
     });
-    expect(discoveredTestFiles).toHaveLength(382);
-    expect(selection.credentialFree).toHaveLength(343);
+    expect(discoveredTestFiles).toHaveLength(383);
+    expect(selection.credentialFree).toHaveLength(344);
     expect(selection.credentialFree).toContain(
       "src/lib/operations/credential-free-inventory-runner.test.ts"
     );
     expect(selection.credentialFree).toContain(
       "src/lib/operations/exact-tree-verification-evidence.test.ts"
+    );
+    expect(selection.credentialFree).toContain(
+      "src/lib/operations/credential-free-inventory-sharding.test.ts"
     );
     expect(selection.credentialFree).toContain(
       "src/lib/engine/hypertrophy-plan-recommendations.test.ts"
@@ -520,48 +576,61 @@ describe("pull-request CI contract", () => {
       mutate(workflow: CredentialFreeWorkflow): void;
     }> = [
       {
-        label: "missing inventory step ID",
-        expectedError: "inventory-id",
+        label: "renamed required aggregate check",
+        expectedError: "aggregate-name",
         mutate: (workflow) => {
-          delete workflowStep(workflow, "Run credential-free inventory")?.id;
-        },
-      },
-      {
-        label: "upload condition unrelated to inventory outcome",
-        expectedError: "upload-if",
-        mutate: (workflow) => {
-          const upload = workflowStep(workflow, "Upload credential-free failure bundle");
-          if (upload) upload.if = "${{ always() && steps.checkout.outcome == 'failure' }}";
-        },
-      },
-      {
-        label: "broad artifact path",
-        expectedError: "upload-path",
-        mutate: (workflow) => {
-          const upload = workflowStep(workflow, "Upload credential-free failure bundle");
-          if (upload?.with) upload.with.path = "trainer-app/";
-        },
-      },
-      {
-        label: "missing retention",
-        expectedError: "upload-retention",
-        mutate: (workflow) => {
-          const upload = workflowStep(workflow, "Upload credential-free failure bundle");
-          if (upload?.with) delete upload.with["retention-days"];
-        },
-      },
-      {
-        label: "upload action and fields attached to the inventory step",
-        expectedError: "upload-action",
-        mutate: (workflow) => {
-          const inventory = workflowStep(workflow, "Run credential-free inventory");
-          const upload = workflowStep(workflow, "Upload credential-free failure bundle");
-          if (inventory && upload) {
-            inventory.uses = upload.uses;
-            inventory.with = upload.with;
-            delete upload.uses;
-            delete upload.with;
+          if (workflow.jobs?.["credential-free-inventory"]) {
+            workflow.jobs["credential-free-inventory"].name = "renamed";
           }
+        },
+      },
+      {
+        label: "default fail-fast behavior",
+        expectedError: "shard-matrix",
+        mutate: (workflow) => {
+          const strategy = workflow.jobs?.["credential-free-shard"]?.strategy;
+          if (strategy) strategy["fail-fast"] = true;
+        },
+      },
+      {
+        label: "aggregate without always",
+        expectedError: "aggregate-always",
+        mutate: (workflow) => {
+          if (workflow.jobs?.["credential-free-inventory"]) {
+            workflow.jobs["credential-free-inventory"].if = "${{ success() }}";
+          }
+        },
+      },
+      {
+        label: "Vercel dependency",
+        expectedError: "vercel-dependency",
+        mutate: (workflow) => {
+          const aggregate = workflow.jobs?.["credential-free-inventory"];
+          if (aggregate) aggregate.needs = ["credential-free-shard", "import-safety", "vercel"];
+        },
+      },
+      {
+        label: "direct Vitest shard bypass",
+        expectedError: "shard-run",
+        mutate: (workflow) => {
+          const run = workflowStep(
+            workflow,
+            "credential-free-shard",
+            "Run credential-free shard"
+          );
+          if (run) run.run = "vitest run --shard=1/4";
+        },
+      },
+      {
+        label: "broad canonical evidence path",
+        expectedError: "aggregate-evidence-upload",
+        mutate: (workflow) => {
+          const upload = workflowStep(
+            workflow,
+            "credential-free-inventory",
+            "Upload exact-tree verification evidence"
+          );
+          if (upload?.with) upload.with.path = "trainer-app/";
         },
       },
     ];
@@ -581,7 +650,15 @@ describe("pull-request CI contract", () => {
       resolve("scripts/test-environment-preflight.ts"),
       "utf8"
     );
-    expect(runner).toContain('const vitestArgs = ["--maxWorkers", "1"]');
+    expect(runner).toContain("buildCredentialFreeShardVitestArgs");
+    expect(runner).toContain("buildImportSafetyVitestArgs");
+    const sharding = readFileSync(
+      resolve("src/lib/operations/credential-free-inventory-sharding.ts"),
+      "utf8"
+    );
+    expect(sharding).toContain('"--maxWorkers"');
+    expect(sharding).toContain('"--pool=forks"');
+    expect(sharding).toContain('`--shard=${input.shardIndex}/${input.shardCount}`');
     expect(runner).toContain("formatVitestPhaseFailure");
     expect(runner).toContain("Credential-free inventory total elapsed");
     const phaseRunner = readFileSync(

@@ -18,6 +18,17 @@ $sourceRegistryValidator = Join-Path $sourceRoot 'Test-TrainerCommandRegistry.ps
 $sourceVerification = Join-Path $sourceRoot 'Invoke-TrainerVerification.ps1'
 $sourcePolicy = Join-Path $sourceRoot 'trainer-policy.v1.json'
 
+function Resolve-TestApplicationExecutable {
+    param([Parameter(Mandatory = $true)][string]$Name)
+
+    $command = Get-Command $Name -CommandType Application -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($null -eq $command) {
+        throw "Test prerequisite executable is unavailable: $Name"
+    }
+    [string]$command.Source
+}
+
 function Invoke-GitFixture {
     param(
         [Parameter(Mandatory = $true)][string]$Repository,
@@ -499,7 +510,7 @@ function Invoke-Verification {
     foreach ($argument in $ExtraArguments) { $arguments.Add($argument) }
 
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
-    $startInfo.FileName = (Get-Command pwsh -CommandType Application).Source
+    $startInfo.FileName = Resolve-TestApplicationExecutable -Name 'pwsh'
     $startInfo.WorkingDirectory = $Fixture.Repository
     $startInfo.UseShellExecute = $false
     $startInfo.RedirectStandardOutput = $true
@@ -1044,6 +1055,47 @@ Invoke-Test 'doctor does not mutate repository state' {
         Assert-Equal $afterConfig $beforeConfig 'Doctor changed local Git config.'
     }
     finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'test executable discovery is deterministic and fails truthfully' {
+    $sandbox = Join-Path ([System.IO.Path]::GetTempPath()) ("trainer-executable-tests-" + [guid]::NewGuid().ToString('N'))
+    $firstDirectory = Join-Path $sandbox 'first tools with spaces'
+    $secondDirectory = Join-Path $sandbox 'second-tools'
+    $emptyDirectory = Join-Path $sandbox 'empty-tools'
+    $originalPath = $env:PATH
+    try {
+        New-Item -ItemType Directory -Path $firstDirectory, $secondDirectory, $emptyDirectory -Force | Out-Null
+        $firstExecutable = Join-Path $firstDirectory 'pwsh.exe'
+        $secondExecutable = Join-Path $secondDirectory 'pwsh.exe'
+        New-Item -ItemType File -Path $firstExecutable, $secondExecutable -Force | Out-Null
+
+        $env:PATH = $firstDirectory
+        Assert-Equal (Resolve-TestApplicationExecutable -Name 'pwsh') $firstExecutable 'Single PowerShell resolution mismatch.'
+
+        $env:PATH = @($firstDirectory, $secondDirectory) -join [System.IO.Path]::PathSeparator
+        Assert-Equal (Resolve-TestApplicationExecutable -Name 'pwsh') $firstExecutable 'Multiple PowerShell resolution must honor PATH order.'
+
+        $env:PATH = @($secondDirectory, $firstDirectory) -join [System.IO.Path]::PathSeparator
+        Assert-Equal (Resolve-TestApplicationExecutable -Name 'pwsh') $secondExecutable 'Reordered PowerShell resolution must honor PATH order.'
+
+        $env:PATH = $emptyDirectory
+        $missingMessage = $null
+        try { Resolve-TestApplicationExecutable -Name 'pwsh' | Out-Null }
+        catch { $missingMessage = $_.Exception.Message }
+        Assert-Equal $missingMessage 'Test prerequisite executable is unavailable: pwsh' 'Missing PowerShell resolution must fail truthfully.'
+    }
+    finally {
+        $env:PATH = $originalPath
+        $resolvedSandbox = [System.IO.Path]::GetFullPath($sandbox)
+        $temporaryRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()).TrimEnd([System.IO.Path]::DirectorySeparatorChar)
+        if ((-not $resolvedSandbox.StartsWith($temporaryRoot + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) -or
+            (-not (Split-Path -Leaf $resolvedSandbox).StartsWith('trainer-executable-tests-', [System.StringComparison]::Ordinal))) {
+            throw "Refusing to remove unexpected executable test sandbox: $resolvedSandbox"
+        }
+        if (Test-Path -LiteralPath $resolvedSandbox) {
+            Remove-Item -LiteralPath $resolvedSandbox -Recurse -Force
+        }
+    }
 }
 
 Invoke-Test 'verification human plan output' {
@@ -1894,8 +1946,8 @@ Invoke-Test 'GitHub scope requires an available gh executable' {
     $fixture = New-RemoteTestRepository
     try {
         $pathParts = @(
-            Split-Path -Parent (Get-Command pwsh -CommandType Application).Source
-            Split-Path -Parent (Get-Command git -CommandType Application).Source
+            Split-Path -Parent (Resolve-TestApplicationExecutable -Name 'pwsh')
+            Split-Path -Parent (Resolve-TestApplicationExecutable -Name 'git')
             "$env:SystemRoot\System32"
         ) | Select-Object -Unique
         $result = Invoke-RemoteStatus -Fixture $fixture -GitHub -Json -Branch 'codex/remote-github-status' -PathPrefix ($pathParts -join [System.IO.Path]::PathSeparator) -ReplacePath
@@ -2626,6 +2678,7 @@ Invoke-Test 'exercise-library sync metadata preserves dry-run and effective writ
     $policy = Get-Content -Raw -LiteralPath $sourcePolicy | ConvertFrom-Json -Depth 100
     $applyFlag = '--' + 'apply'
     $writeFlag = '--' + 'write'
+    $confirmRemoteWriteFlag = '--confirm-remote-' + 'write'
     $dryRunEntry = @($policy.commandRegistry | Where-Object { $_.id -eq 'npm-sync-exercise-library' })
     $applyEntry = @($policy.commandRegistry | Where-Object { $_.id -eq 'npm-sync-exercise-library-apply' })
     Assert-Equal $dryRunEntry.Count 1 'Exercise-library dry-run registry entry missing.'
@@ -2654,10 +2707,13 @@ Invoke-Test 'exercise-library sync metadata preserves dry-run and effective writ
     $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $sourceRoot '..\..'))
     $syncSource = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot 'trainer-app\scripts\sync-exercise-library.ts')
     $rolloutSource = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot 'trainer-app\src\lib\operations\rollout-environment.ts')
-    Assert-True $syncSource.Contains(('const apply = argv.includes("' + $applyFlag + '");')) 'Exercise-library public apply parsing drifted.'
-    Assert-True $syncSource.Contains(('argv: apply ? [...argv, "' + $writeFlag + '"] : argv')) 'Exercise-library apply must inject the protected write signal.'
-    Assert-True $syncSource.Contains('allowWrite: apply') 'Exercise-library dry run/apply write allowance drifted.'
-    Assert-True (-not $syncSource.Contains('"--confirm-remote-write"')) 'Exercise-library sync must not self-confirm remote writes.'
+    Assert-True $syncSource.Contains('export function parseCatalogSyncCliArgs(') 'Exercise-library must retain one public CLI parser.'
+    Assert-True $syncSource.Contains(('if (argument === "' + $applyFlag + '") {')) 'Exercise-library public apply parsing drifted.'
+    Assert-True $syncSource.Contains('const parsed = parseCatalogSyncCliArgs(') 'Exercise-library execution must consume the canonical parsed contract.'
+    Assert-True $syncSource.Contains(('argv: parsed.apply ? [...argv, "' + $writeFlag + '"] : argv')) 'Exercise-library apply must inject the protected write signal.'
+    Assert-True $syncSource.Contains('allowWrite: parsed.apply') 'Exercise-library dry run/apply write allowance drifted.'
+    Assert-True $syncSource.Contains('apply: parsed.apply') 'Exercise-library sync execution classification drifted.'
+    Assert-True (-not $syncSource.Contains(('argv: parsed.apply ? [...argv, "' + $confirmRemoteWriteFlag + '"] : argv'))) 'Exercise-library sync must not self-confirm remote writes.'
     Assert-True $rolloutSource.Contains(('Remote ' + $writeFlag + ' requires --confirm-remote-write before any database connection.')) 'Remote apply must still require explicit confirmation before database import.'
 }
 

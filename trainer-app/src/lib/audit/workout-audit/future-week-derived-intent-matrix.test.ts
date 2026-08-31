@@ -68,6 +68,7 @@ vi.mock("@/lib/db/prisma", () => ({
 
 vi.mock("@/lib/api/next-session", () => ({
   loadNextWorkoutContext: (...args: unknown[]) => loadNextWorkoutContextMock(...args),
+  resolveRequestedV4ScheduledGenerationObligation: () => undefined,
 }));
 
 vi.mock("@/lib/api/templates", () => ({

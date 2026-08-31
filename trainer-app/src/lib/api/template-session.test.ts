@@ -22,6 +22,7 @@ import {
   primeV4ReferenceWeek,
   type V4ReferenceHarnessMocks,
 } from "@/lib/api/template-session-v4-reference.test-helper";
+import { buildSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
 
 const mesocycleRoleFindManyMock = vi.fn();
 vi.mock("@/lib/db/prisma", () => ({
@@ -97,6 +98,76 @@ vi.mock("@/lib/api/mesocycle-lifecycle", async (importOriginal) => {
 });
 
 import { generateSessionFromIntent, generateSessionFromTemplate } from "./template-session";
+import {
+  buildScheduledSlotReceipt,
+  resolveV4RequiredSlotFromDecisionReceipt,
+  resolveV4ScheduleAuthority,
+  type V4RequiredSlot,
+  type V4ScheduleAuthority,
+  type V4ScheduleWorkoutEvidence,
+} from "./v4-scheduled-slot-resolution";
+import {
+  resolveRequestedV4ScheduledGenerationObligation,
+  resolveV4NextWorkoutContext,
+} from "./next-session";
+import { resolveV4ScheduleBeforeWorkoutCreation } from "./save-workout/lifecycle";
+
+function buildV4TerminalWorkout(input: {
+  authority: V4ScheduleAuthority;
+  slot: V4RequiredSlot;
+  status: "COMPLETED" | "SKIPPED" | "PLANNED";
+}): V4ScheduleWorkoutEvidence {
+  const { authority, slot } = input;
+  return {
+    id: `workout-${slot.weekInMeso}-${slot.slotId}`,
+    status: input.status,
+    mesocycleId: authority.mesocycleId,
+    mesocycleWeekSnapshot: slot.weekInMeso,
+    mesocyclePhaseSnapshot: slot.phase,
+    mesoSessionSnapshot: slot.sequenceIndex + 1,
+    advancesSplit: true,
+    selectionMode: "AUTO",
+    sessionIntent: slot.intent.toUpperCase(),
+    seedRevisionId: authority.revisionId,
+    seedRevisionNumber: authority.revisionNumber,
+    seedPayloadHash: authority.revisionHash,
+    selectionMetadata: {
+      sessionDecisionReceipt: {
+        ...buildSessionDecisionReceipt({
+          cycleContext: {
+            weekInMeso: slot.weekInMeso,
+            weekInBlock: slot.phase === "DELOAD" ? 1 : slot.weekInMeso,
+            mesocycleLength: 5,
+            phase: slot.phase === "DELOAD" ? "deload" : "accumulation",
+            blockType: slot.phase === "DELOAD" ? "deload" : "accumulation",
+            isDeload: slot.phase === "DELOAD",
+            source: "computed",
+          },
+          sessionProvenance: {
+            mesocycleId: authority.mesocycleId,
+            compositionSource:
+              slot.phase === "DELOAD"
+                ? "deload_seed_replay"
+                : "persisted_slot_plan_seed",
+            seedProvenance: {
+              revisionId: authority.revisionId,
+              revision: authority.revisionNumber,
+              hash: authority.revisionHash,
+            },
+          },
+          sessionSlot: {
+            slotId: slot.slotId,
+            intent: slot.intent,
+            sequenceIndex: slot.sequenceIndex,
+            sequenceLength: slot.sequenceLength,
+            source: "mesocycle_slot_sequence",
+          },
+        }),
+        scheduledSlotReceipt: buildScheduledSlotReceipt(authority, slot),
+      },
+    },
+  };
+}
 
 function buildTestStimulusProfile(
   primaryMuscles: string[],
@@ -2834,6 +2905,143 @@ describe("generateSessionFromIntent", () => {
     } finally {
       selectSpy.mockRestore();
     }
+  });
+
+  it("replays Week 3 prescriptions and receipt identity from the authored obligation after a Week 2 skip", async () => {
+    const expected = EXPECTED_V4_REFERENCE_CASES.find(
+      ({ week, slotId }) => week === 3 && slotId === "lower-a",
+    );
+    expect(expected).toBeDefined();
+    if (!expected) return;
+
+    const seed = buildV4CustomPlanReferenceAcceptedSeed();
+    const library = buildV4ReferenceExerciseLibrary(seed);
+    const slotSequenceJson = primeV4ReferenceGeneration(
+      seed,
+      library,
+      v4ReferenceMocks,
+    );
+    primeV4ReferenceWeek(expected, v4ReferenceMocks);
+    const baseMesocycle = buildV4ReferenceMesocycle(
+      expected,
+      seed,
+      slotSequenceJson,
+      {
+        revisionId: "v4-reference-revision-1",
+        hash: V4_REFERENCE_CANONICAL_HASH,
+      },
+    );
+    const activeMesocycle = {
+      ...baseMesocycle,
+      accumulationSessionsCompleted: 7,
+      slotSequenceJson: {
+        ...slotSequenceJson,
+        source: seed.source,
+        sessionsPerWeek: 4,
+      },
+      currentSeedRevisionId: baseMesocycle.currentSeedRevision.id,
+      currentSeedRevision: {
+        ...baseMesocycle.currentSeedRevision,
+        mesocycleId: baseMesocycle.id,
+      },
+    };
+    const authorityResolution = resolveV4ScheduleAuthority(activeMesocycle);
+    expect(authorityResolution.status).toBe("available");
+    if (authorityResolution.status !== "available") return;
+    const terminalWorkouts = authorityResolution.authority.requiredSlots
+      .slice(0, 8)
+      .map((slot, index) =>
+        buildV4TerminalWorkout({
+          authority: authorityResolution.authority,
+          slot,
+          status: index === 7 ? "SKIPPED" : "COMPLETED",
+        }),
+      );
+    const nextWorkoutContext = resolveV4NextWorkoutContext({
+      authority: authorityResolution.authority,
+      workouts: terminalWorkouts,
+    });
+    const scheduledV4Obligation = resolveRequestedV4ScheduledGenerationObligation({
+      nextWorkoutContext,
+      requestedIntent: expected.focus,
+      explicitSlotId: expected.slotId,
+    });
+    expect(nextWorkoutContext).toMatchObject({
+      weekInMeso: 3,
+    });
+    expect(
+      nextWorkoutContext.v4ScheduleResolution?.unresolvedSlotsInNextWeek.some(
+        (slot) => slot.weekInMeso === 3 && slot.slotId === "lower-a",
+      ),
+    ).toBe(true);
+    expect(scheduledV4Obligation?.requiredSlot).toMatchObject({
+      weekInMeso: 3,
+      slotId: "lower-a",
+    });
+    if (!scheduledV4Obligation) return;
+    const requiredSlot = scheduledV4Obligation.requiredSlot;
+    loadActiveMesocycleMock.mockResolvedValue(activeMesocycle);
+
+    const result = await generateSessionFromIntent("user-1", {
+      intent: expected.focus,
+      slotId: expected.slotId,
+      advancingSlot: {
+        slotId: requiredSlot.slotId,
+        intent: requiredSlot.intent,
+        sequenceIndex: requiredSlot.sequenceIndex,
+        sequenceLength: requiredSlot.sequenceLength,
+        source: "mesocycle_slot_sequence",
+      },
+      scheduledV4Obligation,
+    });
+
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+    const actual = buildActualV4ReferenceCase({
+      week: expected.week,
+      slotId: expected.slotId,
+      seed,
+      result,
+      selectionFallbackUsed: false,
+    });
+    assertV4ReferenceCase(actual, expected, "Week 2 skip -> Week 3 Lower A");
+    expect(result.selection.sessionDecisionReceipt).toMatchObject({
+      cycleContext: { weekInMeso: 3 },
+      sessionSlot: { slotId: "lower-a" },
+      lifecycleRirTarget: expect.any(Object),
+    });
+    expect(
+      resolveV4RequiredSlotFromDecisionReceipt({
+        authority: scheduledV4Obligation.authority,
+        selectionMetadata: {
+          sessionDecisionReceipt: result.selection.sessionDecisionReceipt,
+        },
+        sessionIntent: result.sessionIntent,
+      }),
+    ).toEqual({ requiredSlot });
+    const tx = {
+      workout: { findMany: vi.fn().mockResolvedValue(terminalWorkouts) },
+    };
+    await expect(
+      resolveV4ScheduleBeforeWorkoutCreation(tx as never, scheduledV4Obligation),
+    ).resolves.toBeUndefined();
+    tx.workout.findMany.mockResolvedValue([
+      ...terminalWorkouts,
+      buildV4TerminalWorkout({
+        authority: scheduledV4Obligation.authority,
+        slot: requiredSlot,
+        status: "PLANNED",
+      }),
+    ]);
+    await expect(
+      resolveV4ScheduleBeforeWorkoutCreation(tx as never, scheduledV4Obligation),
+    ).rejects.toThrow("V4_SCHEDULE_SLOT_ALREADY_MATERIALIZED");
+    expect(terminalWorkouts[4]).toMatchObject({
+      status: "COMPLETED",
+      mesocycleWeekSnapshot: 2,
+    });
+    expect(terminalWorkouts[7]?.status).toBe("SKIPPED");
+    expect(activeMesocycle.accumulationSessionsCompleted).toBe(7);
   });
 
   it("rejects meaningful mutations at the exhaustive V4 reference comparison boundary", async () => {

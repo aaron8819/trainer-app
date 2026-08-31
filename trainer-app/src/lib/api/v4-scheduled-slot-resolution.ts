@@ -47,6 +47,11 @@ export type V4ScheduleAuthority = {
   requiredSlots: V4RequiredSlot[];
 };
 
+export type V4ScheduledGenerationObligation = {
+  authority: V4ScheduleAuthority;
+  requiredSlot: V4RequiredSlot;
+};
+
 export type V4ScheduleAuthorityResolution =
   | { status: "not_v4" }
   | { status: "available"; authority: V4ScheduleAuthority }
@@ -240,6 +245,57 @@ export function resolveV4ScheduleAuthority(
       requiredSlots: expectedWeeks.flatMap(([weekInMeso, phase]) =>
         weeklySlots.map((slot) => ({ ...slot, weekInMeso, phase })),
       ),
+    },
+  };
+}
+
+export function validateV4ScheduledGenerationObligation(input: {
+  mesocycle: V4ScheduleAuthorityInput | null;
+  obligation: V4ScheduledGenerationObligation;
+}):
+  | { status: "available"; obligation: V4ScheduledGenerationObligation }
+  | { status: "blocked"; reason: string } {
+  if (!input.mesocycle) {
+    return { status: "blocked", reason: "active_mesocycle_missing" };
+  }
+  const resolution = resolveV4ScheduleAuthority(input.mesocycle);
+  if (resolution.status !== "available") {
+    return {
+      status: "blocked",
+      reason:
+        resolution.status === "blocked"
+          ? resolution.reason
+          : "active_mesocycle_is_not_v4",
+    };
+  }
+
+  const canonicalAuthority = resolution.authority;
+  const suppliedAuthority = input.obligation.authority;
+  if (
+    suppliedAuthority.mesocycleId !== canonicalAuthority.mesocycleId ||
+    suppliedAuthority.revisionId !== canonicalAuthority.revisionId ||
+    suppliedAuthority.revisionNumber !== canonicalAuthority.revisionNumber ||
+    suppliedAuthority.revisionHash !== canonicalAuthority.revisionHash ||
+    suppliedAuthority.slotsPerWeek !== canonicalAuthority.slotsPerWeek
+  ) {
+    return { status: "blocked", reason: "schedule_authority_changed" };
+  }
+
+  const suppliedSlot = input.obligation.requiredSlot;
+  const canonicalSlot = canonicalAuthority.requiredSlots.find(
+    (slot) =>
+      slot.weekInMeso === suppliedSlot.weekInMeso &&
+      slot.slotId === suppliedSlot.slotId,
+  );
+  if (!canonicalSlot || stableJson(canonicalSlot) !== stableJson(suppliedSlot)) {
+    return { status: "blocked", reason: "required_slot_changed" };
+  }
+
+  return {
+    status: "available",
+    obligation: {
+      authority: canonicalAuthority,
+      requiredSlot: canonicalSlot,
     },
   };
 }

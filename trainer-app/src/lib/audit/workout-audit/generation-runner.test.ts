@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => {
   const loadActiveMesocycle = vi.fn();
   const deriveCurrentMesocycleSession = vi.fn();
   const loadProjectedWeekVolumeReport = vi.fn();
+  const resolveRequestedV4ScheduledGenerationObligation = vi.fn();
   const buildPreSessionReadinessProjectedWeekEvidence = vi.fn();
   const loadPreSessionReadinessSnapshotAuditDiagnostics = vi.fn();
   const loadPreSessionReadinessSavedWorkoutEvidence = vi.fn();
@@ -21,6 +22,7 @@ const mocks = vi.hoisted(() => {
     loadActiveMesocycle,
     deriveCurrentMesocycleSession,
     loadProjectedWeekVolumeReport,
+    resolveRequestedV4ScheduledGenerationObligation,
     buildPreSessionReadinessProjectedWeekEvidence,
     loadPreSessionReadinessSnapshotAuditDiagnostics,
     loadPreSessionReadinessSavedWorkoutEvidence,
@@ -36,6 +38,8 @@ const mocks = vi.hoisted(() => {
   };
 });
 
+vi.mock("@/lib/db/prisma", () => ({ prisma: {} }));
+
 vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
   loadActiveMesocycle: (...args: unknown[]) => mocks.loadActiveMesocycle(...args),
   deriveCurrentMesocycleSession: (...args: unknown[]) =>
@@ -47,6 +51,11 @@ vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
 vi.mock("@/lib/api/projected-week-volume", () => ({
   loadProjectedWeekVolumeReport: (...args: unknown[]) =>
     mocks.loadProjectedWeekVolumeReport(...args),
+}));
+
+vi.mock("@/lib/api/next-session", () => ({
+  resolveRequestedV4ScheduledGenerationObligation: (...args: unknown[]) =>
+    mocks.resolveRequestedV4ScheduledGenerationObligation(...args),
 }));
 
 vi.mock("@/lib/api/pre-session-readiness-evidence-builder", () => ({
@@ -131,6 +140,7 @@ const okGenerationResult = {
 describe("runWorkoutAuditGeneration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.resolveRequestedV4ScheduledGenerationObligation.mockReturnValue(undefined);
     mocks.loadActiveMesocycle.mockResolvedValue({ state: "ACTIVE_ACCUMULATION" });
     mocks.loadPreSessionReadinessSavedWorkoutEvidence.mockResolvedValue(null);
     mocks.deriveCurrentMesocycleSession.mockReturnValue({ week: 4, session: 1 });
@@ -655,6 +665,74 @@ describe("runWorkoutAuditGeneration", () => {
       },
       intent: "legs",
       targetMuscles: undefined,
+      plannerDiagnosticsMode: "standard",
+    });
+  });
+
+  it("forwards the exact V4 authored obligation into audit generation", async () => {
+    const requiredSlot = {
+      weekInMeso: 3,
+      slotId: "lower_a",
+      intent: "lower",
+      phase: "ACCUMULATION",
+      sequenceIndex: 0,
+      sequenceLength: 4,
+    } as const;
+    const scheduledV4Obligation = {
+      authority: {
+        mesocycleId: "meso-1",
+        revisionId: "revision-1",
+        revisionNumber: 1,
+        revisionHash: "a".repeat(64),
+        slotsPerWeek: 4,
+        requiredSlots: [requiredSlot],
+      },
+      requiredSlot,
+    };
+    mocks.resolveRequestedV4ScheduledGenerationObligation.mockReturnValueOnce(
+      scheduledV4Obligation,
+    );
+    const nextSession: NonNullable<WorkoutAuditContext["nextSession"]> = {
+      intent: "lower",
+      slotId: "lower_a",
+      slotSequenceIndex: 0,
+      slotSequenceLength: 4,
+      slotSource: "mesocycle_slot_sequence",
+      existingWorkoutId: null,
+      isExisting: false,
+      source: "rotation",
+      weekInMeso: 3,
+      sessionInWeek: 1,
+      derivationTrace: [],
+      selectedIncompleteStatus: null,
+    };
+
+    await runWorkoutAuditGeneration({
+      mode: "future-week",
+      requestedMode: "future-week",
+      userId: "user-1",
+      plannerDiagnosticsMode: "standard",
+      generationInput: { intent: "lower", source: "derived-next-session" },
+      nextSession,
+    });
+
+    expect(
+      mocks.resolveRequestedV4ScheduledGenerationObligation,
+    ).toHaveBeenCalledWith({
+      nextWorkoutContext: nextSession,
+      requestedIntent: "lower",
+    });
+    expect(mocks.generateSessionFromIntent).toHaveBeenCalledWith("user-1", {
+      intent: "lower",
+      targetMuscles: undefined,
+      advancingSlot: {
+        slotId: "lower_a",
+        intent: "lower",
+        sequenceIndex: 0,
+        sequenceLength: 4,
+        source: "mesocycle_slot_sequence",
+      },
+      scheduledV4Obligation,
       plannerDiagnosticsMode: "standard",
     });
   });

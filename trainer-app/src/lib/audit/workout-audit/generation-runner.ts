@@ -5,6 +5,7 @@ import {
 } from "@/lib/api/mesocycle-lifecycle";
 import { evaluateAcceptedMesocycleSeedProvenance } from "@/lib/api/accepted-mesocycle-seed-provenance";
 import { loadProjectedWeekVolumeReport } from "@/lib/api/projected-week-volume";
+import { resolveRequestedV4ScheduledGenerationObligation } from "@/lib/api/next-session";
 import { buildPreSessionReadinessProjectedWeekEvidence } from "@/lib/api/pre-session-readiness-evidence-builder";
 import { loadPreSessionReadinessSnapshotAuditDiagnostics } from "@/lib/api/pre-session-readiness-snapshot";
 import {
@@ -134,18 +135,36 @@ async function buildGeneratedSessionRunFields(input: {
   }
   const useDeloadGeneration =
     mode === "deload" || activeMesocycle?.state === "ACTIVE_DELOAD";
-  const advancingSlot = resolveAdvancingSlotSnapshot(context);
+  const scheduledV4Obligation = context.nextSession
+    ? resolveRequestedV4ScheduledGenerationObligation({
+        nextWorkoutContext: context.nextSession,
+        requestedIntent: generationInput.intent,
+      })
+    : undefined;
+  const advancingSlot = scheduledV4Obligation
+    ? {
+        slotId: scheduledV4Obligation.requiredSlot.slotId,
+        intent: scheduledV4Obligation.requiredSlot.intent,
+        sequenceIndex: scheduledV4Obligation.requiredSlot.sequenceIndex,
+        sequenceLength: scheduledV4Obligation.requiredSlot.sequenceLength,
+        source: "mesocycle_slot_sequence" as const,
+      }
+    : resolveAdvancingSlotSnapshot(context);
   const generationResult =
     useDeloadGeneration
       ? await generateDeloadSessionFromIntent(context.userId, {
           intent: generationInput.intent,
           targetMuscles: generationInput.targetMuscles,
+          ...(scheduledV4Obligation
+            ? { advancingSlot, scheduledV4Obligation }
+            : {}),
           plannerDiagnosticsMode: context.plannerDiagnosticsMode,
         })
       : await generateSessionFromIntent(context.userId, {
           intent: generationInput.intent,
           targetMuscles: generationInput.targetMuscles,
-          advancingSlot,
+          ...(advancingSlot ? { advancingSlot } : {}),
+          ...(scheduledV4Obligation ? { scheduledV4Obligation } : {}),
           plannerDiagnosticsMode: context.plannerDiagnosticsMode,
         });
   const generationPath: WorkoutAuditGenerationPath =

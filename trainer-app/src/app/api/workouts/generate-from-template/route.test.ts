@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => {
   const loadActiveMesocycle = vi.fn();
   const loadPendingMesocycleHandoff = vi.fn();
   const loadNextWorkoutContext = vi.fn();
+  const resolveRequestedV4ScheduledGenerationObligation = vi.fn();
   const generateSessionFromTemplate = vi.fn();
   const generateDeloadSessionFromTemplate = vi.fn();
   const applyAutoregulation = vi.fn();
@@ -21,6 +22,7 @@ const mocks = vi.hoisted(() => {
     loadActiveMesocycle,
     loadPendingMesocycleHandoff,
     loadNextWorkoutContext,
+    resolveRequestedV4ScheduledGenerationObligation,
     generateSessionFromTemplate,
     generateDeloadSessionFromTemplate,
     applyAutoregulation,
@@ -41,6 +43,8 @@ vi.mock("@/lib/api/mesocycle-handoff", () => ({
 
 vi.mock("@/lib/api/next-session", () => ({
   loadNextWorkoutContext: (...args: unknown[]) => mocks.loadNextWorkoutContext(...args),
+  resolveRequestedV4ScheduledGenerationObligation: (...args: unknown[]) =>
+    mocks.resolveRequestedV4ScheduledGenerationObligation(...args),
 }));
 
 vi.mock("@/lib/api/template-session", () => {
@@ -105,6 +109,7 @@ describe("POST /api/workouts/generate-from-template", () => {
       derivationTrace: [],
       selectedIncompleteStatus: null,
     });
+    mocks.resolveRequestedV4ScheduledGenerationObligation.mockReturnValue(undefined);
     mocks.applyAutoregulation.mockImplementation(async (_userId, workout) => ({
       adjusted: workout,
       applied: false,
@@ -527,6 +532,44 @@ describe("POST /api/workouts/generate-from-template", () => {
   });
 
   it("returns canonical selectionMetadata for template generation", async () => {
+    const requiredSlot = {
+      weekInMeso: 2,
+      phase: "ACCUMULATION" as const,
+      slotId: "push_a",
+      intent: "push",
+      sequenceIndex: 0,
+      sequenceLength: 4,
+    };
+    const scheduledV4Obligation = {
+      authority: {
+        mesocycleId: "meso-1",
+        revisionId: "revision-1",
+        revisionNumber: 1,
+        revisionHash: "a".repeat(64),
+        slotsPerWeek: 4,
+        requiredSlots: [requiredSlot],
+      },
+      requiredSlot,
+    };
+    mocks.loadNextWorkoutContext.mockResolvedValue({
+      activeMesocycleId: "meso-1",
+      intent: "push",
+      slotId: "push_a",
+      slotSequenceIndex: 0,
+      slotSequenceLength: 4,
+      slotSource: "mesocycle_slot_sequence",
+      existingWorkoutId: null,
+      isExisting: false,
+      source: "rotation",
+      weekInMeso: 2,
+      sessionInWeek: 1,
+      derivationTrace: [],
+      selectedIncompleteStatus: null,
+      v4ScheduleAuthority: scheduledV4Obligation.authority,
+    });
+    mocks.resolveRequestedV4ScheduledGenerationObligation.mockReturnValue(
+      scheduledV4Obligation,
+    );
     mocks.generateSessionFromTemplate.mockResolvedValue({
       workout: {
         id: "w1",
@@ -638,6 +681,14 @@ describe("POST /api/workouts/generate-from-template", () => {
       "user-1",
       "template-1",
       expect.objectContaining({
+        scheduledV4Obligation,
+        advancingSlot: {
+          slotId: "push_a",
+          intent: "push",
+          sequenceIndex: 0,
+          sequenceLength: 4,
+          source: "mesocycle_slot_sequence",
+        },
         exerciseReplacements: [{
           placementId: "template-placement-bench",
           orderIndex: 0,
@@ -661,6 +712,7 @@ describe("POST /api/workouts/generate-from-template", () => {
       slotId: "push_a",
       intent: "push",
       sequenceIndex: 0,
+      sequenceLength: 4,
       source: "mesocycle_slot_sequence",
     });
     expect(body.selectionMetadata.sessionDecisionReceipt.sessionProvenance).toEqual({

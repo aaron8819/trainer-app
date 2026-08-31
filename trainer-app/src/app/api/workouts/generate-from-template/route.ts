@@ -9,6 +9,7 @@ import { loadPendingMesocycleHandoff } from "@/lib/api/mesocycle-handoff";
 import {
   FINAL_ACCUMULATION_WEEK_CLOSE_PENDING_MESSAGE,
   loadNextWorkoutContext,
+  resolveRequestedV4ScheduledGenerationObligation,
 } from "@/lib/api/next-session";
 import type { GenerateFromTemplateResponse } from "@/lib/api/template-session/types";
 import {
@@ -87,15 +88,45 @@ export async function POST(request: Request) {
       { status: 409 }
     );
   }
+  const scheduledV4Obligation = resolveRequestedV4ScheduledGenerationObligation({
+    nextWorkoutContext,
+    explicitSlotId: parsed.data.slotId,
+  });
+  if (nextWorkoutContext.v4ScheduleAuthority && !scheduledV4Obligation) {
+    return NextResponse.json(
+      { error: "Selected scheduled workout is no longer eligible. Refresh and retry." },
+      { status: 409 },
+    );
+  }
+  const advancingSlot = scheduledV4Obligation
+    ? {
+        slotId: scheduledV4Obligation.requiredSlot.slotId,
+        intent: scheduledV4Obligation.requiredSlot.intent,
+        sequenceIndex: scheduledV4Obligation.requiredSlot.sequenceIndex,
+        sequenceLength: scheduledV4Obligation.requiredSlot.sequenceLength,
+        source: "mesocycle_slot_sequence" as const,
+      }
+    : undefined;
+  const generationParams = {
+    pinnedExerciseIds: parsed.data.pinnedExerciseIds,
+    autoFillUnpinned: parsed.data.autoFillUnpinned,
+    slotId: parsed.data.slotId,
+    exerciseReplacements: parsed.data.exerciseReplacements,
+    advancingSlot,
+    scheduledV4Obligation,
+  };
   const result =
     activeMesocycle?.state === "ACTIVE_DELOAD"
-      ? await generateDeloadSessionFromTemplate(user.id, parsed.data.templateId)
-      : await generateSessionFromTemplate(user.id, parsed.data.templateId, {
-          pinnedExerciseIds: parsed.data.pinnedExerciseIds,
-          autoFillUnpinned: parsed.data.autoFillUnpinned,
-          slotId: parsed.data.slotId,
-          exerciseReplacements: parsed.data.exerciseReplacements,
-        });
+      ? await generateDeloadSessionFromTemplate(
+          user.id,
+          parsed.data.templateId,
+          generationParams,
+        )
+      : await generateSessionFromTemplate(
+          user.id,
+          parsed.data.templateId,
+          generationParams,
+        );
 
   if ("error" in result) {
     return NextResponse.json({ error: result.error }, { status: 400 });
@@ -108,7 +139,8 @@ export async function POST(request: Request) {
   const autoregulated = await applyAutoregulation(user.id, result.workout, result.audit);
   const selectionMetadata = attachSessionSlotMetadata(
     buildCanonicalSelectionMetadata(result.selection, autoregulated),
-    nextWorkoutContext.source === "rotation" &&
+    advancingSlot ??
+      (nextWorkoutContext.source === "rotation" &&
       nextWorkoutContext.intent === result.sessionIntent &&
       nextWorkoutContext.slotId &&
       nextWorkoutContext.slotSequenceIndex != null &&
@@ -121,7 +153,7 @@ export async function POST(request: Request) {
           sequenceLength: activeMesocycle?.sessionsPerWeek,
           source: nextWorkoutContext.slotSource,
         }
-      : undefined
+      : undefined)
   );
   const receipt = readSessionDecisionReceipt(selectionMetadata);
   if (

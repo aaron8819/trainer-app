@@ -181,6 +181,7 @@ vi.mock("@/lib/api/next-session", () => ({
     mocks.loadNextWorkoutContext(...args),
   loadRequestedAdvancingSlotSnapshot: (...args: unknown[]) =>
     mocks.loadRequestedAdvancingSlotSnapshot(...args),
+  resolveRequestedV4ScheduledGenerationObligation: () => undefined,
 }));
 
 vi.mock("@/lib/api/mesocycle-lifecycle-state", async (importOriginal) => {

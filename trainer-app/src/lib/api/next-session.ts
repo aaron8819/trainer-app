@@ -29,6 +29,7 @@ import {
   resolveV4ScheduledSlots,
   type V4ScheduleAuthority,
   type V4ScheduleResolution,
+  type V4ScheduledGenerationObligation,
 } from "./v4-scheduled-slot-resolution";
 
 type MesoSessionInput = {
@@ -103,6 +104,7 @@ export type NextWorkoutContext = {
     | null;
   eligibleSlotSnapshots?: SessionSlotSnapshot[];
   v4ScheduleResolution?: Extract<V4ScheduleResolution, { status: "available" }>;
+  v4ScheduleAuthority?: V4ScheduleAuthority;
 };
 
 type IncompleteWorkoutCandidate = {
@@ -948,7 +950,48 @@ export function resolveV4NextWorkoutContext(input: {
     lifecycleBlocker: null,
     eligibleSlotSnapshots,
     v4ScheduleResolution: resolution,
+    v4ScheduleAuthority: input.authority,
   };
+}
+
+export function resolveRequestedV4ScheduledGenerationObligation(input: {
+  nextWorkoutContext: Pick<
+    NextWorkoutContext,
+    | "intent"
+    | "slotId"
+    | "v4ScheduleAuthority"
+    | "v4ScheduleResolution"
+  >;
+  requestedIntent?: string;
+  explicitSlotId?: string;
+}): V4ScheduledGenerationObligation | undefined {
+  const authority = input.nextWorkoutContext.v4ScheduleAuthority;
+  const resolution = input.nextWorkoutContext.v4ScheduleResolution;
+  if (!authority || !resolution) {
+    return undefined;
+  }
+
+  const requestedIntent = input.requestedIntent?.trim().toLowerCase();
+  const explicitSlotId = input.explicitSlotId?.trim();
+  const defaultSlotId = input.nextWorkoutContext.slotId;
+  const requiredSlot = explicitSlotId
+    ? resolution.unresolvedSlotsInNextWeek.find(
+        (slot) =>
+          slot.slotId === explicitSlotId &&
+          (!requestedIntent || slot.intent === requestedIntent),
+      )
+    : requestedIntent
+      ? resolution.unresolvedSlotsInNextWeek.find(
+          (slot) => slot.intent === requestedIntent,
+        )
+      : resolution.unresolvedSlotsInNextWeek.find(
+          (slot) => slot.slotId === defaultSlotId,
+        );
+  if (!requiredSlot) {
+    return undefined;
+  }
+
+  return { authority, requiredSlot };
 }
 
 export type V4ScheduleWorkoutCandidate = {

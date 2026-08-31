@@ -33,7 +33,10 @@ import {
 } from "./mesocycle-slot-runtime";
 import { deriveCurrentMesocycleSession, getWeeklyVolumeTarget } from "./mesocycle-lifecycle";
 import { loadActiveMesocycle } from "./mesocycle-lifecycle-state";
-import { loadNextWorkoutContext } from "./next-session";
+import {
+  loadNextWorkoutContext,
+  resolveRequestedV4ScheduledGenerationObligation,
+} from "./next-session";
 import {
   loadPersistedIncompleteWorkoutProjections,
   type IncompleteWorkoutProjection,
@@ -642,7 +645,12 @@ export async function loadProjectedWeekVolumeReport(input: {
   const plannerDiagnosticsMode = input.plannerDiagnosticsMode ?? "standard";
   const activeMesocycle = await loadActiveMesocycleForProjection(input.userId);
   const currentSession = deriveCurrentMesocycleSession(activeMesocycle);
-  const currentWeek = currentSession.week;
+  const nextWorkoutContext = await loadNextWorkoutContext(input.userId);
+  const scheduledV4Obligation = resolveRequestedV4ScheduledGenerationObligation({
+    nextWorkoutContext,
+  });
+  const currentWeek =
+    scheduledV4Obligation?.requiredSlot.weekInMeso ?? currentSession.week;
   const mesoStartDate = new Date(activeMesocycle.macroCycle.startDate);
   mesoStartDate.setDate(mesoStartDate.getDate() + activeMesocycle.startWeek * 7);
   const weekStart = computeMesoWeekStartDate(mesoStartDate, currentWeek);
@@ -662,11 +670,11 @@ export async function loadProjectedWeekVolumeReport(input: {
     snapshot,
     completedVolume,
     performedAdvancingSlots,
-    nextWorkoutContext,
   ] =
     await Promise.all([
       loadPreloadedGenerationSnapshot(input.userId, {
         activeMesocycle,
+        scheduledV4Obligation,
       }),
       loadMesocycleWeekMuscleVolume(prisma, {
         userId: input.userId,
@@ -682,10 +690,11 @@ export async function loadProjectedWeekVolumeReport(input: {
         mesocycleId: activeMesocycle.id,
         week: currentWeek,
       }),
-      loadNextWorkoutContext(input.userId),
     ]);
 
-  const mapped = buildMappedGenerationContextFromSnapshot(input.userId, snapshot);
+  const mapped = buildMappedGenerationContextFromSnapshot(input.userId, snapshot, {
+    scheduledV4Obligation,
+  });
   const completedVolumeByMuscle =
     toProjectedWeekVolumeByMuscle(completedVolume);
   const performedAdvancingSlotIdsThisWeek = performedAdvancingSlots
@@ -741,36 +750,49 @@ export async function loadProjectedWeekVolumeReport(input: {
     };
   }
 
-  const nextRuntimeSlot = deriveNextRuntimeSlotSession({
-    mesocycle: activeMesocycle,
-    slotSequenceJson: activeMesocycle.slotSequenceJson,
-    weeklySchedule: mapped.mappedConstraints.weeklySchedule,
-    performedAdvancingSlotIdsThisWeek,
-    performedAdvancingIntentsThisWeek,
-  });
-
-  const futureSlots =
-    nextRuntimeSlot.intent == null
-      ? []
-      : buildRemainingFutureSlotsFromRuntime({
+  const exactV4ProjectedSlots =
+    nextWorkoutContext.v4ScheduleResolution?.unresolvedSlotsInNextWeek.map(
+      (slot) => ({
+        slotId: slot.slotId,
+        intent: slot.intent,
+        sequenceIndex: slot.sequenceIndex,
+      }),
+    );
+  const projectionSequence = exactV4ProjectedSlots
+    ? {
+        startSession: (exactV4ProjectedSlots[0]?.sequenceIndex ?? 0) + 1,
+        slots: exactV4ProjectedSlots,
+      }
+    : (() => {
+        const nextRuntimeSlot = deriveNextRuntimeSlotSession({
+          mesocycle: activeMesocycle,
+          slotSequenceJson: activeMesocycle.slotSequenceJson,
+          weeklySchedule: mapped.mappedConstraints.weeklySchedule,
+          performedAdvancingSlotIdsThisWeek,
+          performedAdvancingIntentsThisWeek,
+        });
+        if (nextRuntimeSlot.intent == null) {
+          return { startSession: 0, slots: [] };
+        }
+        const futureSlots = buildRemainingFutureSlotsFromRuntime({
           slotSequenceJson: activeMesocycle.slotSequenceJson,
           weeklySchedule: mapped.mappedConstraints.weeklySchedule,
           performedAdvancingSlotsThisWeek: performedAdvancingSlots,
           currentSlotId: nextRuntimeSlot.slotId,
           currentIntent: nextRuntimeSlot.intent,
         });
-  const orderedProjectedSlots = nextRuntimeSlot.intent
-    ? [
-        {
-          slotId: nextRuntimeSlot.slotId,
-          intent: nextRuntimeSlot.intent,
-        },
-        ...futureSlots.map((slot) => ({
-          slotId: slot.slotId,
-          intent: slot.intent,
-        })),
-      ]
-    : [];
+        return {
+          startSession: nextRuntimeSlot.session,
+          slots: [
+            { slotId: nextRuntimeSlot.slotId, intent: nextRuntimeSlot.intent },
+            ...futureSlots.map((slot) => ({
+              slotId: slot.slotId,
+              intent: slot.intent,
+            })),
+          ],
+        };
+      })();
+  const orderedProjectedSlots = projectionSequence.slots;
 
   const projectionNotes: string[] = [];
   let incompleteWorkoutProjections = [
@@ -978,7 +1000,7 @@ export async function loadProjectedWeekVolumeReport(input: {
         slotId: slot.slotId ?? null,
         intent: slot.intent as SessionIntent,
         week: currentWeek,
-        sessionNumber: nextRuntimeSlot.session + index,
+        sessionNumber: projectionSequence.startSession + index,
         occurredAt: projectedAt,
       }),
       occurredAt: projectedAt,

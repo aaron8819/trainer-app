@@ -13,6 +13,7 @@ import {
   FINAL_ACCUMULATION_WEEK_CLOSE_PENDING_MESSAGE,
   loadNextWorkoutContext,
   loadRequestedAdvancingSlotSnapshot,
+  resolveRequestedV4ScheduledGenerationObligation,
 } from "@/lib/api/next-session";
 import type { GenerateFromIntentResponse } from "@/lib/api/template-session/types";
 import {
@@ -255,6 +256,20 @@ export async function POST(request: Request) {
           explicitSlotId: parsed.data.slotId,
           nextWorkoutContext,
         });
+  const scheduledV4Obligation =
+    shouldApplyOptionalGapFill || shouldApplySupplementalDeficitSession
+      ? undefined
+      : resolveRequestedV4ScheduledGenerationObligation({
+          nextWorkoutContext,
+          requestedIntent: parsed.data.intent,
+          explicitSlotId: parsed.data.slotId,
+        });
+  if (nextWorkoutContext.v4ScheduleAuthority && !scheduledV4Obligation) {
+    return NextResponse.json(
+      { error: "Selected scheduled workout is no longer eligible. Refresh and retry." },
+      { status: 409 },
+    );
+  }
   if (parsed.data.slotId && !advancingSlot) {
     return NextResponse.json(
       {
@@ -281,6 +296,7 @@ export async function POST(request: Request) {
     : {
         ...parsed.data,
         advancingSlot,
+        scheduledV4Obligation,
         ...(shouldApplySupplementalDeficitSession
           ? {
               supplementalPlannerProfile: true,
@@ -322,6 +338,11 @@ export async function POST(request: Request) {
       generationReceipt.sessionSlot.sequenceIndex === advancingSlot.sequenceIndex &&
       generationReceipt.sessionSlot.sequenceLength === advancingSlot.sequenceLength &&
       generationReceipt.sessionSlot.source === advancingSlot.source &&
+      (!scheduledV4Obligation ||
+        (generationReceipt.cycleContext.weekInMeso ===
+          scheduledV4Obligation.requiredSlot.weekInMeso &&
+          scheduledV4Obligation.authority.mesocycleId === activeMesocycle.id &&
+          scheduledV4Obligation.authority.revisionId === revision?.id)) &&
       receiptProvenance?.mesocycleId === activeMesocycle.id &&
       receiptProvenance.compositionSource === "persisted_slot_plan_seed" &&
       revision?.provenanceStatus === "exact" &&

@@ -38,11 +38,14 @@ import type {
   ApplyLoadsHistoryEvidence,
   SelectedAnchorLoadEvidence,
 } from "@/lib/engine/apply-loads";
+import type { V4ScheduledGenerationObligation } from "@/lib/api/v4-scheduled-slot-resolution";
 
 export type GenerateTemplateSessionParams = {
   pinnedExerciseIds?: string[];
   autoFillUnpinned?: boolean;
   slotId?: string;
+  advancingSlot?: SessionSlotSnapshot;
+  scheduledV4Obligation?: V4ScheduledGenerationObligation;
   exerciseReplacements?: Array<{
     placementId: string;
     orderIndex: number;
@@ -55,6 +58,7 @@ export type GenerateIntentSessionInput = {
   intent: SessionIntent;
   slotId?: string;
   advancingSlot?: SessionSlotSnapshot;
+  scheduledV4Obligation?: V4ScheduledGenerationObligation;
   targetMuscles?: string[];
   projectionRepairMuscles?: string[];
   slotPreselectionDemands?: SlotPreselectionDemand[];

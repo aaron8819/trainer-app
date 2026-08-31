@@ -34,6 +34,10 @@ import {
   buildNoDeloadDecision,
   getCanonicalDeloadReason,
 } from "@/lib/deload/semantics";
+import {
+  validateV4ScheduledGenerationObligation,
+  type V4ScheduledGenerationObligation,
+} from "@/lib/api/v4-scheduled-slot-resolution";
 const STRICT_STIMULUS_COVERAGE_ENV = "STRICT_STIMULUS_PROFILE_COVERAGE";
 const CLEANUP_STRICT_STIMULUS_COVERAGE_ENV = "CLEANUP_STRICT_STIMULUS_PROFILE_COVERAGE";
 
@@ -150,6 +154,13 @@ export type PreloadedGenerationSnapshot = {
   phaseBlockContext?: GenerationPhaseBlockContext;
 };
 
+type GenerationContextOptions = {
+  anchorWeek?: number;
+  weekCloseContext?: { targetWeek: number };
+  forceAccumulation?: boolean;
+  scheduledV4Obligation?: V4ScheduledGenerationObligation;
+};
+
 async function loadMesocycleRoleRows(
   mesocycleId: string | undefined
 ): Promise<PreloadedGenerationSnapshot["mesocycleRoleRows"]> {
@@ -177,11 +188,8 @@ async function loadMesocycleRoleRows(
 
 export async function loadPreloadedGenerationSnapshot(
   userId: string,
-  options?: {
+  options?: GenerationContextOptions & {
     activeMesocycle?: ActiveMesocycleWithBlocks | null;
-    anchorWeek?: number;
-    weekCloseContext?: { targetWeek: number };
-    forceAccumulation?: boolean;
   }
 ): Promise<PreloadedGenerationSnapshot> {
   const activeMesocycle =
@@ -212,11 +220,7 @@ export async function loadPreloadedGenerationSnapshot(
 export function buildMappedGenerationContextFromSnapshot(
   userId: string,
   snapshot: PreloadedGenerationSnapshot,
-  options?: {
-    anchorWeek?: number;
-    weekCloseContext?: { targetWeek: number };
-    forceAccumulation?: boolean;
-  }
+  options?: GenerationContextOptions
 ): MappedGenerationContext {
   const { profile, goals, constraints, injuries, exercises, workouts, preferences, checkIns } =
     snapshot.context;
@@ -367,12 +371,20 @@ export function buildMappedGenerationContextFromSnapshot(
 
 function resolveLifecycleWeek(
   activeMesocycle: ActiveMesocycleWithBlocks | null,
-  options?: {
-    anchorWeek?: number;
-    weekCloseContext?: { targetWeek: number };
-    forceAccumulation?: boolean;
-  }
+  options?: GenerationContextOptions
 ): number {
+  if (options?.scheduledV4Obligation) {
+    const validated = validateV4ScheduledGenerationObligation({
+      mesocycle: activeMesocycle,
+      obligation: options.scheduledV4Obligation,
+    });
+    if (validated.status !== "available") {
+      throw new Error(
+        `V4_SCHEDULE_GENERATION_OBLIGATION_CONFLICT:${validated.reason}`,
+      );
+    }
+    return validated.obligation.requiredSlot.weekInMeso;
+  }
   const lifecycleSession = activeMesocycle ? deriveCurrentMesocycleSession(activeMesocycle) : null;
   return (
     options?.weekCloseContext?.targetWeek ??
@@ -384,11 +396,7 @@ function resolveLifecycleWeek(
 
 export async function loadMappedGenerationContext(
   userId: string,
-  options?: {
-    anchorWeek?: number;
-    weekCloseContext?: { targetWeek: number };
-    forceAccumulation?: boolean;
-  }
+  options?: GenerationContextOptions
 ): Promise<MappedGenerationContext> {
   const snapshot = await loadPreloadedGenerationSnapshot(userId, options);
   return buildMappedGenerationContextFromSnapshot(

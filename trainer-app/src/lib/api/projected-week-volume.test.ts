@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => {
   const buildMappedGenerationContextFromSnapshot = vi.fn();
   const loadMesocycleWeekMuscleVolume = vi.fn();
   const loadNextWorkoutContext = vi.fn();
+  const resolveRequestedV4ScheduledGenerationObligation = vi.fn();
   const deriveCurrentMesocycleSession = vi.fn();
   const getWeeklyVolumeTarget = vi.fn();
   const deriveNextRuntimeSlotSession = vi.fn();
@@ -24,6 +25,7 @@ const mocks = vi.hoisted(() => {
     buildMappedGenerationContextFromSnapshot,
     loadMesocycleWeekMuscleVolume,
     loadNextWorkoutContext,
+    resolveRequestedV4ScheduledGenerationObligation,
     deriveCurrentMesocycleSession,
     getWeeklyVolumeTarget,
     deriveNextRuntimeSlotSession,
@@ -67,6 +69,8 @@ vi.mock("./persisted-incomplete-workout-projection", () => ({
 
 vi.mock("./next-session", () => ({
   loadNextWorkoutContext: (...args: unknown[]) => mocks.loadNextWorkoutContext(...args),
+  resolveRequestedV4ScheduledGenerationObligation: (...args: unknown[]) =>
+    mocks.resolveRequestedV4ScheduledGenerationObligation(...args),
 }));
 
 vi.mock("./mesocycle-lifecycle", () => ({
@@ -296,6 +300,7 @@ describe("loadProjectedWeekVolumeReport", () => {
       source: "derived",
       existingWorkoutId: null,
     });
+    mocks.resolveRequestedV4ScheduledGenerationObligation.mockReturnValue(undefined);
     mocks.deriveCurrentMesocycleSession.mockReturnValue({
       week: 1,
       session: 3,
@@ -350,6 +355,99 @@ describe("loadProjectedWeekVolumeReport", () => {
       (exercise: { primaryMuscles?: string[] }, setCount: number) =>
         new Map([[exercise.primaryMuscles?.[0] ?? "Unknown", setCount]])
     );
+  });
+
+  it("projects the exact V4 authored week and unresolved slots after a skip", async () => {
+    const requiredSlot = {
+      weekInMeso: 3,
+      slotId: "lower_a",
+      intent: "lower",
+      phase: "ACCUMULATION",
+      sequenceIndex: 0,
+      sequenceLength: 4,
+    } as const;
+    const scheduledV4Obligation = {
+      authority: {
+        mesocycleId: "meso-1",
+        revisionId: "revision-1",
+        revisionNumber: 1,
+        revisionHash: "a".repeat(64),
+        slotsPerWeek: 4,
+        requiredSlots: [requiredSlot],
+      },
+      requiredSlot,
+    };
+    mocks.deriveCurrentMesocycleSession.mockReturnValueOnce({
+      week: 2,
+      session: 4,
+      phase: "ACCUMULATION",
+    });
+    mocks.loadNextWorkoutContext.mockResolvedValueOnce({
+      source: "rotation",
+      existingWorkoutId: null,
+      weekInMeso: 3,
+      slotId: "lower_a",
+      v4ScheduleResolution: {
+        status: "available",
+        unresolvedSlotsInNextWeek: [
+          requiredSlot,
+          {
+            weekInMeso: 3,
+            slotId: "upper_b",
+            intent: "upper",
+            phase: "ACCUMULATION",
+            sequenceIndex: 1,
+            sequenceLength: 4,
+          },
+        ],
+      },
+    });
+    mocks.resolveRequestedV4ScheduledGenerationObligation.mockReturnValueOnce(
+      scheduledV4Obligation,
+    );
+    mocks.generateSessionFromMappedContext.mockReset();
+    mocks.generateSessionFromMappedContext
+      .mockReturnValueOnce({
+        workout: buildWorkout(["Quads"]),
+        selection: {},
+        selectionMode: "INTENT",
+        sessionIntent: "lower",
+        sraWarnings: [],
+        substitutions: [],
+        volumePlanByMuscle: {},
+      })
+      .mockReturnValueOnce({
+        workout: buildWorkout(["Chest"]),
+        selection: {},
+        selectionMode: "INTENT",
+        sessionIntent: "upper",
+        sraWarnings: [],
+        substitutions: [],
+        volumePlanByMuscle: {},
+      });
+
+    const report = await loadProjectedWeekVolumeReport({ userId: "user-1" });
+
+    expect(report.currentWeek.week).toBe(3);
+    expect(report.projectedSessions.map((session) => session.slotId)).toEqual([
+      "lower_a",
+      "upper_b",
+    ]);
+    expect(mocks.loadPreloadedGenerationSnapshot).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({ scheduledV4Obligation }),
+    );
+    expect(mocks.buildMappedGenerationContextFromSnapshot).toHaveBeenCalledWith(
+      "user-1",
+      expect.any(Object),
+      { scheduledV4Obligation },
+    );
+    expect(mocks.loadMesocycleWeekMuscleVolume).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ targetWeek: 3 }),
+    );
+    expect(mocks.deriveNextRuntimeSlotSession).not.toHaveBeenCalled();
+    expect(mocks.buildRemainingFutureSlotsFromRuntime).not.toHaveBeenCalled();
   });
 
   it("chains remaining slots in runtime order and separates completed vs projected full-week totals", async () => {

@@ -60,8 +60,10 @@ Use a different order only when the named owner requires it. Separate required w
 
 For an authorized write, use `.\scripts\codex\Start-TrainerTask.ps1` with the task's real classification and base before editing. Treat its output as inspection and policy evidence, not additional authority.
 
-After the diff exists, generate `.\scripts\codex\Invoke-TrainerVerification.ps1 -BaseRef <authorized-base>` and route the plan to `test-impact-triage`. Use the repository command registry and policy as the deterministic source of checks.
+After the diff exists, generate `.\scripts\codex\Invoke-TrainerVerification.ps1 -BaseRef <authorized-base>` and use the normal verification workflow. Use the repository command registry and policy as the deterministic source of check selection and execution eligibility.
+
+Judge whether the resulting evidence exercises the canonical owner and supports the claimed architectural behavior, not merely the changed files. Treat an unavailable required check as unresolved. Compare branch and base failures by stable test identity in the same environment before classifying a regression, and state remaining risk honestly.
 
 ## Exit criteria
 
-Conclude only when the canonical owner is explicit, all affected consumers were reviewed, no competing truth was introduced, no-touch boundaries held, and selected verification is accounted for.
+Conclude only when the canonical owner is explicit, all affected consumers were reviewed, no competing truth was introduced, no-touch boundaries held, selected verification is accounted for, and the evidence and remaining risk are sufficient for the architectural claim.

@@ -74,7 +74,7 @@ Before editing, state:
 - persistence and migration risk
 - consumers that must continue preferring the revision
 
-Use `architecture-guard` when ownership crosses layers and `test-impact-triage` for deterministic verification review.
+Use `architecture-guard` when ownership crosses layers. Generate the deterministic verification plan with `.\scripts\codex\Invoke-TrainerVerification.ps1 -BaseRef <authorized-base>` and interpret the resulting evidence against the claimed seed/runtime boundary; treat an unavailable required check as unresolved.
 
 ## Required assertions
 

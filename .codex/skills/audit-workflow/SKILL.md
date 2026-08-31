@@ -26,7 +26,7 @@ Never infer database, production, artifact-write, or destructive authorization f
 
 Run a matching output-level audit only when it is authorized and available. Otherwise report the missing audit as an unresolved validation gate; do not substitute code inspection or a different mode and do not claim the output passed.
 
-For audit-tooling writes, use `.\scripts\codex\Start-TrainerTask.ps1` with the authorized base and real classification. Before an eligible audit execution, use `.\scripts\codex\Invoke-TrainerDoctor.ps1`. After a tooling diff, review `.\scripts\codex\Invoke-TrainerVerification.ps1 -BaseRef <authorized-base>` through `test-impact-triage`.
+For audit-tooling writes, use `.\scripts\codex\Start-TrainerTask.ps1` with the authorized base and real classification. Before an eligible audit execution, use `.\scripts\codex\Invoke-TrainerDoctor.ps1`. After a tooling diff, generate `.\scripts\codex\Invoke-TrainerVerification.ps1 -BaseRef <authorized-base>` directly, use the normal verification workflow, and interpret the resulting evidence against the audit question.
 
 ## Validate generation-facing output
 

@@ -54,7 +54,7 @@ State:
 - mirror or drift risks
 - focused verification and any output-level audit gate
 
-Route deterministic check review to `test-impact-triage`. Route an authorized output-level reconciliation question to `audit-workflow`; the need for an audit does not grant permission to run it.
+Generate the deterministic verification plan with `.\scripts\codex\Invoke-TrainerVerification.ps1 -BaseRef <authorized-base>` and interpret the resulting evidence against the receipt claim. Treat an unavailable required check as unresolved. Route an authorized output-level reconciliation question to `audit-workflow`; the need for an audit does not grant permission to run it.
 
 ## Exit criteria
 

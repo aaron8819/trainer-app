@@ -28,9 +28,8 @@
 - Use `receipt-integrity` only when receipt creation, persistence, reconciliation, meaning, or receipt-derived consumers can change.
 - Use `seed-runtime-source-of-truth` for accepted seed revision, correction, replay, provenance, or session-local deviation boundaries.
 - Use `v2-planner-migration-guard` for pure V2 planning, materialization/acceptance boundaries, or controlled promotion of V2 evidence.
-- Use `test-impact-triage` to review the deterministic verification plan after the owning seam and diff are known.
 - Use `audit-workflow` to choose authorized audit modes, interpret artifacts, and validate generation-facing output.
-- Use `trainer-loop-triage` only when asked to select or design bounded next-work loops or `/goal` prompts.
+- Use repository context and current authorization to choose the smallest coherent next task; use specialist skills only when they own distinct Trainer-specific reasoning.
 
 ## Canonical Boundaries
 - Resolve runtime identity via `resolveOwner()` in `trainer-app/src/lib/api/workout-context.ts`. Do not add alternate user-resolution paths in app routes.

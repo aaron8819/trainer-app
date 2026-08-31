@@ -1458,14 +1458,14 @@ Invoke-Test 'Trainer skill inventory, routing, and doctrine contracts stay conso
         'audit-workflow',
         'receipt-integrity',
         'seed-runtime-source-of-truth',
-        'test-impact-triage',
-        'trainer-loop-triage',
         'v2-planner-migration-guard'
     )
     $retiredSkillNames = @(
         'implementation-planner',
         'seam-locator',
         'session-retrospective',
+        'test-impact-triage',
+        'trainer-loop-triage',
         'workout-generation-audit'
     )
     $skillFiles = @(

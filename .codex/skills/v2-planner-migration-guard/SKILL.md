@@ -79,7 +79,7 @@ Report:
 - runtime non-consumption proof
 - deterministic verification and any authorization-gated output audit
 
-Use `test-impact-triage` to review selected checks. Use `audit-workflow` only when an authorized matching output-level audit is necessary; the skill does not authorize that audit.
+Generate the deterministic verification plan with `.\scripts\codex\Invoke-TrainerVerification.ps1 -BaseRef <authorized-base>` and interpret the resulting evidence against the claimed planner boundary; treat an unavailable required check as unresolved. Use `audit-workflow` only when an authorized matching output-level audit is necessary; the skill does not authorize that audit.
 
 ## Exit criteria
 

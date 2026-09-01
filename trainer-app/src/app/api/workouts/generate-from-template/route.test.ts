@@ -531,7 +531,7 @@ describe("POST /api/workouts/generate-from-template", () => {
     expect(mocks.generateDeloadSessionFromTemplate).not.toHaveBeenCalled();
   });
 
-  it("returns canonical selectionMetadata for template generation", async () => {
+  it("rejects accepted V4 scheduled template materialization", async () => {
     const requiredSlot = {
       weekInMeso: 2,
       phase: "ACCUMULATION" as const,
@@ -675,49 +675,14 @@ describe("POST /api/workouts/generate-from-template", () => {
     );
     const body = await response.json();
 
-    expect(response.status).toBe(200);
-    expect(body.selectionMetadata).toBeDefined();
-    expect(mocks.generateSessionFromTemplate).toHaveBeenCalledWith(
-      "user-1",
-      "template-1",
-      expect.objectContaining({
-        scheduledV4Obligation,
-        advancingSlot: {
-          slotId: "push_a",
-          intent: "push",
-          sequenceIndex: 0,
-          sequenceLength: 4,
-          source: "mesocycle_slot_sequence",
-        },
-        exerciseReplacements: [{
-          placementId: "template-placement-bench",
-          orderIndex: 0,
-          originalExerciseId: "barbell-bench",
-          replacementExerciseId: "push-up",
-        }],
-      }),
-    );
-    expect(body.selection).toBeUndefined();
-    expect(body.autoregulation).toBeUndefined();
-    expect(body.prescriptionReadouts).toEqual([
-      expect.objectContaining({
-        exerciseId: "ex-1",
-        exerciseName: "Bench Press",
-        confidence: "high",
-        cautionLevel: "none",
-      }),
-    ]);
-    expect(body.selectionMetadata.sessionDecisionReceipt.version).toBe(2);
-    expect(body.selectionMetadata.sessionDecisionReceipt.sessionSlot).toEqual({
-      slotId: "push_a",
-      intent: "push",
-      sequenceIndex: 0,
-      sequenceLength: 4,
-      source: "mesocycle_slot_sequence",
+    expect(response.status).toBe(409);
+    expect(body).toEqual({
+      error:
+        "Accepted V4 scheduled workouts must use the canonical intent generation path.",
+      code: "V4_SCHEDULED_TEMPLATE_MATERIALIZATION_UNSUPPORTED",
     });
-    expect(body.selectionMetadata.sessionDecisionReceipt.sessionProvenance).toEqual({
-      mesocycleId: null,
-      compositionSource: "runtime_selection",
-    });
+    expect(mocks.generateSessionFromTemplate).not.toHaveBeenCalled();
+    expect(mocks.generateDeloadSessionFromTemplate).not.toHaveBeenCalled();
+    expect(mocks.applyAutoregulation).not.toHaveBeenCalled();
   });
 });

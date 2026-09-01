@@ -994,6 +994,55 @@ export function resolveRequestedV4ScheduledGenerationObligation(input: {
   return { authority, requiredSlot };
 }
 
+function sameV4ScheduledGenerationObligation(
+  left: V4ScheduledGenerationObligation,
+  right: V4ScheduledGenerationObligation,
+): boolean {
+  return (
+    left.authority.mesocycleId === right.authority.mesocycleId &&
+    left.authority.revisionId === right.authority.revisionId &&
+    left.authority.revisionNumber === right.authority.revisionNumber &&
+    left.authority.revisionHash === right.authority.revisionHash &&
+    left.requiredSlot.weekInMeso === right.requiredSlot.weekInMeso &&
+    left.requiredSlot.phase === right.requiredSlot.phase &&
+    left.requiredSlot.slotId === right.requiredSlot.slotId &&
+    left.requiredSlot.intent === right.requiredSlot.intent &&
+    left.requiredSlot.sequenceIndex === right.requiredSlot.sequenceIndex &&
+    left.requiredSlot.sequenceLength === right.requiredSlot.sequenceLength
+  );
+}
+
+export async function revalidateV4ScheduledGenerationObligation(input: {
+  userId: string;
+  obligation: V4ScheduledGenerationObligation;
+}): Promise<
+  | { status: "available"; obligation: V4ScheduledGenerationObligation }
+  | { status: "blocked"; reason: string }
+> {
+  const current = await loadNextWorkoutContext(input.userId);
+  if (current.source === "schedule_resolution_blocked") {
+    return {
+      status: "blocked",
+      reason:
+        current.lifecycleBlocker && "reason" in current.lifecycleBlocker
+          ? current.lifecycleBlocker.reason
+          : "schedule_resolution_blocked",
+    };
+  }
+  const canonical = resolveRequestedV4ScheduledGenerationObligation({
+    nextWorkoutContext: current,
+    requestedIntent: input.obligation.requiredSlot.intent,
+    explicitSlotId: input.obligation.requiredSlot.slotId,
+  });
+  if (!canonical) {
+    return { status: "blocked", reason: "scheduled_obligation_no_longer_eligible" };
+  }
+  if (!sameV4ScheduledGenerationObligation(canonical, input.obligation)) {
+    return { status: "blocked", reason: "scheduled_obligation_changed" };
+  }
+  return { status: "available", obligation: canonical };
+}
+
 export type V4ScheduleWorkoutCandidate = {
   id: string;
   status: unknown;

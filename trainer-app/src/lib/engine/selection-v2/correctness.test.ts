@@ -184,7 +184,7 @@ describe("selection correctness", () => {
       avoidExerciseIds: ["bench"],
     });
 
-    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "push" });
 
     expect("error" in result).toBe(false);
     if ("error" in result) return;
@@ -275,7 +275,7 @@ describe("selection correctness", () => {
     mapExercisesMock.mockReturnValue(pullPool);
     mapPreferencesMock.mockReturnValue(undefined);
 
-    const result = await generateSessionFromIntent("user-1", { intent: "pull" });
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "pull" });
 
     expect("error" in result).toBe(false);
     if ("error" in result) return;
@@ -399,7 +399,7 @@ describe("selection correctness", () => {
       avoidExerciseIds: ["cable-curl"],
     });
 
-    const result = await generateSessionFromIntent("user-1", { intent: "pull" });
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "pull" });
 
     expect("error" in result).toBe(false);
     if ("error" in result) return;
@@ -505,7 +505,7 @@ describe("selection correctness", () => {
     mapExercisesMock.mockReturnValue(pushPool);
     mapPreferencesMock.mockReturnValue(undefined);
 
-    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "push" });
 
     expect("error" in result).toBe(false);
     if ("error" in result) return;

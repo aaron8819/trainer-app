@@ -39,6 +39,13 @@ import {
 import { getWeeklyVolumeTarget } from "./mesocycle-lifecycle-math";
 import { buildAdvancingPerformedSlots } from "./next-session";
 import { loadMesocycleWeekMuscleVolume } from "./weekly-volume";
+import {
+  resolveV4RequiredSlotFromPersistedWorkoutEvidence,
+  resolveV4ScheduleAuthority,
+  resolveV4ScheduledSlots,
+  type V4RequiredSlot,
+  type V4ScheduleAuthority,
+} from "./v4-scheduled-slot-resolution";
 
 type WorkoutForGuidance = Prisma.WorkoutGetPayload<{
   select: {
@@ -55,6 +62,9 @@ type WorkoutForGuidance = Prisma.WorkoutGetPayload<{
     mesocycleWeekSnapshot: true;
     mesoSessionSnapshot: true;
     mesocyclePhaseSnapshot: true;
+    seedRevisionId: true;
+    seedRevisionNumber: true;
+    seedPayloadHash: true;
     mesocycle: {
       select: {
         id: true;
@@ -65,6 +75,19 @@ type WorkoutForGuidance = Prisma.WorkoutGetPayload<{
         sessionsPerWeek: true;
         state: true;
         slotSequenceJson: true;
+        slotPlanSeedJson: true;
+        currentSeedRevisionId: true;
+        currentSeedRevision: {
+          select: {
+            id: true;
+            mesocycleId: true;
+            revision: true;
+            seedPayload: true;
+            payloadHash: true;
+            hashAlgorithm: true;
+            provenanceStatus: true;
+          };
+        };
         blocks: true;
         macroCycle: {
           select: {
@@ -532,6 +555,9 @@ export async function loadLoggingWeeklyVolumeGuidance(input: {
       mesocycleWeekSnapshot: true,
       mesoSessionSnapshot: true,
       mesocyclePhaseSnapshot: true,
+      seedRevisionId: true,
+      seedRevisionNumber: true,
+      seedPayloadHash: true,
       mesocycle: {
         select: {
           id: true,
@@ -542,6 +568,19 @@ export async function loadLoggingWeeklyVolumeGuidance(input: {
           sessionsPerWeek: true,
           state: true,
           slotSequenceJson: true,
+          slotPlanSeedJson: true,
+          currentSeedRevisionId: true,
+          currentSeedRevision: {
+            select: {
+              id: true,
+              mesocycleId: true,
+              revision: true,
+              seedPayload: true,
+              payloadHash: true,
+              hashAlgorithm: true,
+              provenanceStatus: true,
+            },
+          },
           blocks: true,
           macroCycle: {
             select: {
@@ -625,12 +664,85 @@ export async function loadLoggingWeeklyVolumeGuidance(input: {
     };
   }
 
-  const currentWeek =
-    workout.mesocycleWeekSnapshot ??
-    Math.max(
-      1,
-      Math.floor(workout.mesocycle.accumulationSessionsCompleted / workout.mesocycle.sessionsPerWeek) + 1
+  const v4AuthorityResolution = resolveV4ScheduleAuthority(workout.mesocycle);
+  if (v4AuthorityResolution.status === "blocked") {
+    throw new Error(
+      `logging-weekly-volume accepted V4 authority is blocked: ${v4AuthorityResolution.reason}`,
     );
+  }
+  let v4Authority: V4ScheduleAuthority | null = null;
+  let v4CurrentSlot: V4RequiredSlot | null = null;
+  let v4RemainingSlots: V4RequiredSlot[] | null = null;
+  if (v4AuthorityResolution.status === "available") {
+    v4Authority = v4AuthorityResolution.authority;
+    const currentSlotResolution = resolveV4RequiredSlotFromPersistedWorkoutEvidence({
+      authority: v4Authority,
+      workout,
+    });
+    if ("reason" in currentSlotResolution) {
+      throw new Error(
+        `logging-weekly-volume accepted V4 workout identity is blocked: ${currentSlotResolution.reason}`,
+      );
+    }
+    v4CurrentSlot = currentSlotResolution.requiredSlot;
+    const scheduleEvidence = await prisma.workout.findMany({
+      where: { mesocycleId: workout.mesocycle.id },
+      orderBy: [
+        { mesocycleWeekSnapshot: "asc" },
+        { mesoSessionSnapshot: "asc" },
+        { id: "asc" },
+      ],
+      select: {
+        id: true,
+        status: true,
+        mesocycleId: true,
+        mesocycleWeekSnapshot: true,
+        mesocyclePhaseSnapshot: true,
+        mesoSessionSnapshot: true,
+        advancesSplit: true,
+        selectionMode: true,
+        sessionIntent: true,
+        selectionMetadata: true,
+        seedRevisionId: true,
+        seedRevisionNumber: true,
+        seedPayloadHash: true,
+      },
+    });
+    const scheduleResolution = resolveV4ScheduledSlots({
+      authority: v4Authority,
+      workouts: scheduleEvidence,
+    });
+    if (scheduleResolution.status === "blocked") {
+      throw new Error(
+        `logging-weekly-volume accepted V4 schedule is blocked: ${scheduleResolution.reason}`,
+      );
+    }
+    const resolvedKeys = new Set(
+      scheduleResolution.claims
+        .filter((claim) => claim.scheduleResolved)
+        .map(
+          (claim) =>
+            `${claim.requiredSlot.weekInMeso}:${claim.requiredSlot.slotId}`,
+        ),
+    );
+    const currentKey = `${v4CurrentSlot.weekInMeso}:${v4CurrentSlot.slotId}`;
+    v4RemainingSlots = v4Authority.requiredSlots.filter(
+      (slot) =>
+        slot.weekInMeso === v4CurrentSlot?.weekInMeso &&
+        `${slot.weekInMeso}:${slot.slotId}` !== currentKey &&
+        !resolvedKeys.has(`${slot.weekInMeso}:${slot.slotId}`),
+    );
+  }
+  const currentWeek = v4Authority
+    ? v4CurrentSlot!.weekInMeso
+    : workout.mesocycleWeekSnapshot ??
+      Math.max(
+        1,
+        Math.floor(
+          workout.mesocycle.accumulationSessionsCompleted /
+            workout.mesocycle.sessionsPerWeek,
+        ) + 1,
+      );
   const mesoStartDate = new Date(workout.mesocycle.macroCycle.startDate);
   mesoStartDate.setDate(mesoStartDate.getDate() + workout.mesocycle.startWeek * 7);
   const weekStart = computeMesoWeekStartDate(mesoStartDate, currentWeek);
@@ -647,8 +759,25 @@ export async function loadLoggingWeeklyVolumeGuidance(input: {
   const currentSlotId =
     readSessionSlotSnapshot(workout.selectionMetadata)?.slotId ?? null;
 
+  const contextGenerationMode =
+    v4Authority && v4CurrentSlot
+      ? v4RemainingSlots?.[0]
+        ? {
+            kind: "accepted_v4_scheduled" as const,
+            obligation: {
+              authority: v4Authority,
+              requiredSlot: v4RemainingSlots[0],
+            },
+          }
+        : {
+            kind: "explicit_preview" as const,
+            weekInMeso: v4CurrentSlot.weekInMeso,
+            slotId: v4CurrentSlot.slotId,
+          }
+      : { kind: "legacy" as const };
   const [snapshot, baselineVolume, performedWorkoutsThisWeek] = await Promise.all([
     loadPreloadedGenerationSnapshot(input.userId, {
+      generationMode: contextGenerationMode,
       activeMesocycle:
         workout.mesocycle as unknown as NonNullable<
           NonNullable<Parameters<typeof loadPreloadedGenerationSnapshot>[1]>["activeMesocycle"]
@@ -698,7 +827,9 @@ export async function loadLoggingWeeklyVolumeGuidance(input: {
         ]
       : performedAdvancingSlots;
 
-  const mapped = buildMappedGenerationContextFromSnapshot(input.userId, snapshot);
+  const mapped = buildMappedGenerationContextFromSnapshot(input.userId, snapshot, {
+    generationMode: contextGenerationMode,
+  });
   const currentHistory = buildCurrentWorkoutHistoryEntry({
     workout,
     currentWeek,
@@ -719,20 +850,28 @@ export async function loadLoggingWeeklyVolumeGuidance(input: {
   const performedAdvancingIntentsThisWeek = performedAfterCurrent
     .map((entry) => entry.intent ?? null)
     .filter((intent): intent is string => typeof intent === "string" && intent.length > 0);
-  const nextRuntimeSlot = deriveNextRuntimeSlotSession({
-    mesocycle: workout.mesocycle,
-    slotSequenceJson: workout.mesocycle.slotSequenceJson,
-    weeklySchedule: mapped.mappedConstraints.weeklySchedule,
-    performedAdvancingSlotIdsThisWeek,
-    performedAdvancingIntentsThisWeek,
-  });
-  const orderedProjectedSlots =
-    nextRuntimeSlot.intent == null
+  const nextRuntimeSlot = v4RemainingSlots
+    ? null
+    : deriveNextRuntimeSlotSession({
+        mesocycle: workout.mesocycle,
+        slotSequenceJson: workout.mesocycle.slotSequenceJson,
+        weeklySchedule: mapped.mappedConstraints.weeklySchedule,
+        performedAdvancingSlotIdsThisWeek,
+        performedAdvancingIntentsThisWeek,
+      });
+  const orderedProjectedSlots = v4RemainingSlots
+    ? v4RemainingSlots.map((slot) => ({
+        slotId: slot.slotId,
+        intent: slot.intent,
+        requiredSlot: slot,
+      }))
+    : !nextRuntimeSlot || nextRuntimeSlot.intent == null
       ? []
       : [
           {
             slotId: nextRuntimeSlot.slotId,
             intent: nextRuntimeSlot.intent,
+            requiredSlot: undefined,
           },
           ...buildRemainingFutureSlotsFromRuntime({
             slotSequenceJson: workout.mesocycle.slotSequenceJson,
@@ -743,6 +882,7 @@ export async function loadLoggingWeeklyVolumeGuidance(input: {
           }).map((slot) => ({
             slotId: slot.slotId,
             intent: slot.intent,
+            requiredSlot: undefined,
           })),
         ];
 
@@ -756,6 +896,16 @@ export async function loadLoggingWeeklyVolumeGuidance(input: {
       intent: slot.intent as SessionIntent,
       slotId: slot.slotId ?? null,
       plannerDiagnosticsMode,
+      generationMode:
+        v4Authority && slot.requiredSlot
+          ? {
+              kind: "accepted_v4_scheduled",
+              obligation: {
+                authority: v4Authority,
+                requiredSlot: slot.requiredSlot,
+              },
+            }
+          : { kind: "legacy" },
     });
     if ("error" in generation) {
       throw new Error(
@@ -777,7 +927,9 @@ export async function loadLoggingWeeklyVolumeGuidance(input: {
         slotId: slot.slotId ?? null,
         intent: slot.intent as SessionIntent,
         week: currentWeek,
-        sessionNumber: nextRuntimeSlot.session + index,
+        sessionNumber: slot.requiredSlot
+          ? slot.requiredSlot.sequenceIndex + 1
+          : (nextRuntimeSlot?.session ?? 1) + index,
         occurredAt: projectedAt,
       }),
       occurredAt: projectedAt,

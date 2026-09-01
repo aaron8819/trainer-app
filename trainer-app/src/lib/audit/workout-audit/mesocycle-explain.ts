@@ -9425,12 +9425,14 @@ async function buildPreviewProjectedSessions(input: {
   const snapshot = await loadPreloadedGenerationSnapshot(input.userId, {
     activeMesocycle: syntheticMesocycle,
     forceAccumulation: true,
+    generationMode: { kind: "explicit_preview", weekInMeso: 1 },
   });
   const mapped = buildMappedGenerationContextFromSnapshot(
     input.userId,
     snapshot,
     {
       forceAccumulation: true,
+      generationMode: { kind: "explicit_preview", weekInMeso: 1 },
     },
   );
   const projectionStartTime = new Date();
@@ -9445,6 +9447,11 @@ async function buildPreviewProjectedSessions(input: {
       mapped,
       intent: slot.intent.toLowerCase() as SessionIntent,
       slotId: slot.slotId,
+      generationMode: {
+        kind: "explicit_preview",
+        weekInMeso: 1,
+        slotId: slot.slotId,
+      },
       plannerDiagnosticsMode: input.plannerDiagnosticsMode,
     });
     if ("error" in generation) {
@@ -10105,6 +10112,7 @@ export async function buildMesocycleExplainAuditPayload(input: {
   });
   const sourceSnapshot = await loadPreloadedGenerationSnapshot(input.userId, {
     activeMesocycle: sourceMesocycle,
+    generationMode: { kind: "explicit_preview", weekInMeso: 1 },
   });
   const plannerOnlyPolicyOverride =
     input.plannerOnlyDryRun?.enabled && input.plannerOnlyDryRun.compareRepaired

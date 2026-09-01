@@ -656,6 +656,7 @@ describe("runWorkoutAuditGeneration", () => {
     await runWorkoutAuditGeneration(context);
 
     expect(mocks.generateSessionFromIntent).toHaveBeenCalledWith("user-1", {
+      generationMode: { kind: "legacy" },
       advancingSlot: {
         slotId: "legs_a",
         intent: "legs",
@@ -732,7 +733,10 @@ describe("runWorkoutAuditGeneration", () => {
         sequenceLength: 4,
         source: "mesocycle_slot_sequence",
       },
-      scheduledV4Obligation,
+      generationMode: {
+        kind: "accepted_v4_scheduled",
+        obligation: scheduledV4Obligation,
+      },
       plannerDiagnosticsMode: "standard",
     });
   });
@@ -749,10 +753,101 @@ describe("runWorkoutAuditGeneration", () => {
     await runWorkoutAuditGeneration(context);
 
     expect(mocks.generateSessionFromIntent).toHaveBeenCalledWith("user-1", {
+      generationMode: { kind: "legacy" },
       intent: "push",
       targetMuscles: ["Chest"],
       plannerDiagnosticsMode: "debug",
     });
+  });
+
+  it("uses caller-explicit authored preview identity for accepted V4 audit previews", async () => {
+    const nextSession = {
+      intent: "upper" as const,
+      slotId: "upper_b",
+      slotSequenceIndex: 3,
+      slotSequenceLength: 4,
+      slotSource: "mesocycle_slot_sequence" as const,
+      existingWorkoutId: null,
+      isExisting: false,
+      source: "rotation" as const,
+      weekInMeso: 4,
+      sessionInWeek: 4,
+      derivationTrace: [],
+      selectedIncompleteStatus: null,
+      v4ScheduleAuthority: {
+        mesocycleId: "meso-1",
+        revisionId: "revision-1",
+        revisionNumber: 1,
+        revisionHash: "a".repeat(64),
+        slotsPerWeek: 4,
+        requiredSlots: [],
+      },
+    };
+
+    await runWorkoutAuditGeneration({
+      mode: "future-week",
+      requestedMode: "future-week",
+      userId: "user-1",
+      plannerDiagnosticsMode: "debug",
+      generationInput: {
+        intent: "upper",
+        source: "explicit-intent",
+      },
+      nextSession,
+    });
+
+    expect(mocks.generateSessionFromIntent).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({
+        generationMode: {
+          kind: "explicit_preview",
+          weekInMeso: 4,
+          slotId: "upper_b",
+        },
+      }),
+    );
+  });
+
+  it("blocks accepted V4 next-session audit generation without a canonical obligation", async () => {
+    const nextSession = {
+      intent: "lower" as const,
+      slotId: "lower_a",
+      slotSequenceIndex: 0,
+      slotSequenceLength: 4,
+      slotSource: "mesocycle_slot_sequence" as const,
+      existingWorkoutId: null,
+      isExisting: false,
+      source: "rotation" as const,
+      weekInMeso: 3,
+      sessionInWeek: 1,
+      derivationTrace: [],
+      selectedIncompleteStatus: null,
+      v4ScheduleAuthority: {
+        mesocycleId: "meso-1",
+        revisionId: "revision-1",
+        revisionNumber: 1,
+        revisionHash: "a".repeat(64),
+        slotsPerWeek: 4,
+        requiredSlots: [],
+      },
+    };
+
+    await expect(
+      runWorkoutAuditGeneration({
+        mode: "future-week",
+        requestedMode: "future-week",
+        userId: "user-1",
+        plannerDiagnosticsMode: "standard",
+        generationInput: {
+          intent: "lower",
+          source: "derived-next-session",
+        },
+        nextSession,
+      }),
+    ).rejects.toThrow(
+      "Accepted V4 next-session audit generation requires the canonical obligation.",
+    );
+    expect(mocks.generateSessionFromIntent).not.toHaveBeenCalled();
   });
 
   it("adds read-only accepted seed provenance consistency for future-week generation", async () => {
@@ -860,6 +955,7 @@ describe("runWorkoutAuditGeneration", () => {
     const run = await runWorkoutAuditGeneration(context);
 
     expect(mocks.generateDeloadSessionFromIntent).toHaveBeenCalledWith("user-1", {
+      generationMode: { kind: "legacy" },
       intent: "legs",
       targetMuscles: undefined,
       plannerDiagnosticsMode: "debug",
@@ -1248,6 +1344,7 @@ describe("runWorkoutAuditGeneration", () => {
     const run = await runWorkoutAuditGeneration(context);
 
     expect(mocks.generateSessionFromIntent).toHaveBeenCalledWith("user-1", {
+      generationMode: { kind: "legacy" },
       intent: "upper",
       targetMuscles: undefined,
       advancingSlot: {
@@ -1547,6 +1644,7 @@ describe("runWorkoutAuditGeneration", () => {
     const run = await runWorkoutAuditGeneration(context);
 
     expect(mocks.generateDeloadSessionFromIntent).toHaveBeenCalledWith("user-1", {
+      generationMode: { kind: "legacy" },
       intent: "lower",
       targetMuscles: undefined,
       plannerDiagnosticsMode: "debug",

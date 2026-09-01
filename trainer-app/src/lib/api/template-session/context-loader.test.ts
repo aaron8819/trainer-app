@@ -200,7 +200,9 @@ describe("template-session context-loader mismatch policy", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
     try {
-      const result = await loadMappedGenerationContext("user-1");
+      const result = await loadMappedGenerationContext("user-1", {
+        generationMode: { kind: "legacy" },
+      });
 
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining("Section/role mismatch detected: workout=workout-1")
@@ -212,14 +214,18 @@ describe("template-session context-loader mismatch policy", () => {
   });
 
   it("keeps planning aligned to the mesocycle role registry instead of stale historical sections", async () => {
-    const result = await loadMappedGenerationContext("user-1");
+    const result = await loadMappedGenerationContext("user-1", {
+      generationMode: { kind: "legacy" },
+    });
 
     expect(result.mesocycleRoleMapByIntent.push.get("bench")).toBe("CORE_COMPOUND");
     expect(result.rawWorkouts[0]?.exercises[0]?.section).toBe("ACCESSORY");
   });
 
   it("loads real phase/block context into generation instead of dropping block context to null", async () => {
-    const result = await loadMappedGenerationContext("user-1");
+    const result = await loadMappedGenerationContext("user-1", {
+      generationMode: { kind: "legacy" },
+    });
 
     expect(loadGenerationPhaseBlockContextMock).toHaveBeenCalledWith(
       "user-1",
@@ -336,9 +342,12 @@ describe("template-session context-loader mismatch policy", () => {
     });
 
     const result = await loadMappedGenerationContext("user-1", {
-      scheduledV4Obligation: {
-        authority: authorityResolution.authority,
-        requiredSlot,
+      generationMode: {
+        kind: "accepted_v4_scheduled",
+        obligation: {
+          authority: authorityResolution.authority,
+          requiredSlot,
+        },
       },
     });
 
@@ -377,7 +386,9 @@ describe("template-session context-loader mismatch policy", () => {
     });
     mapGoalsMock.mockReturnValueOnce({ primary: "strength" });
 
-    const result = await loadMappedGenerationContext("user-1");
+    const result = await loadMappedGenerationContext("user-1", {
+      generationMode: { kind: "legacy" },
+    });
 
     expect(mapGoalsMock).toHaveBeenCalledWith("STRENGTH", "NONE");
     expect(result.mappedGoals.primary).toBe("strength");
@@ -470,7 +481,11 @@ describe("template-session context-loader mismatch policy", () => {
     });
 
     const result = await loadMappedGenerationContext("user-1", {
-      anchorWeek: 4,
+      generationMode: {
+        kind: "non_scheduled",
+        purpose: "gap_fill",
+        anchorWeek: 4,
+      },
       forceAccumulation: true,
     });
 

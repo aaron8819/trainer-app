@@ -192,7 +192,29 @@ function resolveSeededSlotPlan(input: {
     return { error: `Persisted slot plan seed not found for slot ${explicitSlotId}.` };
   }
 
-  if (!selectedSlot) {
+  if (
+    !selectedSlot &&
+    input.mapped.generationMode.kind === "accepted_v4_scheduled"
+  ) {
+    return buildUnresolvableSeededSlotPlanError(input);
+  }
+
+  if (!selectedSlot && input.mapped.generationMode.kind === "explicit_preview") {
+    const matchingByIntent = seededSlots.filter(
+      (slot) => slot.intent === input.sessionIntent,
+    );
+    if (matchingByIntent.length !== 1) {
+      return {
+        error:
+          matchingByIntent.length === 0
+            ? `Persisted slot plan seed has no slot for intent ${input.sessionIntent}.`
+            : `Explicit V4 preview for intent ${input.sessionIntent} is ambiguous; slotId is required.`,
+      };
+    }
+    selectedSlot = matchingByIntent[0] ?? null;
+  }
+
+  if (!selectedSlot && input.mapped.generationMode.kind === "legacy") {
     const runtimeSlot = deriveCurrentSeededRuntimeSlot(input.mapped);
     if (runtimeSlot && runtimeSlot.intent === input.sessionIntent) {
       selectedSlot =
@@ -200,7 +222,7 @@ function resolveSeededSlotPlan(input: {
     }
   }
 
-  if (!selectedSlot) {
+  if (!selectedSlot && input.mapped.generationMode.kind === "legacy") {
     const matchingByIntent = seededSlots.filter((slot) => slot.intent === input.sessionIntent);
     if (matchingByIntent.length === 0) {
       return {

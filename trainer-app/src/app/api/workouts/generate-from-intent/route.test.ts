@@ -786,7 +786,12 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     expect(mocks.applyAutoregulation).not.toHaveBeenCalled();
     expect(mocks.generateSessionFromIntent).toHaveBeenCalledWith(
       "user-1",
-      expect.objectContaining({ scheduledV4Obligation: obligation }),
+      expect.objectContaining({
+        generationMode: {
+          kind: "accepted_v4_scheduled",
+          obligation,
+        },
+      }),
     );
     expect(body.workout.mainLifts.map((entry: { sets: Array<{ targetLoad: number }> }) =>
       entry.sets[0].targetLoad,
@@ -800,6 +805,20 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
   });
 
   it("keeps autoregulation for body-part fallback under an active V4 plan", async () => {
+    const activeObligation = exactV4Obligation({
+      week: 3,
+      slotId: "upper-a",
+      intent: "upper",
+    });
+    mocks.loadNextWorkoutContext.mockResolvedValueOnce({
+      activeMesocycleId: "meso-1",
+      source: "rotation",
+      v4ScheduleAuthority: activeObligation.authority,
+      v4ScheduleResolution: {
+        status: "available",
+        unresolvedSlotsInNextWeek: [activeObligation.requiredSlot],
+      },
+    });
     mocks.loadActiveMesocycle.mockResolvedValue({
       id: "meso-1",
       state: "ACTIVE_ACCUMULATION",
@@ -856,6 +875,17 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(mocks.generateSessionFromIntent).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({
+        generationMode: {
+          kind: "non_scheduled",
+          purpose: "body_part",
+        },
+        advancingSlot: undefined,
+      }),
+    );
+    expect(mocks.resolveRequestedV4ScheduledGenerationObligation).not.toHaveBeenCalled();
     expect(mocks.applyAutoregulation).toHaveBeenCalledOnce();
     expect(body.workout.warmup).toEqual([
       expect.objectContaining({ id: "warmup" }),
@@ -1217,6 +1247,20 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
   });
 
   it("returns supplemental deficit metadata already stamped by the backend", async () => {
+    const activeObligation = exactV4Obligation({
+      week: 3,
+      slotId: "upper-a",
+      intent: "upper",
+    });
+    mocks.loadNextWorkoutContext.mockResolvedValueOnce({
+      activeMesocycleId: "meso-1",
+      source: "rotation",
+      v4ScheduleAuthority: activeObligation.authority,
+      v4ScheduleResolution: {
+        status: "available",
+        unresolvedSlotsInNextWeek: [activeObligation.requiredSlot],
+      },
+    });
     mocks.loadActiveMesocycle.mockResolvedValue({
       id: "meso-1",
       state: "ACTIVE_ACCUMULATION",
@@ -1305,6 +1349,10 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     expect(mocks.generateSessionFromIntent).toHaveBeenCalledWith(
       "user-1",
       expect.objectContaining({
+        generationMode: {
+          kind: "non_scheduled",
+          purpose: "supplemental",
+        },
         intent: "body_part",
         targetMuscles: ["rear delts"],
         supplementalPlannerProfile: true,
@@ -1323,6 +1371,20 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
   });
 
   it("pins receipt week from the pending week-close row and preserves marker + weekCloseId", async () => {
+    const activeObligation = exactV4Obligation({
+      week: 3,
+      slotId: "upper-a",
+      intent: "upper",
+    });
+    mocks.loadNextWorkoutContext.mockResolvedValueOnce({
+      activeMesocycleId: "meso-1",
+      source: "rotation",
+      v4ScheduleAuthority: activeObligation.authority,
+      v4ScheduleResolution: {
+        status: "available",
+        unresolvedSlotsInNextWeek: [activeObligation.requiredSlot],
+      },
+    });
     mocks.loadActiveMesocycle.mockResolvedValue({
       id: "meso-1",
       state: "ACTIVE_ACCUMULATION",
@@ -1457,6 +1519,10 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     expect(mocks.generateSessionFromIntent).toHaveBeenCalledWith(
       "user-1",
       expect.objectContaining({
+        generationMode: {
+          kind: "non_scheduled",
+          purpose: "gap_fill",
+        },
         weekCloseId: "wc-1",
         optionalGapFillContext: {
           weekCloseId: "wc-1",

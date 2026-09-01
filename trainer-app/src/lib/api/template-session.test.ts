@@ -23,6 +23,18 @@ import {
   type V4ReferenceHarnessMocks,
 } from "@/lib/api/template-session-v4-reference.test-helper";
 import { buildSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
+import { normalizeAcceptedHypertrophySeedV4 } from "./mesocycle-seed-revision";
+
+const revalidateV4ScheduledGenerationObligationMock = vi.hoisted(() => vi.fn());
+
+vi.mock("./next-session", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./next-session")>();
+  return {
+    ...original,
+    revalidateV4ScheduledGenerationObligation: (...args: unknown[]) =>
+      revalidateV4ScheduledGenerationObligationMock(...args),
+  };
+});
 
 const mesocycleRoleFindManyMock = vi.fn();
 vi.mock("@/lib/db/prisma", () => ({
@@ -363,6 +375,10 @@ const v4ReferenceMocks: V4ReferenceHarnessMocks = {
 describe("generateSessionFromIntent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    revalidateV4ScheduledGenerationObligationMock.mockImplementation(
+      ({ obligation }: { obligation: unknown }) =>
+        Promise.resolve({ status: "available", obligation }),
+    );
 
     loadTemplateDetailMock.mockResolvedValue(null);
     loadWorkoutContextMock.mockResolvedValue({
@@ -523,7 +539,7 @@ describe("generateSessionFromIntent", () => {
       exercises: [{ placementId: "template-placement-bench", exerciseId: "bench", orderIndex: 0, supersetGroup: null }],
     });
 
-    const result = await generateSessionFromTemplate("user-1", "template-1", {
+    const result = await generateSessionFromTemplate("user-1", "template-1", { generationMode: { kind: "legacy" },
       exerciseReplacements: [{
         placementId: "template-placement-bench",
         orderIndex: 0,
@@ -602,7 +618,7 @@ describe("generateSessionFromIntent", () => {
       ],
     });
 
-    const result = await generateSessionFromTemplate("user-1", "template-duplicates", {
+    const result = await generateSessionFromTemplate("user-1", "template-duplicates", { generationMode: { kind: "legacy" },
       exerciseReplacements: [{
         placementId: "bench-b",
         orderIndex: 1,
@@ -621,8 +637,9 @@ describe("generateSessionFromIntent", () => {
   it.each(["push", "pull", "legs", "upper", "lower", "full_body"] as const)(
     "returns intent diagnostics for %s",
     async (intent) => {
-      const result = await generateSessionFromIntent("user-1", { intent });
+      const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent });
 
+      if ("error" in result) throw new Error(result.error);
       expect("error" in result).toBe(false);
       if ("error" in result) return;
 
@@ -748,7 +765,7 @@ describe("generateSessionFromIntent", () => {
       .mockReturnValue(buildMockSelectionResult(customLibrary));
 
     try {
-      const result = await generateSessionFromIntent("user-1", { intent: "pull" });
+      const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "pull" });
 
       expect("error" in result).toBe(false);
       if ("error" in result) return;
@@ -846,7 +863,7 @@ describe("generateSessionFromIntent", () => {
       );
 
     try {
-      const result = await generateSessionFromIntent("user-1", { intent: "upper" });
+      const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "upper" });
       expect("error" in result).toBe(false);
       if ("error" in result) return;
 
@@ -902,7 +919,7 @@ describe("generateSessionFromIntent", () => {
       );
 
     try {
-      const result = await generateSessionFromIntent("user-1", { intent: "upper" });
+      const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "upper" });
       expect("error" in result).toBe(false);
       if ("error" in result) return;
 
@@ -1011,6 +1028,7 @@ describe("generateSessionFromIntent", () => {
 
     try {
       const result = await generateSessionFromIntent("user-1", {
+        generationMode: { kind: "explicit_preview", weekInMeso: 1, slotId: "lower_b" },
         intent: "lower",
         slotId: "lower_b",
       });
@@ -1122,7 +1140,7 @@ describe("generateSessionFromIntent", () => {
       );
 
     try {
-      const result = await generateSessionFromIntent("user-1", {
+      const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" },
         intent: "upper",
         slotId: "upper_a",
       });
@@ -1231,7 +1249,7 @@ describe("generateSessionFromIntent", () => {
       );
 
     try {
-      const result = await generateSessionFromIntent("user-1", {
+      const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" },
         intent: "upper",
         slotId: "upper_b",
       });
@@ -1353,7 +1371,7 @@ describe("generateSessionFromIntent", () => {
       );
 
     try {
-      const result = await generateSessionFromIntent("user-1", {
+      const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" },
         intent: "upper",
         slotId: "upper_b",
         roleListIncomplete: true,
@@ -1468,6 +1486,7 @@ describe("generateSessionFromIntent", () => {
 
     try {
       const result = await generateSessionFromIntent("user-1", {
+        generationMode: { kind: "explicit_preview", weekInMeso: 1, slotId: "lower_b" },
         intent: "lower",
         slotId: "lower_b",
         plannerDiagnosticsMode: "debug",
@@ -1559,6 +1578,7 @@ describe("generateSessionFromIntent", () => {
 
     try {
       const result = await generateSessionFromIntent("user-1", {
+        generationMode: { kind: "explicit_preview", weekInMeso: 1, slotId: "lower_b" },
         intent: "lower",
         slotId: "lower_b",
         plannerDiagnosticsMode: "debug",
@@ -1668,7 +1688,7 @@ describe("generateSessionFromIntent", () => {
       );
 
     try {
-      const result = await generateSessionFromIntent("user-1", {
+      const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" },
         intent: "upper",
         slotId: "upper_b",
         roleListIncomplete: true,
@@ -1756,7 +1776,7 @@ describe("generateSessionFromIntent", () => {
       );
 
     try {
-      const result = await generateSessionFromIntent("user-1", {
+      const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" },
         intent: "upper",
         slotId: "upper_a",
         plannerDiagnosticsMode: "debug",
@@ -1862,7 +1882,7 @@ describe("generateSessionFromIntent", () => {
       );
 
     try {
-      const result = await generateSessionFromIntent("user-1", {
+      const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" },
         intent: "upper",
         slotId: "upper_b",
         roleListIncomplete: true,
@@ -1981,7 +2001,7 @@ describe("generateSessionFromIntent", () => {
       );
 
     try {
-      const result = await generateSessionFromIntent("user-1", {
+      const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" },
         intent: "upper",
         slotId: "upper_b",
         roleListIncomplete: true,
@@ -2093,7 +2113,7 @@ describe("generateSessionFromIntent", () => {
       },
     });
 
-    const result = await generateSessionFromIntent("user-1", {
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" },
       intent: "upper",
       slotId: "upper_a",
     });
@@ -2197,7 +2217,7 @@ describe("generateSessionFromIntent", () => {
       );
 
     try {
-      const result = await generateSessionFromIntent("user-1", {
+      const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" },
         intent: "lower",
         slotId: "lower_a",
       });
@@ -2297,7 +2317,7 @@ describe("generateSessionFromIntent", () => {
       );
 
     try {
-      const result = await generateSessionFromIntent("user-1", {
+      const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" },
         intent: "upper",
         slotId: "upper_b",
       });
@@ -2539,7 +2559,7 @@ describe("generateSessionFromIntent", () => {
 
     const selectSpy = vi.spyOn(selectionV2, "selectExercisesOptimized");
     try {
-      const result = await generateSessionFromIntent("user-1", {
+      const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" },
         intent: "upper",
         slotId: "upper_b",
         advancingSlot: {
@@ -2673,7 +2693,7 @@ describe("generateSessionFromIntent", () => {
       preferences: null,
       checkIns: [],
     });
-    loadActiveMesocycleMock.mockResolvedValue({
+    const activeMesocycle = {
       id: "meso-1",
       state: "ACTIVE_ACCUMULATION",
       accumulationSessionsCompleted: 3,
@@ -2682,8 +2702,9 @@ describe("generateSessionFromIntent", () => {
       sessionsPerWeek: 4,
       slotSequenceJson: {
         version: 1,
-        source: "handoff_draft",
+        source: "custom_hypertrophy_plan_v2",
         sequenceMode: "ordered_flexible",
+        sessionsPerWeek: 4,
         slots: [
           { slotId: "upper_a", intent: "UPPER" },
           { slotId: "lower_a", intent: "LOWER" },
@@ -2719,8 +2740,10 @@ describe("generateSessionFromIntent", () => {
           },
         ],
       },
+      currentSeedRevisionId: "v4-revision-1",
       currentSeedRevision: {
         id: "v4-revision-1",
+        mesocycleId: "meso-1",
         revision: 1,
         payloadHash: "b".repeat(64),
         hashAlgorithm: "sha256",
@@ -2763,11 +2786,17 @@ describe("generateSessionFromIntent", () => {
           })),
         },
       },
-    });
+    };
+    activeMesocycle.currentSeedRevision.payloadHash =
+      normalizeAcceptedHypertrophySeedV4(
+        activeMesocycle.currentSeedRevision.seedPayload,
+      ).hash;
+    loadActiveMesocycleMock.mockResolvedValue(activeMesocycle);
 
     const selectSpy = vi.spyOn(selectionV2, "selectExercisesOptimized");
     try {
       const result = await generateSessionFromIntent("user-1", {
+        generationMode: { kind: "explicit_preview", weekInMeso: 1, slotId: "lower_b" },
         intent: "lower",
         slotId: "lower_b",
       });
@@ -2841,7 +2870,7 @@ describe("generateSessionFromIntent", () => {
         seedProvenance: {
           revisionId: "v4-revision-1",
           revision: 1,
-          hash: "b".repeat(64),
+          hash: activeMesocycle.currentSeedRevision.payloadHash,
         },
       });
     } finally {
@@ -2885,6 +2914,7 @@ describe("generateSessionFromIntent", () => {
         );
         const fallbackCallsBefore = selectSpy.mock.calls.length;
         const result = await generateSessionFromIntent("user-1", {
+          generationMode: { kind: "explicit_preview", weekInMeso: expected.week, slotId: expected.slotId },
           intent: expected.focus,
           slotId: expected.slotId,
         });
@@ -2992,7 +3022,7 @@ describe("generateSessionFromIntent", () => {
         sequenceLength: requiredSlot.sequenceLength,
         source: "mesocycle_slot_sequence",
       },
-      scheduledV4Obligation,
+      generationMode: { kind: "accepted_v4_scheduled", obligation: scheduledV4Obligation },
     });
 
     expect("error" in result).toBe(false);
@@ -3036,6 +3066,22 @@ describe("generateSessionFromIntent", () => {
     await expect(
       resolveV4ScheduleBeforeWorkoutCreation(tx as never, scheduledV4Obligation),
     ).rejects.toThrow("V4_SCHEDULE_SLOT_ALREADY_MATERIALIZED");
+    revalidateV4ScheduledGenerationObligationMock.mockResolvedValueOnce({
+      status: "blocked",
+      reason: "required_slot_no_longer_unresolved",
+    });
+    await expect(
+      generateSessionFromIntent("user-1", {
+        intent: expected.focus,
+        generationMode: {
+          kind: "accepted_v4_scheduled",
+          obligation: scheduledV4Obligation,
+        },
+      }),
+    ).resolves.toEqual({
+      error:
+        "V4_SCHEDULE_GENERATION_OBLIGATION_STALE:required_slot_no_longer_unresolved",
+    });
     expect(terminalWorkouts[4]).toMatchObject({
       status: "COMPLETED",
       mesocycleWeekSnapshot: 2,
@@ -3069,6 +3115,7 @@ describe("generateSessionFromIntent", () => {
     try {
       const fallbackCallsBefore = selectSpy.mock.calls.length;
       const result = await generateSessionFromIntent("user-1", {
+        generationMode: { kind: "explicit_preview", weekInMeso: expected.week, slotId: expected.slotId },
         intent: expected.focus,
         slotId: expected.slotId,
       });
@@ -3234,7 +3281,7 @@ describe("generateSessionFromIntent", () => {
 
     const selectSpy = vi.spyOn(selectionV2, "selectExercisesOptimized");
     try {
-      const result = await generateSessionFromIntent("user-1", { intent: "lower" });
+      const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "lower" });
 
       expect(result).toEqual({
         error: "Persisted slot plan seed could not be resolved for intent lower.",
@@ -3246,7 +3293,7 @@ describe("generateSessionFromIntent", () => {
   });
 
   it("requires targetMuscles for body_part intent", async () => {
-    const result = await generateSessionFromIntent("user-1", { intent: "body_part" });
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "non_scheduled", purpose: "body_part" }, intent: "body_part" });
 
     expect(result).toEqual({ error: "targetMuscles is required when intent is body_part" });
   });
@@ -3271,8 +3318,7 @@ describe("generateSessionFromIntent", () => {
 
     const selectSpy = vi.spyOn(selectionV2, "selectExercisesOptimized");
     try {
-      const result = await generateSessionFromIntent("user-1", {
-        intent: "body_part",
+      const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "non_scheduled", purpose: "body_part" }, intent: "body_part",
         targetMuscles: ["Chest"],
       });
 
@@ -3301,7 +3347,7 @@ describe("generateSessionFromIntent", () => {
 
     const selectSpy = vi.spyOn(selectionV2, "selectExercisesOptimized");
     try {
-      const result = await generateSessionFromIntent("user-1", { intent: "push" });
+      const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "push" });
 
       expect("error" in result).toBe(false);
       if ("error" in result) return;
@@ -3318,8 +3364,7 @@ describe("generateSessionFromIntent", () => {
   });
 
   it("returns body_part diagnostics including selected target muscles", async () => {
-    const result = await generateSessionFromIntent("user-1", {
-      intent: "body_part",
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "non_scheduled", purpose: "body_part" }, intent: "body_part",
       targetMuscles: ["Chest"],
     });
 
@@ -3399,7 +3444,7 @@ describe("generateSessionFromIntent", () => {
       mesocycleLength: 5,
     });
 
-    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "push" });
     expect("error" in result).toBe(false);
     if ("error" in result) return;
 
@@ -3421,7 +3466,7 @@ describe("generateSessionFromIntent", () => {
     });
     getCurrentMesoWeekMock.mockReturnValue(1);
     getRirTargetMock.mockReturnValue({ min: 3, max: 4 });
-    let result = await generateSessionFromIntent("user-1", { intent: "push" });
+    let result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "push" });
     expect("error" in result).toBe(false);
     if ("error" in result) return;
     const week1Rpe = result.workout.mainLifts[0]?.sets[0]?.targetRpe ?? 0;
@@ -3430,7 +3475,7 @@ describe("generateSessionFromIntent", () => {
 
     getCurrentMesoWeekMock.mockReturnValue(2);
     getRirTargetMock.mockReturnValue({ min: 2, max: 3 });
-    result = await generateSessionFromIntent("user-1", { intent: "push" });
+    result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "push" });
     expect("error" in result).toBe(false);
     if ("error" in result) return;
     const week2Rpe = result.workout.mainLifts[0]?.sets[0]?.targetRpe ?? 0;
@@ -3439,7 +3484,7 @@ describe("generateSessionFromIntent", () => {
 
     getCurrentMesoWeekMock.mockReturnValue(4);
     getRirTargetMock.mockReturnValue({ min: 1, max: 2 });
-    result = await generateSessionFromIntent("user-1", { intent: "push" });
+    result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "push" });
     expect("error" in result).toBe(false);
     if ("error" in result) return;
     const week4Rpe = result.workout.mainLifts[0]?.sets[0]?.targetRpe ?? 0;
@@ -3457,7 +3502,7 @@ describe("generateSessionFromIntent", () => {
     getCurrentMesoWeekMock.mockReturnValue(2);
     getRirTargetMock.mockReturnValue({ min: 2, max: 3 });
 
-    const result = await generateSessionFromIntent("user-1", { intent: "pull" });
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "pull" });
     expect("error" in result).toBe(false);
     if ("error" in result) return;
 
@@ -3479,7 +3524,7 @@ describe("generateSessionFromIntent", () => {
     getCurrentMesoWeekMock.mockReturnValue(3);
     getRirTargetMock.mockReturnValue({ min: 1, max: 2 });
 
-    const result = await generateSessionFromIntent("user-1", { intent: "pull" });
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "pull" });
     expect("error" in result).toBe(false);
     if ("error" in result) return;
 
@@ -3500,9 +3545,9 @@ describe("generateSessionFromIntent", () => {
       { exerciseId: "lat-pull", role: "ACCESSORY", sessionIntent: "PULL" },
     ]);
 
-    const push = await generateSessionFromIntent("user-1", { intent: "push" });
-    const pull = await generateSessionFromIntent("user-1", { intent: "pull" });
-    const legs = await generateSessionFromIntent("user-1", { intent: "legs" });
+    const push = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "push" });
+    const pull = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "pull" });
+    const legs = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "legs" });
 
     expect("error" in push).toBe(false);
     expect("error" in pull).toBe(false);
@@ -3590,7 +3635,7 @@ describe("generateSessionFromIntent", () => {
     });
 
     try {
-      const result = await generateSessionFromIntent("user-1", { intent: "legs" });
+      const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "legs" });
 
         expect("error" in result).toBe(false);
         if ("error" in result) return;
@@ -3613,7 +3658,7 @@ describe("generateSessionFromIntent", () => {
       { exerciseId: "lat-pull", role: "CORE_COMPOUND", sessionIntent: "PULL" },
     ]);
 
-    const result = await generateSessionFromIntent("user-1", { intent: "pull" });
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "pull" });
 
     expect("error" in result).toBe(false);
     if ("error" in result) return;
@@ -3663,7 +3708,7 @@ describe("generateSessionFromIntent", () => {
       { exerciseId: "leg-press", role: "ACCESSORY", sessionIntent: "LEGS" },
     ]);
 
-    const result = await generateSessionFromIntent("user-1", { intent: "legs" });
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "legs" });
     expect("error" in result).toBe(false);
     if ("error" in result) return;
 
@@ -3698,7 +3743,7 @@ describe("generateSessionFromIntent", () => {
 
     const selectSpy = vi.spyOn(selectionV2, "selectExercisesOptimized");
     try {
-      const result = await generateSessionFromIntent("user-1", {
+      const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" },
         intent: "legs",
         roleListIncomplete: false as never,
       });
@@ -3802,7 +3847,7 @@ describe("generateSessionFromIntent", () => {
     });
 
     try {
-      const result = await generateSessionFromIntent("user-1", {
+      const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" },
         intent: "push",
         plannerDiagnosticsMode: "debug",
       });
@@ -3897,14 +3942,12 @@ describe("generateSessionFromIntent", () => {
     mapExercisesMock.mockReturnValue(rescueOnlyLibrary);
     mesocycleRoleFindManyMock.mockResolvedValue([]);
 
-    const standard = await generateSessionFromIntent("user-1", {
-      intent: "body_part",
+    const standard = await generateSessionFromIntent("user-1", { generationMode: { kind: "non_scheduled", purpose: "body_part" }, intent: "body_part",
       targetMuscles: ["Chest"],
     });
     expect(standard).toEqual({ error: "No compatible exercises found for the requested intent" });
 
-    const rescue = await generateSessionFromIntent("user-1", {
-      intent: "body_part",
+    const rescue = await generateSessionFromIntent("user-1", { generationMode: { kind: "non_scheduled", purpose: "body_part" }, intent: "body_part",
       targetMuscles: ["Chest"],
       optionalGapFill: true,
       plannerDiagnosticsMode: "debug",
@@ -3940,7 +3983,7 @@ describe("generateSessionFromIntent", () => {
     ]);
     const selectSpy = vi.spyOn(selectionV2, "selectExercisesOptimized");
     try {
-      const result = await generateSessionFromIntent("user-1", {
+      const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" },
         intent: "legs",
         roleListIncomplete: true,
       });
@@ -4002,8 +4045,7 @@ describe("generateSessionFromIntent", () => {
       },
     ]);
 
-    const result = await generateSessionFromIntent("user-1", {
-      intent: "body_part",
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "non_scheduled", purpose: "body_part" }, intent: "body_part",
       targetMuscles: ["Chest"],
       supplementalPlannerProfile: true,
     });
@@ -4071,8 +4113,7 @@ describe("generateSessionFromIntent", () => {
       },
     ]);
 
-    const result = await generateSessionFromIntent("user-1", {
-      intent: "body_part",
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "non_scheduled", purpose: "body_part" }, intent: "body_part",
       targetMuscles: ["Hamstrings", "Quads"],
       supplementalPlannerProfile: true,
     });
@@ -4120,8 +4161,7 @@ describe("generateSessionFromIntent", () => {
       },
     ]);
 
-    const result = await generateSessionFromIntent("user-1", {
-      intent: "body_part",
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "non_scheduled", purpose: "body_part" }, intent: "body_part",
       targetMuscles: ["Hamstrings", "Quads"],
       supplementalPlannerProfile: true,
     });
@@ -4159,8 +4199,7 @@ describe("generateSessionFromIntent", () => {
     mapHistoryMock.mockReturnValue([]);
     getWeeklyVolumeTargetMock.mockImplementation(() => 1);
 
-    const result = await generateSessionFromIntent("user-1", {
-      intent: "body_part",
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "non_scheduled", purpose: "body_part" }, intent: "body_part",
       targetMuscles: ["Chest"],
       supplementalPlannerProfile: true,
     });
@@ -4193,8 +4232,7 @@ describe("generateSessionFromIntent", () => {
     ]);
     mapHistoryMock.mockReturnValue([]);
 
-    const result = await generateSessionFromIntent("user-1", {
-      intent: "body_part",
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "non_scheduled", purpose: "body_part" }, intent: "body_part",
       targetMuscles: ["Chest"],
       supplementalPlannerProfile: true,
     });
@@ -4295,8 +4333,7 @@ describe("generateSessionFromIntent", () => {
     });
 
     try {
-      const result = await generateSessionFromIntent("user-1", {
-        intent: "body_part",
+      const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "non_scheduled", purpose: "body_part" }, intent: "body_part",
         targetMuscles: ["Hamstrings", "Quads"],
         supplementalPlannerProfile: true,
       });

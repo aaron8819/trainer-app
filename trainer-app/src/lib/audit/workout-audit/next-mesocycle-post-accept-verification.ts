@@ -8,7 +8,10 @@ import {
 import { buildProgramCurrentWeekPlan } from "@/lib/api/program-page";
 import { loadProjectedWeekVolumeReport } from "@/lib/api/projected-week-volume";
 import { readRuntimeSlotSequence } from "@/lib/api/mesocycle-slot-runtime";
-import { loadNextWorkoutContext } from "@/lib/api/next-session";
+import {
+  loadNextWorkoutContext,
+  resolveRequestedV4ScheduledGenerationObligation,
+} from "@/lib/api/next-session";
 import {
   parseAcceptedSeedPayload,
   parseSlotPlanSeedJson,
@@ -942,8 +945,18 @@ async function buildFutureWeekGeneration(input: {
     return { error: `unsupported next-session intent: ${input.nextSession.intent}` };
   }
   try {
+    const obligation = resolveRequestedV4ScheduledGenerationObligation({
+      nextWorkoutContext: input.nextSession,
+      requestedIntent: intent,
+    });
+    if (input.nextSession.v4ScheduleAuthority && !obligation) {
+      return { error: "accepted V4 next-session obligation is unavailable" };
+    }
     return await generateSessionFromIntent(input.userId, {
       intent,
+      generationMode: obligation
+        ? { kind: "accepted_v4_scheduled", obligation }
+        : { kind: "legacy" },
       advancingSlot: resolveAdvancingSlotSnapshot(input.nextSession),
       plannerDiagnosticsMode: input.plannerDiagnosticsMode,
     });

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   deriveCurrentMesocycleSession: vi.fn(),
   getDeloadSessionThreshold: vi.fn(),
   loadNextWorkoutContext: vi.fn(),
+  resolveRequestedV4ScheduledGenerationObligation: vi.fn(),
   buildProjectedWeek: vi.fn(),
   buildWeeklyRetro: vi.fn(),
   generateSessionFromIntent: vi.fn(),
@@ -26,6 +27,8 @@ vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
 vi.mock("@/lib/api/next-session", () => ({
   loadNextWorkoutContext: (...args: unknown[]) =>
     mocks.loadNextWorkoutContext(...args),
+  resolveRequestedV4ScheduledGenerationObligation: (...args: unknown[]) =>
+    mocks.resolveRequestedV4ScheduledGenerationObligation(...args),
 }));
 
 vi.mock("@/lib/api/template-session", () => ({

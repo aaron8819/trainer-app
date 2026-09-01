@@ -40,12 +40,31 @@ import type {
 } from "@/lib/engine/apply-loads";
 import type { V4ScheduledGenerationObligation } from "@/lib/api/v4-scheduled-slot-resolution";
 
+export type GenerationScheduleMode =
+  | {
+      kind: "accepted_v4_scheduled";
+      obligation: V4ScheduledGenerationObligation;
+    }
+  | {
+      kind: "explicit_preview";
+      weekInMeso: number;
+      slotId?: string;
+    }
+  | {
+      kind: "non_scheduled";
+      purpose: "body_part" | "gap_fill" | "supplemental" | "closeout";
+      anchorWeek?: number;
+    }
+  | {
+      kind: "legacy";
+    };
+
 export type GenerateTemplateSessionParams = {
+  generationMode: GenerationScheduleMode;
   pinnedExerciseIds?: string[];
   autoFillUnpinned?: boolean;
   slotId?: string;
   advancingSlot?: SessionSlotSnapshot;
-  scheduledV4Obligation?: V4ScheduledGenerationObligation;
   exerciseReplacements?: Array<{
     placementId: string;
     orderIndex: number;
@@ -55,10 +74,10 @@ export type GenerateTemplateSessionParams = {
 };
 
 export type GenerateIntentSessionInput = {
+  generationMode: GenerationScheduleMode;
   intent: SessionIntent;
   slotId?: string;
   advancingSlot?: SessionSlotSnapshot;
-  scheduledV4Obligation?: V4ScheduledGenerationObligation;
   targetMuscles?: string[];
   projectionRepairMuscles?: string[];
   slotPreselectionDemands?: SlotPreselectionDemand[];
@@ -205,6 +224,7 @@ export type GenerateFromTemplateResponse = SharedGeneratedWorkoutResponse & {
 };
 
 export type MappedGenerationContext = {
+  generationMode: GenerationScheduleMode;
   mappedProfile: ReturnType<typeof mapProfile>;
   mappedGoals: ReturnType<typeof mapGoals>;
   mappedConstraints: ReturnType<typeof mapConstraints>;

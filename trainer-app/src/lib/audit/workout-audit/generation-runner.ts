@@ -12,6 +12,7 @@ import {
   generateDeloadSessionFromIntent,
   generateSessionFromIntent,
 } from "@/lib/api/template-session";
+import type { GenerationScheduleMode } from "@/lib/api/template-session/types";
 import type { SessionSlotSnapshot } from "@/lib/evidence/types";
 import {
   buildGeneratedSessionAuditSnapshot,
@@ -141,6 +142,33 @@ async function buildGeneratedSessionRunFields(input: {
         requestedIntent: generationInput.intent,
       })
     : undefined;
+  const generationMode: GenerationScheduleMode = scheduledV4Obligation &&
+    generationInput.source === "derived-next-session"
+    ? { kind: "accepted_v4_scheduled", obligation: scheduledV4Obligation }
+    : context.nextSession?.v4ScheduleAuthority
+      ? context.nextSession.weekInMeso
+        ? {
+            kind: "explicit_preview",
+            weekInMeso: context.nextSession.weekInMeso,
+            ...(context.nextSession.slotId
+              ? { slotId: context.nextSession.slotId }
+              : {}),
+          }
+        : (() => {
+            throw new Error(
+              "Accepted V4 audit preview requires an explicit authored week.",
+            );
+          })()
+      : { kind: "legacy" };
+  if (
+    generationInput.source === "derived-next-session" &&
+    context.nextSession?.v4ScheduleAuthority &&
+    generationMode.kind !== "accepted_v4_scheduled"
+  ) {
+    throw new Error(
+      "Accepted V4 next-session audit generation requires the canonical obligation.",
+    );
+  }
   const advancingSlot = scheduledV4Obligation
     ? {
         slotId: scheduledV4Obligation.requiredSlot.slotId,
@@ -155,16 +183,17 @@ async function buildGeneratedSessionRunFields(input: {
       ? await generateDeloadSessionFromIntent(context.userId, {
           intent: generationInput.intent,
           targetMuscles: generationInput.targetMuscles,
-          ...(scheduledV4Obligation
-            ? { advancingSlot, scheduledV4Obligation }
+          generationMode,
+          ...(generationMode.kind !== "legacy" && advancingSlot
+            ? { advancingSlot }
             : {}),
           plannerDiagnosticsMode: context.plannerDiagnosticsMode,
         })
       : await generateSessionFromIntent(context.userId, {
           intent: generationInput.intent,
           targetMuscles: generationInput.targetMuscles,
+          generationMode,
           ...(advancingSlot ? { advancingSlot } : {}),
-          ...(scheduledV4Obligation ? { scheduledV4Obligation } : {}),
           plannerDiagnosticsMode: context.plannerDiagnosticsMode,
         });
   const generationPath: WorkoutAuditGenerationPath =

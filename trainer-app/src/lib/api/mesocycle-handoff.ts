@@ -1215,7 +1215,9 @@ async function buildAcceptedMesocycleSlotPlanSeed(input: {
     }
   }
 
-  const snapshot = await loadPreloadedGenerationSnapshot(input.userId);
+  const snapshot = await loadPreloadedGenerationSnapshot(input.userId, {
+    generationMode: { kind: "explicit_preview", weekInMeso: 1 },
+  });
   const slotPlanProjection = projectSuccessorSlotPlansFromSnapshot({
     userId: input.userId,
     source: input.source,

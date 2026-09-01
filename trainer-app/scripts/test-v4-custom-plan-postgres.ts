@@ -571,9 +571,21 @@ async function main(): Promise<void> {
   assert.equal(scheduled.slotSequenceLength, 4);
   assert.equal(scheduled.slotSource, "mesocycle_slot_sequence");
   const { sessionIntentSchema } = await import("@/lib/validation");
+  const scheduledObligation =
+    nextSessionModule.resolveRequestedV4ScheduledGenerationObligation({
+      nextWorkoutContext: scheduled,
+    });
+  assert(scheduledObligation, "V4_REFERENCE_OBLIGATION_NOT_RESOLVED");
   const materialized = await templateSessionModule.generateSessionFromIntent(
     user.id,
-    { intent: sessionIntentSchema.parse(scheduled.intent), slotId: scheduled.slotId },
+    {
+      intent: sessionIntentSchema.parse(scheduled.intent),
+      slotId: scheduled.slotId,
+      generationMode: {
+        kind: "accepted_v4_scheduled",
+        obligation: scheduledObligation,
+      },
+    },
   );
   assert(!("error" in materialized), "V4_REFERENCE_MATERIALIZATION_FAILED");
   const actualResolvedSlot = authoringModule

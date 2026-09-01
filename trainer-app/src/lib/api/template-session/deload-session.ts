@@ -168,6 +168,12 @@ export async function generateDeloadSessionFromIntentContext(
   const seededSlotPlan = resolveRequiredSeededSlotPlan({
     mapped,
     sessionIntent,
+    slotId:
+      mapped.generationMode.kind === "accepted_v4_scheduled"
+        ? mapped.generationMode.obligation.requiredSlot.slotId
+        : mapped.generationMode.kind === "explicit_preview"
+          ? mapped.generationMode.slotId
+          : undefined,
   });
   if (seededSlotPlan && "error" in seededSlotPlan) {
     return seededSlotPlan;

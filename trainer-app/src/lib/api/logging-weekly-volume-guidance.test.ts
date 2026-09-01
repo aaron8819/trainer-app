@@ -16,6 +16,9 @@ const mocks = vi.hoisted(() => {
   const buildAdvancingPerformedSlots = vi.fn();
   const getWeeklyVolumeTarget = vi.fn();
   const deriveSessionSemantics = vi.fn();
+  const resolveV4ScheduleAuthority = vi.fn();
+  const resolveV4RequiredSlotFromPersistedWorkoutEvidence = vi.fn();
+  const resolveV4ScheduledSlots = vi.fn();
 
   return {
     workoutFindFirst,
@@ -33,6 +36,9 @@ const mocks = vi.hoisted(() => {
     buildAdvancingPerformedSlots,
     getWeeklyVolumeTarget,
     deriveSessionSemantics,
+    resolveV4ScheduleAuthority,
+    resolveV4RequiredSlotFromPersistedWorkoutEvidence,
+    resolveV4ScheduledSlots,
     prisma: {
       workout: {
         findFirst: workoutFindFirst,
@@ -86,6 +92,15 @@ vi.mock("./mesocycle-lifecycle-math", () => ({
 
 vi.mock("@/lib/session-semantics/derive-session-semantics", () => ({
   deriveSessionSemantics: (...args: unknown[]) => mocks.deriveSessionSemantics(...args),
+}));
+
+vi.mock("./v4-scheduled-slot-resolution", () => ({
+  resolveV4ScheduleAuthority: (...args: unknown[]) =>
+    mocks.resolveV4ScheduleAuthority(...args),
+  resolveV4RequiredSlotFromPersistedWorkoutEvidence: (...args: unknown[]) =>
+    mocks.resolveV4RequiredSlotFromPersistedWorkoutEvidence(...args),
+  resolveV4ScheduledSlots: (...args: unknown[]) =>
+    mocks.resolveV4ScheduledSlots(...args),
 }));
 
 vi.mock("@/lib/engine/stimulus", async (importOriginal) => {
@@ -258,6 +273,7 @@ function buildWorkout(options?: {
 describe("loadLoggingWeeklyVolumeGuidance", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.resolveV4ScheduleAuthority.mockReturnValue({ status: "not_v4" });
 
     mocks.loadPreloadedGenerationSnapshot.mockResolvedValue({
       activeMesocycle: { id: "meso-1" },
@@ -376,6 +392,85 @@ describe("loadLoggingWeeklyVolumeGuidance", () => {
       recommendationKind: "add_low_fatigue_buffer_optional",
       optionalOrSuppress: true,
     });
+  });
+
+  it("projects every remaining authored Week 3 obligation as Week 3 when completed counters still imply Week 2", async () => {
+    const week3Slots = [
+      ["lower_a", "lower"],
+      ["upper_a", "upper"],
+      ["lower_b", "lower"],
+      ["upper_b", "upper"],
+    ].map(([slotId, intent], sequenceIndex) => ({
+      weekInMeso: 3,
+      phase: "ACCUMULATION" as const,
+      slotId,
+      intent,
+      sequenceIndex,
+      sequenceLength: 4,
+    }));
+    const authority = {
+      mesocycleId: "meso-1",
+      revisionId: "revision-1",
+      revisionNumber: 1,
+      revisionHash: "a".repeat(64),
+      slotsPerWeek: 4,
+      requiredSlots: week3Slots,
+    };
+    const baseWorkout = buildWorkout();
+    const workout = {
+      ...baseWorkout,
+      sessionIntent: "LOWER",
+      mesocycleWeekSnapshot: 3,
+      mesoSessionSnapshot: 1,
+      seedRevisionId: authority.revisionId,
+      seedRevisionNumber: authority.revisionNumber,
+      seedPayloadHash: authority.revisionHash,
+      mesocycle: {
+        ...(baseWorkout.mesocycle as Record<string, unknown>),
+        durationWeeks: 5,
+        sessionsPerWeek: 4,
+        accumulationSessionsCompleted: 7,
+      },
+    };
+    mocks.workoutFindFirst.mockResolvedValue(workout);
+    mocks.resolveV4ScheduleAuthority.mockReturnValueOnce({
+      status: "available",
+      authority,
+    });
+    mocks.resolveV4RequiredSlotFromPersistedWorkoutEvidence.mockReturnValueOnce({
+      requiredSlot: week3Slots[0],
+    });
+    mocks.resolveV4ScheduledSlots.mockReturnValueOnce({
+      status: "available",
+      claims: [],
+    });
+    mocks.generateProjectedSession.mockReset();
+    mocks.generateProjectedSession.mockResolvedValue({ workout: { id: "projected" } });
+    mocks.computeWorkoutContributionByMuscle.mockReset();
+    mocks.computeWorkoutContributionByMuscle.mockReturnValue({});
+
+    await loadLoggingWeeklyVolumeGuidance({
+      userId: "user-1",
+      workoutId: "workout-1",
+    });
+
+    expect(mocks.loadMesocycleWeekMuscleVolume).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ targetWeek: 3 }),
+    );
+    expect(mocks.generateProjectedSession).toHaveBeenCalledTimes(3);
+    expect(
+      mocks.generateProjectedSession.mock.calls.map(([call]) => ({
+        slotId: call.slotId,
+        weekInMeso: call.generationMode.obligation.requiredSlot.weekInMeso,
+      })),
+    ).toEqual([
+      { slotId: "upper_a", weekInMeso: 3 },
+      { slotId: "lower_b", weekInMeso: 3 },
+      { slotId: "upper_b", weekInMeso: 3 },
+    ]);
+    expect(mocks.deriveNextRuntimeSlotSession).not.toHaveBeenCalled();
+    expect(mocks.buildRemainingFutureSlotsFromRuntime).not.toHaveBeenCalled();
   });
 
   it("uses the exposed scope so Core absorbs Abs and no separate Abs row is emitted", async () => {

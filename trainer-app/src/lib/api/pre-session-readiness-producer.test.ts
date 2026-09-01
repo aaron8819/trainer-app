@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => {
   const deriveCurrentMesocycleSession = vi.fn();
   const getDeloadSessionThreshold = vi.fn();
   const loadNextWorkoutContext = vi.fn();
+  const resolveRequestedV4ScheduledGenerationObligation = vi.fn();
   const buildPreSessionReadinessProjectedWeekEvidence = vi.fn();
   const buildPreSessionReadinessWeeklyRetroEvidence = vi.fn();
   const generateSessionFromIntent = vi.fn();
@@ -33,6 +34,7 @@ const mocks = vi.hoisted(() => {
     deriveCurrentMesocycleSession,
     getDeloadSessionThreshold,
     loadNextWorkoutContext,
+    resolveRequestedV4ScheduledGenerationObligation,
     buildPreSessionReadinessProjectedWeekEvidence,
     buildPreSessionReadinessWeeklyRetroEvidence,
     generateSessionFromIntent,
@@ -58,6 +60,8 @@ vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
 vi.mock("@/lib/api/next-session", () => ({
   loadNextWorkoutContext: (...args: unknown[]) =>
     mocks.loadNextWorkoutContext(...args),
+  resolveRequestedV4ScheduledGenerationObligation: (...args: unknown[]) =>
+    mocks.resolveRequestedV4ScheduledGenerationObligation(...args),
 }));
 
 vi.mock("@/lib/api/template-session", () => ({
@@ -422,6 +426,113 @@ describe("preparePreSessionReadinessSnapshot", () => {
         }),
         contract: result.contract,
       })
+    );
+  });
+
+  it("generates Week 3 readiness from the exact authored obligation after a Week 2 skip", async () => {
+    const requiredSlot = {
+      weekInMeso: 3,
+      phase: "ACCUMULATION" as const,
+      slotId: "lower_a",
+      intent: "lower",
+      sequenceIndex: 0,
+      sequenceLength: 4,
+    };
+    const obligation = {
+      authority: {
+        mesocycleId: "meso-1",
+        revisionId: "revision-1",
+        revisionNumber: 1,
+        revisionHash: "a".repeat(64),
+        slotsPerWeek: 4,
+        requiredSlots: [requiredSlot],
+      },
+      requiredSlot,
+    };
+    mocks.loadActiveMesocycle.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      accumulationSessionsCompleted: 7,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 4,
+      durationWeeks: 5,
+      blocks: [],
+    });
+    mocks.deriveCurrentMesocycleSession.mockReturnValueOnce({
+      week: 2,
+      session: 4,
+      phase: "ACCUMULATION",
+    });
+    mocks.loadNextWorkoutContext.mockResolvedValueOnce({
+      intent: "lower",
+      slotId: "lower_a",
+      slotSequenceIndex: 0,
+      slotSequenceLength: 4,
+      slotSource: "mesocycle_slot_sequence",
+      existingWorkoutId: null,
+      isExisting: false,
+      source: "rotation",
+      weekInMeso: 3,
+      sessionInWeek: 1,
+      selectedIncompleteStatus: null,
+      selectedIncompleteReadiness: null,
+      derivationTrace: [],
+      v4ScheduleAuthority: obligation.authority,
+    });
+    mocks.resolveRequestedV4ScheduledGenerationObligation.mockReturnValueOnce(
+      obligation,
+    );
+    mocks.generateSessionFromIntent.mockResolvedValueOnce({
+      workout: { mainLifts: [], accessories: [] },
+      selectionMode: "AUTO",
+      sessionIntent: "LOWER",
+      filteredExercises: [],
+      selection: {
+        sessionDecisionReceipt: {
+          cycleContext: { weekInMeso: 3, phase: "accumulation" },
+          sessionProvenance: {
+            mesocycleId: "meso-1",
+            compositionSource: "persisted_slot_plan_seed",
+          },
+        },
+      },
+      audit: {},
+    });
+    mocks.buildPreSessionReadinessProjectedWeekEvidence.mockResolvedValueOnce({
+      version: 1,
+      currentWeek: {
+        mesocycleId: "meso-1",
+        week: 3,
+        phase: "accumulation",
+        blockType: null,
+      },
+      projectionNotes: [],
+      completedVolumeByMuscle: {},
+      projectedSessions: [],
+      fullWeekByMuscle: [],
+    });
+
+    const result = await preparePreSessionReadinessSnapshot("user-1");
+
+    expect(result.status).toBe("prepared");
+    expect(mocks.generateSessionFromIntent).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({
+        generationMode: {
+          kind: "accepted_v4_scheduled",
+          obligation,
+        },
+        advancingSlot: expect.objectContaining({ slotId: "lower_a" }),
+      }),
+    );
+    expect(mocks.buildGeneratedSessionAuditSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selectionMetadata: {
+          sessionDecisionReceipt: expect.objectContaining({
+            cycleContext: expect.objectContaining({ weekInMeso: 3 }),
+          }),
+        },
+      }),
     );
   });
 

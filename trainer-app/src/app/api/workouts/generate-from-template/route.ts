@@ -98,22 +98,24 @@ export async function POST(request: Request) {
       { status: 409 },
     );
   }
-  const advancingSlot = scheduledV4Obligation
-    ? {
-        slotId: scheduledV4Obligation.requiredSlot.slotId,
-        intent: scheduledV4Obligation.requiredSlot.intent,
-        sequenceIndex: scheduledV4Obligation.requiredSlot.sequenceIndex,
-        sequenceLength: scheduledV4Obligation.requiredSlot.sequenceLength,
-        source: "mesocycle_slot_sequence" as const,
-      }
-    : undefined;
+  if (scheduledV4Obligation) {
+    return NextResponse.json(
+      {
+        error:
+          "Accepted V4 scheduled workouts must use the canonical intent generation path.",
+        code: "V4_SCHEDULED_TEMPLATE_MATERIALIZATION_UNSUPPORTED",
+      },
+      { status: 409 },
+    );
+  }
+  const advancingSlot = undefined;
   const generationParams = {
+    generationMode: { kind: "legacy" as const },
     pinnedExerciseIds: parsed.data.pinnedExerciseIds,
     autoFillUnpinned: parsed.data.autoFillUnpinned,
     slotId: parsed.data.slotId,
     exerciseReplacements: parsed.data.exerciseReplacements,
     advancingSlot,
-    scheduledV4Obligation,
   };
   const result =
     activeMesocycle?.state === "ACTIVE_DELOAD"

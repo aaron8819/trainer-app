@@ -11,6 +11,7 @@ import {
 import { generateDeloadSessionFromIntentContext } from "./template-session/deload-session";
 import { generateSessionFromMappedContext } from "./template-session";
 import type {
+  GenerationScheduleMode,
   MappedGenerationContext,
   SessionGenerationResult,
 } from "./template-session/types";
@@ -139,6 +140,7 @@ export async function generateProjectedSession(input: {
   mapped: MappedGenerationContext;
   intent: SessionIntent;
   slotId: string | null;
+  generationMode: GenerationScheduleMode;
   plannerDiagnosticsMode: "standard" | "debug";
 }): Promise<SessionGenerationResult> {
   if (input.mapped.activeMesocycle?.state === "ACTIVE_DELOAD") {
@@ -160,10 +162,24 @@ export async function generateProjectedSession(input: {
       note: deload.note,
       deloadTrace: deload.trace,
       plannerDiagnosticsMode: input.plannerDiagnosticsMode,
+      compositionSource: deload.compositionSource,
+      sessionSlot:
+        input.generationMode.kind === "accepted_v4_scheduled"
+          ? {
+              slotId: input.generationMode.obligation.requiredSlot.slotId,
+              intent: input.generationMode.obligation.requiredSlot.intent,
+              sequenceIndex:
+                input.generationMode.obligation.requiredSlot.sequenceIndex,
+              sequenceLength:
+                input.generationMode.obligation.requiredSlot.sequenceLength,
+              source: "mesocycle_slot_sequence",
+            }
+          : undefined,
     });
   }
 
   return generateSessionFromMappedContext(input.mapped, {
+    generationMode: input.generationMode,
     intent: input.intent,
     slotId: input.slotId ?? undefined,
     plannerDiagnosticsMode: input.plannerDiagnosticsMode,

@@ -6,7 +6,11 @@ import {
   loadActiveMesocycle,
 } from "@/lib/api/mesocycle-lifecycle";
 import type { NextWorkoutContext } from "@/lib/api/next-session";
-import { loadNextWorkoutContext } from "@/lib/api/next-session";
+import {
+  loadNextWorkoutContext,
+  resolveRequestedV4ScheduledGenerationObligation,
+} from "@/lib/api/next-session";
+import type { V4ScheduledGenerationObligation } from "@/lib/api/v4-scheduled-slot-resolution";
 import {
   generateDeloadSessionFromIntent,
   generateSessionFromIntent,
@@ -138,18 +142,27 @@ async function buildGeneratedSessionFields(input: {
   nextSession: NextWorkoutContext;
   intent: string;
   plannerDiagnosticsMode: "standard" | "debug";
+  scheduledV4Obligation?: V4ScheduledGenerationObligation;
 }): Promise<{
   generation: SessionGenerationResult;
   sessionSnapshot?: SessionAuditSnapshot;
   generationPath: PreSessionReadinessGenerationPathEvidence;
 }> {
   const useDeloadGeneration = input.activeMesocycle.state === "ACTIVE_DELOAD";
+  const generationMode = input.scheduledV4Obligation
+    ? {
+        kind: "accepted_v4_scheduled" as const,
+        obligation: input.scheduledV4Obligation,
+      }
+    : { kind: "legacy" as const };
   const generation = useDeloadGeneration
     ? await generateDeloadSessionFromIntent(input.userId, {
+        generationMode,
         intent: input.intent as SessionIntent,
         plannerDiagnosticsMode: input.plannerDiagnosticsMode,
       })
     : await generateSessionFromIntent(input.userId, {
+        generationMode,
         intent: input.intent as SessionIntent,
         advancingSlot: resolveAdvancingSlotSnapshot(
           input.nextSession,
@@ -260,6 +273,17 @@ export async function preparePreSessionReadinessSnapshot(
       "No concrete next-session identity is available for pre-session readiness."
     );
   }
+  const scheduledV4Obligation = resolveRequestedV4ScheduledGenerationObligation({
+    nextWorkoutContext: nextSession,
+    requestedIntent: nextSession.intent,
+    explicitSlotId: nextSession.slotId,
+  });
+  if (nextSession.v4ScheduleAuthority && !scheduledV4Obligation) {
+    return blocked(
+      "integrity_conflict",
+      "Accepted V4 next-session identity could not be resolved for readiness generation.",
+    );
+  }
 
   const [generated, projectedWeek] = await Promise.all([
     buildGeneratedSessionFields({
@@ -268,6 +292,7 @@ export async function preparePreSessionReadinessSnapshot(
       nextSession,
       intent: nextSession.intent,
       plannerDiagnosticsMode,
+      scheduledV4Obligation,
     }),
     buildPreSessionReadinessProjectedWeekEvidence({
       userId,

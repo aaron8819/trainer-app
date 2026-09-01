@@ -8663,6 +8663,9 @@ describe("buildNextMesocyclePostAcceptVerificationSummary", () => {
           futureWeekReplay: {
             status: "available",
             compositionSource: "persisted_slot_plan_seed",
+            generationMode: "explicit_preview",
+            materializationClass: "preview_only",
+            scheduledSlotReceiptPresent: false,
             generationPath: "standard_generation",
             nextSlotId: "upper_a",
             generatedExerciseOrder: ["bench"],

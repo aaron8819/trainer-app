@@ -790,6 +790,7 @@ Required checks:
 - executable seed exercise rows contain only `exerciseId`, `role`, and `setCount`
 - persisted slot sequence exists and matches seed slot order
 - Week 1 future-week generation uses `compositionSource="persisted_slot_plan_seed"`
+- Week 1 generation is an explicit authored preview: receipt materialization is `explicit_preview -> preview_only`, no `scheduledSlotReceipt` exists, and no scheduled composition capability is acquired
 - generated Week 1 exercise order and set counts match the accepted seed for the next slot
 - projected-week-volume runs against the successor and every projected session matches the accepted seed for its slot
 - Program/Home read models are seed-backed (`persisted_slot_plan_seed` / `mesocycle_slot_sequence`)
@@ -805,6 +806,7 @@ Interpretation rules:
 - `not_runnable` means the accepted successor context is missing or not inspectable yet.
 - `prescriptionConfidence` is a readout over existing generated prescription evidence. It can classify rows as `exact_history`, `recent_history`, `stale_history`, `estimated`, `missing`, `load_calibration_drift`, `exercise_new_to_user`, or `runtime_only`; it does not recompute loads, change progression policy, or mutate prescriptions.
 - This mode is post-accept only. It does not replace `next-mesocycle-handoff-dry-run` or `next-mesocycle-acceptance-gate`.
+- Its generated Week 1 evidence is selected from the accepted persisted slot sequence, not from current unresolved eligibility. It may inspect that authored slot even when Home's current eligible slot differs; the receipt remains preview-only and Save rejects it.
 - This mode writes no DB rows, creates no mesocycles, creates no workouts/logs/sessions, mutates no seed shape, and changes no planner/materializer/runtime/generation behavior.
 
 Common red flags:
@@ -817,6 +819,7 @@ Common red flags:
 - projected sessions mismatch the accepted seed by exercise id, set count, or order
 - read models fall back to linked workout structure, projected-week rows, or legacy weekly schedule
 - provenance reports invalid/suspicious seed or receipt composition source
+- receipt materialization is not `preview_only`, contains a scheduled-slot receipt, or otherwise appears Save-compatible
 - `prescriptionConfidence` is missing, `runtime_only`, dominated by estimated/missing loads, or reports load-calibration drift that should be reviewed before Week 1 execution
 
 ### `replace-empty-mesocycle-with-v2`

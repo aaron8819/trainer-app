@@ -8,10 +8,7 @@ import {
 import { buildProgramCurrentWeekPlan } from "@/lib/api/program-page";
 import { loadProjectedWeekVolumeReport } from "@/lib/api/projected-week-volume";
 import { readRuntimeSlotSequence } from "@/lib/api/mesocycle-slot-runtime";
-import {
-  loadNextWorkoutContext,
-  resolveRequestedV4ScheduledGenerationObligation,
-} from "@/lib/api/next-session";
+import { loadNextWorkoutContext } from "@/lib/api/next-session";
 import {
   parseAcceptedSeedPayload,
   parseSlotPlanSeedJson,
@@ -79,11 +76,19 @@ type PostAcceptEvidence = {
   activeMesocycleId: string | null;
   weeklySchedule: string[];
   seedExerciseNameById: Record<string, string>;
+  previewTarget: PostAcceptPreviewTarget | null;
   nextSession: Awaited<ReturnType<typeof loadNextWorkoutContext>> | null;
   generationResult: SessionGenerationResult | { error: string } | null;
   generationPath: WorkoutAuditGenerationPath | null;
   projectedWeekVolume: ProjectedWeekVolumeAuditPayload | null;
   projectedWeekError?: string;
+};
+
+export type PostAcceptPreviewTarget = {
+  weekInMeso: number;
+  slotId: string;
+  intent: string;
+  advancingSlot: SessionSlotSnapshot;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -155,26 +160,28 @@ function summarizeSeed(seedJson: unknown): NextMesocyclePostAcceptVerificationPa
   };
 }
 
-function resolveAdvancingSlotSnapshot(
-  nextSession: PostAcceptEvidence["nextSession"],
-): SessionSlotSnapshot | undefined {
-  if (
-    !nextSession ||
-    nextSession.source !== "rotation" ||
-    !nextSession.slotId ||
-    nextSession.slotSequenceIndex == null ||
-    !nextSession.slotSource ||
-    !nextSession.intent
-  ) {
-    return undefined;
-  }
-
+function resolvePostAcceptPreviewTarget(input: {
+  successorMesocycle: SuccessorMesocycleRow | null;
+  weeklySchedule: readonly string[];
+}): PostAcceptPreviewTarget | null {
+  if (!input.successorMesocycle) return null;
+  const sequence = readRuntimeSlotSequence({
+    slotSequenceJson: input.successorMesocycle.slotSequenceJson,
+    weeklySchedule: input.weeklySchedule,
+  });
+  const slot = sequence.slots[0];
+  if (!slot) return null;
   return {
-    slotId: nextSession.slotId,
-    intent: nextSession.intent,
-    sequenceIndex: nextSession.slotSequenceIndex,
-    sequenceLength: nextSession.slotSequenceLength ?? undefined,
-    source: nextSession.slotSource,
+    weekInMeso: 1,
+    slotId: slot.slotId,
+    intent: slot.intent,
+    advancingSlot: {
+      slotId: slot.slotId,
+      intent: slot.intent,
+      sequenceIndex: slot.sequenceIndex,
+      sequenceLength: sequence.slots.length,
+      source: sequence.source,
+    },
   };
 }
 
@@ -548,7 +555,12 @@ export function buildNextMesocyclePostAcceptVerificationFromEvidence(
     slotOrder.length === seedSlotOrder.length &&
     slotOrder.every((slotId, index) => seedSlotOrder[index] === slotId);
   const generationRows = generatedExerciseRows(evidence.generationResult);
-  const nextSlotId = evidence.nextSession?.slotId ?? null;
+  const receipt =
+    evidence.generationResult && !("error" in evidence.generationResult)
+      ? evidence.generationResult.selection.sessionDecisionReceipt
+      : undefined;
+  const nextSlotId =
+    receipt?.sessionSlot?.slotId ?? evidence.previewTarget?.slotId ?? null;
   const seedRows = seedExerciseRowsForSlot({
     seedJson: successor?.slotPlanSeedJson,
     slotId: nextSlotId,
@@ -562,15 +574,14 @@ export function buildNextMesocyclePostAcceptVerificationFromEvidence(
       ? evidence.generationResult.error
       : null;
   const receiptCompositionSource =
-    evidence.generationResult && !("error" in evidence.generationResult)
-      ? evidence.generationResult.selection.sessionDecisionReceipt?.sessionProvenance
-          ?.compositionSource ?? null
-      : null;
+    receipt?.sessionProvenance?.compositionSource ?? null;
   const receiptSeedProvenance =
-    evidence.generationResult && !("error" in evidence.generationResult)
-      ? evidence.generationResult.selection.sessionDecisionReceipt?.sessionProvenance
-          ?.seedProvenance ?? null
-      : null;
+    receipt?.sessionProvenance?.seedProvenance ?? null;
+  const receiptMaterialization = receipt?.materialization;
+  const isPreviewOnlyReceipt =
+    receiptMaterialization?.generationMode === "explicit_preview" &&
+    receiptMaterialization.materializationClass === "preview_only" &&
+    receipt?.scheduledSlotReceipt == null;
   const provenance =
     successor?.slotPlanSeedJson != null
       ? evaluateAcceptedMesocycleSeedProvenance({
@@ -723,7 +734,7 @@ export function buildNextMesocyclePostAcceptVerificationFromEvidence(
       mustFixBeforeWeek1: true,
     }),
     check({
-      check: "Week 1 future-week replays persisted seed",
+      check: "Week 1 authored preview replays persisted seed",
       status:
         futureWeekStatus === "available" &&
         receiptCompositionSource === "persisted_slot_plan_seed" &&
@@ -735,6 +746,15 @@ export function buildNextMesocyclePostAcceptVerificationFromEvidence(
         ? `generation_error=${generationError}`
         : `compositionSource=${receiptCompositionSource ?? "missing"} generationPath=${evidence.generationPath?.executionMode ?? "not_run"} nextSlot=${nextSlotId ?? "missing"} orderMatchesSeed=${exerciseOrderMatchesSeed}`,
       ownerSeam: "template-session seeded runtime replay",
+      mustFixBeforeWeek1: true,
+    }),
+    check({
+      check: "post-accept generation is preview-only",
+      status: futureWeekStatus === "available" && isPreviewOnlyReceipt
+        ? "pass"
+        : "fail",
+      evidence: `generationMode=${receiptMaterialization?.generationMode ?? "missing"} materializationClass=${receiptMaterialization?.materializationClass ?? "missing"} scheduledSlotReceipt=${receipt?.scheduledSlotReceipt ? "present" : "absent"}`,
+      ownerSeam: "session materialization",
       mustFixBeforeWeek1: true,
     }),
     check({
@@ -862,6 +882,9 @@ export function buildNextMesocyclePostAcceptVerificationFromEvidence(
     futureWeekReplay: {
       status: futureWeekStatus,
       compositionSource: receiptCompositionSource,
+      generationMode: receiptMaterialization?.generationMode ?? null,
+      materializationClass: receiptMaterialization?.materializationClass ?? null,
+      scheduledSlotReceiptPresent: receipt?.scheduledSlotReceipt != null,
       generationPath: evidence.generationPath?.executionMode ?? "not_run",
       nextSlotId,
       generatedExerciseOrder: generationRows.map((row) => row.exerciseId),
@@ -932,32 +955,28 @@ function buildGenerationPath(
   };
 }
 
-async function buildFutureWeekGeneration(input: {
+export async function buildPostAcceptPreviewGeneration(input: {
   userId: string;
-  nextSession: Awaited<ReturnType<typeof loadNextWorkoutContext>> | null;
+  previewTarget: PostAcceptPreviewTarget | null;
   plannerDiagnosticsMode: "standard" | "debug";
 }): Promise<SessionGenerationResult | { error: string } | null> {
-  if (!input.nextSession?.intent) {
-    return { error: "next-session intent is unavailable" };
+  if (!input.previewTarget) {
+    return { error: "accepted authored preview target is unavailable" };
   }
-  const intent = parseSessionIntent(input.nextSession.intent);
+  const intent = parseSessionIntent(input.previewTarget.intent);
   if (!intent) {
-    return { error: `unsupported next-session intent: ${input.nextSession.intent}` };
+    return { error: `unsupported authored preview intent: ${input.previewTarget.intent}` };
   }
   try {
-    const obligation = resolveRequestedV4ScheduledGenerationObligation({
-      nextWorkoutContext: input.nextSession,
-      requestedIntent: intent,
-    });
-    if (input.nextSession.v4ScheduleAuthority && !obligation) {
-      return { error: "accepted V4 next-session obligation is unavailable" };
-    }
     return await generateSessionFromIntent(input.userId, {
       intent,
-      generationMode: obligation
-        ? { kind: "accepted_v4_scheduled", obligation }
-        : { kind: "legacy" },
-      advancingSlot: resolveAdvancingSlotSnapshot(input.nextSession),
+      slotId: input.previewTarget.slotId,
+      generationMode: {
+        kind: "explicit_preview",
+        weekInMeso: input.previewTarget.weekInMeso,
+        slotId: input.previewTarget.slotId,
+      },
+      advancingSlot: input.previewTarget.advancingSlot,
       plannerDiagnosticsMode: input.plannerDiagnosticsMode,
     });
   } catch (error) {
@@ -1043,12 +1062,19 @@ export async function buildNextMesocyclePostAcceptVerificationAuditPayload(input
     parseAcceptedSeedPayload(successorMesocycle.currentSeedRevision.seedPayload);
     successorMesocycle.slotPlanSeedJson = successorMesocycle.currentSeedRevision.seedPayload;
   }
+  const weeklySchedule = (constraints?.weeklySchedule ?? []).map((intent) =>
+    intent.toLowerCase(),
+  );
+  const previewTarget = resolvePostAcceptPreviewTarget({
+    successorMesocycle,
+    weeklySchedule,
+  });
   const [seedExerciseNameById, generationResult, projectedWeekResult] =
     await Promise.all([
       loadExerciseNames(successorMesocycle?.slotPlanSeedJson),
-      buildFutureWeekGeneration({
+      buildPostAcceptPreviewGeneration({
         userId: input.userId,
-        nextSession,
+        previewTarget,
         plannerDiagnosticsMode: input.plannerDiagnosticsMode,
       }),
       loadProjectedWeekVolumeReport({
@@ -1075,8 +1101,9 @@ export async function buildNextMesocyclePostAcceptVerificationAuditPayload(input
     sourceMesocycle,
     successorMesocycle,
     activeMesocycleId: activeMesocycle?.id ?? null,
-    weeklySchedule: (constraints?.weeklySchedule ?? []).map((intent) => intent.toLowerCase()),
+    weeklySchedule,
     seedExerciseNameById,
+    previewTarget,
     nextSession,
     generationResult,
     generationPath: buildGenerationPath(generationResult),

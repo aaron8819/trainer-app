@@ -1419,6 +1419,9 @@ export type NextMesocyclePostAcceptVerificationPayload = {
   futureWeekReplay: {
     status: "available" | "generation_error" | "not_available";
     compositionSource: string | null;
+    generationMode: string | null;
+    materializationClass: string | null;
+    scheduledSlotReceiptPresent: boolean;
     generationPath: "standard_generation" | "active_deload_reroute" | "explicit_deload_preview" | "blocked_closeout_required" | "not_run";
     nextSlotId: string | null;
     generatedExerciseOrder: string[];

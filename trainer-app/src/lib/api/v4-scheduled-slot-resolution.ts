@@ -9,6 +9,10 @@ import { parseAcceptedHypertrophySeedV4 } from "@/lib/engine/hypertrophy-plan-au
 import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
 import { isCloseoutSession } from "@/lib/session-semantics/closeout-classifier";
 import { isStrictSupplementalDeficitSession } from "@/lib/session-semantics/supplemental-classifier";
+import {
+  classifyNonScheduledMaterialization,
+  resolveSessionMaterialization,
+} from "@/lib/session-semantics/materialization";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -548,12 +552,31 @@ function validateWorkoutEvidence(input: {
   workout: V4ScheduleWorkoutEvidence;
 }): { claim: V4ResolvedSlotClaim } | { excluded: true } | { reason: string } {
   const { workout, authority } = input;
+  const receipt = extractSessionDecisionReceipt(workout.selectionMetadata);
+  const nonScheduled = classifyNonScheduledMaterialization({
+    receipt,
+    selectionMetadata: workout.selectionMetadata,
+    selectionMode: workout.selectionMode,
+    sessionIntent: workout.sessionIntent,
+  });
+  if (nonScheduled.status === "recognized") {
+    return { excluded: true };
+  }
+  if (nonScheduled.status === "invalid") {
+    return {
+      reason: `non_scheduled_materialization_invalid:${nonScheduled.reason}:${workout.id}`,
+    };
+  }
+
   const persistedSlot = resolveV4RequiredSlotFromPersistedWorkoutEvidence({
     authority,
     workout,
   });
   if ("reason" in persistedSlot) {
-    const isRecognizedNonRequired =
+    const isLegacyRecognizedNonRequired =
+      receipt != null &&
+      resolveSessionMaterialization(receipt).materializationClass === "legacy" &&
+      (
       isStrictOptionalGapFillSession({
         selectionMetadata: workout.selectionMetadata,
         selectionMode: workout.selectionMode,
@@ -564,15 +587,18 @@ function validateWorkoutEvidence(input: {
         selectionMode: workout.selectionMode,
         sessionIntent: workout.sessionIntent,
       }) ||
-      isCloseoutSession(workout.selectionMetadata);
-    if (persistedSlot.reason === "required_slot_not_found" && isRecognizedNonRequired) {
+      isCloseoutSession(workout.selectionMetadata)
+      );
+    if (
+      persistedSlot.reason === "required_slot_not_found" &&
+      isLegacyRecognizedNonRequired
+    ) {
       return { excluded: true };
     }
     return { reason: `${persistedSlot.reason}:${workout.id}` };
   }
 
   const requiredSlot = persistedSlot.requiredSlot;
-  const receipt = extractSessionDecisionReceipt(workout.selectionMetadata);
   const scheduled = receipt?.scheduledSlotReceipt;
   if (!scheduled) {
     return { reason: `scheduled_slot_receipt_missing_compat:${workout.id}` };

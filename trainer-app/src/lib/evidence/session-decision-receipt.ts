@@ -17,6 +17,7 @@ import type {
   SessionDecisionVolumeTargetSource,
   ScheduledSlotReceiptV1,
 } from "./types";
+import { isNonScheduledMaterializationPurpose } from "./types";
 import { getCanonicalDeloadReason } from "@/lib/deload/semantics";
 
 type JsonRecord = Record<string, unknown>;
@@ -164,10 +165,7 @@ function parseSessionMaterializationEvidence(
   if (
     record.generationMode === "non_scheduled" &&
     record.materializationClass === "non_scheduled" &&
-    (record.purpose === "body_part" ||
-      record.purpose === "gap_fill" ||
-      record.purpose === "supplemental" ||
-      record.purpose === "closeout")
+    isNonScheduledMaterializationPurpose(record.purpose)
   ) {
     return {
       version: 1,

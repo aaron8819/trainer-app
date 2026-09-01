@@ -34,11 +34,23 @@ export type ScheduledSlotReceiptV1 = {
   sequenceLength: number;
 };
 
+export const NON_SCHEDULED_MATERIALIZATION_PURPOSES = [
+  "body_part",
+  "gap_fill",
+  "supplemental",
+  "closeout",
+] as const;
+
 export type NonScheduledMaterializationPurpose =
-  | "body_part"
-  | "gap_fill"
-  | "supplemental"
-  | "closeout";
+  (typeof NON_SCHEDULED_MATERIALIZATION_PURPOSES)[number];
+
+export function isNonScheduledMaterializationPurpose(
+  value: unknown,
+): value is NonScheduledMaterializationPurpose {
+  return NON_SCHEDULED_MATERIALIZATION_PURPOSES.some(
+    (purpose) => purpose === value,
+  );
+}
 
 export type SessionMaterializationEvidence =
   | {

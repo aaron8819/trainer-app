@@ -15,6 +15,7 @@ import type { DeloadTransformationTrace } from "@/lib/evidence/session-audit-typ
 import type {
   CycleContextSnapshot,
   DeloadDecision,
+  NonScheduledMaterializationPurpose,
   SessionDecisionReceipt,
   PlannerDiagnosticsMode,
   SessionCompositionSource,
@@ -52,7 +53,7 @@ export type GenerationScheduleMode =
     }
   | {
       kind: "non_scheduled";
-      purpose: "body_part" | "gap_fill" | "supplemental" | "closeout";
+      purpose: NonScheduledMaterializationPurpose;
       anchorWeek?: number;
     }
   | {

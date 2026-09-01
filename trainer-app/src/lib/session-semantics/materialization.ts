@@ -103,3 +103,52 @@ export function validateNonScheduledMaterialization(input: {
     ? null
     : `non_scheduled_purpose_conflict:${input.materialization.purpose}`;
 }
+
+export type NonScheduledMaterializationClassification =
+  | { status: "not_non_scheduled" }
+  | {
+      status: "recognized";
+      purpose: NonScheduledMaterializationPurpose;
+    }
+  | { status: "invalid"; reason: string };
+
+function toObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function hasDeclaredMaterialization(selectionMetadata: unknown): boolean {
+  const metadata = toObject(selectionMetadata);
+  const receipt = toObject(metadata?.sessionDecisionReceipt);
+  return Boolean(receipt && "materialization" in receipt);
+}
+
+export function classifyNonScheduledMaterialization(input: {
+  receipt: SessionDecisionReceipt | null | undefined;
+  selectionMetadata: unknown;
+  selectionMode: string | null | undefined;
+  sessionIntent: string | null | undefined;
+}): NonScheduledMaterializationClassification {
+  if (!input.receipt) {
+    return hasDeclaredMaterialization(input.selectionMetadata)
+      ? { status: "invalid", reason: "materialization_evidence_invalid" }
+      : { status: "not_non_scheduled" };
+  }
+
+  const materialization = resolveSessionMaterialization(input.receipt);
+  if (materialization.materializationClass !== "non_scheduled") {
+    return { status: "not_non_scheduled" };
+  }
+
+  const reason = validateNonScheduledMaterialization({
+    materialization,
+    receipt: input.receipt,
+    selectionMetadata: input.selectionMetadata,
+    selectionMode: input.selectionMode,
+    sessionIntent: input.sessionIntent,
+  });
+  return reason
+    ? { status: "invalid", reason }
+    : { status: "recognized", purpose: materialization.purpose };
+}

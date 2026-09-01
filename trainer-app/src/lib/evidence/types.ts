@@ -34,6 +34,35 @@ export type ScheduledSlotReceiptV1 = {
   sequenceLength: number;
 };
 
+export type NonScheduledMaterializationPurpose =
+  | "body_part"
+  | "gap_fill"
+  | "supplemental"
+  | "closeout";
+
+export type SessionMaterializationEvidence =
+  | {
+      version: 1;
+      generationMode: "accepted_v4_scheduled";
+      materializationClass: "scheduled_required";
+    }
+  | {
+      version: 1;
+      generationMode: "explicit_preview";
+      materializationClass: "preview_only";
+    }
+  | {
+      version: 1;
+      generationMode: "non_scheduled";
+      materializationClass: "non_scheduled";
+      purpose: NonScheduledMaterializationPurpose;
+    }
+  | {
+      version: 1;
+      generationMode: "legacy";
+      materializationClass: "legacy";
+    };
+
 export type SessionCompositionSource =
   | "persisted_slot_plan_seed"
   | "runtime_selection"
@@ -110,6 +139,7 @@ export type SessionDecisionReceipt = {
   sessionProvenance?: SessionDecisionProvenance;
   sessionSlot?: SessionSlotSnapshot;
   scheduledSlotReceipt?: ScheduledSlotReceiptV1;
+  materialization?: SessionMaterializationEvidence;
   targetMuscles?: string[];
   lifecycleRirTarget?: LifecycleRirTarget;
   lifecycleVolume: {

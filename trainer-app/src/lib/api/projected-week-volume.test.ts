@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => {
   const getEffectiveStimulusByMuscle = vi.fn();
   const loadPersistedIncompleteWorkoutProjections = vi.fn();
   const resolveV4ScheduleAuthority = vi.fn();
+  const validateV4ScheduledGenerationObligation = vi.fn();
 
   return {
     mesocycleFindFirst,
@@ -37,6 +38,7 @@ const mocks = vi.hoisted(() => {
     getEffectiveStimulusByMuscle,
     loadPersistedIncompleteWorkoutProjections,
     resolveV4ScheduleAuthority,
+    validateV4ScheduledGenerationObligation,
     prisma: {
       mesocycle: {
         findFirst: mesocycleFindFirst,
@@ -78,6 +80,8 @@ vi.mock("./next-session", () => ({
 vi.mock("./v4-scheduled-slot-resolution", () => ({
   resolveV4ScheduleAuthority: (...args: unknown[]) =>
     mocks.resolveV4ScheduleAuthority(...args),
+  validateV4ScheduledGenerationObligation: (...args: unknown[]) =>
+    mocks.validateV4ScheduledGenerationObligation(...args),
 }));
 
 vi.mock("./mesocycle-lifecycle", () => ({
@@ -233,6 +237,12 @@ function buildIncompleteProjection() {
 describe("loadProjectedWeekVolumeReport", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.validateV4ScheduledGenerationObligation.mockImplementation(
+      (input: { obligation: unknown }) => ({
+        status: "available",
+        obligation: input.obligation,
+      }),
+    );
     mocks.resolveV4ScheduleAuthority.mockReturnValue({ status: "not_v4" });
     mocks.loadPersistedIncompleteWorkoutProjections.mockResolvedValue([]);
 
@@ -419,6 +429,18 @@ describe("loadProjectedWeekVolumeReport", () => {
       status: "available",
       authority: scheduledV4Obligation.authority,
     });
+    mocks.buildMappedGenerationContextFromSnapshot.mockReturnValueOnce({
+      mappedConstraints: { weeklySchedule: ["lower", "upper"] },
+      cycleContext: {
+        weekInMeso: 3,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+      },
+      history: [],
+      rotationContext: new Map(),
+      activeMesocycle: { id: "meso-1", state: "ACTIVE_ACCUMULATION" },
+    });
     mocks.generateSessionFromMappedContext.mockReset();
     mocks.generateSessionFromMappedContext
       .mockReturnValueOnce({
@@ -451,8 +473,9 @@ describe("loadProjectedWeekVolumeReport", () => {
       "user-1",
       expect.objectContaining({
         generationMode: {
-          kind: "accepted_v4_scheduled",
-          obligation: scheduledV4Obligation,
+          kind: "explicit_preview",
+          weekInMeso: 3,
+          slotId: "lower_a",
         },
       }),
     );
@@ -461,8 +484,9 @@ describe("loadProjectedWeekVolumeReport", () => {
       expect.any(Object),
       {
         generationMode: {
-          kind: "accepted_v4_scheduled",
-          obligation: scheduledV4Obligation,
+          kind: "explicit_preview",
+          weekInMeso: 3,
+          slotId: "lower_a",
         },
       },
     );

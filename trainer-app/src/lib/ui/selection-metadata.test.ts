@@ -713,7 +713,7 @@ describe("attachCloseoutSessionMetadata", () => {
     ]);
   });
 
-  it("is a no-op when already marked closeout for the same context", () => {
+  it("upgrades an old closeout marker to canonical non-scheduled materialization", () => {
     const metadata: SaveableSelectionMetadata = {
       weekCloseId: "week-close-1",
       sessionDecisionReceipt: {
@@ -756,12 +756,18 @@ describe("attachCloseoutSessionMetadata", () => {
       },
     };
 
-    expect(
-      attachCloseoutSessionMetadata(metadata, {
+    const attached = attachCloseoutSessionMetadata(metadata, {
         enabled: true,
         weekCloseId: "week-close-1",
-      })
-    ).toBe(metadata);
+      });
+
+    expect(attached).not.toBe(metadata);
+    expect(attached.sessionDecisionReceipt?.materialization).toEqual({
+      version: 1,
+      generationMode: "non_scheduled",
+      materializationClass: "non_scheduled",
+      purpose: "closeout",
+    });
   });
 
   it("does not stamp closeout metadata when disabled", () => {

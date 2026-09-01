@@ -109,7 +109,12 @@ vi.mock("@/lib/api/mesocycle-lifecycle", async (importOriginal) => {
   };
 });
 
-import { generateSessionFromIntent, generateSessionFromTemplate } from "./template-session";
+import {
+  composeIntentSessionFromMappedContext,
+  generateSessionFromIntent,
+  generateSessionFromMappedContext,
+  generateSessionFromTemplate,
+} from "./template-session";
 import {
   buildScheduledSlotReceipt,
   resolveV4RequiredSlotFromDecisionReceipt,
@@ -2887,6 +2892,15 @@ describe("generateSessionFromIntent", () => {
       v4ReferenceMocks,
     );
     const selectSpy = vi.spyOn(selectionV2, "selectExercisesOptimized");
+    const deloadIdentityChecks: Array<{
+      authoredSlotId: string;
+      seedSlotId: string | undefined;
+      receiptSlotId: string | undefined;
+      intent: string | undefined;
+      prescribedPlacementIds: string[];
+      expectedPlacementIds: string[];
+      materializationClass: string | undefined;
+    }> = [];
     try {
       expect(EXPECTED_V4_REFERENCE_CASES).toHaveLength(20);
       expect(new Set(EXPECTED_V4_REFERENCE_CASES.map(({ week }) => week))).toEqual(
@@ -2930,6 +2944,43 @@ describe("generateSessionFromIntent", () => {
           selectionFallbackUsed: selectSpy.mock.calls.length > fallbackCallsBefore,
         });
         assertV4ReferenceCase(actual, expected, label);
+        if (expected.week === 5) {
+          deloadIdentityChecks.push({
+            authoredSlotId: expected.slotId,
+            seedSlotId: seed.slots.find(
+              (slot) => slot.slotId === expected.slotId,
+            )?.slotId,
+            receiptSlotId:
+              result.selection.sessionDecisionReceipt?.sessionSlot?.slotId,
+            intent:
+              result.selection.sessionDecisionReceipt?.sessionSlot?.intent,
+            prescribedPlacementIds: actual.exercises.map(
+              (exercise) => exercise.placementId,
+            ),
+            expectedPlacementIds: expected.exercises.map(
+              (exercise) => exercise.placementId,
+            ),
+            materializationClass:
+              result.selection.sessionDecisionReceipt?.materialization
+                ?.materializationClass,
+          });
+        }
+      }
+      expect(deloadIdentityChecks).toHaveLength(4);
+      expect(deloadIdentityChecks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ authoredSlotId: "upper-a", intent: "upper" }),
+          expect.objectContaining({ authoredSlotId: "lower-a", intent: "lower" }),
+          expect.objectContaining({ authoredSlotId: "lower-b", intent: "lower" }),
+        ]),
+      );
+      for (const identity of deloadIdentityChecks) {
+        expect(identity.seedSlotId).toBe(identity.authoredSlotId);
+        expect(identity.receiptSlotId).toBe(identity.authoredSlotId);
+        expect(identity.prescribedPlacementIds).toEqual(
+          identity.expectedPlacementIds,
+        );
+        expect(identity.materializationClass).toBe("preview_only");
       }
       expect(selectSpy).not.toHaveBeenCalled();
     } finally {
@@ -3039,6 +3090,11 @@ describe("generateSessionFromIntent", () => {
       cycleContext: { weekInMeso: 3 },
       sessionSlot: { slotId: "lower-a" },
       lifecycleRirTarget: expect.any(Object),
+      materialization: {
+        version: 1,
+        generationMode: "accepted_v4_scheduled",
+        materializationClass: "scheduled_required",
+      },
     });
     expect(
       resolveV4RequiredSlotFromDecisionReceipt({
@@ -3298,6 +3354,41 @@ describe("generateSessionFromIntent", () => {
     expect(result).toEqual({ error: "targetMuscles is required when intent is body_part" });
   });
 
+  it("prohibits raw lower-level accepted-V4 composition", () => {
+    const obligation = {
+      authority: {
+        mesocycleId: "meso-v4",
+        revisionId: "revision-v4",
+        revisionNumber: 1,
+        revisionHash: "hash-v4",
+        slotsPerWeek: 4,
+        requiredSlots: [],
+      },
+      requiredSlot: {
+        weekInMeso: 3,
+        phase: "ACCUMULATION",
+        slotId: "lower-a",
+        intent: "lower",
+        sequenceIndex: 0,
+        sequenceLength: 4,
+      },
+    } as const;
+    const mapped = {
+      generationMode: { kind: "accepted_v4_scheduled", obligation },
+    } as never;
+    const input = {
+      generationMode: { kind: "accepted_v4_scheduled", obligation },
+      intent: "lower",
+    } as never;
+
+    expect(generateSessionFromMappedContext(mapped, input)).toEqual({
+      error: "V4_SCHEDULE_MAPPED_CONTEXT_COMPOSITION_PROHIBITED",
+    });
+    expect(composeIntentSessionFromMappedContext(mapped, input)).toEqual({
+      error: "V4_SCHEDULE_MAPPED_CONTEXT_COMPOSITION_PROHIBITED",
+    });
+  });
+
   it("keeps body_part generation on the legacy fallback path even when the mesocycle is seeded", async () => {
     loadActiveMesocycleMock.mockResolvedValue({
       id: "meso-1",
@@ -3331,6 +3422,16 @@ describe("generateSessionFromIntent", () => {
         mesocycleId: "meso-1",
         compositionSource: "legacy_fallback",
       });
+      expect(result.selection.sessionDecisionReceipt?.materialization).toEqual({
+        version: 1,
+        generationMode: "non_scheduled",
+        materializationClass: "non_scheduled",
+        purpose: "body_part",
+      });
+      expect(result.selection.sessionDecisionReceipt?.sessionSlot).toBeUndefined();
+      expect(
+        result.selection.sessionDecisionReceipt?.scheduledSlotReceipt,
+      ).toBeUndefined();
     } finally {
       selectSpy.mockRestore();
     }

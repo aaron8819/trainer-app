@@ -27,6 +27,7 @@ import { normalizeAcceptedSeedPayload } from "./mesocycle-seed-revision";
 import {
   resolveV4ScheduleAuthority,
   resolveV4ScheduledSlots,
+  sameV4ScheduledGenerationObligation,
   type V4ScheduleAuthority,
   type V4ScheduleResolution,
   type V4ScheduledGenerationObligation,
@@ -992,24 +993,6 @@ export function resolveRequestedV4ScheduledGenerationObligation(input: {
   }
 
   return { authority, requiredSlot };
-}
-
-function sameV4ScheduledGenerationObligation(
-  left: V4ScheduledGenerationObligation,
-  right: V4ScheduledGenerationObligation,
-): boolean {
-  return (
-    left.authority.mesocycleId === right.authority.mesocycleId &&
-    left.authority.revisionId === right.authority.revisionId &&
-    left.authority.revisionNumber === right.authority.revisionNumber &&
-    left.authority.revisionHash === right.authority.revisionHash &&
-    left.requiredSlot.weekInMeso === right.requiredSlot.weekInMeso &&
-    left.requiredSlot.phase === right.requiredSlot.phase &&
-    left.requiredSlot.slotId === right.requiredSlot.slotId &&
-    left.requiredSlot.intent === right.requiredSlot.intent &&
-    left.requiredSlot.sequenceIndex === right.requiredSlot.sequenceIndex &&
-    left.requiredSlot.sequenceLength === right.requiredSlot.sequenceLength
-  );
 }
 
 export async function revalidateV4ScheduledGenerationObligation(input: {

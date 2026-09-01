@@ -9442,16 +9442,19 @@ async function buildPreviewProjectedSessions(input: {
     slotIndex,
     slot,
   ] of input.projection.mesocycle.slotSequence.slots.entries()) {
-    const generation = await generateProjectedSession({
-      userId: input.userId,
-      mapped,
-      intent: slot.intent.toLowerCase() as SessionIntent,
-      slotId: slot.slotId,
+    const slotMapped = {
+      ...mapped,
       generationMode: {
-        kind: "explicit_preview",
+        kind: "explicit_preview" as const,
         weekInMeso: 1,
         slotId: slot.slotId,
       },
+    };
+    const generation = await generateProjectedSession({
+      userId: input.userId,
+      mapped: slotMapped,
+      intent: slot.intent.toLowerCase() as SessionIntent,
+      slotId: slot.slotId,
       plannerDiagnosticsMode: input.plannerDiagnosticsMode,
     });
     if ("error" in generation) {

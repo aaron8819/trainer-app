@@ -52,6 +52,13 @@ export type V4ScheduledGenerationObligation = {
   requiredSlot: V4RequiredSlot;
 };
 
+export function sameV4ScheduledGenerationObligation(
+  left: V4ScheduledGenerationObligation,
+  right: V4ScheduledGenerationObligation,
+): boolean {
+  return stableJson(left) === stableJson(right);
+}
+
 export type V4ScheduleAuthorityResolution =
   | { status: "not_v4" }
   | { status: "available"; authority: V4ScheduleAuthority }

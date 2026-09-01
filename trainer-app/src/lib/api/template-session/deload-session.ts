@@ -17,6 +17,10 @@ import type { MappedGenerationContext } from "./types";
 import { resolveRequiredSeededSlotPlan } from "./slot-plan-seed";
 import { readSessionAuditSnapshot } from "@/lib/evidence/session-audit-snapshot";
 import { resolvePlacementCorrelations } from "@/lib/session-semantics/placement-correlation";
+import {
+  consumeV4ScheduledCompositionCapability,
+  type ValidatedV4ScheduledCompositionCapability,
+} from "./scheduled-composition-capability";
 
 function modalNumber(values: number[]): number | undefined {
   const freq = new Map<number, number>();
@@ -98,7 +102,7 @@ function buildExerciseSetPlan(
   }));
 }
 
-export async function generateDeloadSessionFromIntentContext(
+async function generateDeloadSessionFromIntentContextInternal(
   userId: string,
   mapped: MappedGenerationContext,
   sessionIntent: SessionIntent
@@ -454,4 +458,41 @@ export async function generateDeloadSessionFromIntentContext(
     trace,
     compositionSource,
   };
+}
+
+export async function generateDeloadSessionFromIntentContext(
+  userId: string,
+  mapped: MappedGenerationContext,
+  sessionIntent: SessionIntent,
+): ReturnType<typeof generateDeloadSessionFromIntentContextInternal> {
+  if (mapped.generationMode.kind === "accepted_v4_scheduled") {
+    return { error: "V4_SCHEDULE_MAPPED_CONTEXT_COMPOSITION_PROHIBITED" };
+  }
+  return generateDeloadSessionFromIntentContextInternal(
+    userId,
+    mapped,
+    sessionIntent,
+  );
+}
+
+export async function generateValidatedV4ScheduledDeloadSessionFromIntentContext(
+  userId: string,
+  mapped: MappedGenerationContext,
+  sessionIntent: SessionIntent,
+  capability: ValidatedV4ScheduledCompositionCapability | undefined,
+): ReturnType<typeof generateDeloadSessionFromIntentContextInternal> {
+  if (
+    mapped.generationMode.kind !== "accepted_v4_scheduled" ||
+    !consumeV4ScheduledCompositionCapability({
+      capability,
+      obligation: mapped.generationMode.obligation,
+    })
+  ) {
+    return { error: "V4_SCHEDULE_FRESHNESS_CAPABILITY_REQUIRED" };
+  }
+  return generateDeloadSessionFromIntentContextInternal(
+    userId,
+    mapped,
+    sessionIntent,
+  );
 }

@@ -849,15 +849,18 @@ export async function evaluateActiveMesocycleSlotReseed(input: {
       throw new Error(`Candidate slot-plan seed is missing slot ${persistedSlot.slotId}.`);
     }
 
+    const beforeMapped =
+      generationMode.kind === "explicit_preview"
+        ? {
+            ...persistedMapped,
+            generationMode: { ...generationMode, slotId: persistedSlot.slotId },
+          }
+        : persistedMapped;
     const beforeGeneration = await generateProjectedSession({
       userId: input.userId,
-      mapped: persistedMapped,
+      mapped: beforeMapped,
       intent: persistedSlot.intent,
       slotId: persistedSlot.slotId,
-      generationMode:
-        generationMode.kind === "explicit_preview"
-          ? { ...generationMode, slotId: persistedSlot.slotId }
-          : generationMode,
       plannerDiagnosticsMode,
     });
     if ("error" in beforeGeneration) {
@@ -866,15 +869,18 @@ export async function evaluateActiveMesocycleSlotReseed(input: {
       );
     }
 
+    const afterMapped =
+      generationMode.kind === "explicit_preview"
+        ? {
+            ...candidateMapped,
+            generationMode: { ...generationMode, slotId: candidateSlot.slotId },
+          }
+        : candidateMapped;
     const candidateGeneration = await generateProjectedSession({
       userId: input.userId,
-      mapped: candidateMapped,
+      mapped: afterMapped,
       intent: candidateSlot.intent,
       slotId: candidateSlot.slotId,
-      generationMode:
-        generationMode.kind === "explicit_preview"
-          ? { ...generationMode, slotId: candidateSlot.slotId }
-          : generationMode,
       plannerDiagnosticsMode,
     });
     if ("error" in candidateGeneration) {

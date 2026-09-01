@@ -45,6 +45,7 @@ import {
 import {
   appendWorkoutHistoryEntryToMappedContext,
   buildMappedGenerationContextFromSnapshot,
+  buildProjectedV4ObligationContext,
   buildProjectedWorkoutHistoryEntry,
   computeWorkoutContributionByMuscle,
   generateProjectedSession,
@@ -661,6 +662,10 @@ export async function loadProjectedWeekVolumeReport(input: {
   const currentSession = deriveCurrentMesocycleSession(activeMesocycle);
   const nextWorkoutContext = await loadNextWorkoutContext(input.userId);
   const v4AuthorityResolution = resolveV4ScheduleAuthority(activeMesocycle);
+  const projectionV4Authority =
+    v4AuthorityResolution.status === "available"
+      ? v4AuthorityResolution.authority
+      : undefined;
   if (v4AuthorityResolution.status === "blocked") {
     unavailableV4Projection(v4AuthorityResolution.reason);
   }
@@ -722,7 +727,11 @@ export async function loadProjectedWeekVolumeReport(input: {
       loadPreloadedGenerationSnapshot(input.userId, {
         activeMesocycle,
         generationMode: scheduledV4Obligation
-          ? { kind: "accepted_v4_scheduled", obligation: scheduledV4Obligation }
+          ? {
+              kind: "explicit_preview",
+              weekInMeso: scheduledV4Obligation.requiredSlot.weekInMeso,
+              slotId: scheduledV4Obligation.requiredSlot.slotId,
+            }
           : { kind: "legacy" },
       }),
       loadMesocycleWeekMuscleVolume(prisma, {
@@ -743,7 +752,11 @@ export async function loadProjectedWeekVolumeReport(input: {
 
   const mapped = buildMappedGenerationContextFromSnapshot(input.userId, snapshot, {
     generationMode: scheduledV4Obligation
-      ? { kind: "accepted_v4_scheduled", obligation: scheduledV4Obligation }
+      ? {
+          kind: "explicit_preview",
+          weekInMeso: scheduledV4Obligation.requiredSlot.weekInMeso,
+          slotId: scheduledV4Obligation.requiredSlot.slotId,
+        }
       : { kind: "legacy" },
   });
   const completedVolumeByMuscle =
@@ -996,29 +1009,30 @@ export async function loadProjectedWeekVolumeReport(input: {
       continue;
     }
 
+    const authoredSlot =
+      projectionV4Authority
+        ? projectionV4Authority.requiredSlots.find(
+            (requiredSlot) =>
+              requiredSlot.weekInMeso === currentWeek &&
+              requiredSlot.slotId === slot.slotId,
+          ) ??
+          unavailableV4Projection(
+            `required_slot_missing:${currentWeek}:${slot.slotId ?? "unknown"}`,
+          )
+        : undefined;
+    const obligationMapped = authoredSlot
+      ? buildProjectedV4ObligationContext({
+          mapped,
+          authority: projectionV4Authority!,
+          requiredSlot: authoredSlot,
+        })
+      : mapped;
     const generation = await generateProjectedSession({
       userId: input.userId,
-      mapped,
+      mapped: obligationMapped,
       intent: slot.intent as SessionIntent,
       slotId: slot.slotId ?? null,
-      generationMode:
-        v4AuthorityResolution.status === "available"
-          ? {
-              kind: "accepted_v4_scheduled",
-              obligation: {
-                authority: v4AuthorityResolution.authority,
-                requiredSlot:
-                  v4AuthorityResolution.authority.requiredSlots.find(
-                    (requiredSlot) =>
-                      requiredSlot.weekInMeso === currentWeek &&
-                      requiredSlot.slotId === slot.slotId,
-                  ) ??
-                  unavailableV4Projection(
-                    `required_slot_missing:${currentWeek}:${slot.slotId ?? "unknown"}`,
-                  ),
-              },
-            }
-          : { kind: "legacy" },
+      authoredSlot,
       plannerDiagnosticsMode,
     });
     if ("error" in generation) {

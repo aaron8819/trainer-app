@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => {
   const workoutFindMany = vi.fn();
   const loadPreloadedGenerationSnapshot = vi.fn();
   const buildMappedGenerationContextFromSnapshot = vi.fn();
+  const buildProjectedV4ObligationContext = vi.fn();
   const generateProjectedSession = vi.fn();
   const computeWorkoutContributionByMuscle = vi.fn();
   const buildProjectedWorkoutHistoryEntry = vi.fn();
@@ -25,6 +26,7 @@ const mocks = vi.hoisted(() => {
     workoutFindMany,
     loadPreloadedGenerationSnapshot,
     buildMappedGenerationContextFromSnapshot,
+    buildProjectedV4ObligationContext,
     generateProjectedSession,
     computeWorkoutContributionByMuscle,
     buildProjectedWorkoutHistoryEntry,
@@ -57,6 +59,8 @@ vi.mock("./projected-week-volume-shared", () => ({
     mocks.loadPreloadedGenerationSnapshot(...args),
   buildMappedGenerationContextFromSnapshot: (...args: unknown[]) =>
     mocks.buildMappedGenerationContextFromSnapshot(...args),
+  buildProjectedV4ObligationContext: (...args: unknown[]) =>
+    mocks.buildProjectedV4ObligationContext(...args),
   generateProjectedSession: (...args: unknown[]) =>
     mocks.generateProjectedSession(...args),
   computeWorkoutContributionByMuscle: (...args: unknown[]) =>
@@ -273,6 +277,19 @@ function buildWorkout(options?: {
 describe("loadLoggingWeeklyVolumeGuidance", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.buildProjectedV4ObligationContext.mockImplementation(
+      (input: {
+        mapped: Record<string, unknown>;
+        requiredSlot: { weekInMeso: number; slotId: string };
+      }) => ({
+        ...input.mapped,
+        generationMode: {
+          kind: "explicit_preview",
+          weekInMeso: input.requiredSlot.weekInMeso,
+          slotId: input.requiredSlot.slotId,
+        },
+      }),
+    );
     mocks.resolveV4ScheduleAuthority.mockReturnValue({ status: "not_v4" });
 
     mocks.loadPreloadedGenerationSnapshot.mockResolvedValue({
@@ -462,13 +479,19 @@ describe("loadLoggingWeeklyVolumeGuidance", () => {
     expect(
       mocks.generateProjectedSession.mock.calls.map(([call]) => ({
         slotId: call.slotId,
-        weekInMeso: call.generationMode.obligation.requiredSlot.weekInMeso,
+        previewSlotId: call.mapped.generationMode.slotId,
+        weekInMeso: call.mapped.generationMode.weekInMeso,
       })),
     ).toEqual([
-      { slotId: "upper_a", weekInMeso: 3 },
-      { slotId: "lower_b", weekInMeso: 3 },
-      { slotId: "upper_b", weekInMeso: 3 },
+      { slotId: "upper_a", previewSlotId: "upper_a", weekInMeso: 3 },
+      { slotId: "lower_b", previewSlotId: "lower_b", weekInMeso: 3 },
+      { slotId: "upper_b", previewSlotId: "upper_b", weekInMeso: 3 },
     ]);
+    expect(
+      new Set(
+        mocks.generateProjectedSession.mock.calls.map(([call]) => call.mapped),
+      ).size,
+    ).toBe(3);
     expect(mocks.deriveNextRuntimeSlotSession).not.toHaveBeenCalled();
     expect(mocks.buildRemainingFutureSlotsFromRuntime).not.toHaveBeenCalled();
   });

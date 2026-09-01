@@ -17,6 +17,7 @@ import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import {
   appendWorkoutHistoryEntryToMappedContext,
   buildMappedGenerationContextFromSnapshot,
+  buildProjectedV4ObligationContext,
   buildProjectedWorkoutHistoryEntry,
   computeWorkoutContributionByMuscle,
   generateProjectedSession,
@@ -763,11 +764,9 @@ export async function loadLoggingWeeklyVolumeGuidance(input: {
     v4Authority && v4CurrentSlot
       ? v4RemainingSlots?.[0]
         ? {
-            kind: "accepted_v4_scheduled" as const,
-            obligation: {
-              authority: v4Authority,
-              requiredSlot: v4RemainingSlots[0],
-            },
+            kind: "explicit_preview" as const,
+            weekInMeso: v4RemainingSlots[0].weekInMeso,
+            slotId: v4RemainingSlots[0].slotId,
           }
         : {
             kind: "explicit_preview" as const,
@@ -890,22 +889,21 @@ export async function loadLoggingWeeklyVolumeGuidance(input: {
   const projectionStartTime = new Date();
 
   for (const [index, slot] of orderedProjectedSlots.entries()) {
+    const obligationMapped =
+      v4Authority && slot.requiredSlot
+        ? buildProjectedV4ObligationContext({
+            mapped,
+            authority: v4Authority,
+            requiredSlot: slot.requiredSlot,
+          })
+        : mapped;
     const generation = await generateProjectedSession({
       userId: input.userId,
-      mapped,
+      mapped: obligationMapped,
       intent: slot.intent as SessionIntent,
       slotId: slot.slotId ?? null,
+      authoredSlot: slot.requiredSlot,
       plannerDiagnosticsMode,
-      generationMode:
-        v4Authority && slot.requiredSlot
-          ? {
-              kind: "accepted_v4_scheduled",
-              obligation: {
-                authority: v4Authority,
-                requiredSlot: slot.requiredSlot,
-              },
-            }
-          : { kind: "legacy" },
     });
     if ("error" in generation) {
       throw new Error(

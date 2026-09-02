@@ -5,12 +5,14 @@ import {
 } from "@/lib/api/mesocycle-lifecycle";
 import { evaluateAcceptedMesocycleSeedProvenance } from "@/lib/api/accepted-mesocycle-seed-provenance";
 import { loadProjectedWeekVolumeReport } from "@/lib/api/projected-week-volume";
+import { resolveRequestedV4ScheduledGenerationObligation } from "@/lib/api/next-session";
 import { buildPreSessionReadinessProjectedWeekEvidence } from "@/lib/api/pre-session-readiness-evidence-builder";
 import { loadPreSessionReadinessSnapshotAuditDiagnostics } from "@/lib/api/pre-session-readiness-snapshot";
 import {
   generateDeloadSessionFromIntent,
   generateSessionFromIntent,
 } from "@/lib/api/template-session";
+import type { GenerationScheduleMode } from "@/lib/api/template-session/types";
 import type { SessionSlotSnapshot } from "@/lib/evidence/types";
 import {
   buildGeneratedSessionAuditSnapshot,
@@ -134,18 +136,64 @@ async function buildGeneratedSessionRunFields(input: {
   }
   const useDeloadGeneration =
     mode === "deload" || activeMesocycle?.state === "ACTIVE_DELOAD";
-  const advancingSlot = resolveAdvancingSlotSnapshot(context);
+  const scheduledV4Obligation = context.nextSession
+    ? resolveRequestedV4ScheduledGenerationObligation({
+        nextWorkoutContext: context.nextSession,
+        requestedIntent: generationInput.intent,
+      })
+    : undefined;
+  const generationMode: GenerationScheduleMode = scheduledV4Obligation &&
+    generationInput.source === "derived-next-session"
+    ? { kind: "accepted_v4_scheduled", obligation: scheduledV4Obligation }
+    : context.nextSession?.v4ScheduleAuthority
+      ? context.nextSession.weekInMeso
+        ? {
+            kind: "explicit_preview",
+            weekInMeso: context.nextSession.weekInMeso,
+            ...(context.nextSession.slotId
+              ? { slotId: context.nextSession.slotId }
+              : {}),
+          }
+        : (() => {
+            throw new Error(
+              "Accepted V4 audit preview requires an explicit authored week.",
+            );
+          })()
+      : { kind: "legacy" };
+  if (
+    generationInput.source === "derived-next-session" &&
+    context.nextSession?.v4ScheduleAuthority &&
+    generationMode.kind !== "accepted_v4_scheduled"
+  ) {
+    throw new Error(
+      "Accepted V4 next-session audit generation requires the canonical obligation.",
+    );
+  }
+  const advancingSlot = scheduledV4Obligation
+    ? {
+        slotId: scheduledV4Obligation.requiredSlot.slotId,
+        intent: scheduledV4Obligation.requiredSlot.intent,
+        sequenceIndex: scheduledV4Obligation.requiredSlot.sequenceIndex,
+        sequenceLength: scheduledV4Obligation.requiredSlot.sequenceLength,
+        source: "mesocycle_slot_sequence" as const,
+      }
+    : resolveAdvancingSlotSnapshot(context);
   const generationResult =
     useDeloadGeneration
       ? await generateDeloadSessionFromIntent(context.userId, {
           intent: generationInput.intent,
           targetMuscles: generationInput.targetMuscles,
+          generationMode,
+          ...(generationMode.kind !== "legacy" && advancingSlot
+            ? { advancingSlot }
+            : {}),
           plannerDiagnosticsMode: context.plannerDiagnosticsMode,
         })
       : await generateSessionFromIntent(context.userId, {
           intent: generationInput.intent,
           targetMuscles: generationInput.targetMuscles,
-          advancingSlot,
+          generationMode,
+          ...(advancingSlot ? { advancingSlot } : {}),
           plannerDiagnosticsMode: context.plannerDiagnosticsMode,
         });
   const generationPath: WorkoutAuditGenerationPath =

@@ -55,7 +55,8 @@ function makeMappedContext(
   ];
 
   return {
-    mappedProfile: {
+    generationMode: { kind: "legacy" },
+  mappedProfile: {
       id: "user-1",
       trainingAge: "intermediate",
       injuries: [],

@@ -9425,12 +9425,14 @@ async function buildPreviewProjectedSessions(input: {
   const snapshot = await loadPreloadedGenerationSnapshot(input.userId, {
     activeMesocycle: syntheticMesocycle,
     forceAccumulation: true,
+    generationMode: { kind: "explicit_preview", weekInMeso: 1 },
   });
   const mapped = buildMappedGenerationContextFromSnapshot(
     input.userId,
     snapshot,
     {
       forceAccumulation: true,
+      generationMode: { kind: "explicit_preview", weekInMeso: 1 },
     },
   );
   const projectionStartTime = new Date();
@@ -9440,9 +9442,17 @@ async function buildPreviewProjectedSessions(input: {
     slotIndex,
     slot,
   ] of input.projection.mesocycle.slotSequence.slots.entries()) {
+    const slotMapped = {
+      ...mapped,
+      generationMode: {
+        kind: "explicit_preview" as const,
+        weekInMeso: 1,
+        slotId: slot.slotId,
+      },
+    };
     const generation = await generateProjectedSession({
       userId: input.userId,
-      mapped,
+      mapped: slotMapped,
       intent: slot.intent.toLowerCase() as SessionIntent,
       slotId: slot.slotId,
       plannerDiagnosticsMode: input.plannerDiagnosticsMode,
@@ -10105,6 +10115,7 @@ export async function buildMesocycleExplainAuditPayload(input: {
   });
   const sourceSnapshot = await loadPreloadedGenerationSnapshot(input.userId, {
     activeMesocycle: sourceMesocycle,
+    generationMode: { kind: "explicit_preview", weekInMeso: 1 },
   });
   const plannerOnlyPolicyOverride =
     input.plannerOnlyDryRun?.enabled && input.plannerOnlyDryRun.compareRepaired

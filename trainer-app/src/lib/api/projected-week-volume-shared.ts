@@ -15,6 +15,11 @@ import type {
   SessionGenerationResult,
 } from "./template-session/types";
 import { roundToTenth } from "./volume-read-model-helpers";
+import {
+  validateV4ScheduledGenerationObligation,
+  type V4RequiredSlot,
+  type V4ScheduleAuthority,
+} from "./v4-scheduled-slot-resolution";
 
 type WorkoutHistoryEntryStatus =
   | "PLANNED"
@@ -139,6 +144,7 @@ export async function generateProjectedSession(input: {
   mapped: MappedGenerationContext;
   intent: SessionIntent;
   slotId: string | null;
+  authoredSlot?: V4RequiredSlot;
   plannerDiagnosticsMode: "standard" | "debug";
 }): Promise<SessionGenerationResult> {
   if (input.mapped.activeMesocycle?.state === "ACTIVE_DELOAD") {
@@ -160,14 +166,57 @@ export async function generateProjectedSession(input: {
       note: deload.note,
       deloadTrace: deload.trace,
       plannerDiagnosticsMode: input.plannerDiagnosticsMode,
+      compositionSource: deload.compositionSource,
+      sessionSlot: input.authoredSlot
+        ? {
+            slotId: input.authoredSlot.slotId,
+            intent: input.authoredSlot.intent,
+            sequenceIndex: input.authoredSlot.sequenceIndex,
+            sequenceLength: input.authoredSlot.sequenceLength,
+            source: "mesocycle_slot_sequence",
+          }
+        : undefined,
     });
   }
 
   return generateSessionFromMappedContext(input.mapped, {
+    generationMode: input.mapped.generationMode,
     intent: input.intent,
     slotId: input.slotId ?? undefined,
     plannerDiagnosticsMode: input.plannerDiagnosticsMode,
   });
+}
+
+export function buildProjectedV4ObligationContext(input: {
+  mapped: MappedGenerationContext;
+  authority: V4ScheduleAuthority;
+  requiredSlot: V4RequiredSlot;
+}): MappedGenerationContext {
+  const validated = validateV4ScheduledGenerationObligation({
+    mesocycle: input.mapped.activeMesocycle,
+    obligation: {
+      authority: input.authority,
+      requiredSlot: input.requiredSlot,
+    },
+  });
+  if (validated.status !== "available") {
+    throw new Error(`V4_PROJECTION_OBLIGATION_CONFLICT:${validated.reason}`);
+  }
+  if (
+    input.mapped.cycleContext.weekInMeso !== input.requiredSlot.weekInMeso ||
+    input.mapped.cycleContext.isDeload !==
+      (input.requiredSlot.phase === "DELOAD")
+  ) {
+    throw new Error("V4_PROJECTION_WEEK_PHASE_CONFLICT");
+  }
+  return {
+    ...input.mapped,
+    generationMode: {
+      kind: "explicit_preview",
+      weekInMeso: input.requiredSlot.weekInMeso,
+      slotId: input.requiredSlot.slotId,
+    },
+  };
 }
 
 export {

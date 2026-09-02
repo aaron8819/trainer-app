@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => {
   const loadPendingMesocycleHandoff = vi.fn();
   const loadNextWorkoutContext = vi.fn();
   const loadRequestedAdvancingSlotSnapshot = vi.fn();
+  const resolveRequestedV4ScheduledGenerationObligation = vi.fn();
   const findPendingWeekCloseForUser = vi.fn();
   const generateSessionFromIntent = vi.fn();
   const generateDeloadSessionFromIntent = vi.fn();
@@ -18,6 +19,7 @@ const mocks = vi.hoisted(() => {
     loadPendingMesocycleHandoff,
     loadNextWorkoutContext,
     loadRequestedAdvancingSlotSnapshot,
+    resolveRequestedV4ScheduledGenerationObligation,
     findPendingWeekCloseForUser,
     generateSessionFromIntent,
     generateDeloadSessionFromIntent,
@@ -41,6 +43,8 @@ vi.mock("@/lib/api/next-session", () => ({
   loadNextWorkoutContext: (...args: unknown[]) => mocks.loadNextWorkoutContext(...args),
   loadRequestedAdvancingSlotSnapshot: (...args: unknown[]) =>
     mocks.loadRequestedAdvancingSlotSnapshot(...args),
+  resolveRequestedV4ScheduledGenerationObligation: (...args: unknown[]) =>
+    mocks.resolveRequestedV4ScheduledGenerationObligation(...args),
 }));
 
 vi.mock("@/lib/api/mesocycle-week-close", () => ({
@@ -92,6 +96,31 @@ function exactV4Revision() {
     hashAlgorithm: "sha256",
     provenanceStatus: "exact",
   };
+}
+
+function exactV4Obligation(input: {
+  week: number;
+  slotId: string;
+  intent: "upper" | "lower" | "pull";
+  sequenceIndex?: number;
+}) {
+  const requiredSlot = {
+    weekInMeso: input.week,
+    phase: input.week === 5 ? "DELOAD" as const : "ACCUMULATION" as const,
+    slotId: input.slotId,
+    intent: input.intent,
+    sequenceIndex: input.sequenceIndex ?? 0,
+    sequenceLength: 4,
+  };
+  const authority = {
+    mesocycleId: "meso-1",
+    revisionId: "revision-1",
+    revisionNumber: 1,
+    revisionHash: V4_HASH,
+    slotsPerWeek: 4,
+    requiredSlots: [requiredSlot],
+  };
+  return { authority, requiredSlot };
 }
 
 function exactV4Receipt(input: {
@@ -175,6 +204,7 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
       selectedIncompleteStatus: null,
     });
     mocks.loadRequestedAdvancingSlotSnapshot.mockResolvedValue(undefined);
+    mocks.resolveRequestedV4ScheduledGenerationObligation.mockReturnValue(undefined);
     mocks.findPendingWeekCloseForUser.mockResolvedValue(null);
     mocks.applyAutoregulation.mockImplementation(async (_userId, workout) => ({
       adjusted: workout,
@@ -614,6 +644,11 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
   });
 
   it("suppresses autoregulation for exact V4 accumulation replay", async () => {
+    const obligation = exactV4Obligation({
+      week: 3,
+      slotId: "upper-a",
+      intent: "upper",
+    });
     mocks.loadActiveMesocycle.mockResolvedValue({
       id: "meso-1",
       state: "ACTIVE_ACCUMULATION",
@@ -628,6 +663,23 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
       sequenceLength: 4,
       source: "mesocycle_slot_sequence",
     });
+    mocks.loadNextWorkoutContext.mockResolvedValue({
+      activeMesocycleId: "meso-1",
+      intent: "upper",
+      slotId: "upper-a",
+      slotSequenceIndex: 0,
+      slotSequenceLength: 4,
+      slotSource: "mesocycle_slot_sequence",
+      existingWorkoutId: null,
+      isExisting: false,
+      source: "rotation",
+      weekInMeso: 3,
+      sessionInWeek: 1,
+      derivationTrace: [],
+      selectedIncompleteStatus: null,
+      v4ScheduleAuthority: obligation.authority,
+    });
+    mocks.resolveRequestedV4ScheduledGenerationObligation.mockReturnValue(obligation);
     const exactWorkout = {
       id: "w-v4-accumulation",
       scheduledDate: new Date().toISOString(),
@@ -732,6 +784,15 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     const body = await response.json();
     expect(response.status).toBe(200);
     expect(mocks.applyAutoregulation).not.toHaveBeenCalled();
+    expect(mocks.generateSessionFromIntent).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({
+        generationMode: {
+          kind: "accepted_v4_scheduled",
+          obligation,
+        },
+      }),
+    );
     expect(body.workout.mainLifts.map((entry: { sets: Array<{ targetLoad: number }> }) =>
       entry.sets[0].targetLoad,
     )).toEqual([105, 95]);
@@ -744,6 +805,20 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
   });
 
   it("keeps autoregulation for body-part fallback under an active V4 plan", async () => {
+    const activeObligation = exactV4Obligation({
+      week: 3,
+      slotId: "upper-a",
+      intent: "upper",
+    });
+    mocks.loadNextWorkoutContext.mockResolvedValueOnce({
+      activeMesocycleId: "meso-1",
+      source: "rotation",
+      v4ScheduleAuthority: activeObligation.authority,
+      v4ScheduleResolution: {
+        status: "available",
+        unresolvedSlotsInNextWeek: [activeObligation.requiredSlot],
+      },
+    });
     mocks.loadActiveMesocycle.mockResolvedValue({
       id: "meso-1",
       state: "ACTIVE_ACCUMULATION",
@@ -800,6 +875,17 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(mocks.generateSessionFromIntent).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({
+        generationMode: {
+          kind: "non_scheduled",
+          purpose: "body_part",
+        },
+        advancingSlot: undefined,
+      }),
+    );
+    expect(mocks.resolveRequestedV4ScheduledGenerationObligation).not.toHaveBeenCalled();
     expect(mocks.applyAutoregulation).toHaveBeenCalledOnce();
     expect(body.workout.warmup).toEqual([
       expect.objectContaining({ id: "warmup" }),
@@ -1161,6 +1247,20 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
   });
 
   it("returns supplemental deficit metadata already stamped by the backend", async () => {
+    const activeObligation = exactV4Obligation({
+      week: 3,
+      slotId: "upper-a",
+      intent: "upper",
+    });
+    mocks.loadNextWorkoutContext.mockResolvedValueOnce({
+      activeMesocycleId: "meso-1",
+      source: "rotation",
+      v4ScheduleAuthority: activeObligation.authority,
+      v4ScheduleResolution: {
+        status: "available",
+        unresolvedSlotsInNextWeek: [activeObligation.requiredSlot],
+      },
+    });
     mocks.loadActiveMesocycle.mockResolvedValue({
       id: "meso-1",
       state: "ACTIVE_ACCUMULATION",
@@ -1249,6 +1349,10 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     expect(mocks.generateSessionFromIntent).toHaveBeenCalledWith(
       "user-1",
       expect.objectContaining({
+        generationMode: {
+          kind: "non_scheduled",
+          purpose: "supplemental",
+        },
         intent: "body_part",
         targetMuscles: ["rear delts"],
         supplementalPlannerProfile: true,
@@ -1267,6 +1371,20 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
   });
 
   it("pins receipt week from the pending week-close row and preserves marker + weekCloseId", async () => {
+    const activeObligation = exactV4Obligation({
+      week: 3,
+      slotId: "upper-a",
+      intent: "upper",
+    });
+    mocks.loadNextWorkoutContext.mockResolvedValueOnce({
+      activeMesocycleId: "meso-1",
+      source: "rotation",
+      v4ScheduleAuthority: activeObligation.authority,
+      v4ScheduleResolution: {
+        status: "available",
+        unresolvedSlotsInNextWeek: [activeObligation.requiredSlot],
+      },
+    });
     mocks.loadActiveMesocycle.mockResolvedValue({
       id: "meso-1",
       state: "ACTIVE_ACCUMULATION",
@@ -1401,6 +1519,10 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     expect(mocks.generateSessionFromIntent).toHaveBeenCalledWith(
       "user-1",
       expect.objectContaining({
+        generationMode: {
+          kind: "non_scheduled",
+          purpose: "gap_fill",
+        },
         weekCloseId: "wc-1",
         optionalGapFillContext: {
           weekCloseId: "wc-1",

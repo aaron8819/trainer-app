@@ -36,7 +36,10 @@ import {
   buildSelectionObjective,
   mapSelectionResult,
 } from "./template-session/selection-adapter";
-import { generateDeloadSessionFromIntentContext } from "./template-session/deload-session";
+import {
+  generateDeloadSessionFromIntentContext,
+  generateValidatedV4ScheduledDeloadSessionFromIntentContext,
+} from "./template-session/deload-session";
 import {
   resolveRoleFixtureAnchor,
 } from "./template-session/role-anchor-policy";
@@ -82,6 +85,7 @@ import {
   type NormalizedSeededSlotExercise,
 } from "./template-session/slot-plan-seed";
 import type {
+  GenerationScheduleMode,
   GenerateIntentSessionInput,
   GenerateTemplateSessionParams,
   IntentSessionCompositionResult,
@@ -89,6 +93,11 @@ import type {
   PreLoadSessionGenerationResult,
   SessionGenerationResult,
 } from "./template-session/types";
+import {
+  consumeV4ScheduledCompositionCapability,
+  validateV4ScheduledCompositionCapability,
+  type ValidatedV4ScheduledCompositionCapability,
+} from "./template-session/scheduled-composition-capability";
 import {
   getSessionMuscleOpportunityWeight,
   getSessionOpportunityDefinition,
@@ -105,6 +114,15 @@ import type { SessionCompositionSource, SessionSlotSnapshot } from "@/lib/eviden
 export type { GenerateIntentSessionInput } from "./template-session/types";
 
 function resolveInputSessionSlotId(input: GenerateIntentSessionInput): string | undefined {
+  if (input.generationMode.kind === "accepted_v4_scheduled") {
+    return input.generationMode.obligation.requiredSlot.slotId;
+  }
+  if (input.generationMode.kind === "explicit_preview") {
+    return input.generationMode.slotId?.trim() || input.slotId?.trim();
+  }
+  if (input.generationMode.kind === "non_scheduled") {
+    return undefined;
+  }
   return input.slotId?.trim() || input.advancingSlot?.slotId;
 }
 
@@ -112,7 +130,34 @@ function resolveGenerationSessionSlotSnapshot(
   mapped: MappedGenerationContext,
   input: GenerateIntentSessionInput
 ): SessionSlotSnapshot | undefined {
-  const explicitSlotId = input.slotId?.trim();
+  if (input.generationMode.kind === "non_scheduled") {
+    return undefined;
+  }
+  const authoredSlot =
+    input.generationMode.kind === "accepted_v4_scheduled"
+      ? input.generationMode.obligation.requiredSlot
+      : undefined;
+  if (authoredSlot) {
+    if (
+      authoredSlot.intent !== input.intent ||
+      (input.slotId && input.slotId.trim() !== authoredSlot.slotId) ||
+      (input.advancingSlot &&
+        (input.advancingSlot.slotId !== authoredSlot.slotId ||
+          input.advancingSlot.intent !== authoredSlot.intent ||
+          input.advancingSlot.sequenceIndex !== authoredSlot.sequenceIndex ||
+          input.advancingSlot.sequenceLength !== authoredSlot.sequenceLength))
+    ) {
+      return undefined;
+    }
+    return {
+      slotId: authoredSlot.slotId,
+      intent: authoredSlot.intent,
+      sequenceIndex: authoredSlot.sequenceIndex,
+      sequenceLength: authoredSlot.sequenceLength,
+      source: "mesocycle_slot_sequence",
+    };
+  }
+  const explicitSlotId = resolveInputSessionSlotId(input);
   const advancingSlot = input.advancingSlot;
   const targetSlotId = explicitSlotId || advancingSlot?.slotId;
   if (!targetSlotId) {
@@ -142,6 +187,61 @@ function resolveGenerationSessionSlotSnapshot(
   }
 
   return undefined;
+}
+
+function validateMappedGenerationMode(
+  mapped: MappedGenerationContext,
+  requested: GenerationScheduleMode,
+): string | null {
+  const loaded = mapped.generationMode;
+  if (loaded.kind !== requested.kind) {
+    return "GENERATION_SCHEDULE_MODE_CONFLICT";
+  }
+  if (
+    loaded.kind === "accepted_v4_scheduled" &&
+    requested.kind === "accepted_v4_scheduled"
+  ) {
+    const loadedAuthority = loaded.obligation.authority;
+    const requestedAuthority = requested.obligation.authority;
+    if (
+      loadedAuthority.mesocycleId !== requestedAuthority.mesocycleId ||
+      loadedAuthority.revisionId !== requestedAuthority.revisionId ||
+      loadedAuthority.revisionNumber !== requestedAuthority.revisionNumber ||
+      loadedAuthority.revisionHash !== requestedAuthority.revisionHash ||
+      loadedAuthority.slotsPerWeek !== requestedAuthority.slotsPerWeek ||
+      loaded.obligation.requiredSlot.weekInMeso !==
+        requested.obligation.requiredSlot.weekInMeso ||
+      loaded.obligation.requiredSlot.phase !==
+        requested.obligation.requiredSlot.phase ||
+      loaded.obligation.requiredSlot.slotId !==
+        requested.obligation.requiredSlot.slotId ||
+      loaded.obligation.requiredSlot.intent !==
+        requested.obligation.requiredSlot.intent ||
+      loaded.obligation.requiredSlot.sequenceIndex !==
+        requested.obligation.requiredSlot.sequenceIndex ||
+      loaded.obligation.requiredSlot.sequenceLength !==
+        requested.obligation.requiredSlot.sequenceLength
+    ) {
+      return "V4_SCHEDULE_GENERATION_CONTEXT_CONFLICT";
+    }
+  }
+  if (
+    loaded.kind === "explicit_preview" &&
+    requested.kind === "explicit_preview" &&
+    (loaded.weekInMeso !== requested.weekInMeso ||
+      loaded.slotId !== requested.slotId)
+  ) {
+    return "GENERATION_PREVIEW_CONTEXT_CONFLICT";
+  }
+  if (
+    loaded.kind === "non_scheduled" &&
+    requested.kind === "non_scheduled" &&
+    (loaded.purpose !== requested.purpose ||
+      loaded.anchorWeek !== requested.anchorWeek)
+  ) {
+    return "NON_SCHEDULED_GENERATION_CONTEXT_CONFLICT";
+  }
+  return null;
 }
 
 function buildSeededSelectionFromWorkout(input: {
@@ -2266,12 +2366,20 @@ function selectBestClosureAction(params: {
 export async function generateSessionFromTemplate(
   userId: string,
   templateId: string,
-  params: GenerateTemplateSessionParams = {}
+  params: GenerateTemplateSessionParams
 ): Promise<SessionGenerationResult> {
+  if (params.generationMode.kind === "accepted_v4_scheduled") {
+    return {
+      error:
+        "Accepted V4 scheduled workouts must use the canonical intent generation path.",
+    };
+  }
   const template = await loadTemplateDetail(templateId, userId);
   let mapped;
   try {
-    mapped = await loadMappedGenerationContext(userId);
+    mapped = await loadMappedGenerationContext(userId, {
+      generationMode: params.generationMode,
+    });
   } catch (error) {
     if (error instanceof Error) {
       return { error: error.message };
@@ -2333,6 +2441,12 @@ export async function generateSessionFromTemplate(
     template.targetMuscles ?? [],
     templateExercises
   );
+  const resolvedSessionSlot = resolveGenerationSessionSlotSnapshot(mapped, {
+    intent: sessionIntent,
+    generationMode: params.generationMode,
+    slotId: params.slotId,
+    advancingSlot: params.advancingSlot,
+  });
   const roleMapForIntent = mapped.mesocycleRoleMapByIntent[sessionIntent];
   templateExercises = templateExercises.map((entry) => ({
     ...entry,
@@ -2376,13 +2490,26 @@ export async function generateSessionFromTemplate(
     workout: result.workout,
   });
 
-  return finalizePostLoadResult(result, mapped);
+  return finalizePostLoadResult(
+    result,
+    mapped,
+    undefined,
+    "standard",
+    resolvedSessionSlot,
+  );
 }
 
 export async function generateDeloadSessionFromTemplate(
   userId: string,
-  templateId: string
+  templateId: string,
+  params: GenerateTemplateSessionParams,
 ): Promise<SessionGenerationResult> {
+  if (params.generationMode.kind === "accepted_v4_scheduled") {
+    return {
+      error:
+        "Accepted V4 scheduled workouts must use the canonical intent generation path.",
+    };
+  }
   const template = await loadTemplateDetail(templateId, userId);
   if (!template) {
     return { error: "Template not found" };
@@ -2390,7 +2517,9 @@ export async function generateDeloadSessionFromTemplate(
 
   let mapped;
   try {
-    mapped = await loadMappedGenerationContext(userId);
+    mapped = await loadMappedGenerationContext(userId, {
+      generationMode: params.generationMode,
+    });
   } catch (error) {
     if (error instanceof Error) {
       return { error: error.message };
@@ -2404,6 +2533,12 @@ export async function generateDeloadSessionFromTemplate(
     template.targetMuscles ?? [],
     templateExercises
   );
+  const resolvedSessionSlot = resolveGenerationSessionSlotSnapshot(mapped, {
+    intent: sessionIntent,
+    generationMode: params.generationMode,
+    slotId: params.slotId,
+    advancingSlot: params.advancingSlot,
+  });
 
   const deload = await generateDeloadSessionFromIntentContext(userId, mapped, sessionIntent);
   if ("error" in deload) {
@@ -2420,6 +2555,7 @@ export async function generateDeloadSessionFromTemplate(
     note: deload.note,
     deloadTrace: deload.trace,
     compositionSource: deload.compositionSource,
+    sessionSlot: resolvedSessionSlot,
   });
 }
 
@@ -2430,15 +2566,47 @@ export async function generateSessionFromIntent(
   if (input.intent === "body_part" && (!input.targetMuscles || input.targetMuscles.length === 0)) {
     return { error: "targetMuscles is required when intent is body_part" };
   }
+  if (
+    (input.optionalGapFill === true ||
+      input.optionalGapFillContext != null ||
+      input.supplementalDeficitSession === true ||
+      input.supplementalPlannerProfile === true ||
+      input.intent === "body_part") &&
+    input.generationMode.kind !== "non_scheduled"
+  ) {
+    return { error: "NON_SCHEDULED_GENERATION_MODE_REQUIRED" };
+  }
 
   let mapped;
+  let generationMode = input.generationMode;
+  let scheduledCapability: ValidatedV4ScheduledCompositionCapability | undefined;
   try {
     const weekCloseTargetWeek = input.optionalGapFillContext?.targetWeek;
     const gapFillAnchorWeek =
       weekCloseTargetWeek ??
       (input.optionalGapFill ? input.anchorWeek : undefined);
+    if (generationMode.kind === "accepted_v4_scheduled") {
+      const revalidated = await validateV4ScheduledCompositionCapability({
+        userId,
+        obligation: generationMode.obligation,
+      });
+      if (revalidated.status !== "available") {
+        return {
+          error: `V4_SCHEDULE_GENERATION_OBLIGATION_STALE:${revalidated.reason}`,
+        };
+      }
+      generationMode = {
+        kind: "accepted_v4_scheduled",
+        obligation: revalidated.obligation,
+      };
+      scheduledCapability = revalidated.capability;
+    }
+    const contextGenerationMode =
+      generationMode.kind === "non_scheduled" && gapFillAnchorWeek != null
+        ? { ...generationMode, anchorWeek: gapFillAnchorWeek }
+        : generationMode;
     mapped = await loadMappedGenerationContext(userId, {
-      anchorWeek: gapFillAnchorWeek,
+      generationMode: contextGenerationMode,
       weekCloseContext:
         input.optionalGapFillContext && input.optionalGapFill
           ? { targetWeek: input.optionalGapFillContext.targetWeek }
@@ -2453,10 +2621,18 @@ export async function generateSessionFromIntent(
     return { error: "Failed to load generation context" };
   }
 
-  return generateSessionFromMappedContextWithPrescriptionAnchors(userId, mapped, input);
+  return generateSessionFromMappedContextWithPrescriptionAnchors(
+    userId,
+    mapped,
+    {
+      ...input,
+      generationMode: mapped.generationMode,
+    },
+    scheduledCapability,
+  );
 }
 
-export function composeIntentSessionFromMappedContext(
+function composeIntentSessionFromMappedContextInternal(
   mapped: MappedGenerationContext,
   input: GenerateIntentSessionInput
 ): IntentSessionCompositionResult | { error: string } {
@@ -3321,6 +3497,19 @@ export function composeIntentSessionFromMappedContext(
   };
 }
 
+export function composeIntentSessionFromMappedContext(
+  mapped: MappedGenerationContext,
+  input: GenerateIntentSessionInput
+): IntentSessionCompositionResult | { error: string } {
+  if (
+    mapped.generationMode.kind === "accepted_v4_scheduled" ||
+    input.generationMode.kind === "accepted_v4_scheduled"
+  ) {
+    return { error: "V4_SCHEDULE_MAPPED_CONTEXT_COMPOSITION_PROHIBITED" };
+  }
+  return composeIntentSessionFromMappedContextInternal(mapped, input);
+}
+
 type FinalizablePostLoadSession = {
   result: PreLoadSessionGenerationResult;
   filteredExercises: FilteredExerciseSummary[];
@@ -3331,9 +3520,26 @@ type FinalizablePostLoadSession = {
 
 function composePostLoadSessionFromMappedContext(
   mapped: MappedGenerationContext,
-  input: GenerateIntentSessionInput
+  input: GenerateIntentSessionInput,
+  scheduledCapability?: ValidatedV4ScheduledCompositionCapability,
 ): FinalizablePostLoadSession | { error: string } {
+  const modeConflict = validateMappedGenerationMode(mapped, input.generationMode);
+  if (modeConflict) {
+    return { error: modeConflict };
+  }
+  if (
+    input.generationMode.kind === "accepted_v4_scheduled" &&
+    !consumeV4ScheduledCompositionCapability({
+      capability: scheduledCapability,
+      obligation: input.generationMode.obligation,
+    })
+  ) {
+    return { error: "V4_SCHEDULE_FRESHNESS_CAPABILITY_REQUIRED" };
+  }
   const resolvedSessionSlot = resolveGenerationSessionSlotSnapshot(mapped, input);
+  if (input.generationMode.kind === "accepted_v4_scheduled" && !resolvedSessionSlot) {
+    return { error: "Scheduled V4 obligation does not match the generation request." };
+  }
   const normalizedInput =
     resolvedSessionSlot || input.advancingSlot
       ? {
@@ -3350,7 +3556,8 @@ function composePostLoadSessionFromMappedContext(
   }
 
   const composed =
-    normalizedSeededComposed ?? composeIntentSessionFromMappedContext(mapped, normalizedInput);
+    normalizedSeededComposed ??
+    composeIntentSessionFromMappedContextInternal(mapped, normalizedInput);
   if ("error" in composed) {
     return composed;
   }
@@ -3382,9 +3589,14 @@ function composePostLoadSessionFromMappedContext(
 async function generateSessionFromMappedContextWithPrescriptionAnchors(
   userId: string,
   mapped: MappedGenerationContext,
-  input: GenerateIntentSessionInput
+  input: GenerateIntentSessionInput,
+  scheduledCapability?: ValidatedV4ScheduledCompositionCapability,
 ): Promise<SessionGenerationResult> {
-  const composed = composePostLoadSessionFromMappedContext(mapped, input);
+  const composed = composePostLoadSessionFromMappedContext(
+    mapped,
+    input,
+    scheduledCapability,
+  );
   if ("error" in composed) {
     return composed;
   }
@@ -3411,6 +3623,12 @@ export function generateSessionFromMappedContext(
   mapped: MappedGenerationContext,
   input: GenerateIntentSessionInput
 ): SessionGenerationResult {
+  if (
+    mapped.generationMode.kind === "accepted_v4_scheduled" ||
+    input.generationMode.kind === "accepted_v4_scheduled"
+  ) {
+    return { error: "V4_SCHEDULE_MAPPED_CONTEXT_COMPOSITION_PROHIBITED" };
+  }
   const composed = composePostLoadSessionFromMappedContext(mapped, input);
   if ("error" in composed) {
     return composed;
@@ -3432,8 +3650,28 @@ export async function generateDeloadSessionFromIntent(
   input: GenerateIntentSessionInput
 ): Promise<SessionGenerationResult> {
   let mapped;
+  let generationMode = input.generationMode;
+  let scheduledCapability: ValidatedV4ScheduledCompositionCapability | undefined;
   try {
-    mapped = await loadMappedGenerationContext(userId);
+    if (generationMode.kind === "accepted_v4_scheduled") {
+      const revalidated = await validateV4ScheduledCompositionCapability({
+        userId,
+        obligation: generationMode.obligation,
+      });
+      if (revalidated.status !== "available") {
+        return {
+          error: `V4_SCHEDULE_GENERATION_OBLIGATION_STALE:${revalidated.reason}`,
+        };
+      }
+      generationMode = {
+        kind: "accepted_v4_scheduled",
+        obligation: revalidated.obligation,
+      };
+      scheduledCapability = revalidated.capability;
+    }
+    mapped = await loadMappedGenerationContext(userId, {
+      generationMode,
+    });
   } catch (error) {
     if (error instanceof Error) {
       return { error: error.message };
@@ -3441,11 +3679,27 @@ export async function generateDeloadSessionFromIntent(
     return { error: "Failed to load generation context" };
   }
 
-  const deload = await generateDeloadSessionFromIntentContext(userId, mapped, input.intent);
+  const normalizedInput = { ...input, generationMode };
+  const modeConflict = validateMappedGenerationMode(mapped, generationMode);
+  if (modeConflict) {
+    return { error: modeConflict };
+  }
+  const deload =
+    generationMode.kind === "accepted_v4_scheduled"
+      ? await generateValidatedV4ScheduledDeloadSessionFromIntentContext(
+          userId,
+          mapped,
+          input.intent,
+          scheduledCapability,
+        )
+      : await generateDeloadSessionFromIntentContext(userId, mapped, input.intent);
   if ("error" in deload) {
     return deload;
   }
-  const resolvedSessionSlot = resolveGenerationSessionSlotSnapshot(mapped, input);
+  const resolvedSessionSlot = resolveGenerationSessionSlotSnapshot(mapped, normalizedInput);
+  if (generationMode.kind === "accepted_v4_scheduled" && !resolvedSessionSlot) {
+    return { error: "Scheduled V4 obligation does not match the generation request." };
+  }
 
   return finalizeDeloadSessionResult({
     mapped,

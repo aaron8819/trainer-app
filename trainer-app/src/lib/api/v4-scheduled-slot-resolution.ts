@@ -9,6 +9,10 @@ import { parseAcceptedHypertrophySeedV4 } from "@/lib/engine/hypertrophy-plan-au
 import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
 import { isCloseoutSession } from "@/lib/session-semantics/closeout-classifier";
 import { isStrictSupplementalDeficitSession } from "@/lib/session-semantics/supplemental-classifier";
+import {
+  classifyNonScheduledMaterialization,
+  resolveSessionMaterialization,
+} from "@/lib/session-semantics/materialization";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -46,6 +50,18 @@ export type V4ScheduleAuthority = {
   slotsPerWeek: number;
   requiredSlots: V4RequiredSlot[];
 };
+
+export type V4ScheduledGenerationObligation = {
+  authority: V4ScheduleAuthority;
+  requiredSlot: V4RequiredSlot;
+};
+
+export function sameV4ScheduledGenerationObligation(
+  left: V4ScheduledGenerationObligation,
+  right: V4ScheduledGenerationObligation,
+): boolean {
+  return stableJson(left) === stableJson(right);
+}
 
 export type V4ScheduleAuthorityResolution =
   | { status: "not_v4" }
@@ -240,6 +256,57 @@ export function resolveV4ScheduleAuthority(
       requiredSlots: expectedWeeks.flatMap(([weekInMeso, phase]) =>
         weeklySlots.map((slot) => ({ ...slot, weekInMeso, phase })),
       ),
+    },
+  };
+}
+
+export function validateV4ScheduledGenerationObligation(input: {
+  mesocycle: V4ScheduleAuthorityInput | null;
+  obligation: V4ScheduledGenerationObligation;
+}):
+  | { status: "available"; obligation: V4ScheduledGenerationObligation }
+  | { status: "blocked"; reason: string } {
+  if (!input.mesocycle) {
+    return { status: "blocked", reason: "active_mesocycle_missing" };
+  }
+  const resolution = resolveV4ScheduleAuthority(input.mesocycle);
+  if (resolution.status !== "available") {
+    return {
+      status: "blocked",
+      reason:
+        resolution.status === "blocked"
+          ? resolution.reason
+          : "active_mesocycle_is_not_v4",
+    };
+  }
+
+  const canonicalAuthority = resolution.authority;
+  const suppliedAuthority = input.obligation.authority;
+  if (
+    suppliedAuthority.mesocycleId !== canonicalAuthority.mesocycleId ||
+    suppliedAuthority.revisionId !== canonicalAuthority.revisionId ||
+    suppliedAuthority.revisionNumber !== canonicalAuthority.revisionNumber ||
+    suppliedAuthority.revisionHash !== canonicalAuthority.revisionHash ||
+    suppliedAuthority.slotsPerWeek !== canonicalAuthority.slotsPerWeek
+  ) {
+    return { status: "blocked", reason: "schedule_authority_changed" };
+  }
+
+  const suppliedSlot = input.obligation.requiredSlot;
+  const canonicalSlot = canonicalAuthority.requiredSlots.find(
+    (slot) =>
+      slot.weekInMeso === suppliedSlot.weekInMeso &&
+      slot.slotId === suppliedSlot.slotId,
+  );
+  if (!canonicalSlot || stableJson(canonicalSlot) !== stableJson(suppliedSlot)) {
+    return { status: "blocked", reason: "required_slot_changed" };
+  }
+
+  return {
+    status: "available",
+    obligation: {
+      authority: canonicalAuthority,
+      requiredSlot: canonicalSlot,
     },
   };
 }
@@ -485,12 +552,31 @@ function validateWorkoutEvidence(input: {
   workout: V4ScheduleWorkoutEvidence;
 }): { claim: V4ResolvedSlotClaim } | { excluded: true } | { reason: string } {
   const { workout, authority } = input;
+  const receipt = extractSessionDecisionReceipt(workout.selectionMetadata);
+  const nonScheduled = classifyNonScheduledMaterialization({
+    receipt,
+    selectionMetadata: workout.selectionMetadata,
+    selectionMode: workout.selectionMode,
+    sessionIntent: workout.sessionIntent,
+  });
+  if (nonScheduled.status === "recognized") {
+    return { excluded: true };
+  }
+  if (nonScheduled.status === "invalid") {
+    return {
+      reason: `non_scheduled_materialization_invalid:${nonScheduled.reason}:${workout.id}`,
+    };
+  }
+
   const persistedSlot = resolveV4RequiredSlotFromPersistedWorkoutEvidence({
     authority,
     workout,
   });
   if ("reason" in persistedSlot) {
-    const isRecognizedNonRequired =
+    const isLegacyRecognizedNonRequired =
+      receipt != null &&
+      resolveSessionMaterialization(receipt).materializationClass === "legacy" &&
+      (
       isStrictOptionalGapFillSession({
         selectionMetadata: workout.selectionMetadata,
         selectionMode: workout.selectionMode,
@@ -501,15 +587,18 @@ function validateWorkoutEvidence(input: {
         selectionMode: workout.selectionMode,
         sessionIntent: workout.sessionIntent,
       }) ||
-      isCloseoutSession(workout.selectionMetadata);
-    if (persistedSlot.reason === "required_slot_not_found" && isRecognizedNonRequired) {
+      isCloseoutSession(workout.selectionMetadata)
+      );
+    if (
+      persistedSlot.reason === "required_slot_not_found" &&
+      isLegacyRecognizedNonRequired
+    ) {
       return { excluded: true };
     }
     return { reason: `${persistedSlot.reason}:${workout.id}` };
   }
 
   const requiredSlot = persistedSlot.requiredSlot;
-  const receipt = extractSessionDecisionReceipt(workout.selectionMetadata);
   const scheduled = receipt?.scheduledSlotReceipt;
   if (!scheduled) {
     return { reason: `scheduled_slot_receipt_missing_compat:${workout.id}` };

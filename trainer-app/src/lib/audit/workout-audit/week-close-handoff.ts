@@ -733,6 +733,11 @@ async function previewOptionalGapFill(input: {
 > {
   const result = await generateSessionFromIntent(input.userId, {
     intent: "body_part",
+    generationMode: {
+      kind: "non_scheduled",
+      purpose: "gap_fill",
+      anchorWeek: input.targetWeek,
+    },
     targetMuscles: input.targetMuscles,
     weekCloseId: input.weekCloseId,
     optionalGapFill: true,

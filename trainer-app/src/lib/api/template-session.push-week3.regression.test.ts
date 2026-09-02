@@ -566,7 +566,8 @@ function makeSets(exerciseId: string, count: number, load: number) {
 function buildMappedContext(): MappedGenerationContext {
   const recentExposureDate = new Date(daysAgoIso(6));
   return {
-    mappedProfile: {
+    generationMode: { kind: "legacy" },
+  mappedProfile: {
       id: "user-1",
       trainingAge: "intermediate",
       injuries: [],
@@ -1293,7 +1294,7 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
   it("prevents hinge under-dosing when collateral glute stimulus is unavoidable", async () => {
     loadMappedGenerationContextMock.mockResolvedValueOnce(buildLegCollateralBalanceMappedContext());
 
-    const result = await generateSessionFromIntent("user-1", { intent: "legs" });
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "legs" });
     if ("error" in result) {
       throw new Error(`Unexpected error: ${result.error}`);
     }
@@ -1307,7 +1308,7 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
   it("Fix 1: IDBP set count ≤ 5 even though continuity ramp would produce 7 (5+2)", async () => {
     // Without cap: continuityMin=5, progressionIncrement=2 → progressionFloor=7 → 7 sets
     // With CORE_COMPOUND cap: min(7, MAIN_LIFT_MAX_WORKING_SETS=5) = 5
-    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "push" });
     if ("error" in result) {
       throw new Error(`Unexpected error: ${result.error}`);
     }
@@ -1319,7 +1320,7 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
   it("Fix 2: Dip targetLoad = 0 (bodyweight hybrid, no non-zero load history)", async () => {
     // Without fix: equipment=[bodyweight,machine] → getLoadEquipment returns "machine" → floor 10 lbs
     // With fix: estimateLoad returns undefined when equipment.includes("bodyweight") → targetLoad=0
-    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "push" });
     if ("error" in result) {
       throw new Error(`Unexpected error: ${result.error}`);
     }
@@ -1336,7 +1337,7 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
   it("Fix 3: IDBP working sets stay uniform and avoid the lighter legacy anchor", async () => {
     // W2S2 legacy history: setIndex=1 @ 45 lbs, setIndex=2-5 @ 40 lbs.
     // The new path resolves one representative working load and applies it uniformly.
-    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "push" });
     if ("error" in result) {
       throw new Error(`Unexpected error: ${result.error}`);
     }
@@ -1365,7 +1366,7 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
   it("W3S2 runtime semantics: budgets role fixtures against current-week performed volume", async () => {
     loadMappedGenerationContextMock.mockResolvedValueOnce(buildWeek3Session2MappedContext());
 
-    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "push" });
     if ("error" in result) {
       throw new Error(`Unexpected error: ${result.error}`);
     }
@@ -1384,7 +1385,7 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
   it("keeps a chest-anchored press above the core floor when chest deficit remains meaningful and triceps is near target", async () => {
     loadMappedGenerationContextMock.mockResolvedValueOnce(buildChestAnchorBudgetMappedContext());
 
-    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "push" });
     if ("error" in result) {
       throw new Error(`Unexpected error: ${result.error}`);
     }
@@ -1402,7 +1403,7 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
   it("drops accessory fixtures when their anchor budget is exhausted", async () => {
     loadMappedGenerationContextMock.mockResolvedValueOnce(buildAccessoryDroppableMappedContext());
 
-    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "push" });
     if ("error" in result) {
       throw new Error(`Unexpected error: ${result.error}`);
     }
@@ -1416,7 +1417,7 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
   it("keeps a one-set core floor when a small anchor deficit remains", async () => {
     loadMappedGenerationContextMock.mockResolvedValueOnce(buildCoreFloorMappedContext());
 
-    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "push" });
     if ("error" in result) {
       throw new Error(`Unexpected error: ${result.error}`);
     }
@@ -1428,7 +1429,7 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
   it("fills unresolved chest deficits after dropped role accessories without re-adding dropped role fixtures", async () => {
     loadMappedGenerationContextMock.mockResolvedValueOnce(buildClosureNewExerciseMappedContext());
 
-    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "push" });
     if ("error" in result) {
       throw new Error(`Unexpected error: ${result.error}`);
     }
@@ -1452,7 +1453,7 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
   it("can use closure set expansion on an already-selected exercise when critical deficits remain", async () => {
     loadMappedGenerationContextMock.mockResolvedValueOnce(buildClosureExpansionMappedContext());
 
-    const result = await generateSessionFromIntent("user-1", {
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" },
       intent: "push",
       plannerDiagnosticsMode: "debug",
     });
@@ -1486,7 +1487,7 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
   it("prefers resolving the largest remaining deficit over stacking duplicate accessory isolation during closure", async () => {
     loadMappedGenerationContextMock.mockResolvedValueOnce(buildClosureDuplicateAccessoryMappedContext());
 
-    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "push" });
     if ("error" in result) {
       throw new Error(`Unexpected error: ${result.error}`);
     }
@@ -1521,7 +1522,7 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
       buildClosureDominantDeficitBypassesPatternCapMappedContext()
     );
 
-    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "push" });
     if ("error" in result) {
       throw new Error(`Unexpected error: ${result.error}`);
     }
@@ -1550,7 +1551,7 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
       buildClosureStackedIsolationPenaltyMappedContext()
     );
 
-    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "push" });
     if ("error" in result) {
       throw new Error(`Unexpected error: ${result.error}`);
     }
@@ -1571,7 +1572,7 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
       buildClosureDominantIsolationExpansionMappedContext()
     );
 
-    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "push" });
     if ("error" in result) {
       throw new Error(`Unexpected error: ${result.error}`);
     }
@@ -1592,7 +1593,7 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
       buildAccessorySiblingSplitMappedContext({ sideDeltsTarget: 6 })
     );
 
-    const result = await generateSessionFromIntent("user-1", {
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" },
       intent: "push",
       plannerDiagnosticsMode: "debug",
     });
@@ -1618,7 +1619,7 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
       buildAccessorySiblingSplitMappedContext({ sideDeltsTarget: 6 })
     );
 
-    const result = await generateSessionFromIntent("user-1", {
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" },
       intent: "push",
       plannerDiagnosticsMode: "debug",
     });
@@ -1638,7 +1639,7 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
       buildAccessorySiblingSplitMappedContext({ sideDeltsTarget: 8, includeSibling: false })
     );
 
-    const result = await generateSessionFromIntent("user-1", {
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" },
       intent: "push",
       plannerDiagnosticsMode: "debug",
     });
@@ -1662,7 +1663,7 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
       })
     );
 
-    const result = await generateSessionFromIntent("user-1", {
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" },
       intent: "push",
       plannerDiagnosticsMode: "debug",
     });
@@ -1679,7 +1680,7 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
       buildAccessorySiblingSplitMappedContext({ sideDeltsTarget: 10 })
     );
 
-    const result = await generateSessionFromIntent("user-1", {
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" },
       intent: "push",
       plannerDiagnosticsMode: "debug",
     });
@@ -1698,7 +1699,7 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
       buildAccessorySiblingSplitMappedContext({ sideDeltsTarget: 10 })
     );
 
-    const result = await generateSessionFromIntent("user-1", {
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" },
       intent: "push",
       plannerDiagnosticsMode: "debug",
     });
@@ -1715,7 +1716,7 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
       buildAccessorySiblingSplitMappedContext({ sideDeltsTarget: 6 })
     );
 
-    const result = await generateSessionFromIntent("user-1", {
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" },
       intent: "push",
       plannerDiagnosticsMode: "debug",
     });

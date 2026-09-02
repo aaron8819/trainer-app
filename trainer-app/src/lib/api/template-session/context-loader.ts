@@ -1,7 +1,7 @@
 import { shouldDeload } from "@/lib/engine/progression";
 import { loadWorkoutContext, mapCheckIn, mapConstraints, mapExercises, mapGoals, mapHistory, mapPreferences, mapProfile } from "@/lib/api/workout-context";
 import { loadExerciseRotationContext } from "@/lib/api/exercise-rotation-history";
-import type { MappedGenerationContext } from "./types";
+import type { GenerationScheduleMode, MappedGenerationContext } from "./types";
 import type { CycleContextSnapshot, DeloadDecision } from "@/lib/evidence/types";
 import {
   buildLifecyclePeriodization,
@@ -34,6 +34,10 @@ import {
   buildNoDeloadDecision,
   getCanonicalDeloadReason,
 } from "@/lib/deload/semantics";
+import {
+  resolveV4ScheduleAuthority,
+  validateV4ScheduledGenerationObligation,
+} from "@/lib/api/v4-scheduled-slot-resolution";
 const STRICT_STIMULUS_COVERAGE_ENV = "STRICT_STIMULUS_PROFILE_COVERAGE";
 const CLEANUP_STRICT_STIMULUS_COVERAGE_ENV = "CLEANUP_STRICT_STIMULUS_PROFILE_COVERAGE";
 
@@ -150,6 +154,12 @@ export type PreloadedGenerationSnapshot = {
   phaseBlockContext?: GenerationPhaseBlockContext;
 };
 
+type GenerationContextOptions = {
+  generationMode: GenerationScheduleMode;
+  weekCloseContext?: { targetWeek: number };
+  forceAccumulation?: boolean;
+};
+
 async function loadMesocycleRoleRows(
   mesocycleId: string | undefined
 ): Promise<PreloadedGenerationSnapshot["mesocycleRoleRows"]> {
@@ -177,15 +187,12 @@ async function loadMesocycleRoleRows(
 
 export async function loadPreloadedGenerationSnapshot(
   userId: string,
-  options?: {
+  options: GenerationContextOptions & {
     activeMesocycle?: ActiveMesocycleWithBlocks | null;
-    anchorWeek?: number;
-    weekCloseContext?: { targetWeek: number };
-    forceAccumulation?: boolean;
   }
 ): Promise<PreloadedGenerationSnapshot> {
   const activeMesocycle =
-    options?.activeMesocycle === undefined
+    options.activeMesocycle === undefined
       ? await loadActiveMesocycle(userId)
       : options.activeMesocycle;
   const lifecycleWeek = resolveLifecycleWeek(activeMesocycle, options);
@@ -196,7 +203,7 @@ export async function loadPreloadedGenerationSnapshot(
     loadGenerationPhaseBlockContext(userId, {
       activeMesocycle,
       weekInMeso: lifecycleWeek,
-      forceAccumulation: options?.forceAccumulation === true,
+      forceAccumulation: options.forceAccumulation === true,
     }),
   ]);
 
@@ -212,11 +219,7 @@ export async function loadPreloadedGenerationSnapshot(
 export function buildMappedGenerationContextFromSnapshot(
   userId: string,
   snapshot: PreloadedGenerationSnapshot,
-  options?: {
-    anchorWeek?: number;
-    weekCloseContext?: { targetWeek: number };
-    forceAccumulation?: boolean;
-  }
+  options: GenerationContextOptions
 ): MappedGenerationContext {
   const { profile, goals, constraints, injuries, exercises, workouts, preferences, checkIns } =
     snapshot.context;
@@ -254,7 +257,7 @@ export function buildMappedGenerationContextFromSnapshot(
     mesocycleRoleMapByIntent[intent].set(row.exerciseId, row.role);
   }
   auditSectionRoleMismatches(workouts, mesocycleRoleMapByIntent);
-  const forceAccumulation = options?.forceAccumulation === true;
+  const forceAccumulation = options.forceAccumulation === true;
   const lifecycleWeek = resolveLifecycleWeek(activeMesocycle, options);
   const phaseBlockContext =
     snapshot.phaseBlockContext ??
@@ -338,6 +341,7 @@ export function buildMappedGenerationContextFromSnapshot(
     : buildNoDeloadDecision();
 
   return {
+    generationMode: options.generationMode,
     mappedProfile,
     mappedGoals,
     mappedConstraints,
@@ -367,16 +371,50 @@ export function buildMappedGenerationContextFromSnapshot(
 
 function resolveLifecycleWeek(
   activeMesocycle: ActiveMesocycleWithBlocks | null,
-  options?: {
-    anchorWeek?: number;
-    weekCloseContext?: { targetWeek: number };
-    forceAccumulation?: boolean;
-  }
+  options: GenerationContextOptions
 ): number {
+  const authorityResolution = activeMesocycle
+    ? resolveV4ScheduleAuthority(activeMesocycle)
+    : { status: "not_v4" as const };
+  if (options.generationMode.kind === "accepted_v4_scheduled") {
+    const validated = validateV4ScheduledGenerationObligation({
+      mesocycle: activeMesocycle,
+      obligation: options.generationMode.obligation,
+    });
+    if (validated.status !== "available") {
+      throw new Error(
+        `V4_SCHEDULE_GENERATION_OBLIGATION_CONFLICT:${validated.reason}`,
+      );
+    }
+    return validated.obligation.requiredSlot.weekInMeso;
+  }
+  if (options.generationMode.kind === "explicit_preview") {
+    const week = options.generationMode.weekInMeso;
+    if (
+      !Number.isInteger(week) ||
+      week < 1 ||
+      (activeMesocycle != null && week > activeMesocycle.durationWeeks)
+    ) {
+      throw new Error("GENERATION_PREVIEW_WEEK_INVALID");
+    }
+    if (authorityResolution.status === "blocked") {
+      throw new Error(`V4_SCHEDULE_AUTHORITY_BLOCKED:${authorityResolution.reason}`);
+    }
+    return week;
+  }
+  if (options.generationMode.kind === "legacy" && authorityResolution.status !== "not_v4") {
+    const reason =
+      authorityResolution.status === "blocked"
+        ? authorityResolution.reason
+        : "accepted_v4_requires_explicit_generation_mode";
+    throw new Error(`V4_SCHEDULE_GENERATION_MODE_REQUIRED:${reason}`);
+  }
   const lifecycleSession = activeMesocycle ? deriveCurrentMesocycleSession(activeMesocycle) : null;
   return (
-    options?.weekCloseContext?.targetWeek ??
-    options?.anchorWeek ??
+    options.weekCloseContext?.targetWeek ??
+    (options.generationMode.kind === "non_scheduled"
+      ? options.generationMode.anchorWeek
+      : undefined) ??
     lifecycleSession?.week ??
     (activeMesocycle ? getCurrentMesoWeek(activeMesocycle) : 1)
   );
@@ -384,11 +422,7 @@ function resolveLifecycleWeek(
 
 export async function loadMappedGenerationContext(
   userId: string,
-  options?: {
-    anchorWeek?: number;
-    weekCloseContext?: { targetWeek: number };
-    forceAccumulation?: boolean;
-  }
+  options: GenerationContextOptions
 ): Promise<MappedGenerationContext> {
   const snapshot = await loadPreloadedGenerationSnapshot(userId, options);
   return buildMappedGenerationContextFromSnapshot(

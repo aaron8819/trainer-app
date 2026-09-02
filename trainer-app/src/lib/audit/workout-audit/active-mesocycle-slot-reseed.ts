@@ -1,6 +1,10 @@
 import type { WorkoutSessionIntent } from "@prisma/client";
 import { deriveCurrentMesocycleSession } from "@/lib/api/mesocycle-lifecycle";
 import {
+  loadNextWorkoutContext,
+  resolveRequestedV4ScheduledGenerationObligation,
+} from "@/lib/api/next-session";
+import {
   buildMesocycleSlotPlanSeed,
   type MesocycleSlotPlanSeed,
   preservesSlotIdentity,
@@ -666,19 +670,43 @@ export async function evaluateActiveMesocycleSlotReseed(input: {
   plannerDiagnosticsMode?: "standard" | "debug";
 }): Promise<ActiveMesocycleSlotReseedEvaluation> {
   const plannerDiagnosticsMode = input.plannerDiagnosticsMode ?? "standard";
-  const snapshot = await loadPreloadedGenerationSnapshot(input.userId);
+  const nextWorkoutContext = await loadNextWorkoutContext(input.userId);
+  const scheduledObligation = resolveRequestedV4ScheduledGenerationObligation({
+    nextWorkoutContext,
+  });
+  if (nextWorkoutContext.v4ScheduleAuthority && !scheduledObligation) {
+    throw new Error(
+      "Active V4 slot-reseed preview requires exact authored schedule resolution.",
+    );
+  }
+  const generationMode = scheduledObligation
+    ? {
+        kind: "explicit_preview" as const,
+        weekInMeso: scheduledObligation.requiredSlot.weekInMeso,
+      }
+    : { kind: "legacy" as const };
+  const snapshot = await loadPreloadedGenerationSnapshot(input.userId, {
+    generationMode,
+  });
   const activeMesocycle = snapshot.activeMesocycle;
   if (!activeMesocycle) {
     throw new Error("No active mesocycle found for active-mesocycle-slot-reseed audit.");
   }
+  const auditWeek =
+    scheduledObligation?.requiredSlot.weekInMeso ??
+    deriveCurrentMesocycleSession(activeMesocycle).week;
   if (!activeMesocycle.slotPlanSeedJson) {
     throw new Error("Active mesocycle has no persisted slotPlanSeedJson for reseed audit.");
   }
 
-  const persistedMapped = buildMappedGenerationContextFromSnapshot(input.userId, {
-    ...snapshot,
-    rotationContext: new Map(snapshot.rotationContext),
-  });
+  const persistedMapped = buildMappedGenerationContextFromSnapshot(
+    input.userId,
+    {
+      ...snapshot,
+      rotationContext: new Map(snapshot.rotationContext),
+    },
+    { generationMode },
+  );
   const persistedSeedSlots = readPersistedSeedSlots({
     slotPlanSeedJson: activeMesocycle.slotPlanSeedJson,
     mapped: persistedMapped,
@@ -714,7 +742,7 @@ export async function evaluateActiveMesocycleSlotReseed(input: {
         mesocycleId: activeMesocycle.id,
         mesoNumber: activeMesocycle.mesoNumber,
         state: activeMesocycle.state,
-        week: deriveCurrentMesocycleSession(activeMesocycle).week,
+        week: auditWeek,
         splitType: activeMesocycle.splitType,
         targetSlotIds,
         seedProvenance: {
@@ -795,7 +823,8 @@ export async function evaluateActiveMesocycleSlotReseed(input: {
     cloneSnapshotWithSeed({
       snapshot,
       slotPlanSeedJson: candidateSeed,
-    })
+    }),
+    { generationMode },
   );
   const candidateSeedSlots = readPersistedSeedSlots({
     slotPlanSeedJson: candidateSeed,
@@ -820,9 +849,16 @@ export async function evaluateActiveMesocycleSlotReseed(input: {
       throw new Error(`Candidate slot-plan seed is missing slot ${persistedSlot.slotId}.`);
     }
 
+    const beforeMapped =
+      generationMode.kind === "explicit_preview"
+        ? {
+            ...persistedMapped,
+            generationMode: { ...generationMode, slotId: persistedSlot.slotId },
+          }
+        : persistedMapped;
     const beforeGeneration = await generateProjectedSession({
       userId: input.userId,
-      mapped: persistedMapped,
+      mapped: beforeMapped,
       intent: persistedSlot.intent,
       slotId: persistedSlot.slotId,
       plannerDiagnosticsMode,
@@ -833,9 +869,16 @@ export async function evaluateActiveMesocycleSlotReseed(input: {
       );
     }
 
+    const afterMapped =
+      generationMode.kind === "explicit_preview"
+        ? {
+            ...candidateMapped,
+            generationMode: { ...generationMode, slotId: candidateSlot.slotId },
+          }
+        : candidateMapped;
     const candidateGeneration = await generateProjectedSession({
       userId: input.userId,
-      mapped: candidateMapped,
+      mapped: afterMapped,
       intent: candidateSlot.intent,
       slotId: candidateSlot.slotId,
       plannerDiagnosticsMode,
@@ -879,7 +922,7 @@ export async function evaluateActiveMesocycleSlotReseed(input: {
       mesocycleId: activeMesocycle.id,
       mesoNumber: activeMesocycle.mesoNumber,
       state: activeMesocycle.state,
-      week: deriveCurrentMesocycleSession(activeMesocycle).week,
+      week: auditWeek,
       splitType: activeMesocycle.splitType,
       targetSlotIds,
       seedProvenance: {

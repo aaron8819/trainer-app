@@ -1146,9 +1146,13 @@ export function attachCloseoutSessionMetadata(
 
   const retainedExceptions = readRetainedReceiptExceptions(receipt);
   const hasMarker = retainedExceptions.some((entry) => entry.code === "closeout_session");
+  const hasCanonicalMaterialization =
+    receipt.materialization?.materializationClass === "non_scheduled" &&
+    receipt.materialization.purpose === "closeout";
   const existingWeekCloseId = readWeekCloseIdFromSelectionMetadata(selectionMetadata);
   if (
     hasMarker &&
+    hasCanonicalMaterialization &&
     (input.weekCloseId == null || input.weekCloseId === existingWeekCloseId)
   ) {
     return selectionMetadata;
@@ -1167,6 +1171,12 @@ export function attachCloseoutSessionMetadata(
       deloadDecision: receipt.deloadDecision,
       plannerDiagnostics: receipt.plannerDiagnostics,
       plannerDiagnosticsMode: receipt.plannerDiagnosticsMode ?? "standard",
+      materialization: {
+        version: 1,
+        generationMode: "non_scheduled",
+        materializationClass: "non_scheduled",
+        purpose: "closeout",
+      },
       additionalExceptions: hasMarker
         ? retainedExceptions
         : [
@@ -1216,6 +1226,7 @@ export function attachSessionSlotMetadata(
       deloadDecision: receipt.deloadDecision,
       plannerDiagnostics: receipt.plannerDiagnostics,
       plannerDiagnosticsMode: receipt.plannerDiagnosticsMode ?? "standard",
+      materialization: receipt.materialization,
       additionalExceptions: readRetainedReceiptExceptions(receipt),
       autoregulation: {
         wasAutoregulated: receipt.readiness.wasAutoregulated,
@@ -1250,6 +1261,7 @@ export function buildCanonicalSelectionMetadata(
             deloadDecision: priorReceipt.deloadDecision,
             plannerDiagnostics: priorReceipt.plannerDiagnostics,
             plannerDiagnosticsMode: "standard",
+            materialization: priorReceipt.materialization,
             additionalExceptions: readRetainedReceiptExceptions(priorReceipt),
             autoregulation:
               autoregulation

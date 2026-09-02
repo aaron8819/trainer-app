@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => {
   const buildMappedGenerationContextFromSnapshot = vi.fn();
   const loadMesocycleWeekMuscleVolume = vi.fn();
   const loadNextWorkoutContext = vi.fn();
+  const resolveRequestedV4ScheduledGenerationObligation = vi.fn();
   const deriveCurrentMesocycleSession = vi.fn();
   const getWeeklyVolumeTarget = vi.fn();
   const deriveNextRuntimeSlotSession = vi.fn();
@@ -16,6 +17,8 @@ const mocks = vi.hoisted(() => {
   const finalizeDeloadSessionResult = vi.fn();
   const getEffectiveStimulusByMuscle = vi.fn();
   const loadPersistedIncompleteWorkoutProjections = vi.fn();
+  const resolveV4ScheduleAuthority = vi.fn();
+  const validateV4ScheduledGenerationObligation = vi.fn();
 
   return {
     mesocycleFindFirst,
@@ -24,6 +27,7 @@ const mocks = vi.hoisted(() => {
     buildMappedGenerationContextFromSnapshot,
     loadMesocycleWeekMuscleVolume,
     loadNextWorkoutContext,
+    resolveRequestedV4ScheduledGenerationObligation,
     deriveCurrentMesocycleSession,
     getWeeklyVolumeTarget,
     deriveNextRuntimeSlotSession,
@@ -33,6 +37,8 @@ const mocks = vi.hoisted(() => {
     finalizeDeloadSessionResult,
     getEffectiveStimulusByMuscle,
     loadPersistedIncompleteWorkoutProjections,
+    resolveV4ScheduleAuthority,
+    validateV4ScheduledGenerationObligation,
     prisma: {
       mesocycle: {
         findFirst: mesocycleFindFirst,
@@ -67,6 +73,15 @@ vi.mock("./persisted-incomplete-workout-projection", () => ({
 
 vi.mock("./next-session", () => ({
   loadNextWorkoutContext: (...args: unknown[]) => mocks.loadNextWorkoutContext(...args),
+  resolveRequestedV4ScheduledGenerationObligation: (...args: unknown[]) =>
+    mocks.resolveRequestedV4ScheduledGenerationObligation(...args),
+}));
+
+vi.mock("./v4-scheduled-slot-resolution", () => ({
+  resolveV4ScheduleAuthority: (...args: unknown[]) =>
+    mocks.resolveV4ScheduleAuthority(...args),
+  validateV4ScheduledGenerationObligation: (...args: unknown[]) =>
+    mocks.validateV4ScheduledGenerationObligation(...args),
 }));
 
 vi.mock("./mesocycle-lifecycle", () => ({
@@ -222,6 +237,13 @@ function buildIncompleteProjection() {
 describe("loadProjectedWeekVolumeReport", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.validateV4ScheduledGenerationObligation.mockImplementation(
+      (input: { obligation: unknown }) => ({
+        status: "available",
+        obligation: input.obligation,
+      }),
+    );
+    mocks.resolveV4ScheduleAuthority.mockReturnValue({ status: "not_v4" });
     mocks.loadPersistedIncompleteWorkoutProjections.mockResolvedValue([]);
 
     mocks.mesocycleFindFirst.mockResolvedValue({
@@ -296,6 +318,7 @@ describe("loadProjectedWeekVolumeReport", () => {
       source: "derived",
       existingWorkoutId: null,
     });
+    mocks.resolveRequestedV4ScheduledGenerationObligation.mockReturnValue(undefined);
     mocks.deriveCurrentMesocycleSession.mockReturnValue({
       week: 1,
       session: 3,
@@ -350,6 +373,186 @@ describe("loadProjectedWeekVolumeReport", () => {
       (exercise: { primaryMuscles?: string[] }, setCount: number) =>
         new Map([[exercise.primaryMuscles?.[0] ?? "Unknown", setCount]])
     );
+  });
+
+  it("projects the exact V4 authored week and unresolved slots after a skip", async () => {
+    const requiredSlot = {
+      weekInMeso: 3,
+      slotId: "lower_a",
+      intent: "lower",
+      phase: "ACCUMULATION",
+      sequenceIndex: 0,
+      sequenceLength: 4,
+    } as const;
+    const remainingUpperSlot = {
+      weekInMeso: 3,
+      slotId: "upper_b",
+      intent: "upper",
+      phase: "ACCUMULATION",
+      sequenceIndex: 1,
+      sequenceLength: 4,
+    } as const;
+    const scheduledV4Obligation = {
+      authority: {
+        mesocycleId: "meso-1",
+        revisionId: "revision-1",
+        revisionNumber: 1,
+        revisionHash: "a".repeat(64),
+        slotsPerWeek: 4,
+        requiredSlots: [requiredSlot, remainingUpperSlot],
+      },
+      requiredSlot,
+    };
+    mocks.deriveCurrentMesocycleSession.mockReturnValueOnce({
+      week: 2,
+      session: 4,
+      phase: "ACCUMULATION",
+    });
+    mocks.loadNextWorkoutContext.mockResolvedValueOnce({
+      source: "rotation",
+      existingWorkoutId: null,
+      weekInMeso: 3,
+      slotId: "lower_a",
+      v4ScheduleAuthority: scheduledV4Obligation.authority,
+      v4ScheduleResolution: {
+        status: "available",
+        unresolvedSlotsInNextWeek: [
+          requiredSlot,
+          remainingUpperSlot,
+        ],
+      },
+    });
+    mocks.resolveRequestedV4ScheduledGenerationObligation.mockReturnValueOnce(
+      scheduledV4Obligation,
+    );
+    mocks.resolveV4ScheduleAuthority.mockReturnValueOnce({
+      status: "available",
+      authority: scheduledV4Obligation.authority,
+    });
+    mocks.buildMappedGenerationContextFromSnapshot.mockReturnValueOnce({
+      mappedConstraints: { weeklySchedule: ["lower", "upper"] },
+      cycleContext: {
+        weekInMeso: 3,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+      },
+      history: [],
+      rotationContext: new Map(),
+      activeMesocycle: { id: "meso-1", state: "ACTIVE_ACCUMULATION" },
+    });
+    mocks.generateSessionFromMappedContext.mockReset();
+    mocks.generateSessionFromMappedContext
+      .mockReturnValueOnce({
+        workout: buildWorkout(["Quads"]),
+        selection: {},
+        selectionMode: "INTENT",
+        sessionIntent: "lower",
+        sraWarnings: [],
+        substitutions: [],
+        volumePlanByMuscle: {},
+      })
+      .mockReturnValueOnce({
+        workout: buildWorkout(["Chest"]),
+        selection: {},
+        selectionMode: "INTENT",
+        sessionIntent: "upper",
+        sraWarnings: [],
+        substitutions: [],
+        volumePlanByMuscle: {},
+      });
+
+    const report = await loadProjectedWeekVolumeReport({ userId: "user-1" });
+
+    expect(report.currentWeek.week).toBe(3);
+    expect(report.projectedSessions.map((session) => session.slotId)).toEqual([
+      "lower_a",
+      "upper_b",
+    ]);
+    expect(mocks.loadPreloadedGenerationSnapshot).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({
+        generationMode: {
+          kind: "explicit_preview",
+          weekInMeso: 3,
+          slotId: "lower_a",
+        },
+      }),
+    );
+    expect(mocks.buildMappedGenerationContextFromSnapshot).toHaveBeenCalledWith(
+      "user-1",
+      expect.any(Object),
+      {
+        generationMode: {
+          kind: "explicit_preview",
+          weekInMeso: 3,
+          slotId: "lower_a",
+        },
+      },
+    );
+    expect(mocks.loadMesocycleWeekMuscleVolume).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ targetWeek: 3 }),
+    );
+    expect(mocks.deriveNextRuntimeSlotSession).not.toHaveBeenCalled();
+    expect(mocks.buildRemainingFutureSlotsFromRuntime).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when accepted V4 exact schedule resolution is blocked", async () => {
+    mocks.resolveV4ScheduleAuthority.mockReturnValueOnce({
+      status: "blocked",
+      reason: "ambiguous_slot_claims",
+    });
+
+    await expect(
+      loadProjectedWeekVolumeReport({ userId: "user-1" }),
+    ).rejects.toMatchObject({
+      code: "V4_PROJECTED_SCHEDULE_UNAVAILABLE",
+      reason: "ambiguous_slot_claims",
+    });
+    expect(mocks.loadPreloadedGenerationSnapshot).not.toHaveBeenCalled();
+    expect(mocks.deriveNextRuntimeSlotSession).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when current accepted V4 resolution becomes ambiguous", async () => {
+    const authority = {
+      mesocycleId: "meso-1",
+      revisionId: "revision-1",
+      revisionNumber: 1,
+      revisionHash: "a".repeat(64),
+      slotsPerWeek: 4,
+      requiredSlots: [],
+    };
+    mocks.resolveV4ScheduleAuthority.mockReturnValueOnce({
+      status: "available",
+      authority,
+    });
+    mocks.loadNextWorkoutContext.mockResolvedValueOnce({
+      source: "schedule_resolution_blocked",
+      lifecycleBlocker: {
+        code: "V4_SCHEDULE_RESOLUTION_BLOCKED",
+        reason: "ambiguous_slot_claims",
+        message: "Ambiguous claims.",
+      },
+    });
+
+    await expect(
+      loadProjectedWeekVolumeReport({ userId: "user-1" }),
+    ).rejects.toMatchObject({ reason: "ambiguous_slot_claims" });
+    expect(mocks.deriveCurrentMesocycleSession).toHaveBeenCalledTimes(1);
+    expect(mocks.loadPreloadedGenerationSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the accepted V4 revision is incomplete", async () => {
+    mocks.resolveV4ScheduleAuthority.mockReturnValueOnce({
+      status: "blocked",
+      reason: "accepted_revision_identity_invalid",
+    });
+
+    await expect(
+      loadProjectedWeekVolumeReport({ userId: "user-1" }),
+    ).rejects.toMatchObject({ reason: "accepted_revision_identity_invalid" });
+    expect(mocks.deriveNextRuntimeSlotSession).not.toHaveBeenCalled();
   });
 
   it("chains remaining slots in runtime order and separates completed vs projected full-week totals", async () => {

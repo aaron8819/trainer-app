@@ -226,6 +226,7 @@ import {
 } from "@/lib/api/mesocycle-lifecycle-state";
 import { fingerprintShortTodaySaveExercises } from "@/lib/api/save-workout/session-capacity";
 import { buildV4CustomPlanReferenceAcceptedSeed } from "@/lib/engine/hypertrophy-plan-authoring-v4.fixture";
+import { buildSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
 import {
   buildScheduledSlotReceipt,
   resolveV4ScheduleAuthority,
@@ -380,6 +381,11 @@ function buildV4RouteFixture(input?: {
         sequenceLength: 4,
         source: "mesocycle_slot_sequence",
       },
+      materialization: {
+        version: 1,
+        generationMode: "accepted_v4_scheduled",
+        materializationClass: "scheduled_required",
+      },
       ...(input?.includeScheduledReceipt ? { scheduledSlotReceipt } : {}),
       lifecycleVolume: { source: "unknown" },
       sorenessSuppressedMuscles: [],
@@ -499,7 +505,9 @@ function buildGeneratedSnapshotSelectionMetadata() {
   });
 }
 
-function buildOptionalGapFillSelectionMetadata() {
+function buildOptionalGapFillSelectionMetadata(
+  includeCanonicalMaterialization = true,
+) {
   return buildCanonicalSelectionMetadata({
     sessionDecisionReceipt: {
       version: 1,
@@ -530,6 +538,16 @@ function buildOptionalGapFillSelectionMetadata() {
           scaledDownCount: 0,
         },
       },
+      ...(includeCanonicalMaterialization
+        ? {
+            materialization: {
+              version: 1,
+              generationMode: "non_scheduled",
+              materializationClass: "non_scheduled",
+              purpose: "gap_fill",
+            },
+          }
+        : {}),
       exceptions: [{ code: "optional_gap_fill", message: "Marked as optional gap-fill session." }],
     },
   });
@@ -565,6 +583,12 @@ function buildSupplementalDeficitSelectionMetadata() {
           scaledUpCount: 0,
           scaledDownCount: 0,
         },
+      },
+      materialization: {
+        version: 1,
+        generationMode: "non_scheduled",
+        materializationClass: "non_scheduled",
+        purpose: "supplemental",
       },
       exceptions: [
         {
@@ -613,6 +637,12 @@ function buildCloseoutSelectionMetadata() {
           scaledUpCount: 0,
           scaledDownCount: 0,
         },
+      },
+      materialization: {
+        version: 1,
+        generationMode: "non_scheduled",
+        materializationClass: "non_scheduled",
+        purpose: "closeout",
       },
       exceptions: [
         {
@@ -1685,6 +1715,145 @@ describe("POST /api/workouts/save", () => {
     ).toEqual(fixture.scheduledSlotReceipt);
   });
 
+  it.each([
+    ["currently required", 1, "upper-a"],
+    ["future", 4, "upper-a"],
+  ])("rejects a real %s preview receipt before persistence", async (_label, weekInMeso, slotId) => {
+    const fixture = buildV4RouteFixture();
+    const previewReceipt = buildSessionDecisionReceipt({
+      cycleContext: {
+        ...fixture.selectionMetadata.sessionDecisionReceipt.cycleContext,
+        weekInMeso,
+      } as never,
+      sessionProvenance:
+        fixture.selectionMetadata.sessionDecisionReceipt.sessionProvenance as never,
+      sessionSlot: {
+        ...fixture.selectionMetadata.sessionDecisionReceipt.sessionSlot,
+        slotId,
+      } as never,
+      materialization: {
+        version: 1,
+        generationMode: "explicit_preview",
+        materializationClass: "preview_only",
+      },
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: `preview-${weekInMeso}`,
+          action: "save_plan",
+          selectionMode: "AUTO",
+          selectionMetadata: { sessionDecisionReceipt: previewReceipt },
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "SESSION_PREVIEW_ONLY",
+    });
+    expect(mocks.workoutCreate).not.toHaveBeenCalled();
+    expect(mocks.workoutUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects a client attempt to promote preview-only evidence to scheduled", async () => {
+    const fixture = buildV4RouteFixture();
+    const previewReceipt = buildSessionDecisionReceipt({
+      cycleContext: fixture.selectionMetadata.sessionDecisionReceipt.cycleContext as never,
+      sessionProvenance:
+        fixture.selectionMetadata.sessionDecisionReceipt.sessionProvenance as never,
+      sessionSlot: fixture.selectionMetadata.sessionDecisionReceipt.sessionSlot as never,
+      materialization: {
+        version: 1,
+        generationMode: "explicit_preview",
+        materializationClass: "preview_only",
+      },
+    });
+    previewReceipt.materialization = {
+      version: 1,
+      generationMode: "explicit_preview",
+      materializationClass: "scheduled_required",
+    } as never;
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "preview-tampered",
+          action: "save_plan",
+          selectionMode: "AUTO",
+          selectionMetadata: { sessionDecisionReceipt: previewReceipt },
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "SESSION_MATERIALIZATION_INVALID",
+    });
+    expect(mocks.workoutCreate).not.toHaveBeenCalled();
+  });
+
+  it("persists server-classified body-part work as non-scheduled under active V4", async () => {
+    const fixture = buildV4RouteFixture();
+    mocks.tx.mesocycle.findFirst.mockResolvedValue(fixture.mesocycle);
+    const bodyPartReceipt = buildSessionDecisionReceipt({
+      cycleContext: fixture.selectionMetadata.sessionDecisionReceipt.cycleContext as never,
+      sessionProvenance: {
+        ...fixture.selectionMetadata.sessionDecisionReceipt.sessionProvenance,
+        compositionSource: "runtime_selection",
+      },
+      materialization: {
+        version: 1,
+        generationMode: "non_scheduled",
+        materializationClass: "non_scheduled",
+        purpose: "body_part",
+      },
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "body-part-v4",
+          action: "save_plan",
+          selectionMode: "INTENT",
+          sessionIntent: "BODY_PART",
+          advancesSplit: true,
+          selectionMetadata: { sessionDecisionReceipt: bodyPartReceipt },
+          exercises: [
+            {
+              section: "MAIN",
+              exerciseId: "bench",
+              sets: [{ setIndex: 1, targetReps: 12 }],
+            },
+          ],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const created = mocks.workoutCreate.mock.calls[0][0].data;
+    expect(created.advancesSplit).toBe(false);
+    expect(created.sessionIntent).toBe("BODY_PART");
+    expect(
+      created.selectionMetadata.sessionDecisionReceipt.materialization,
+    ).toMatchObject({
+      materializationClass: "non_scheduled",
+      purpose: "body_part",
+    });
+    expect(
+      created.selectionMetadata.sessionDecisionReceipt.scheduledSlotReceipt,
+    ).toBeUndefined();
+    expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
+    expect(mocks.transitionMesocycleStateInTransaction).not.toHaveBeenCalled();
+  });
+
   it("rejects client-authored scheduling metadata on AUTO creation before mutation", async () => {
     const fixture = buildV4RouteFixture({ includeScheduledReceipt: true });
     mocks.tx.mesocycle.findFirst.mockResolvedValue(fixture.mesocycle);
@@ -2608,7 +2777,7 @@ describe("POST /api/workouts/save", () => {
         revision: 1,
         mesocycleId: "meso-1",
         advancesSplit: undefined,
-        selectionMetadata: buildOptionalGapFillSelectionMetadata(),
+        selectionMetadata: buildOptionalGapFillSelectionMetadata(false),
       })
       .mockResolvedValueOnce({
         exercises: [{ sets: [{ logs: [{ wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 }] }] }],
@@ -4270,6 +4439,12 @@ describe("POST /api/workouts/save", () => {
       "week-close-1"
     );
     expect(receipt.sessionSlot).toBeUndefined();
+    expect(receipt.materialization).toEqual({
+      version: 1,
+      generationMode: "non_scheduled",
+      materializationClass: "non_scheduled",
+      purpose: "closeout",
+    });
     expect(
       (receipt.exceptions as Array<{ code: string }>).map((entry) => entry.code)
     ).toContain("closeout_session");

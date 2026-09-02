@@ -500,6 +500,11 @@ function projectSlotPlansPass(input: {
         intent: toSessionIntent(slot.intent),
         slotId: slot.slotId,
         roleListIncomplete: true,
+          generationMode: {
+            kind: "explicit_preview",
+            weekInMeso: 1,
+            slotId: slot.slotId,
+          },
         ...(projectionRepairMuscles.length > 0
           ? { projectionRepairMuscles }
           : {}),
@@ -530,6 +535,11 @@ function projectSlotPlansPass(input: {
           intent: toSessionIntent(slot.intent),
           slotId: slot.slotId,
           roleListIncomplete: true,
+          generationMode: {
+            kind: "explicit_preview",
+            weekInMeso: 1,
+            slotId: slot.slotId,
+          },
           ...(slotPreselectionDemands.length > 0
             ? { slotPreselectionDemands }
             : {}),
@@ -551,6 +561,11 @@ function projectSlotPlansPass(input: {
           intent: toSessionIntent(slot.intent),
           slotId: slot.slotId,
           roleListIncomplete: true,
+          generationMode: {
+            kind: "explicit_preview",
+            weekInMeso: 1,
+            slotId: slot.slotId,
+          },
           projectionRepairMuscles,
           ...(slotPreselectionDemands.length > 0
             ? { slotPreselectionDemands }
@@ -572,6 +587,11 @@ function projectSlotPlansPass(input: {
           intent: toSessionIntent(slot.intent),
           slotId: slot.slotId,
           roleListIncomplete: true,
+          generationMode: {
+            kind: "explicit_preview",
+            weekInMeso: 1,
+            slotId: slot.slotId,
+          },
           ...(slotPreselectionDemands.length > 0
             ? { slotPreselectionDemands }
             : {}),
@@ -592,6 +612,11 @@ function projectSlotPlansPass(input: {
           intent: toSessionIntent(slot.intent),
           slotId: slot.slotId,
           roleListIncomplete: true,
+          generationMode: {
+            kind: "explicit_preview",
+            weekInMeso: 1,
+            slotId: slot.slotId,
+          },
           ...(slotPreselectionDemands.length > 0
             ? { slotPreselectionDemands }
             : {}),
@@ -613,6 +638,11 @@ function projectSlotPlansPass(input: {
           intent: toSessionIntent(slot.intent),
           slotId: slot.slotId,
           roleListIncomplete: true,
+          generationMode: {
+            kind: "explicit_preview",
+            weekInMeso: 1,
+            slotId: slot.slotId,
+          },
           projectionRepairMuscles: [demand.muscle],
           slotPreselectionDemands,
           ...(slotLanePlan.length > 0 ? { slotLanePlan } : {}),
@@ -633,6 +663,11 @@ function projectSlotPlansPass(input: {
           intent: toSessionIntent(slot.intent),
           slotId: slot.slotId,
           roleListIncomplete: true,
+          generationMode: {
+            kind: "explicit_preview",
+            weekInMeso: 1,
+            slotId: slot.slotId,
+          },
           projectionRepairMuscles,
           ...(slotPreselectionDemands.length > 0
             ? { slotPreselectionDemands }
@@ -655,6 +690,11 @@ function projectSlotPlansPass(input: {
           intent: toSessionIntent(slot.intent),
           slotId: slot.slotId,
           roleListIncomplete: true,
+          generationMode: {
+            kind: "explicit_preview",
+            weekInMeso: 1,
+            slotId: slot.slotId,
+          },
           projectionRepairMuscles: [muscle],
           ...(slotPreselectionDemands.length > 0
             ? { slotPreselectionDemands }

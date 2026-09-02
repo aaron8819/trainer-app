@@ -142,8 +142,9 @@ export function primeV4ReferenceGeneration(
   });
   return {
     version: 1 as const,
-    source: "handoff_draft" as const,
+    source: seed.source,
     sequenceMode: "ordered_flexible" as const,
+    sessionsPerWeek: seed.slots.length,
     slots: seed.slots.map((slot) => ({
       slotId: slot.slotId,
       intent: slot.focus,
@@ -233,8 +234,10 @@ export function buildV4ReferenceMesocycle(
     sessionsPerWeek: 4,
     slotSequenceJson,
     slotPlanSeedJson: { version: 1, source: "handoff_slot_plan_projection", slots: [] },
+    currentSeedRevisionId: provenance.revisionId,
     currentSeedRevision: {
       id: provenance.revisionId,
+      mesocycleId: "meso-1",
       revision: 1,
       payloadHash: provenance.hash,
       hashAlgorithm: "sha256",

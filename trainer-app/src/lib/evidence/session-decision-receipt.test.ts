@@ -466,6 +466,85 @@ describe("readSessionDecisionReceipt", () => {
     });
   });
 
+  it("round-trips explicit preview-only materialization evidence", () => {
+    const receipt = buildSessionDecisionReceipt({
+      cycleContext: {
+        weekInMeso: 3,
+        weekInBlock: 3,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+        source: "computed",
+      },
+      materialization: {
+        version: 1,
+        generationMode: "explicit_preview",
+        materializationClass: "preview_only",
+      },
+    });
+
+    expect(
+      readSessionDecisionReceipt({ sessionDecisionReceipt: receipt })
+        ?.materialization,
+    ).toEqual({
+      version: 1,
+      generationMode: "explicit_preview",
+      materializationClass: "preview_only",
+    });
+  });
+
+  it("rejects incoherent client rewrites of materialization class", () => {
+    const receipt = buildSessionDecisionReceipt({
+      cycleContext: {
+        weekInMeso: 3,
+        weekInBlock: 3,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+        source: "computed",
+      },
+      materialization: {
+        version: 1,
+        generationMode: "explicit_preview",
+        materializationClass: "preview_only",
+      },
+    });
+    const tampered = structuredClone(receipt) as Record<string, unknown>;
+    tampered.materialization = {
+      version: 1,
+      generationMode: "explicit_preview",
+      materializationClass: "scheduled_required",
+    };
+
+    expect(
+      readSessionDecisionReceipt({ sessionDecisionReceipt: tampered }),
+    ).toBeUndefined();
+  });
+
+  it("normalizes pre-classification receipts to the explicit legacy contract", () => {
+    const receipt = buildSessionDecisionReceipt({
+      cycleContext: {
+        weekInMeso: 2,
+        weekInBlock: 2,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+        source: "computed",
+      },
+    });
+    const historical = structuredClone(receipt) as Record<string, unknown>;
+    delete historical.materialization;
+
+    expect(
+      readSessionDecisionReceipt({ sessionDecisionReceipt: historical })
+        ?.materialization,
+    ).toEqual({
+      version: 1,
+      generationMode: "legacy",
+      materializationClass: "legacy",
+    });
+  });
+
   it("defaults to standard diagnostics mode and strips closure candidate trace", () => {
     const receipt = buildSessionDecisionReceipt({
       cycleContext: {

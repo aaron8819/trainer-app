@@ -33,13 +33,18 @@ import {
   type V4ScheduleAuthority,
   type V4ScheduleWorkoutEvidence,
 } from "./v4-scheduled-slot-resolution";
-import { resolveV4NextWorkoutContext } from "./next-session";
+import {
+  resolveRequestedV4ScheduledGenerationObligation,
+  resolveV4NextWorkoutContext,
+} from "./next-session";
 import {
   applyV4TerminalScheduleResolution,
   resolveV4ScheduleBeforeWorkoutCreation,
 } from "./save-workout/lifecycle";
 import { persistWorkoutRow } from "./save-workout/persistence";
 import { claimSelectedPlanAndLockMesocycleForTerminalTransitionInTransaction } from "./mesocycle-lifecycle-state";
+import { buildSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
+import type { NonScheduledMaterializationPurpose } from "@/lib/evidence/types";
 
 function authority(): V4ScheduleAuthority {
   const weeklySlots = [
@@ -233,6 +238,57 @@ function releasedWorkoutWithoutScheduledReceipt(input: {
         exceptions: [],
       },
     },
+  };
+}
+
+function nonScheduledWorkout(
+  purpose: NonScheduledMaterializationPurpose,
+): V4ScheduleWorkoutEvidence {
+  const exceptionCode = {
+    body_part: null,
+    gap_fill: "optional_gap_fill",
+    supplemental: "supplemental_deficit_session",
+    closeout: "closeout_session",
+  } as const;
+  const code = exceptionCode[purpose];
+  const receipt = buildSessionDecisionReceipt({
+    cycleContext: {
+      weekInMeso: 1,
+      weekInBlock: 1,
+      mesocycleLength: 5,
+      phase: "accumulation",
+      blockType: "accumulation",
+      isDeload: false,
+      source: "computed",
+    },
+    sessionProvenance: {
+      mesocycleId: "meso-v4",
+      compositionSource: "runtime_selection",
+    },
+    materialization: {
+      version: 1,
+      generationMode: "non_scheduled",
+      materializationClass: "non_scheduled",
+      purpose,
+    },
+    additionalExceptions: code
+      ? [{ code, message: `Canonical ${purpose} session.` }]
+      : undefined,
+  });
+  return {
+    id: `non-scheduled-${purpose}`,
+    status: "COMPLETED",
+    mesocycleId: "meso-v4",
+    mesocycleWeekSnapshot: 1,
+    mesocyclePhaseSnapshot: "ACCUMULATION",
+    mesoSessionSnapshot: null,
+    advancesSplit: false,
+    selectionMode: "INTENT",
+    sessionIntent: "BODY_PART",
+    selectionMetadata: { sessionDecisionReceipt: receipt },
+    seedRevisionId: null,
+    seedRevisionNumber: null,
+    seedPayloadHash: null,
   };
 }
 
@@ -595,6 +651,262 @@ describe("V4 scheduled-slot resolution", () => {
     expect(context.eligibleSlotSnapshots?.map((slot) => slot.slotId)).not.toContain(
       source.requiredSlots[0]!.slotId,
     );
+  });
+
+  it.each<NonScheduledMaterializationPurpose>([
+    "body_part",
+    "gap_fill",
+    "supplemental",
+    "closeout",
+  ])(
+    "excludes canonical persisted non-scheduled purpose %s without claiming an authored slot",
+    (purpose) => {
+      const source = authority();
+      const result = resolveV4ScheduledSlots({
+        authority: source,
+        workouts: [nonScheduledWorkout(purpose)],
+      });
+
+      expect(result).toMatchObject({
+        status: "available",
+        claims: [],
+        resolvedSlotCount: 0,
+        nextUnresolvedSlot: source.requiredSlots[0],
+      });
+    },
+  );
+
+  it.each([
+    [
+      "scheduled slot identity",
+      (row: V4ScheduleWorkoutEvidence) => {
+        const next = structuredClone(row);
+        const receipt = (
+          next.selectionMetadata as {
+            sessionDecisionReceipt: Record<string, unknown>;
+          }
+        ).sessionDecisionReceipt;
+        receipt.sessionSlot = {
+          slotId: "lower-a",
+          intent: "lower",
+          sequenceIndex: 0,
+          sequenceLength: 4,
+          source: "mesocycle_slot_sequence",
+        };
+        return next;
+      },
+    ],
+    [
+      "unknown purpose",
+      (row: V4ScheduleWorkoutEvidence) => {
+        const next = structuredClone(row);
+        const receipt = (
+          next.selectionMetadata as {
+            sessionDecisionReceipt: {
+              materialization: { purpose: string };
+            };
+          }
+        ).sessionDecisionReceipt;
+        receipt.materialization.purpose = "unknown";
+        return next;
+      },
+    ],
+    [
+      "purpose conflict",
+      (row: V4ScheduleWorkoutEvidence) => {
+        const next = structuredClone(row);
+        const receipt = (
+          next.selectionMetadata as {
+            sessionDecisionReceipt: {
+              materialization: { purpose: string };
+            };
+          }
+        ).sessionDecisionReceipt;
+        receipt.materialization.purpose = "gap_fill";
+        return next;
+      },
+    ],
+  ])("fails closed for malformed modern non-scheduled evidence with %s", (_label, mutate) => {
+    const source = authority();
+    const result = resolveV4ScheduledSlots({
+      authority: source,
+      workouts: [mutate(nonScheduledWorkout("body_part"))],
+    });
+    expect(result).toMatchObject({
+      status: "blocked",
+      reason: expect.stringContaining("non_scheduled_materialization_invalid"),
+    });
+  });
+
+  it("carries Week 3 Lower A unchanged from exact resolution through receipt stamping and Save validation", async () => {
+    const source = authority();
+    const resolvedWeekTwo = source.requiredSlots.slice(0, 8).map((slot, index) =>
+      workout({
+        authority: source,
+        slot,
+        status: index === 7 ? "SKIPPED" : "COMPLETED",
+      }),
+    );
+    const weekTwoLowerA = resolvedWeekTwo[4]!;
+    const skippedUpperB = resolvedWeekTwo[7]!;
+    const scheduleResolution = resolveV4ScheduledSlots({
+      authority: source,
+      workouts: resolvedWeekTwo,
+    });
+    const context = resolveV4NextWorkoutContext({
+      authority: source,
+      workouts: resolvedWeekTwo,
+    });
+    const contextAfterBodyPart = resolveV4NextWorkoutContext({
+      authority: source,
+      workouts: [...resolvedWeekTwo, nonScheduledWorkout("body_part")],
+    });
+    const obligation = resolveRequestedV4ScheduledGenerationObligation({
+      nextWorkoutContext: context,
+      requestedIntent: "lower",
+    });
+
+    expect(context).toMatchObject({
+      source: "rotation",
+      weekInMeso: 3,
+      slotId: "lower-a",
+    });
+    expect(scheduleResolution).toMatchObject({
+      status: "available",
+      resolvedSlotCount: 8,
+      completedSlotCount: 7,
+      nextUnresolvedSlot: {
+        weekInMeso: 3,
+        slotId: "lower-a",
+      },
+    });
+    expect(contextAfterBodyPart).toMatchObject({
+      source: "rotation",
+      weekInMeso: 3,
+      slotId: "lower-a",
+    });
+    expect(obligation?.requiredSlot).toMatchObject({
+      weekInMeso: 3,
+      slotId: "lower-a",
+      phase: "ACCUMULATION",
+      sequenceIndex: 0,
+      sequenceLength: 4,
+    });
+    expect(weekTwoLowerA).toMatchObject({
+      status: "COMPLETED",
+      mesocycleWeekSnapshot: 2,
+      selectionMetadata: {
+        sessionDecisionReceipt: {
+          cycleContext: { weekInMeso: 2 },
+          sessionSlot: { slotId: "lower-a" },
+        },
+      },
+    });
+    expect(skippedUpperB.status).toBe("SKIPPED");
+    if (!obligation) return;
+
+    const generatedReceipt = structuredClone(
+      workout({
+        authority: source,
+        slot: obligation.requiredSlot,
+        status: "PLANNED",
+      }).selectionMetadata,
+    ) as { sessionDecisionReceipt: Record<string, unknown> };
+    delete generatedReceipt.sessionDecisionReceipt.scheduledSlotReceipt;
+    const stamped = attachServerAuthoredV4ScheduledSlotReceipt({
+      authority: obligation.authority,
+      requiredSlot: obligation.requiredSlot,
+      selectionMetadata: generatedReceipt,
+      incomingSelectionMetadata: generatedReceipt,
+    });
+    expect(stamped).toMatchObject({
+      sessionDecisionReceipt: {
+        cycleContext: { weekInMeso: 3 },
+        sessionSlot: { slotId: "lower-a" },
+        scheduledSlotReceipt: { weekInMeso: 3, slotId: "lower-a" },
+      },
+    });
+
+    const tx = {
+      workout: { findMany: vi.fn().mockResolvedValue(resolvedWeekTwo) },
+    };
+    await expect(
+      resolveV4ScheduleBeforeWorkoutCreation(tx as never, obligation),
+    ).resolves.toBeUndefined();
+
+    tx.workout.findMany.mockResolvedValue([
+      ...resolvedWeekTwo,
+      workout({
+        authority: source,
+        slot: obligation.requiredSlot,
+        status: "PLANNED",
+      }),
+    ]);
+    await expect(
+      resolveV4ScheduleBeforeWorkoutCreation(tx as never, obligation),
+    ).rejects.toThrow("V4_SCHEDULE_SLOT_ALREADY_MATERIALIZED");
+    expect(weekTwoLowerA.mesocycleWeekSnapshot).toBe(2);
+    expect(skippedUpperB.status).toBe("SKIPPED");
+  });
+
+  it("returns the exact off-order obligation selected by intent within the authored week", () => {
+    const source = authority();
+    const context = resolveV4NextWorkoutContext({
+      authority: source,
+      workouts: [
+        workout({
+          authority: source,
+          slot: source.requiredSlots[0]!,
+          status: "COMPLETED",
+        }),
+      ],
+    });
+    const obligation = resolveRequestedV4ScheduledGenerationObligation({
+      nextWorkoutContext: context,
+      requestedIntent: "lower",
+    });
+    expect(obligation?.requiredSlot).toMatchObject({
+      weekInMeso: 1,
+      slotId: "lower-b",
+      intent: "lower",
+      sequenceIndex: 2,
+    });
+  });
+
+  it.each([
+    {
+      name: "no skips",
+      resolvedCount: 8,
+      statusAt: () => "COMPLETED",
+      expected: { weekInMeso: 3, slotId: "lower-a" },
+    },
+    {
+      name: "mid-week skip",
+      resolvedCount: 6,
+      statusAt: (index: number) => (index === 5 ? "SKIPPED" : "COMPLETED"),
+      expected: { weekInMeso: 2, slotId: "lower-b" },
+    },
+    {
+      name: "multiple skips",
+      resolvedCount: 8,
+      statusAt: (index: number) => (index === 2 || index === 5 || index === 7 ? "SKIPPED" : "COMPLETED"),
+      expected: { weekInMeso: 3, slotId: "lower-a" },
+    },
+    {
+      name: "accumulation to deload with skips",
+      resolvedCount: 16,
+      statusAt: (index: number) => (index === 5 || index === 11 ? "SKIPPED" : "COMPLETED"),
+      expected: { weekInMeso: 5, slotId: "lower-a" },
+    },
+  ])("preserves authored identity for $name", ({ resolvedCount, statusAt, expected }) => {
+    const source = authority();
+    const context = resolveV4NextWorkoutContext({
+      authority: source,
+      workouts: source.requiredSlots.slice(0, resolvedCount).map((slot, index) =>
+        workout({ authority: source, slot, status: statusAt(index) }),
+      ),
+    });
+    expect(context).toMatchObject(expected);
   });
 
   it("returns a recoverable blocker for ambiguous slot evidence", () => {

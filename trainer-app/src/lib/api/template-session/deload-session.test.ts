@@ -54,6 +54,7 @@ function makeMappedContext(input: {
   slotPlanSeedJson?: unknown;
 }) {
   return {
+    generationMode: { kind: "legacy" as const },
     exerciseLibrary: input.exerciseLibrary,
     mesocycleRoleMapByIntent: makeRoleMap(input.roleMapByIntent ?? {}),
     activeMesocycle: {

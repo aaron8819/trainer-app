@@ -1,5 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  generateSessionFromIntent: vi.fn(),
+}));
+
+vi.mock("@/lib/api/template-session", () => ({
+  generateSessionFromIntent: mocks.generateSessionFromIntent,
+}));
+
+vi.mock("@/lib/db/prisma", () => ({ prisma: {} }));
+
 import {
+  buildPostAcceptPreviewGeneration,
   buildNextMesocyclePostAcceptVerificationFromEvidence,
 } from "./next-mesocycle-post-accept-verification";
 
@@ -66,6 +78,18 @@ function makePassingEvidence(): Parameters<
     seedExerciseNameById: {
       bench: "Bench Press",
     },
+    previewTarget: {
+      weekInMeso: 1,
+      slotId: "upper_a",
+      intent: "upper",
+      advancingSlot: {
+        slotId: "upper_a",
+        intent: "upper",
+        sequenceIndex: 0,
+        sequenceLength: 1,
+        source: "mesocycle_slot_sequence",
+      },
+    },
     nextSession: {
       intent: "upper",
       slotId: "upper_a",
@@ -109,6 +133,18 @@ function makePassingEvidence(): Parameters<
         rationale: {},
         volumePlanByMuscle: {},
         sessionDecisionReceipt: {
+          materialization: {
+            version: 1,
+            generationMode: "explicit_preview",
+            materializationClass: "preview_only",
+          },
+          sessionSlot: {
+            slotId: "upper_a",
+            intent: "upper",
+            sequenceIndex: 0,
+            sequenceLength: 1,
+            source: "mesocycle_slot_sequence",
+          },
           sessionProvenance: {
             mesocycleId: "successor-1",
             compositionSource: "persisted_slot_plan_seed",
@@ -206,6 +242,9 @@ describe("buildNextMesocyclePostAcceptVerificationFromEvidence", () => {
     });
     expect(payload.futureWeekReplay).toMatchObject({
       compositionSource: "persisted_slot_plan_seed",
+      generationMode: "explicit_preview",
+      materializationClass: "preview_only",
+      scheduledSlotReceiptPresent: false,
       exerciseOrderMatchesSeed: true,
     });
     expect(payload.prescriptionConfidence.summary.classificationCounts).toEqual({
@@ -221,6 +260,43 @@ describe("buildNextMesocyclePostAcceptVerificationFromEvidence", () => {
     expect(payload.projectedWeekVolume.allProjectedSessionsSeedBacked).toBe(true);
     expect(payload.readModels.allProgramRowsSeedBacked).toBe(true);
     expect(payload.checks.every((row) => row.status === "pass")).toBe(true);
+  });
+
+  it("generates the accepted authored slot as an explicit preview without current eligibility authority", async () => {
+    const evidence = makePassingEvidence();
+    mocks.generateSessionFromIntent.mockResolvedValueOnce(
+      evidence.generationResult,
+    );
+
+    const result = await buildPostAcceptPreviewGeneration({
+      userId: "user-1",
+      previewTarget: evidence.previewTarget,
+      plannerDiagnosticsMode: "debug",
+    });
+
+    expect(mocks.generateSessionFromIntent).toHaveBeenCalledWith("user-1", {
+      intent: "upper",
+      slotId: "upper_a",
+      generationMode: {
+        kind: "explicit_preview",
+        weekInMeso: 1,
+        slotId: "upper_a",
+      },
+      advancingSlot: evidence.previewTarget?.advancingSlot,
+      plannerDiagnosticsMode: "debug",
+    });
+    expect(result).toBe(evidence.generationResult);
+    if (!result || "error" in result) throw new Error("expected preview");
+    expect(
+      result.selection.sessionDecisionReceipt?.materialization,
+    ).toEqual({
+      version: 1,
+      generationMode: "explicit_preview",
+      materializationClass: "preview_only",
+    });
+    expect(
+      result.selection.sessionDecisionReceipt?.scheduledSlotReceipt,
+    ).toBeUndefined();
   });
 
   it("compares pre-accept persisted V2 draft seed identity against the accepted successor seed", () => {

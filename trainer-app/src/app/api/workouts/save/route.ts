@@ -62,6 +62,11 @@ import { preservePersistedStimulusAccounting } from "@/lib/evidence/session-deci
 import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
 import { isCloseoutSession } from "@/lib/session-semantics/closeout-classifier";
 import { isStrictSupplementalDeficitSession } from "@/lib/session-semantics/supplemental-classifier";
+import {
+  resolveSessionMaterialization,
+  sameSessionMaterialization,
+  validateNonScheduledMaterialization,
+} from "@/lib/session-semantics/materialization";
 import type { SaveWorkoutResponse } from "@/lib/api/workout-save-contract";
 import { createPostSessionReviewSnapshotInTransaction } from "@/lib/api/post-session-review-snapshot";
 import {
@@ -300,9 +305,37 @@ export async function POST(request: Request) {
         existingWorkout?.selectionMetadata,
         incomingSelectionMetadata,
       );
-      const receipt = extractSessionDecisionReceipt(effectiveSelectionMetadata);
+      let receipt = extractSessionDecisionReceipt(effectiveSelectionMetadata);
+      const rawEffectiveReceipt = toObject(
+        toObject(effectiveSelectionMetadata).sessionDecisionReceipt,
+      );
+      if (!receipt && "materialization" in rawEffectiveReceipt) {
+        throw new Error("SESSION_MATERIALIZATION_INVALID");
+      }
       if (!receipt?.cycleContext) {
         throw new Error("WORKOUT_SELECTION_METADATA_REQUIRED");
+      }
+      let materialization = resolveSessionMaterialization(receipt);
+      if (materialization.materializationClass === "preview_only") {
+        throw new Error("SESSION_PREVIEW_ONLY");
+      }
+      if (existingWorkout) {
+        const persistedReceipt = extractSessionDecisionReceipt(
+          existingWorkout.selectionMetadata,
+        );
+        const incomingReceipt = extractSessionDecisionReceipt(
+          incomingSelectionMetadata,
+        );
+        if (
+          persistedReceipt &&
+          incomingReceipt &&
+          !sameSessionMaterialization(
+            resolveSessionMaterialization(persistedReceipt),
+            resolveSessionMaterialization(incomingReceipt),
+          )
+        ) {
+          throw new Error("SESSION_MATERIALIZATION_IMMUTABLE");
+        }
       }
       let selectionMetadata = normalizeSelectionMetadataWithReceipt({
         selectionMetadata: effectiveSelectionMetadata,
@@ -340,6 +373,11 @@ export async function POST(request: Request) {
           enabled: true,
           weekCloseId: readWeekCloseIdFromSelectionMetadata(selectionMetadata),
         });
+        receipt = extractSessionDecisionReceipt(selectionMetadata);
+        if (!receipt) {
+          throw new Error("WORKOUT_SELECTION_METADATA_REQUIRED");
+        }
+        materialization = resolveSessionMaterialization(receipt);
       }
       const linkedWeekCloseId =
         readWeekCloseIdFromSelectionMetadata(selectionMetadata);
@@ -359,6 +397,18 @@ export async function POST(request: Request) {
         selectionMode: effectiveSelectionMode,
         sessionIntent: effectiveSessionIntent,
       });
+      if (materialization.materializationClass === "non_scheduled") {
+        const nonScheduledError = validateNonScheduledMaterialization({
+          materialization,
+          receipt,
+          selectionMetadata,
+          selectionMode: effectiveSelectionMode,
+          sessionIntent: effectiveSessionIntent,
+        });
+        if (nonScheduledError) {
+          throw new Error(`SESSION_NON_SCHEDULED_INVALID:${nonScheduledError}`);
+        }
+      }
 
       await assertTemplateBelongsToUser(tx, {
         templateId: parsed.data.templateId,
@@ -407,10 +457,7 @@ export async function POST(request: Request) {
         });
       }
       const hasV4ScheduledIdentity =
-        receipt.sessionSlot?.source === "mesocycle_slot_sequence" &&
-        (receipt.sessionProvenance?.compositionSource ===
-          "persisted_slot_plan_seed" ||
-          receipt.sessionProvenance?.compositionSource === "deload_seed_replay");
+        materialization.materializationClass === "scheduled_required";
 
       const completedAt =
         finalStatus === "COMPLETED"
@@ -434,7 +481,10 @@ export async function POST(request: Request) {
         requestAdvancesSplit: parsed.data.advancesSplit,
       });
       const forcesAdvancesSplitFalse =
-        isOptionalGapFill || isSupplementalDeficitSession || isCloseout;
+        materialization.materializationClass === "non_scheduled" ||
+        isOptionalGapFill ||
+        isSupplementalDeficitSession ||
+        isCloseout;
       // Also snapshot on initial plan-save so the label appears immediately in Recent Workouts.
       const shouldSetPlannedMesoSnapshot =
         action === "save_plan" && !existingWorkout;
@@ -470,63 +520,85 @@ export async function POST(request: Request) {
           );
         }
         if (v4AuthorityResolution.status === "available") {
-          v4ScheduleAuthority = v4AuthorityResolution.authority;
-          const requiredSlotResolution = existingWorkout
-            ? resolveV4RequiredSlotFromPersistedWorkoutEvidence({
-                authority: v4ScheduleAuthority,
-                workout: existingWorkout,
-              })
-            : resolveV4RequiredSlotFromDecisionReceipt({
-                authority: v4ScheduleAuthority,
-                selectionMetadata,
-                sessionIntent: effectiveSessionIntent ?? null,
-              });
-          if ("reason" in requiredSlotResolution) {
-            if (forcesAdvancesSplitFalse && !hasV4ScheduledIdentity) {
-              v4ScheduleAuthority = null;
-            } else {
-              throw new Error(
-                `V4_SCHEDULE_RECEIPT_INVALID:${requiredSlotResolution.reason}`,
-              );
-            }
+          if (
+            !existingWorkout &&
+            materialization.materializationClass === "legacy" &&
+            !forcesAdvancesSplitFalse
+          ) {
+            throw new Error("V4_SCHEDULE_MATERIALIZATION_CLASS_REQUIRED");
+          }
+          if (
+            !existingWorkout &&
+            materialization.materializationClass === "non_scheduled"
+          ) {
+            v4ScheduleAuthority = null;
           } else {
-            v4RequiredSlot = requiredSlotResolution.requiredSlot;
-            if (
-              existingWorkout &&
-              parsed.data.sessionIntent &&
-              parsed.data.sessionIntent.trim().toLowerCase() !==
-                v4RequiredSlot.intent
-            ) {
-              throw new Error("V4_SCHEDULE_RECEIPT_INVALID:workout_intent_conflict");
-            }
-            effectiveSessionIntent =
-              v4RequiredSlot.intent.toUpperCase() as WorkoutSessionIntent;
-            if (!terminalTransitionLock) {
-              if (
-                resolvedMesocycle.state !== "ACTIVE_ACCUMULATION" &&
-                resolvedMesocycle.state !== "ACTIVE_DELOAD"
-              ) {
-                throw new Error("V4_SCHEDULE_AUTHORITY_CONFLICT");
-              }
-              terminalTransitionLock =
-                await claimSelectedPlanAndLockMesocycleForTerminalTransitionInTransaction(
-                  tx,
-                  {
-                    mesocycleId: resolvedMesocycle.id,
-                    macroCycleId: resolvedMesocycle.macroCycleId,
-                    userId: user.id,
-                    expectedState: resolvedMesocycle.state,
-                    currentSeedRevisionId: v4ScheduleAuthority.revisionId,
-                  },
+            v4ScheduleAuthority = v4AuthorityResolution.authority;
+            const requiredSlotResolution = existingWorkout
+              ? resolveV4RequiredSlotFromPersistedWorkoutEvidence({
+                  authority: v4ScheduleAuthority,
+                  workout: existingWorkout,
+                })
+              : resolveV4RequiredSlotFromDecisionReceipt({
+                  authority: v4ScheduleAuthority,
+                  selectionMetadata,
+                  sessionIntent: effectiveSessionIntent ?? null,
+                });
+            if ("reason" in requiredSlotResolution) {
+              if (forcesAdvancesSplitFalse && !hasV4ScheduledIdentity) {
+                v4ScheduleAuthority = null;
+              } else {
+                throw new Error(
+                  `V4_SCHEDULE_RECEIPT_INVALID:${requiredSlotResolution.reason}`,
                 );
-            }
-            if (!existingWorkout) {
-              await resolveV4ScheduleBeforeWorkoutCreation(tx, {
-                authority: v4ScheduleAuthority,
-                requiredSlot: v4RequiredSlot,
-              });
+              }
+            } else {
+              v4RequiredSlot = requiredSlotResolution.requiredSlot;
+              if (
+                existingWorkout &&
+                parsed.data.sessionIntent &&
+                parsed.data.sessionIntent.trim().toLowerCase() !==
+                  v4RequiredSlot.intent
+              ) {
+                throw new Error(
+                  "V4_SCHEDULE_RECEIPT_INVALID:workout_intent_conflict",
+                );
+              }
+              effectiveSessionIntent =
+                v4RequiredSlot.intent.toUpperCase() as WorkoutSessionIntent;
+              if (!terminalTransitionLock) {
+                if (
+                  resolvedMesocycle.state !== "ACTIVE_ACCUMULATION" &&
+                  resolvedMesocycle.state !== "ACTIVE_DELOAD"
+                ) {
+                  throw new Error("V4_SCHEDULE_AUTHORITY_CONFLICT");
+                }
+                terminalTransitionLock =
+                  await claimSelectedPlanAndLockMesocycleForTerminalTransitionInTransaction(
+                    tx,
+                    {
+                      mesocycleId: resolvedMesocycle.id,
+                      macroCycleId: resolvedMesocycle.macroCycleId,
+                      userId: user.id,
+                      expectedState: resolvedMesocycle.state,
+                      currentSeedRevisionId: v4ScheduleAuthority.revisionId,
+                    },
+                  );
+              }
+              if (!existingWorkout) {
+                await resolveV4ScheduleBeforeWorkoutCreation(tx, {
+                  authority: v4ScheduleAuthority,
+                  requiredSlot: v4RequiredSlot,
+                });
+              }
             }
           }
+        }
+        if (
+          materialization.materializationClass === "scheduled_required" &&
+          !v4ScheduleAuthority
+        ) {
+          throw new Error("V4_SCHEDULE_AUTHORITY_CONFLICT");
         }
         if (!terminalTransitionLock) {
           await claimSelectedPlanForTransitionInTransaction(tx, {
@@ -900,6 +972,32 @@ export async function POST(request: Request) {
       } as const;
       return NextResponse.json(
         { error: messages[error.message as keyof typeof messages] },
+        { status: 409 },
+      );
+    }
+    if (
+      error instanceof Error &&
+      error.message === "SESSION_PREVIEW_ONLY"
+    ) {
+      return NextResponse.json(
+        {
+          error: "Preview workouts cannot be saved.",
+          code: "SESSION_PREVIEW_ONLY",
+        },
+        { status: 409 },
+      );
+    }
+    if (
+      error instanceof Error &&
+      (error.message === "SESSION_MATERIALIZATION_INVALID" ||
+        error.message === "SESSION_MATERIALIZATION_IMMUTABLE" ||
+        error.message.startsWith("SESSION_NON_SCHEDULED_INVALID:"))
+    ) {
+      return NextResponse.json(
+        {
+          error: "Workout materialization classification is invalid.",
+          code: "SESSION_MATERIALIZATION_INVALID",
+        },
         { status: 409 },
       );
     }

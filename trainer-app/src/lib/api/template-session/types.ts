@@ -15,6 +15,7 @@ import type { DeloadTransformationTrace } from "@/lib/evidence/session-audit-typ
 import type {
   CycleContextSnapshot,
   DeloadDecision,
+  NonScheduledMaterializationPurpose,
   SessionDecisionReceipt,
   PlannerDiagnosticsMode,
   SessionCompositionSource,
@@ -38,11 +39,33 @@ import type {
   ApplyLoadsHistoryEvidence,
   SelectedAnchorLoadEvidence,
 } from "@/lib/engine/apply-loads";
+import type { V4ScheduledGenerationObligation } from "@/lib/api/v4-scheduled-slot-resolution";
+
+export type GenerationScheduleMode =
+  | {
+      kind: "accepted_v4_scheduled";
+      obligation: V4ScheduledGenerationObligation;
+    }
+  | {
+      kind: "explicit_preview";
+      weekInMeso: number;
+      slotId?: string;
+    }
+  | {
+      kind: "non_scheduled";
+      purpose: NonScheduledMaterializationPurpose;
+      anchorWeek?: number;
+    }
+  | {
+      kind: "legacy";
+    };
 
 export type GenerateTemplateSessionParams = {
+  generationMode: GenerationScheduleMode;
   pinnedExerciseIds?: string[];
   autoFillUnpinned?: boolean;
   slotId?: string;
+  advancingSlot?: SessionSlotSnapshot;
   exerciseReplacements?: Array<{
     placementId: string;
     orderIndex: number;
@@ -52,6 +75,7 @@ export type GenerateTemplateSessionParams = {
 };
 
 export type GenerateIntentSessionInput = {
+  generationMode: GenerationScheduleMode;
   intent: SessionIntent;
   slotId?: string;
   advancingSlot?: SessionSlotSnapshot;
@@ -201,6 +225,7 @@ export type GenerateFromTemplateResponse = SharedGeneratedWorkoutResponse & {
 };
 
 export type MappedGenerationContext = {
+  generationMode: GenerationScheduleMode;
   mappedProfile: ReturnType<typeof mapProfile>;
   mappedGoals: ReturnType<typeof mapGoals>;
   mappedConstraints: ReturnType<typeof mapConstraints>;

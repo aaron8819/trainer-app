@@ -168,6 +168,7 @@ describe("generateSessionFromIntent revised V4 reference proof", () => {
       }),
     );
     const result = await generateSessionFromIntent("user-1", {
+      generationMode: { kind: "explicit_preview", weekInMeso: expected.week, slotId: expected.slotId },
       intent: expected.focus,
       slotId: expected.slotId,
     });
@@ -222,8 +223,9 @@ describe("generateSessionFromIntent revised V4 reference proof", () => {
         );
         const fallbackCallsBefore = selectSpy.mock.calls.length;
         const result = await generateSessionFromIntent("user-1", {
-          intent: expected.focus,
-          slotId: expected.slotId,
+      generationMode: { kind: "explicit_preview", weekInMeso: expected.week, slotId: expected.slotId },
+      intent: expected.focus,
+      slotId: expected.slotId,
         });
         const label = `revised week=${expected.week} slot=${expected.slotId}`;
         expect("error" in result, label).toBe(false);
@@ -359,8 +361,9 @@ describe("generateSessionFromIntent revised V4 reference proof", () => {
     try {
       const fallbackCallsBefore = selectSpy.mock.calls.length;
       const result = await generateSessionFromIntent("user-1", {
-        intent: expected.focus,
-        slotId: expected.slotId,
+      generationMode: { kind: "explicit_preview", weekInMeso: expected.week, slotId: expected.slotId },
+      intent: expected.focus,
+      slotId: expected.slotId,
       });
       expect("error" in result).toBe(false);
       if ("error" in result) return;

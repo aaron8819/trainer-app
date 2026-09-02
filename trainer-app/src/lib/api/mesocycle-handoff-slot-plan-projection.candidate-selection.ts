@@ -233,7 +233,12 @@ export function buildSyntheticProjectionContext(input: {
           })),
         phaseBlockContext,
       },
-      { anchorWeek: 1 }
+      {
+        generationMode: {
+          kind: "explicit_preview",
+          weekInMeso: 1,
+        },
+      },
     ),
     mesocycleId,
     lifecycleWeek: 1,

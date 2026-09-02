@@ -188,6 +188,9 @@ async function main(): Promise<void> {
   const activePlanModule = await import("@/lib/api/active-plan-context");
   const nextSessionModule = await import("@/lib/api/next-session");
   const templateSessionModule = await import("@/lib/api/template-session");
+  const saveWorkoutRouteModule = await import("@/app/api/workouts/save/route");
+  const workoutPlanOrderModule = await import("@/lib/engine/workout-plan-order");
+  const v4ScheduleModule = await import("@/lib/api/v4-scheduled-slot-resolution");
   const { prisma, closePrismaResourcesForAuditCli } = dbModule;
   closeAppResources = closePrismaResourcesForAuditCli;
 
@@ -571,9 +574,154 @@ async function main(): Promise<void> {
   assert.equal(scheduled.slotSequenceLength, 4);
   assert.equal(scheduled.slotSource, "mesocycle_slot_sequence");
   const { sessionIntentSchema } = await import("@/lib/validation");
+  const scheduledObligation =
+    nextSessionModule.resolveRequestedV4ScheduledGenerationObligation({
+      nextWorkoutContext: scheduled,
+    });
+  assert(scheduledObligation, "V4_REFERENCE_OBLIGATION_NOT_RESOLVED");
+  const bodyPartGenerated = await templateSessionModule.generateSessionFromIntent(
+    user.id,
+    {
+      intent: "body_part",
+      targetMuscles: ["biceps"],
+      generationMode: {
+        kind: "non_scheduled",
+        purpose: "body_part",
+      },
+    },
+  );
+  assert(!("error" in bodyPartGenerated), "V4_BODY_PART_GENERATION_FAILED");
+  const bodyPartReceipt = bodyPartGenerated.selection.sessionDecisionReceipt;
+  assert(bodyPartReceipt, "V4_BODY_PART_RECEIPT_MISSING");
+  assert.equal(
+    bodyPartReceipt.materialization?.materializationClass,
+    "non_scheduled",
+  );
+  assert.equal(bodyPartReceipt.materialization?.purpose, "body_part");
+  assert.equal(bodyPartReceipt.sessionSlot, undefined);
+  assert.equal(bodyPartReceipt.scheduledSlotReceipt, undefined);
+
+  const bodyPartExercises = workoutPlanOrderModule
+    .listWorkoutPlanExercisesInOrder(bodyPartGenerated.workout)
+    .filter(({ exercise }) => exercise.sets.length > 0)
+    .map(({ exercise, section }) => ({
+      section:
+        section === "warmup"
+          ? ("WARMUP" as const)
+          : section === "main"
+            ? ("MAIN" as const)
+            : ("ACCESSORY" as const),
+      placementId: exercise.id,
+      exerciseId: exercise.exercise.id,
+      ...(exercise.measurement ? { measurement: exercise.measurement } : {}),
+      sets: exercise.sets.map((set) => ({
+        setIndex: set.setIndex,
+        targetReps: set.targetReps,
+        ...(set.targetRepRange ? { targetRepRange: set.targetRepRange } : {}),
+        ...(set.targetRpe != null ? { targetRpe: set.targetRpe } : {}),
+        ...(set.targetLoad != null ? { targetLoad: set.targetLoad } : {}),
+      })),
+    }));
+  assert(bodyPartExercises.length > 0, "V4_BODY_PART_EXERCISES_MISSING");
+  const bodyPartSaveResponse = await saveWorkoutRouteModule.POST(
+    new Request("http://localhost/api/workouts/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workoutId: bodyPartGenerated.workout.id,
+        action: "save_plan",
+        scheduledDate: bodyPartGenerated.workout.scheduledDate,
+        estimatedMinutes: bodyPartGenerated.workout.estimatedMinutes,
+        selectionMode: bodyPartGenerated.selectionMode,
+        sessionIntent: "BODY_PART",
+        advancesSplit: true,
+        selectionMetadata: {
+          sessionDecisionReceipt: bodyPartReceipt,
+        },
+        exercises: bodyPartExercises,
+      }),
+    }),
+  );
+  assert.equal(
+    bodyPartSaveResponse.status,
+    200,
+    `V4_BODY_PART_SAVE_FAILED:${await bodyPartSaveResponse.text()}`,
+  );
+  const persistedBodyPart = await prisma.workout.findUniqueOrThrow({
+    where: { id: bodyPartGenerated.workout.id },
+    select: {
+      id: true,
+      status: true,
+      mesocycleId: true,
+      mesocycleWeekSnapshot: true,
+      mesocyclePhaseSnapshot: true,
+      mesoSessionSnapshot: true,
+      advancesSplit: true,
+      selectionMode: true,
+      sessionIntent: true,
+      selectionMetadata: true,
+      seedRevisionId: true,
+      seedRevisionNumber: true,
+      seedPayloadHash: true,
+    },
+  });
+  assert.equal(persistedBodyPart.mesocycleId, ready.mesocycleId);
+  assert.equal(persistedBodyPart.advancesSplit, false);
+  const persistedBodyPartReceipt = (
+    persistedBodyPart.selectionMetadata as {
+      sessionDecisionReceipt?: typeof bodyPartReceipt;
+    }
+  ).sessionDecisionReceipt;
+  assert.equal(
+    persistedBodyPartReceipt?.materialization?.materializationClass,
+    "non_scheduled",
+  );
+  assert.equal(persistedBodyPartReceipt?.materialization?.purpose, "body_part");
+  assert.equal(persistedBodyPartReceipt?.scheduledSlotReceipt, undefined);
+
+  const authorityResolution = v4ScheduleModule.resolveV4ScheduleAuthority(
+    activeContext.activeMesocycle,
+  );
+  assert.equal(authorityResolution.status, "available");
+  if (authorityResolution.status !== "available") {
+    throw new Error("V4_BODY_PART_AUTHORITY_UNAVAILABLE");
+  }
+  const persistedResolution = v4ScheduleModule.resolveV4ScheduledSlots({
+    authority: authorityResolution.authority,
+    workouts: [persistedBodyPart],
+  });
+  if (persistedResolution.status !== "available") {
+    throw new Error(`V4_BODY_PART_RESOLUTION_BLOCKED:${persistedResolution.reason}`);
+  }
+  assert.equal(persistedResolution.claims.length, 0);
+  assert.equal(persistedResolution.resolvedSlotCount, 0);
+  assert.equal(persistedResolution.nextUnresolvedSlot?.weekInMeso, 1);
+  assert.equal(persistedResolution.nextUnresolvedSlot?.slotId, scheduled.slotId);
+
+  const scheduledAfterBodyPart = await nextSessionModule.loadNextWorkoutContext(
+    user.id,
+  );
+  assert.equal(scheduledAfterBodyPart.source, "rotation");
+  assert.equal(scheduledAfterBodyPart.weekInMeso, scheduled.weekInMeso);
+  assert.equal(scheduledAfterBodyPart.slotId, scheduled.slotId);
+  assert.equal(scheduledAfterBodyPart.intent, scheduled.intent);
+  const revisionAfterBodyPart = await prisma.mesocycleSeedRevision.findUniqueOrThrow({
+    where: { id: ready.revisionId },
+    select: { seedPayload: true, payloadHash: true },
+  });
+  assert.deepEqual(revisionAfterBodyPart.seedPayload, acceptedRevision.seedPayload);
+  assert.equal(revisionAfterBodyPart.payloadHash, acceptedRevision.payloadHash);
+
   const materialized = await templateSessionModule.generateSessionFromIntent(
     user.id,
-    { intent: sessionIntentSchema.parse(scheduled.intent), slotId: scheduled.slotId },
+    {
+      intent: sessionIntentSchema.parse(scheduled.intent),
+      slotId: scheduled.slotId,
+      generationMode: {
+        kind: "accepted_v4_scheduled",
+        obligation: scheduledObligation,
+      },
+    },
   );
   assert(!("error" in materialized), "V4_REFERENCE_MATERIALIZATION_FAILED");
   const actualResolvedSlot = authoringModule
@@ -669,12 +817,14 @@ async function main(): Promise<void> {
 
   console.log(JSON.stringify({
     status: "PASS",
-    path: ["create", "load", "save", "health", "block", "reject", "restore", "warning-missing-zero-write", "warning-mismatch-zero-write", "warning-exact-finalize", "finalize", "activate", "schedule", "materialize"],
+    path: ["create", "load", "save", "health", "block", "reject", "restore", "warning-missing-zero-write", "warning-mismatch-zero-write", "warning-exact-finalize", "finalize", "activate", "schedule", "generate-body-part", "save-body-part", "resolve-after-body-part", "materialize"],
     planId: created.planId,
     mesocycleId: ready.mesocycleId,
     revisionId: ready.revisionId,
     warningRevisionId: warningReady.revisionId,
     slotId: scheduled.slotId,
+    bodyPartWorkoutId: persistedBodyPart.id,
+    nextSlotAfterBodyPart: scheduledAfterBodyPart.slotId,
     exerciseCount: actualExercises.length,
     databaseBoundHash: actualBoundHash,
     materiallyChangedActualHash,

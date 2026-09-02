@@ -61,6 +61,9 @@ vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
 }));
 
 import { loadMappedGenerationContext } from "./context-loader";
+import { buildV4CustomPlanReferenceAcceptedSeed } from "@/lib/engine/hypertrophy-plan-authoring-v4.fixture";
+import { normalizeAcceptedHypertrophySeedV4 } from "@/lib/api/mesocycle-seed-revision";
+import { resolveV4ScheduleAuthority } from "@/lib/api/v4-scheduled-slot-resolution";
 
 describe("template-session context-loader mismatch policy", () => {
   beforeEach(() => {
@@ -197,7 +200,9 @@ describe("template-session context-loader mismatch policy", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
     try {
-      const result = await loadMappedGenerationContext("user-1");
+      const result = await loadMappedGenerationContext("user-1", {
+        generationMode: { kind: "legacy" },
+      });
 
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining("Section/role mismatch detected: workout=workout-1")
@@ -209,14 +214,18 @@ describe("template-session context-loader mismatch policy", () => {
   });
 
   it("keeps planning aligned to the mesocycle role registry instead of stale historical sections", async () => {
-    const result = await loadMappedGenerationContext("user-1");
+    const result = await loadMappedGenerationContext("user-1", {
+      generationMode: { kind: "legacy" },
+    });
 
     expect(result.mesocycleRoleMapByIntent.push.get("bench")).toBe("CORE_COMPOUND");
     expect(result.rawWorkouts[0]?.exercises[0]?.section).toBe("ACCESSORY");
   });
 
   it("loads real phase/block context into generation instead of dropping block context to null", async () => {
-    const result = await loadMappedGenerationContext("user-1");
+    const result = await loadMappedGenerationContext("user-1", {
+      generationMode: { kind: "legacy" },
+    });
 
     expect(loadGenerationPhaseBlockContextMock).toHaveBeenCalledWith(
       "user-1",
@@ -270,6 +279,97 @@ describe("template-session context-loader mismatch policy", () => {
     );
   });
 
+  it("uses the exact V4 authored obligation week instead of completed-session counters", async () => {
+    const accepted = buildV4CustomPlanReferenceAcceptedSeed();
+    const normalized = normalizeAcceptedHypertrophySeedV4(accepted);
+    const activeMesocycle = {
+      id: "meso-v4",
+      state: "ACTIVE_ACCUMULATION" as const,
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 7,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 4,
+      currentSeedRevisionId: "revision-v4",
+      currentSeedRevision: {
+        id: "revision-v4",
+        mesocycleId: "meso-v4",
+        revision: 1,
+        seedPayload: normalized.canonicalPayload,
+        payloadHash: normalized.hash,
+        hashAlgorithm: "sha256",
+        provenanceStatus: "exact",
+      },
+      slotSequenceJson: {
+        version: 1,
+        source: accepted.source,
+        sequenceMode: "ordered_flexible",
+        sessionsPerWeek: 4,
+        slots: accepted.slots.map((slot) => ({
+          slotId: slot.slotId,
+          intent: slot.focus,
+        })),
+      },
+    };
+    const authorityResolution = resolveV4ScheduleAuthority(activeMesocycle);
+    expect(authorityResolution.status).toBe("available");
+    if (authorityResolution.status !== "available") return;
+    const requiredSlot = authorityResolution.authority.requiredSlots.find(
+      (slot) => slot.weekInMeso === 3 && slot.sequenceIndex === 0,
+    )!;
+
+    loadActiveMesocycleMock.mockResolvedValueOnce(activeMesocycle);
+    loadGenerationPhaseBlockContextMock.mockResolvedValueOnce({
+      blockContext: null,
+      profile: {
+        blockType: "accumulation",
+        weekInBlock: 3,
+        blockDurationWeeks: 4,
+        isDeload: false,
+      },
+      cycleContext: {
+        weekInMeso: 3,
+        weekInBlock: 3,
+        blockDurationWeeks: 4,
+        mesocycleLength: 5,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+        source: "computed",
+      },
+      weekInMeso: 3,
+      weekInBlock: 3,
+      mesocycleLength: 5,
+    });
+
+    const result = await loadMappedGenerationContext("user-1", {
+      generationMode: {
+        kind: "accepted_v4_scheduled",
+        obligation: {
+          authority: authorityResolution.authority,
+          requiredSlot,
+        },
+      },
+    });
+
+    expect(deriveCurrentMesocycleSessionMock).not.toHaveBeenCalled();
+    expect(loadGenerationPhaseBlockContextMock).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({ weekInMeso: 3 }),
+    );
+    expect(getRirTargetMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      3,
+      expect.any(Object),
+    );
+    expect(buildLifecyclePeriodizationMock).toHaveBeenCalledWith(
+      expect.objectContaining({ week: 3 }),
+    );
+    expect(result.lifecycleWeek).toBe(3);
+    expect(result.weekInBlock).toBe(3);
+    expect(result.cycleContext.weekInMeso).toBe(3);
+    expect(activeMesocycle.accumulationSessionsCompleted).toBe(7);
+  });
+
   it("uses the selected strength plan as generation truth instead of the global profile goal", async () => {
     loadActiveMesocycleMock.mockResolvedValueOnce({
       id: "meso-1",
@@ -286,7 +386,9 @@ describe("template-session context-loader mismatch policy", () => {
     });
     mapGoalsMock.mockReturnValueOnce({ primary: "strength" });
 
-    const result = await loadMappedGenerationContext("user-1");
+    const result = await loadMappedGenerationContext("user-1", {
+      generationMode: { kind: "legacy" },
+    });
 
     expect(mapGoalsMock).toHaveBeenCalledWith("STRENGTH", "NONE");
     expect(result.mappedGoals.primary).toBe("strength");
@@ -379,7 +481,11 @@ describe("template-session context-loader mismatch policy", () => {
     });
 
     const result = await loadMappedGenerationContext("user-1", {
-      anchorWeek: 4,
+      generationMode: {
+        kind: "non_scheduled",
+        purpose: "gap_fill",
+        anchorWeek: 4,
+      },
       forceAccumulation: true,
     });
 

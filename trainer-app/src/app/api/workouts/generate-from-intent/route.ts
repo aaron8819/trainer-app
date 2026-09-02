@@ -13,6 +13,7 @@ import {
   FINAL_ACCUMULATION_WEEK_CLOSE_PENDING_MESSAGE,
   loadNextWorkoutContext,
   loadRequestedAdvancingSlotSnapshot,
+  resolveRequestedV4ScheduledGenerationObligation,
 } from "@/lib/api/next-session";
 import type { GenerateFromIntentResponse } from "@/lib/api/template-session/types";
 import {
@@ -246,8 +247,12 @@ export async function POST(request: Request) {
     };
   }
 
+  const isRecognizedNonScheduled =
+    shouldApplyOptionalGapFill ||
+    shouldApplySupplementalDeficitSession ||
+    parsed.data.intent === "body_part";
   const advancingSlot =
-    shouldApplyOptionalGapFill || shouldApplySupplementalDeficitSession
+    isRecognizedNonScheduled
       ? undefined
       : await loadRequestedAdvancingSlotSnapshot({
           userId: user.id,
@@ -255,7 +260,31 @@ export async function POST(request: Request) {
           explicitSlotId: parsed.data.slotId,
           nextWorkoutContext,
         });
+  const scheduledV4Obligation =
+    isRecognizedNonScheduled
+      ? undefined
+      : resolveRequestedV4ScheduledGenerationObligation({
+          nextWorkoutContext,
+          requestedIntent: parsed.data.intent,
+          explicitSlotId: parsed.data.slotId,
+        });
+  if (
+    nextWorkoutContext.v4ScheduleAuthority &&
+    !isRecognizedNonScheduled &&
+    !scheduledV4Obligation
+  ) {
+    return NextResponse.json(
+      { error: "Selected scheduled workout is no longer eligible. Refresh and retry." },
+      { status: 409 },
+    );
+  }
   if (parsed.data.slotId && !advancingSlot) {
+    if (isRecognizedNonScheduled) {
+      return NextResponse.json(
+        { error: "Non-scheduled workouts cannot claim an authored schedule slot." },
+        { status: 400 },
+      );
+    }
     return NextResponse.json(
       {
         error:
@@ -265,9 +294,29 @@ export async function POST(request: Request) {
     );
   }
 
+  const generationMode = isRecognizedNonScheduled
+    ? {
+        kind: "non_scheduled" as const,
+        purpose: shouldApplyOptionalGapFill
+          ? ("gap_fill" as const)
+          : shouldApplySupplementalDeficitSession
+            ? ("supplemental" as const)
+            : ("body_part" as const),
+        ...(parsed.data.anchorWeek != null
+          ? { anchorWeek: parsed.data.anchorWeek }
+          : {}),
+      }
+    : scheduledV4Obligation
+      ? {
+          kind: "accepted_v4_scheduled" as const,
+          obligation: scheduledV4Obligation,
+        }
+      : { kind: "legacy" as const };
+
   const generationInput = shouldApplyOptionalGapFill && canonicalGapFill
     ? {
         ...parsed.data,
+        generationMode,
         slotId: parsed.data.slotId,
         targetMuscles: canonicalGapFill.targetMuscles,
         weekCloseId: canonicalGapFill.weekCloseId,
@@ -280,6 +329,7 @@ export async function POST(request: Request) {
       }
     : {
         ...parsed.data,
+        generationMode,
         advancingSlot,
         ...(shouldApplySupplementalDeficitSession
           ? {
@@ -322,6 +372,11 @@ export async function POST(request: Request) {
       generationReceipt.sessionSlot.sequenceIndex === advancingSlot.sequenceIndex &&
       generationReceipt.sessionSlot.sequenceLength === advancingSlot.sequenceLength &&
       generationReceipt.sessionSlot.source === advancingSlot.source &&
+      (!scheduledV4Obligation ||
+        (generationReceipt.cycleContext.weekInMeso ===
+          scheduledV4Obligation.requiredSlot.weekInMeso &&
+          scheduledV4Obligation.authority.mesocycleId === activeMesocycle.id &&
+          scheduledV4Obligation.authority.revisionId === revision?.id)) &&
       receiptProvenance?.mesocycleId === activeMesocycle.id &&
       receiptProvenance.compositionSource === "persisted_slot_plan_seed" &&
       revision?.provenanceStatus === "exact" &&

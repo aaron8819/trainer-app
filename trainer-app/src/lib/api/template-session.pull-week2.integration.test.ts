@@ -296,7 +296,8 @@ function buildMappedContext(): MappedGenerationContext {
   );
 
   return {
-    mappedProfile: {
+    generationMode: { kind: "legacy" },
+  mappedProfile: {
       id: "user-1",
       trainingAge: "intermediate",
       injuries: [],
@@ -430,7 +431,7 @@ describe("Week1 -> Week2 pull intent integration", () => {
   });
 
   it("preserves continuity, anchors loads to performed sets, and keeps pull volume progression", async () => {
-    const result = await generateSessionFromIntent("user-1", { intent: "pull" });
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "pull" });
 
     expect("error" in result).toBe(false);
     if ("error" in result) {
@@ -500,7 +501,7 @@ describe("Week1 -> Week2 pull intent integration", () => {
     const mapped = buildMappedContext();
     loadMappedGenerationContextMock.mockResolvedValueOnce(mapped);
 
-    const result = await generateSessionFromIntent("user-1", { intent: "pull" });
+    const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "legacy" }, intent: "pull" });
     expect("error" in result).toBe(false);
     if ("error" in result) return;
 

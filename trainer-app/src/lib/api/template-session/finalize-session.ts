@@ -19,6 +19,7 @@ import type {
 import { buildCanonicalDeloadDecision } from "@/lib/deload/semantics";
 import { buildPrescriptionConfidenceReadouts } from "@/lib/api/prescription-confidence-readout";
 import type { MappedGenerationContext, SessionGenerationResult } from "./types";
+import { buildSessionMaterializationEvidence } from "@/lib/session-semantics/materialization";
 
 export function runSessionGeneration(
   mapped: MappedGenerationContext,
@@ -242,6 +243,7 @@ export function finalizePostLoadResult(
     deloadDecision: mapped.deloadDecision,
     plannerDiagnostics: result.selection.plannerDiagnostics,
     plannerDiagnosticsMode,
+    materialization: buildSessionMaterializationEvidence(mapped.generationMode),
   });
 
   return {
@@ -326,6 +328,9 @@ export function finalizeDeloadSessionResult(input: {
         sorenessSuppressedMuscles: input.mapped.sorenessSuppressedMuscles,
         deloadDecision: buildCanonicalDeloadDecision("scheduled", [input.note]),
         plannerDiagnosticsMode: input.plannerDiagnosticsMode ?? "standard",
+        materialization: buildSessionMaterializationEvidence(
+          input.mapped.generationMode,
+        ),
       }),
       volumePlanByMuscle,
     },

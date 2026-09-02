@@ -13,12 +13,20 @@ import type {
   SessionDecisionReadinessScaling,
   SessionDecisionReceipt,
   SessionDecisionStimulusAccounting,
+  SessionMaterializationEvidence,
   SessionDecisionVolumeTargetSource,
   ScheduledSlotReceiptV1,
 } from "./types";
+import { isNonScheduledMaterializationPurpose } from "./types";
 import { getCanonicalDeloadReason } from "@/lib/deload/semantics";
 
 type JsonRecord = Record<string, unknown>;
+
+const LEGACY_SESSION_MATERIALIZATION = {
+  version: 1,
+  generationMode: "legacy",
+  materializationClass: "legacy",
+} as const satisfies SessionMaterializationEvidence;
 
 type ReadinessReceiptInput = {
   wasAutoregulated?: boolean;
@@ -125,6 +133,55 @@ function parseScheduledSlotReceipt(
     sequenceIndex: record.sequenceIndex,
     sequenceLength: record.sequenceLength,
   };
+}
+
+function parseSessionMaterializationEvidence(
+  value: unknown,
+): SessionMaterializationEvidence | undefined {
+  const record = toObject(value);
+  if (!record || record.version !== 1) return undefined;
+  if (
+    record.generationMode === "accepted_v4_scheduled" &&
+    record.materializationClass === "scheduled_required" &&
+    record.purpose == null
+  ) {
+    return {
+      version: 1,
+      generationMode: "accepted_v4_scheduled",
+      materializationClass: "scheduled_required",
+    };
+  }
+  if (
+    record.generationMode === "explicit_preview" &&
+    record.materializationClass === "preview_only" &&
+    record.purpose == null
+  ) {
+    return {
+      version: 1,
+      generationMode: "explicit_preview",
+      materializationClass: "preview_only",
+    };
+  }
+  if (
+    record.generationMode === "non_scheduled" &&
+    record.materializationClass === "non_scheduled" &&
+    isNonScheduledMaterializationPurpose(record.purpose)
+  ) {
+    return {
+      version: 1,
+      generationMode: "non_scheduled",
+      materializationClass: "non_scheduled",
+      purpose: record.purpose,
+    };
+  }
+  if (
+    record.generationMode === "legacy" &&
+    record.materializationClass === "legacy" &&
+    record.purpose == null
+  ) {
+    return LEGACY_SESSION_MATERIALIZATION;
+  }
+  return undefined;
 }
 
 function parseSessionCompositionSource(value: unknown): SessionCompositionSource | undefined {
@@ -1019,6 +1076,7 @@ export function buildSessionDecisionReceipt(input: {
   plannerDiagnosticsMode?: PlannerDiagnosticsMode;
   stimulusAccounting?: SessionDecisionStimulusAccounting;
   additionalExceptions?: SessionDecisionException[];
+  materialization?: SessionMaterializationEvidence;
 }): SessionDecisionReceipt {
   const sorenessSuppressedMuscles = input.sorenessSuppressedMuscles ?? [];
   const deloadDecision = input.deloadDecision ?? DEFAULT_DELOAD_DECISION;
@@ -1040,6 +1098,7 @@ export function buildSessionDecisionReceipt(input: {
     cycleContext: input.cycleContext,
     ...(sessionProvenance ? { sessionProvenance } : {}),
     sessionSlot: input.sessionSlot,
+    materialization: input.materialization ?? LEGACY_SESSION_MATERIALIZATION,
     targetMuscles: parseOptionalStringArray(input.targetMuscles),
     lifecycleRirTarget: input.lifecycleRirTarget,
     lifecycleVolume: {
@@ -1088,6 +1147,10 @@ function parsePersistedReceipt(value: unknown): SessionDecisionReceipt | undefin
     return undefined;
   }
   const sessionProvenance = parseSessionDecisionProvenance(record.sessionProvenance);
+  const materialization = parseSessionMaterializationEvidence(record.materialization);
+  if (record.materialization != null && !materialization) {
+    return undefined;
+  }
 
   return {
     version: record.version,
@@ -1097,6 +1160,7 @@ function parsePersistedReceipt(value: unknown): SessionDecisionReceipt | undefin
     scheduledSlotReceipt: parseScheduledSlotReceipt(
       record.scheduledSlotReceipt,
     ),
+    materialization: materialization ?? LEGACY_SESSION_MATERIALIZATION,
     targetMuscles: parseOptionalStringArray(record.targetMuscles),
     lifecycleRirTarget: parseLifecycleRirTarget(record.lifecycleRirTarget),
     lifecycleVolume: {
@@ -1181,6 +1245,7 @@ export function normalizeSelectionMetadataWithReceipt(input: {
       cycleContext: input.cycleContext,
       sessionProvenance: existingReceipt?.sessionProvenance,
       sessionSlot: existingReceipt?.sessionSlot,
+      materialization: existingReceipt?.materialization,
       targetMuscles: existingReceipt?.targetMuscles,
       lifecycleRirTarget: existingReceipt?.lifecycleRirTarget,
       lifecycleVolumeTargets: existingReceipt?.lifecycleVolume.targets,

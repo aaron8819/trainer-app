@@ -242,7 +242,9 @@ async function buildMesocycleSetupPreview(input: {
   });
   const [projectionSource, snapshot] = await Promise.all([
     loadHandoffSourceMesocycle(prisma, input.handoff.mesocycleId),
-    loadPreloadedGenerationSnapshot(input.userId),
+    loadPreloadedGenerationSnapshot(input.userId, {
+      generationMode: { kind: "explicit_preview", weekInMeso: 1 },
+    }),
   ]);
   const resolvedDesign = input.handoff.summary?.recommendedDesign
     ? applyDraftOverridesToDesign({

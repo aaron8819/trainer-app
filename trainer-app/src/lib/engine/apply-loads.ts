@@ -457,11 +457,7 @@ export function applyLoadsWithAudit(
     const prescription = resolvePrescriptionResult({
       canonicalExerciseId: exercise.id,
       measurement: exerciseEntry.measurement ?? null,
-      zeroLoadMeaning:
-        exerciseEntry.zeroLoadMeaning ??
-        (usesLegacyMeasurement && (exercise.equipment ?? []).includes("bodyweight")
-          ? "BODYWEIGHT_NO_ADDED_LOAD"
-          : null),
+      zeroLoadMeaning: exerciseEntry.zeroLoadMeaning ?? null,
       existingTargetLoad: existingTopSetLoad,
       candidate:
         candidateValue != null && candidateSource

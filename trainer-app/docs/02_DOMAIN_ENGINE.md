@@ -88,7 +88,9 @@ progression. Newer exact machine evidence wins over that hint and does not
 inherit the hint's low confidence. Reps-only bodyweight is not applicable,
 displayed assistance is unsupported, and valid explicit zero semantics are
 resolved before an existing positive target can be preserved. Only semantically
-valid external-load work may retain a positive existing target.
+valid external-load work may retain a positive existing target. Semantic-zero
+meaning comes only from the generated occurrence's frozen measurement snapshot;
+equipment names and equipment-list membership never author or infer that meaning.
 
 Template-preview exercise replacement is a pre-save canonical regeneration,
 not a local object rewrite. Each suggestion targets the stable

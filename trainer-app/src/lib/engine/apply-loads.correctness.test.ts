@@ -1458,7 +1458,7 @@ describe("applyLoads correctness", () => {
     expect(result.accessories[0].sets[0].targetLoad).toBe(20);
   });
 
-  it("treats 0 lb performed load as valid for bodyweight continuity anchors", () => {
+  it("preserves explicit bodyweight semantic zero with 0 lb performed history", () => {
     const dip: Exercise = {
       id: "dip-chest",
       name: "Dip (Chest Emphasis)",
@@ -1485,17 +1485,23 @@ describe("applyLoads correctness", () => {
           exercise: dip,
           orderIndex: 0,
           isMainLift: false,
+          measurement: {
+            profile: "REPS_EXTERNAL_LOAD",
+            loadConvention: "IMPLEMENT_WEIGHT",
+            repBasis: "PER_SIDE",
+          },
+          zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
           sets: [
-            { setIndex: 1, targetReps: 10, targetRpe: 8 },
-            { setIndex: 2, targetReps: 10, targetRpe: 8 },
-            { setIndex: 3, targetReps: 10, targetRpe: 8 },
+            { setIndex: 1, targetReps: 10, targetRpe: 8, targetLoad: 0 },
+            { setIndex: 2, targetReps: 10, targetRpe: 8, targetLoad: 0 },
+            { setIndex: 3, targetReps: 10, targetRpe: 8, targetLoad: 0 },
           ],
         },
       ],
       estimatedMinutes: 30,
     };
 
-    const result = applyLoads(workout, {
+    const result = applyLoadsWithAudit(workout, {
       history: [
         {
           date: "2026-02-18T00:00:00.000Z",
@@ -1505,6 +1511,12 @@ describe("applyLoads correctness", () => {
           exercises: [
             {
               exerciseId: "dip-chest",
+              measurement: {
+                profile: "REPS_EXTERNAL_LOAD",
+                loadConvention: "IMPLEMENT_WEIGHT",
+                repBasis: "PER_SIDE",
+              },
+              zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
               sets: [
                 { exerciseId: "dip-chest", setIndex: 1, reps: 10, rpe: 7, load: 0 },
                 { exerciseId: "dip-chest", setIndex: 2, reps: 10, rpe: 8, load: 0 },
@@ -1521,7 +1533,11 @@ describe("applyLoads correctness", () => {
       sessionIntent: "push",
     });
 
-    expect(result.accessories[0].sets[0].targetLoad).toBe(0);
+    expect(result.audit.prescriptions.we6).toMatchObject({
+      kind: "semantic_zero",
+      zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
+    });
+    expect(result.workout.accessories[0].sets[0].targetLoad).toBe(0);
   });
 
   it("ignores 0 lb bodyweight donors when estimating first-time external machine loads", () => {

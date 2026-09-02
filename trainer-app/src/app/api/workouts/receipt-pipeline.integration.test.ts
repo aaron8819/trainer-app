@@ -356,8 +356,29 @@ describe("canonical session decision receipt pipeline", () => {
       filteredExercises: [],
       audit: {
         progressionTraces: {},
-        prescriptions: {},
-        resolvedLoads: {},
+        prescriptions: {
+          "we-1": {
+            version: 1,
+            kind: "numeric",
+            canonicalExerciseId: "ex1",
+            measurement: null,
+            value: 205,
+            source: "existing_target",
+            confidence: "high",
+            reasonCodes: ["existing_target_preserved"],
+            evidence: [],
+          },
+        },
+        resolvedLoads: {
+          "we-1": {
+            placementId: "we-1",
+            canonicalExerciseId: "ex1",
+            source: "existing_target_load",
+            canonicalSourceLoad: 205,
+            resolvedTopSetLoad: 205,
+            resolvedSetLoads: [205],
+          },
+        },
       },
     });
     mocks.applyAutoregulation.mockImplementation(async (_userId, workout) => ({
@@ -485,6 +506,14 @@ describe("canonical session decision receipt pipeline", () => {
     const generatedReadiness = generatedReceipt.readiness as Record<string, unknown>;
     const generatedIntensityScaling = generatedReadiness.intensityScaling as Record<string, unknown>;
 
+    expect(generatedBody.prescriptionReadouts).toEqual([
+      expect.objectContaining({
+        placementId: "we-1",
+        exerciseId: "ex1",
+        targetLoad: 205,
+        prescriptionKind: "numeric",
+      }),
+    ]);
     expect(generatedSelectionMetadata.cycleContext).toBeUndefined();
     expect(generatedReceipt.version).toBe(2);
     expect((generatedReceipt.cycleContext as Record<string, unknown>).weekInMeso).toBe(2);
@@ -528,6 +557,40 @@ describe("canonical session decision receipt pipeline", () => {
     }
 
     expect(explanation.confidence.missingSignals).not.toContain("receipt-backed cycle context");
+  });
+
+  it("fails closed when the generated receipt fixture omits canonical placement evidence", async () => {
+    const validGeneration = await mocks.generateSessionFromIntent();
+    mocks.generateSessionFromIntent.mockClear();
+    mocks.generateSessionFromIntent.mockResolvedValueOnce({
+      ...validGeneration,
+      audit: {
+        ...validGeneration.audit,
+        prescriptions: {},
+      },
+    });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const response = await generateFromIntent(
+      new Request("http://localhost/api/workouts/generate-from-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intent: "push" }),
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body).toEqual({
+      error: "Workout prescription readout is unavailable.",
+    });
+    expect(JSON.stringify(body)).not.toContain("missing_placement_result");
+    expect(JSON.stringify(body)).not.toMatch(/scheduled workout identity/i);
+    expect(consoleError).toHaveBeenCalledWith(
+      "Prescription readout projection failed",
+      { code: "missing_placement_result", placementId: "we-1" },
+    );
+    consoleError.mockRestore();
   });
 
   it("keeps the supplemental deficit marker canonical across save and resave", async () => {

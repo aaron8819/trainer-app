@@ -3,7 +3,7 @@ import { buildLogWorkoutExecutionGuidanceByExercise } from "./log-workout-execut
 import { buildPreSessionReadinessContract } from "./pre-session-readiness-contract-builder";
 import { getCalibrationWatchRows } from "./pre-session-readiness-contract-consumers";
 import { buildPreSessionReadinessGymCardDto } from "./pre-session-readiness-gym-card";
-import type { PrescriptionConfidenceReadout } from "./template-session/types";
+import type { PrescriptionReadout } from "./template-session/types";
 
 vi.mock("./home-pre-session-readiness", () => ({
   loadCurrentHomePreSessionReadinessContractCandidate: vi.fn(),
@@ -11,7 +11,7 @@ vi.mock("./home-pre-session-readiness", () => ({
 }));
 
 function buildContract(
-  readouts: PrescriptionConfidenceReadout[],
+  readouts: PrescriptionReadout[],
   generatedSnapshot?: {
     exercises: Array<{ placementId?: string; exerciseId: string; exerciseName: string }>;
     traces: { progression: Record<string, unknown> };
@@ -83,21 +83,44 @@ function buildContract(
 }
 
 function readout(
-  input: Partial<PrescriptionConfidenceReadout> &
-    Pick<PrescriptionConfidenceReadout, "exerciseId" | "exerciseName" | "loadSource">,
-): PrescriptionConfidenceReadout {
+  input: Partial<Omit<PrescriptionReadout, "loadSource">> &
+    Pick<PrescriptionReadout, "exerciseId" | "exerciseName"> & {
+      loadSource:
+        | PrescriptionReadout["loadSource"]
+        | "history"
+        | "existing_target_load"
+        | "legacy_measurement_history"
+        | "none";
+    },
+): PrescriptionReadout {
+  const loadSource =
+    input.loadSource === "history"
+      ? "exact_history"
+      : input.loadSource === "existing_target_load"
+        ? "existing_target"
+        : input.loadSource === "legacy_measurement_history"
+          ? "legacy_barbell_history"
+          : input.loadSource === "none"
+            ? null
+            : input.loadSource;
   return {
     placementId: input.exerciseId,
+    setCount: 1,
     targetLoad: 140,
     targetReps: 5,
     repRange: { min: 5, max: 8 },
     targetRpe: 6.5,
     targetRir: 3.5,
+    prescriptionKind: loadSource == null ? "unavailable" : "numeric",
     confidence: "medium",
+    measurementProfile: "REPS_EXTERNAL_LOAD",
+    loadConvention: "BARBELL_TOTAL",
+    repBasis: "TOTAL",
+    zeroLoadMeaning: null,
     cautionLevel: "none",
     cautionReason: null,
-    suggestedAdjustmentRange: null,
     ...input,
+    loadSource,
   };
 }
 
@@ -494,18 +517,17 @@ describe("V4 load-calibration presentation", () => {
     expect(contract.calibrationWatches.prescriptionConfidence).toEqual([
       expect.objectContaining({
         exerciseLabel: "Bench Press",
-        loadSource: "history",
+        loadSource: "exact_history",
         historyEvidence: expect.objectContaining({ confidence: "high" }),
       }),
       expect.objectContaining({
         exerciseLabel: "Barbell Bench Press",
-        loadSource: "legacy_measurement_history",
+        loadSource: "legacy_barbell_history",
         severity: "warning",
         historyEvidence: expect.objectContaining({ confidence: "reduced" }),
       }),
       expect.objectContaining({
         exerciseLabel: "Incline Bench Press",
-        loadSource: "none",
         targetLoad: null,
         severity: "warning",
       }),

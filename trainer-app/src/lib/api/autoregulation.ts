@@ -9,8 +9,6 @@ import type {
   AutoregulationModification,
 } from "@/lib/engine/readiness/types";
 import { DEFAULT_AUTOREGULATION_POLICY } from "@/lib/engine/readiness/types";
-import { buildPrescriptionConfidenceReadouts } from "./prescription-confidence-readout";
-import type { PrescriptionConfidenceReadout } from "./template-session/types";
 import {
   getLatestReadinessSignal,
   getSignalAgeHours,
@@ -21,7 +19,6 @@ export type AutoregulationResult = {
   original: EngineWorkoutPlan;
   adjusted: EngineWorkoutPlan;
   loadAudit?: ApplyLoadsAudit;
-  prescriptionReadouts?: PrescriptionConfidenceReadout[];
   modifications: AutoregulationModification[];
   fatigueScore: FatigueScore | null;
   rationale: string;
@@ -49,7 +46,6 @@ export async function applyAutoregulation(
       original: workout,
       adjusted: workout,
       loadAudit,
-      prescriptionReadouts: buildPrescriptionConfidenceReadouts({ workout, loadAudit }),
       modifications: [],
       fatigueScore: null,
       rationale,
@@ -69,10 +65,6 @@ export async function applyAutoregulation(
     original: workout,
     adjusted: transformed.adjustedWorkout,
     loadAudit: transformed.loadAudit,
-    prescriptionReadouts: buildPrescriptionConfidenceReadouts({
-      workout: transformed.adjustedWorkout,
-      loadAudit: transformed.loadAudit,
-    }),
     modifications: transformed.modifications,
     fatigueScore,
     rationale,

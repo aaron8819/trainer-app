@@ -3,7 +3,7 @@ import type { MeasurementSemantics } from "@/lib/exercise-measurement/semantics"
 import { applyLoadsWithAudit } from "./apply-loads";
 import { autoregulateWorkout } from "./readiness/autoregulate";
 import { toTargetLoad } from "./load-prescription";
-import { buildPrescriptionConfidenceReadouts } from "@/lib/api/prescription-confidence-readout";
+import { buildPrescriptionReadouts } from "@/lib/api/prescription-readout";
 import type { Exercise, WorkoutHistoryEntry, WorkoutPlan } from "./types";
 
 const machine = {
@@ -336,7 +336,11 @@ describe("PrescriptionResult production authority", () => {
       canonicalExerciseId: "bench",
       resolvedTopSetLoad: 95,
     });
-    expect(buildPrescriptionConfidenceReadouts({ workout: base.workout, loadAudit: base.audit }))
+    expect(buildPrescriptionReadouts({
+      workout: base.workout,
+      prescriptionResultsByPlacement: base.audit.prescriptions,
+      resolvedLoadsByPlacement: base.audit.resolvedLoads,
+    }))
       .toMatchObject([
         { placementId: "bench-placement-a", exerciseId: "bench", targetLoad: 105 },
         { placementId: "bench-placement-b", exerciseId: "bench", targetLoad: 95 },
@@ -364,9 +368,10 @@ describe("PrescriptionResult production authority", () => {
     expect(readiness.loadAudit.prescriptions["bench-placement-b"]).toMatchObject({ value: 85.5 });
     expect(readiness.loadAudit.resolvedLoads["bench-placement-a"].resolvedTopSetLoad).toBe(94.5);
     expect(readiness.loadAudit.resolvedLoads["bench-placement-b"].resolvedTopSetLoad).toBe(85.5);
-    expect(buildPrescriptionConfidenceReadouts({
+    expect(buildPrescriptionReadouts({
       workout: readiness.adjustedWorkout,
-      loadAudit: readiness.loadAudit,
+      prescriptionResultsByPlacement: readiness.loadAudit.prescriptions,
+      resolvedLoadsByPlacement: readiness.loadAudit.resolvedLoads,
     })).toMatchObject([
       { placementId: "bench-placement-a", exerciseId: "bench", targetLoad: 94.5 },
       { placementId: "bench-placement-b", exerciseId: "bench", targetLoad: 85.5 },

@@ -784,29 +784,14 @@ describe("generateSessionFromIntent", () => {
       );
       expect(pulldown?.sets[0]?.targetLoad).toBeGreaterThanOrEqual(80);
       const pulldownReadout = result.prescriptionReadouts?.find(
-        (readout) => readout.exerciseId === "close-grip-lat-pulldown"
+        (readout) => readout.placementId === pulldown?.id
       );
       expect(pulldownReadout).toMatchObject({
-        loadSource: "history",
-        selectedAnchorEvidence: {
-          selectedExerciseId: "close-grip-lat-pulldown",
-          selectedExerciseName: "Close-Grip Lat Pulldown",
-          normalHistoryHadUsableExactEvidence: false,
-          targetedAnchorBackfilled: true,
-          backfillReason: "exact_anchor_outside_general_window",
-          skippedOrUnperformedRowsIgnored: 1,
-          anchorSourceSummary: {
-            source: "targeted_selected_exercise_history",
-            sessionCount: 1,
-            setCount: 1,
-            latestDate: "2026-03-01T00:00:00.000Z",
-          },
-        },
+        exerciseId: "close-grip-lat-pulldown",
+        prescriptionKind: "numeric",
+        loadSource: "exact_history",
       });
-      const rowReadout = result.prescriptionReadouts?.find(
-        (readout) => readout.exerciseId === "seated-cable-row"
-      );
-      expect(rowReadout?.selectedAnchorEvidence).toBeUndefined();
+      expect(pulldownReadout).not.toHaveProperty("selectedAnchorEvidence");
     } finally {
       selectSpy.mockRestore();
     }
@@ -2944,6 +2929,50 @@ describe("generateSessionFromIntent", () => {
           selectionFallbackUsed: selectSpy.mock.calls.length > fallbackCallsBefore,
         });
         assertV4ReferenceCase(actual, expected, label);
+        const orderedWorkout = [
+          ...result.workout.mainLifts,
+          ...result.workout.accessories,
+        ].sort((left, right) => left.orderIndex - right.orderIndex);
+        expect(
+          new Set(result.prescriptionReadouts?.map((readout) => readout.placementId)),
+          `${label} readout placements`,
+        ).toEqual(new Set(expected.exercises.map((exercise) => exercise.placementId)));
+        for (const [index, exercise] of orderedWorkout.entries()) {
+          const expectedExercise = expected.exercises[index]!;
+          const readout = result.prescriptionReadouts?.find(
+            (candidate) => candidate.placementId === exercise.id,
+          );
+          const representativeSet = exercise.sets[0];
+          const prescription = result.audit?.prescriptions[exercise.id];
+          expect(exercise.id, `${label} generated placement ${index}`).toBe(
+            expectedExercise.placementId,
+          );
+          expect(readout, `${label} readout ${exercise.id}`).toMatchObject({
+            placementId: exercise.id,
+            exerciseId: exercise.exercise.id,
+            setCount: exercise.sets.length,
+            targetReps: representativeSet?.targetReps ?? null,
+            repRange: representativeSet?.targetRepRange ?? null,
+            targetRpe: representativeSet?.targetRpe ?? null,
+            targetRir:
+              representativeSet?.targetRpe == null
+                ? null
+                : 10 - representativeSet.targetRpe,
+            targetLoad:
+              prescription?.kind === "numeric"
+                ? prescription.value
+                : prescription?.kind === "semantic_zero"
+                  ? 0
+                  : null,
+            measurementProfile: exercise.measurement?.profile ?? null,
+            loadConvention:
+              exercise.measurement && "loadConvention" in exercise.measurement
+                ? exercise.measurement.loadConvention
+                : null,
+            repBasis: exercise.measurement?.repBasis ?? null,
+            zeroLoadMeaning: exercise.zeroLoadMeaning ?? null,
+          });
+        }
         if (expected.week === 5) {
           deloadIdentityChecks.push({
             authoredSlotId: expected.slotId,
@@ -3086,6 +3115,33 @@ describe("generateSessionFromIntent", () => {
       selectionFallbackUsed: false,
     });
     assertV4ReferenceCase(actual, expected, "Week 2 skip -> Week 3 Lower A");
+    const orderedWorkout = [
+      ...result.workout.mainLifts,
+      ...result.workout.accessories,
+    ].sort((left, right) => left.orderIndex - right.orderIndex);
+    expect(orderedWorkout.map((exercise) => exercise.id)).toEqual(
+      expected.exercises.map((exercise) => exercise.placementId),
+    );
+    expect(
+      new Set(result.prescriptionReadouts?.map((readout) => readout.placementId)),
+    ).toEqual(new Set(expected.exercises.map((exercise) => exercise.placementId)));
+    for (const exercise of orderedWorkout) {
+      const readout = result.prescriptionReadouts?.find(
+        (candidate) => candidate.placementId === exercise.id,
+      );
+      const prescription = result.audit?.prescriptions[exercise.id];
+      expect(readout).toMatchObject({
+        placementId: exercise.id,
+        exerciseId: exercise.exercise.id,
+        setCount: exercise.sets.length,
+        targetLoad:
+          prescription?.kind === "numeric"
+            ? prescription.value
+            : prescription?.kind === "semantic_zero"
+              ? 0
+              : null,
+      });
+    }
     expect(result.selection.sessionDecisionReceipt).toMatchObject({
       cycleContext: { weekInMeso: 3 },
       sessionSlot: { slotId: "lower-a" },
@@ -3352,6 +3408,44 @@ describe("generateSessionFromIntent", () => {
     const result = await generateSessionFromIntent("user-1", { generationMode: { kind: "non_scheduled", purpose: "body_part" }, intent: "body_part" });
 
     expect(result).toEqual({ error: "targetMuscles is required when intent is body_part" });
+  });
+
+  it.each([
+    { purpose: "body_part" as const, intent: "body_part" as const, targetMuscles: ["Chest"] },
+    { purpose: "gap_fill" as const, intent: "push" as const },
+    { purpose: "supplemental" as const, intent: "push" as const },
+    { purpose: "closeout" as const, intent: "push" as const },
+  ])("keeps $purpose readouts occurrence-only and non-scheduled", async (testCase) => {
+    const result = await generateSessionFromIntent("user-1", {
+      generationMode: { kind: "non_scheduled", purpose: testCase.purpose },
+      intent: testCase.intent,
+      ...(testCase.targetMuscles ? { targetMuscles: testCase.targetMuscles } : {}),
+    });
+
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+    const finalExercises = [
+      ...result.workout.mainLifts,
+      ...result.workout.accessories,
+    ];
+    expect(result.prescriptionReadouts?.map((readout) => readout.placementId)).toEqual(
+      finalExercises.map((exercise) => exercise.id),
+    );
+    expect(result.selection.sessionDecisionReceipt?.materialization).toEqual({
+      version: 1,
+      generationMode: "non_scheduled",
+      materializationClass: "non_scheduled",
+      purpose: testCase.purpose,
+    });
+    expect(result.selection.sessionDecisionReceipt?.sessionSlot).toBeUndefined();
+    expect(result.selection.sessionDecisionReceipt?.scheduledSlotReceipt).toBeUndefined();
+    for (const readout of result.prescriptionReadouts ?? []) {
+      expect(readout).not.toHaveProperty("eligible");
+      expect(readout).not.toHaveProperty("saveable");
+      expect(readout).not.toHaveProperty("weekInMeso");
+      expect(readout).not.toHaveProperty("slotId");
+      expect(readout).not.toHaveProperty("revisionId");
+    }
   });
 
   it("prohibits raw lower-level accepted-V4 composition", () => {

@@ -1337,7 +1337,11 @@ export type PrescriptionConfidenceSourceClassification =
   | "missing"
   | "load_calibration_drift"
   | "exercise_new_to_user"
-  | "runtime_only";
+  | "runtime_only"
+  | "semantic_zero"
+  | "calibration_required"
+  | "not_applicable"
+  | "unavailable";
 
 export type NextMesocyclePostAcceptVerificationPayload = {
   version: typeof NEXT_MESOCYCLE_POST_ACCEPT_VERIFICATION_AUDIT_PAYLOAD_VERSION;
@@ -1441,11 +1445,18 @@ export type NextMesocyclePostAcceptVerificationPayload = {
       classificationCounts: Partial<Record<PrescriptionConfidenceSourceClassification, number>>;
     };
     rows: Array<{
+      placementId: string;
       exerciseId: string;
       exerciseName: string;
+      prescriptionKind:
+        | "numeric"
+        | "semantic_zero"
+        | "calibration_required"
+        | "not_applicable"
+        | "unavailable";
       classification: PrescriptionConfidenceSourceClassification;
       confidence: "high" | "medium" | "low" | "unknown";
-      loadSource: string;
+      loadSource: string | null;
       cautionLevel: "none" | "notice" | "caution" | "unknown";
       cautionReason: string | null;
       targetLoad: number | null;

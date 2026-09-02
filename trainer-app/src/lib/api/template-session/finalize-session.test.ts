@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { finalizeDeloadSessionResult } from "./finalize-session";
-import { buildPrescriptionConfidenceReadouts } from "@/lib/api/prescription-confidence-readout";
+import { buildPrescriptionReadouts } from "@/lib/api/prescription-readout";
 import {
   EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE,
   RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE,
@@ -8,6 +8,10 @@ import {
 } from "@/lib/engine/apply-loads";
 import type { WorkoutPlan } from "@/lib/engine/types";
 import type { ProgressionDecisionTrace } from "@/lib/evidence/session-audit-types";
+import type {
+  NumericPrescription,
+  PrescriptionReasonCode,
+} from "@/lib/engine/load-prescription";
 
 function workoutWithOneExercise(input: {
   exerciseId: string;
@@ -111,13 +115,25 @@ function loadAuditFor(input: {
   trace?: ProgressionDecisionTrace;
   selectedAnchorEvidence?: ApplyLoadsAudit["selectedAnchorEvidence"];
   historyEvidence?: ApplyLoadsAudit["resolvedLoads"][string]["historyEvidence"];
-}): Pick<
-  ApplyLoadsAudit,
-  "progressionTraces" | "resolvedLoads" | "selectedAnchorEvidence"
-> {
+}): ApplyLoadsAudit {
   const placementId = `${input.exerciseId}-entry`;
+  const source = canonicalPrescriptionSource(input.source);
+  const confidence = canonicalPrescriptionConfidence(source);
   return {
     progressionTraces: input.trace ? { [placementId]: input.trace } : {},
+    prescriptions: {
+      [placementId]: {
+        version: 1,
+        kind: "numeric",
+        canonicalExerciseId: input.exerciseId,
+        measurement: null,
+        value: input.targetLoad,
+        source,
+        confidence,
+        reasonCodes: [canonicalPrescriptionReason(source)],
+        evidence: [],
+      },
+    },
     resolvedLoads: {
       [placementId]: {
         placementId,
@@ -135,9 +151,70 @@ function loadAuditFor(input: {
   };
 }
 
-describe("buildPrescriptionConfidenceReadouts", () => {
+function canonicalPrescriptionSource(
+  source: ApplyLoadsAudit["resolvedLoads"][string]["source"],
+): NumericPrescription["source"] {
+  switch (source) {
+    case "history":
+      return "exact_history";
+    case "legacy_measurement_history":
+      return "legacy_barbell_history";
+    case "runtime_added_same_exercise_calibration_anchor":
+      return "runtime_added_same_exercise";
+    case "existing_target_load":
+      return "existing_target";
+    case "baseline":
+      return "baseline";
+    case "estimate":
+      return "estimate";
+    case "none":
+      return "estimate";
+  }
+}
+
+function canonicalPrescriptionConfidence(
+  source: NumericPrescription["source"],
+): NumericPrescription["confidence"] {
+  if (source === "existing_target" || source === "exact_history") return "high";
+  if (source === "legacy_barbell_history" || source === "runtime_added_same_exercise") {
+    return "reduced";
+  }
+  return "low";
+}
+
+function canonicalPrescriptionReason(
+  source: NumericPrescription["source"],
+): PrescriptionReasonCode {
+  switch (source) {
+    case "exact_history":
+    case "deload_history":
+      return "same_exercise_same_measurement";
+    case "legacy_barbell_history":
+      return "legacy_barbell_bridge";
+    case "runtime_added_same_exercise":
+      return "runtime_added_evidence";
+    case "existing_target":
+      return "existing_target_preserved";
+    case "baseline":
+    case "estimate":
+      return "no_comparable_history";
+  }
+}
+
+function buildReadoutsFromAudit(input: {
+  workout: WorkoutPlan;
+  loadAudit: ApplyLoadsAudit;
+}) {
+  return buildPrescriptionReadouts({
+    workout: input.workout,
+    prescriptionResultsByPlacement: input.loadAudit.prescriptions,
+    resolvedLoadsByPlacement: input.loadAudit.resolvedLoads,
+  });
+}
+
+describe("buildPrescriptionReadouts", () => {
   it("carries exact and reduced-confidence legacy calibration evidence", () => {
-    const exact = buildPrescriptionConfidenceReadouts({
+    const exact = buildReadoutsFromAudit({
       workout: workoutWithOneExercise({
         exerciseId: "bench",
         exerciseName: "Bench Press",
@@ -159,7 +236,7 @@ describe("buildPrescriptionConfidenceReadouts", () => {
         },
       }),
     });
-    const legacy = buildPrescriptionConfidenceReadouts({
+    const legacy = buildReadoutsFromAudit({
       workout: workoutWithOneExercise({
         exerciseId: "bench",
         exerciseName: "Bench Press",
@@ -190,20 +267,20 @@ describe("buildPrescriptionConfidenceReadouts", () => {
     });
 
     expect(exact[0]).toMatchObject({
-      loadSource: "history",
+      loadSource: "exact_history",
       historyEvidence: { source: "exact_compatible_history", confidence: "high" },
     });
     expect(legacy[0]).toMatchObject({
-      loadSource: "legacy_measurement_history",
+      loadSource: "legacy_barbell_history",
       confidence: "medium",
       cautionLevel: "notice",
-      cautionReason: "legacy_measurement_history",
+      cautionReason: "legacy_barbell_bridge",
       historyEvidence: { source: "legacy_measurement_bridge", confidence: "reduced" },
     });
   });
 
-  it("flags the SLDL target-effort/load mismatch as caution-level low confidence", () => {
-    const readouts = buildPrescriptionConfidenceReadouts({
+  it("does not let trace-only mismatch heuristics override canonical confidence", () => {
+    const readouts = buildReadoutsFromAudit({
       workout: workoutWithOneExercise({
         exerciseId: "sldl",
         exerciseName: "Stiff-Legged Deadlift",
@@ -231,21 +308,16 @@ describe("buildPrescriptionConfidenceReadouts", () => {
       targetReps: 10,
       targetRpe: 6.5,
       targetRir: 3.5,
-      loadSource: "history",
-      confidence: "low",
-      cautionLevel: "caution",
-      suggestedAdjustmentRange: {
-        minLoad: 125,
-        maxLoad: 135,
-        unit: "lb",
-        basis: "target_effort_load_mismatch",
-      },
+      loadSource: "exact_history",
+      confidence: "high",
+      cautionLevel: "none",
+      cautionReason: null,
     });
-    expect(readouts[0]?.cautionReason).toContain("target_effort_load_mismatch");
+    expect(readouts[0]).not.toHaveProperty("suggestedAdjustmentRange");
   });
 
-  it("flags exact-history anchors translated from high-effort lower-rep context", () => {
-    const readouts = buildPrescriptionConfidenceReadouts({
+  it("does not promote trace-only translation reasons into readout policy", () => {
+    const readouts = buildReadoutsFromAudit({
       workout: workoutWithOneExercise({
         exerciseId: "close-grip-cable-row",
         exerciseName: "Close-Grip Seated Cable Row",
@@ -273,24 +345,16 @@ describe("buildPrescriptionConfidenceReadouts", () => {
 
     expect(readouts[0]).toMatchObject({
       exerciseId: "close-grip-cable-row",
-      loadSource: "history",
-      confidence: "low",
-      cautionLevel: "caution",
-      suggestedAdjustmentRange: {
-        minLoad: 45,
-        maxLoad: 47.5,
-        unit: "lb",
-        basis: EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE,
-      },
+      loadSource: "exact_history",
+      confidence: "high",
+      cautionLevel: "none",
+      cautionReason: null,
     });
-    expect(readouts[0]?.cautionReason).toContain(
-      EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE
-    );
-    expect(readouts[0]?.cautionReason).toContain("translated down");
+    expect(readouts[0]).not.toHaveProperty("suggestedAdjustmentRange");
   });
 
   it("keeps a history-backed target clean when recent evidence supports it", () => {
-    const readouts = buildPrescriptionConfidenceReadouts({
+    const readouts = buildReadoutsFromAudit({
       workout: workoutWithOneExercise({
         exerciseId: "sldl",
         exerciseName: "Stiff-Legged Deadlift",
@@ -312,16 +376,15 @@ describe("buildPrescriptionConfidenceReadouts", () => {
     });
 
     expect(readouts[0]).toMatchObject({
-      loadSource: "history",
+      loadSource: "exact_history",
       confidence: "high",
       cautionLevel: "none",
       cautionReason: null,
-      suggestedAdjustmentRange: null,
     });
   });
 
   it("marks estimate/cold-start loads low confidence without target-effort mismatch", () => {
-    const readouts = buildPrescriptionConfidenceReadouts({
+    const readouts = buildReadoutsFromAudit({
       workout: workoutWithOneExercise({
         exerciseId: "cable-curl",
         exerciseName: "Cable Curl",
@@ -340,14 +403,14 @@ describe("buildPrescriptionConfidenceReadouts", () => {
     expect(readouts[0]).toMatchObject({
       loadSource: "estimate",
       confidence: "low",
-      cautionLevel: "notice",
-      cautionReason: "estimate_load_no_exact_history",
+      cautionLevel: "caution",
+      cautionReason: "no_comparable_history",
     });
     expect(readouts[0]?.cautionReason).not.toContain("target_effort_load_mismatch");
   });
 
   it("surfaces runtime-added same-exercise calibration as lower-trust provenance", () => {
-    const readouts = buildPrescriptionConfidenceReadouts({
+    const readouts = buildReadoutsFromAudit({
       workout: workoutWithOneExercise({
         exerciseId: "cable-lateral-raise",
         exerciseName: "Cable Lateral Raise",
@@ -364,21 +427,16 @@ describe("buildPrescriptionConfidenceReadouts", () => {
     });
 
     expect(readouts[0]).toMatchObject({
-      loadSource: RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE,
+      loadSource: "runtime_added_same_exercise",
       confidence: "medium",
       cautionLevel: "notice",
-      cautionReason: RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE,
-      suggestedAdjustmentRange: {
-        minLoad: 7.5,
-        maxLoad: 10,
-        unit: "lb",
-        basis: RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE,
-      },
+      cautionReason: "runtime_added_evidence",
     });
+    expect(readouts[0]).not.toHaveProperty("suggestedAdjustmentRange");
   });
 
-  it("adds selected-anchor evidence only for targeted backfilled prescription anchors", () => {
-    const readouts = buildPrescriptionConfidenceReadouts({
+  it("does not expose exercise-keyed selected-anchor evidence on occurrence readouts", () => {
+    const readouts = buildReadoutsFromAudit({
       workout: workoutWithOneExercise({
         exerciseId: "close-grip-lat-pulldown",
         exerciseName: "Close-Grip Lat Pulldown",
@@ -412,22 +470,9 @@ describe("buildPrescriptionConfidenceReadouts", () => {
     expect(readouts[0]).toMatchObject({
       exerciseId: "close-grip-lat-pulldown",
       exerciseName: "Close-Grip Lat Pulldown",
-      loadSource: "history",
-      selectedAnchorEvidence: {
-        selectedExerciseId: "close-grip-lat-pulldown",
-        selectedExerciseName: "Close-Grip Lat Pulldown",
-        normalHistoryHadUsableExactEvidence: false,
-        targetedAnchorBackfilled: true,
-        backfillReason: "exact_anchor_outside_general_window",
-        skippedOrUnperformedRowsIgnored: 1,
-        anchorSourceSummary: {
-          source: "targeted_selected_exercise_history",
-          sessionCount: 1,
-          setCount: 1,
-          latestDate: "2026-03-01T00:00:00.000Z",
-        },
-      },
+      loadSource: "exact_history",
     });
+    expect(readouts[0]).not.toHaveProperty("selectedAnchorEvidence");
   });
 });
 
@@ -604,7 +649,7 @@ describe("finalizeDeloadSessionResult", () => {
     expect(result.prescriptionReadouts?.[0]).toMatchObject({
       exerciseId: "row",
       exerciseName: "Chest Supported Row",
-      loadSource: "history",
+      loadSource: "deload_history",
     });
     expect(result.selection.sessionDecisionReceipt).toMatchObject({
       sessionProvenance: {

@@ -1,5 +1,5 @@
 import type {
-  PrescriptionConfidenceReadout,
+  PrescriptionReadout,
   SessionGenerationResult,
 } from "@/lib/api/template-session/types";
 import {
@@ -45,8 +45,6 @@ type PrescriptionReadoutFields = Pick<
   | "loadConfidence"
   | "cautionLevel"
   | "cautionReason"
-  | "adjustmentRangeBasis"
-  | "suggestedAdjustmentRange"
   | "historyEvidence"
 >;
 
@@ -560,7 +558,7 @@ function buildAvoidList(input: {
 
 function buildPrescriptionConfidenceWatches(
   generated: SessionAuditSnapshot["generated"] | undefined,
-  prescriptionReadouts: PrescriptionConfidenceReadout[] | undefined,
+  prescriptionReadouts: PrescriptionReadout[] | undefined,
   placementAuthorityByGeneratedExercise: Map<GeneratedExercise, PlacementGuidanceAuthority>,
   requireProvenPersistedPlacement: boolean,
 ): PreSessionReadinessPrescriptionConfidenceWatchRow[] {
@@ -588,13 +586,12 @@ function buildPrescriptionConfidenceWatches(
         : undefined;
     const readout = placementId
       ? readoutsByPlacementId.get(placementId)
-      : exercisePlacementCounts.get(exercise.exerciseId) === 1
-        ? (prescriptionReadouts ?? []).find((entry) => entry.exerciseId === exercise.exerciseId)
-        : undefined;
+      : undefined;
     const readoutFields = buildPrescriptionReadoutFields(readout);
     if (
       readout?.historyEvidence ||
-      (readout?.loadSource === "none" && readout.targetLoad == null)
+      readout?.prescriptionKind === "calibration_required" ||
+      readout?.prescriptionKind === "unavailable"
     ) {
       const row: PreSessionReadinessPrescriptionConfidenceWatchRow = {
         ...(placementAuthority
@@ -609,7 +606,7 @@ function buildPrescriptionConfidenceWatches(
         displayActionCode: "use_target_as_starting_point",
         severity:
           readout.historyEvidence?.source === "legacy_measurement_bridge" ||
-          readout.loadSource === "none"
+          readout.prescriptionKind === "unavailable"
             ? "warning"
             : "info",
         ...(trace ? { confidence: trace.confidence.combinedScale } : {}),
@@ -703,22 +700,11 @@ function buildPrescriptionConfidenceWatches(
 }
 
 function buildPrescriptionReadoutFields(
-  readout: PrescriptionConfidenceReadout | undefined
+  readout: PrescriptionReadout | undefined
 ): Partial<PrescriptionReadoutFields> {
   if (!readout) {
     return {};
   }
-
-  const suggestedAdjustmentRange = readout.suggestedAdjustmentRange
-    ? {
-        minLoad: readout.suggestedAdjustmentRange.minLoad,
-        maxLoad: readout.suggestedAdjustmentRange.maxLoad,
-        unit: readout.suggestedAdjustmentRange.unit,
-        basis: readout.suggestedAdjustmentRange.basis,
-      }
-    : null;
-  const hasTargetLoad =
-    typeof readout.targetLoad === "number" && Number.isFinite(readout.targetLoad);
 
   return {
     targetLoad: readout.targetLoad,
@@ -728,19 +714,13 @@ function buildPrescriptionReadoutFields(
       : null,
     targetRpe: readout.targetRpe,
     targetRir: readout.targetRir,
-    loadSource: readout.loadSource,
+    ...(readout.loadSource ? { loadSource: readout.loadSource } : {}),
     loadConfidence: readout.confidence,
     cautionLevel: readout.cautionLevel,
     cautionReason: readout.cautionReason,
     ...(readout.historyEvidence
       ? { historyEvidence: readout.historyEvidence }
       : {}),
-    adjustmentRangeBasis: suggestedAdjustmentRange
-      ? "exact_range"
-      : hasTargetLoad
-        ? "target_load_start"
-        : "not_available",
-    suggestedAdjustmentRange,
   };
 }
 
@@ -758,7 +738,7 @@ function formatPrescriptionConfidenceWatchMessage(
     return `Suggested load: ${formatPreviewNumber(row.targetLoad)} lb. Based on ${formatPreviewNumber(row.historyEvidence.load)} × ${formatPreviewNumber(row.historyEvidence.reps)}${rpe}${date ? ` on ${date}` : ""}.`;
   }
 
-  if (row.loadSource === "none" && row.targetLoad == null) {
+  if (row.targetLoad == null) {
     return "No calibrated load yet. Enter a starting load for this exercise.";
   }
 

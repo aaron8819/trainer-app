@@ -37,8 +37,14 @@ import type { GenerationPhaseBlockContext } from "@/lib/api/generation-phase-blo
 import type {
   ApplyLoadsAudit,
   ApplyLoadsHistoryEvidence,
-  SelectedAnchorLoadEvidence,
 } from "@/lib/engine/apply-loads";
+import type { NumericPrescription } from "@/lib/engine/load-prescription";
+import type {
+  LoadConvention,
+  MeasurementProfile,
+  RepBasis,
+  ZeroLoadMeaning,
+} from "@/lib/exercise-measurement/semantics";
 import type { V4ScheduledGenerationObligation } from "@/lib/api/v4-scheduled-slot-resolution";
 
 export type GenerationScheduleMode =
@@ -99,42 +105,33 @@ export type GenerateIntentSessionInput = {
   plannerDiagnosticsMode?: PlannerDiagnosticsMode;
 };
 
-export type PrescriptionConfidenceLoadSource =
-  | "history"
-  | "baseline"
-  | "estimate"
-  | "existing_target_load"
-  | "legacy_measurement_history"
-  | "runtime_added_same_exercise_calibration_anchor"
-  | "bodyweight"
-  | "machine_default"
-  | "neutral_zero"
-  | "none"
-  | "unknown";
+export type PrescriptionReadoutLoadSource = NumericPrescription["source"];
 
-export type PrescriptionConfidenceReadout = {
+export type PrescriptionReadout = {
   placementId: string;
   exerciseId: string;
   exerciseName: string;
+  setCount: number;
   targetLoad: number | null;
   targetReps: number | null;
   repRange: { min: number; max: number } | null;
   targetRpe: number | null;
   targetRir: number | null;
-  loadSource: PrescriptionConfidenceLoadSource;
+  prescriptionKind:
+    | "numeric"
+    | "semantic_zero"
+    | "calibration_required"
+    | "not_applicable"
+    | "unavailable";
+  loadSource: PrescriptionReadoutLoadSource | null;
   confidence: "high" | "medium" | "low";
+  measurementProfile: MeasurementProfile | null;
+  loadConvention: LoadConvention | null;
+  repBasis: RepBasis | null;
+  zeroLoadMeaning: ZeroLoadMeaning | null;
   cautionLevel: "none" | "notice" | "caution";
   cautionReason: string | null;
-  suggestedAdjustmentRange: {
-    minLoad: number;
-    maxLoad: number;
-    unit: "lb";
-    basis: string;
-  } | null;
   historyEvidence?: ApplyLoadsHistoryEvidence;
-  selectedAnchorEvidence?: SelectedAnchorLoadEvidence & {
-    selectedExerciseName: string;
-  };
 };
 
 export type SessionGenerationResult =
@@ -150,7 +147,7 @@ export type SessionGenerationResult =
         sessionDecisionReceipt?: SessionDecisionReceipt;
       };
       filteredExercises?: FilteredExerciseSummary[];
-      prescriptionReadouts?: PrescriptionConfidenceReadout[];
+      prescriptionReadouts?: PrescriptionReadout[];
       audit?: ApplyLoadsAudit & {
         deloadTrace?: DeloadTransformationTrace;
       };
@@ -191,7 +188,7 @@ type SharedGeneratedWorkoutResponse = {
   volumePlanByMuscle: VolumePlanByMuscle;
   selectionMode: "AUTO" | "INTENT";
   sessionIntent: SessionIntent;
-  prescriptionReadouts?: PrescriptionConfidenceReadout[];
+  prescriptionReadouts?: PrescriptionReadout[];
 };
 
 export type GenerateFromIntentResponse = SharedGeneratedWorkoutResponse & {

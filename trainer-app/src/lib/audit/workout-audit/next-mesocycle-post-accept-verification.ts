@@ -15,7 +15,7 @@ import {
 } from "@/lib/api/slot-plan-seed-parser";
 import { generateSessionFromIntent } from "@/lib/api/template-session";
 import type {
-  PrescriptionConfidenceReadout,
+  PrescriptionReadout,
   SessionGenerationResult,
 } from "@/lib/api/template-session/types";
 import { listWorkoutPlanExercisesInOrder } from "@/lib/engine/workout-plan-order";
@@ -200,32 +200,12 @@ function generatedExerciseRows(
 }
 
 function classifyPrescriptionReadout(
-  readout: PrescriptionConfidenceReadout,
+  readout: PrescriptionReadout,
 ): PrescriptionConfidenceSourceClassification {
-  if (readout.cautionReason?.includes("target_effort_load_mismatch")) {
-    return "load_calibration_drift";
+  if (readout.prescriptionKind !== "numeric") {
+    return readout.prescriptionKind;
   }
-
-  if (readout.cautionReason === "estimate_load_no_exact_history") {
-    return "exercise_new_to_user";
-  }
-
-  if (readout.loadSource === "estimate") {
-    return "estimated";
-  }
-
-  if (readout.loadSource === "none" || readout.loadSource === "unknown") {
-    return "missing";
-  }
-
-  if (
-    readout.loadSource === "baseline" ||
-    readout.loadSource === "existing_target_load"
-  ) {
-    return "estimated";
-  }
-
-  if (readout.loadSource === "history") {
+  if (readout.loadSource === "exact_history") {
     if (readout.confidence === "high") {
       return "exact_history";
     }
@@ -234,19 +214,14 @@ function classifyPrescriptionReadout(
     }
     return "stale_history";
   }
-
-  if (readout.loadSource === "runtime_added_same_exercise_calibration_anchor") {
+  if (
+    readout.loadSource === "legacy_barbell_history" ||
+    readout.loadSource === "runtime_added_same_exercise" ||
+    readout.loadSource === "deload_history"
+  ) {
     return "recent_history";
   }
-
-  if (
-    readout.loadSource === "bodyweight" ||
-    readout.loadSource === "machine_default"
-  ) {
-    return readout.confidence === "low" ? "missing" : "exact_history";
-  }
-
-  return "missing";
+  return "estimated";
 }
 
 function ownerSeamForPrescriptionClassification(
@@ -295,8 +270,10 @@ function buildPrescriptionConfidenceSourceMap(
   const rows = (generationResult.prescriptionReadouts ?? []).map((readout) => {
     const classification = classifyPrescriptionReadout(readout);
     return {
+      placementId: readout.placementId,
       exerciseId: readout.exerciseId,
       exerciseName: readout.exerciseName,
+      prescriptionKind: readout.prescriptionKind,
       classification,
       confidence: readout.confidence,
       loadSource: readout.loadSource,
@@ -305,7 +282,7 @@ function buildPrescriptionConfidenceSourceMap(
       targetLoad: readout.targetLoad,
       ownerSeam: ownerSeamForPrescriptionClassification(classification),
       evidence: [
-        `loadSource=${readout.loadSource}`,
+        `loadSource=${readout.loadSource ?? "none"}`,
         `confidence=${readout.confidence}`,
         `caution=${readout.cautionLevel}`,
         readout.cautionReason ? `reason=${readout.cautionReason}` : "",

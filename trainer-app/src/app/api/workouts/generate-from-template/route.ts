@@ -18,6 +18,7 @@ import {
 } from "@/lib/evidence/session-audit-snapshot";
 import { readSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
 import { attachSessionSlotMetadata, buildCanonicalSelectionMetadata } from "@/lib/ui/selection-metadata";
+import { buildPrescriptionReadouts } from "@/lib/api/prescription-readout";
 
 export async function POST(request: Request) {
   const paused = productionWritePauseResponse(
@@ -182,6 +183,7 @@ export async function POST(request: Request) {
     selectionMetadata,
     sessionAuditSnapshot
   );
+  const finalLoadAudit = autoregulated.loadAudit ?? result.audit;
 
   const response: GenerateFromTemplateResponse = {
     workout: autoregulated.adjusted,
@@ -191,8 +193,11 @@ export async function POST(request: Request) {
     volumePlanByMuscle: result.volumePlanByMuscle,
     selectionMode: result.selectionMode,
     sessionIntent: result.sessionIntent,
-    prescriptionReadouts:
-      autoregulated.prescriptionReadouts ?? result.prescriptionReadouts,
+    prescriptionReadouts: buildPrescriptionReadouts({
+      workout: autoregulated.adjusted,
+      prescriptionResultsByPlacement: finalLoadAudit.prescriptions,
+      resolvedLoadsByPlacement: finalLoadAudit.resolvedLoads,
+    }),
     selectionMetadata: responseSelectionMetadata,
   };
 

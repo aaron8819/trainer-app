@@ -1,6 +1,6 @@
 import type {
-  PrescriptionConfidenceLoadSource,
-  PrescriptionConfidenceReadout,
+  PrescriptionReadout,
+  PrescriptionReadoutLoadSource,
 } from "@/lib/api/template-session/types";
 import {
   isWeeklyMuscleClosureDecision,
@@ -85,7 +85,7 @@ export type PreSessionReadinessPrescriptionConfidenceWatchRow = {
   repRange?: { min: number; max: number } | null;
   targetRpe?: number | null;
   targetRir?: number | null;
-  loadSource?: PrescriptionConfidenceLoadSource;
+  loadSource?: PreSessionReadinessLoadSource;
   loadConfidence?: "high" | "medium" | "low";
   cautionLevel?: "none" | "notice" | "caution";
   cautionReason?: string | null;
@@ -96,7 +96,7 @@ export type PreSessionReadinessPrescriptionConfidenceWatchRow = {
     unit: "lb";
     basis: string;
   } | null;
-  historyEvidence?: PrescriptionConfidenceReadout["historyEvidence"];
+  historyEvidence?: PrescriptionReadout["historyEvidence"];
   source: "generated_progression_trace";
 };
 
@@ -303,12 +303,33 @@ function hasValidOptionalAdjustmentRange(value: unknown): boolean {
   );
 }
 
-function isLoadSource(value: unknown): value is PrescriptionConfidenceLoadSource {
+type LegacyPreSessionReadinessLoadSource =
+  | "history"
+  | "existing_target_load"
+  | "legacy_measurement_history"
+  | "runtime_added_same_exercise_calibration_anchor"
+  | "bodyweight"
+  | "machine_default"
+  | "neutral_zero"
+  | "none"
+  | "unknown";
+
+type PreSessionReadinessLoadSource =
+  | PrescriptionReadoutLoadSource
+  | LegacyPreSessionReadinessLoadSource;
+
+function isLoadSource(value: unknown): value is PreSessionReadinessLoadSource {
   return (
+    value === "existing_target" ||
+    value === "exact_history" ||
+    value === "legacy_barbell_history" ||
+    value === "runtime_added_same_exercise" ||
+    value === "deload_history" ||
     value === "history" ||
     value === "baseline" ||
     value === "estimate" ||
     value === "existing_target_load" ||
+    value === "legacy_measurement_history" ||
     value === "runtime_added_same_exercise_calibration_anchor" ||
     value === "bodyweight" ||
     value === "machine_default" ||

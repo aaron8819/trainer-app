@@ -34,6 +34,7 @@ import {
 } from "@/lib/api/slot-plan-seed-parser";
 import { readSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
 import { attachSessionCapacityReductionReconciliation } from "@/lib/api/runtime-edit-reconciliation";
+import { buildPrescriptionReadouts } from "@/lib/api/prescription-readout";
 
 type PlannedExercise = GenerateFromIntentResponse["workout"]["mainLifts"][number];
 type PlannedSet = PlannedExercise["sets"][number];
@@ -53,14 +54,12 @@ function isAcceptedV4Seed(value: unknown): boolean {
 function unchangedAutoregulation(
   workout: GenerateFromIntentResponse["workout"],
   loadAudit: NonNullable<AutoregulationResult["loadAudit"]>,
-  prescriptionReadouts: NonNullable<AutoregulationResult["prescriptionReadouts"]>,
 ): AutoregulationResult {
   const reason = "Accepted custom plan prescriptions replay exactly as planned.";
   return {
     original: workout,
     adjusted: workout,
     loadAudit,
-    prescriptionReadouts,
     modifications: [],
     fatigueScore: null,
     rationale: reason,
@@ -389,7 +388,6 @@ export async function POST(request: Request) {
     ? unchangedAutoregulation(
         result.workout,
         result.audit,
-        result.prescriptionReadouts ?? [],
       )
     : await applyAutoregulation(user.id, result.workout, result.audit);
   const selectionMetadata = buildCanonicalSelectionMetadata(result.selection, autoregulated);
@@ -513,6 +511,7 @@ export async function POST(request: Request) {
           evidence: sessionCapacityResult.evidence,
         })
       : fullPlanSelectionMetadata;
+  const finalLoadAudit = autoregulated.loadAudit ?? result.audit;
 
   const response: GenerateFromIntentResponse = {
     workout: sessionCapacityResult.workout,
@@ -521,8 +520,11 @@ export async function POST(request: Request) {
     volumePlanByMuscle: result.volumePlanByMuscle,
     selectionMode: result.selectionMode,
     sessionIntent: result.sessionIntent,
-    prescriptionReadouts:
-      autoregulated.prescriptionReadouts ?? result.prescriptionReadouts,
+    prescriptionReadouts: buildPrescriptionReadouts({
+      workout: sessionCapacityResult.workout,
+      prescriptionResultsByPlacement: finalLoadAudit.prescriptions,
+      resolvedLoadsByPlacement: finalLoadAudit.resolvedLoads,
+    }),
     selectionSummary,
     selectionMetadata: responseSelectionMetadata,
     filteredExercises: result.filteredExercises,

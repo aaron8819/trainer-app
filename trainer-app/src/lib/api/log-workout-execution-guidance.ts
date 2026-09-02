@@ -47,18 +47,24 @@ function formatSourceLabel(
   value: PreSessionReadinessGymCardDto["calibrationNotes"][number]["loadSource"]
 ): string | undefined {
   switch (value) {
+    case "exact_history":
     case "history":
       return "History";
+    case "legacy_barbell_history":
     case "legacy_measurement_history":
       return "Prior history";
     case "baseline":
       return "Baseline";
     case "estimate":
       return "Estimated";
+    case "existing_target":
     case "existing_target_load":
       return "Saved target";
+    case "runtime_added_same_exercise":
     case "runtime_added_same_exercise_calibration_anchor":
       return "Same-exercise calibration";
+    case "deload_history":
+      return "Deload history";
     case "bodyweight":
       return "Bodyweight";
     case "machine_default":

@@ -82,7 +82,6 @@ import {
   createSemanticZeroPrescription,
 } from "@/lib/engine/load-prescription";
 import type { ApplyLoadsAudit } from "@/lib/engine/apply-loads";
-import { buildPrescriptionConfidenceReadouts } from "@/lib/api/prescription-confidence-readout";
 
 describe("POST /api/workouts/generate-from-template", () => {
   beforeEach(() => {
@@ -337,10 +336,6 @@ describe("POST /api/workouts/generate-from-template", () => {
         original: inputWorkout,
         adjusted: transformed.adjustedWorkout,
         loadAudit: transformed.loadAudit,
-        prescriptionReadouts: buildPrescriptionConfidenceReadouts({
-          workout: transformed.adjustedWorkout,
-          loadAudit: transformed.loadAudit,
-        }),
         modifications: transformed.modifications,
         fatigueScore,
         rationale: transformed.rationale,

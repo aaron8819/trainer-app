@@ -1455,7 +1455,7 @@ export type NextMesocyclePostAcceptVerificationPayload = {
         | "not_applicable"
         | "unavailable";
       classification: PrescriptionConfidenceSourceClassification;
-      confidence: "high" | "medium" | "low" | "unknown";
+      confidence: "high" | "medium" | "low" | null;
       loadSource: string | null;
       cautionLevel: "none" | "notice" | "caution" | "unknown";
       cautionReason: string | null;

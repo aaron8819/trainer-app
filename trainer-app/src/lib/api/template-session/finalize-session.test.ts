@@ -274,7 +274,7 @@ describe("buildPrescriptionReadouts", () => {
       loadSource: "legacy_barbell_history",
       confidence: "medium",
       cautionLevel: "notice",
-      cautionReason: "legacy_barbell_bridge",
+      cautionReason: "reduced_prescription_confidence",
       historyEvidence: { source: "legacy_measurement_bridge", confidence: "reduced" },
     });
   });
@@ -404,7 +404,7 @@ describe("buildPrescriptionReadouts", () => {
       loadSource: "estimate",
       confidence: "low",
       cautionLevel: "caution",
-      cautionReason: "no_comparable_history",
+      cautionReason: "low_prescription_confidence",
     });
     expect(readouts[0]?.cautionReason).not.toContain("target_effort_load_mismatch");
   });
@@ -430,7 +430,7 @@ describe("buildPrescriptionReadouts", () => {
       loadSource: "runtime_added_same_exercise",
       confidence: "medium",
       cautionLevel: "notice",
-      cautionReason: "runtime_added_evidence",
+      cautionReason: "reduced_prescription_confidence",
     });
     expect(readouts[0]).not.toHaveProperty("suggestedAdjustmentRange");
   });

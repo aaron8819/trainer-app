@@ -124,7 +124,7 @@ export type PrescriptionReadout = {
     | "not_applicable"
     | "unavailable";
   loadSource: PrescriptionReadoutLoadSource | null;
-  confidence: "high" | "medium" | "low";
+  confidence: "high" | "medium" | "low" | null;
   measurementProfile: MeasurementProfile | null;
   loadConvention: LoadConvention | null;
   repBasis: RepBasis | null;

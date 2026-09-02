@@ -85,24 +85,9 @@ function buildContract(
 function readout(
   input: Partial<Omit<PrescriptionReadout, "loadSource">> &
     Pick<PrescriptionReadout, "exerciseId" | "exerciseName"> & {
-      loadSource:
-        | PrescriptionReadout["loadSource"]
-        | "history"
-        | "existing_target_load"
-        | "legacy_measurement_history"
-        | "none";
+      loadSource: PrescriptionReadout["loadSource"];
     },
 ): PrescriptionReadout {
-  const loadSource =
-    input.loadSource === "history"
-      ? "exact_history"
-      : input.loadSource === "existing_target_load"
-        ? "existing_target"
-        : input.loadSource === "legacy_measurement_history"
-          ? "legacy_barbell_history"
-          : input.loadSource === "none"
-            ? null
-            : input.loadSource;
   return {
     placementId: input.exerciseId,
     setCount: 1,
@@ -111,7 +96,7 @@ function readout(
     repRange: { min: 5, max: 8 },
     targetRpe: 6.5,
     targetRir: 3.5,
-    prescriptionKind: loadSource == null ? "unavailable" : "numeric",
+    prescriptionKind: input.loadSource == null ? "unavailable" : "numeric",
     confidence: "medium",
     measurementProfile: "REPS_EXTERNAL_LOAD",
     loadConvention: "BARBELL_TOTAL",
@@ -120,7 +105,6 @@ function readout(
     cautionLevel: "none",
     cautionReason: null,
     ...input,
-    loadSource,
   };
 }
 
@@ -136,14 +120,14 @@ describe("V4 load-calibration presentation", () => {
         placementId: "bench-placement-a",
         exerciseId: "bench",
         exerciseName: "Bench Press",
-        loadSource: "existing_target_load",
+        loadSource: "existing_target",
         targetLoad: 105,
       }),
       readout({
         placementId: "bench-placement-b",
         exerciseId: "bench",
         exerciseName: "Bench Press",
-        loadSource: "existing_target_load",
+        loadSource: "existing_target",
         targetLoad: 95,
       }),
     ]);
@@ -217,13 +201,13 @@ describe("V4 load-calibration presentation", () => {
           placementId: "generated-a",
           exerciseId: "bench",
           exerciseName: "Bench Press",
-          loadSource: "history",
+          loadSource: "exact_history",
         }),
         readout({
           placementId: "generated-b",
           exerciseId: "bench",
           exerciseName: "Bench Press",
-          loadSource: "history",
+          loadSource: "exact_history",
         }),
       ],
       {
@@ -277,14 +261,14 @@ describe("V4 load-calibration presentation", () => {
           placementId: "generated-a",
           exerciseId: "bench",
           exerciseName: "Bench Press",
-          loadSource: "history",
+          loadSource: "exact_history",
           targetLoad: 105,
         }),
         readout({
           placementId: "generated-b",
           exerciseId: "bench",
           exerciseName: "Bench Press",
-          loadSource: "history",
+          loadSource: "exact_history",
           targetLoad: 95,
         }),
       ],
@@ -321,8 +305,8 @@ describe("V4 load-calibration presentation", () => {
   it("does not translate an occurrence whose explicit persisted target is missing", () => {
     const contract = buildContract(
       [
-        readout({ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench A", loadSource: "history" }),
-        readout({ placementId: "generated-b", exerciseId: "row", exerciseName: "Row B", loadSource: "history" }),
+        readout({ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench A", loadSource: "exact_history" }),
+        readout({ placementId: "generated-b", exerciseId: "row", exerciseName: "Row B", loadSource: "exact_history" }),
       ],
       {
         exercises: [
@@ -364,8 +348,8 @@ describe("V4 load-calibration presentation", () => {
   it("does not recover distinct-canonical many-to-one guidance by exercise identity", () => {
     const contract = buildContract(
       [
-        readout({ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench", loadSource: "history" }),
-        readout({ placementId: "generated-b", exerciseId: "row", exerciseName: "Row", loadSource: "history" }),
+        readout({ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench", loadSource: "exact_history" }),
+        readout({ placementId: "generated-b", exerciseId: "row", exerciseName: "Row", loadSource: "exact_history" }),
       ],
       {
         exercises: [
@@ -394,7 +378,7 @@ describe("V4 load-calibration presentation", () => {
 
   it("emits no placement guidance when generated occurrence IDs are duplicated", () => {
     const contract = buildContract(
-      [readout({ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench", loadSource: "history" })],
+      [readout({ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench", loadSource: "exact_history" })],
       {
         exercises: [
           { placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench 1" },
@@ -422,7 +406,7 @@ describe("V4 load-calibration presentation", () => {
 
   it("retains only resolver-proven unique legacy placement guidance", () => {
     const unique = buildContract(
-      [readout({ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench", loadSource: "history" })],
+      [readout({ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench", loadSource: "exact_history" })],
       {
         exercises: [{ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench" }],
         traces: { progression: {} },
@@ -452,8 +436,8 @@ describe("V4 load-calibration presentation", () => {
 
     const ambiguous = buildContract(
       [
-        readout({ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench A", loadSource: "history" }),
-        readout({ placementId: "generated-b", exerciseId: "bench", exerciseName: "Bench B", loadSource: "history" }),
+        readout({ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench A", loadSource: "exact_history" }),
+        readout({ placementId: "generated-b", exerciseId: "bench", exerciseName: "Bench B", loadSource: "exact_history" }),
       ],
       {
         exercises: [
@@ -477,7 +461,7 @@ describe("V4 load-calibration presentation", () => {
       readout({
         exerciseId: "exact-bench",
         exerciseName: "Bench Press",
-        loadSource: "history",
+        loadSource: "exact_history",
         historyEvidence: {
           source: "exact_compatible_history",
           confidence: "high",
@@ -490,7 +474,7 @@ describe("V4 load-calibration presentation", () => {
       readout({
         exerciseId: "legacy-bench",
         exerciseName: "Barbell Bench Press",
-        loadSource: "legacy_measurement_history",
+        loadSource: "legacy_barbell_history",
         historyEvidence: {
           source: "legacy_measurement_bridge",
           confidence: "reduced",
@@ -503,9 +487,9 @@ describe("V4 load-calibration presentation", () => {
       readout({
         exerciseId: "uncalibrated-bench",
         exerciseName: "Incline Bench Press",
-        loadSource: "none",
+        loadSource: null,
         targetLoad: null,
-        confidence: "low",
+        confidence: null,
       }),
     ]);
 
@@ -539,7 +523,7 @@ describe("V4 load-calibration presentation", () => {
       readout({
         exerciseId: "exact-bench",
         exerciseName: "Bench Press",
-        loadSource: "history",
+        loadSource: "exact_history",
         historyEvidence: {
           source: "exact_compatible_history",
           confidence: "high",
@@ -552,7 +536,7 @@ describe("V4 load-calibration presentation", () => {
       readout({
         exerciseId: "legacy-bench",
         exerciseName: "Barbell Bench Press",
-        loadSource: "legacy_measurement_history",
+        loadSource: "legacy_barbell_history",
         historyEvidence: {
           source: "legacy_measurement_bridge",
           confidence: "reduced",
@@ -565,9 +549,9 @@ describe("V4 load-calibration presentation", () => {
       readout({
         exerciseId: "uncalibrated-bench",
         exerciseName: "Incline Bench Press",
-        loadSource: "none",
+        loadSource: null,
         targetLoad: null,
-        confidence: "low",
+        confidence: null,
       }),
     ]);
 

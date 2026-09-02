@@ -5,7 +5,10 @@ import type {
   MeasurementSemantics,
   ZeroLoadMeaning,
 } from "@/lib/exercise-measurement/semantics";
-import { buildPrescriptionReadouts } from "./prescription-readout";
+import {
+  PrescriptionReadoutProjectionError,
+  buildPrescriptionReadouts,
+} from "./prescription-readout";
 
 function exercise(input: {
   placementId: string;
@@ -64,12 +67,13 @@ function prescription(input: {
   confidence?: "high" | "reduced" | "low";
   measurement?: MeasurementSemantics | null;
   zeroLoadMeaning?: ZeroLoadMeaning;
+  reasonCodes?: PrescriptionResult["reasonCodes"];
 }): PrescriptionResult {
   const base = {
     version: 1 as const,
     canonicalExerciseId: input.exerciseId ?? "exercise-1",
     measurement: input.measurement ?? null,
-    reasonCodes: ["same_exercise_same_measurement" as const],
+    reasonCodes: input.reasonCodes ?? ["same_exercise_same_measurement" as const],
     evidence: [],
   };
   switch (input.kind) {
@@ -94,6 +98,20 @@ function prescription(input: {
       return { ...base, kind: "not_applicable" };
     case "unavailable":
       return { ...base, kind: "unavailable", blockingFields: ["measurement"] };
+  }
+}
+
+function expectProjectionError(
+  project: () => unknown,
+  code: PrescriptionReadoutProjectionError["code"],
+  placementId = "placement",
+): void {
+  try {
+    project();
+    throw new Error("Expected prescription readout projection to fail");
+  } catch (error) {
+    expect(error).toBeInstanceOf(PrescriptionReadoutProjectionError);
+    expect(error).toMatchObject({ code, placementId });
   }
 }
 
@@ -149,7 +167,7 @@ describe("buildPrescriptionReadouts", () => {
     }]);
   });
 
-  it("keeps duplicate canonical exercises occurrence-distinct and never borrows a missing load", () => {
+  it("keeps duplicate canonical exercises occurrence-distinct", () => {
     const first = exercise({
       placementId: "row-a",
       exerciseId: "row",
@@ -171,16 +189,200 @@ describe("buildPrescriptionReadouts", () => {
           kind: "numeric",
           value: 90,
         }),
+        "row-b": prescription({
+          exerciseId: "row",
+          kind: "numeric",
+          value: 70,
+        }),
       },
     });
 
     expect(readouts.map((row) => row.placementId)).toEqual(["row-a", "row-b"]);
     expect(readouts[0]).toMatchObject({ targetLoad: 90, prescriptionKind: "numeric" });
     expect(readouts[1]).toMatchObject({
-      targetLoad: null,
+      targetLoad: 70,
+      prescriptionKind: "numeric",
+    });
+  });
+
+  it.each([
+    ["numeric high", "numeric", "high", "high", "none", null],
+    ["numeric reduced", "numeric", "reduced", "medium", "notice", "reduced_prescription_confidence"],
+    ["numeric low", "numeric", "low", "low", "caution", "low_prescription_confidence"],
+    ["calibration required", "calibration_required", undefined, "low", "caution", "calibration_required"],
+    ["semantic zero", "semantic_zero", undefined, null, "none", null],
+    ["not applicable", "not_applicable", undefined, null, "none", null],
+    ["unavailable", "unavailable", undefined, null, "caution", "prescription_unavailable"],
+  ] as const)(
+    "maps %s confidence and caution only from canonical state",
+    (_label, kind, confidence, expectedConfidence, cautionLevel, cautionReason) => {
+      const measurement = kind === "semantic_zero"
+        ? {
+            profile: "REPS_EXTERNAL_LOAD" as const,
+            loadConvention: "IMPLEMENT_WEIGHT" as const,
+            repBasis: "PER_SIDE" as const,
+          }
+        : null;
+      const zeroLoadMeaning = kind === "semantic_zero"
+        ? "BODYWEIGHT_NO_ADDED_LOAD" as const
+        : null;
+      const [readout] = buildPrescriptionReadouts({
+        workout: workout([
+          exercise({
+            placementId: "placement",
+            measurement,
+            zeroLoadMeaning,
+          }),
+        ]),
+        prescriptionResultsByPlacement: {
+          placement: prescription({
+            kind,
+            confidence,
+            measurement,
+            zeroLoadMeaning: zeroLoadMeaning ?? undefined,
+            reasonCodes: [
+              "complete_performed_evidence",
+              "double_progression_increase",
+              "hold",
+            ],
+          }),
+        },
+      });
+
+      expect(readout).toMatchObject({
+        prescriptionKind: kind,
+        confidence: expectedConfidence,
+        cautionLevel,
+        cautionReason,
+      });
+    },
+  );
+
+  it("fails closed when a final working placement has no canonical result", () => {
+    expectProjectionError(
+      () => buildPrescriptionReadouts({
+        workout: workout([exercise({ placementId: "placement" })]),
+        prescriptionResultsByPlacement: {},
+      }),
+      "missing_placement_result",
+    );
+  });
+
+  it("fails closed when canonical exercise identity disagrees", () => {
+    expectProjectionError(
+      () => buildPrescriptionReadouts({
+        workout: workout([exercise({ placementId: "placement", exerciseId: "bench" })]),
+        prescriptionResultsByPlacement: {
+          placement: prescription({ exerciseId: "row", kind: "numeric" }),
+        },
+      }),
+      "canonical_exercise_mismatch",
+    );
+  });
+
+  it("fails closed when frozen measurement semantics disagree", () => {
+    expectProjectionError(
+      () => buildPrescriptionReadouts({
+        workout: workout([exercise({
+          placementId: "placement",
+          measurement: {
+            profile: "REPS_EXTERNAL_LOAD",
+            loadConvention: "BARBELL_TOTAL",
+            repBasis: "TOTAL",
+          },
+        })]),
+        prescriptionResultsByPlacement: {
+          placement: prescription({
+            kind: "numeric",
+            measurement: {
+              profile: "REPS_EXTERNAL_LOAD",
+              loadConvention: "IMPLEMENT_WEIGHT",
+              repBasis: "PER_SIDE",
+            },
+          }),
+        },
+      }),
+      "measurement_mismatch",
+    );
+  });
+
+  it("fails closed when semantic-zero meaning disagrees", () => {
+    const measurement = {
+      profile: "REPS_EXTERNAL_LOAD" as const,
+      loadConvention: "IMPLEMENT_WEIGHT" as const,
+      repBasis: "PER_SIDE" as const,
+    };
+    expectProjectionError(
+      () => buildPrescriptionReadouts({
+        workout: workout([exercise({
+          placementId: "placement",
+          measurement,
+          zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
+        })]),
+        prescriptionResultsByPlacement: {
+          placement: prescription({
+            kind: "semantic_zero",
+            measurement,
+            zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD",
+          }),
+        },
+      }),
+      "semantic_zero_meaning_mismatch",
+    );
+  });
+
+  it("fails closed when resolved-load evidence claims another placement", () => {
+    expectProjectionError(
+      () => buildPrescriptionReadouts({
+        workout: workout([exercise({ placementId: "placement" })]),
+        prescriptionResultsByPlacement: {
+          placement: prescription({ kind: "numeric" }),
+        },
+        resolvedLoadsByPlacement: {
+          placement: {
+            placementId: "other-placement",
+            canonicalExerciseId: "exercise-1",
+            source: "history",
+            canonicalSourceLoad: 100,
+            resolvedTopSetLoad: 100,
+            resolvedSetLoads: [100],
+          },
+        },
+      }),
+      "resolved_load_placement_mismatch",
+    );
+  });
+
+  it("does not require prescription results for excluded warmup rows", () => {
+    const warmup = exercise({ placementId: "warmup-placement" });
+    expect(buildPrescriptionReadouts({
+      workout: {
+        ...workout([]),
+        warmup: [{
+          ...warmup,
+          role: "warmup",
+          sets: warmup.sets.map((set) => ({ ...set, role: "warmup" })),
+        }],
+      },
+      prescriptionResultsByPlacement: {},
+    })).toEqual([]);
+  });
+
+  it("keeps a valid canonical unavailable result distinct from projection failure", () => {
+    const [readout] = buildPrescriptionReadouts({
+      workout: workout([exercise({ placementId: "placement" })]),
+      prescriptionResultsByPlacement: {
+        placement: prescription({ kind: "unavailable" }),
+      },
+    });
+
+    expect(readout).toMatchObject({
       prescriptionKind: "unavailable",
+      targetLoad: null,
       loadSource: null,
-      cautionReason: "missing_placement_prescription",
+      confidence: null,
+      cautionLevel: "caution",
+      cautionReason: "prescription_unavailable",
     });
   });
 

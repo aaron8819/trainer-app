@@ -715,7 +715,9 @@ function buildPrescriptionReadoutFields(
     targetRpe: readout.targetRpe,
     targetRir: readout.targetRir,
     ...(readout.loadSource ? { loadSource: readout.loadSource } : {}),
-    loadConfidence: readout.confidence,
+    ...(readout.confidence == null
+      ? {}
+      : { loadConfidence: readout.confidence }),
     cautionLevel: readout.cautionLevel,
     cautionReason: readout.cautionReason,
     ...(readout.historyEvidence

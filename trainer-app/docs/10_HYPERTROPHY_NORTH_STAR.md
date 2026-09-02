@@ -807,16 +807,16 @@ The Stiff-Legged Deadlift mismatch is the motivating example. `140 x 10 @ RPE 6.
 
 Strategic interpretation: runtime prescription quality needs more than a single target number. The UI/operator surface should distinguish target load, source/basis, confidence, caution state, and recommended adjustment range. Future behavior may reduce load automatically, but the first strategic requirement is visible mismatch detection and honest confidence labeling.
 
-Recent prescription-confidence progress: generated session responses now expose server-owned `prescriptionReadouts` containing prescription/coaching metadata such as target load, target reps/range, target RPE/RIR, load source, confidence, caution level, caution reason, and suggested adjustment range.
+Recent prescription-confidence progress: generated session responses now expose server-owned `prescriptionReadouts` containing target load, target reps/range, representative target RPE/RIR, canonical load source, nullable canonical confidence, and bounded caution metadata. Current readouts do not expose or derive a suggested adjustment range.
 
 This readout should be generated after load assignment in the server read model. It should not live in React, planner/materializer, seed replay, or executable seed truth.
 
-UI consumption and concise coaching presentation remain future work. The workout screen should surface the smallest actionable version of this readout:
+UI consumption and concise coaching presentation remain future work. A future coaching contract may add a separately owned adjustment range, but that policy is not implemented by current `prescriptionReadouts`. The workout screen should surface the smallest actionable version of the current readout:
 
 - confidence
 - caution
 - source
-- suggested adjustment range
+- target and measurement semantics
 
 Detailed traces, reason codes, provenance, and debugging evidence belong in audit/operator surfaces.
 
@@ -1534,7 +1534,7 @@ These are strategic decision gates, not claims that current production already p
 - risky load/RIR mismatch is warned
 - allowed-but-cautioned prescriptions are distinguished from clean prescriptions
 - estimates and low-confidence targets are labeled
-- prescription readouts expose concise confidence, caution, source, and suggested adjustment range in workout UI
+- a future workout-UI coaching contract may expose a separately owned adjustment range; current prescription readouts expose confidence, caution, source, and target/measurement semantics only
 - swaps preserve lane intent
 - swap candidates are tiered by lane/class equivalence before broad same-muscle fallback
 - wrong-lane swaps are blocked or clearly labeled as fallbacks

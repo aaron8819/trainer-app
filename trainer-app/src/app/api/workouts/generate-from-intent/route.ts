@@ -34,7 +34,10 @@ import {
 } from "@/lib/api/slot-plan-seed-parser";
 import { readSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
 import { attachSessionCapacityReductionReconciliation } from "@/lib/api/runtime-edit-reconciliation";
-import { buildPrescriptionReadouts } from "@/lib/api/prescription-readout";
+import {
+  PrescriptionReadoutProjectionError,
+  buildPrescriptionReadouts,
+} from "@/lib/api/prescription-readout";
 
 type PlannedExercise = GenerateFromIntentResponse["workout"]["mainLifts"][number];
 type PlannedSet = PlannedExercise["sets"][number];
@@ -118,13 +121,7 @@ function applyGapFillCaps(input: {
   };
 }
 
-export async function POST(request: Request) {
-  const paused = productionWritePauseResponse(
-    "workout_materialization",
-    "/api/workouts/generate-from-intent",
-  );
-  if (paused) return paused;
-
+async function handleUnpausedPost(request: Request) {
   const body = await request.json().catch(() => ({}));
   const parsed = generateFromIntentSchema.safeParse(body);
 
@@ -541,4 +538,28 @@ export async function POST(request: Request) {
   };
 
   return NextResponse.json(response);
+}
+
+export async function POST(request: Request) {
+  const paused = productionWritePauseResponse(
+    "workout_materialization",
+    "/api/workouts/generate-from-intent",
+  );
+  if (paused) return paused;
+
+  try {
+    return await handleUnpausedPost(request);
+  } catch (error) {
+    if (!(error instanceof PrescriptionReadoutProjectionError)) {
+      throw error;
+    }
+    console.error("Prescription readout projection failed", {
+      code: error.code,
+      placementId: error.placementId,
+    });
+    return NextResponse.json(
+      { error: "Workout prescription readout is unavailable." },
+      { status: 500 },
+    );
+  }
 }

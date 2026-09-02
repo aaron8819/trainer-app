@@ -54,6 +54,52 @@ vi.mock("@/lib/api/mesocycle-week-close", () => ({
 }));
 
 vi.mock("@/lib/api/template-session", () => {
+  const auditForWorkout = (workout: Record<string, unknown>) => {
+    const exercises = [
+      ...(Array.isArray(workout.mainLifts) ? workout.mainLifts : []),
+      ...(Array.isArray(workout.accessories) ? workout.accessories : []),
+    ] as Array<Record<string, unknown>>;
+    const prescriptions = Object.fromEntries(exercises.map((exercise) => {
+      const placementId = String(exercise.id);
+      const canonicalExercise = exercise.exercise as Record<string, unknown>;
+      const sets = Array.isArray(exercise.sets)
+        ? exercise.sets as Array<Record<string, unknown>>
+        : [];
+      const targetLoad = sets.find((set) => typeof set.targetLoad === "number")
+        ?.targetLoad as number | undefined;
+      const base = {
+        version: 1 as const,
+        canonicalExerciseId: String(canonicalExercise.id),
+        measurement: exercise.measurement ?? null,
+        evidence: [],
+      };
+      const result = typeof targetLoad === "number" && targetLoad > 0
+        ? {
+            ...base,
+            kind: "numeric" as const,
+            value: targetLoad,
+            source: "existing_target" as const,
+            confidence: "high" as const,
+            reasonCodes: ["existing_target_preserved" as const],
+          }
+        : targetLoad === 0 && typeof exercise.zeroLoadMeaning === "string"
+          ? {
+              ...base,
+              kind: "semantic_zero" as const,
+              value: 0 as const,
+              zeroLoadMeaning: exercise.zeroLoadMeaning,
+              reasonCodes: ["bodyweight_no_added_load" as const],
+            }
+          : {
+              ...base,
+              kind: "unavailable" as const,
+              reasonCodes: ["no_comparable_history" as const],
+              blockingFields: ["evidence" as const],
+            };
+      return [placementId, result];
+    }));
+    return { progressionTraces: {}, prescriptions, resolvedLoads: {} };
+  };
   const withAudit = async (result: Promise<unknown>) => {
     const resolved = await result;
     if (
@@ -66,7 +112,7 @@ vi.mock("@/lib/api/template-session", () => {
     }
     return {
       ...resolved,
-      audit: { progressionTraces: {}, prescriptions: {}, resolvedLoads: {} },
+      audit: auditForWorkout((resolved as { workout: Record<string, unknown> }).workout),
     };
   };
   return {
@@ -374,6 +420,66 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
       evidence: [expect.objectContaining({ evidenceId: "selected-history-exposure" })],
     });
     expect(finalAudit?.resolvedLoads["workout-exercise-1"].resolvedTopSetLoad).toBe(90);
+  });
+
+  it("fails the response closed when canonical prescription correlation is corrupt", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const workout = {
+      id: "corrupt-readout",
+      scheduledDate: "2026-09-01T12:00:00.000Z",
+      warmup: [],
+      mainLifts: [{
+        id: "bench-placement",
+        exercise: { id: "bench", name: "Bench Press" },
+        isMainLift: true,
+        orderIndex: 0,
+        sets: [{ setIndex: 1, targetReps: 8, targetLoad: 100, targetRpe: 8 }],
+      }],
+      accessories: [],
+      estimatedMinutes: 45,
+    };
+    mocks.generateSessionFromIntent.mockResolvedValue({
+      workout,
+      selectionMode: "INTENT",
+      sessionIntent: "push",
+      sraWarnings: [],
+      substitutions: [],
+      volumePlanByMuscle: {},
+      prescriptionReadouts: [],
+      selection: {
+        selectedExerciseIds: ["bench"],
+        mainLiftIds: ["bench"],
+        accessoryIds: [],
+        perExerciseSetTargets: { bench: 1 },
+        rationale: {},
+        volumePlanByMuscle: {},
+      },
+      filteredExercises: [],
+      audit: numericAudit([
+        { placementId: "bench-placement", exerciseId: "row", load: 100 },
+      ]),
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/generate-from-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intent: "push" }),
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body).toEqual({
+      error: "Workout prescription readout is unavailable.",
+    });
+    expect(JSON.stringify(body)).not.toContain("canonical_exercise_mismatch");
+    expect(JSON.stringify(body)).not.toMatch(/scheduled workout identity/i);
+    expect(consoleError).toHaveBeenCalledWith(
+      "Prescription readout projection failed",
+      { code: "canonical_exercise_mismatch", placementId: "bench-placement" },
+    );
+    consoleError.mockRestore();
   });
 
   it.each([
@@ -1082,18 +1188,24 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
       volumePlanByMuscle: {},
       prescriptionReadouts: [
         {
+          placementId: "we-2",
           exerciseId: "ex-2",
           exerciseName: "Press",
+          setCount: 1,
           targetLoad: 135,
           targetReps: 6,
           repRange: { min: 6, max: 6 },
           targetRpe: 7,
           targetRir: 3,
-          loadSource: "history",
+          prescriptionKind: "numeric",
+          loadSource: "exact_history",
           confidence: "high",
+          measurementProfile: null,
+          loadConvention: null,
+          repBasis: null,
+          zeroLoadMeaning: null,
           cautionLevel: "none",
           cautionReason: null,
-          suggestedAdjustmentRange: null,
         },
       ],
       audit: {

@@ -48,6 +48,52 @@ vi.mock("@/lib/api/next-session", () => ({
 }));
 
 vi.mock("@/lib/api/template-session", () => {
+  const auditForWorkout = (workout: Record<string, unknown>) => {
+    const exercises = [
+      ...(Array.isArray(workout.mainLifts) ? workout.mainLifts : []),
+      ...(Array.isArray(workout.accessories) ? workout.accessories : []),
+    ] as Array<Record<string, unknown>>;
+    const prescriptions = Object.fromEntries(exercises.map((exercise) => {
+      const placementId = String(exercise.id);
+      const canonicalExercise = exercise.exercise as Record<string, unknown>;
+      const sets = Array.isArray(exercise.sets)
+        ? exercise.sets as Array<Record<string, unknown>>
+        : [];
+      const targetLoad = sets.find((set) => typeof set.targetLoad === "number")
+        ?.targetLoad as number | undefined;
+      const base = {
+        version: 1 as const,
+        canonicalExerciseId: String(canonicalExercise.id),
+        measurement: exercise.measurement ?? null,
+        evidence: [],
+      };
+      const result = typeof targetLoad === "number" && targetLoad > 0
+        ? {
+            ...base,
+            kind: "numeric" as const,
+            value: targetLoad,
+            source: "existing_target" as const,
+            confidence: "high" as const,
+            reasonCodes: ["existing_target_preserved" as const],
+          }
+        : targetLoad === 0 && typeof exercise.zeroLoadMeaning === "string"
+          ? {
+              ...base,
+              kind: "semantic_zero" as const,
+              value: 0 as const,
+              zeroLoadMeaning: exercise.zeroLoadMeaning,
+              reasonCodes: ["bodyweight_no_added_load" as const],
+            }
+          : {
+              ...base,
+              kind: "unavailable" as const,
+              reasonCodes: ["no_comparable_history" as const],
+              blockingFields: ["evidence" as const],
+            };
+      return [placementId, result];
+    }));
+    return { progressionTraces: {}, prescriptions, resolvedLoads: {} };
+  };
   const withAudit = async (result: Promise<unknown>) => {
     const resolved = await result;
     if (
@@ -60,7 +106,7 @@ vi.mock("@/lib/api/template-session", () => {
     }
     return {
       ...resolved,
-      audit: { progressionTraces: {}, prescriptions: {}, resolvedLoads: {} },
+      audit: auditForWorkout((resolved as { workout: Record<string, unknown> }).workout),
     };
   };
   return {
@@ -593,16 +639,21 @@ describe("POST /api/workouts/generate-from-template", () => {
           placementId: "we-1",
           exerciseId: "ex-1",
           exerciseName: "Bench Press",
+          setCount: 1,
           targetLoad: 185,
           targetReps: 8,
           repRange: { min: 8, max: 8 },
           targetRpe: 8,
           targetRir: 2,
-          loadSource: "history",
+          prescriptionKind: "numeric",
+          loadSource: "exact_history",
           confidence: "high",
+          measurementProfile: null,
+          loadConvention: null,
+          repBasis: null,
+          zeroLoadMeaning: null,
           cautionLevel: "none",
           cautionReason: null,
-          suggestedAdjustmentRange: null,
         },
       ],
       selection: {

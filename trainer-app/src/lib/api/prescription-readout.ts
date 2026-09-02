@@ -9,15 +9,26 @@ import {
 import type { WorkoutExercise, WorkoutPlan, WorkoutSet } from "@/lib/engine/types";
 import { listWorkoutPlanExercisesInOrder } from "@/lib/engine/workout-plan-order";
 import type { PrescriptionReadout } from "@/lib/api/template-session/types";
+import type { MeasurementSemantics } from "@/lib/exercise-measurement/semantics";
 
-export const MISSING_PLACEMENT_PRESCRIPTION_REASON =
-  "missing_placement_prescription" as const;
-export const PLACEMENT_PRESCRIPTION_EXERCISE_MISMATCH_REASON =
-  "placement_prescription_exercise_mismatch" as const;
+export type PrescriptionReadoutProjectionErrorCode =
+  | "missing_placement_result"
+  | "canonical_exercise_mismatch"
+  | "measurement_mismatch"
+  | "semantic_zero_meaning_mismatch"
+  | "resolved_load_placement_mismatch"
+  | "resolved_load_exercise_mismatch";
 
-type ProjectionFailureReason =
-  | typeof MISSING_PLACEMENT_PRESCRIPTION_REASON
-  | typeof PLACEMENT_PRESCRIPTION_EXERCISE_MISMATCH_REASON;
+export class PrescriptionReadoutProjectionError extends Error {
+  readonly name = "PrescriptionReadoutProjectionError";
+
+  constructor(
+    readonly code: PrescriptionReadoutProjectionErrorCode,
+    readonly placementId: string,
+  ) {
+    super(`PRESCRIPTION_READOUT_PROJECTION_FAILED:${code}:${placementId}`);
+  }
+}
 
 type FinalWorkingTarget = {
   setCount: number;
@@ -45,15 +56,26 @@ export function buildPrescriptionReadouts(input: {
 
       const placementId = exercise.id;
       const prescription = input.prescriptionResultsByPlacement?.[placementId];
-      const projectionFailure = resolveProjectionFailure(exercise, prescription);
+      assertProjectionInvariants(exercise, prescription);
       const finalTarget = resolveFinalWorkingTarget(exercise);
       const measurement = exercise.measurement ?? null;
       const resolvedLoad = input.resolvedLoadsByPlacement?.[placementId];
-      const historyEvidence =
-        resolvedLoad?.placementId === placementId &&
-        resolvedLoad.canonicalExerciseId === exercise.exercise.id
-          ? resolvedLoad.historyEvidence
-          : undefined;
+      if (resolvedLoad && resolvedLoad.placementId !== placementId) {
+        throw new PrescriptionReadoutProjectionError(
+          "resolved_load_placement_mismatch",
+          placementId,
+        );
+      }
+      if (
+        resolvedLoad &&
+        resolvedLoad.canonicalExerciseId !== exercise.exercise.id
+      ) {
+        throw new PrescriptionReadoutProjectionError(
+          "resolved_load_exercise_mismatch",
+          placementId,
+        );
+      }
+      const historyEvidence = resolvedLoad?.historyEvidence;
 
       return [{
         placementId,
@@ -64,15 +86,11 @@ export function buildPrescriptionReadouts(input: {
         repRange: finalTarget.repRange,
         targetRpe: finalTarget.targetRpe,
         targetRir: deriveRepresentativeTargetRir(finalTarget.targetRpe),
-        targetLoad:
-          prescription && !projectionFailure ? toTargetLoad(prescription) : null,
-        prescriptionKind:
-          prescription && !projectionFailure ? prescription.kind : "unavailable",
+        targetLoad: toTargetLoad(prescription),
+        prescriptionKind: prescription.kind,
         loadSource:
-          prescription?.kind === "numeric" && !projectionFailure
-            ? prescription.source
-            : null,
-        confidence: projectConfidence(prescription, projectionFailure),
+          prescription.kind === "numeric" ? prescription.source : null,
+        confidence: projectConfidence(prescription),
         measurementProfile: measurement?.profile ?? null,
         loadConvention:
           measurement && "loadConvention" in measurement
@@ -80,7 +98,7 @@ export function buildPrescriptionReadouts(input: {
             : null,
         repBasis: measurement?.repBasis ?? null,
         zeroLoadMeaning: exercise.zeroLoadMeaning ?? null,
-        ...projectCaution(prescription, projectionFailure),
+        ...projectCaution(prescription),
         ...(historyEvidence ? { historyEvidence } : {}),
       }];
     },
@@ -115,25 +133,57 @@ function deriveRepresentativeTargetRir(targetRpe: number | null): number | null 
   return targetRpe == null ? null : Number((10 - targetRpe).toFixed(1));
 }
 
-function resolveProjectionFailure(
+function assertProjectionInvariants(
   exercise: WorkoutExercise,
   prescription: PrescriptionResult | undefined,
-): ProjectionFailureReason | null {
+): asserts prescription is PrescriptionResult {
   if (!prescription) {
-    return MISSING_PLACEMENT_PRESCRIPTION_REASON;
+    throw new PrescriptionReadoutProjectionError(
+      "missing_placement_result",
+      exercise.id,
+    );
   }
-  return prescription.canonicalExerciseId === exercise.exercise.id
-    ? null
-    : PLACEMENT_PRESCRIPTION_EXERCISE_MISMATCH_REASON;
+  if (prescription.canonicalExerciseId !== exercise.exercise.id) {
+    throw new PrescriptionReadoutProjectionError(
+      "canonical_exercise_mismatch",
+      exercise.id,
+    );
+  }
+  if (!sameMeasurement(prescription.measurement, exercise.measurement ?? null)) {
+    throw new PrescriptionReadoutProjectionError(
+      "measurement_mismatch",
+      exercise.id,
+    );
+  }
+  if (
+    prescription.kind === "semantic_zero" &&
+    prescription.zeroLoadMeaning !== (exercise.zeroLoadMeaning ?? null)
+  ) {
+    throw new PrescriptionReadoutProjectionError(
+      "semantic_zero_meaning_mismatch",
+      exercise.id,
+    );
+  }
+}
+
+function sameMeasurement(
+  left: MeasurementSemantics | null,
+  right: MeasurementSemantics | null,
+): boolean {
+  if (left == null || right == null) {
+    return left === right;
+  }
+  return (
+    left.profile === right.profile &&
+    left.repBasis === right.repBasis &&
+    ("loadConvention" in left ? left.loadConvention : null) ===
+      ("loadConvention" in right ? right.loadConvention : null)
+  );
 }
 
 function projectConfidence(
-  prescription: PrescriptionResult | undefined,
-  projectionFailure: ProjectionFailureReason | null,
+  prescription: PrescriptionResult,
 ): PrescriptionReadout["confidence"] {
-  if (!prescription || projectionFailure) {
-    return "low";
-  }
   if (prescription.kind === "numeric") {
     switch (prescription.confidence) {
       case "high":
@@ -144,58 +194,38 @@ function projectConfidence(
         return "low";
     }
   }
-  if (
-    prescription.kind === "calibration_required" ||
-    prescription.kind === "unavailable"
-  ) {
+  if (prescription.kind === "calibration_required") {
     return "low";
   }
-  return "high";
+  return null;
 }
 
 function projectCaution(
-  prescription: PrescriptionResult | undefined,
-  projectionFailure: ProjectionFailureReason | null,
+  prescription: PrescriptionResult,
 ): Pick<PrescriptionReadout, "cautionLevel" | "cautionReason"> {
-  if (projectionFailure) {
-    return { cautionLevel: "caution", cautionReason: projectionFailure };
-  }
-  if (!prescription) {
-    return {
-      cautionLevel: "caution",
-      cautionReason: MISSING_PLACEMENT_PRESCRIPTION_REASON,
-    };
-  }
   if (prescription.kind === "calibration_required") {
     return {
       cautionLevel: "caution",
-      cautionReason: lastReasonCode(prescription) ?? "calibration_required",
+      cautionReason: "calibration_required",
     };
   }
   if (prescription.kind === "unavailable") {
     return {
       cautionLevel: "caution",
-      cautionReason: lastReasonCode(prescription) ?? "prescription_unavailable",
+      cautionReason: "prescription_unavailable",
     };
   }
   if (prescription.kind === "numeric" && prescription.confidence === "low") {
     return {
       cautionLevel: "caution",
-      cautionReason: lastReasonCode(prescription) ?? "low_prescription_confidence",
+      cautionReason: "low_prescription_confidence",
     };
   }
   if (prescription.kind === "numeric" && prescription.confidence === "reduced") {
     return {
       cautionLevel: "notice",
-      cautionReason:
-        lastReasonCode(prescription) ?? "reduced_prescription_confidence",
+      cautionReason: "reduced_prescription_confidence",
     };
   }
   return { cautionLevel: "none", cautionReason: null };
-}
-
-function lastReasonCode(
-  prescription: PrescriptionResult,
-): PrescriptionResult["reasonCodes"][number] | undefined {
-  return prescription.reasonCodes[prescription.reasonCodes.length - 1];
 }

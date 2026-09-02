@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => {
 vi.mock("@/lib/db/prisma", () => ({ prisma: mocks.prisma }));
 
 import { applyAutoregulation } from "@/lib/api/autoregulation";
+import { buildPrescriptionReadouts } from "@/lib/api/prescription-readout";
 
 function numericPrescription(
   exerciseId: string,
@@ -121,7 +122,11 @@ describe("autoregulation correctness", () => {
       evidence: [expect.objectContaining({ evidenceId: "history-1" })],
     });
     expect(fresh.loadAudit?.resolvedLoads.e1.resolvedTopSetLoad).toBe(180);
-    expect(fresh.prescriptionReadouts?.[0]?.targetLoad).toBe(180);
+    expect(buildPrescriptionReadouts({
+      workout: fresh.adjusted,
+      prescriptionResultsByPlacement: fresh.loadAudit?.prescriptions,
+      resolvedLoadsByPlacement: fresh.loadAudit?.resolvedLoads,
+    })[0]?.targetLoad).toBe(180);
 
     mocks.readinessFindFirst.mockResolvedValueOnce({
       timestamp: new Date(Date.now() - 72 * 60 * 60 * 1000),

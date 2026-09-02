@@ -4,6 +4,8 @@ vi.mock("@/lib/db/prisma", () => ({ prisma: {} }));
 import catalog from "../../../../prisma/exercises_comprehensive.json";
 import { mapExercises } from "../workout-context";
 import { generateWorkoutFromTemplate } from "@/lib/engine/template-session";
+import { applyLoadsWithAudit } from "@/lib/engine/apply-loads";
+import { buildPrescriptionReadouts } from "@/lib/api/prescription-readout";
 import type { MeasurementSemantics } from "@/lib/exercise-measurement/semantics";
 import type { MappedGenerationContext } from "./types";
 import { resolveRequiredSeededSlotPlan } from "./slot-plan-seed";
@@ -175,7 +177,7 @@ function generateFromAcceptedSeed(input: {
     exerciseLibrary,
     setCountOverrides: resolved.setCountOverrides,
   });
-  return { seed, resolved, generated };
+  return { seed, resolved, generated, exerciseLibrary };
 }
 
 describe("ordinary measurement-aware generation zero-load capability", () => {
@@ -264,4 +266,73 @@ describe("ordinary measurement-aware generation zero-load capability", () => {
       }),
     ).toThrow("ZERO_LOAD_MEANING_MEASUREMENT_MISMATCH");
   });
+
+  it.each([
+    [
+      "Bulgarian Split Squat",
+      {
+        profile: "REPS_EXTERNAL_LOAD" as const,
+        loadConvention: "IMPLEMENT_WEIGHT" as const,
+        repBasis: "PER_SIDE" as const,
+      },
+      "BODYWEIGHT_NO_ADDED_LOAD" as const,
+    ],
+    [
+      "Hack Squat",
+      {
+        profile: "REPS_EXTERNAL_LOAD" as const,
+        loadConvention: "MACHINE_DISPLAYED" as const,
+        repBasis: "TOTAL" as const,
+      },
+      "MACHINE_DEFAULT_NO_ADDED_LOAD" as const,
+    ],
+  ])(
+    "keeps a real V4-generated %s placement aligned when canonical load is semantic zero",
+    (exerciseName, measurement, zeroLoadMeaning) => {
+      const { generated, exerciseLibrary } = generateFromAcceptedSeed({
+        version: 4,
+        exerciseName,
+        measurement,
+      });
+      const workoutWithCanonicalZero = {
+        ...generated.workout,
+        mainLifts: generated.workout.mainLifts.map((entry) => ({
+          ...entry,
+          sets: entry.sets.map((set) => ({ ...set, targetLoad: 0 })),
+        })),
+      };
+      const applied = applyLoadsWithAudit(workoutWithCanonicalZero, {
+        history: [],
+        baselines: [],
+        exerciseById: Object.fromEntries(
+          exerciseLibrary.map((exercise) => [exercise.id, exercise]),
+        ),
+        primaryGoal: "hypertrophy",
+        profile: { trainingAge: "intermediate" },
+        sessionIntent: "lower",
+        acceptedV4Calibration: true,
+      });
+      const placement = applied.workout.mainLifts[0];
+      const prescription = applied.audit.prescriptions[placement.id];
+      const [readout] = buildPrescriptionReadouts({
+        workout: applied.workout,
+        prescriptionResultsByPlacement: applied.audit.prescriptions,
+        resolvedLoadsByPlacement: applied.audit.resolvedLoads,
+      });
+
+      expect(placement).toMatchObject({ measurement, zeroLoadMeaning });
+      expect(prescription).toMatchObject({
+        kind: "semantic_zero",
+        value: 0,
+        measurement,
+        zeroLoadMeaning,
+      });
+      expect(readout).toMatchObject({
+        placementId: placement.id,
+        targetLoad: 0,
+        prescriptionKind: "semantic_zero",
+        zeroLoadMeaning,
+      });
+    },
+  );
 });

@@ -14,6 +14,7 @@ import type {
   PreSessionReadinessConsistencyCheck,
   PreSessionReadinessContract,
 } from "./types";
+import type { SessionGenerationResult } from "@/lib/api/template-session/types";
 
 function consistencyCheck(
   id: PreSessionReadinessConsistencyCheck["id"],
@@ -391,48 +392,76 @@ describe("pre-session readiness contract consumers", () => {
         selectedIncompleteStatus: null,
       } as never,
       generation: {
-        selection: {},
+        workout: {
+          id: "workout-1",
+          scheduledDate: "2026-09-01T12:00:00.000Z",
+          warmup: [],
+          mainLifts: [],
+          accessories: [],
+          estimatedMinutes: 45,
+        },
+        selectionMode: "INTENT",
+        sessionIntent: "upper",
+        sraWarnings: [],
+        substitutions: [],
+        volumePlanByMuscle: {},
+        selection: {
+          selectedExerciseIds: ["bench", "incline"],
+          mainLiftIds: ["bench", "incline"],
+          accessoryIds: [],
+          perExerciseSetTargets: { bench: 3, incline: 3 },
+          volumePlanByMuscle: {},
+          rationale: {},
+        },
         prescriptionReadouts: [
           {
+            placementId: "bench-placement",
             exerciseId: "bench",
             exerciseName: "Bench Press",
+            setCount: 3,
             targetLoad: 185,
             targetReps: null,
             repRange: { min: 6, max: 10 },
             targetRpe: 8,
             targetRir: null,
             loadSource: "estimate",
+            prescriptionKind: "numeric",
             confidence: "low",
+            measurementProfile: "REPS_EXTERNAL_LOAD",
+            loadConvention: "BARBELL_TOTAL",
+            repBasis: "TOTAL",
+            zeroLoadMeaning: null,
             cautionLevel: "caution",
-            cautionReason: "target_effort_load_mismatch",
-            suggestedAdjustmentRange: {
-              minLoad: 175,
-              maxLoad: 185,
-              unit: "lb",
-              basis: "target_effort_load_mismatch",
-            },
+            cautionReason: "low_prescription_confidence",
           },
           {
+            placementId: "incline-placement",
             exerciseId: "incline",
             exerciseName: "Incline Press",
-            targetLoad: 95,
+            setCount: 3,
+            targetLoad: 0,
             targetReps: null,
             repRange: { min: 8, max: 12 },
             targetRpe: 8,
             targetRir: 2,
-            loadSource: "history",
-            confidence: "medium",
+            loadSource: null,
+            prescriptionKind: "semantic_zero",
+            confidence: null,
+            measurementProfile: "REPS_EXTERNAL_LOAD",
+            loadConvention: "IMPLEMENT_WEIGHT",
+            repBasis: "PER_SIDE",
+            zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD",
             cautionLevel: "none",
             cautionReason: null,
-            suggestedAdjustmentRange: null,
           },
         ],
-      } as never,
+      } satisfies SessionGenerationResult,
       sessionSnapshot: {
         version: 1,
         generated: {
           exercises: [
             {
+              placementId: "bench-placement",
               exerciseId: "bench",
               exerciseName: "Bench Press",
               orderIndex: 0,
@@ -440,6 +469,7 @@ describe("pre-session readiness contract consumers", () => {
               prescribedSets: [],
             },
             {
+              placementId: "incline-placement",
               exerciseId: "incline",
               exerciseName: "Incline Press",
               orderIndex: 1,
@@ -449,10 +479,19 @@ describe("pre-session readiness contract consumers", () => {
           ],
           traces: {
             progression: {
-              bench: {
+              "bench-placement": {
                 confidence: {
                   combinedScale: 0.65,
                   reasons: ["low_history"],
+                },
+                outcome: {
+                  action: "hold",
+                },
+              },
+              "incline-placement": {
+                confidence: {
+                  combinedScale: 1,
+                  reasons: [],
                 },
                 outcome: {
                   action: "hold",
@@ -494,6 +533,8 @@ describe("pre-session readiness contract consumers", () => {
     expect(contract.calibrationWatches.prescriptionConfidence).toEqual([
       {
         exerciseLabel: "Bench Press",
+        placementId: "bench-placement",
+        placementCorrelationSource: "generated_only",
         watchType: "prescription_confidence",
         reasonCode: "estimate_or_low_signal",
         displayActionCode: "hold_target_load",
@@ -507,33 +548,7 @@ describe("pre-session readiness contract consumers", () => {
         loadSource: "estimate",
         loadConfidence: "low",
         cautionLevel: "caution",
-        cautionReason: "target_effort_load_mismatch",
-        adjustmentRangeBasis: "exact_range",
-        suggestedAdjustmentRange: {
-          minLoad: 175,
-          maxLoad: 185,
-          unit: "lb",
-          basis: "target_effort_load_mismatch",
-        },
-        source: "generated_progression_trace",
-      },
-      {
-        exerciseLabel: "Incline Press",
-        watchType: "prescription_confidence",
-        reasonCode: "progression_trace_unavailable",
-        displayActionCode: "use_target_as_starting_point",
-        severity: "warning",
-        targetLoad: 95,
-        targetReps: null,
-        repRange: { min: 8, max: 12 },
-        targetRpe: 8,
-        targetRir: 2,
-        loadSource: "history",
-        loadConfidence: "medium",
-        cautionLevel: "none",
-        cautionReason: null,
-        adjustmentRangeBasis: "target_load_start",
-        suggestedAdjustmentRange: null,
+        cautionReason: "low_prescription_confidence",
         source: "generated_progression_trace",
       },
     ]);
@@ -541,10 +556,21 @@ describe("pre-session readiness contract consumers", () => {
       "progression trace unavailable"
     );
     expect(contract.sessionLocalCoaching.prescriptionConfidenceWatches).toContain(
-      "- Bench Press: start at 185 lb; use 175-185 lb if first-set reps or RPE are off."
+      "- Bench Press: start at 185 lb; hold unless the first set feels clearly too easy or too hard."
     );
-    expect(contract.sessionLocalCoaching.prescriptionConfidenceWatches).toContain(
-      "- Incline Press: start at 95 lb; adjust by feel."
+    expect(JSON.stringify(contract.calibrationWatches)).not.toContain(
+      "suggestedAdjustmentRange"
+    );
+    expect(JSON.stringify(contract.calibrationWatches)).not.toContain(
+      "adjustmentRangeBasis"
+    );
+    expect(JSON.stringify(contract.calibrationWatches)).not.toContain(
+      "selectedAnchorEvidence"
+    );
+    expect(contract.calibrationWatches.prescriptionConfidence).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ exerciseLabel: "Incline Press" }),
+      ]),
     );
     expect(JSON.stringify(contract.calibrationWatches)).not.toContain("action=");
     expect(JSON.stringify(contract.calibrationWatches)).not.toContain("confidence=");

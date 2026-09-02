@@ -3,7 +3,7 @@ import type { MeasurementSemantics } from "@/lib/exercise-measurement/semantics"
 import { applyLoadsWithAudit } from "./apply-loads";
 import { autoregulateWorkout } from "./readiness/autoregulate";
 import { toTargetLoad } from "./load-prescription";
-import { buildPrescriptionConfidenceReadouts } from "@/lib/api/prescription-confidence-readout";
+import { buildPrescriptionReadouts } from "@/lib/api/prescription-readout";
 import type { Exercise, WorkoutHistoryEntry, WorkoutPlan } from "./types";
 
 const machine = {
@@ -24,6 +24,11 @@ const assistance = {
   profile: "REPS_ASSISTED",
   loadConvention: "DISPLAYED_ASSISTANCE",
   repBasis: "TOTAL",
+} as const satisfies MeasurementSemantics;
+const bodyweightSemanticZero = {
+  profile: "REPS_EXTERNAL_LOAD",
+  loadConvention: "IMPLEMENT_WEIGHT",
+  repBasis: "PER_SIDE",
 } as const satisfies MeasurementSemantics;
 
 const exercise: Exercise = {
@@ -111,10 +116,17 @@ function generate(input: {
   plan?: WorkoutPlan;
   history?: WorkoutHistoryEntry[];
 }) {
-  return applyLoadsWithAudit(input.plan ?? workout(machine), {
+  const plan = input.plan ?? workout(machine);
+  const exerciseById = Object.fromEntries(
+    [...plan.mainLifts, ...plan.accessories].map((entry) => [
+      entry.exercise.id,
+      entry.exercise,
+    ]),
+  );
+  return applyLoadsWithAudit(plan, {
     history: input.history ?? [],
     baselines: [],
-    exerciseById: { [exercise.id]: exercise },
+    exerciseById,
     primaryGoal: "hypertrophy",
     profile: { trainingAge: "intermediate" },
     sessionIntent: "lower",
@@ -249,6 +261,82 @@ describe("PrescriptionResult production authority", () => {
     expect(emittedTargets(externalResult)).toEqual([75, 75, 75]);
   });
 
+  it.each([
+    {
+      name: "bodyweight/no-added-load",
+      measurement: bodyweightSemanticZero,
+      zeroLoadMeaning: "BODYWEIGHT_NO_ADDED_LOAD" as const,
+    },
+    {
+      name: "machine-default/no-added-load",
+      measurement: machine,
+      zeroLoadMeaning: "MACHINE_DEFAULT_NO_ADDED_LOAD" as const,
+    },
+  ])("keeps $name semantic zero consistent from final workout through projection", ({
+    measurement,
+    zeroLoadMeaning,
+  }) => {
+    const result = generate({
+      plan: workout(measurement, [0, 0, 0], zeroLoadMeaning),
+    });
+    const finalExercise = result.workout.accessories[0];
+    const prescription = result.audit.prescriptions[placementId];
+    const [readout] = buildPrescriptionReadouts({
+      workout: result.workout,
+      prescriptionResultsByPlacement: result.audit.prescriptions,
+      resolvedLoadsByPlacement: result.audit.resolvedLoads,
+    });
+
+    expect(finalExercise.zeroLoadMeaning).toBe(zeroLoadMeaning);
+    expect(prescription).toMatchObject({
+      kind: "semantic_zero",
+      value: 0,
+      zeroLoadMeaning,
+    });
+    expect(readout).toMatchObject({
+      placementId,
+      prescriptionKind: "semantic_zero",
+      targetLoad: 0,
+      zeroLoadMeaning,
+    });
+    expect(readout.targetLoad).toBe(0);
+    expect(readout.targetLoad).not.toBeNull();
+  });
+
+  it("does not infer semantic zero from legacy bodyweight equipment", () => {
+    const legacyWorkout = workout(machine, [0, 0, 0]);
+    legacyWorkout.accessories[0] = {
+      ...legacyWorkout.accessories[0],
+      exercise: {
+        ...legacyWorkout.accessories[0].exercise,
+        id: "legacy-dip",
+        name: "Legacy Dip",
+        equipment: ["bodyweight", "machine"],
+      },
+      measurement: undefined,
+      zeroLoadMeaning: undefined,
+    };
+
+    const result = generate({ plan: legacyWorkout });
+    const prescription = result.audit.prescriptions[placementId];
+    const [readout] = buildPrescriptionReadouts({
+      workout: result.workout,
+      prescriptionResultsByPlacement: result.audit.prescriptions,
+      resolvedLoadsByPlacement: result.audit.resolvedLoads,
+    });
+
+    expect(prescription).toMatchObject({
+      canonicalExerciseId: "legacy-dip",
+      kind: "unavailable",
+    });
+    expect(result.workout.accessories[0].zeroLoadMeaning ?? null).toBeNull();
+    expect(readout).toMatchObject({
+      targetLoad: null,
+      prescriptionKind: "unavailable",
+      zeroLoadMeaning: null,
+    });
+  });
+
   it("projects every emitted set target through the exercise PrescriptionResult", () => {
     const cases = [
       generate({ history: [history({ workoutId: "numeric", date: "2026-08-15", measurement: machine, load: 100, reps: 10, rpe: 8 })] }),
@@ -336,7 +424,11 @@ describe("PrescriptionResult production authority", () => {
       canonicalExerciseId: "bench",
       resolvedTopSetLoad: 95,
     });
-    expect(buildPrescriptionConfidenceReadouts({ workout: base.workout, loadAudit: base.audit }))
+    expect(buildPrescriptionReadouts({
+      workout: base.workout,
+      prescriptionResultsByPlacement: base.audit.prescriptions,
+      resolvedLoadsByPlacement: base.audit.resolvedLoads,
+    }))
       .toMatchObject([
         { placementId: "bench-placement-a", exerciseId: "bench", targetLoad: 105 },
         { placementId: "bench-placement-b", exerciseId: "bench", targetLoad: 95 },
@@ -364,9 +456,10 @@ describe("PrescriptionResult production authority", () => {
     expect(readiness.loadAudit.prescriptions["bench-placement-b"]).toMatchObject({ value: 85.5 });
     expect(readiness.loadAudit.resolvedLoads["bench-placement-a"].resolvedTopSetLoad).toBe(94.5);
     expect(readiness.loadAudit.resolvedLoads["bench-placement-b"].resolvedTopSetLoad).toBe(85.5);
-    expect(buildPrescriptionConfidenceReadouts({
+    expect(buildPrescriptionReadouts({
       workout: readiness.adjustedWorkout,
-      loadAudit: readiness.loadAudit,
+      prescriptionResultsByPlacement: readiness.loadAudit.prescriptions,
+      resolvedLoadsByPlacement: readiness.loadAudit.resolvedLoads,
     })).toMatchObject([
       { placementId: "bench-placement-a", exerciseId: "bench", targetLoad: 94.5 },
       { placementId: "bench-placement-b", exerciseId: "bench", targetLoad: 85.5 },

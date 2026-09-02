@@ -3,7 +3,7 @@ import { buildLogWorkoutExecutionGuidanceByExercise } from "./log-workout-execut
 import { buildPreSessionReadinessContract } from "./pre-session-readiness-contract-builder";
 import { getCalibrationWatchRows } from "./pre-session-readiness-contract-consumers";
 import { buildPreSessionReadinessGymCardDto } from "./pre-session-readiness-gym-card";
-import type { PrescriptionConfidenceReadout } from "./template-session/types";
+import type { PrescriptionReadout } from "./template-session/types";
 
 vi.mock("./home-pre-session-readiness", () => ({
   loadCurrentHomePreSessionReadinessContractCandidate: vi.fn(),
@@ -11,7 +11,7 @@ vi.mock("./home-pre-session-readiness", () => ({
 }));
 
 function buildContract(
-  readouts: PrescriptionConfidenceReadout[],
+  readouts: PrescriptionReadout[],
   generatedSnapshot?: {
     exercises: Array<{ placementId?: string; exerciseId: string; exerciseName: string }>;
     traces: { progression: Record<string, unknown> };
@@ -83,20 +83,27 @@ function buildContract(
 }
 
 function readout(
-  input: Partial<PrescriptionConfidenceReadout> &
-    Pick<PrescriptionConfidenceReadout, "exerciseId" | "exerciseName" | "loadSource">,
-): PrescriptionConfidenceReadout {
+  input: Partial<Omit<PrescriptionReadout, "loadSource">> &
+    Pick<PrescriptionReadout, "exerciseId" | "exerciseName"> & {
+      loadSource: PrescriptionReadout["loadSource"];
+    },
+): PrescriptionReadout {
   return {
     placementId: input.exerciseId,
+    setCount: 1,
     targetLoad: 140,
     targetReps: 5,
     repRange: { min: 5, max: 8 },
     targetRpe: 6.5,
     targetRir: 3.5,
+    prescriptionKind: input.loadSource == null ? "unavailable" : "numeric",
     confidence: "medium",
+    measurementProfile: "REPS_EXTERNAL_LOAD",
+    loadConvention: "BARBELL_TOTAL",
+    repBasis: "TOTAL",
+    zeroLoadMeaning: null,
     cautionLevel: "none",
     cautionReason: null,
-    suggestedAdjustmentRange: null,
     ...input,
   };
 }
@@ -113,14 +120,14 @@ describe("V4 load-calibration presentation", () => {
         placementId: "bench-placement-a",
         exerciseId: "bench",
         exerciseName: "Bench Press",
-        loadSource: "existing_target_load",
+        loadSource: "existing_target",
         targetLoad: 105,
       }),
       readout({
         placementId: "bench-placement-b",
         exerciseId: "bench",
         exerciseName: "Bench Press",
-        loadSource: "existing_target_load",
+        loadSource: "existing_target",
         targetLoad: 95,
       }),
     ]);
@@ -194,13 +201,13 @@ describe("V4 load-calibration presentation", () => {
           placementId: "generated-a",
           exerciseId: "bench",
           exerciseName: "Bench Press",
-          loadSource: "history",
+          loadSource: "exact_history",
         }),
         readout({
           placementId: "generated-b",
           exerciseId: "bench",
           exerciseName: "Bench Press",
-          loadSource: "history",
+          loadSource: "exact_history",
         }),
       ],
       {
@@ -254,14 +261,14 @@ describe("V4 load-calibration presentation", () => {
           placementId: "generated-a",
           exerciseId: "bench",
           exerciseName: "Bench Press",
-          loadSource: "history",
+          loadSource: "exact_history",
           targetLoad: 105,
         }),
         readout({
           placementId: "generated-b",
           exerciseId: "bench",
           exerciseName: "Bench Press",
-          loadSource: "history",
+          loadSource: "exact_history",
           targetLoad: 95,
         }),
       ],
@@ -298,8 +305,8 @@ describe("V4 load-calibration presentation", () => {
   it("does not translate an occurrence whose explicit persisted target is missing", () => {
     const contract = buildContract(
       [
-        readout({ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench A", loadSource: "history" }),
-        readout({ placementId: "generated-b", exerciseId: "row", exerciseName: "Row B", loadSource: "history" }),
+        readout({ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench A", loadSource: "exact_history" }),
+        readout({ placementId: "generated-b", exerciseId: "row", exerciseName: "Row B", loadSource: "exact_history" }),
       ],
       {
         exercises: [
@@ -341,8 +348,8 @@ describe("V4 load-calibration presentation", () => {
   it("does not recover distinct-canonical many-to-one guidance by exercise identity", () => {
     const contract = buildContract(
       [
-        readout({ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench", loadSource: "history" }),
-        readout({ placementId: "generated-b", exerciseId: "row", exerciseName: "Row", loadSource: "history" }),
+        readout({ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench", loadSource: "exact_history" }),
+        readout({ placementId: "generated-b", exerciseId: "row", exerciseName: "Row", loadSource: "exact_history" }),
       ],
       {
         exercises: [
@@ -371,7 +378,7 @@ describe("V4 load-calibration presentation", () => {
 
   it("emits no placement guidance when generated occurrence IDs are duplicated", () => {
     const contract = buildContract(
-      [readout({ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench", loadSource: "history" })],
+      [readout({ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench", loadSource: "exact_history" })],
       {
         exercises: [
           { placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench 1" },
@@ -399,7 +406,7 @@ describe("V4 load-calibration presentation", () => {
 
   it("retains only resolver-proven unique legacy placement guidance", () => {
     const unique = buildContract(
-      [readout({ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench", loadSource: "history" })],
+      [readout({ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench", loadSource: "exact_history" })],
       {
         exercises: [{ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench" }],
         traces: { progression: {} },
@@ -429,8 +436,8 @@ describe("V4 load-calibration presentation", () => {
 
     const ambiguous = buildContract(
       [
-        readout({ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench A", loadSource: "history" }),
-        readout({ placementId: "generated-b", exerciseId: "bench", exerciseName: "Bench B", loadSource: "history" }),
+        readout({ placementId: "generated-a", exerciseId: "bench", exerciseName: "Bench A", loadSource: "exact_history" }),
+        readout({ placementId: "generated-b", exerciseId: "bench", exerciseName: "Bench B", loadSource: "exact_history" }),
       ],
       {
         exercises: [
@@ -454,7 +461,7 @@ describe("V4 load-calibration presentation", () => {
       readout({
         exerciseId: "exact-bench",
         exerciseName: "Bench Press",
-        loadSource: "history",
+        loadSource: "exact_history",
         historyEvidence: {
           source: "exact_compatible_history",
           confidence: "high",
@@ -467,7 +474,7 @@ describe("V4 load-calibration presentation", () => {
       readout({
         exerciseId: "legacy-bench",
         exerciseName: "Barbell Bench Press",
-        loadSource: "legacy_measurement_history",
+        loadSource: "legacy_barbell_history",
         historyEvidence: {
           source: "legacy_measurement_bridge",
           confidence: "reduced",
@@ -480,9 +487,9 @@ describe("V4 load-calibration presentation", () => {
       readout({
         exerciseId: "uncalibrated-bench",
         exerciseName: "Incline Bench Press",
-        loadSource: "none",
+        loadSource: null,
         targetLoad: null,
-        confidence: "low",
+        confidence: null,
       }),
     ]);
 
@@ -494,18 +501,17 @@ describe("V4 load-calibration presentation", () => {
     expect(contract.calibrationWatches.prescriptionConfidence).toEqual([
       expect.objectContaining({
         exerciseLabel: "Bench Press",
-        loadSource: "history",
+        loadSource: "exact_history",
         historyEvidence: expect.objectContaining({ confidence: "high" }),
       }),
       expect.objectContaining({
         exerciseLabel: "Barbell Bench Press",
-        loadSource: "legacy_measurement_history",
+        loadSource: "legacy_barbell_history",
         severity: "warning",
         historyEvidence: expect.objectContaining({ confidence: "reduced" }),
       }),
       expect.objectContaining({
         exerciseLabel: "Incline Bench Press",
-        loadSource: "none",
         targetLoad: null,
         severity: "warning",
       }),
@@ -517,7 +523,7 @@ describe("V4 load-calibration presentation", () => {
       readout({
         exerciseId: "exact-bench",
         exerciseName: "Bench Press",
-        loadSource: "history",
+        loadSource: "exact_history",
         historyEvidence: {
           source: "exact_compatible_history",
           confidence: "high",
@@ -530,7 +536,7 @@ describe("V4 load-calibration presentation", () => {
       readout({
         exerciseId: "legacy-bench",
         exerciseName: "Barbell Bench Press",
-        loadSource: "legacy_measurement_history",
+        loadSource: "legacy_barbell_history",
         historyEvidence: {
           source: "legacy_measurement_bridge",
           confidence: "reduced",
@@ -543,9 +549,9 @@ describe("V4 load-calibration presentation", () => {
       readout({
         exerciseId: "uncalibrated-bench",
         exerciseName: "Incline Bench Press",
-        loadSource: "none",
+        loadSource: null,
         targetLoad: null,
-        confidence: "low",
+        confidence: null,
       }),
     ]);
 

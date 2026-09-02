@@ -18,14 +18,12 @@ import {
 } from "@/lib/evidence/session-audit-snapshot";
 import { readSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
 import { attachSessionSlotMetadata, buildCanonicalSelectionMetadata } from "@/lib/ui/selection-metadata";
+import {
+  PrescriptionReadoutProjectionError,
+  buildPrescriptionReadouts,
+} from "@/lib/api/prescription-readout";
 
-export async function POST(request: Request) {
-  const paused = productionWritePauseResponse(
-    "workout_materialization",
-    "/api/workouts/generate-from-template",
-  );
-  if (paused) return paused;
-
+async function handleUnpausedPost(request: Request) {
   const body = await request.json().catch(() => ({}));
   const parsed = generateFromTemplateSchema.safeParse(body);
 
@@ -182,6 +180,7 @@ export async function POST(request: Request) {
     selectionMetadata,
     sessionAuditSnapshot
   );
+  const finalLoadAudit = autoregulated.loadAudit ?? result.audit;
 
   const response: GenerateFromTemplateResponse = {
     workout: autoregulated.adjusted,
@@ -191,10 +190,37 @@ export async function POST(request: Request) {
     volumePlanByMuscle: result.volumePlanByMuscle,
     selectionMode: result.selectionMode,
     sessionIntent: result.sessionIntent,
-    prescriptionReadouts:
-      autoregulated.prescriptionReadouts ?? result.prescriptionReadouts,
+    prescriptionReadouts: buildPrescriptionReadouts({
+      workout: autoregulated.adjusted,
+      prescriptionResultsByPlacement: finalLoadAudit.prescriptions,
+      resolvedLoadsByPlacement: finalLoadAudit.resolvedLoads,
+    }),
     selectionMetadata: responseSelectionMetadata,
   };
 
   return NextResponse.json(response);
+}
+
+export async function POST(request: Request) {
+  const paused = productionWritePauseResponse(
+    "workout_materialization",
+    "/api/workouts/generate-from-template",
+  );
+  if (paused) return paused;
+
+  try {
+    return await handleUnpausedPost(request);
+  } catch (error) {
+    if (!(error instanceof PrescriptionReadoutProjectionError)) {
+      throw error;
+    }
+    console.error("Prescription readout projection failed", {
+      code: error.code,
+      placementId: error.placementId,
+    });
+    return NextResponse.json(
+      { error: "Workout prescription readout is unavailable." },
+      { status: 500 },
+    );
+  }
 }

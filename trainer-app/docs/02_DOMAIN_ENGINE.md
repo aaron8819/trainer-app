@@ -17,8 +17,11 @@ The non-exact production flow is performed evidence normalization ->
 comparability -> one selected exposure -> placement-scoped progression -> base
 `PrescriptionResult` for the workout-exercise placement -> readiness
 transformation for that placement -> final `PrescriptionResult` ->
-`toTargetLoad()` -> that placement's compatibility `targetLoad`, resolved-load
-audit, and prescription/readiness readout. `WorkoutExercise.id`, populated from
+`toTargetLoad()` -> that placement's compatibility `targetLoad` and resolved-load
+audit. Response-level readiness, gap-fill caps, and session-capacity reductions
+then produce the final returned `WorkoutPlan`; only after those transformations
+does `src/lib/api/prescription-readout.ts` project the optional prescription
+readout from the final workout plus the final placement-keyed result. `WorkoutExercise.id`, populated from
 the accepted V4 `placementId` during exact replay and otherwise generated for
 the session placement, rather than canonical `exercise.id`, keys prescription
 authority because accepted V4 may contain multiple placements of the same
@@ -44,7 +47,19 @@ Calibration-required, semantic-zero,
 not-applicable, and unavailable results cannot become numeric. `targetLoad` is
 emitted only through `toTargetLoad()` from the final result; result-derived
 evidence also owns the compatibility audit citation, and readouts are rebuilt
-after readiness from the final result.
+after readiness from the final result. The readout adapter is an API/read-model
+owner only. It receives no accepted revision, scheduled obligation, composition
+capability, receipt, or Save state, and its output is never fed back into
+generation or persistence. Every final non-warmup occurrence therefore requires
+its exact placement-keyed result. Projection validates canonical exercise ID and
+the complete duplicated frozen measurement tuple; semantic-zero additionally
+requires the result and final exercise to carry the same zero meaning. Missing or
+mismatched evidence throws a typed internal projection error and cannot become an
+engine-authored `unavailable` result. Genuine `PrescriptionResult.kind =
+"unavailable"` remains a valid canonical product state. Readout confidence exists
+only when the engine result carries it: numeric confidence maps high/reduced/low
+to high/medium/low, calibration-required maps its canonical low confidence, and
+semantic-zero, not-applicable, and unavailable expose no confidence assertion.
 
 Positive longitudinal comparison requires the exact canonical exercise id and
 the exact frozen measurement tuple. Exact barbell and dumbbell evidence is
@@ -73,7 +88,9 @@ progression. Newer exact machine evidence wins over that hint and does not
 inherit the hint's low confidence. Reps-only bodyweight is not applicable,
 displayed assistance is unsupported, and valid explicit zero semantics are
 resolved before an existing positive target can be preserved. Only semantically
-valid external-load work may retain a positive existing target.
+valid external-load work may retain a positive existing target. Semantic-zero
+meaning comes only from the generated occurrence's frozen measurement snapshot;
+equipment names and equipment-list membership never author or infer that meaning.
 
 Template-preview exercise replacement is a pre-save canonical regeneration,
 not a local object rewrite. Each suggestion targets the stable

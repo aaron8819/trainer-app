@@ -2431,18 +2431,20 @@ describe("buildWorkoutAuditArtifact", () => {
           runtimeOnlyCount: 0,
           classificationCounts: { exact_history: 1 },
         },
-        rows: [
-          {
-            exerciseId: "bench",
-            exerciseName: "Bench Press",
-            classification: "exact_history",
-            confidence: "high",
-            loadSource: "history",
+            rows: [
+              {
+                placementId: "bench-placement",
+                exerciseId: "bench",
+                exerciseName: "Bench Press",
+                prescriptionKind: "numeric",
+                classification: "exact_history",
+                confidence: "high",
+                loadSource: "exact_history",
             cautionLevel: "none",
             cautionReason: null,
             targetLoad: 205,
             ownerSeam: "future-week prescription readout",
-            evidence: "loadSource=history confidence=high caution=none",
+                evidence: "loadSource=exact_history confidence=high caution=none",
           },
         ],
       },

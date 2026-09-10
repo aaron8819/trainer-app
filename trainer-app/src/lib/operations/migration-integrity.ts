@@ -26,6 +26,8 @@ export const EXPECTED_MIGRATION_CHAIN = [
   "20260807120000_add_exercise_measurement_foundation",
   "20260813120000_add_anti_extension_movement_pattern",
   "20260823120000_add_zero_load_meaning",
+  "20260909120000_trainer2_drafts",
+  "20260910020000_trainer2_acceptance_integrity",
 ] as const;
 
 export type LedgerRow = {

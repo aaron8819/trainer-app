@@ -13,7 +13,7 @@ Fresh evidence is retained under ignored `artifacts/trainer2/`:
 - `final-attestation.json`: final commit/tree/state and evidence hashes with source-equivalence checks. Kept outside tracked source to avoid self-reference.
 - `accepted-refresh-failed.png`, `recovered-current-head.png`, `draft-loop.png`: actual Edge screenshots.
 
-All regression definitions are correction source, without a separate test overlay. Raw checkout hashes qualify Windows CRLF/LF differences. The original applied migration is unchanged in Git. Historical implementation artifacts lacked sufficient attribution and are not retroactively certified. The review's green component probes asserted faulty behavior; these correction regressions assert desired behavior.
+All correction regression definitions are tracked source. A separate ignored baseline probe reproduces the reviewed candidate's canonical-chain omission; its module/test/probe hashes and exact method are in `reviewed-chain-baseline.json`. It does not replace correction tests or claim a full base suite run. Raw checkout hashes qualify Windows CRLF/LF differences. The original applied migration is unchanged in Git. Historical implementation artifacts lacked sufficient attribution and are not retroactively certified. The review's green component probes asserted faulty behavior; these correction regressions assert desired behavior.
 
 ## F1 database matrix
 
@@ -65,6 +65,6 @@ Prisma 7 can obscure the primary error with “current transaction is aborted”
 
 ## Gates and limits
 
-The path-derived plan is retained in `verification-policy.json`. Checks cover Prisma generation, focused Trainer2 suites, environment classification, command registry, migration-integrity tests and `test:verify-gate` (lint, TypeScript, focused engine/review/version/ownership/write-gate checks and contracts). The disposable harness runs the production build and protected Finisher schema-diff check against its own target. Exact outcomes belong to `checks.json` and `verification.json`.
+The path-derived plan is retained in `verification-policy.json`. Checks cover Prisma generation, focused Trainer2 suites, environment classification, command registry, migration/readiness-integrity tests and `test:verify-gate` (lint, TypeScript, focused engine/review/version/ownership/write-gate checks and contracts). The canonical migration chain list now includes the reviewed draft migration and its additive correction; its pending-migration assertion follows the new last migration. The disposable harness runs the production build against its own target. Exact outcomes belong to `checks.json` and `verification.json`. The release-only Finisher schema-diff gate is not run for this draft correction; no Finisher schema was changed.
 
 The expensive full credential-free inventory is a PR/release-class check and is not claimed here. No persistent/shared database, hosted authentication/provider configuration, merge, push or deployment was exercised. Acceptance checks scan account-local accepted history; large-history performance and future command types need separate qualification. Forced transient retries and offline recovery remain outside this correction. Stop at focused independent re-review of F1–F3; no next Phase 0 slice is included.

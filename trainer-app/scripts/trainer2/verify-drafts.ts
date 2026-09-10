@@ -78,8 +78,6 @@ export async function verifyDrafts() {
     assert(validateDisposableDatabaseTargets({ environment: env, confirmed: true }).valid);
     command(process.execPath, [resolve("node_modules/prisma/build/index.js"), "migrate", "deploy"], env);
     command(process.execPath, [resolve("node_modules/prisma/build/index.js"), "migrate", "deploy"], env);
-    command(process.execPath, [resolve("node_modules/tsx/dist/cli.mjs"), "scripts/check-finisher-schema-drift.ts"], env);
-    passed("migration schema diff preserves protected Finisher relationships on disposable target");
     const adminPool = new Pool({ connectionString: ownerUrl }); pools.push(adminPool);
     evidence.postgres = (await adminPool.query("SELECT version()")).rows[0];
     evidence.docker = command("docker", ["version", "--format", "{{.Server.Version}}"]);

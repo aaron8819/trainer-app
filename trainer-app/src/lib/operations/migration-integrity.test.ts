@@ -193,17 +193,17 @@ describe("migration integrity", () => {
     );
   });
 
-  it("accepts the conventional chain with zero-load semantics pending", () => {
+  it("accepts the conventional chain with draft acceptance integrity pending", () => {
     const result = report();
 
     expect(EXPECTED_MIGRATION_CHAIN.at(-1)).toBe(
-      "20260823120000_add_zero_load_meaning",
+      "20260910020000_trainer2_acceptance_integrity",
     );
     expect(result.chain).toMatchObject({
       checkedIn: EXPECTED_MIGRATION_CHAIN.length,
       applied: EXPECTED_MIGRATION_CHAIN.length - 1,
       pending: 1,
-      pendingNames: ["20260823120000_add_zero_load_meaning"],
+      pendingNames: ["20260910020000_trainer2_acceptance_integrity"],
       exactExpectedChain: true,
     });
     expect(result.migrationIntegrityValid).toBe(true);

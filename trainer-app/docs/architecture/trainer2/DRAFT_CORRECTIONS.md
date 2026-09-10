@@ -20,6 +20,8 @@ Repository checks and build results use fresh source manifests and command logs.
 
 Harness development exposed two verification issues, corrected before final qualification: schema-only Prisma selection still used the configured full migration path, and Prisma obscured explicit-transaction migration errors. Fixtures now use a copied config and verify the old ledger before population; rejected-upgrade checks distinguish PostgreSQL errors from CLI presentation. TypeScript also caught an unsupported Testing Library `exact` option, which was removed. These are correction-work iterations, not claimed baseline failures.
 
+The migration-integrity gate found that the canonical `EXPECTED_MIGRATION_CHAIN` still ended before the reviewed draft migration. The same equality predicate reproduced the omission using the exact reviewed module and copied candidate chain; `reviewed-chain-baseline.json` records the separate probe/module/test hashes and method. The list now includes both draft migrations, and the focused test expects the correction as the last pending migration. Migration/readiness-integrity consumers are checked; no migration SQL history or provider tooling behavior is rewritten.
+
 ## Stopping point
 
 Corrected candidate for focused independent re-review; no independent re-review pass is claimed. No merge, push, deployment, persistent/provider database change, source inventory/import implementation, activation, execution, progression or offline redesign occurred. Future command types and large-history performance require separate qualification. Work stops before the next Phase 0 slice.

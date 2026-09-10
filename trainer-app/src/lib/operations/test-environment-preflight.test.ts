@@ -1541,6 +1541,7 @@ describe("command coverage honesty", () => {
       "trainer-app/scripts/test-v4-custom-plan-postgres.ts",
       "trainer-app/scripts/test-rollout-tooling-postgres.ts",
       "trainer-app/scripts/test-readiness-snapshot-postgres.ts",
+      "trainer-app/scripts/test-trainer2-drafts-postgres.ts",
       "trainer-app/scripts/verify-seed-revision-concurrency.ts",
     ]);
     const approvedGuardFirstPackageScripts = new Set([

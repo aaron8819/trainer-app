@@ -1,0 +1,94 @@
+import { z } from "zod";
+
+export const id = z.uuid().refine(v => v === v.toLowerCase(), "UUIDs must use lowercase spelling");
+const label = z.string().max(200);
+// Decimal spelling is authored meaning: never coerce, quantize, or normalize it.
+export const decimal = z.string().regex(/^(0|[1-9]\d{0,8})(\.\d{1,6})?$/);
+export const measurement = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("externalLoad"), value: decimal,
+    unit: z.enum(["kg", "lb"]), convention: z.enum(["barbellTotal", "perImplement", "machineDisplayed"]),
+    zeroMeaning: z.enum(["validZero", "notAllowed"]) }).strict(),
+  z.object({ kind: z.literal("addedLoad"), value: decimal, unit: z.enum(["kg", "lb"]),
+    convention: z.literal("addedExternal"), zeroMeaning: z.literal("noAddedLoad") }).strict(),
+  z.object({ kind: z.literal("assistance"), value: decimal, unit: z.enum(["kg", "lb"]),
+    convention: z.literal("displayedAssistance"), zeroMeaning: z.literal("noAssistance") }).strict(),
+  z.object({ kind: z.literal("bodyweight"), convention: z.literal("bodyweightOnly") }).strict(),
+]).superRefine((v, ctx) => {
+  if (v.kind === "externalLoad" && v.zeroMeaning === "notAllowed" && /^0(?:\.0+)?$/.test(v.value))
+    ctx.addIssue({ code: "custom", message: "Zero requires explicit valid-zero meaning" });
+});
+export const target = z.object({
+  id, classification: z.enum(["preparation", "rampUp", "working", "optionalFinisher"]), required: z.boolean(),
+  reps: z.object({ min: z.int().min(1).max(1000), max: z.int().min(1).max(1000),
+    basis: z.enum(["total", "perSide", "alternating"]) }).strict().refine(v => v.min <= v.max),
+  measurement: measurement.nullable(), rir: decimal.refine(v => Number(v) <= 10, "RIR must be at most 10").nullable(), restSeconds: decimal.nullable(),
+}).strict();
+export const position = z.object({ id, exercise: z.object({
+  kind: z.literal("authoredDescription"), name: label, variation: label,
+}).strict(), targets: z.array(target).max(100) }).strict();
+export const occurrence = z.object({ id, stageId: id, name: label,
+  positions: z.array(position).max(100) }).strict();
+export const stage = z.object({ id, name: label }).strict();
+export const draftDocument = z.object({ schemaVersion: z.literal(1), name: label,
+  endpoint: z.literal("endOfOrderedOccurrences"), stages: z.array(stage).max(100),
+  occurrences: z.array(occurrence).max(500),
+}).strict().superRefine((doc, ctx) => {
+  const all = [...doc.stages.map(s => s.id)];
+  const stages = new Set(all);
+  for (const o of doc.occurrences) {
+    if (!stages.has(o.stageId)) ctx.addIssue({ code: "custom", message: "Unknown stage reference" });
+    all.push(o.id);
+    for (const p of o.positions) { all.push(p.id); all.push(...p.targets.map(t => t.id)); }
+  }
+  if (new Set(all).size !== all.length) ctx.addIssue({ code: "custom", message: "Duplicate identity" });
+});
+export type DraftDocument = z.infer<typeof draftDocument>;
+export const editOperation = z.discriminatedUnion("op", [
+  z.object({ op: z.literal("renamePlan"), name: label }).strict(),
+  z.object({ op: z.literal("addStage"), stage }).strict(),
+  z.object({ op: z.literal("renameStage"), stageId: id, name: label }).strict(),
+  z.object({ op: z.literal("removeStage"), stageId: id }).strict(),
+  z.object({ op: z.literal("reorderStages"), stageIds: z.array(id).max(100) }).strict(),
+  z.object({ op: z.literal("addOccurrence"), occurrence }).strict(),
+  z.object({ op: z.literal("editOccurrence"), occurrenceId: id, stageId: id, name: label }).strict(),
+  z.object({ op: z.literal("removeOccurrence"), occurrenceId: id }).strict(),
+  z.object({ op: z.literal("reorderOccurrences"), occurrenceIds: z.array(id).max(500) }).strict(),
+  z.object({ op: z.literal("addPosition"), occurrenceId: id, position }).strict(),
+  z.object({ op: z.literal("editExercise"), positionId: id, exercise: position.shape.exercise }).strict(),
+  z.object({ op: z.literal("removePosition"), positionId: id }).strict(),
+  z.object({ op: z.literal("reorderPositions"), occurrenceId: id, positionIds: z.array(id).max(100) }).strict(),
+  z.object({ op: z.literal("addTarget"), positionId: id, target }).strict(),
+  z.object({ op: z.literal("editTarget"), target }).strict(),
+  z.object({ op: z.literal("removeTarget"), targetId: id }).strict(),
+  z.object({ op: z.literal("reorderTargets"), positionId: id, targetIds: z.array(id).max(100) }).strict(),
+]);
+const envelope = {
+  schemaVersion: z.literal(1), actionId: id, originatingAccountId: z.string().min(1).max(100),
+  deviceId: id, ownershipEpoch: z.int().min(0), dependsOn: z.array(id).max(100),
+};
+export const createDraftCommand = z.object({ ...envelope, commandType: z.literal("CreateDraft"),
+  target: z.object({ planId: id }).strict(), expected: z.object({}).strict(),
+  intent: draftDocument,
+}).strict();
+export const editDraftCommand = z.object({ ...envelope, commandType: z.literal("EditDraft"),
+  target: z.object({ planId: id }).strict(), expected: z.object({ planRevisionId: id }).strict(),
+  intent: z.object({ operations: z.array(editOperation).min(1).max(100) }).strict(),
+}).strict();
+export type CreateDraftCommand = z.infer<typeof createDraftCommand>;
+export type EditDraftCommand = z.infer<typeof editDraftCommand>;
+export type DraftCommand = CreateDraftCommand | EditDraftCommand;
+export type DraftError = "STALE_REVISION" | "NOT_FOUND" | "TOMBSTONED" | "IDENTITY_REUSED" |
+  "INVALID_OPERATION" | "INVALID_DOCUMENT" | "DEPENDENCIES_UNSUPPORTED" | "OWNERSHIP_EPOCH";
+export type DraftOutcome = {
+  status: "Accepted"; actionId: string; commandType: DraftCommand["commandType"];
+  acceptedSequence: string; result: { planId: string; revisionId: string; revisionNumber: number; contentHash: string };
+} | { status: "Rejected" | "Conflict"; actionId: string; commandType: DraftCommand["commandType"]; code: DraftError };
+export type CommandResponse = { outcome: DraftOutcome; replayed: boolean; outcomeCursor: string };
+
+export function activationBlockers(doc: DraftDocument): string[] {
+  const blockers = ["ACTIVATION_NOT_IMPLEMENTED", "PROGRESSION_INTENT_NOT_IMPLEMENTED"];
+  if (!doc.occurrences.some(o => o.positions.some(p => p.targets.length))) blockers.push("NO_EXECUTABLE_TRAINING");
+  if (doc.occurrences.some(o => !o.positions.length || o.positions.some(p => !p.exercise.name || !p.targets.length || p.targets.some(t => t.measurement === null))))
+    blockers.push("INCOMPLETE_PRESCRIPTION");
+  return blockers;
+}

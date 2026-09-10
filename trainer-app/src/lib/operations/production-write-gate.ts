@@ -6,6 +6,7 @@ export const PRODUCTION_WRITE_ENFORCEMENT_COVERAGE =
   "application_all_classified_write_paths" as const;
 
 export type ProductionWriteOperation =
+  | "trainer2_draft"
   | "application_configuration"
   | "mesocycle_acceptance"
   | "mesocycle_lifecycle"

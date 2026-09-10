@@ -3,6 +3,8 @@ import { join, relative, resolve } from "node:path";
 import ts from "typescript";
 
 export const APPLICATION_MUTATION_ROUTES = new Map<string, string>([
+  ["trainer2/drafts/create/route.ts#POST", "trainer2_draft"],
+  ["trainer2/drafts/edit/route.ts#POST", "trainer2_draft"],
   ["profile/setup/route.ts#POST", "application_configuration"],
   ["preferences/route.ts#POST", "application_configuration"],
   ["periodization/macro/route.ts#POST", "mesocycle_acceptance"],

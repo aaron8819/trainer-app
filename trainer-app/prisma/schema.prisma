@@ -8,6 +8,80 @@ datasource db {
   provider = "postgresql"
 }
 
+// Trainer2 draft slice. Owner/root FKs, immutable graph seals and cursor triggers
+// are database-enforced extensions in 20260909120000_trainer2_drafts.
+model Trainer2AccountPrincipal {
+  id        String @id @db.Uuid
+  accountId String
+  issuer    String
+  subject   String
+  @@unique([issuer, subject])
+}
+
+model Trainer2AccountTrainingState {
+  accountId        String @id
+  runtimeOwner     String @default("LEGACY")
+  ownershipEpoch   Int @default(0)
+  acceptedSequence BigInt @default(0)
+  outcomeSequence  BigInt @default(0)
+}
+
+model Trainer2Plan {
+  id                String @id @db.Uuid
+  accountId         String
+  currentRevisionId String @db.Uuid
+  tombstonedAt      DateTime? @db.Timestamptz(6)
+  @@unique([accountId, id])
+}
+
+model Trainer2PlanRevision {
+  id               String @id @db.Uuid
+  accountId        String
+  planId           String @db.Uuid
+  revisionNumber   Int
+  parentRevisionId String? @db.Uuid
+  actionId         String @db.Uuid
+  document         Json
+  canonicalContent String
+  contentHash      String
+  createdTx        BigInt @default(dbgenerated("txid_current()"))
+  createdAt        DateTime @default(now()) @db.Timestamptz(6)
+  @@unique([accountId, planId, id])
+  @@unique([planId, revisionNumber])
+  @@unique([accountId, actionId])
+}
+
+model Trainer2Identity {
+  id              String @id @db.Uuid
+  accountId       String
+  planId          String @db.Uuid
+  kind            String
+  parentId        String? @db.Uuid
+  firstRevisionId String @db.Uuid
+  @@unique([accountId, planId, id])
+}
+
+model Trainer2DurableAction {
+  accountId         String
+  actionId          String @db.Uuid
+  hashVersion       String
+  envelopeHash      String
+  submittedEnvelope String
+  createdAt         DateTime @default(now()) @db.Timestamptz(6)
+  @@id([accountId, actionId])
+}
+
+model Trainer2ActionOutcome {
+  accountId     String
+  outcomeCursor BigInt @default(0)
+  actionId      String @db.Uuid
+  status        String
+  outcome       Json
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  @@id([accountId, outcomeCursor])
+  @@index([accountId, actionId, outcomeCursor])
+}
+
 enum TrainingAge {
   BEGINNER
   INTERMEDIATE

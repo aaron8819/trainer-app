@@ -56,6 +56,7 @@
         "audit:post-session-reviews": "tsx scripts/audit-post-session-reviews.ts",
         "test:seed-revision-concurrency": "tsx scripts/verify-seed-revision-concurrency.ts",
         "test:db:readiness-snapshots": "tsx scripts/test-readiness-snapshot-postgres.ts",
+        "test:db:trainer2-drafts": "tsx scripts/test-trainer2-drafts-postgres.ts",
         "audit:mesocycle-explain:compare": "tsx scripts/audit-mesocycle-explain-compare.ts",
         "audit:week": "tsx scripts/workout-audit.ts --mode projected-week-volume",
         "audit:week:debug": "tsx scripts/workout-audit.ts --mode projected-week-volume --operator-debug",

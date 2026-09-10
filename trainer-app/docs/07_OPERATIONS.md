@@ -1,5 +1,9 @@
 # 07 Operations
 
+## Trainer2 draft isolation
+
+`TRAINER2_LOCAL_DRAFTS=enabled` is a server-only development opt-in, not hosted write enablement. The new adapter requires a loopback disposable database and the verified `trainer2_draft_runtime` role; the test harness preprovisions the local principal. Both POSTs also use the existing write-pause gate under `trainer2_draft`. No provider grants, persistent migration or deployment are authorized by this slice. SQL enables RLS/revokes PUBLIC without introducing runtime grants into shared environments. [Disposable setup, permissions and future hosted gates](architecture/trainer2/DRAFT_SLICE.md#persistence-and-authorization).
+
 ## Zero-load catalog release sequence
 
 Use one controlled release window that prevents materialization against a partially ready catalog: (1) apply the additive schema migration while the old runtime remains active, (2) under separate production authorization run the scoped catalog dry-run and confirm exactly two capability updates for `bulgarian-split-squat` and `hack-squat` with no unrelated operations, (3) apply those catalog updates, (4) run a second scoped dry-run that reports zero operations, and only then (5) activate the new runtime or otherwise expose measurement-aware workout materialization. Do not use the schema migration to synchronize catalog data.

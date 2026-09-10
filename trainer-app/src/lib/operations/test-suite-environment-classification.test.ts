@@ -261,8 +261,10 @@ describe("test-suite environment manifest", () => {
       manifest: currentManifest,
       discoveredTestFiles,
     });
-    expect(discoveredTestFiles).toHaveLength(385);
-    expect(selection.credentialFree).toHaveLength(346);
+    expect(discoveredTestFiles).toHaveLength(387);
+    expect(selection.credentialFree).toHaveLength(348);
+    expect(selection.credentialFree).toContain("src/lib/engine/trainer2/planning.test.ts");
+    expect(selection.credentialFree).toContain("src/lib/api/trainer2/isolation.test.ts");
     expect(selection.credentialFree).toContain(
       "src/lib/operations/credential-free-inventory-runner.test.ts"
     );

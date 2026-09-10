@@ -1,5 +1,9 @@
 # 06 Testing
 
+## Trainer2 draft verification
+
+`npm run test:db:trainer2-drafts -- --confirm-disposable` creates and migrates its own loopback PostgreSQL 17 container, provisions restricted runtime/read roles, proves draft/action/graph/permission invariants, and runs the actual browser loop using installed Edge. Exact argument and inherited-target guards run before database/Docker imports. It never loads dotenv or mutates a configured target. Focused credential-free tests live in `src/lib/engine/trainer2/planning.test.ts` and `src/lib/api/trainer2/isolation.test.ts`. [Acceptance matrix and limitations](architecture/trainer2/DRAFT_ACCEPTANCE.md).
+
 Owner: Aaron
 Last reviewed: 2026-07-26
 Purpose: Canonical testing reference for Vitest-based coverage of engine, API helpers, and UI components, plus the Playwright UI audit harness.

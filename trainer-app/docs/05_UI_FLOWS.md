@@ -1,5 +1,9 @@
 # 05 UI Flows
 
+## Trainer2 developer draft loop
+
+`/trainer2/dev/drafts` is an explicitly enabled local disposable workbench (`src/components/trainer2/DraftWorkbench.tsx`), absent from ordinary navigation. It demonstrates create, reload by saved ID, explicit revision rename/reorder/add/remove, same-action retry and a clear retained stale-edit error. Diagnostics are separated in a developer disclosure. No activation or execution controls exist. [Scope and verification](architecture/trainer2/DRAFT_SLICE.md).
+
 ## Zero-load display
 
 The shared frozen load-entry policy controls load-field visibility, performed-set blank/zero validity, zero labels, and positive-load coaching eligibility. Capability-backed zero displays as `Bodyweight` or `Machine default / no added load`; legacy zero remains a neutral numeric value.

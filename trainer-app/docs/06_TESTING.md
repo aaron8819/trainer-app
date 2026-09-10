@@ -1,5 +1,9 @@
 # 06 Testing
 
+## Trainer2 legacy source verification
+
+`node node_modules/tsx/dist/cli.mjs scripts/test-trainer2-legacy-postgres.ts --confirm-disposable` exercises the read-only source adapter against its own synthetic PostgreSQL container, including actual role denial, account-filtered linked rows, complete table no-write snapshots, concurrent capture consistency, deterministic revisions, CLI output and resource limits. It uses the installed Docker image and repository-local dependencies. Pure source/reference regressions live in `src/lib/legacy-history/source.test.ts`; run with `TRAINER_CREDENTIAL_FREE_TEST=1` to disable dotenv loading. [Inventory, fixture matrix and limitations](architecture/trainer2/LEGACY_SOURCE_INVENTORY.md).
+
 ## Trainer2 draft verification
 
 `npm run test:db:trainer2-drafts -- --confirm-disposable` creates and migrates its own loopback PostgreSQL 17 container, provisions restricted runtime/read roles, proves draft/action/graph/permission invariants, and runs the actual browser loop using installed Edge. Exact argument and inherited-target guards run before database/Docker imports. It never loads dotenv or mutates a configured target. Focused credential-free tests live in `src/lib/engine/trainer2/planning.test.ts` and `src/lib/api/trainer2/isolation.test.ts`. [Acceptance matrix and limitations](architecture/trainer2/DRAFT_ACCEPTANCE.md).

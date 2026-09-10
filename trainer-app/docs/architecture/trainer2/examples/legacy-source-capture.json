@@ -1,0 +1,1262 @@
+{
+  "schemaVersion": 1,
+  "scope": {
+    "system": "trainer-legacy-synthetic-v1",
+    "account": "legacy-owner-A",
+    "kind": "synthetic-file",
+    "selection": "all-owner-reachable-rows-v1",
+    "families": [
+      "DeviceDraft",
+      "FinisherExecution",
+      "FinisherExecutionStep",
+      "PostSessionReviewSnapshot",
+      "SetLog",
+      "Workout",
+      "WorkoutExercise",
+      "WorkoutSet"
+    ],
+    "completeness": "complete-within-declared-families"
+  },
+  "observation": {
+    "batchId": "synthetic-example-v1",
+    "capturedAt": "2026-09-10T12:00:00Z",
+    "databaseSnapshot": null
+  },
+  "sourceHash": "86866d6cbf385ed8d210f395db0381ab4330d8cdb966ec6548fdbf8f3498ee56",
+  "references": [
+    {
+      "schemaVersion": 1,
+      "identity": {
+        "system": "trainer-legacy-synthetic-v1",
+        "account": "legacy-owner-A",
+        "family": "DeviceDraft",
+        "record": "draft_set_session-known_target-known"
+      },
+      "payloadHash": "88e4922c312a57c455b5440a5605df103c062c47765c5cf7bd48a0c0674908ac",
+      "dependencyHash": "c61a26550c156354bdb431a240dd70cd31229e5c1ad18765e7841e5b5c0ce8d5",
+      "revision": "6a7c5d6a8befc4407e06492c93a3fc8386dfb3f3ba15bd7315e2e2ade144bac0",
+      "raw": {
+        "family": "DeviceDraft",
+        "record": "draft_set_session-known_target-known",
+        "fields": {
+          "workoutId": "session-known",
+          "workoutSetId": "target-known",
+          "reps": "10",
+          "load": "40.00",
+          "rpe": "8",
+          "savedAt": "1770000000000"
+        }
+      },
+      "assertions": [],
+      "interpretation": {
+        "kind": "unconfirmed-draft",
+        "finality": "not-applicable",
+        "measurement": {
+          "unit": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "convention": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "repBasis": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "equipment": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "zeroMeaning": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          }
+        },
+        "time": {
+          "performedDate": null,
+          "performedInstant": null,
+          "confidence": "unknown"
+        },
+        "actualEffort": "raw-RPE-only-no-RIR-conversion",
+        "startingPrescription": "not-verified-start",
+        "corrections": "surviving-values-only-no-demonstrated-correction-chain",
+        "quantitativelyQualified": false
+      },
+      "discrepancies": [
+        "DRAFT_OR_PREFILL_NOT_PERFORMANCE",
+        "PERFORMED_TIME_UNKNOWN"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "identity": {
+        "system": "trainer-legacy-synthetic-v1",
+        "account": "legacy-owner-A",
+        "family": "FinisherExecution",
+        "record": "timer-known"
+      },
+      "payloadHash": "1022ad8ca1a821910b00678a81c51ff438c50877c8ae97815913e15a62031b62",
+      "dependencyHash": "c61a26550c156354bdb431a240dd70cd31229e5c1ad18765e7841e5b5c0ce8d5",
+      "revision": "229f04b2774074af400bd6ecfd5b92e8876d218f0d692a4782f632854678ac84",
+      "raw": {
+        "family": "FinisherExecution",
+        "record": "timer-known",
+        "fields": {
+          "workoutId": "session-known",
+          "ownerId": "legacy-owner-A",
+          "state": "COMPLETED",
+          "offerId": "offer-uninspected",
+          "completedAt": "2026-01-03 11:00:00"
+        }
+      },
+      "assertions": [],
+      "interpretation": {
+        "kind": "unsupported-timed-reference",
+        "finality": "not-applicable",
+        "measurement": {
+          "unit": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "convention": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "repBasis": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "equipment": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "zeroMeaning": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          }
+        },
+        "time": {
+          "performedDate": null,
+          "performedInstant": null,
+          "confidence": "unknown"
+        },
+        "actualEffort": "raw-RPE-only-no-RIR-conversion",
+        "startingPrescription": "not-verified-start",
+        "corrections": "surviving-values-only-no-demonstrated-correction-chain",
+        "quantitativelyQualified": false
+      },
+      "discrepancies": [
+        "TIMED_FINISHER_REFERENCE_ONLY",
+        "UNAVAILABLE_RELATION:offerId:FinisherOffer"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "identity": {
+        "system": "trainer-legacy-synthetic-v1",
+        "account": "legacy-owner-A",
+        "family": "FinisherExecutionStep",
+        "record": "timer-step-known"
+      },
+      "payloadHash": "e352f8c1b7121745e2b9893eca96a3755bcc737a37ee19dc31d63d2d6e494e38",
+      "dependencyHash": "c61a26550c156354bdb431a240dd70cd31229e5c1ad18765e7841e5b5c0ce8d5",
+      "revision": "86e847277727a67056b80d57a011f0f1f0fd23d962f3c54ae371630592c17df9",
+      "raw": {
+        "family": "FinisherExecutionStep",
+        "record": "timer-step-known",
+        "fields": {
+          "executionId": "timer-known",
+          "routineStepId": "routine-step-uninspected",
+          "status": "COMPLETED",
+          "resolvedAt": "2026-01-03 11:00:00",
+          "actualWorkMs": "90000"
+        }
+      },
+      "assertions": [],
+      "interpretation": {
+        "kind": "unsupported-timed-reference",
+        "finality": "not-applicable",
+        "measurement": {
+          "unit": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "convention": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "repBasis": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "equipment": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "zeroMeaning": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          }
+        },
+        "time": {
+          "performedDate": null,
+          "performedInstant": null,
+          "confidence": "unknown"
+        },
+        "actualEffort": "raw-RPE-only-no-RIR-conversion",
+        "startingPrescription": "not-verified-start",
+        "corrections": "surviving-values-only-no-demonstrated-correction-chain",
+        "quantitativelyQualified": false
+      },
+      "discrepancies": [
+        "TIMED_FINISHER_REFERENCE_ONLY"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "identity": {
+        "system": "trainer-legacy-synthetic-v1",
+        "account": "legacy-owner-A",
+        "family": "PostSessionReviewSnapshot",
+        "record": "review-known"
+      },
+      "payloadHash": "509d3236bb6f1793cbc53691262e5f04ad3c1738fe57b0eacabf996722536c01",
+      "dependencyHash": "c61a26550c156354bdb431a240dd70cd31229e5c1ad18765e7841e5b5c0ce8d5",
+      "revision": "cb7a888b0da1545994f841bd3bdefab764905ec7465caea711281240fe4e3e6d",
+      "raw": {
+        "family": "PostSessionReviewSnapshot",
+        "record": "review-known",
+        "fields": {
+          "workoutId": "session-known",
+          "contractVersion": "1",
+          "provenance": "BACKFILLED",
+          "payload": "{\"prescription\":{\"sets\":2}}",
+          "createdAt": "2026-01-04 11:00:00"
+        }
+      },
+      "assertions": [],
+      "interpretation": {
+        "kind": "source-context",
+        "finality": "not-applicable",
+        "measurement": {
+          "unit": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "convention": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "repBasis": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "equipment": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "zeroMeaning": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          }
+        },
+        "time": {
+          "performedDate": null,
+          "performedInstant": null,
+          "confidence": "unknown"
+        },
+        "actualEffort": "raw-RPE-only-no-RIR-conversion",
+        "startingPrescription": "not-verified-start",
+        "corrections": "surviving-values-only-no-demonstrated-correction-chain",
+        "quantitativelyQualified": false
+      },
+      "discrepancies": [
+        "PRESCRIPTION_NOT_VERIFIED_START"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "identity": {
+        "system": "trainer-legacy-synthetic-v1",
+        "account": "legacy-owner-A",
+        "family": "SetLog",
+        "record": "log-known"
+      },
+      "payloadHash": "2fd2eb324457bb9f65976298ce2c0cf97841db66999f3e85d4e7451cc1fb0ec5",
+      "dependencyHash": "c61a26550c156354bdb431a240dd70cd31229e5c1ad18765e7841e5b5c0ce8d5",
+      "revision": "88ba005377b9899bd3606d3b4a0a4509649fdeecd6168462a2818197b4fa0c10",
+      "raw": {
+        "family": "SetLog",
+        "record": "log-known",
+        "fields": {
+          "workoutSetId": "target-known",
+          "wasSkipped": "false",
+          "actualLoad": "40.00",
+          "actualReps": "10",
+          "actualRpe": "8.5",
+          "completedAt": "2026-01-03 11:00:00"
+        }
+      },
+      "assertions": [
+        {
+          "schemaVersion": 1,
+          "identity": {
+            "system": "trainer-legacy-synthetic-v1",
+            "account": "legacy-owner-A",
+            "family": "SetLog",
+            "record": "log-known"
+          },
+          "payloadHash": "2fd2eb324457bb9f65976298ce2c0cf97841db66999f3e85d4e7451cc1fb0ec5",
+          "artifactId": "synthetic-example-protocol-v1",
+          "artifactText": "Synthetic fixture author explicitly specifies 10 total reps at 40.00 kg barbell total on synthetic-bar-A, performed date 2026-01-01. No real user history or verified writer-era claim.",
+          "claims": {
+            "confirmedPerformance": true,
+            "unit": "kg",
+            "convention": "BARBELL_TOTAL",
+            "repBasis": "TOTAL",
+            "equipment": "synthetic-bar-A",
+            "performedDate": "2026-01-01"
+          }
+        }
+      ],
+      "interpretation": {
+        "kind": "source-asserted-performance",
+        "finality": "not-applicable",
+        "measurement": {
+          "unit": {
+            "value": "kg",
+            "confidence": "external-source-assertion",
+            "basis": [
+              "synthetic-example-protocol-v1:ca86c662bbe5b20cc240e9f83edff261b13630ae5ca4fa0a6cd02ce8bb333391"
+            ]
+          },
+          "convention": {
+            "value": "BARBELL_TOTAL",
+            "confidence": "external-source-assertion",
+            "basis": [
+              "synthetic-example-protocol-v1:ca86c662bbe5b20cc240e9f83edff261b13630ae5ca4fa0a6cd02ce8bb333391"
+            ]
+          },
+          "repBasis": {
+            "value": "TOTAL",
+            "confidence": "external-source-assertion",
+            "basis": [
+              "synthetic-example-protocol-v1:ca86c662bbe5b20cc240e9f83edff261b13630ae5ca4fa0a6cd02ce8bb333391"
+            ]
+          },
+          "equipment": {
+            "value": "synthetic-bar-A",
+            "confidence": "external-source-assertion",
+            "basis": [
+              "synthetic-example-protocol-v1:ca86c662bbe5b20cc240e9f83edff261b13630ae5ca4fa0a6cd02ce8bb333391"
+            ]
+          },
+          "zeroMeaning": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          }
+        },
+        "time": {
+          "performedDate": "2026-01-01",
+          "performedInstant": null,
+          "confidence": "external-source-assertion"
+        },
+        "actualEffort": "raw-RPE-only-no-RIR-conversion",
+        "startingPrescription": "not-verified-start",
+        "corrections": "surviving-values-only-no-demonstrated-correction-chain",
+        "quantitativelyQualified": false
+      },
+      "discrepancies": [
+        "LATEST_VALUES_WITHOUT_CORRECTION_CHAIN",
+        "RPE_ORIGIN_NOT_RIR",
+        "ZEROMEANING_UNKNOWN"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "identity": {
+        "system": "trainer-legacy-synthetic-v1",
+        "account": "legacy-owner-A",
+        "family": "SetLog",
+        "record": "log-missing"
+      },
+      "payloadHash": "fef52fa8034b25b8182cb4cca0249db055601ce363e95689f8d176769736b9b8",
+      "dependencyHash": "a7c45f3f54764cbe20cbc0e22bd05d6438f06aa7d9288d45bda69e56519314cd",
+      "revision": "9f8755b769e5da1cce02940e8672adb99f33e632cb0652044fcbb579b0159fa9",
+      "raw": {
+        "family": "SetLog",
+        "record": "log-missing",
+        "fields": {
+          "workoutSetId": "orphan-target",
+          "wasSkipped": "false"
+        }
+      },
+      "assertions": [],
+      "interpretation": {
+        "kind": "recorded-log-unconfirmed",
+        "finality": "not-applicable",
+        "measurement": {
+          "unit": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "convention": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "repBasis": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "equipment": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "zeroMeaning": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          }
+        },
+        "time": {
+          "performedDate": null,
+          "performedInstant": null,
+          "confidence": "unknown"
+        },
+        "actualEffort": "raw-RPE-only-no-RIR-conversion",
+        "startingPrescription": "not-verified-start",
+        "corrections": "surviving-values-only-no-demonstrated-correction-chain",
+        "quantitativelyQualified": false
+      },
+      "discrepancies": [
+        "CONVENTION_UNKNOWN",
+        "EQUIPMENT_UNKNOWN",
+        "LATEST_VALUES_WITHOUT_CORRECTION_CHAIN",
+        "PERFORMANCE_ORIGIN_UNCONFIRMED",
+        "PERFORMED_TIME_UNKNOWN",
+        "REPBASIS_UNKNOWN",
+        "RPE_ORIGIN_NOT_RIR",
+        "UNAVAILABLE_RELATION:workoutSetId:WorkoutSet",
+        "UNIT_UNKNOWN",
+        "ZEROMEANING_UNKNOWN"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "identity": {
+        "system": "trainer-legacy-synthetic-v1",
+        "account": "legacy-owner-A",
+        "family": "SetLog",
+        "record": "log-null"
+      },
+      "payloadHash": "333f17cf7ac11e43cd8d3bb70c6c2a4016962052c88c3e0b55d6478a148772fc",
+      "dependencyHash": "797a387f3e31ef7ebc6402acd5545a1067e4610afe097cb5f1631a2bc807ab07",
+      "revision": "4f135583409e09a6dd0c5dcbf9982940ea0304cf22f4c4325836b0b7ea8aaedb",
+      "raw": {
+        "family": "SetLog",
+        "record": "log-null",
+        "fields": {
+          "workoutSetId": "orphan-target",
+          "wasSkipped": "false",
+          "actualLoad": null,
+          "actualReps": null,
+          "actualRpe": null
+        }
+      },
+      "assertions": [],
+      "interpretation": {
+        "kind": "recorded-log-unconfirmed",
+        "finality": "not-applicable",
+        "measurement": {
+          "unit": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "convention": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "repBasis": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "equipment": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "zeroMeaning": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          }
+        },
+        "time": {
+          "performedDate": null,
+          "performedInstant": null,
+          "confidence": "unknown"
+        },
+        "actualEffort": "raw-RPE-only-no-RIR-conversion",
+        "startingPrescription": "not-verified-start",
+        "corrections": "surviving-values-only-no-demonstrated-correction-chain",
+        "quantitativelyQualified": false
+      },
+      "discrepancies": [
+        "CONVENTION_UNKNOWN",
+        "EQUIPMENT_UNKNOWN",
+        "LATEST_VALUES_WITHOUT_CORRECTION_CHAIN",
+        "PERFORMANCE_ORIGIN_UNCONFIRMED",
+        "PERFORMED_TIME_UNKNOWN",
+        "REPBASIS_UNKNOWN",
+        "RPE_ORIGIN_NOT_RIR",
+        "UNAVAILABLE_RELATION:workoutSetId:WorkoutSet",
+        "UNIT_UNKNOWN",
+        "ZEROMEANING_UNKNOWN"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "identity": {
+        "system": "trainer-legacy-synthetic-v1",
+        "account": "legacy-owner-A",
+        "family": "SetLog",
+        "record": "log-skipped"
+      },
+      "payloadHash": "e0e897a44f05bccfd69d76e720eebc0edeb1fbd68eaa11bafa2071c9bc3219de",
+      "dependencyHash": "c61a26550c156354bdb431a240dd70cd31229e5c1ad18765e7841e5b5c0ce8d5",
+      "revision": "a45cb5be165cdc1b67e095730d6598041ace851dc0a38befa7925b74654d0500",
+      "raw": {
+        "family": "SetLog",
+        "record": "log-skipped",
+        "fields": {
+          "workoutSetId": "target-ambiguous",
+          "wasSkipped": "true",
+          "actualReps": "0",
+          "actualLoad": "0"
+        }
+      },
+      "assertions": [],
+      "interpretation": {
+        "kind": "skipped-log",
+        "finality": "not-applicable",
+        "measurement": {
+          "unit": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "convention": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "repBasis": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "equipment": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "zeroMeaning": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          }
+        },
+        "time": {
+          "performedDate": null,
+          "performedInstant": null,
+          "confidence": "unknown"
+        },
+        "actualEffort": "raw-RPE-only-no-RIR-conversion",
+        "startingPrescription": "not-verified-start",
+        "corrections": "surviving-values-only-no-demonstrated-correction-chain",
+        "quantitativelyQualified": false
+      },
+      "discrepancies": [
+        "CONVENTION_UNKNOWN",
+        "EQUIPMENT_UNKNOWN",
+        "LATEST_VALUES_WITHOUT_CORRECTION_CHAIN",
+        "PERFORMED_TIME_UNKNOWN",
+        "REPBASIS_UNKNOWN",
+        "RPE_ORIGIN_NOT_RIR",
+        "UNIT_UNKNOWN",
+        "ZEROMEANING_UNKNOWN",
+        "ZERO_REQUIRES_PROVENANCE"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "identity": {
+        "system": "trainer-legacy-synthetic-v1",
+        "account": "legacy-owner-A",
+        "family": "SetLog",
+        "record": "log-zero"
+      },
+      "payloadHash": "c8ce1839f2c344c257237f58c01f6302acfe2a0650772a870b14c6e04f64a9a0",
+      "dependencyHash": "79a66f3d1a3f1efb2c55459da129f2bbe264b820a4af2ed1a854178f532609e8",
+      "revision": "4815052ec9fd2f07b7568c9049f21e0139f88a56ee3aeb89112c552607e5f68d",
+      "raw": {
+        "family": "SetLog",
+        "record": "log-zero",
+        "fields": {
+          "workoutSetId": "target-zero",
+          "wasSkipped": "false",
+          "actualLoad": "0",
+          "actualReps": "8",
+          "actualRpe": null,
+          "completedAt": "2026-01-03 11:00:00"
+        }
+      },
+      "assertions": [],
+      "interpretation": {
+        "kind": "recorded-log-unconfirmed",
+        "finality": "not-applicable",
+        "measurement": {
+          "unit": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "convention": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "repBasis": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "equipment": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "zeroMeaning": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          }
+        },
+        "time": {
+          "performedDate": null,
+          "performedInstant": null,
+          "confidence": "unknown"
+        },
+        "actualEffort": "raw-RPE-only-no-RIR-conversion",
+        "startingPrescription": "not-verified-start",
+        "corrections": "surviving-values-only-no-demonstrated-correction-chain",
+        "quantitativelyQualified": false
+      },
+      "discrepancies": [
+        "CONVENTION_UNKNOWN",
+        "EQUIPMENT_UNKNOWN",
+        "LATEST_VALUES_WITHOUT_CORRECTION_CHAIN",
+        "PERFORMANCE_ORIGIN_UNCONFIRMED",
+        "PERFORMED_TIME_UNKNOWN",
+        "REPBASIS_UNKNOWN",
+        "RPE_ORIGIN_NOT_RIR",
+        "UNIT_UNKNOWN",
+        "ZEROMEANING_UNKNOWN",
+        "ZERO_REQUIRES_PROVENANCE"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "identity": {
+        "system": "trainer-legacy-synthetic-v1",
+        "account": "legacy-owner-A",
+        "family": "Workout",
+        "record": "session-known"
+      },
+      "payloadHash": "1d795798d71c0d44d500a3ebff31210289352d69c8c0f15105bc5573d73b6436",
+      "dependencyHash": "c61a26550c156354bdb431a240dd70cd31229e5c1ad18765e7841e5b5c0ce8d5",
+      "revision": "3f55bc1cb5a90d91a3ce90a07acfe3dc77acfcfffd80c9d45014c4a9ae169cba",
+      "raw": {
+        "family": "Workout",
+        "record": "session-known",
+        "fields": {
+          "id": "session-known",
+          "userId": "legacy-owner-A",
+          "status": "COMPLETED",
+          "scheduledDate": "2026-01-01 09:00:00",
+          "completedAt": "2026-01-03 11:00:00",
+          "seedRevisionId": "missing-seed"
+        }
+      },
+      "assertions": [],
+      "interpretation": {
+        "kind": "session-reference",
+        "finality": "source-completed",
+        "measurement": {
+          "unit": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "convention": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "repBasis": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "equipment": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "zeroMeaning": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          }
+        },
+        "time": {
+          "performedDate": null,
+          "performedInstant": null,
+          "confidence": "unknown"
+        },
+        "actualEffort": "raw-RPE-only-no-RIR-conversion",
+        "startingPrescription": "not-verified-start",
+        "corrections": "surviving-values-only-no-demonstrated-correction-chain",
+        "quantitativelyQualified": false
+      },
+      "discrepancies": [
+        "PERFORMED_TIME_UNKNOWN",
+        "PRESCRIPTION_NOT_VERIFIED_START",
+        "UNAVAILABLE_RELATION:seedRevisionId:MesocycleSeedRevision"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "identity": {
+        "system": "trainer-legacy-synthetic-v1",
+        "account": "legacy-owner-A",
+        "family": "Workout",
+        "record": "session-lookalike-1"
+      },
+      "payloadHash": "1d8db9e48e8a6e9b63d4ee3d11031a6e7ec3de85bc014fccc6e0860b498514e7",
+      "dependencyHash": "79a66f3d1a3f1efb2c55459da129f2bbe264b820a4af2ed1a854178f532609e8",
+      "revision": "5301227cbffd119716f927775ceb36f1e747ef2d4b36f4b96a884b98fb399c3b",
+      "raw": {
+        "family": "Workout",
+        "record": "session-lookalike-1",
+        "fields": {
+          "status": "PARTIAL",
+          "scheduledDate": "2026-01-01 09:00:00",
+          "completedAt": null
+        }
+      },
+      "assertions": [],
+      "interpretation": {
+        "kind": "session-reference",
+        "finality": "unresolved",
+        "measurement": {
+          "unit": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "convention": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "repBasis": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "equipment": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "zeroMeaning": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          }
+        },
+        "time": {
+          "performedDate": null,
+          "performedInstant": null,
+          "confidence": "unknown"
+        },
+        "actualEffort": "raw-RPE-only-no-RIR-conversion",
+        "startingPrescription": "not-verified-start",
+        "corrections": "surviving-values-only-no-demonstrated-correction-chain",
+        "quantitativelyQualified": false
+      },
+      "discrepancies": [
+        "PERFORMED_TIME_UNKNOWN",
+        "PRESCRIPTION_NOT_VERIFIED_START",
+        "SESSION_FINALITY_UNRESOLVED"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "identity": {
+        "system": "trainer-legacy-synthetic-v1",
+        "account": "legacy-owner-A",
+        "family": "Workout",
+        "record": "session-lookalike-2"
+      },
+      "payloadHash": "ccb63e1a60805e961faa0538bb2a41c1d0eed1a94fec4a7165221e525f33b1ed",
+      "dependencyHash": "8864122d1dcf4cd28b1ad3c737b5430a0fe16564a4fb25830560f24ff91394bb",
+      "revision": "724a06cf21ed53aed6268d9deb47d13efe88ec34bd01a0f107342fe57ce2a00d",
+      "raw": {
+        "family": "Workout",
+        "record": "session-lookalike-2",
+        "fields": {
+          "status": "PARTIAL",
+          "scheduledDate": "2026-01-01 09:00:00",
+          "completedAt": null
+        }
+      },
+      "assertions": [],
+      "interpretation": {
+        "kind": "session-reference",
+        "finality": "unresolved",
+        "measurement": {
+          "unit": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "convention": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "repBasis": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "equipment": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "zeroMeaning": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          }
+        },
+        "time": {
+          "performedDate": null,
+          "performedInstant": null,
+          "confidence": "unknown"
+        },
+        "actualEffort": "raw-RPE-only-no-RIR-conversion",
+        "startingPrescription": "not-verified-start",
+        "corrections": "surviving-values-only-no-demonstrated-correction-chain",
+        "quantitativelyQualified": false
+      },
+      "discrepancies": [
+        "PERFORMED_TIME_UNKNOWN",
+        "PRESCRIPTION_NOT_VERIFIED_START",
+        "SESSION_FINALITY_UNRESOLVED"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "identity": {
+        "system": "trainer-legacy-synthetic-v1",
+        "account": "legacy-owner-A",
+        "family": "WorkoutExercise",
+        "record": "position-known"
+      },
+      "payloadHash": "7ba34c82f825385a781938250fe648f3f890f5571e2e76eda2854d2ada25c70d",
+      "dependencyHash": "c61a26550c156354bdb431a240dd70cd31229e5c1ad18765e7841e5b5c0ce8d5",
+      "revision": "2f680ed31c2bc95cfae2a60b8cebc52987792d55e1c7fdc7b6c2c2b66d1a6866",
+      "raw": {
+        "family": "WorkoutExercise",
+        "record": "position-known",
+        "fields": {
+          "workoutId": "session-known",
+          "exerciseId": "catalog-uninspected",
+          "orderIndex": "0",
+          "measurementProfile": "REPS_EXTERNAL_LOAD",
+          "loadConvention": "BARBELL_TOTAL",
+          "repBasis": "TOTAL",
+          "zeroLoadMeaning": null
+        }
+      },
+      "assertions": [],
+      "interpretation": {
+        "kind": "source-context",
+        "finality": "not-applicable",
+        "measurement": {
+          "unit": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "convention": {
+            "value": "BARBELL_TOTAL",
+            "confidence": "stored-reference",
+            "basis": [
+              "[\"WorkoutExercise\",\"position-known\"].loadConvention"
+            ]
+          },
+          "repBasis": {
+            "value": "TOTAL",
+            "confidence": "stored-reference",
+            "basis": [
+              "[\"WorkoutExercise\",\"position-known\"].repBasis"
+            ]
+          },
+          "equipment": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "zeroMeaning": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          }
+        },
+        "time": {
+          "performedDate": null,
+          "performedInstant": null,
+          "confidence": "unknown"
+        },
+        "actualEffort": "raw-RPE-only-no-RIR-conversion",
+        "startingPrescription": "not-verified-start",
+        "corrections": "surviving-values-only-no-demonstrated-correction-chain",
+        "quantitativelyQualified": false
+      },
+      "discrepancies": [
+        "EQUIPMENT_UNKNOWN",
+        "UNAVAILABLE_RELATION:exerciseId:Exercise",
+        "UNIT_UNKNOWN",
+        "ZEROMEANING_UNKNOWN"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "identity": {
+        "system": "trainer-legacy-synthetic-v1",
+        "account": "legacy-owner-A",
+        "family": "WorkoutExercise",
+        "record": "position-unknown"
+      },
+      "payloadHash": "080586c3cf8777b0634e4f869efd394c17b6531945f2b3d50c9c23643070091a",
+      "dependencyHash": "79a66f3d1a3f1efb2c55459da129f2bbe264b820a4af2ed1a854178f532609e8",
+      "revision": "0a0f9664e464c9fa1d0e98e3021011e5001c3dab633ec019243863f847961d3d",
+      "raw": {
+        "family": "WorkoutExercise",
+        "record": "position-unknown",
+        "fields": {
+          "workoutId": "session-lookalike-1",
+          "exerciseId": "catalog-uninspected",
+          "orderIndex": "0",
+          "measurementProfile": null,
+          "loadConvention": null,
+          "repBasis": null,
+          "zeroLoadMeaning": null
+        }
+      },
+      "assertions": [],
+      "interpretation": {
+        "kind": "source-context",
+        "finality": "not-applicable",
+        "measurement": {
+          "unit": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "convention": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "repBasis": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "equipment": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "zeroMeaning": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          }
+        },
+        "time": {
+          "performedDate": null,
+          "performedInstant": null,
+          "confidence": "unknown"
+        },
+        "actualEffort": "raw-RPE-only-no-RIR-conversion",
+        "startingPrescription": "not-verified-start",
+        "corrections": "surviving-values-only-no-demonstrated-correction-chain",
+        "quantitativelyQualified": false
+      },
+      "discrepancies": [
+        "CONVENTION_UNKNOWN",
+        "EQUIPMENT_UNKNOWN",
+        "REPBASIS_UNKNOWN",
+        "UNAVAILABLE_RELATION:exerciseId:Exercise",
+        "UNIT_UNKNOWN",
+        "ZEROMEANING_UNKNOWN"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "identity": {
+        "system": "trainer-legacy-synthetic-v1",
+        "account": "legacy-owner-A",
+        "family": "WorkoutSet",
+        "record": "target-ambiguous"
+      },
+      "payloadHash": "05dba2165ecb1a301f651152a27d3d907d231b891041df03f456e45c20c106a2",
+      "dependencyHash": "c61a26550c156354bdb431a240dd70cd31229e5c1ad18765e7841e5b5c0ce8d5",
+      "revision": "96144e55f7ca8bb61ebcf3eb4091c84c1c9fe34445160dd56051bf37adf23885",
+      "raw": {
+        "family": "WorkoutSet",
+        "record": "target-ambiguous",
+        "fields": {
+          "workoutExerciseId": "position-known",
+          "setIndex": "0",
+          "targetReps": "10",
+          "targetLoad": "40.00"
+        }
+      },
+      "assertions": [],
+      "interpretation": {
+        "kind": "prescription-reference",
+        "finality": "not-applicable",
+        "measurement": {
+          "unit": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "convention": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "repBasis": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "equipment": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "zeroMeaning": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          }
+        },
+        "time": {
+          "performedDate": null,
+          "performedInstant": null,
+          "confidence": "unknown"
+        },
+        "actualEffort": "raw-RPE-only-no-RIR-conversion",
+        "startingPrescription": "not-verified-start",
+        "corrections": "surviving-values-only-no-demonstrated-correction-chain",
+        "quantitativelyQualified": false
+      },
+      "discrepancies": [
+        "AMBIGUOUS_POSITION_LINEAGE",
+        "PRESCRIPTION_NOT_VERIFIED_START"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "identity": {
+        "system": "trainer-legacy-synthetic-v1",
+        "account": "legacy-owner-A",
+        "family": "WorkoutSet",
+        "record": "target-known"
+      },
+      "payloadHash": "b7ae56ba737d5bf07c2d58cab54ee45a70d4fa8a476e10f5f51129a4f4cf57c0",
+      "dependencyHash": "c61a26550c156354bdb431a240dd70cd31229e5c1ad18765e7841e5b5c0ce8d5",
+      "revision": "de4ab5283fd6f1761b1a8d11f35aa5a831d55659b47d97bd82c5265971225917",
+      "raw": {
+        "family": "WorkoutSet",
+        "record": "target-known",
+        "fields": {
+          "workoutExerciseId": "position-known",
+          "setIndex": "0",
+          "targetReps": "10",
+          "targetLoad": "40.00",
+          "targetRpe": "8"
+        }
+      },
+      "assertions": [],
+      "interpretation": {
+        "kind": "prescription-reference",
+        "finality": "not-applicable",
+        "measurement": {
+          "unit": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "convention": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "repBasis": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "equipment": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "zeroMeaning": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          }
+        },
+        "time": {
+          "performedDate": null,
+          "performedInstant": null,
+          "confidence": "unknown"
+        },
+        "actualEffort": "raw-RPE-only-no-RIR-conversion",
+        "startingPrescription": "not-verified-start",
+        "corrections": "surviving-values-only-no-demonstrated-correction-chain",
+        "quantitativelyQualified": false
+      },
+      "discrepancies": [
+        "AMBIGUOUS_POSITION_LINEAGE",
+        "PRESCRIPTION_NOT_VERIFIED_START"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "identity": {
+        "system": "trainer-legacy-synthetic-v1",
+        "account": "legacy-owner-A",
+        "family": "WorkoutSet",
+        "record": "target-zero"
+      },
+      "payloadHash": "01a8cee45f836b220261e2980bee13a0993acbbf71962da70a90b59c9a7791bf",
+      "dependencyHash": "79a66f3d1a3f1efb2c55459da129f2bbe264b820a4af2ed1a854178f532609e8",
+      "revision": "0758561055131d0f6420dcf6376ea7d5f0f42336d3d0821181aa7b6823823dda",
+      "raw": {
+        "family": "WorkoutSet",
+        "record": "target-zero",
+        "fields": {
+          "workoutExerciseId": "position-unknown",
+          "setIndex": "0",
+          "targetReps": "8",
+          "targetLoad": "0"
+        }
+      },
+      "assertions": [],
+      "interpretation": {
+        "kind": "prescription-reference",
+        "finality": "not-applicable",
+        "measurement": {
+          "unit": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "convention": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "repBasis": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "equipment": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          },
+          "zeroMeaning": {
+            "value": null,
+            "confidence": "unknown",
+            "basis": []
+          }
+        },
+        "time": {
+          "performedDate": null,
+          "performedInstant": null,
+          "confidence": "unknown"
+        },
+        "actualEffort": "raw-RPE-only-no-RIR-conversion",
+        "startingPrescription": "not-verified-start",
+        "corrections": "surviving-values-only-no-demonstrated-correction-chain",
+        "quantitativelyQualified": false
+      },
+      "discrepancies": [
+        "PRESCRIPTION_NOT_VERIFIED_START"
+      ]
+    }
+  ],
+  "limitations": [
+    "Synthetic reference dry-run only; no imports, acceptance, reconciliation, or production verification.",
+    "Repository schema and synthetic rows do not establish deployed schema, counts, grants, writer eras, devices, backups, or completeness.",
+    "Direct PostgreSQL column text preserves surviving stored values (including SQL NULL versus JSON null), not original user entry spelling, pre-rounding float values, JSONB whitespace, or overwritten/deleted history.",
+    "Complete means owner-reachable rows in declared families only. Ownerless orphan rows cannot be attributed or exported. Unavailable references may be absent, foreign, or outside scope; no foreign lookup is performed.",
+    "Device storage, backup histories, provider data, muscle/scoring metadata, finisher routine definitions/decisions/library, and mesocycle exercise roles are not database capture families in v1.",
+    "Connected source component (including catalog links) is the conservative revision dependency basis; related changes may revise multiple references. No content-based record deduplication.",
+    "All references remain quantitatively unqualified. External assertions are preserved claims, not independently verified historical truth."
+  ]
+}

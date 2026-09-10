@@ -1,0 +1,208 @@
+{
+  "schemaVersion": 1,
+  "synthetic": true,
+  "scope": {
+    "system": "trainer-legacy-synthetic-v1",
+    "account": "legacy-owner-A",
+    "kind": "synthetic-file",
+    "selection": "all-owner-reachable-rows-v1",
+    "families": [
+      "Workout",
+      "WorkoutExercise",
+      "WorkoutSet",
+      "SetLog",
+      "DeviceDraft",
+      "PostSessionReviewSnapshot",
+      "FinisherExecution",
+      "FinisherExecutionStep"
+    ],
+    "completeness": "complete-within-declared-families"
+  },
+  "rows": [
+    {
+      "family": "Workout",
+      "record": "session-known",
+      "fields": {
+        "id": "session-known",
+        "userId": "legacy-owner-A",
+        "status": "COMPLETED",
+        "scheduledDate": "2026-01-01 09:00:00",
+        "completedAt": "2026-01-03 11:00:00",
+        "seedRevisionId": "missing-seed"
+      }
+    },
+    {
+      "family": "Workout",
+      "record": "session-lookalike-1",
+      "fields": {
+        "status": "PARTIAL",
+        "scheduledDate": "2026-01-01 09:00:00",
+        "completedAt": null
+      }
+    },
+    {
+      "family": "Workout",
+      "record": "session-lookalike-2",
+      "fields": {
+        "status": "PARTIAL",
+        "scheduledDate": "2026-01-01 09:00:00",
+        "completedAt": null
+      }
+    },
+    {
+      "family": "WorkoutExercise",
+      "record": "position-known",
+      "fields": {
+        "workoutId": "session-known",
+        "exerciseId": "catalog-uninspected",
+        "orderIndex": "0",
+        "measurementProfile": "REPS_EXTERNAL_LOAD",
+        "loadConvention": "BARBELL_TOTAL",
+        "repBasis": "TOTAL",
+        "zeroLoadMeaning": null
+      }
+    },
+    {
+      "family": "WorkoutExercise",
+      "record": "position-unknown",
+      "fields": {
+        "workoutId": "session-lookalike-1",
+        "exerciseId": "catalog-uninspected",
+        "orderIndex": "0",
+        "measurementProfile": null,
+        "loadConvention": null,
+        "repBasis": null,
+        "zeroLoadMeaning": null
+      }
+    },
+    {
+      "family": "WorkoutSet",
+      "record": "target-known",
+      "fields": {
+        "workoutExerciseId": "position-known",
+        "setIndex": "0",
+        "targetReps": "10",
+        "targetLoad": "40.00",
+        "targetRpe": "8"
+      }
+    },
+    {
+      "family": "WorkoutSet",
+      "record": "target-ambiguous",
+      "fields": {
+        "workoutExerciseId": "position-known",
+        "setIndex": "0",
+        "targetReps": "10",
+        "targetLoad": "40.00"
+      }
+    },
+    {
+      "family": "WorkoutSet",
+      "record": "target-zero",
+      "fields": {
+        "workoutExerciseId": "position-unknown",
+        "setIndex": "0",
+        "targetReps": "8",
+        "targetLoad": "0"
+      }
+    },
+    {
+      "family": "SetLog",
+      "record": "log-known",
+      "fields": {
+        "workoutSetId": "target-known",
+        "wasSkipped": "false",
+        "actualLoad": "40.00",
+        "actualReps": "10",
+        "actualRpe": "8.5",
+        "completedAt": "2026-01-03 11:00:00"
+      }
+    },
+    {
+      "family": "SetLog",
+      "record": "log-zero",
+      "fields": {
+        "workoutSetId": "target-zero",
+        "wasSkipped": "false",
+        "actualLoad": "0",
+        "actualReps": "8",
+        "actualRpe": null,
+        "completedAt": "2026-01-03 11:00:00"
+      }
+    },
+    {
+      "family": "SetLog",
+      "record": "log-null",
+      "fields": {
+        "workoutSetId": "orphan-target",
+        "wasSkipped": "false",
+        "actualLoad": null,
+        "actualReps": null,
+        "actualRpe": null
+      }
+    },
+    {
+      "family": "SetLog",
+      "record": "log-missing",
+      "fields": {
+        "workoutSetId": "orphan-target",
+        "wasSkipped": "false"
+      }
+    },
+    {
+      "family": "SetLog",
+      "record": "log-skipped",
+      "fields": {
+        "workoutSetId": "target-ambiguous",
+        "wasSkipped": "true",
+        "actualReps": "0",
+        "actualLoad": "0"
+      }
+    },
+    {
+      "family": "DeviceDraft",
+      "record": "draft_set_session-known_target-known",
+      "fields": {
+        "workoutId": "session-known",
+        "workoutSetId": "target-known",
+        "reps": "10",
+        "load": "40.00",
+        "rpe": "8",
+        "savedAt": "1770000000000"
+      }
+    },
+    {
+      "family": "PostSessionReviewSnapshot",
+      "record": "review-known",
+      "fields": {
+        "workoutId": "session-known",
+        "contractVersion": "1",
+        "provenance": "BACKFILLED",
+        "payload": "{\"prescription\":{\"sets\":2}}",
+        "createdAt": "2026-01-04 11:00:00"
+      }
+    },
+    {
+      "family": "FinisherExecution",
+      "record": "timer-known",
+      "fields": {
+        "workoutId": "session-known",
+        "ownerId": "legacy-owner-A",
+        "state": "COMPLETED",
+        "offerId": "offer-uninspected",
+        "completedAt": "2026-01-03 11:00:00"
+      }
+    },
+    {
+      "fields": {
+        "executionId": "timer-known",
+        "routineStepId": "routine-step-uninspected",
+        "status": "COMPLETED",
+        "resolvedAt": "2026-01-03 11:00:00",
+        "actualWorkMs": "90000"
+      },
+      "record": "timer-step-known",
+      "family": "FinisherExecutionStep"
+    }
+  ]
+}

@@ -1,5 +1,9 @@
 # 07 Operations
 
+## Trainer2 legacy source reference capture
+
+The local-only `scripts/capture-trainer2-legacy-source.ts` emits source capture/report JSON to stdout using an explicitly supplied `TRAINER2_LEGACY_DATABASE_URL`, loopback disposable database and restricted `trainer2_legacy_reader` role. It requires `--confirm-disposable --account <legacy-id> --source-system <source-id>`, rejects hosted contexts and inherited unsafe database targets, and never loads dotenv, provisions accounts or changes source/destination rows. There are no new hosted routes or import commands. [Source inventory and disposable harness](architecture/trainer2/LEGACY_SOURCE_INVENTORY.md) own exact scope, bounds, confidence and coverage qualifications.
+
 ## Trainer2 draft isolation
 
 `TRAINER2_LOCAL_DRAFTS=enabled` is a server-only development opt-in, not hosted write enablement. The new adapter requires a loopback disposable database and the verified `trainer2_draft_runtime` role; the test harness preprovisions the local principal. Both POSTs also use the existing write-pause gate under `trainer2_draft`. No provider grants, persistent migration or deployment are authorized by this slice. SQL enables RLS/revokes PUBLIC without introducing runtime grants into shared environments. [Disposable setup, permissions and future hosted gates](architecture/trainer2/DRAFT_SLICE.md#persistence-and-authorization).

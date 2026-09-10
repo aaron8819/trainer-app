@@ -140,6 +140,8 @@ export async function verifyPrincipal() {
     await unsafe("schema CREATE through PUBLIC", `GRANT CREATE ON SCHEMA public TO PUBLIC`, `REVOKE CREATE ON SCHEMA public FROM PUBLIC`);
     await unsafe("legacy owner view", `CREATE VIEW public.boundary_view AS SELECT * FROM "User"; GRANT SELECT ON public.boundary_view TO trainer2_draft_runtime`, `DROP VIEW public.boundary_view`);
     await unsafe("BYPASSRLS", `ALTER ROLE trainer2_draft_runtime BYPASSRLS`, `ALTER ROLE trainer2_draft_runtime NOBYPASSRLS`);
+    await unsafe("same-name superuser", `ALTER ROLE trainer2_draft_runtime SUPERUSER`, `ALTER ROLE trainer2_draft_runtime NOSUPERUSER`);
+    await unsafe("database ownership", `ALTER DATABASE ${database} OWNER TO trainer2_draft_runtime`, `ALTER DATABASE ${database} OWNER TO postgres`);
     evidence.sourceAfter = verificationSource();
     assert.equal((evidence.sourceAfter as ReturnType<typeof verificationSource>).manifestHash, source.manifestHash);
     evidence.status = "passed";

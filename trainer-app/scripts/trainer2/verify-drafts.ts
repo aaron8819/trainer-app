@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
-import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { readFileSync, mkdirSync, writeFileSync, lstatSync } from "node:fs";
 import { resolve } from "node:path";
 import { Pool } from "pg";
 import { PrismaClient } from "@prisma/client";
@@ -52,6 +52,10 @@ export async function verifyDrafts() {
   const source = verificationSource();
   const started = new Date().toISOString();
   const evidence: Record<string, unknown> = { source, started, invocation: "npm run test:db:trainer2-drafts -- --confirm-disposable", node: process.version };
+  // Turbopack rejects dependency junctions outside its filesystem root. The
+  // installed Next CLI supports webpack for this local dependency arrangement.
+  const bundlerArgs = lstatSync(resolve("node_modules")).isSymbolicLink() ? ["--webpack"] : [];
+  evidence.bundler = bundlerArgs.length ? "webpack (dependency junction)" : "default Turbopack";
   const suffix = randomUUID().replaceAll("-", "").slice(0, 12);
   const container = `trainer2-draft-${suffix}`;
   const database = `trainer2_disposable_${suffix}`;
@@ -60,6 +64,7 @@ export async function verifyDrafts() {
   const clients: PrismaClient[] = [];
   const pools: Pool[] = [];
   let server: ReturnType<typeof spawn> | undefined;
+  let serverLog = "";
   let browser: Awaited<ReturnType<(typeof import("@playwright/test"))["chromium"]["launch"]>> | undefined;
   const client = (url: string) => { const p = new Pool({ connectionString: url }); pools.push(p); const c = new PrismaClient({ adapter: new PrismaPg(p) }); clients.push(c); return c; };
   const sqlPath = resolve("prisma/migrations/20260909120000_trainer2_drafts/migration.sql");
@@ -239,8 +244,8 @@ export async function verifyDrafts() {
       TRAINER2_READ_CONNECTION_STRING: `postgresql://trainer2_draft_reader:${password}@127.0.0.1:${port}/${database}`,
       TRAINER2_WRITE_CONNECTION_STRING: runtimeUrl };
     delete webEnv.CI;
-    server = spawn(process.execPath, [resolve("node_modules/next/dist/bin/next"), "dev", "--hostname", "127.0.0.1", "--port", String(webPort)], { env: webEnv, windowsHide: true, stdio: "pipe" });
-    let serverLog = ""; server.stdout?.on("data", d => { serverLog += d.toString(); }); server.stderr?.on("data", d => { serverLog += d.toString(); });
+    server = spawn(process.execPath, [resolve("node_modules/next/dist/bin/next"), "dev", ...bundlerArgs, "--hostname", "127.0.0.1", "--port", String(webPort)], { env: webEnv, windowsHide: true, stdio: "pipe" });
+    server.stdout?.on("data", d => { serverLog += d.toString(); }); server.stderr?.on("data", d => { serverLog += d.toString(); });
     const base = `http://127.0.0.1:${webPort}`;
     for (let i = 0; ; i++) {
       try { if ((await fetch(`${base}/trainer2/dev/drafts`)).ok) break; } catch { /* server starting */ }
@@ -288,7 +293,7 @@ export async function verifyDrafts() {
     await browser.close(); browser = undefined;
     if (server.pid) command("taskkill", ["/PID", String(server.pid), "/T", "/F"]);
     server = undefined;
-    command(process.execPath, [resolve("node_modules/next/dist/bin/next"), "build"], {
+    command(process.execPath, [resolve("node_modules/next/dist/bin/next"), "build", ...bundlerArgs], {
       ...sanitizeDatabaseTargetEnvironment(process.env), DATABASE_URL: runtimeUrl, NODE_ENV: "production",
       TRAINER_BUILD_GIT_SHA: command("git", ["rev-parse", "HEAD"]),
     });
@@ -296,12 +301,20 @@ export async function verifyDrafts() {
     evidence.sourceAfter = verificationSource();
     assert.equal((evidence.sourceAfter as ReturnType<typeof verificationSource>).manifestHash, source.manifestHash, "Source changed during verification");
     evidence.status = "passed";
+  } catch (error) {
+    evidence.error = sanitize(error instanceof Error ? error.stack ?? error.message : String(error));
+    evidence.serverLog = sanitize(serverLog);
+    throw error;
   } finally {
     await browser?.close();
-    if (server?.pid) command("taskkill", ["/PID", String(server.pid), "/T", "/F"]);
+    if (server?.pid && server.exitCode === null) {
+      const stopped = spawnSync("taskkill", ["/PID", String(server.pid), "/T", "/F"], { windowsHide: true, encoding: "utf8" });
+      evidence.serverCleanup = { status: stopped.status, stderr: sanitize(stopped.stderr ?? "") };
+    }
     for (const c of clients) await c.$disconnect();
     for (const p of pools) await p.end();
-    spawnSync("docker", ["rm", "-f", container], { windowsHide: true, stdio: "ignore" });
+    const cleanup = spawnSync("docker", ["rm", "-f", container], { windowsHide: true, stdio: "ignore" });
+    evidence.containerCleanup = { container, status: cleanup.status };
     mkdirSync(resolve("artifacts/trainer2"), { recursive: true });
     writeFileSync(resolve("artifacts/trainer2/verification.json"), JSON.stringify({ ...evidence, status: evidence.status ?? "failed",
       results, commands, migrationHash: integrityHash(readFileSync(sqlPath, "utf8")), finished: new Date().toISOString() }, null, 2));

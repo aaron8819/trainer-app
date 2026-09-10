@@ -126,4 +126,3 @@ Device storage, backup histories, provider data, muscle/scoring metadata, finish
 Connected source component (including catalog links) is the conservative revision dependency basis; related changes may revise multiple references. No content-based record deduplication.
 
 All references remain quantitatively unqualified. External assertions are preserved claims, not independently verified historical truth.
-

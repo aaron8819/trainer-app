@@ -168,7 +168,7 @@ export function renderSourceReport(capture: SourceCapture): string {
       const summary = Object.entries(r.interpretation.measurement).map(([dimension, v]) => `${dimension}=${v.value ?? "unknown"} (${v.confidence})`).join("; ");
       return text(`${r.identity.family} ${JSON.stringify(r.identity.record)} | ${r.interpretation.kind} | ${r.interpretation.finality}\nRaw stored fields: ${raw.length > 400 ? raw.slice(0, 400) + "… [full raw fields in capture JSON]" : raw}\n${summary}; performed date=${r.interpretation.time.performedDate ?? "unknown"}; performed instant=${r.interpretation.time.performedInstant ?? "unknown"}\nUnresolved: ${r.discrepancies.join(", ") || "none identified within this scope"}`);
     }),
-    ...report.exclusions, ...report.limitations, ""].join("\n\n");
+    ...report.exclusions, ...report.limitations].join("\n\n") + "\n";
 }
 
 export function compareSourceCaptures(before: SourceCapture, after: SourceCapture) {

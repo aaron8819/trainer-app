@@ -4,7 +4,9 @@ import { generateKeyPairSync, sign, randomUUID, webcrypto } from "node:crypto";
 import { NextRequest } from "next/server";
 import { AUTH_COOKIE, authenticateHostedRequest, authConfiguration, authCookieOptions } from "./authentication";
 import { authDestination, authHttp, refreshAuthRequest } from "./auth-http";
-import { connectionString } from "./database";
+import { assertConnectionPrivileges, connectionString } from "./database";
+import type { PoolClient } from "pg";
+import { authWebPlatformEnvironment } from "../../../../scripts/trainer2/auth-web-environment";
 
 const config = { TRAINER2_AUTH_URL: "https://auth.synthetic.invalid", TRAINER2_AUTH_PUBLISHABLE_KEY: "sb_publishable_fixture",
   TRAINER2_AUTH_ISSUER: "https://auth.synthetic.invalid/auth/v1", TRAINER2_AUTH_AUDIENCE: "authenticated",
@@ -134,4 +136,19 @@ it("dedicated connection configuration fails closed without a privileged default
   expect(() => connectionString("identity", true, env)).toThrow("DATABASE_CONFIGURATION_REQUIRED");
   for (const url of [env.DATABASE_URL, "postgresql://trainer2_identity_reader:x@remote.invalid/trainer2_disposable_test", "postgresql://trainer2_identity_reader:x@127.0.0.1/shared", "postgresql://trainer2_identity_reader:x@127.0.0.1/trainer2_disposable_test?options=-c%20role=postgres"])
     expect(() => connectionString("identity", true, { TRAINER2_IDENTITY_CONNECTION_STRING: url })).toThrow();
+});
+
+it("Auth web environment inherits only platform settings, never task credentials or node injection", () => {
+  const inherited = { Path: "platform-path", SystemRoot: "platform-root", TEMP: "platform-temp", TZ: "UTC",
+    DATABASE_URL: "setup", DIRECT_URL: "setup", TEST_DATABASE_URL: "setup", PGPASSWORD: "setup",
+    GOTRUE_JWT_SECRET: "setup", SUPABASE_SERVICE_ROLE_KEY: "setup", GITHUB_TOKEN: "task", VERCEL_TOKEN: "task",
+    TRAINER2_IDENTITY_CONNECTION_STRING: "inherited-target", TRAINER2_TEST_SESSION: "session",
+    NODE_OPTIONS: "--require untrusted", ARBITRARY_CREDENTIAL: "unknown" };
+  expect(authWebPlatformEnvironment(inherited)).toEqual({ Path: "platform-path", SystemRoot: "platform-root", TEMP: "platform-temp", TZ: "UTC" });
+});
+
+it.each([160000, 180000])("fails closed before privilege queries on unsupported PostgreSQL %s", async version => {
+  const query = vi.fn().mockResolvedValue({ rows: [{ version, replication: "origin", row_security: "on" }] });
+  await expect(assertConnectionPrivileges({ query } as unknown as PoolClient, "identity")).rejects.toThrow("DATABASE_ROLE_UNSAFE");
+  expect(query).toHaveBeenCalledTimes(1);
 });

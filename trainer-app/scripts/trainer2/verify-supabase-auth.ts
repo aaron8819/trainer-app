@@ -9,14 +9,17 @@ import { chromium, type BrowserContext } from "@playwright/test";
 import { sanitizeDatabaseTargetEnvironment } from "../../src/lib/operations/test-environment-preflight";
 import { authenticateHostedRequest, AUTH_COOKIE } from "../../src/lib/api/trainer2/authentication";
 import { verificationSource } from "./verification-source";
+import { authWebEnvironmentProbe, authWebPlatformEnvironment } from "./auth-web-environment";
 
 export async function verifySupabaseAuth() {
   const output = resolve("artifacts/trainer2-auth"); mkdirSync(output, { recursive: true });
   const source = verificationSource(), started = new Date().toISOString();
   const suffix = randomUUID().replaceAll("-", "").slice(0, 12), network = "trainer2-auth-" + suffix;
   const database = "trainer2_disposable_" + suffix, password = randomUUID(), secret = randomUUID() + randomUUID();
+  const rolePasswords = { postgres: password, trainer2_identity_reader: randomUUID(), trainer2_draft_reader: randomUUID(), trainer2_draft_runtime: randomUUID() };
+  assert.equal(new Set(Object.values(rolePasswords)).size, 4, "setup and application passwords must be distinct");
   const names: string[] = [], results: string[] = [], commands: unknown[] = [];
-  const sensitive = [password, secret];
+  const sensitive = [secret, ...Object.values(rolePasswords)];
   const evidence: Record<string, unknown> = { source, started, node: process.version };
   let server: ReturnType<typeof spawn> | undefined, browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
   let owner: Pool | undefined, providerPort = "", outage = false;
@@ -65,7 +68,7 @@ export async function verifySupabaseAuth() {
     }
     const portOf = (name: string, port: string) => command("docker", ["port", name, port]).match(/:(\d+)$/)![1];
     const dbPort = portOf(dbName, "5432/tcp");
-    const url = (role: string) => "postgresql://" + role + ":" + password + "@127.0.0.1:" + dbPort + "/" + database;
+    const url = (role: keyof typeof rolePasswords) => "postgresql://" + role + ":" + rolePasswords[role] + "@127.0.0.1:" + dbPort + "/" + database;
     owner = new Pool({ connectionString: url("postgres") });
     await owner.query("CREATE DATABASE auth_disposable");
     await owner.query("ALTER DATABASE auth_disposable SET search_path TO auth, public");
@@ -74,8 +77,13 @@ export async function verifySupabaseAuth() {
     const env = { ...sanitizeDatabaseTargetEnvironment(process.env), DATABASE_URL: url("postgres"), DIRECT_URL: url("postgres"), TEST_DATABASE_URL: url("postgres") };
     command(process.execPath, [resolve("node_modules/prisma/build/index.js"), "migrate", "deploy"], env);
     await owner.query(readFileSync(resolve("prisma/trainer2-runtime-grants.sql"), "utf8"));
-    for (const role of ["trainer2_identity_reader", "trainer2_draft_reader", "trainer2_draft_runtime"])
-      await owner.query("ALTER ROLE " + role + " LOGIN PASSWORD '" + password + "'");
+    for (const role of ["trainer2_identity_reader", "trainer2_draft_reader", "trainer2_draft_runtime"] as const) {
+      await owner.query("ALTER ROLE " + role + " LOGIN PASSWORD '" + rolePasswords[role] + "'");
+      const impersonated = new URL(url(role)); impersonated.username = "postgres";
+      const denied = new Pool({ connectionString: impersonated.toString() });
+      try { await assert.rejects(denied.query("SELECT 1"), { code: "28P01" }); }
+      finally { await denied.end(); }
+    }
     await owner.query('INSERT INTO "User" (id,email) VALUES (\'auth-account-A\',\'a@synthetic.invalid\'),(\'auth-account-B\',\'b@synthetic.invalid\')');
     run(mailName, "public.ecr.aws/supabase/mailpit:v1.22.3", {}, ["8025"]);
     const mailUrl = "http://127.0.0.1:" + portOf(mailName, "8025/tcp");
@@ -112,15 +120,23 @@ export async function verifySupabaseAuth() {
     const authEnv = { TRAINER2_AUTH_URL: authUrl, TRAINER2_AUTH_PUBLISHABLE_KEY: anonToken, TRAINER2_AUTH_ISSUER: authUrl + "/auth/v1",
       TRAINER2_AUTH_AUDIENCE: "authenticated", TRAINER2_APP_ORIGIN: origin };
     Object.assign(process.env, authEnv);
-    const webEnv: NodeJS.ProcessEnv = { ...env, ...authEnv, NODE_ENV: "development", TRAINER2_LOCAL_DRAFTS: "",
+    const webEnv: NodeJS.ProcessEnv = { ...authWebPlatformEnvironment(process.env), ...authEnv, NODE_ENV: "development", TRAINER2_LOCAL_DRAFTS: "",
       TRAINER2_IDENTITY_CONNECTION_STRING: url("trainer2_identity_reader"), TRAINER2_READ_CONNECTION_STRING: url("trainer2_draft_reader"),
       TRAINER2_WRITE_CONNECTION_STRING: url("trainer2_draft_runtime"), NEXT_TELEMETRY_DISABLED: "1" };
-    server = spawn(process.execPath, [resolve("node_modules/next/dist/bin/next"), "dev", "--webpack", "--hostname", "127.0.0.1", "--port", String(appPort)], { env: webEnv, windowsHide: true, stdio: "pipe" });
+    assert(Object.values(webEnv).every(value => !value || ![password, secret, adminToken].some(credential => value.includes(credential))),
+      "setup administrator password, signing secret and admin token must not enter Next environment");
+    const environmentProbe = resolve(output, "assert-web-environment.cjs");
+    writeFileSync(environmentProbe, authWebEnvironmentProbe(Object.keys(webEnv)));
+    server = spawn(process.execPath, [environmentProbe, "dev", "--webpack", "--hostname", "127.0.0.1", "--port", String(appPort)], { env: webEnv, windowsHide: true, stdio: "pipe" });
     server.stdout?.on("data", d => { serverLog += d.toString(); }); server.stderr?.on("data", d => { serverLog += d.toString(); });
     for (let i = 0; ; i++) {
       try { if ((await fetch(origin + "/trainer2/auth")).ok) break; } catch { /* starting */ }
       if (i > 90 || server.exitCode !== null) throw new Error("App startup"); await pause(500);
     }
+    assert(serverLog.includes("TRAINER2_AUTH_WEB_ENVIRONMENT_VERIFIED "), "actual Next child environment verified before startup");
+    evidence.webEnvironment = { keys: Object.keys(webEnv).sort(), actualChildVerified: true, dotenvAbsent: true, inheritedCredentials: false,
+      setupSecretsAbsent: true, applicationPasswordsCannotLoginAsAdministrator: true };
+    pass("actual Next process environment excludes setup administrator and inherited task credentials; all three application passwords fail administrator login");
     browser = await chromium.launch({ channel: "msedge", headless: true });
     evidence.browser = browser.version();
     const a = await browser.newContext(), b = await browser.newContext();
@@ -218,7 +234,8 @@ export async function verifySupabaseAuth() {
     writeFileSync(fixtureConfig, 'export default { test: { environment: "node", include: ["scripts/trainer2/auth-boundary.fixture.ts"], reporters: ["default"] } };\n');
     // Async child: the loopback gateway in this process must keep serving during the test.
     const fixture = spawn(process.execPath, [resolve("node_modules/vitest/vitest.mjs"), "run", "--config", fixtureConfig], {
-      env: { ...webEnv, TRAINER2_TEST_SESSION: await cookieHeader(a) }, windowsHide: true, stdio: "pipe" });
+      // This is a disposable setup/assertion worker, not the Next application.
+      env: { ...webEnv, TEST_DATABASE_URL: url("postgres"), TRAINER2_TEST_SESSION: await cookieHeader(a) }, windowsHide: true, stdio: "pipe" });
     let fixtureLog = ""; fixture.stdout.on("data", d => { fixtureLog += d; }); fixture.stderr.on("data", d => { fixtureLog += d; });
     const fixtureStatus = await new Promise<number | null>(r => fixture.on("exit", r));
     commands.push({ command: "vitest run --config artifacts/trainer2-auth/vitest.auth.mts (session in child environment, never retained)", status: fixtureStatus, output: scrub(fixtureLog) });

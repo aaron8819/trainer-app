@@ -2,6 +2,8 @@
 
 ## Trainer2 principal and role preparation
 
+The application privilege contract is qualified for PostgreSQL 17 and rejects other majors. It checks elevated parameter capabilities, unsafe replication/RLS session modes, MAINTAIN and effective grant options before client admission. The Auth harness isolates Next's environment from disposable setup administrator credentials. [Exact policy, exceptions and regressions](architecture/trainer2/PRINCIPAL_BOUNDARY.md#connections-and-effective-privileges) and [process-isolation limits](architecture/trainer2/SUPABASE_AUTH.md#reproducible-local-qualification) govern these corrections; focused independent re-review is still required.
+
 Trainer2 now uses dedicated identity/read/write connection strings and per-context effective privilege checks; it never falls back to the legacy pool. The Supabase verifier/session flow is locally qualified; hosted provider configuration remains unqualified and admission remains hard-disabled. See [auth configuration and disposable setup](architecture/trainer2/SUPABASE_AUTH.md). The grant file is administrative preparation, not a migration or permission to modify a hosted database. [Principal boundary, exact variables, provisioning/reversal procedure and hosted handoff](architecture/trainer2/PRINCIPAL_BOUNDARY.md) own the contract and qualification limits. The local Draft harness supplies all three connections.
 
 ## Trainer2 legacy source reference capture

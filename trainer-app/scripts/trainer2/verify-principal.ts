@@ -9,6 +9,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { provisionPrincipal } from "./provision-principal";
 import { resolveAccount, authorizeAccount } from "../../src/lib/api/trainer2/principal";
 import { assertConnectionPrivileges, type ConnectionPurpose } from "../../src/lib/api/trainer2/database";
+import { verifyRoleCorrections } from "./verify-role-corrections";
 import { createDraft, editDraft, readDraft, readOutcomeChanges } from "../../src/lib/api/trainer2/planning";
 import { sanitizeDatabaseTargetEnvironment, validateDisposableDatabaseTargets } from "../../src/lib/operations/test-environment-preflight";
 import { verificationSource } from "./verification-source";
@@ -142,6 +143,7 @@ export async function verifyPrincipal() {
     await unsafe("BYPASSRLS", `ALTER ROLE trainer2_draft_runtime BYPASSRLS`, `ALTER ROLE trainer2_draft_runtime NOBYPASSRLS`);
     await unsafe("same-name superuser", `ALTER ROLE trainer2_draft_runtime SUPERUSER`, `ALTER ROLE trainer2_draft_runtime NOSUPERUSER`);
     await unsafe("database ownership", `ALTER DATABASE ${database} OWNER TO trainer2_draft_runtime`, `ALTER DATABASE ${database} OWNER TO postgres`);
+    await verifyRoleCorrections(owner, [identity, reader, writer], url, passed);
     evidence.sourceAfter = verificationSource();
     assert.equal((evidence.sourceAfter as ReturnType<typeof verificationSource>).manifestHash, source.manifestHash);
     evidence.status = "passed";

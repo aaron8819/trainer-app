@@ -26,24 +26,47 @@ export function connectionString(purpose: ConnectionPurpose, local: boolean, env
  * Administrative DDL must be frozen during admission; checks are repeated per context. */
 export async function assertConnectionPrivileges(client: PoolClient, purpose: ConnectionPurpose) {
   const fail = () => { throw new DraftAccessError("DATABASE_ROLE_UNSAFE"); };
+  // PostgreSQL 17 is the qualified contract (including MAINTAIN and parameter ACLs).
+  // Fail closed on another major, rather than silently omitting unsupported checks.
+  const state = (await client.query(`SELECT current_setting('server_version_num')::int AS version,
+    current_setting('session_replication_role') AS replication, current_setting('row_security') AS row_security`)).rows[0];
+  if (!state || state.version < 170000 || state.version >= 180000 || state.replication !== "origin" || state.row_security !== "on") fail();
   const role = (await client.query(`SELECT current_user AS name, session_user AS session, rolsuper, rolbypassrls, rolcreaterole, rolcreatedb, rolreplication
     FROM pg_roles WHERE rolname=current_user`)).rows[0];
   if (!role || role.name !== connectionRoles[purpose] || role.session !== role.name || role.rolsuper || role.rolbypassrls || role.rolcreaterole || role.rolcreatedb || role.rolreplication) fail();
   if ((await client.query(`SELECT 1 FROM pg_auth_members WHERE member=(SELECT oid FROM pg_roles WHERE rolname=current_user)`)).rowCount) fail();
+  // Ordinary user/backend settings remain configurable. All elevated SET, all ALTER
+  // SYSTEM and all delegation authority are forbidden. Include ACL-only names:
+  // unloaded extension parameters must not escape inspection via pg_settings.
+  if ((await client.query(`WITH parameters AS (
+    SELECT name, context FROM pg_settings
+    UNION ALL SELECT parname, NULL FROM pg_parameter_acl WHERE parname NOT IN (SELECT name FROM pg_settings)
+  ) SELECT 1 FROM parameters WHERE
+    (COALESCE(context NOT IN ('user','backend'),true) AND has_parameter_privilege(current_user,name,'SET'))
+    OR has_parameter_privilege(current_user,name,'ALTER SYSTEM,SET WITH GRANT OPTION,ALTER SYSTEM WITH GRANT OPTION')`)).rowCount) fail();
   if ((await client.query(`SELECT 1 FROM pg_database WHERE datname=current_database() AND (datdba=(SELECT oid FROM pg_roles WHERE rolname=current_user) OR has_database_privilege(current_user,oid,'CREATE'))
     UNION ALL SELECT 1 FROM pg_namespace WHERE nspname !~ '^pg_' AND nspname <> 'information_schema' AND (nspowner=(SELECT oid FROM pg_roles WHERE rolname=current_user) OR has_schema_privilege(current_user,oid,'CREATE'))`)).rowCount) fail();
   if ((await client.query(`SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
     AND (p.proowner=(SELECT oid FROM pg_roles WHERE rolname=current_user) OR (p.prosecdef AND has_function_privilege(current_user,p.oid,'EXECUTE')))`)).rowCount) fail();
+  if ((await client.query(`SELECT 1 FROM pg_database WHERE datname=current_database()
+    AND has_database_privilege(current_user,oid,'CREATE WITH GRANT OPTION,CONNECT WITH GRANT OPTION,TEMPORARY WITH GRANT OPTION')
+    UNION ALL SELECT 1 FROM pg_namespace WHERE nspname !~ '^pg_' AND nspname <> 'information_schema'
+    AND has_schema_privilege(current_user,oid,'CREATE WITH GRANT OPTION,USAGE WITH GRANT OPTION')
+    UNION ALL SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+    WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
+    AND has_function_privilege(current_user,p.oid,'EXECUTE WITH GRANT OPTION')`)).rowCount) fail();
   const relations = (await client.query(`SELECT n.nspname AS schema, c.relname AS name, c.relkind AS kind,
     c.relowner=(SELECT oid FROM pg_roles WHERE rolname=current_user) AS owner,
     has_table_privilege(current_user,c.oid,'SELECT') OR has_any_column_privilege(current_user,c.oid,'SELECT') AS read,
     has_table_privilege(current_user,c.oid,'INSERT') OR has_any_column_privilege(current_user,c.oid,'INSERT') AS insert,
     has_table_privilege(current_user,c.oid,'UPDATE') OR has_any_column_privilege(current_user,c.oid,'UPDATE') AS update,
-    has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE,TRIGGER,REFERENCES') OR has_any_column_privilege(current_user,c.oid,'REFERENCES') AS other
+    has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE,TRIGGER,REFERENCES,MAINTAIN') OR has_any_column_privilege(current_user,c.oid,'REFERENCES') AS other,
+    has_table_privilege(current_user,c.oid,'SELECT WITH GRANT OPTION,INSERT WITH GRANT OPTION,UPDATE WITH GRANT OPTION,DELETE WITH GRANT OPTION,TRUNCATE WITH GRANT OPTION,TRIGGER WITH GRANT OPTION,REFERENCES WITH GRANT OPTION,MAINTAIN WITH GRANT OPTION')
+      OR has_any_column_privilege(current_user,c.oid,'SELECT WITH GRANT OPTION,INSERT WITH GRANT OPTION,UPDATE WITH GRANT OPTION,REFERENCES WITH GRANT OPTION') AS delegation
     FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema' AND c.relkind IN ('r','p','v','m','f')`)).rows;
   for (const r of relations) {
     const allowed = r.schema === "public" && ["r", "p"].includes(r.kind) && (purpose === "identity" ? r.name === tables[0] : tables.includes(r.name));
-    if (r.owner || r.other || (r.read && !allowed) || (r.insert && !(allowed && purpose === "write" && r.name !== tables[0])) ||
+    if (r.owner || r.other || r.delegation || (r.read && !allowed) || (r.insert && !(allowed && purpose === "write" && r.name !== tables[0])) ||
       (r.update && !(allowed && purpose === "write" && ["Trainer2AccountTrainingState", "Trainer2Plan"].includes(r.name)))) fail();
   }
   for (const name of purpose === "identity" ? [tables[0]] : tables) {
@@ -52,7 +75,7 @@ export async function assertConnectionPrivileges(client: PoolClient, purpose: Co
       (purpose === "write" && ["Trainer2AccountTrainingState", "Trainer2Plan"].includes(name) && !r?.update)) fail();
   }
   if ((await client.query(`SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema' AND c.relkind='S'
-    AND (c.relowner=(SELECT oid FROM pg_roles WHERE rolname=current_user) OR has_sequence_privilege(current_user,c.oid,'USAGE,UPDATE'))`)).rowCount) fail();
+    AND (c.relowner=(SELECT oid FROM pg_roles WHERE rolname=current_user) OR has_sequence_privilege(current_user,c.oid,'USAGE,UPDATE,SELECT WITH GRANT OPTION,USAGE WITH GRANT OPTION,UPDATE WITH GRANT OPTION'))`)).rowCount) fail();
 }
 
 const connections = new Map<ConnectionPurpose, { url: string; local: boolean; pool: Pool; db: PrismaClient }>();
@@ -71,7 +94,9 @@ export async function databaseFor(purpose: ConnectionPurpose, local: boolean): P
     connections.set(purpose, connection);
   }
   const client = await connection.pool.connect();
-  try { await assertConnectionPrivileges(client, purpose); } finally { client.release(); }
+  try { await assertConnectionPrivileges(client, purpose); }
+  catch (error) { client.release(true); throw error; }
+  client.release();
   return connection.db;
 }
 

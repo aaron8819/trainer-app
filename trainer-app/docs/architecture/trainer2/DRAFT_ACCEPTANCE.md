@@ -1,48 +1,70 @@
-# Draft slice acceptance evidence
+# Draft slice correction acceptance evidence
 
-Scope: local isolated branch `codex/trainer2-draft-loop`, based on `eb1b45e9c516d14e8857e5b028f2be13233619cd`. No source drift. No persistent/provider database changes, deployment, merge, activation or execution implementation.
+Scope: F1–F3 on `codex/trainer2-draft-corrections`, based exactly on reviewed commit `58623de537df05f8fbf6cb02b0dc7931d3d9d849`, tree `fb4422c9067a19b34f6902cab7695e9f80d1bbc3`. Original implementation base: `eb1b45e9c516d14e8857e5b028f2be13233619cd`. Candidate coordinates and cleanliness were verified before creating the isolated correction worktree. Original implementation/review checkouts remain intact.
 
-## Traceable matrix
+Status: corrected locally for focused independent re-review. This is not an independent re-review pass or completion of Phase 0. [Correction report](DRAFT_CORRECTIONS.md).
 
-`DB` below means the executable assertions in [`scripts/trainer2/verify-drafts.ts`](../../../scripts/trainer2/verify-drafts.ts), invoked by `npm run test:db:trainer2-drafts -- --confirm-disposable`. These use real PostgreSQL 17, the complete checked-in migration chain, a restricted runtime role, a read-only role, and actual application handlers; no database mocks. Numbered PASS labels in that script correspond to this matrix.
+## Source attribution
 
-| # | Required claim | Evidence | Result |
+Fresh evidence is retained under ignored `artifacts/trainer2/`:
+
+- `verification.json`: PostgreSQL, upgrades, actual browser and build results; full tested commit/tree, dirty/clean state, exact source manifest, raw/LF-normalized hashes, migration/harness/test definitions, sanitized commands, versions and timestamps.
+- `checks.json`, `checks-source.json` and command logs: focused tests, classification, Prisma generation and repository gates with source attribution.
+- `final-attestation.json`: final commit/tree/state and evidence hashes with source-equivalence checks. Kept outside tracked source to avoid self-reference.
+- `accepted-refresh-failed.png`, `recovered-current-head.png`, `draft-loop.png`: actual Edge screenshots.
+
+All regression definitions are correction source, without a separate test overlay. Raw checkout hashes qualify Windows CRLF/LF differences. The original applied migration is unchanged in Git. Historical implementation artifacts lacked sufficient attribution and are not retroactively certified. The review's green component probes asserted faulty behavior; these correction regressions assert desired behavior.
+
+## F1 database matrix
+
+Entry: `npm run test:db:trainer2-drafts -- --confirm-disposable`. The guarded entrypoint classifies arguments/inherited targets before database imports, then creates only its own loopback PostgreSQL 17 container. [`verify-acceptance.ts`](../../../scripts/trainer2/verify-acceptance.ts) uses the restricted runtime role, complete positive controls and exact errors. Whole-table rollback snapshots include heads, revisions, registry, actions, outcomes and counters.
+
+| Claim | Evidence | Result |
+| --- | --- | --- |
+| Complete Create/Edit sets commit | Acceptance inserted before graph completion; deferred seal at COMMIT; real handlers also pass | Pass |
+| Phantom acceptance cannot commit | Missing revision fails `23514 / trainer2_acceptance_revision` at COMMIT | Pass |
+| Account/action/plan/revision/result agreement | Foreign-account and other-action results; wrong target/type/expected parent; wrong revision ID/number/content hash | Pass |
+| Acceptance sequence/counter consistency | Fabricated/duplicate/missing sequence, unchanged/skipped counter and counter-only increment rejected by `trainer2_acceptance_sequence` | Pass |
+| No partial acceptance | Full snapshots unchanged after every malformed acceptance/graph transaction | Pass |
+| Existing revision-to-acceptance seal | Missing outcome fails specifically `TRAINER2_REVISION_WITHOUT_ACCEPTANCE` | Pass |
+| Discriminating graph tests | Complete successor control, then missing-stage/duplicate/foreign-ID cases fail specifically `TRAINER2_DOCUMENT_REFERENCES`, with acceptance present | Pass |
+| Historical replay | Original outcomes preserved after edits/tombstone; successor head unchanged and tombstone remains hidden | Pass |
+| Concurrency | Concurrent identical first creates produce one acceptance/one replay; same-base edits yield one acceptance/one conflict with losing envelope retained | Pass |
+
+The main harness retains the original strict-envelope, identity continuity, immutable-history, read-only GET, legacy-grant, outcome-pagination and rollback checks. SQL owns structural/result integrity; existing application/domain owners still judge acceptance/edit policy.
+
+## F2/F3 UI matrix
+
+[`DraftWorkbench.test.tsx`](../../../src/components/trainer2/DraftWorkbench.test.tsx) has six cases including parameterized failures/replay. The focused component/domain/isolation run totals 13 tests. [`verify-workbench-browser.ts`](../../../scripts/trainer2/verify-workbench-browser.ts) separately uses installed Edge against actual Next handlers; delayed POST delivery still uses real commands.
+
+| Claim | Component evidence | Actual browser evidence | Result |
 | --- | --- | --- | --- |
-| 1 | Exact create → reload intent/IDs | DB concurrent create plus deep equality through read role, including `20.00`/`120.00` decimals | Pass |
-| 2 | New full revision; earlier content unchanged | DB retains and deep-compares all first-revision fields after edit | Pass |
-| 3 | Reorder preserves identity; remove/reintroduce allocates fresh IDs | DB reverse/remove/rejected old ID/fresh equivalent nested IDs; pure same-command reuse test | Pass |
-| 4 | Same action has one effect | DB simultaneous first writes with same envelope; exactly one replay and one Plan | Pass |
-| 5 | Every hash-bound field category protected | DB changed type/schema/account/device/epoch/target/base/dependencies/intent rejected; original action and outcome unchanged; action-ID hash sensitivity; pure ordered-array and decimal sensitivity | Pass |
-| 6 | Earlier accepted edit replay cannot regress head | DB accepts N+1, replays N, compares original outcome and reads unchanged N+1 head | Pass |
-| 7 | Competing edits preserve losing intent | DB same-base race has one Accepted and one Conflict; losing canonical envelope retained | Pass |
-| 8 | Cross-account objects and foreign heads rejected | DB foreign reads/edits/identity reuse; direct foreign-root head insertion/update rejected | Pass |
-| 9 | Malformed references/duplicate identity rejected | Strict schema tests plus direct revision transactions attacking stage refs, duplicates and foreign identities | Pass |
-| 10 | Failure cannot partially accept | DB trigger fails head write after revision/registry insertion; counts, account counters and head remain unchanged | Pass |
-| 11 | Immutable revision and graph protection | DB privileged UPDATE/DELETE attempts hit triggers; runtime late identity association rejected | Pass |
-| 12 | Cursor discovers subsequent old-action changes without skips | DB Waiting→Superseded on an older action; one-row fixed-frontier pagination; uncommitted cursor invisible; second writer lock timeout and rollback | Pass |
-| 13 | GET writes nothing | DB read-only role cannot provision state; actual GET before/after table/counter equality; HTTP read uses READ ONLY transaction | Pass |
-| 14 | New runtime cannot mutate legacy tables | DB UPDATE User denied and INSERT/UPDATE/DELETE/TRUNCATE privilege checks on every legacy table | Pass |
-| 15 | No activation/execution path | Transitive import-boundary test and exact route inventory; actual lifecycle POSTs receive method-not-allowed | Pass |
-| 16 | Browser loop works | Installed Edge against actual local Next server: create, explicit reorder, full-page reload by plan ID, competing server edit, clear stale browser error; no page errors | Pass |
+| Accepted create plus failed read retains ID/recovery | Non-OK and thrown GET cases | GET 503 after real Create | Pass |
+| Failed edit/replay read does not claim freshness | Historical notice and stale snapshot | Aborted edit GET; historical edit replay plus 503 after newer server edit | Pass |
+| Thrown refresh preserves acceptance | Network-failed Create refresh | Aborted GET after accepted Edit | Pass |
+| Retry only reads | Exact GET/POST call counts | Recovery leaves POST count unchanged | Pass |
+| Delayed responses cannot erase new input | Both fields/all request buttons locked through POST, accepted GET and manual GET | Delayed real POST and GET; accepted identity visible before GET finishes | Pass |
+| Normal loop remains usable | Create/edit and exact-envelope uncertain-delivery retry | Create/reorder/page reload/stale conflict; recovery to newer head, then editable input | Pass |
 
-Additional DB assertions cover monotonic tombstones, original retry outcomes after tombstoning, no resurrection, unsupported dependencies, migration reapplication, and independent account state. Additional policy tests cover finite but incomplete drafts, strict measurement combinations and zero meaning, stage reassignment, exact reorders, same-action remove/reintroduce rejection, and development/hosted gating.
+Component tests are not browser evidence. Browser failures/delays use controlled interception, not physical network/device interruption or offline persistence.
 
-## Repository checks
+## Migration qualification
 
-- Prisma generation: passed using the worktree's own local dependency copy.
-- Focused Trainer2 and write-pause tests: 21 passed (four files).
-- `npm run test:verify-gate`: passed, including full lint, TypeScript, 86 fast tests, 55 completed-review tests, 13 version tests, catalog invariants, contracts and static mutation/write-pause checks.
-- Environment/command classification: passed via the canonical npm package command, 212 passed and one platform-conditional skip across five files.
-- `git diff --cached --check`: passed; all three archived source hashes still match their supplied authorities.
-- Production build: passed in the final disposable-harness run. The initial credential-free build compiled and type-checked, then stopped at the existing legacy history route's required `DATABASE_URL`; the harness supplied only its own disposable runtime target.
-- Full credential-free inventory and release/provider checks were not required or run. The focused new suites are explicitly included in the credential-free inventory classification; the mutating harness is a separately confirmed registered command.
+[`verify-draft-upgrade.ts`](../../../scripts/trainer2/verify-draft-upgrade.ts) copies the reviewed migration chain with its own Prisma config and verifies that the correction is absent from the old ledger before populating fixtures. A schema-only override is insufficient because the configured migration path still wins.
 
-The hardcoded inventory counts and write-route count were updated for the two new test files and two classified POSTs. A direct Vitest invocation of the existing preflight suite lacked npm's `npm_execpath`; the canonical npm package command is used for the final run. No baseline failure is claimed from that invocation mistake.
+| Scenario | Result |
+| --- | --- |
+| Fresh full migration chain | Pass |
+| Populated candidate schema with drafts, multiple revisions, outcomes, conflict, rejection and tombstone | Upgrade passes; all domain records/counters preserved |
+| Historical Create/Edit/tombstone replay after upgrade | Original outcomes preserved; newer head/tombstone unchanged |
+| Second successful migrate deploy | Already-applied ledger no-op; ledger unchanged; no SQL re-execution claim |
+| Reproduced old-schema phantom acceptance | Exact SQL rejects `23514 / trainer2_acceptance_revision`; deploy fails; rows unchanged; DDL rolled back |
+| Old-schema counter-only corruption | Exact SQL rejects `23514 / trainer2_acceptance_sequence`; deploy fails; rows unchanged; DDL rolled back |
 
-Final PostgreSQL/browser/build run completed at `2026-09-10T00:22:13.663Z` (September 9 local time). Tested migration SHA-256: `d0bc8731ea9ed8fc8d145774429e604d1fe827db1ee553b3c7d82b55258a677b`. The harness retained its sanitized result at `artifacts/trainer2/verification.json` and screenshot at `artifacts/trainer2/draft-loop.png`; these local artifacts are intentionally ignored by Git.
+Prisma 7 can obscure the primary error with “current transaction is aborted” and leave an unfinished ledger entry. The harness records CLI failure separately from the exact SQL assertion. No revision is fabricated, result rewritten, evidence deleted or ledger resolved. Real recovery requires separately reviewed records/ledger handling and explicit target/action authorization.
 
-## Limits and next work
+## Gates and limits
 
-All 16 draft claims are exercised locally. This does not verify actual hosted authentication, provider grants/RLS defaults, production rollout or full offline recovery. Hosted access remains disabled. Historical import capture semantics are documented only; execution/import tables do not exist.
+The path-derived plan is retained in `verification-policy.json`. Checks cover Prisma generation, focused Trainer2 suites, environment classification, command registry, migration-integrity tests and `test:verify-gate` (lint, TypeScript, focused engine/review/version/ownership/write-gate checks and contracts). The disposable harness runs the production build and protected Finisher schema-diff check against its own target. Exact outcomes belong to `checks.json` and `verification.json`.
 
-Remaining Phase 0 work is listed in [DRAFT_SLICE.md](DRAFT_SLICE.md#verification-and-remaining-work): hosted identity qualification, source artifact inventory/era classification, read-only legacy adapter and discrepancy dry-run fixtures. Recommended next bounded slice is that read-only source/provenance foundation. This draft slice does not complete Phase 0 or authorize execution work.
+The expensive full credential-free inventory is a PR/release-class check and is not claimed here. No persistent/shared database, hosted authentication/provider configuration, merge, push or deployment was exercised. Acceptance checks scan account-local accepted history; large-history performance and future command types need separate qualification. Forced transient retries and offline recovery remain outside this correction. Stop at focused independent re-review of F1–F3; no next Phase 0 slice is included.

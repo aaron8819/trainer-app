@@ -4,6 +4,8 @@
 
 `/trainer2/dev/drafts` is an explicitly enabled local disposable workbench (`src/components/trainer2/DraftWorkbench.tsx`), absent from ordinary navigation. It demonstrates create, reload by saved ID, explicit revision rename/reorder/add/remove, same-action retry and a clear retained stale-edit error. Diagnostics are separated in a developer disclosure. No activation or execution controls exist. [Scope and verification](architecture/trainer2/DRAFT_SLICE.md).
 
+Accepted identity is retained before head refresh. Failed reads preserve the acceptance notice and saved plan ID, display refresh failure and any stale snapshot, and offer GET-only reload recovery. Historical replay never proves freshness. Both inputs and every request button are disabled throughout submission/reload; stale snapshots must be refreshed before editing.
+
 ## Zero-load display
 
 The shared frozen load-entry policy controls load-field visibility, performed-set blank/zero validity, zero labels, and positive-load coaching eligibility. Capability-backed zero displays as `Bodyweight` or `Machine default / no added load`; legacy zero remains a neutral numeric value.

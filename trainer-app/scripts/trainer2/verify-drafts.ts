@@ -10,12 +10,25 @@ import { sanitizeDatabaseTargetEnvironment, validateDisposableDatabaseTargets } 
 import { createDraft, editDraft, readDraft, readOutcomeChanges, type ServerPrincipal } from "../../src/lib/api/trainer2/planning";
 import { canonicalJson, commandBinding, integrityHash } from "../../src/lib/api/trainer2/integrity";
 import type { CreateDraftCommand, EditDraftCommand, CommandResponse } from "../../src/lib/trainer2-contracts/draft";
+import { verifyAcceptance } from "./verify-acceptance";
+import { verifyDraftUpgrade } from "./verify-draft-upgrade";
+import { verificationSource } from "./verification-source";
+import { verifyWorkbenchBrowser } from "./verify-workbench-browser";
 
 const results: string[] = [];
+const commands: { command: string; started: string; finished: string; status: number | null; stdout: string; stderr: string }[] = [];
+const secrets: string[] = [];
+function sanitize(value: string) {
+  for (const secret of secrets) value = value.replaceAll(secret, "[disposable-secret]");
+  return value.replace(/postgres(?:ql)?:\/\/[^\s"']+/g, "[disposable-postgres-target]");
+}
 function passed(name: string) { results.push(name); console.log(`PASS ${name}`); }
 function command(exe: string, args: string[], env?: NodeJS.ProcessEnv) {
+  const started = new Date().toISOString();
   const r = spawnSync(exe, args, { encoding: "utf8", env, windowsHide: true, maxBuffer: 10_000_000 });
-  if (r.status !== 0) throw new Error(`Command failed: ${exe} ${args[0]}\n${r.stderr}`);
+  commands.push({ command: sanitize([exe, ...args].join(" ")), started, finished: new Date().toISOString(), status: r.status,
+    stdout: sanitize(r.stdout ?? ""), stderr: sanitize(r.stderr ?? "") });
+  if (r.status !== 0) throw new Error(sanitize(`Command failed: ${exe} ${args[0]}\n${r.stderr}`));
   return r.stdout.trim();
 }
 function accepted(response: CommandResponse) {
@@ -36,10 +49,14 @@ function rename(create: CreateDraftCommand, revisionId: string, name: string): E
   return { ...create, commandType: "EditDraft", actionId: randomUUID(), expected: { planRevisionId: revisionId }, intent: { operations: [{ op: "renamePlan", name }] } };
 }
 export async function verifyDrafts() {
+  const source = verificationSource();
+  const started = new Date().toISOString();
+  const evidence: Record<string, unknown> = { source, started, invocation: "npm run test:db:trainer2-drafts -- --confirm-disposable", node: process.version };
   const suffix = randomUUID().replaceAll("-", "").slice(0, 12);
   const container = `trainer2-draft-${suffix}`;
   const database = `trainer2_disposable_${suffix}`;
   const password = randomUUID();
+  secrets.push(password);
   const clients: PrismaClient[] = [];
   const pools: Pool[] = [];
   let server: ReturnType<typeof spawn> | undefined;
@@ -61,7 +78,12 @@ export async function verifyDrafts() {
     assert(validateDisposableDatabaseTargets({ environment: env, confirmed: true }).valid);
     command(process.execPath, [resolve("node_modules/prisma/build/index.js"), "migrate", "deploy"], env);
     command(process.execPath, [resolve("node_modules/prisma/build/index.js"), "migrate", "deploy"], env);
+    command(process.execPath, [resolve("node_modules/tsx/dist/cli.mjs"), "scripts/check-finisher-schema-drift.ts"], env);
+    passed("migration schema diff preserves protected Finisher relationships on disposable target");
     const adminPool = new Pool({ connectionString: ownerUrl }); pools.push(adminPool);
+    evidence.postgres = (await adminPool.query("SELECT version()")).rows[0];
+    evidence.docker = command("docker", ["version", "--format", "{{.Server.Version}}"]);
+    evidence.prisma = command(process.execPath, [resolve("node_modules/prisma/build/index.js"), "version"], env);
     const owner = client(ownerUrl);
     const tables = ["AccountPrincipal", "AccountTrainingState", "Plan", "PlanRevision", "Identity", "DurableAction", "ActionOutcome"].map(n => `"Trainer2${n}"`);
     await adminPool.query(`CREATE ROLE trainer2_draft_runtime LOGIN PASSWORD '${password}'; CREATE ROLE trainer2_draft_reader LOGIN PASSWORD '${password}'; GRANT USAGE ON SCHEMA public TO trainer2_draft_runtime, trainer2_draft_reader;`);
@@ -77,6 +99,7 @@ export async function verifyDrafts() {
       await owner.trainer2AccountPrincipal.create({ data: { id: randomUUID(), ...p } });
     }
     const runtime = client(runtimeUrl);
+    const runtimePool = new Pool({ connectionString: runtimeUrl }); pools.push(runtimePool);
     const reader = client(`postgresql://trainer2_draft_reader:${password}@127.0.0.1:${port}/${database}`);
     // First reads must not provision state, even for an authenticated account.
     assert.equal(await readDraft(reader, principal, randomUUID()), null);
@@ -151,21 +174,8 @@ export async function verifyDrafts() {
     const foreignIds = sample(other.accountId); foreignIds.intent.occurrences[0].positions[0].id = removed.id;
     assert.equal((await createDraft(runtime, other, foreignIds)).outcome.status, "Rejected");
     await assert.rejects(runtime.trainer2Plan.create({ data: { id: randomUUID(), accountId: principal.accountId, currentRevisionId: otherPlan.revisionId } }));
-    const unsafeRevision = async (mutate: (doc: CreateDraftCommand["intent"]) => void) => {
-      const head = (await readDraft(reader, principal, first.planId))!;
-      const document = structuredClone(head.intent); mutate(document);
-      const action = rename(c, head.revisionId, "direct SQL attack");
-      const revisionId = randomUUID(); const canonicalContent = canonicalJson(document);
-      return runtime.$transaction(async tx => {
-        await tx.trainer2DurableAction.create({ data: { accountId: principal.accountId, actionId: action.actionId, ...commandBinding(action) } });
-        await tx.trainer2PlanRevision.create({ data: { id: revisionId, accountId: principal.accountId, planId: first.planId, revisionNumber: head.revisionNumber + 1,
-          parentRevisionId: head.revisionId, actionId: action.actionId, document, canonicalContent, contentHash: integrityHash(canonicalContent) } });
-        await tx.trainer2Plan.update({ where: { id: first.planId }, data: { currentRevisionId: revisionId } });
-      });
-    };
-    await assert.rejects(unsafeRevision(doc => { doc.occurrences[0].stageId = randomUUID(); }));
-    await assert.rejects(unsafeRevision(doc => { doc.occurrences[0].positions.push(doc.occurrences[0].positions[0]); }));
-    await assert.rejects(unsafeRevision(doc => { doc.occurrences[0].positions[0].id = otherCreate.intent.occurrences[0].positions[0].id; }));
+    evidence.acceptance = await verifyAcceptance(runtimePool, runtime, principal, sample, { result: otherPlan, identityId: otherCreate.intent.occurrences[0].positions[0].id });
+    passed("F1 complete Create/Edit controls, deferred acceptance/result/sequence attacks, exact errors and whole-state rollback; discriminating graph controls");
     passed("8,9 cross-account access/identity/head and malformed/duplicate references rejected");
     // Inject an actual database failure after revision and registry writes, at head update.
     await adminPool.query(`CREATE FUNCTION trainer2_test_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'INJECTED_HEAD_FAILURE'; END $$; CREATE TRIGGER trainer2_test_fail BEFORE UPDATE ON "Trainer2Plan" FOR EACH ROW EXECUTE FUNCTION trainer2_test_fail();`);
@@ -225,6 +235,8 @@ export async function verifyDrafts() {
     assert.equal(await readDraft(reader, principal, first.planId), null);
     assert.equal((await editDraft(runtime, principal, rename(c, current.revisionId, "resurrect"))).outcome.status, "Rejected");
     passed("tombstone hides draft and retries cannot resurrect; dependencies explicitly rejected");
+    evidence.upgrade = await verifyDraftUpgrade(adminPool, ownerUrl, runtimeUrl, command, sample);
+    passed("fresh migration chain; populated candidate upgrade and historical replay; inconsistent upgrade rejected without repair; second deploy ledger no-op");
     // Real browser and actual HTTP handlers, using only the limited runtime role.
     const webPort = 32000 + Math.floor(Math.random() * 10000);
     const webEnv: NodeJS.ProcessEnv = { ...sanitizeDatabaseTargetEnvironment(process.env), DATABASE_URL: runtimeUrl, NODE_ENV: "development", TRAINER2_LOCAL_DRAFTS: "enabled" };
@@ -239,6 +251,7 @@ export async function verifyDrafts() {
     }
     const { chromium } = await import("@playwright/test");
     browser = await chromium.launch({ channel: "msedge", headless: true });
+    evidence.browser = { engine: "installed Edge through Playwright", version: browser.version() };
     const tab = await browser.newPage();
     tab.on("response", async response => { if (response.url().includes("/api/trainer2/") && response.status() >= 400) console.log("BROWSER_API_FAILURE", response.status(), await response.text()); });
     const errors: string[] = []; tab.on("pageerror", e => errors.push(e.message));
@@ -268,6 +281,12 @@ export async function verifyDrafts() {
     mkdirSync(resolve("artifacts/trainer2"), { recursive: true });
     await tab.screenshot({ path: resolve("artifacts/trainer2/draft-loop.png"), fullPage: true });
     passed("13,15,16 actual browser create/reorder/reload/stale error; GET no writes; no lifecycle handlers");
+    evidence.browserCorrections = await verifyWorkbenchBrowser(tab, async planId => {
+      const head = (await readDraft(reader, principal, planId))!;
+      accepted(await editDraft(runtime, principal, rename({ ...c, target: { planId } }, head.revisionId, "Newer server head")));
+    });
+    assert.deepEqual(errors, []);
+    passed("F2/F3 actual Edge browser: controlled 503/network refresh failure, historical replay, GET-only recovery and delayed response input locks");
     await browser.close(); browser = undefined;
     if (server.pid) command("taskkill", ["/PID", String(server.pid), "/T", "/F"]);
     server = undefined;
@@ -276,12 +295,17 @@ export async function verifyDrafts() {
       TRAINER_BUILD_GIT_SHA: command("git", ["rev-parse", "HEAD"]),
     });
     passed("production build with isolated disposable runtime role; hosted draft page remains disabled");
-    writeFileSync(resolve("artifacts/trainer2/verification.json"), JSON.stringify({ results, migrationHash: integrityHash(readFileSync(sqlPath, "utf8")), timestamp: new Date().toISOString() }, null, 2));
+    evidence.sourceAfter = verificationSource();
+    assert.equal((evidence.sourceAfter as ReturnType<typeof verificationSource>).manifestHash, source.manifestHash, "Source changed during verification");
+    evidence.status = "passed";
   } finally {
     await browser?.close();
     if (server?.pid) command("taskkill", ["/PID", String(server.pid), "/T", "/F"]);
     for (const c of clients) await c.$disconnect();
     for (const p of pools) await p.end();
     spawnSync("docker", ["rm", "-f", container], { windowsHide: true, stdio: "ignore" });
+    mkdirSync(resolve("artifacts/trainer2"), { recursive: true });
+    writeFileSync(resolve("artifacts/trainer2/verification.json"), JSON.stringify({ ...evidence, status: evidence.status ?? "failed",
+      results, commands, migrationHash: integrityHash(readFileSync(sqlPath, "utf8")), finished: new Date().toISOString() }, null, 2));
   }
 }

@@ -68,6 +68,10 @@ Deployed migration ledger/schema, role grants, writer identities, counts, source
 
 One `REPEATABLE READ READ ONLY` transaction verifies its actual role and snapshot, then captures every declared database family with fixed parameterized owner filters. Child paths follow owned parents. Shared catalog selection uses only owned workout/template exercise IDs. An owned row may retain a foreign FK value as its own raw fact, but no foreign row is fetched to explain it. Missing/foreign/uninspected links all say unavailable; querying foreign data to distinguish those cases would violate this boundary. An orphan lacking any owner path cannot be attributed or counted as an account record.
 
+The supported visibility guarantee requires source queries to execute without RLS filtering. `readLegacySource` sets `SET LOCAL row_security=off` before any reads. For the restricted non-owner, non-BYPASSRLS reader this **does not bypass policies**: PostgreSQL rejects a query that would be affected by row-level security with SQLSTATE `42501`. Enforcement applies to actual queries, including owner-path joins/subqueries and empty results, instead of relying on a preliminary catalog check that could race with visibility changes. Policy-filtered and default-deny configurations are unsupported. The adapter neither changes policies nor disables table RLS.
+
+An RLS failure rolls back the whole transaction and releases the connection; it returns no capture, and the CLI exits nonzero with empty stdout. Failed captures cannot support completeness or disappearance claims. Successful capture content, owner predicates, scope and comparison semantics remain unchanged. Local fixture verification does not qualify deployed RLS, grants or hosted admission.
+
 The connection must be explicit loopback `trainer2_disposable_*` using `trainer2_legacy_reader`, with no query-string libpq overrides. Runtime rejects actual superuser/bypass/create-role/create-db roles and any role membership (including a NOINHERIT role that could SET ROLE), public-table ownership, table mutation grants or column INSERT/UPDATE grants. No default app pool, account provisioning or environment-file loading is used. Database role grants and schema qualification here are disposable-fixture evidence only.
 
 Per-family limit 500, total 2,000 records, per-row 1 MB, total text 16 MB, at most 256 columns per source table, per-statement 10 seconds and idle transaction 15 seconds. Limits abort the whole capture, with no partial success output. There is no pagination across snapshots in v1; larger authorized scopes require a later bounded export design. All rows are ordered deterministically, independent of database insertion order. Completeness is only within the declared owner-reachable families, never an all-history or all-device statement.
@@ -118,3 +122,16 @@ The retained final verification under ignored `artifacts/trainer2-legacy/` binds
 Focused source and accepted Draft engine/boundary/component regressions, TypeScript, lint and repository-selected checks qualify this local slice. The prior independent Draft database/browser evidence remains attached to the accepted base; its implementation and migration files are unchanged. No new full Draft browser/release performance claim is made.
 
 Phase 0 is **not complete**. Hosted authenticated subject mapping/admission, deployed role/schema/source inventory, writer-era and device/backup completeness, and real source qualification remain unverified. Future import admission, cutover fencing and late-source reconciliation are not delivered. The next bounded step should validate the hosted identity/role boundary in an explicitly authorized environment while keeping training admission disabled, or deepen source fixtures if review reveals a concrete missing source contract. Do not start Phase 1 activation/execution under this slice's authorization.
+
+### Bounded RLS correction and tracked follow-ups
+
+The F1 correction starts at reviewed commit `b2fb2f9bb8e5d568c64b34edcaa0cc8dc4a471ba` (tree `6da438c5fadfc324a0ced3143073f079ab42d3fc`) on `codex/trainer2-legacy-rls-correction`. The disposable harness reproduces the review's Workout policy hiding `session-A`, filters a SetLog child and a WorkoutExercise owner-path relation, tests an empty account, and tests default-deny RLS on every declared family, including empty tables. Each case checks the specific PostgreSQL error, CLI failure without capture JSON, absence of a comparison, rollback/release and setting reset on the same backend, supported recapture, and unchanged source/destination records. Existing account filtering, read-only permissions, snapshot consistency and disappearance controls remain covered. Policy setup/removal uses only the disposable fixture administration connection.
+
+The independent source review's N1–N4 remain nonblocking follow-ups; this correction does not implement them:
+
+- N1: literal Markdown rendering of source/assertion text.
+- N2: linked-source versus external-assertion disagreement visibility.
+- N3: output-size limits versus peak memory/work guarantees.
+- N4: warning applicability and source-fixture precision.
+
+Draft F1–F3 remain closed and unchanged. This correction stops before hosted qualification and further Phase 0/Phase 1 work.

@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import { Pool } from "pg";
 import { readLegacySource, legacyCaptureLimits } from "../../src/lib/api/trainer2/legacy-source";
 import { legacyQueries } from "../../src/lib/api/trainer2/legacy-source-queries";
-import { captureSource, discrepancyReport, renderSourceReport, sourceHash } from "../../src/lib/legacy-history/source";
+import { captureSource, compareSourceCaptures, discrepancyReport, renderSourceReport, sourceHash } from "../../src/lib/legacy-history/source";
 import type { SourceScope, SourceCapture, SourceAssertion } from "../../src/lib/trainer2-contracts/legacy-source";
 import { sanitizeDatabaseTargetEnvironment, validateDisposableDatabaseTargets } from "../../src/lib/operations/test-environment-preflight";
 import { verificationSource } from "./verification-source";
@@ -161,6 +161,73 @@ export async function verifyLegacySource() {
     assert.deepEqual(cli.report, discrepancyReport(changed));
     assert.deepEqual(await snapshot(), cliBefore);
     passed("guarded developer CLI exports the same source-labeled capture/report without table writes");
+    // Fixture administration only. Every capture below uses the admitted reader.
+    // One pooled connection makes rollback/release and transaction-local reset
+    // observable on the very same backend, including after late-family failures.
+    const rlsReader = new Pool({ connectionString: readerUrl, max: 1, connectionTimeoutMillis: 5000 });
+    pools.push(rlsReader);
+    const backend = (await rlsReader.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+    const rlsResults: unknown[] = [];
+    evidence.rls = rlsResults;
+    const rejectRls = async (family: string, policy: string | null, account = scope.account) => {
+      const captureScope = { ...scope, account };
+      const supported = await readLegacySource(rlsReader, captureScope);
+      const unchanged = await snapshot();
+      await owner.query(`ALTER TABLE public."${family}" ENABLE ROW LEVEL SECURITY`);
+      try {
+        if (policy !== null) await owner.query(`CREATE POLICY correction_visibility ON public."${family}" FOR SELECT TO trainer2_legacy_reader USING (${policy})`);
+        const queries: string[] = [];
+        let released = false;
+        const observed = { connect: async () => {
+          const c = await rlsReader.connect(), query = c.query.bind(c), release = c.release.bind(c);
+          c.query = (async (sql: string, values?: unknown[]) => {
+            queries.push(sql);
+            return query(sql, values);
+          }) as typeof c.query;
+          c.release = () => { c.query = query; released = true; release(); };
+          return c;
+        } };
+        let comparison: ReturnType<typeof compareSourceCaptures> | undefined;
+        let failure: { code?: string; message?: string } | undefined;
+        await assert.rejects(async () => {
+          const partial = await readLegacySource(observed, captureScope);
+          comparison = compareSourceCaptures(supported, partial);
+        }, (error: { code?: string; message?: string }) => {
+          failure = error;
+          return error.code === "42501" && error.message === `query would be affected by row-level security policy for table "${family}"`;
+        });
+        assert.equal(comparison, undefined, "failed capture cannot produce a disappearance comparison");
+        assert.equal(queries.at(-1), "ROLLBACK");
+        assert(released);
+        assert.equal(rlsReader.idleCount, 1);
+        const reset = (await rlsReader.query("SELECT pg_backend_pid() AS pid, current_setting('row_security') AS security")).rows[0];
+        assert.equal(reset.pid, backend);
+        assert.equal(reset.security, "on");
+        const activity = (await owner.query("SELECT state FROM pg_stat_activity WHERE pid=$1", [backend])).rows[0];
+        assert.equal(activity.state, "idle");
+        const rejectedCli = spawnSync(process.execPath, [...cliArgs.slice(0, -3), account, "--source-system", scope.system], { env: cliEnv, encoding: "utf8", windowsHide: true });
+        assert.equal(rejectedCli.status, 1);
+        assert.equal(rejectedCli.stdout, "");
+        assert.match(rejectedCli.stderr, /^LEGACY_SOURCE_CAPTURE_FAILED:/);
+        assert.deepEqual(await snapshot(), unchanged);
+        rlsResults.push({ family, policy, account, code: failure?.code, message: failure?.message, failedQuery: queries.at(-2), rollback: true, released, sameBackend: true, rowSecurityReset: reset.security, backendState: activity.state, comparison: "not produced", cli: { status: rejectedCli.status, stdout: rejectedCli.stdout, stderr: scrub(rejectedCli.stderr) } });
+      } finally {
+        if (policy !== null) await owner.query(`DROP POLICY correction_visibility ON public."${family}"`);
+        await owner.query(`ALTER TABLE public."${family}" DISABLE ROW LEVEL SECURITY`);
+      }
+      const recovered = await readLegacySource(rlsReader, captureScope);
+      assert.equal(recovered.sourceHash, supported.sourceHash);
+      assert.deepEqual(discrepancyReport(recovered), discrepancyReport(supported));
+      assert.deepEqual(compareSourceCaptures(supported, recovered).disappeared, []);
+      assert.deepEqual(await snapshot(), unchanged);
+    };
+    await rejectRls("Workout", "id <> 'session-A'");
+    await rejectRls("SetLog", "id <> 'log-A'");
+    // WorkoutExercise is both a captured child and an owner-path relation.
+    await rejectRls("WorkoutExercise", "id <> 'position-A'");
+    await rejectRls("Workout", "id <> 'session-A'", "empty-account");
+    for (const q of legacyQueries) await rejectRls(q.family, null);
+    passed("RLS: review Workout policy, child and owner-path filtering, empty account and default-deny for all 25 families reject with PostgreSQL 42501; every CLI emits no stdout; no comparison; same-backend rollback/release/reset and supported recovery; all table records unchanged");
     await owner.query(`INSERT INTO "Workout" (id,"userId","scheduledDate") SELECT 'bounded-'||i, 'legacy-A', '2026-01-01'::timestamp FROM generate_series(1,$1) i`, [legacyCaptureLimits.perFamily]);
     await assert.rejects(readLegacySource(reader, scope), /FAMILY_LIMIT:Workout/);
     passed("bounded capture fails closed without returning partial coverage");

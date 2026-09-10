@@ -22,6 +22,10 @@ export async function readLegacySource(pool: Pick<Pool, "connect">, scopeInput: 
   const client = await pool.connect();
   try {
     await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+    // Reject queries subject to RLS, including owner-path joins/subqueries.
+    // This does not bypass policies for the restricted reader: PostgreSQL errors
+    // instead of returning filtered rows that could falsely imply completeness.
+    await client.query("SET LOCAL row_security=off");
     await client.query("SET LOCAL statement_timeout='10s'");
     await client.query("SET LOCAL idle_in_transaction_session_timeout='15s'");
     await client.query("SET LOCAL search_path=pg_catalog,public");

@@ -1,6 +1,6 @@
 # 04 API Contracts
 
-Trainer2 Draft routes resolve identity and exact account mapping through the dedicated access boundary. Hosted authentication fails closed until a provider integration exists, and mapped identity cannot bypass the unconditional hosted admission denial. Local GET uses a reader/read-only transaction; local POSTs retain write-pause and Origin checks. All Draft responses are private/no-store. See [principal boundary](architecture/trainer2/PRINCIPAL_BOUNDARY.md) for mapping freshness, connection and hosted qualification contracts.
+Trainer2 Draft routes resolve identity and exact account mapping through the dedicated access boundary. Supabase cookie authentication is server-verified and fails closed, and mapped identity cannot bypass the unconditional hosted admission denial. Local GET uses a reader/read-only transaction; local POSTs retain write-pause and Origin checks. All Draft responses are private/no-store. See [principal boundary](architecture/trainer2/PRINCIPAL_BOUNDARY.md) for mapping freshness, connection and hosted qualification contracts.
 
 ## Trainer2 local draft commands
 

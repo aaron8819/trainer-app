@@ -10,6 +10,8 @@ const nextConfig: NextConfig = {
     ? { distDir: uiAuditFixtureDistDir || ".next-ui-audit/managed" }
     : {}),
   devIndicators: false,
+  // PKCE codes are single-use credentials; never write callback query strings to dev logs.
+  logging: { incomingRequests: { ignore: [/^\/trainer2\/auth\/callback(?:\?|$)/] } },
   turbopack: {
     root: path.resolve(__dirname),
   },

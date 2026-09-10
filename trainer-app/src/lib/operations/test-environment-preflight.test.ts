@@ -177,6 +177,7 @@ describe("database target policy", () => {
       SHADOW_DATABASE_URL: "remote-shadow",
       SHADOW_URL: "remote-shadow-alias",
       TRAINER2_LEGACY_DATABASE_URL: "remote-trainer2-source",
+      GOTRUE_DB_DATABASE_URL: "remote-auth-source",
       TRAINER_DISPOSABLE_DB_CONFIRMED: "1",
       NODE_ENV: "test" as const,
     });
@@ -1544,6 +1545,7 @@ describe("command coverage honesty", () => {
       "trainer-app/scripts/test-readiness-snapshot-postgres.ts",
       "trainer-app/scripts/test-trainer2-drafts-postgres.ts",
       "trainer-app/scripts/test-trainer2-principal-postgres.ts",
+      "trainer-app/scripts/test-trainer2-auth-postgres.ts",
       "trainer-app/scripts/test-trainer2-legacy-postgres.ts",
       "trainer-app/scripts/verify-seed-revision-concurrency.ts",
     ]);

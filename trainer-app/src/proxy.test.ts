@@ -7,10 +7,10 @@ afterEach(() => {
 });
 
 describe("UI audit request boundary", () => {
-  it("is inert in production even when the fixture header is present", () => {
+  it("is inert in production even when the fixture header is present", async () => {
     vi.stubEnv("UI_AUDIT_FIXTURE_MODE", "1");
     vi.stubEnv("NODE_ENV", "production");
-    const response = proxy(
+    const response = await proxy(
       new NextRequest("http://localhost/plans", {
         headers: { "x-ui-audit-fixture": "active" },
       }),
@@ -20,10 +20,10 @@ describe("UI audit request boundary", () => {
     expect(response.headers.get("location")).toBeNull();
   });
 
-  it("redirects fixture page requests before production page modules execute", () => {
+  it("redirects fixture page requests before production page modules execute", async () => {
     vi.stubEnv("UI_AUDIT_FIXTURE_MODE", "1");
     vi.stubEnv("NODE_ENV", "development");
-    const response = proxy(
+    const response = await proxy(
       new NextRequest("http://localhost/plans", {
         headers: { "x-ui-audit-fixture": "active" },
       }),
@@ -36,7 +36,7 @@ describe("UI audit request boundary", () => {
     expect(location.searchParams.has("scenario")).toBe(false);
   });
 
-  it("leaves public Trainer brand assets available to fixture pages", () => {
+  it("leaves public Trainer brand assets available to fixture pages", async () => {
     vi.stubEnv("UI_AUDIT_FIXTURE_MODE", "1");
     vi.stubEnv("NODE_ENV", "development");
 
@@ -48,7 +48,7 @@ describe("UI audit request boundary", () => {
       "/manifest.webmanifest",
       "/favicon.ico",
     ]) {
-      const response = proxy(
+      const response = await proxy(
         new NextRequest(`http://localhost${pathname}`, {
           headers: { "x-ui-audit-fixture": "active" },
         }),
@@ -62,7 +62,7 @@ describe("UI audit request boundary", () => {
   it("blocks every unhandled fixture API request before database code", async () => {
     vi.stubEnv("UI_AUDIT_FIXTURE_MODE", "1");
     vi.stubEnv("NODE_ENV", "development");
-    const response = proxy(
+    const response = await proxy(
       new NextRequest("http://localhost/api/plans", {
         method: "POST",
         headers: { "x-ui-audit-fixture": "active" },
@@ -75,14 +75,14 @@ describe("UI audit request boundary", () => {
     });
   });
 
-  it("does not expose fixtures for a missing or incorrect header", () => {
+  it("does not expose fixtures for a missing or incorrect header", async () => {
     vi.stubEnv("UI_AUDIT_FIXTURE_MODE", "1");
     vi.stubEnv("NODE_ENV", "development");
     for (const headers of [
       undefined,
       { "x-ui-audit-fixture": "incorrect" },
     ]) {
-      const response = proxy(
+      const response = await proxy(
         new NextRequest("http://localhost/plans?scenario=active", {
           headers,
         }),

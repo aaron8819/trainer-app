@@ -1,5 +1,9 @@
 # 05 UI Flows
 
+## Trainer2 sign-in
+
+`/trainer2/auth` supports email PKCE sign-in, dynamic session status and POST logout. Its separate auth routes do not provision accounts or grant Draft/training access. [Flow and protections](architecture/trainer2/SUPABASE_AUTH.md).
+
 ## Trainer2 developer draft loop
 
 `/trainer2/dev/drafts` is an explicitly enabled local disposable workbench (`src/components/trainer2/DraftWorkbench.tsx`), absent from ordinary navigation. It demonstrates create, reload by saved ID, explicit revision rename/reorder/add/remove, same-action retry and a clear retained stale-edit error. Diagnostics are separated in a developer disclosure. No activation or execution controls exist. [Scope and verification](architecture/trainer2/DRAFT_SLICE.md).

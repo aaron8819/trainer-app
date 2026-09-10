@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { privateAuthResponse, refreshAuthRequest } from "@/lib/api/trainer2/auth-http";
 import {
   UI_AUDIT_FIXTURE_HEADER,
   authorizeUiAuditFixtureRequest,
@@ -24,6 +25,10 @@ export function proxy(request: NextRequest) {
     requestHeader: request.headers.get(UI_AUDIT_FIXTURE_HEADER),
   });
   if (!scenario) {
+    if (pathname.startsWith("/trainer2/auth/")) return privateAuthResponse(NextResponse.next());
+    if (pathname === "/trainer2/auth" || pathname.startsWith("/api/trainer2/") || pathname.startsWith("/trainer2/dev/")) {
+      return refreshAuthRequest(request);
+    }
     return NextResponse.next();
   }
   if (pathname.startsWith("/api/")) {

@@ -112,6 +112,9 @@ export function AppNavigation() {
     return () => mediaQuery.removeEventListener("change", update);
   }, []);
 
+  // Auth is a separate surface. Do not render/prefetch legacy application links here.
+  if (pathname === "/trainer2/auth" || pathname?.startsWith("/trainer2/auth/")) return null;
+
   const isActive = (href: string) => {
     if (!pathname) return false;
     if (href === "/") return pathname === "/" || pathname.startsWith("/log");

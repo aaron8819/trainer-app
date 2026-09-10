@@ -79,6 +79,16 @@ describe("L-5 — AppNavigation active tab on /log paths", () => {
     vi.clearAllMocks();
   });
 
+  it.each(["/trainer2/auth", "/trainer2/auth/callback"])("does not expose or prefetch legacy links on %s", pathname => {
+    renderDesktopNav(pathname);
+    expect(screen.queryByRole("navigation")).toBeNull();
+    expect(screen.queryAllByRole("link")).toHaveLength(0);
+    cleanup();
+    renderMobileNav(pathname);
+    expect(screen.queryByRole("navigation")).toBeNull();
+    expect(screen.queryAllByRole("link")).toHaveLength(0);
+  });
+
   it("Home tab is active on /", () => {
     renderDesktopNav("/");
     const homeLink = screen.getByRole("link", { name: /Home/ });

@@ -21,7 +21,7 @@ export async function verifyPrincipal() {
   const pools: Pool[] = [], clients: PrismaClient[] = [], results: string[] = [], commands: unknown[] = [];
   const evidence: Record<string, unknown> = { source, started: new Date().toISOString(), node: process.version,
     invocation: "node node_modules/tsx/dist/cli.mjs scripts/test-trainer2-principal-postgres.ts --confirm-disposable",
-    authentication: "No provider integration exists. PostgreSQL tests begin at synthetic verified principal output; no token/session verification claim." };
+    authentication: "This provider-independent PostgreSQL suite begins at synthetic verified principal output; real token/session evidence is produced separately by verify-supabase-auth." };
   const scrub = (s: string) => s.replaceAll(password, "[disposable-secret]").replace(/postgres(?:ql)?:\/\/[^\s"']+/g, "[disposable-target]");
   const command = (exe: string, args: string[], env?: NodeJS.ProcessEnv) => {
     const started = new Date().toISOString();

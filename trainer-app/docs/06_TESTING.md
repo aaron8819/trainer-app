@@ -1,5 +1,9 @@
 # 06 Testing
 
+## Trainer2 Supabase authentication verification
+
+`node node_modules/tsx/dist/cli.mjs scripts/test-trainer2-auth-postgres.ts --confirm-disposable` runs real disposable Supabase Auth, Mailpit, PostgreSQL and Edge sessions, then combines the real verifier with restricted mapping/replay tests. `authentication.test.ts` separately uses controlled signed-token/provider fixtures. [Reproducible setup, exact evidence and limitations](architecture/trainer2/SUPABASE_AUTH.md).
+
 ## Trainer2 principal verification
 
 `node node_modules/tsx/dist/cli.mjs scripts/test-trainer2-principal-postgres.ts --confirm-disposable` tests exact mappings, administrative concurrency, authorization freshness, effective roles and the hosted request path with a test-only verifier fixture against its own disposable PostgreSQL. It does not establish token/session verification. Focused tests are `src/lib/api/trainer2/access.test.ts`, `authentication.test.ts` and `isolation.test.ts`; the existing Draft harness additionally qualifies the dedicated connections through the browser. [Evidence and hosted limits](architecture/trainer2/PRINCIPAL_BOUNDARY.md).

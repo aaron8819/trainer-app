@@ -65,6 +65,18 @@ export async function verifyDrafts() {
   const pools: Pool[] = [];
   let server: ReturnType<typeof spawn> | undefined;
   let serverLog = "";
+  const stopServer = async () => {
+    if (!server) return;
+    if (server.pid && server.exitCode === null) {
+      const stopped = spawnSync("taskkill", ["/PID", String(server.pid), "/T", "/F"], { windowsHide: true, encoding: "utf8" });
+      // taskkill can return failure when a child exits during traversal, even
+      // though the server was terminated. Confirm the child-process exit itself.
+      for (let i = 0; server.exitCode === null && i < 50; i++) await new Promise(r => setTimeout(r, 100));
+      evidence.serverCleanup = { status: stopped.status, serverExitCode: server.exitCode, stderr: sanitize(stopped.stderr ?? "") };
+      if (server.exitCode === null) throw new Error("Developer server did not exit");
+    }
+    server = undefined;
+  };
   let browser: Awaited<ReturnType<(typeof import("@playwright/test"))["chromium"]["launch"]>> | undefined;
   const client = (url: string) => { const p = new Pool({ connectionString: url }); pools.push(p); const c = new PrismaClient({ adapter: new PrismaPg(p) }); clients.push(c); return c; };
   const sqlPath = resolve("prisma/migrations/20260909120000_trainer2_drafts/migration.sql");
@@ -291,8 +303,7 @@ export async function verifyDrafts() {
     assert.deepEqual(errors, []);
     passed("F2/F3 actual Edge browser: controlled 503/network refresh failure, historical replay, GET-only recovery and delayed response input locks");
     await browser.close(); browser = undefined;
-    if (server.pid) command("taskkill", ["/PID", String(server.pid), "/T", "/F"]);
-    server = undefined;
+    await stopServer();
     command(process.execPath, [resolve("node_modules/next/dist/bin/next"), "build", ...bundlerArgs], {
       ...sanitizeDatabaseTargetEnvironment(process.env), DATABASE_URL: runtimeUrl, NODE_ENV: "production",
       TRAINER_BUILD_GIT_SHA: command("git", ["rev-parse", "HEAD"]),
@@ -307,10 +318,7 @@ export async function verifyDrafts() {
     throw error;
   } finally {
     await browser?.close();
-    if (server?.pid && server.exitCode === null) {
-      const stopped = spawnSync("taskkill", ["/PID", String(server.pid), "/T", "/F"], { windowsHide: true, encoding: "utf8" });
-      evidence.serverCleanup = { status: stopped.status, stderr: sanitize(stopped.stderr ?? "") };
-    }
+    await stopServer().catch(error => { evidence.serverCleanupError = sanitize(String(error)); evidence.status = "failed"; });
     for (const c of clients) await c.$disconnect();
     for (const p of pools) await p.end();
     const cleanup = spawnSync("docker", ["rm", "-f", container], { windowsHide: true, stdio: "ignore" });

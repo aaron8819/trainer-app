@@ -176,6 +176,7 @@ describe("database target policy", () => {
       DIRECT_URL: "remote-direct",
       SHADOW_DATABASE_URL: "remote-shadow",
       SHADOW_URL: "remote-shadow-alias",
+      TRAINER2_LEGACY_DATABASE_URL: "remote-trainer2-source",
       TRAINER_DISPOSABLE_DB_CONFIRMED: "1",
       NODE_ENV: "test" as const,
     });

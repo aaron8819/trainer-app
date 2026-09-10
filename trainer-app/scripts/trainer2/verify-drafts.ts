@@ -64,7 +64,7 @@ export async function verifyDrafts() {
   const client = (url: string) => { const p = new Pool({ connectionString: url }); pools.push(p); const c = new PrismaClient({ adapter: new PrismaPg(p) }); clients.push(c); return c; };
   const sqlPath = resolve("prisma/migrations/20260909120000_trainer2_drafts/migration.sql");
   try {
-    command("docker", ["run", "--rm", "-d", "--name", container, "-e", `POSTGRES_PASSWORD=${password}`, "-e", `POSTGRES_DB=${database}`, "-p", "127.0.0.1::5432", "postgres:17-alpine"]);
+    command("docker", ["run", "--pull=never", "--rm", "-d", "--name", container, "-e", `POSTGRES_PASSWORD=${password}`, "-e", `POSTGRES_DB=${database}`, "-p", "127.0.0.1::5432", "postgres:17-alpine"]);
     for (let i = 0; ; i++) {
       if (spawnSync("docker", ["exec", container, "pg_isready", "-U", "postgres"], { windowsHide: true }).status === 0) break;
       if (i === 60) throw new Error("Disposable PostgreSQL startup failed");
@@ -84,12 +84,9 @@ export async function verifyDrafts() {
     evidence.prisma = command(process.execPath, [resolve("node_modules/prisma/build/index.js"), "version"], env);
     const owner = client(ownerUrl);
     const tables = ["AccountPrincipal", "AccountTrainingState", "Plan", "PlanRevision", "Identity", "DurableAction", "ActionOutcome"].map(n => `"Trainer2${n}"`);
-    await adminPool.query(`CREATE ROLE trainer2_draft_runtime LOGIN PASSWORD '${password}'; CREATE ROLE trainer2_draft_reader LOGIN PASSWORD '${password}'; GRANT USAGE ON SCHEMA public TO trainer2_draft_runtime, trainer2_draft_reader;`);
-    for (const table of tables) {
-      await adminPool.query(`GRANT SELECT ON ${table} TO trainer2_draft_runtime,trainer2_draft_reader; CREATE POLICY trainer2_server ON ${table} TO trainer2_draft_runtime USING (true) WITH CHECK (true); CREATE POLICY trainer2_reader ON ${table} FOR SELECT TO trainer2_draft_reader USING (true);`);
-      if (table !== '"Trainer2AccountPrincipal"') await adminPool.query(`GRANT INSERT ON ${table} TO trainer2_draft_runtime`);
-    }
-    await adminPool.query('GRANT UPDATE ON "Trainer2AccountTrainingState","Trainer2Plan" TO trainer2_draft_runtime');
+    await adminPool.query(`BEGIN; ${readFileSync(resolve("prisma/trainer2-runtime-grants.sql"), "utf8")} COMMIT;`);
+    for (const role of ["trainer2_identity_reader", "trainer2_draft_reader", "trainer2_draft_runtime"])
+      await adminPool.query(`ALTER ROLE ${role} LOGIN PASSWORD '${password}'`);
     const principal: ServerPrincipal = { accountId: randomUUID(), issuer: "trainer2-local-disposable", subject: "developer" };
     const other: ServerPrincipal = { accountId: randomUUID(), issuer: "trainer2-local-disposable", subject: "other" };
     for (const p of [principal, other]) {
@@ -237,7 +234,10 @@ export async function verifyDrafts() {
     passed("fresh migration chain; populated candidate upgrade and historical replay; inconsistent upgrade rejected without repair; second deploy ledger no-op");
     // Real browser and actual HTTP handlers, using only the limited runtime role.
     const webPort = 32000 + Math.floor(Math.random() * 10000);
-    const webEnv: NodeJS.ProcessEnv = { ...sanitizeDatabaseTargetEnvironment(process.env), DATABASE_URL: runtimeUrl, NODE_ENV: "development", TRAINER2_LOCAL_DRAFTS: "enabled" };
+    const webEnv: NodeJS.ProcessEnv = { ...sanitizeDatabaseTargetEnvironment(process.env), DATABASE_URL: runtimeUrl, NODE_ENV: "development", TRAINER2_LOCAL_DRAFTS: "enabled",
+      TRAINER2_IDENTITY_CONNECTION_STRING: `postgresql://trainer2_identity_reader:${password}@127.0.0.1:${port}/${database}`,
+      TRAINER2_READ_CONNECTION_STRING: `postgresql://trainer2_draft_reader:${password}@127.0.0.1:${port}/${database}`,
+      TRAINER2_WRITE_CONNECTION_STRING: runtimeUrl };
     delete webEnv.CI;
     server = spawn(process.execPath, [resolve("node_modules/next/dist/bin/next"), "dev", "--hostname", "127.0.0.1", "--port", String(webPort)], { env: webEnv, windowsHide: true, stdio: "pipe" });
     let serverLog = ""; server.stdout?.on("data", d => { serverLog += d.toString(); }); server.stderr?.on("data", d => { serverLog += d.toString(); });

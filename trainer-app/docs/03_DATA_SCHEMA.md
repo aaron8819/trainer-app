@@ -1,5 +1,7 @@
 # 03 Data Schema
 
+`prisma/trainer2-runtime-grants.sql` prepares fresh dedicated lookup/read/write/provisioning roles and RLS policies separately from automatic migrations. It changes no tables or migration history. Runtime cannot administer AccountPrincipal; these server role policies do not implement per-account RLS. [Privilege and mapping contract](architecture/trainer2/PRINCIPAL_BOUNDARY.md).
+
 ## Trainer2 draft persistence
 
 The seven additive `Trainer2*` models and SQL migration `20260909120000_trainer2_drafts` own only immutable draft intent, stable identities, principal mapping, account serialization and durable outcome history. Composite owner/root FKs, deferred graph seals, hash checks, tombstones and the outcome cursor are database-only extensions to the Prisma models. Existing training tables are untouched. Exact contracts and limitations: [Trainer2 draft slice](architecture/trainer2/DRAFT_SLICE.md#persistence-and-authorization).

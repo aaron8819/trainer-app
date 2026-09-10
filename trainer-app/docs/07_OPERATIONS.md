@@ -1,5 +1,9 @@
 # 07 Operations
 
+## Trainer2 principal and role preparation
+
+Trainer2 now uses dedicated identity/read/write connection strings and per-context effective privilege checks; it never falls back to the legacy pool. Hosted authentication is explicitly unconfigured and hosted admission remains hard-disabled. The grant file is administrative preparation, not a migration or permission to modify a hosted database. [Principal boundary, exact variables, provisioning/reversal procedure and hosted handoff](architecture/trainer2/PRINCIPAL_BOUNDARY.md) own the contract and qualification limits. The local Draft harness supplies all three connections.
+
 ## Trainer2 legacy source reference capture
 
 The local-only `scripts/capture-trainer2-legacy-source.ts` emits source capture/report JSON to stdout using an explicitly supplied `TRAINER2_LEGACY_DATABASE_URL`, loopback disposable database and restricted `trainer2_legacy_reader` role. It requires `--confirm-disposable --account <legacy-id> --source-system <source-id>`, rejects hosted contexts and inherited unsafe database targets, and never loads dotenv, provisions accounts or changes source/destination rows. There are no new hosted routes or import commands. [Source inventory and disposable harness](architecture/trainer2/LEGACY_SOURCE_INVENTORY.md) own exact scope, bounds, confidence and coverage qualifications.

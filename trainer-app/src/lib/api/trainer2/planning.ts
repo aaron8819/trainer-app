@@ -5,14 +5,9 @@ import { createDraftCommand, editDraftCommand, draftDocument, activationBlockers
 import { DraftFailure, editDocument, identities } from "../../engine/trainer2/planning";
 import { canonicalJson, commandBinding, integrityHash } from "./integrity";
 
-// Constructed by server authentication; no request headers/body are used as a principal.
-export type ServerPrincipal = Readonly<{ issuer: string; subject: string; accountId: string }>;
-export class DraftAccessError extends Error {}
+import { authorizeAccount as authorize, DraftAccessError, type ServerPrincipal } from "./principal";
+export { DraftAccessError, type ServerPrincipal } from "./principal";
 export class ActionCollision extends Error { constructor() { super("ACTION_ID_COLLISION"); } }
-async function authorize(db: PrismaClient | Prisma.TransactionClient, principal: ServerPrincipal) {
-  const mapping = await db.trainer2AccountPrincipal.findUnique({ where: { issuer_subject: { issuer: principal.issuer, subject: principal.subject } } });
-  if (!mapping || mapping.accountId !== principal.accountId) throw new DraftAccessError("UNAUTHORIZED");
-}
 export async function readDraft(db: PrismaClient | Prisma.TransactionClient, principal: ServerPrincipal, planId: string) {
   await authorize(db, principal);
   const plan = await db.trainer2Plan.findFirst({ where: { id: planId, accountId: principal.accountId, tombstonedAt: null } });

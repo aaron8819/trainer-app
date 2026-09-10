@@ -1,5 +1,9 @@
 # 06 Testing
 
+## Trainer2 principal verification
+
+`node node_modules/tsx/dist/cli.mjs scripts/test-trainer2-principal-postgres.ts --confirm-disposable` tests exact mappings, administrative concurrency, authorization freshness, effective roles and the hosted request path with a test-only verifier fixture against its own disposable PostgreSQL. It does not establish token/session verification. Focused tests are `src/lib/api/trainer2/access.test.ts`, `authentication.test.ts` and `isolation.test.ts`; the existing Draft harness additionally qualifies the dedicated connections through the browser. [Evidence and hosted limits](architecture/trainer2/PRINCIPAL_BOUNDARY.md).
+
 ## Trainer2 legacy source verification
 
 `node node_modules/tsx/dist/cli.mjs scripts/test-trainer2-legacy-postgres.ts --confirm-disposable` exercises the read-only source adapter against its own synthetic PostgreSQL container, including actual role denial, account-filtered linked rows, complete table no-write snapshots, concurrent capture consistency, deterministic revisions, CLI output and resource limits. It uses the installed Docker image and repository-local dependencies. Pure source/reference regressions live in `src/lib/legacy-history/source.test.ts`; run with `TRAINER_CREDENTIAL_FREE_TEST=1` to disable dotenv loading. [Inventory, fixture matrix and limitations](architecture/trainer2/LEGACY_SOURCE_INVENTORY.md).

@@ -6,9 +6,11 @@
 
 ## Trainer2 developer draft loop
 
-`/trainer2/dev/drafts` is an explicitly enabled local disposable workbench (`src/components/trainer2/DraftWorkbench.tsx`), absent from ordinary navigation. It demonstrates create, reload by saved ID, explicit revision rename/reorder/add/remove, same-action retry and a clear retained stale-edit error. Diagnostics are separated in a developer disclosure. No activation or execution controls exist. [Scope and verification](architecture/trainer2/DRAFT_SLICE.md).
+`/trainer2/dev/drafts` immediately shows an unsaved hypertrophy plan with five weeks and four ordered workouts per week. `DraftWorkbench.tsx` owns save/recovery state; `PlanBuilder.tsx` provides workout tabs, authored exercise selection, sets/reps/effort, optional advanced weights, weekly inspection and explicit week-only edits. The final week visibly reduces working sets. Edit schedule offers supported workout ordering and weekly effort changes. No weekdays are assigned.
 
-Accepted identity is retained before head refresh. Failed reads preserve the acceptance notice and saved plan ID, display refresh failure and any stale snapshot, and offer GET-only reload recovery. Historical replay never proves freshness. Both inputs and every request button are disabled throughout submission/reload; stale snapshots must be refreshed before editing.
+Save plan uses CreateDraft initially and named EditDraft operations thereafter; a successful save bookmarks `?planId=...`. Reload reads the immutable saved plan without regenerating identities or overrides. Shared edits preserve independent week-only workouts. Restoring defaults previews what will be replaced. Review saved plan renders actual persisted prescriptions. Existing non-template drafts remain editable without fabricated recurrence links.
+
+Uncertain saves offer exact-envelope Check again and block new edits. Confirmed saves with failed reads offer GET-only recovery. Stale conflicts require reload, comparison with the retained submitted plan, and explicit continuation. V1 navigation is hidden only on this demo route to keep Save usable on mobile. The demo warning and plan-editing capability limit stay visible. [Template contract, limits and local demo](architecture/trainer2/DRAFT_SLICE.md#scratch-editor-and-saved-review).
 
 ## Zero-load display
 

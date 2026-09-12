@@ -3,9 +3,10 @@ import { developmentContext, developmentEnabled } from "@/lib/api/trainer2/devel
 import { DraftWorkbench } from "@/components/trainer2/DraftWorkbench";
 
 export const dynamic = "force-dynamic";
-export default async function DraftPage() {
+export default async function DraftPage({ searchParams }: { searchParams: Promise<{ planId?: string }> }) {
   if (!developmentEnabled()) notFound();
   const { db, principal } = await developmentContext();
   const state = await db.trainer2AccountTrainingState.findUnique({ where: { accountId: principal.accountId } });
-  return <DraftWorkbench accountId={principal.accountId} ownershipEpoch={state?.ownershipEpoch ?? 0} />;
+  const { planId } = await searchParams;
+  return <DraftWorkbench key={planId ?? "scratch"} initialPlanId={typeof planId === "string" ? planId : ""} accountId={principal.accountId} ownershipEpoch={state?.ownershipEpoch ?? 0} />;
 }

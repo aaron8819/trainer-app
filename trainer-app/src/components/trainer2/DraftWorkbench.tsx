@@ -1,98 +1,95 @@
 "use client";
-import { useRef, useState } from "react";
-import type { DraftDocument, DraftCommand, EditDraftCommand } from "@/lib/trainer2-contracts/draft";
+import { useEffect, useRef, useState } from 'react';
+import { draftDocument, editDraftCommand, type DraftDocument, type DraftCommand } from '@/lib/trainer2-contracts/draft';
+import { createHypertrophyPlan } from '@/lib/engine/trainer2/plan-builder';
+import { control } from './DraftEditor';
+import { PlanBuilder } from './PlanBuilder';
+import { DraftReview } from './DraftReview';
+import { draftEdits } from './draft-edits';
 
 type Loaded = { planId: string; revisionId: string; revisionNumber: number; intent: DraftDocument; activationBlockers: string[] };
-export function DraftWorkbench({ accountId, ownershipEpoch }: { accountId: string; ownershipEpoch: number }) {
+export function DraftWorkbench({ accountId, ownershipEpoch, initialPlanId = '' }: { accountId: string; ownershipEpoch: number; initialPlanId?: string }) {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
-  const [planId, setPlanId] = useState("");
-  const [name, setName] = useState("My finite draft");
-  const [message, setMessage] = useState("Create a draft or enter its saved plan ID to reload it.");
+  const [form, setForm] = useState<DraftDocument | null>(null);
+  const [planId, setPlanId] = useState(initialPlanId);
+  const [message, setMessage] = useState(initialPlanId ? 'Loading plan…' : 'Unsaved changes');
   const [lastCommand, setLastCommand] = useState<DraftCommand | null>(null);
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
-  const [stale, setStale] = useState(false);
-  const [acceptedNotice, setAcceptedNotice] = useState("");
-  function beginRequest() {
-    if (inFlight.current) return false;
-    inFlight.current = true; setBusy(true); setStale(true);
-    return true;
-  }
+  const [stale, setStale] = useState(Boolean(initialPlanId));
+  const [uncertain, setUncertain] = useState(false);
+  const [conflict, setConflict] = useState<DraftDocument | null>(null);
+  const mounted = useRef(false);
+  function bookmark(id: string) { const url = new URL(window.location.href); url.searchParams.set('planId', id); window.history.replaceState(null, '', url); }
+  function beginRequest() { if (inFlight.current) return false; inFlight.current = true; setBusy(true); setStale(true); return true; }
   function endRequest() { inFlight.current = false; setBusy(false); }
-  async function refresh(id: string, acceptance?: string) {
-    setMessage(`${acceptance ? `${acceptance} ` : ""}Refreshing current state…`);
+  async function refresh(id: string, accepted = false) {
     try {
-      const response = await fetch(`/api/trainer2/drafts/${id}`, { cache: "no-store" });
+      const response = await fetch(`/api/trainer2/drafts/${encodeURIComponent(id)}`, { cache: 'no-store' });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? "Read failed");
-      setLoaded(result); setName(result.intent.name); setPlanId(id); setStale(false);
-      setMessage(acceptance ? `${acceptance} Current head reloaded separately.` : `Loaded revision ${result.revisionNumber}`);
-    } catch {
-      setMessage(`${acceptance ? `${acceptance} Accepted, refresh failed.` : "Refresh failed."} Current state is unverified. Retry with Reload persisted draft.`);
-    }
+      if (!response.ok) throw new Error('Read failed');
+      const intent = draftDocument.parse(result.intent);
+      setLoaded({ ...result, intent }); setForm(structuredClone(intent)); setPlanId(id); setStale(false); bookmark(id);
+      setMessage('Saved');
+    } catch { setMessage(accepted ? 'Your plan was saved, but could not be reloaded. Reload the latest version.' : 'Could not load this plan. Check your connection and reload.'); }
   }
-  async function reload() {
-    if (!beginRequest()) return;
-    try { await refresh(planId); } finally { endRequest(); }
-  }
+  async function reload() { if (!planId || uncertain || !beginRequest()) return; try { await refresh(planId); } finally { endRequest(); } }
+  useEffect(() => {
+    if (mounted.current) return; mounted.current = true;
+    if (initialPlanId) void reload(); else setForm(createHypertrophyPlan());
+    // Bookmark is a mount input. Initial identities are allocated only in the browser.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   async function submit(command: DraftCommand) {
     if (!beginRequest()) return;
-    setLastCommand(command);
-    setMessage("Submitting draft command…");
+    setLastCommand(command); setMessage('Saving…');
     try {
-      const response = await fetch(`/api/trainer2/drafts/${command.commandType === "CreateDraft" ? "create" : "edit"}`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(command),
-      });
+      const response = await fetch(`/api/trainer2/drafts/${command.commandType === 'CreateDraft' ? 'create' : 'edit'}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(command) });
       const result = await response.json();
-      if (response.ok && result.outcome?.status === "Accepted") {
-        const accepted = result.outcome.result;
-        const notice = `${result.replayed ? "Replayed original accepted" : "Accepted"} revision ${accepted.revisionNumber} for plan ${accepted.planId}.`;
-        setPlanId(accepted.planId); setAcceptedNotice(notice);
-        await refresh(accepted.planId, notice);
-      } else setMessage(result.outcome?.code === "STALE_REVISION" ? "Stale edit: another revision was accepted. Your submitted edit is retained. Reload before making a new edit." : result.outcome?.code ?? result.error);
-    } catch { setMessage("Delivery uncertain. Retry the same action."); }
+      if (response.ok && result.outcome?.status === 'Accepted') {
+        setUncertain(false); setLastCommand(null);
+        setPlanId(result.outcome.result.planId); bookmark(result.outcome.result.planId);
+        await refresh(result.outcome.result.planId, true);
+      } else if (result.outcome?.code === 'STALE_REVISION') {
+        setUncertain(false); setConflict(structuredClone(form)); setLastCommand(null);
+        setMessage('This plan changed in another tab. Reload the latest version before saving.');
+      } else if (result.outcome?.status === 'Rejected' || result.outcome?.status === 'Conflict') {
+        setUncertain(false); setLastCommand(null);
+        setMessage(`Save failed (${result.outcome.code}). ${planId ? 'Reload the latest version before editing.' : 'Your plan is still here. Review it before saving again.'}`);
+        if (!planId) setStale(false);
+      } else { setUncertain(true); setMessage('Your save could not be confirmed. Check again.'); }
+    } catch { setUncertain(true); setMessage('Your save could not be confirmed. Check again.'); }
     finally { endRequest(); }
   }
   function envelope() {
     return { schemaVersion: 1 as const, actionId: crypto.randomUUID(), originatingAccountId: accountId,
-      deviceId: sessionStorage.getItem("trainer2-device") ?? (() => { const id = crypto.randomUUID(); sessionStorage.setItem("trainer2-device", id); return id; })(), ownershipEpoch, dependsOn: [] };
+      deviceId: sessionStorage.getItem('trainer2-device') ?? (() => { const id = crypto.randomUUID(); sessionStorage.setItem('trainer2-device', id); return id; })(), ownershipEpoch, dependsOn: [] };
   }
-  function create() {
-    const stageId = crypto.randomUUID();
-    void submit({ ...envelope(), commandType: "CreateDraft", target: { planId: crypto.randomUUID() }, expected: {},
-      intent: { schemaVersion: 1, name, endpoint: "endOfOrderedOccurrences", stages: [{ id: stageId, name: "Stage 1" }],
-        occurrences: [{ id: crypto.randomUUID(), stageId, name: "Session A", positions: ["Squat", "Squat"].map(name => ({
-          id: crypto.randomUUID(), exercise: { kind: "authoredDescription" as const, name, variation: "" }, targets: [{
-            id: crypto.randomUUID(), classification: "working" as const, required: true,
-            reps: { min: 8, max: 12, basis: "total" as const }, measurement: { kind: "externalLoad" as const, value: "20.00", unit: "kg" as const, convention: "barbellTotal" as const, zeroMeaning: "notAllowed" as const }, rir: "2", restSeconds: "120",
-          }],
-        })) }] } });
+  function save() {
+    if (inFlight.current || stale || conflict || uncertain || !form) return;
+    const parsed = draftDocument.safeParse(form);
+    if (!parsed.success) { setMessage('Check the plan: use a valid rep range, 1–20 sets, and 0–10 reps left. Complete any optional weight details you entered.'); return; }
+    if (!loaded) { void submit({ ...envelope(), commandType: 'CreateDraft', target: { planId: crypto.randomUUID() }, expected: {}, intent: parsed.data }); return; }
+    const operations = draftEdits(loaded.intent, parsed.data);
+    if (!operations.length) { setMessage('Saved'); return; }
+    const command = editDraftCommand.safeParse({ ...envelope(), commandType: 'EditDraft', target: { planId: loaded.planId }, expected: { planRevisionId: loaded.revisionId }, intent: { operations } });
+    if (!command.success) { setMessage('Too many changes for one save. Save a smaller group of edits.'); return; }
+    void submit(command.data);
   }
-  function edit(operations: EditDraftCommand["intent"]["operations"]) {
-    if (loaded) void submit({ ...envelope(), commandType: "EditDraft", target: { planId: loaded.planId }, expected: { planRevisionId: loaded.revisionId }, intent: { operations } });
-  }
-  const button = "rounded border border-slate-400 px-3 py-2 disabled:opacity-40";
-  return <main className="mx-auto max-w-4xl space-y-5 p-6 pb-24">
-    <h1 className="text-2xl font-semibold">Trainer2 developer draft workbench</h1>
-    <p>Local disposable database · draft authoring only</p>
-    <label className="block">Draft name <input className="rounded border p-2" disabled={busy} value={name} onChange={e => setName(e.target.value)} /></label>
-    <div className="flex gap-3"><button className={button} disabled={busy} onClick={create}>Create finite draft</button>
-      <button className={button} disabled={busy || stale || !loaded} onClick={() => edit([{ op: "renamePlan", name }])}>Save name revision</button></div>
-    <label className="block">Saved plan ID <input className="w-full rounded border p-2 font-mono" disabled={busy} value={planId} onChange={e => { setPlanId(e.target.value); setStale(true); }} /></label>
-    <div className="flex gap-3"><button className={button} disabled={busy || !planId} onClick={() => void reload()}>Reload persisted draft</button>
-      <button className={button} disabled={busy || !lastCommand} onClick={() => lastCommand && void submit(lastCommand)}>Retry same action</button></div>
-    <p role="status" className="rounded bg-slate-100 p-3 text-slate-900">{message}</p>
-    {acceptedNotice && <p>Last accepted result: {acceptedNotice} This historical result does not establish the current head.</p>}
-    {loaded && <section className="space-y-4"><h2 className="text-xl">Revision {loaded.revisionNumber}: {loaded.intent.name}</h2>
-      {stale && <p>Stale snapshot — reload to retrieve current state before editing this draft.</p>}
-      <p className="break-all font-mono text-sm">{loaded.revisionId}</p>
-      {loaded.intent.occurrences.map(o => <div key={o.id} className="space-y-2 rounded border p-4"><h3>{o.name}</h3>
-        <button className={button} disabled={busy || stale} onClick={() => edit([{ op: "reorderPositions", occurrenceId: o.id, positionIds: o.positions.map(p => p.id).reverse() }])}>Reverse positions</button>
-        <button className={button} disabled={busy || stale} onClick={() => edit([{ op: "addPosition", occurrenceId: o.id, position: { id: crypto.randomUUID(), exercise: { kind: "authoredDescription", name: "Squat", variation: "" }, targets: [] } }])}>Add new Squat position</button>
-        <ol>{o.positions.map(p => <li key={p.id} className="my-3"><span>{p.exercise.name} · </span><code>{p.id}</code>{" "}
-          <button className={button} disabled={busy || stale} onClick={() => edit([{ op: "removePosition", positionId: p.id }])}>Remove position</button></li>)}</ol>
-      </div>)}
-      <details><summary>Developer diagnostics: intent and activation blockers</summary><pre className="overflow-auto text-xs">{JSON.stringify(loaded, null, 2)}</pre></details>
-    </section>}
-  </main>;
+  const unsaved = !!form && (!loaded || JSON.stringify(form) !== JSON.stringify(loaded.intent));
+  const locked = busy || stale || !!conflict || uncertain;
+  return <main className="min-h-screen bg-white text-slate-900"><div className="mx-auto max-w-5xl space-y-5 px-4 py-4 pb-28 sm:px-8 sm:py-10">
+    <header className="space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-semibold uppercase tracking-widest text-teal-700">Trainer / Plan builder</p><p className="rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-900">Demo: plans are deleted when the demo stops.</p></div>
+      <h1 className="sr-only">Build your training plan</h1>
+      {form && <label className="block"><span className="sr-only">Plan name</span><input aria-label="Plan name" className="w-full rounded border border-transparent bg-transparent py-2 text-2xl font-semibold tracking-tight hover:border-slate-200 focus:border-teal-600 sm:text-3xl" disabled={locked} value={form.name} onChange={e => { if (!inFlight.current) { setForm({ ...form, name: e.target.value }); setMessage('Unsaved changes'); } }} /></label>}
+      {form?.builder && <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm"><span className="rounded-full bg-teal-50 px-3 py-1 font-medium text-teal-800">Hypertrophy</span><span className="py-1">5 weeks · 4 workouts per week</span><span className="py-1 text-slate-500">4 training weeks + 1 deload week</span></div>}
+      <p className="text-sm text-slate-500">Plan editing only. Starting workouts is coming later.</p>
+    </header>
+    {stale && !busy && planId && !uncertain && <button className={control} onClick={() => void reload()}>Reload latest version</button>}
+    {uncertain && <button className={control} disabled={busy || !lastCommand} onClick={() => lastCommand && void submit(lastCommand)}>Check again</button>}
+    {conflict && <section className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-4"><p>Your submitted changes are retained below for comparison. Reload, then choose to continue from the latest plan.</p><details><summary>Your submitted plan</summary><DraftReview intent={conflict} /></details><button className={control} disabled={busy || stale} onClick={() => { setConflict(null); setMessage('Saved'); }}>Continue from latest plan</button></section>}
+    {form && <PlanBuilder document={form} disabled={locked} onChange={d => { if (!inFlight.current) { setForm(d); setMessage('Unsaved changes'); } }} />}
+    {loaded && <details className="rounded-xl border border-slate-200 p-4"><summary className="cursor-pointer font-medium">Review saved plan</summary><div className="mt-4"><DraftReview intent={loaded.intent} /></div></details>}
+    <div className="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur"><div className="mx-auto flex max-w-5xl items-center justify-between gap-4"><p role="status" className="text-sm text-slate-600">{message}</p><button className="shrink-0 rounded-xl bg-teal-700 px-6 py-3 font-semibold text-white disabled:opacity-40" disabled={locked || !unsaved} onClick={save}>Save plan</button></div></div>
+  </div></main>;
 }

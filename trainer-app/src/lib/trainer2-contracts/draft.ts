@@ -23,13 +23,21 @@ export const target = z.object({
     basis: z.enum(["total", "perSide", "alternating"]) }).strict().refine(v => v.min <= v.max),
   measurement: measurement.nullable(), rir: decimal.refine(v => Number(v) <= 10, "RIR must be at most 10").nullable(), restSeconds: decimal.nullable(),
 }).strict();
-export const position = z.object({ id, exercise: z.object({
+export const position = z.object({ id, sourceKey: id.optional(), exercise: z.object({
   kind: z.literal("authoredDescription"), name: label, variation: label,
 }).strict(), targets: z.array(target).max(100) }).strict();
-export const occurrence = z.object({ id, stageId: id, name: label,
+export const occurrence = z.object({ id, stageId: id, name: label, workoutKey: id.optional(), weekOverride: z.boolean().optional(),
   positions: z.array(position).max(100) }).strict();
 export const stage = z.object({ id, name: label }).strict();
+export const builder = z.object({ version: z.literal(1), template: z.literal("hypertrophy"),
+  weeks: z.array(z.object({ stageId: id, deload: z.boolean(), rir: target.shape.rir }).strict()).length(5)
+    .refine(weeks => weeks.every((week, i) => week.deload === (i === 4)), "The supported schedule ends with one deload week"),
+  workouts: z.array(z.object({ key: id, name: label, rows: z.array(z.object({
+    key: id, exercise: position.shape.exercise, sets: z.int().min(1).max(20), prescription: target.omit({ id: true }),
+  }).strict()).max(20) }).strict()).length(4),
+}).strict();
 export const draftDocument = z.object({ schemaVersion: z.literal(1), name: label,
+  builder: builder.optional(),
   endpoint: z.literal("endOfOrderedOccurrences"), stages: z.array(stage).max(100),
   occurrences: z.array(occurrence).max(500),
 }).strict().superRefine((doc, ctx) => {
@@ -41,9 +49,31 @@ export const draftDocument = z.object({ schemaVersion: z.literal(1), name: label
     for (const p of o.positions) { all.push(p.id); all.push(...p.targets.map(t => t.id)); }
   }
   if (new Set(all).size !== all.length) ctx.addIssue({ code: "custom", message: "Duplicate identity" });
+  if (doc.builder) {
+    const b = doc.builder;
+    const keys = b.workouts.flatMap(w => [w.key, ...w.rows.map(r => r.key)]);
+    if (new Set(keys).size !== keys.length || b.weeks.some((w, i) => w.stageId !== doc.stages[i]?.id) || doc.stages.length !== 5 || doc.occurrences.length !== 20)
+      ctx.addIssue({ code: "custom", message: "Invalid builder structure" });
+    b.weeks.forEach((w, weekIndex) => b.workouts.forEach((workout, workoutIndex) => {
+      const ordered = doc.occurrences[weekIndex * 4 + workoutIndex];
+      if (ordered?.stageId !== w.stageId || ordered?.workoutKey !== workout.key)
+        ctx.addIssue({ code: "custom", message: "Workout order must match the authored schedule" });
+      const matches = doc.occurrences.filter(o => o.stageId === w.stageId && o.workoutKey === workout.key);
+      if (matches.length !== 1) ctx.addIssue({ code: "custom", message: "Missing or duplicate recurring workout" });
+      for (const o of matches) {
+        const sources = o.positions.flatMap(p => p.sourceKey ? [p.sourceKey] : []);
+        if (new Set(sources).size !== sources.length) ctx.addIssue({ code: "custom", message: "Duplicate exercise counterpart" });
+      }
+    }));
+  } else if (doc.occurrences.some(o => o.workoutKey || o.weekOverride !== undefined || o.positions.some(p => p.sourceKey))) {
+    ctx.addIssue({ code: "custom", message: "Counterparts require builder context" });
+  }
 });
 export type DraftDocument = z.infer<typeof draftDocument>;
 export const editOperation = z.discriminatedUnion("op", [
+  z.object({ op: z.literal("editWorkoutDefaults"), builder }).strict(),
+  z.object({ op: z.literal("setWeekOverride"), occurrenceId: id, weekOverride: z.boolean() }).strict(),
+  z.object({ op: z.literal("editPositionTargets"), positionId: id, targets: z.array(target).max(100) }).strict(),
   z.object({ op: z.literal("renamePlan"), name: label }).strict(),
   z.object({ op: z.literal("addStage"), stage }).strict(),
   z.object({ op: z.literal("renameStage"), stageId: id, name: label }).strict(),
@@ -72,7 +102,7 @@ export const createDraftCommand = z.object({ ...envelope, commandType: z.literal
 }).strict();
 export const editDraftCommand = z.object({ ...envelope, commandType: z.literal("EditDraft"),
   target: z.object({ planId: id }).strict(), expected: z.object({ planRevisionId: id }).strict(),
-  intent: z.object({ operations: z.array(editOperation).min(1).max(100) }).strict(),
+  intent: z.object({ operations: z.array(editOperation).min(1).max(1000) }).strict(),
 }).strict();
 export type CreateDraftCommand = z.infer<typeof createDraftCommand>;
 export type EditDraftCommand = z.infer<typeof editDraftCommand>;

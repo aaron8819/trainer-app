@@ -4,6 +4,8 @@
 
 `src/lib/engine/trainer2/planning.ts` independently owns explicit draft operations and identity continuity. It operates only on strict full documents from `src/lib/trainer2-contracts/draft.ts`; no legacy generator, accepted seed or lifecycle owner participates. [Supported shape, blockers and identity rules](architecture/trainer2/DRAFT_SLICE.md#actual-supported-draft-shape).
 
+`src/lib/engine/trainer2/plan-builder.ts` owns deterministic hypertrophy initialization and explicit recurring-edit expansion. Saved recipes belong to the plan; occurrences remain executable truth. Explicit week overrides, surviving IDs and historical-ID rejection are preserved through the atomic Draft boundary. [Template/default/override contract](architecture/trainer2/DRAFT_SLICE.md#scratch-editor-and-saved-review).
+
 ## Load prescription domain
 
 `src/lib/engine/load-prescription.ts` owns the versioned pure `PrescriptionResult`

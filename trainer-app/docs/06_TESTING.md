@@ -14,6 +14,8 @@
 
 ## Trainer2 draft verification
 
+The bounded editor check is `node node_modules/tsx/dist/cli.mjs scripts/test-trainer2-draft-editor.ts --confirm-disposable`. It reuses the bundled Draft PostgreSQL/upgrade checks and extends the real Edge loop to prefilled five-week authoring, recurring edits, persisted week overrides, actual deload sets, desktop/mobile operation, stable identity, bookmarked reload, two-client conflict and response-loss replay. It also retains accepted-refresh-failure and input-lock checks, and skips the production build. Template expansion/identity/restore/batch tests live in `src/lib/engine/trainer2/plan-builder.test.ts`; editor/recovery components are tested under `src/components/trainer2`, and demo navigation isolation in `src/components/navigation/AppNavigation.test.tsx`; the isolation walker includes the local page and component imports. The command registry classifies both this entry and the manual demo as explicitly confirmed disposable database writes. [Demo, evidence and scope](architecture/trainer2/DRAFT_SLICE.md#scratch-editor-and-saved-review).
+
 `npm run test:db:trainer2-drafts -- --confirm-disposable` creates and migrates its own loopback PostgreSQL 17 container, provisions restricted runtime/read roles, proves draft/action/graph/permission invariants, and runs the actual browser loop using installed Edge. Exact argument and inherited-target guards run before database/Docker imports. It never loads dotenv or mutates a configured target. Focused credential-free tests live in `src/lib/engine/trainer2/planning.test.ts` and `src/lib/api/trainer2/isolation.test.ts`. [Acceptance matrix and limitations](architecture/trainer2/DRAFT_ACCEPTANCE.md).
 
 Owner: Aaron

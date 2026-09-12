@@ -1,7 +1,15 @@
 import { draftDocument, type DraftDocument, type EditDraftCommand, type DraftError } from "../../trainer2-contracts/draft";
+import { expandWorkoutDefaults } from "./plan-builder";
 
 export class DraftFailure extends Error {
   constructor(public readonly code: DraftError) { super(code); }
+}
+export function validateWorkoutDefaults(doc: DraftDocument) {
+  if (!doc.builder) return;
+  try {
+    const expanded = expandWorkoutDefaults(doc, () => { throw new Error("Missing counterpart"); });
+    if (JSON.stringify(draftDocument.parse(expanded)) !== JSON.stringify(draftDocument.parse(doc))) throw new Error("Prescription differs from authored defaults");
+  } catch { throw new DraftFailure("INVALID_DOCUMENT"); }
 }
 export type Identity = { id: string; kind: "Stage" | "Occurrence" | "Position" | "Target"; parentId: string | null };
 export function identities(doc: DraftDocument): Identity[] {
@@ -32,6 +40,15 @@ export function editDocument(previous: DraftDocument, command: EditDraftCommand,
   const findPosition = (id: string) => requireItem(doc.occurrences.flatMap(o => o.positions).find(p => p.id === id));
   for (const op of command.intent.operations) {
     switch (op.op) {
+      case "editWorkoutDefaults": doc.builder = op.builder; break;
+      case "setWeekOverride": requireItem(doc.occurrences.find(o => o.id === op.occurrenceId)).weekOverride = op.weekOverride; break;
+      case "editPositionTargets": {
+        const p = findPosition(op.positionId);
+        const current = new Set(p.targets.map(t => t.id));
+        claim(op.targets.filter(t => !current.has(t.id)).map(t => t.id));
+        p.targets = op.targets;
+        break;
+      }
       case "renamePlan": doc.name = op.name; break;
       case "addStage": claim([op.stage.id]); doc.stages.push(op.stage); break;
       case "renameStage": requireItem(doc.stages.find(s => s.id === op.stageId)).name = op.name; break;
@@ -53,5 +70,6 @@ export function editDocument(previous: DraftDocument, command: EditDraftCommand,
   }
   const parsed = draftDocument.safeParse(doc);
   if (!parsed.success) throw new DraftFailure("INVALID_DOCUMENT");
+  validateWorkoutDefaults(parsed.data);
   return parsed.data;
 }

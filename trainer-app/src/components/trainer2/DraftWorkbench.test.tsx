@@ -1,95 +1,62 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { DraftWorkbench } from "./DraftWorkbench";
-
-const state = (name = "My finite draft", revisionNumber = 1) => ({ planId: "plan-a", revisionId: `revision-${revisionNumber}`, revisionNumber,
-  intent: { schemaVersion: 1, name, endpoint: "endOfOrderedOccurrences", stages: [], occurrences: [] }, activationBlockers: [] });
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createHypertrophyPlan } from '@/lib/engine/trainer2/plan-builder';
+import { DraftWorkbench } from './DraftWorkbench';
+const plan = createHypertrophyPlan();
+const state = (name = plan.name, revisionNumber = 1) => ({ planId: '00000000-0000-4000-8000-000000000001', revisionId: `00000000-0000-4000-8000-00000000000${revisionNumber + 1}`, revisionNumber, intent: { ...plan, name }, activationBlockers: [] });
 const json = (body: unknown, ok = true) => ({ ok, json: async () => body });
-const acceptance = (revisionNumber = 1, replayed = false) => json({ replayed,
-  outcome: { status: "Accepted", result: { planId: "plan-a", revisionNumber } } });
-const click = (name: string) => fireEvent.click(screen.getByRole("button", { name }));
+const acceptance = () => json({ outcome: { status: 'Accepted', result: { planId: state().planId } } });
+const click = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
 const mount = () => render(<DraftWorkbench accountId="account-a" ownershipEpoch={0} />);
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
-
-describe("Draft workbench acceptance and read recovery", () => {
-  it.each(["non-OK", "network"])("retains accepted create identity after %s refresh failure; retries only GET", async failure => {
+const saved = () => waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/^Saved$/));
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); window.history.replaceState(null, '', '/'); });
+describe('builder save recovery', () => {
+  it.each(['non-OK', 'network'])('retains accepted bookmark after %s refresh failure; retries only GET', async failure => {
     const fetcher = vi.fn().mockResolvedValueOnce(acceptance());
-    if (failure === "non-OK") fetcher.mockResolvedValueOnce(json({ error: "DRAFT_TRANSACTION_FAILED" }, false));
-    else fetcher.mockRejectedValueOnce(new Error("offline"));
-    fetcher.mockResolvedValueOnce(json(state()));
-    vi.stubGlobal("fetch", fetcher); mount(); click("Create finite draft");
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Accepted, refresh failed"));
-    expect(screen.getByRole("status")).not.toHaveTextContent("Current head reloaded");
-    expect(screen.getByLabelText("Saved plan ID")).toHaveValue("plan-a");
-    expect(screen.getByText(/Last accepted result:/)).toHaveTextContent("Accepted revision 1 for plan plan-a");
-    expect(screen.getByRole("button", { name: "Reload persisted draft" })).toBeEnabled();
-    click("Reload persisted draft");
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Loaded revision 1"));
-    expect(fetcher.mock.calls.map(call => call[1]?.method ?? "GET")).toEqual(["POST", "GET", "GET"]);
-    expect(screen.getByRole("button", { name: "Save name revision" })).toBeEnabled();
+    if (failure === 'non-OK') fetcher.mockResolvedValueOnce(json({}, false)); else fetcher.mockRejectedValueOnce(new Error('offline'));
+    fetcher.mockResolvedValueOnce(json(state())); vi.stubGlobal('fetch', fetcher); mount(); click('Save plan');
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('was saved, but could not be reloaded'));
+    expect(new URL(window.location.href).searchParams.get('planId')).toBe(state().planId);
+    expect(screen.getByLabelText('Plan name')).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
+    click('Reload latest version'); await saved();
+    expect(fetcher.mock.calls.map(c => c[1]?.method ?? 'GET')).toEqual(['POST', 'GET', 'GET']);
   });
-
-  it.each([false, true])("keeps edit acceptance/replay historical after refresh failure (replayed=%s)", async replayed => {
-    const fetcher = vi.fn().mockResolvedValueOnce(acceptance()).mockResolvedValueOnce(json(state()))
-      .mockResolvedValueOnce(acceptance(replayed ? 1 : 2, replayed)).mockResolvedValueOnce(json({ error: "unavailable" }, false))
-      .mockResolvedValueOnce(json(state("Current server name", 3)));
-    vi.stubGlobal("fetch", fetcher); mount(); click("Create finite draft");
-    await waitFor(() => expect(screen.getByRole("button", { name: "Save name revision" })).toBeEnabled());
-    fireEvent.change(screen.getByLabelText("Draft name"), { target: { value: "Edited" } });
-    click(replayed ? "Retry same action" : "Save name revision");
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Accepted, refresh failed"));
-    expect(screen.getByRole("status")).not.toHaveTextContent("Current head reloaded");
-    expect(screen.getByText(/Stale snapshot/)).toBeVisible();
-    expect(screen.getByLabelText("Draft name")).toHaveValue("Edited");
-    expect(screen.getByLabelText("Saved plan ID")).toHaveValue("plan-a");
-    click("Reload persisted draft");
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Revision 3: Current server name" })).toBeVisible());
-    expect(screen.queryByText(/Stale snapshot/)).toBeNull();
-    expect(fetcher.mock.calls.filter(call => call[1]?.method === "POST")).toHaveLength(2);
-    if (replayed) expect(fetcher.mock.calls[2][1].body).toBe(fetcher.mock.calls[0][1].body);
+  it.each(['lost response', 'server error'])('freezes new mutations for %s and retries the byte-identical envelope', async failure => {
+    const fetcher = vi.fn();
+    if (failure === 'lost response') fetcher.mockRejectedValueOnce(new Error('lost')); else fetcher.mockResolvedValueOnce(json({ error: 'failed' }, false));
+    fetcher.mockResolvedValueOnce(acceptance()).mockResolvedValueOnce(json(state('Newer server head', 3)));
+    vi.stubGlobal('fetch', fetcher); mount(); click('Save plan');
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('could not be confirmed'));
+    expect(screen.getByRole('button', { name: 'Save plan' })).toBeDisabled(); expect(screen.getByLabelText('Plan name')).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Reload latest version' })).toBeNull();
+    click('Check again'); await saved();
+    expect(fetcher.mock.calls[0][1].body).toBe(fetcher.mock.calls[1][1].body);
+    expect(screen.getByLabelText('Plan name')).toHaveValue('Newer server head');
   });
-
-  it("locks both inputs and overlapping requests through delayed POST, accepted GET, and manual GET", async () => {
-    const user = userEvent.setup();
-    let deliver!: (value: unknown) => void;
+  it('locks inputs and synchronous overlapping requests throughout POST and GET', async () => {
+    let deliver!: (v: unknown) => void;
     const fetcher = vi.fn().mockImplementation(() => new Promise(resolve => { deliver = resolve; }));
-    vi.stubGlobal("fetch", fetcher); mount(); click("Create finite draft");
-    async function assertLocked(expectedCalls: number) {
-      expect(screen.getByLabelText("Draft name")).toBeDisabled();
-      expect(screen.getByLabelText("Saved plan ID")).toBeDisabled();
-      await user.type(screen.getByLabelText("Draft name"), "Newer unsaved intention");
-      expect(screen.getByLabelText("Draft name")).toHaveValue("My finite draft");
-      for (const button of screen.getAllByRole("button")) { expect(button).toBeDisabled(); fireEvent.click(button); }
-      expect(fetcher).toHaveBeenCalledTimes(expectedCalls);
-    }
-    await assertLocked(1);
+    vi.stubGlobal('fetch', fetcher); mount(); click('Save plan'); click('Save plan');
+    expect(fetcher).toHaveBeenCalledTimes(1); expect(screen.getByLabelText('Plan name')).toBeDisabled();
     await act(async () => deliver(acceptance()));
-    expect(screen.getByLabelText("Saved plan ID")).toHaveValue("plan-a");
-    expect(screen.getByText(/Last accepted result:/)).toBeVisible();
-    await assertLocked(2);
-    await act(async () => deliver(json(state())));
-    expect(screen.getByLabelText("Draft name")).toBeEnabled();
-    click("Reload persisted draft"); await assertLocked(3);
-    await act(async () => deliver(json(state())));
-    await user.clear(screen.getByLabelText("Draft name"));
-    await user.type(screen.getByLabelText("Draft name"), "New intention after reload");
-    expect(screen.getByLabelText("Draft name")).toHaveValue("New intention after reload");
+    expect(fetcher).toHaveBeenCalledTimes(2); expect(screen.getByLabelText('Plan name')).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Plan name'), { target: { value: 'Must not apply' } });
+    expect(screen.getByLabelText('Plan name')).toHaveValue(plan.name);
+    await act(async () => deliver(json(state()))); await saved();
   });
-
-  it("normal create/edit reload succeeds and uncertain delivery retries the exact envelope", async () => {
-    const fetcher = vi.fn().mockRejectedValueOnce(new Error("response lost"))
-      .mockResolvedValueOnce(acceptance(1, true)).mockResolvedValueOnce(json(state()))
-      .mockResolvedValueOnce(acceptance(2)).mockResolvedValueOnce(json(state("Renamed", 2)));
-    vi.stubGlobal("fetch", fetcher); mount(); click("Create finite draft");
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Delivery uncertain"));
-    click("Retry same action");
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Current head reloaded separately"));
-    expect(fetcher.mock.calls[1][1].body).toBe(fetcher.mock.calls[0][1].body);
-    fireEvent.change(screen.getByLabelText("Draft name"), { target: { value: "Renamed" } });
-    click("Save name revision");
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Revision 2: Renamed" })).toBeVisible());
-    expect(screen.getByRole("status")).toHaveTextContent("Accepted revision 2");
-    expect(screen.getByLabelText("Draft name")).toBeEnabled();
+  it('retains conflicting input and requires reload plus deliberate continuation', async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(acceptance()).mockResolvedValueOnce(json(state()))
+      .mockResolvedValueOnce(json({ outcome: { status: 'Conflict', code: 'STALE_REVISION' } })).mockResolvedValueOnce(json(state('Other tab', 2)));
+    vi.stubGlobal('fetch', fetcher); mount(); click('Save plan'); await saved();
+    fireEvent.change(screen.getByLabelText('Plan name'), { target: { value: 'My losing edit' } }); click('Save plan');
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('changed in another tab'));
+    expect(screen.getByLabelText('Plan name')).toHaveValue('My losing edit');
+    click('Reload latest version'); await saved();
+    expect(screen.getByLabelText('Plan name')).toBeDisabled();
+    fireEvent.click(screen.getByText('Your submitted plan'));
+    expect(screen.getByRole('heading', { name: 'My losing edit' })).toBeVisible();
+    click('Continue from latest plan'); expect(screen.getByLabelText('Plan name')).toBeEnabled();
+    expect(screen.getByLabelText('Plan name')).toHaveValue('Other tab');
   });
 });

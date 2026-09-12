@@ -14,6 +14,8 @@ import { verifyAcceptance } from "./verify-acceptance";
 import { verifyDraftUpgrade } from "./verify-draft-upgrade";
 import { verificationSource } from "./verification-source";
 import { verifyWorkbenchBrowser } from "./verify-workbench-browser";
+import { verifyEditorBrowser } from "./verify-editor-browser";
+import { authWebPlatformEnvironment, authWebEnvironmentProbe } from "./auth-web-environment";
 
 const results: string[] = [];
 const commands: { command: string; started: string; finished: string; status: number | null; stdout: string; stderr: string }[] = [];
@@ -48,10 +50,11 @@ function sample(accountId: string): CreateDraftCommand {
 function rename(create: CreateDraftCommand, revisionId: string, name: string): EditDraftCommand {
   return { ...create, commandType: "EditDraft", actionId: randomUUID(), expected: { planRevisionId: revisionId }, intent: { operations: [{ op: "renamePlan", name }] } };
 }
-export async function verifyDrafts() {
+export async function verifyDrafts(options: { manualDemo?: boolean; skipBuild?: boolean } = {}) {
+  if (options.manualDemo) console.log("Starting Trainer plan builder with disposable synthetic data. The clickable URL appears here when ready.");
   const source = verificationSource();
   const started = new Date().toISOString();
-  const evidence: Record<string, unknown> = { source, started, invocation: "npm run test:db:trainer2-drafts -- --confirm-disposable", node: process.version };
+  const evidence: Record<string, unknown> = { source, started, invocation: options.manualDemo ? "node node_modules/tsx/dist/cli.mjs scripts/demo-trainer2-drafts.ts --confirm-disposable" : options.skipBuild ? "node node_modules/tsx/dist/cli.mjs scripts/test-trainer2-draft-editor.ts --confirm-disposable" : "npm run test:db:trainer2-drafts -- --confirm-disposable", node: process.version };
   // Turbopack rejects dependency junctions outside its filesystem root. The
   // installed Next CLI supports webpack for this local dependency arrangement.
   const bundlerArgs = lstatSync(resolve("node_modules")).isSymbolicLink() ? ["--webpack"] : [];
@@ -60,7 +63,8 @@ export async function verifyDrafts() {
   const container = `trainer2-draft-${suffix}`;
   const database = `trainer2_disposable_${suffix}`;
   const password = randomUUID();
-  secrets.push(password);
+  const rolePasswords = { trainer2_identity_reader: randomUUID(), trainer2_draft_reader: randomUUID(), trainer2_draft_runtime: randomUUID() };
+  secrets.push(password, ...Object.values(rolePasswords));
   const clients: PrismaClient[] = [];
   const pools: Pool[] = [];
   let server: ReturnType<typeof spawn> | undefined;
@@ -90,7 +94,7 @@ export async function verifyDrafts() {
     const port = command("docker", ["port", container, "5432/tcp"]).match(/:(\d+)$/)?.[1];
     assert(port);
     const ownerUrl = `postgresql://postgres:${password}@127.0.0.1:${port}/${database}`;
-    const runtimeUrl = `postgresql://trainer2_draft_runtime:${password}@127.0.0.1:${port}/${database}`;
+    const runtimeUrl = `postgresql://trainer2_draft_runtime:${rolePasswords.trainer2_draft_runtime}@127.0.0.1:${port}/${database}`;
     const env = { ...sanitizeDatabaseTargetEnvironment(process.env), DATABASE_URL: ownerUrl, DIRECT_URL: ownerUrl, TEST_DATABASE_URL: ownerUrl };
     assert(validateDisposableDatabaseTargets({ environment: env, confirmed: true }).valid);
     command(process.execPath, [resolve("node_modules/prisma/build/index.js"), "migrate", "deploy"], env);
@@ -100,10 +104,9 @@ export async function verifyDrafts() {
     evidence.docker = command("docker", ["version", "--format", "{{.Server.Version}}"]);
     evidence.prisma = command(process.execPath, [resolve("node_modules/prisma/build/index.js"), "version"], env);
     const owner = client(ownerUrl);
-    const tables = ["AccountPrincipal", "AccountTrainingState", "Plan", "PlanRevision", "Identity", "DurableAction", "ActionOutcome"].map(n => `"Trainer2${n}"`);
     await adminPool.query(`BEGIN; ${readFileSync(resolve("prisma/trainer2-runtime-grants.sql"), "utf8")} COMMIT;`);
     for (const role of ["trainer2_identity_reader", "trainer2_draft_reader", "trainer2_draft_runtime"])
-      await adminPool.query(`ALTER ROLE ${role} LOGIN PASSWORD '${password}'`);
+      await adminPool.query(`ALTER ROLE ${role} LOGIN PASSWORD '${rolePasswords[role as keyof typeof rolePasswords]}'`);
     const principal: ServerPrincipal = { accountId: randomUUID(), issuer: "trainer2-local-disposable", subject: "developer" };
     const other: ServerPrincipal = { accountId: randomUUID(), issuer: "trainer2-local-disposable", subject: "other" };
     for (const p of [principal, other]) {
@@ -112,7 +115,37 @@ export async function verifyDrafts() {
     }
     const runtime = client(runtimeUrl);
     const runtimePool = new Pool({ connectionString: runtimeUrl }); pools.push(runtimePool);
-    const reader = client(`postgresql://trainer2_draft_reader:${password}@127.0.0.1:${port}/${database}`);
+    const reader = client(`postgresql://trainer2_draft_reader:${rolePasswords.trainer2_draft_reader}@127.0.0.1:${port}/${database}`);
+    async function startWeb() {
+      const webPort = 32000 + Math.floor(Math.random() * 10000);
+      const webEnv: NodeJS.ProcessEnv = { ...authWebPlatformEnvironment(process.env), NODE_ENV: "development", TRAINER2_LOCAL_DRAFTS: "enabled",
+        TRAINER2_IDENTITY_CONNECTION_STRING: `postgresql://trainer2_identity_reader:${rolePasswords.trainer2_identity_reader}@127.0.0.1:${port}/${database}`,
+        TRAINER2_READ_CONNECTION_STRING: `postgresql://trainer2_draft_reader:${rolePasswords.trainer2_draft_reader}@127.0.0.1:${port}/${database}`,
+        TRAINER2_WRITE_CONNECTION_STRING: runtimeUrl };
+      delete webEnv.CI;
+      const bootstrap = resolve("artifacts/trainer2/draft-web-bootstrap.cjs");
+      mkdirSync(resolve("artifacts/trainer2"), { recursive: true });
+      writeFileSync(bootstrap, authWebEnvironmentProbe(Object.keys(webEnv)));
+      server = spawn(process.execPath, [bootstrap, "dev", ...bundlerArgs, "--hostname", "127.0.0.1", "--port", String(webPort)], { env: webEnv, windowsHide: true, stdio: "pipe" });
+      server.stdout?.on("data", d => { serverLog += d.toString(); }); server.stderr?.on("data", d => { serverLog += d.toString(); });
+      const base = `http://127.0.0.1:${webPort}`;
+      for (let i = 0; ; i++) {
+        try { if ((await fetch(`${base}/trainer2/dev/drafts`)).ok) break; } catch { /* server starting */ }
+        if (i >= 90 || server.exitCode !== null) throw new Error(`Developer server failed: ${serverLog.slice(-3000)}`);
+        await new Promise(r => setTimeout(r, 500));
+      }
+      return base;
+    }
+    if (options.manualDemo) {
+      const base = await startWeb();
+      console.log("\nREADY — Trainer plan builder\n"); console.log(`${base}/trainer2/dev/drafts`);
+      console.log("\nDemo: plans are deleted when the demo stops.\nKeep this terminal open. Press Enter or Ctrl+C to stop.\n");
+      await new Promise<void>(resolve => {
+        const stop = () => { process.off("SIGINT", stop); process.off("SIGTERM", stop); process.stdin.off("data", stop); process.stdin.pause(); resolve(); };
+        process.once("SIGINT", stop); process.once("SIGTERM", stop); process.stdin.once("data", stop); process.stdin.resume();
+      });
+      evidence.status = "demo-stopped"; return;
+    }
     // First reads must not provision state, even for an authenticated account.
     assert.equal(await readDraft(reader, principal, randomUUID()), null);
     assert.equal(await owner.trainer2AccountTrainingState.count(), 0);
@@ -250,43 +283,23 @@ export async function verifyDrafts() {
     evidence.upgrade = await verifyDraftUpgrade(adminPool, ownerUrl, runtimeUrl, command, sample);
     passed("fresh migration chain; populated candidate upgrade and historical replay; inconsistent upgrade rejected without repair; second deploy ledger no-op");
     // Real browser and actual HTTP handlers, using only the limited runtime role.
-    const webPort = 32000 + Math.floor(Math.random() * 10000);
-    const webEnv: NodeJS.ProcessEnv = { ...sanitizeDatabaseTargetEnvironment(process.env), DATABASE_URL: runtimeUrl, NODE_ENV: "development", TRAINER2_LOCAL_DRAFTS: "enabled",
-      TRAINER2_IDENTITY_CONNECTION_STRING: `postgresql://trainer2_identity_reader:${password}@127.0.0.1:${port}/${database}`,
-      TRAINER2_READ_CONNECTION_STRING: `postgresql://trainer2_draft_reader:${password}@127.0.0.1:${port}/${database}`,
-      TRAINER2_WRITE_CONNECTION_STRING: runtimeUrl };
-    delete webEnv.CI;
-    server = spawn(process.execPath, [resolve("node_modules/next/dist/bin/next"), "dev", ...bundlerArgs, "--hostname", "127.0.0.1", "--port", String(webPort)], { env: webEnv, windowsHide: true, stdio: "pipe" });
-    server.stdout?.on("data", d => { serverLog += d.toString(); }); server.stderr?.on("data", d => { serverLog += d.toString(); });
-    const base = `http://127.0.0.1:${webPort}`;
-    for (let i = 0; ; i++) {
-      try { if ((await fetch(`${base}/trainer2/dev/drafts`)).ok) break; } catch { /* server starting */ }
-      if (i >= 90 || server.exitCode !== null) throw new Error(`Developer server failed: ${serverLog.slice(-3000)}`);
-      await new Promise(r => setTimeout(r, 500));
-    }
+    const base = await startWeb();
     const { chromium } = await import("@playwright/test");
     browser = await chromium.launch({ channel: "msedge", headless: true });
     evidence.browser = { engine: "installed Edge through Playwright", version: browser.version() };
-    const tab = await browser.newPage();
+    const context = await browser.newContext(); context.setDefaultTimeout(20000);
+    const tab = await context.newPage();
     tab.on("response", async response => { if (response.url().includes("/api/trainer2/") && response.status() >= 400) console.log("BROWSER_API_FAILURE", response.status(), await response.text()); });
     const errors: string[] = []; tab.on("pageerror", e => errors.push(e.message));
     await tab.goto(`${base}/trainer2/dev/drafts`);
-    await tab.getByRole("button", { name: "Create finite draft", exact: true }).click();
-    await tab.getByRole("heading", { name: "Revision 1: My finite draft" }).waitFor();
-    const browserPlan = await tab.getByLabel("Saved plan ID").inputValue();
-    const beforeReorder = (await readDraft(reader, principal, browserPlan))!;
-    await tab.getByRole("button", { name: "Reverse positions", exact: true }).click();
-    await tab.getByRole("heading", { name: "Revision 2: My finite draft" }).waitFor();
-    assert.deepEqual((await readDraft(reader, principal, browserPlan))!.intent.occurrences[0].positions.map(p => p.id), beforeReorder.intent.occurrences[0].positions.map(p => p.id).reverse());
-    await tab.reload(); await tab.getByLabel("Saved plan ID").fill(browserPlan);
-    await tab.getByRole("button", { name: "Reload persisted draft", exact: true }).click();
-    await tab.getByRole("heading", { name: "Revision 2: My finite draft" }).waitFor();
-    const browserCurrent = (await readDraft(reader, principal, browserPlan))!;
-    const external = rename({ ...c, target: { planId: browserPlan } }, browserCurrent.revisionId, "Concurrent edit");
-    accepted(await editDraft(runtime, principal, external));
-    await tab.getByLabel("Draft name", { exact: true }).fill("Stale browser intent");
-    await tab.getByRole("button", { name: "Save name revision", exact: true }).click();
-    await tab.getByRole("status").filter({ hasText: "Stale edit" }).waitFor();
+    const browserPlan = await verifyEditorBrowser(tab, id => readDraft(reader, principal, id));
+    const persisted = await runtime.trainer2PlanRevision.findMany({ where: { planId: browserPlan }, orderBy: { revisionNumber: "asc" } });
+    assert.equal(persisted.length, 5);
+    for (const revision of persisted) {
+      const outcome = await runtime.trainer2ActionOutcome.findFirstOrThrow({ where: { accountId: principal.accountId, actionId: revision.actionId } });
+      assert.equal(outcome.status, "Accepted");
+    }
+    passed("five-week builder, recurring edits and overrides, deload, desktop/mobile, stable identities, stale conflict and byte-identical recovery");
     const getCounts = await counts(); const getState = await runtime.trainer2AccountTrainingState.findMany();
     const response = await fetch(`${base}/api/trainer2/drafts/${browserPlan}`); assert.equal(response.status, 200);
     assert.deepEqual(await counts(), getCounts); assert.deepEqual(await runtime.trainer2AccountTrainingState.findMany(), getState);
@@ -304,11 +317,13 @@ export async function verifyDrafts() {
     passed("F2/F3 actual Edge browser: controlled 503/network refresh failure, historical replay, GET-only recovery and delayed response input locks");
     await browser.close(); browser = undefined;
     await stopServer();
+    if (!options.skipBuild) {
     command(process.execPath, [resolve("node_modules/next/dist/bin/next"), "build", ...bundlerArgs], {
       ...sanitizeDatabaseTargetEnvironment(process.env), DATABASE_URL: runtimeUrl, NODE_ENV: "production",
       TRAINER_BUILD_GIT_SHA: command("git", ["rev-parse", "HEAD"]),
     });
     passed("production build with isolated disposable runtime role; hosted draft page remains disabled");
+    } else evidence.build = "Not rerun for bounded editor checks; affected TypeScript and repository-selected verification run separately.";
     evidence.sourceAfter = verificationSource();
     assert.equal((evidence.sourceAfter as ReturnType<typeof verificationSource>).manifestHash, source.manifestHash, "Source changed during verification");
     evidence.status = "passed";

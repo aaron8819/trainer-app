@@ -17,6 +17,10 @@ trainer-app/docs/knowledgebase/
 # Generated output
 trainer-app/output/
 
+# Source-attributed local Draft editor evidence
+/artifacts/trainer2-core/*
+!/artifacts/trainer2-core/HANDOFF.md
+
 # OS/editor noise
 .DS_Store
 Thumbs.db

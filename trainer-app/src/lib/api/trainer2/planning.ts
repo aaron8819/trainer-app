@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { PrismaClient, Prisma } from "@prisma/client";
 import { createDraftCommand, editDraftCommand, draftDocument, activationBlockers,
   type DraftCommand, type DraftDocument, type DraftOutcome, type CommandResponse } from "../../trainer2-contracts/draft";
-import { DraftFailure, editDocument, identities } from "../../engine/trainer2/planning";
+import { DraftFailure, editDocument, identities, validateWorkoutDefaults } from "../../engine/trainer2/planning";
 import { canonicalJson, commandBinding, integrityHash } from "./integrity";
 
 import { authorizeAccount as authorize, DraftAccessError, type ServerPrincipal } from "./principal";
@@ -57,6 +57,7 @@ async function acceptDraft(db: PrismaClient, principal: ServerPrincipal, input: 
           if (command.commandType === "CreateDraft") {
             if (await tx.trainer2Plan.findUnique({ where: { id: command.target.planId } })) throw new DraftFailure("IDENTITY_REUSED");
             intent = command.intent;
+            validateWorkoutDefaults(intent);
           } else {
             if (!plan) throw new DraftFailure("NOT_FOUND");
             if (plan.currentRevisionId !== command.expected.planRevisionId) throw new DraftFailure("STALE_REVISION");

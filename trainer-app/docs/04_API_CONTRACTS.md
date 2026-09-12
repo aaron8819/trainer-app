@@ -6,6 +6,8 @@ Trainer2 Draft routes resolve identity and exact account mapping through the ded
 
 `POST /api/trainer2/drafts/create` accepts only CreateDraft; `POST /api/trainer2/drafts/edit` accepts only EditDraft with explicit operations and expected PlanRevision. `GET /api/trainer2/drafts/[id]` reads an owned, nontombstoned draft without writes. Contracts: `src/lib/trainer2-contracts/draft.ts`; handlers: `src/lib/api/trainer2/planning.ts`. Hosted access fails closed; the developer adapter is restricted to disposable loopback use. Durable conflicts preserve submitted intent; replay returns historical outcomes and never moves a head. There is no sync/lifecycle/import API. See [complete contracts](architecture/trainer2/DRAFT_SLICE.md).
 
+Draft version 1 additionally supports an optional versioned builder value and the named `editWorkoutDefaults`, `setWeekOverride`, and `editPositionTargets` operations, in batches of at most 1,000. Planning validates expansion consistency and claims new target IDs under existing historical-identity rules. These use the same CreateDraft/EditDraft transaction and complete-envelope binding; no generic document-save route exists. [Contract details](architecture/trainer2/DRAFT_SLICE.md#scratch-editor-and-saved-review).
+
 ## Frozen load logging
 
 Set logging reads the measurement tuple and `zeroLoadMeaning` only from the already-materialized `WorkoutExercise`. Client input cannot author or override the capability. Blank load normalizes to null or omission, while explicit numeric zero remains zero through transport validation, semantic validation, and persistence.

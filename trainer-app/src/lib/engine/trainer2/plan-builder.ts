@@ -142,7 +142,22 @@ export function removeBuilderRow(document: DraftDocument, scope: { key: string; 
 }
 
 export class SetCountConflict extends Error {
-  constructor(public readonly affected: string[]) { super('Set count removes individually edited sets'); }
+  constructor(public readonly affected: string[], public readonly independent = false) { super('Set count discards authored set prescriptions'); }
+}
+function discardedPrescription(t: Position['targets'][number]): string {
+  const m = t.measurement;
+  const basis = { total: 'total', perSide: 'per side', alternating: 'alternating' }[t.reps.basis];
+  const classification = { preparation: 'preparation', rampUp: 'ramp-up', working: 'working', optionalFinisher: 'optional finisher' }[t.classification];
+  const details = [`${t.reps.min}–${t.reps.max} reps ${basis}`, `${classification}, ${t.required ? 'required' : 'optional'}`];
+  if (t.rir !== null) details.push(`${t.rir} reps left`);
+  if (t.restSeconds !== null) details.push(`${t.restSeconds} seconds rest`);
+  if (m?.kind === 'bodyweight') details.push('bodyweight only');
+  else if (m) {
+    const convention = { barbellTotal: 'barbell total', perImplement: 'per implement', machineDisplayed: 'machine displayed', addedExternal: 'added load', displayedAssistance: 'displayed assistance' }[m.convention];
+    const zero = { validZero: 'zero is valid', notAllowed: 'zero not allowed', noAddedLoad: 'zero means no added load', noAssistance: 'zero means no assistance' }[m.zeroMeaning];
+    details.push(`${m.value} ${m.unit} ${convention} (${zero})`);
+  }
+  return details.join(', ');
 }
 // Both ordinary count changes and resets preview the same effective expansion.
 // No mutation is exposed until the caller explicitly confirms discarded edits.
@@ -169,16 +184,24 @@ export function changeSetCount(document: DraftDocument, scope: { key: string; oc
   }
   const next = expandWorkoutDefaults(d);
   const affected: string[] = [];
+  let independent = false;
   for (const o of document.occurrences) {
     const after = next.occurrences.find(n => n.id === o.id)!;
     const retained = new Set(after.positions.flatMap(p => p.targets.map(t => t.id)));
     for (const p of o.positions) p.targets.forEach((t, i) => {
       if (retained.has(t.id)) return;
-      if (o.overrides?.targets?.[t.id]?.length) affected.push(`${document.stages.find(s => s.id === o.stageId)!.name}, ${o.name}, ${p.exercise.name}, Set ${i + 1}`);
+      // Independent content has no inherited baseline or reliable edit history.
+      // Even equal prescriptions may be individually authored: confirm every
+      // discarded independent target, without inventing inheritance/provenance.
+      const independentTarget = !p.sourceKey || o.weekOverride === true;
+      if (independentTarget || o.overrides?.targets?.[t.id]?.length) {
+        independent ||= independentTarget;
+        affected.push(`${document.stages.find(s => s.id === o.stageId)!.name}, ${o.name}, ${p.exercise.name}, Set ${i + 1}${independentTarget ? `: ${discardedPrescription(t)}` : ''}`);
+      }
       if (after.overrides?.targets) delete after.overrides.targets[t.id];
     });
   }
-  if (affected.length && !confirmed) throw new SetCountConflict(affected);
+  if (affected.length && !confirmed) throw new SetCountConflict(affected, independent);
   return next;
 }
 

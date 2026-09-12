@@ -1,0 +1,21 @@
+# Week-only set reduction — focused correction
+
+Base: `codex/trainer2-builder-corrections`, commit `33506396de95c3a44cd630f1b7e6c2aeb0b6b074`, tree `3ab317d372b22e820dce9fd7fcebe556cc23b2c2`. Base coordinates and cleanliness verified before creating the isolated `codex/trainer2-week-only-set-reduction` branch. Final coordinates and source/artifact hashes are retained in `trainer-app/artifacts/week-only-set-reduction/final-source.json` in that worktree.
+
+The complete independent builder re-review identified N1: removing false inheritance masks from independent additions also removed the only signal consulted before count reduction. The exact Lower A / Week 3 / Front Squat / five sets / Set 5 rest `123.00` reproduction was executed before production edits on this task's PostgreSQL 17 and installed Edge. Save and bookmark reload preceded reduction; no dialog appeared, and Save persisted only the first three original targets. Sanitized before/after documents and the zero-dialog assertion remain in `baseline-browser.json`.
+
+`engine/trainer2/plan-builder.ts` remains the single count-change/reset owner. The correction recognizes discarded independent targets from their actual document relationships, conservatively confirms every such loss, and describes their current authored prescriptions. The document has no reliable independent edit history, so matching prescriptions do not prove absence of customization. No inheritance/provenance baseline, schema change, reset control, new endpoint or confirmation framework was introduced. The existing confirmation flow receives the domain conflict; cancellation does not call `onChange`. Existing clone/preview, truncation, metadata cleanup and fresh-ID growth remain authoritative. [The builder contract](TEMPLATE_BUILDER.md#independent-set-count-reduction) defines the detection rule.
+
+Verification definitions cover the exact reproduction, catalog/custom additions, heterogeneous reps/basis/effort (including zero)/rest/weight with decimal spelling, ambiguous equal prescriptions, complete cancellation comparison with pending name and unrelated shared-row edit, confirmation/save/bookmark reload, surviving IDs and all prescriptions, deleted metadata, immutable historical content, and reduction/regrowth. Browser controls cover ordinary shared reduction, customized occurrence reduction, and set-count reset. Domain controls also cover shared changes that discard explicitly masked targets and older independent workouts. Screenshots cover 1280px desktop and 390px touch emulation, with actual dialog visibility assertions. Physical mobile devices are not tested.
+
+Local evidence directory: `trainer-app/artifacts/week-only-set-reduction/`. Browser repetition, after launching a fresh task-owned service with `scripts/demo-trainer2-drafts.ts --confirm-disposable`:
+
+```powershell
+node node_modules/tsx/dist/cli.mjs scripts/trainer2/verify-week-only-set-reduction.ts --confirm-disposable http://127.0.0.1:<task-port> trainer2-draft-<task-suffix>
+```
+
+The optional final `baseline` argument asserts the old defect and is intended only for the uncorrected base. Browser receipts contain full source inventories; `final-source.json` binds the finished source and retained evidence. Harness setup corrections (canonical SQL column name and viewport screenshot capture) were verification-only issues, not product regressions.
+
+Focused tests, TypeScript, affected-file lint and repository-selected gates are recorded with their outcomes in the evidence directory. Existing accepted recovery, Auth, catalog and persistence foundations are reused from the complete re-review at the supplied base; production changes here touch only the count domain operation and its warning copy. Original R1/R2/U1/U2/U3 and metadata recovery remain closed absent demonstrated regression. No full foundational SQL attack/upgrade or release inventory rerun is claimed.
+
+Only task-owned services are cleaned up. Original worktrees/evidence and user demo/data are preserved. No production, hosting, push, merge, deployment, import, activation, spending or Phase 0 completion. This candidate stops ready for focused independent verification of N1 and directly affected count paths; independent review has not passed on this correction.

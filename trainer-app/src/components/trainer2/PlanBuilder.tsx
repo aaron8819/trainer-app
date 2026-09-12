@@ -95,7 +95,7 @@ export function PlanBuilder({
       onChange(changeSetCount(doc, { key, occurrenceId: occurrence?.id, workoutKey: workout.key }, count, confirmed));
     } catch (error) {
       if (!(error instanceof SetCountConflict)) throw error;
-      setPending({ text: 'Fewer sets removes individually edited work: ' + error.affected.join('; ') + '. Other work stays.', run: () => setCount(key, count, true) });
+      setPending({ text: (error.independent ? 'These independent sets have no shared defaults or recorded edit history. Reducing the count discards their prescriptions: ' : 'Fewer sets removes individually edited work: ') + error.affected.join('; ') + '. Other work stays.', run: () => setCount(key, count, true) });
     }
   }
   function choose(exercise: Position['exercise'], confirmed = false) {

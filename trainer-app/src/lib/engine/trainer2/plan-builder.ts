@@ -78,7 +78,7 @@ export function restoreWeek(document: DraftDocument, occurrenceId: string): Draf
 }
 export type OverrideField = 'exercise' | 'role' | 'sets' | 'reps' | 'measurement' | 'rir' | 'restSeconds' | 'classification' | 'required';
 export function markOverride(o: DraftDocument['occurrences'][number], positionId: string, fields: OverrideField[], values?: Partial<Row['prescription']>) {
-  if (o.weekOverride) return; // Older detached workouts retain their explicit legacy meaning.
+  if (o.weekOverride || !o.positions.find(p => p.id === positionId)?.sourceKey) return;
   o.overrides ??= { removed: [], order: false, fields: {} };
   o.overrides.fields[positionId] = [...new Set([...(o.overrides.fields[positionId] ?? []), ...fields])];
   if (values) { o.overrides.values ??= {}; o.overrides.values[positionId] = { ...o.overrides.values[positionId], ...structuredClone(values) }; }
@@ -90,7 +90,9 @@ export function markOverride(o: DraftDocument['occurrences'][number], positionId
   }
 }
 export function resetField(document: DraftDocument, occurrenceId: string, positionId: string, field: OverrideField) {
+  if (field === 'sets') return changeSetCount(document, { occurrenceId, key: positionId }, null);
   const d = structuredClone(document), o = d.occurrences.find(o => o.id === occurrenceId)!;
+  if (!o.positions.find(p => p.id === positionId)?.sourceKey) return d;
   if (o.overrides?.fields[positionId]) {
     for (const key of Object.keys(o.overrides.values?.[positionId] ?? {})) {
       if (key === field || (field === 'exercise' && ['reps', 'measurement'].includes(key))) delete o.overrides.values![positionId][key as keyof Row['prescription']];
@@ -106,6 +108,95 @@ export function resetField(document: DraftDocument, occurrenceId: string, positi
     if (!o.overrides.fields[positionId].length) delete o.overrides.fields[positionId];
   }
   return expandWorkoutDefaults(d);
+}
+
+type Occurrence = DraftDocument['occurrences'][number];
+// Deleting a position deletes its dependent metadata as one domain operation.
+export function removePositionContent(o: Occurrence, p: Position) {
+  if (o.overrides) {
+    delete o.overrides.fields[p.id];
+    if (o.overrides.values) delete o.overrides.values[p.id];
+    for (const t of p.targets) if (o.overrides.targets) delete o.overrides.targets[t.id];
+  }
+  o.positions = o.positions.filter(item => item.id !== p.id);
+}
+export function removeBuilderRow(document: DraftDocument, scope: { key: string; occurrenceId?: string; workoutKey?: string }) {
+  const d = structuredClone(document);
+  if (scope.occurrenceId) {
+    const o = d.occurrences.find(o => o.id === scope.occurrenceId)!;
+    const p = o.positions.find(p => p.id === scope.key)!;
+    if (!o.weekOverride && p.sourceKey) {
+      o.overrides ??= { removed: [], order: false, fields: {} };
+      o.overrides.removed.push(p.sourceKey);
+    }
+    removePositionContent(o, p);
+  } else {
+    const w = d.builder!.workouts.find(w => w.key === scope.workoutKey)!;
+    w.rows = w.rows.filter(r => r.key !== scope.key);
+    for (const o of d.occurrences.filter(o => o.workoutKey === w.key && !o.weekOverride)) {
+      for (const p of o.positions.filter(p => p.sourceKey === scope.key)) removePositionContent(o, p);
+      if (o.overrides) o.overrides.removed = o.overrides.removed.filter(key => key !== scope.key);
+    }
+  }
+  return expandWorkoutDefaults(d);
+}
+
+export class SetCountConflict extends Error {
+  constructor(public readonly affected: string[]) { super('Set count removes individually edited sets'); }
+}
+// Both ordinary count changes and resets preview the same effective expansion.
+// No mutation is exposed until the caller explicitly confirms discarded edits.
+export function changeSetCount(document: DraftDocument, scope: { key: string; occurrenceId?: string; workoutKey?: string }, count: number | null, confirmed = false): DraftDocument {
+  const d = structuredClone(document);
+  if (count !== null && (!Number.isInteger(count) || count < 1 || count > 20)) return d;
+  if (scope.occurrenceId) {
+    const o = d.occurrences.find(o => o.id === scope.occurrenceId)!;
+    const p = o.positions.find(p => p.id === scope.key)!;
+    if (count === null) {
+      if (o.weekOverride || !p.sourceKey) return d;
+      if (o.overrides?.fields[p.id]) {
+        o.overrides.fields[p.id] = o.overrides.fields[p.id].filter(f => f !== 'sets');
+        if (!o.overrides.fields[p.id].length) delete o.overrides.fields[p.id];
+      }
+    } else {
+      markOverride(o, p.id, ['sets']);
+      while (p.targets.length < count) p.targets.push({ ...structuredClone(p.targets.at(-1) ?? newRow('').prescription), id: crypto.randomUUID() });
+      p.targets.splice(count);
+    }
+  } else {
+    if (count === null) throw new Error('Set reset requires a week');
+    d.builder!.workouts.find(w => w.key === scope.workoutKey)!.rows.find(r => r.key === scope.key)!.sets = count;
+  }
+  const next = expandWorkoutDefaults(d);
+  const affected: string[] = [];
+  for (const o of document.occurrences) {
+    const after = next.occurrences.find(n => n.id === o.id)!;
+    const retained = new Set(after.positions.flatMap(p => p.targets.map(t => t.id)));
+    for (const p of o.positions) p.targets.forEach((t, i) => {
+      if (retained.has(t.id)) return;
+      if (o.overrides?.targets?.[t.id]?.length) affected.push(`${document.stages.find(s => s.id === o.stageId)!.name}, ${o.name}, ${p.exercise.name}, Set ${i + 1}`);
+      if (after.overrides?.targets) delete after.overrides.targets[t.id];
+    });
+  }
+  if (affected.length && !confirmed) throw new SetCountConflict(affected);
+  return next;
+}
+
+// Explicit recovery of only the two metadata defects the old builder could save.
+// Executable content and legitimate shared overrides are never rewritten.
+export function repairBuilderMetadata(document: DraftDocument): DraftDocument {
+  const d = structuredClone(document);
+  const positions = new Set(d.occurrences.flatMap(o => o.positions.map(p => p.id)));
+  for (const o of d.occurrences) {
+    if (!o.overrides) continue;
+    for (const key of Object.keys(o.overrides.values ?? {})) if (!positions.has(key)) delete o.overrides.values![key];
+    for (const p of o.positions.filter(p => !p.sourceKey)) {
+      delete o.overrides.fields[p.id];
+      if (o.overrides.values) delete o.overrides.values[p.id];
+      for (const t of p.targets) if (o.overrides.targets) delete o.overrides.targets[t.id];
+    }
+  }
+  return d;
 }
 export function sharedSwapConflicts(doc: DraftDocument, rowKey: string, next: Position['exercise']) {
   return doc.occurrences.flatMap(o => o.positions.flatMap(p => {

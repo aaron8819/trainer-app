@@ -7,23 +7,38 @@ import { control } from './DraftEditor';
 type Exercise = DraftDocument['occurrences'][number]['positions'][number]['exercise'];
 export function ExercisePicker({
   current,
+  trigger,
+  fallback,
   equipment,
   choose,
   close
 }: {
   current?: Exercise;
+  trigger: HTMLElement;
+  fallback: () => HTMLElement | null;
   equipment: string[];
   choose: (e: Exercise) => void;
   close: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const returnFocus = useRef({ trigger, fallback });
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('');
   const [custom, setCustom] = useState('');
   useEffect(() => {
     const element = dialog.current!;
+    const { trigger, fallback } = returnFocus.current;
     element.showModal();
-    return () => element.close();
+    return () => {
+      element.close();
+      // Restore after React commits the edited row and removes the dialog.
+      requestAnimationFrame(() => {
+        if (element.isConnected && element.open) return;
+        if (document.querySelector('dialog[open]')) return;
+        const destination = trigger.isConnected && !trigger.matches(':disabled') ? trigger : fallback();
+        destination?.focus();
+      });
+    };
   }, []);
   const results = browseCatalog(query, equipment, current).filter(e => !filter || e.equipment.includes(filter));
   return <dialog ref={dialog} onCancel={close} aria-label={current ? 'Swap exercise' : 'Add exercise'} className="m-auto max-h-[90dvh] w-[calc(100%-1rem)] max-w-xl rounded-2xl p-0 shadow-xl backdrop:bg-slate-900/40">

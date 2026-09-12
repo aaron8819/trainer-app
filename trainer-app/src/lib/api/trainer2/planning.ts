@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { PrismaClient, Prisma } from "@prisma/client";
-import { createDraftCommand, editDraftCommand, draftDocument, activationBlockers,
+import { createDraftCommand, editDraftCommand, activationBlockers,
   type DraftCommand, type DraftDocument, type DraftOutcome, type CommandResponse } from "../../trainer2-contracts/draft";
-import { DraftFailure, editDocument, identities, validateWorkoutDefaults } from "../../engine/trainer2/planning";
+import { DraftFailure, editDocument, identities, validateWorkoutDefaults, readSavedDocument } from "../../engine/trainer2/planning";
 import { canonicalJson, commandBinding, integrityHash } from "./integrity";
 
 import { authorizeAccount as authorize, DraftAccessError, type ServerPrincipal } from "./principal";
@@ -13,7 +13,7 @@ export async function readDraft(db: PrismaClient | Prisma.TransactionClient, pri
   const plan = await db.trainer2Plan.findFirst({ where: { id: planId, accountId: principal.accountId, tombstonedAt: null } });
   if (!plan) return null;
   const revision = await db.trainer2PlanRevision.findFirstOrThrow({ where: { id: plan.currentRevisionId, planId, accountId: principal.accountId } });
-  const intent = draftDocument.parse(revision.document);
+  const intent = readSavedDocument(revision.document);
   return { planId, revisionId: revision.id, revisionNumber: revision.revisionNumber, contentHash: revision.contentHash,
     intent, activationBlockers: activationBlockers(intent) };
 }
@@ -64,7 +64,7 @@ async function acceptDraft(db: PrismaClient, principal: ServerPrincipal, input: 
             const previous = await tx.trainer2PlanRevision.findUniqueOrThrow({ where: { id: plan.currentRevisionId } });
             parentRevisionId = previous.id;
             revisionNumber = previous.revisionNumber + 1;
-            intent = editDocument(draftDocument.parse(previous.document), command, new Set(historical.map(i => i.id)));
+            intent = editDocument(readSavedDocument(previous.document), command, new Set(historical.map(i => i.id)));
           }
           const known = new Set(historical.map(i => i.id));
           const additions = identities(intent).filter(i => !known.has(i.id));

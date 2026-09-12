@@ -48,10 +48,10 @@ The occurrence owns explicit `overrides`: removed source keys, an order override
 
 - Shared field edits reach every inheriting occurrence field. Position-level overrides cover sets, reps (range/basis together), exercise, role, measurement, effort, rest, classification and requiredness. Individual-set overrides take precedence over row field defaults. Editing a field for all sets deliberately replaces individual overrides of that same field only.
 - Reset field removes that override and uses the current shared/weekly default. Reset individual-set field restores its current row default. Reset swap restores the shared exercise, reps and measurement together; unrelated overrides stay.
-- Week-only additions have no shared source key and remain distinct, even for duplicate exercises. They follow shared rows unless the week has an explicit order. Shared additions append to an explicitly ordered week; otherwise shared order applies and week-only additions remain at the end.
+- Week-only additions have no shared source key and remain independent authored content, even for duplicate exercises. Row and individual-set edits do not create inheritance masks or reset controls for these additions. They follow shared rows unless the week has an explicit order. Shared additions append to an explicitly ordered week; otherwise shared order applies and week-only additions remain at the end.
 - Week-only removal records a source-key tombstone. Shared changes cannot resurrect it. Restore workout clears all local structural/field edits, removes week-only additions and recreates removed positions with fresh IDs.
 - Week-only reorder preserves the explicit remaining ID order. Shared additions append. Shared removal drops only the removed slot and preserves the other order. Reorder never regenerates identity.
-- Shared removal affecting week-specific field/set edits requires a modal identifying affected weeks; confirmation removes only that slot and its dependent override metadata. Set reductions removing individually edited targets require confirmation. Cancel retains the whole plan.
+- Shared removal affecting week-specific field/set edits requires a modal identifying affected weeks; `removeBuilderRow` removes only that slot and its dependent masks, values and target metadata. Set reductions and set-count resets both use `changeSetCount`: discarded individually edited sets are identified before confirmation, and only their metadata is removed. Cancel retains the whole plan. Reset computes the current inherited count, including a single deload reduction from the shared count.
 - Older `weekOverride: true` occurrences remain independent, including when shared rows are removed. No field provenance is guessed. Their existing content is preserved until deliberate Restore workout. Older documents without a builder keep the structural editor.
 - Start blank deliberately removes all exercises and week overrides, retaining the schedule and its identities. Saved history remains immutable; Save records the replacement as a new revision.
 
@@ -64,6 +64,18 @@ Swaps retain slot/source, occurrence, position and surviving target IDs. They ch
 A shared swap preserves independently swapped weeks. Inheriting weeks with incompatible rep-basis or numeric measurement overrides require deliberate confirmation before those particular overrides are cleared. Other overrides stay. With a week swap, reps and measurement are explicitly scoped with the exercise; reset of just reps uses compatible defaults for that selected exercise.
 
 The native dialog supports focus containment/return, Escape, Tab, arrow navigation among results, Enter and touch. Roles and optional details are expandable; the ordinary row shows exercise, sets and reps. Individual set details remain editable. The five-week view reads actual occurrence prescriptions, including deload and overrides.
+
+The picker retains its invoking element and restores focus after React commits dismissal or selection. If that element disappears or becomes disabled, focus returns to Add exercise or the edit-scope control. A following confirmation dialog retains modal focus. Weekly summaries use compact count × reps/effort only when those displayed prescriptions agree across sets; mixed sets show a numbered breakdown. Rep basis and zero effort remain visible.
+
+## Override validation and saved-document recovery
+
+`draftDocument` is the shared strict boundary for CreateDraft and the final atomic EditDraft document. Override values must reference a position in the same occurrence, correspond to its declared field mask, and retain supported value/catalog meaning. Unsupported fields and malformed values reject the command. Older shared mask-only representations remain supported without inferred values; explicitly equal values remain overrides.
+
+The defective template candidate could save values for removed positions and inheritance labels on source-less additions. `readSavedDocument` opens such saved revisions unchanged only when `repairBuilderMetadata` would produce a fully valid document. This read path writes nothing and does not reinterpret historical content. New commands never use the compatibility schema to validate incoming documents.
+
+The editor shows **Remove obsolete override labels** and requires that explicit action before further builder edits. It removes only value entries whose position no longer exists anywhere in the document, and masks/values/target masks on source-less additions. Actual positions, targets, decimal spelling, independent prescriptions, and legitimate shared overrides remain unchanged. Save submits ordinary `setWeekEdits` operations with the current expected revision; the server validates the complete result before writing a new immutable revision. Reload before Save cancels the pending repair. A rename alone cannot silently repair an invalid document.
+
+Foreign-position values, mask/value mismatches on existing shared positions, malformed values and unsupported fields are outside this repair. They remain rejected and require separately scoped investigation. No historical revision rewrite, SQL repair, migration, generic save or automatic background cleanup exists. Correction evidence and limits are in [the correction report](TEMPLATE_BUILDER_CORRECTIONS.md).
 
 ## Verification and restart
 

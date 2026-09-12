@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from 'react';
 import { draftDocument, editDraftCommand, type DraftDocument, type DraftCommand } from '@/lib/trainer2-contracts/draft';
-import { createHypertrophyPlan } from '@/lib/engine/trainer2/plan-builder';
+import { createHypertrophyPlan, repairBuilderMetadata } from '@/lib/engine/trainer2/plan-builder';
+import { readSavedDocument } from '@/lib/engine/trainer2/planning';
 import { control } from './DraftEditor';
 import { PlanBuilder } from './PlanBuilder';
 import { DraftReview } from './DraftReview';
@@ -28,7 +29,7 @@ export function DraftWorkbench({ accountId, ownershipEpoch, initialPlanId = '' }
       const response = await fetch(`/api/trainer2/drafts/${encodeURIComponent(id)}`, { cache: 'no-store' });
       const result = await response.json();
       if (!response.ok) throw new Error('Read failed');
-      const intent = draftDocument.parse(result.intent);
+      const intent = readSavedDocument(result.intent);
       setLoaded({ ...result, intent }); setForm(structuredClone(intent)); setPlanId(id); setStale(false); bookmark(id);
       setMessage('Saved');
     } catch { setMessage(accepted ? 'Your plan was saved, but could not be reloaded. Reload the latest version.' : 'Could not load this plan. Check your connection and reload.'); }
@@ -77,6 +78,7 @@ export function DraftWorkbench({ accountId, ownershipEpoch, initialPlanId = '' }
     void submit(command.data);
   }
   const unsaved = !!form && (!loaded || JSON.stringify(form) !== JSON.stringify(loaded.intent));
+  const needsRepair = !!form && JSON.stringify(repairBuilderMetadata(form)) !== JSON.stringify(form);
   const locked = busy || stale || !!conflict || uncertain;
   return <main className="min-h-screen bg-white text-slate-900"><div className="mx-auto max-w-5xl space-y-5 px-4 py-4 pb-28 sm:px-8 sm:py-10">
     <header className="space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-semibold uppercase tracking-widest text-teal-700">Trainer / Plan builder</p><p className="rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-900">Demo: plans are deleted when the demo stops.</p></div>
@@ -88,7 +90,8 @@ export function DraftWorkbench({ accountId, ownershipEpoch, initialPlanId = '' }
     {stale && !busy && planId && !uncertain && <button className={control} onClick={() => void reload()}>Reload latest version</button>}
     {uncertain && <button className={control} disabled={busy || !lastCommand} onClick={() => lastCommand && void submit(lastCommand)}>Check again</button>}
     {conflict && <section className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-4"><p>Your submitted changes are retained below for comparison. Reload, then choose to continue from the latest plan.</p><details><summary>Your submitted plan</summary><DraftReview intent={conflict} /></details><button className={control} disabled={busy || stale} onClick={() => { setConflict(null); setMessage('Saved'); }}>Continue from latest plan</button></section>}
-    {form && <PlanBuilder document={form} disabled={locked} onChange={d => { if (!inFlight.current) { setForm(d); setMessage('Unsaved changes'); } }} />}
+    {needsRepair && <section className="space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-4"><p>This saved plan contains obsolete override labels from an older builder. Remove those labels to continue editing. Exercise prescriptions and saved history stay intact.</p><button className={control} disabled={locked} onClick={() => { setForm(repairBuilderMetadata(form!)); setMessage('Unsaved changes'); }}>Remove obsolete override labels</button></section>}
+    {form && <PlanBuilder document={form} disabled={locked || needsRepair} onChange={d => { if (!inFlight.current) { setForm(d); setMessage('Unsaved changes'); } }} />}
     {loaded && <details className="rounded-xl border border-slate-200 p-4"><summary className="cursor-pointer font-medium">Review saved plan</summary><div className="mt-4"><DraftReview intent={loaded.intent} /></div></details>}
     <div className="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur"><div className="mx-auto flex max-w-5xl items-center justify-between gap-4"><p role="status" className="text-sm text-slate-600">{message}</p><button className="shrink-0 rounded-xl bg-teal-700 px-6 py-3 font-semibold text-white disabled:opacity-40" disabled={locked || !unsaved} onClick={save}>Save plan</button></div></div>
   </div></main>;

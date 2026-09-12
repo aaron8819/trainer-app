@@ -1,9 +1,17 @@
-import { draftDocument, type DraftDocument, type EditDraftCommand, type DraftError } from "../../trainer2-contracts/draft";
-import { expandWorkoutDefaults } from "./plan-builder";
+import { draftDocument, savedDraftDocument, type DraftDocument, type EditDraftCommand, type DraftError } from "../../trainer2-contracts/draft";
+import { expandWorkoutDefaults, repairBuilderMetadata } from "./plan-builder";
 import { catalog, catalogExercise } from './catalog';
 
 export class DraftFailure extends Error {
   constructor(public readonly code: DraftError) { super(code); }
+}
+// Stored revisions can be opened unchanged only if the narrow repair yields a
+// valid document. Incoming commands never use this compatibility reader.
+export function readSavedDocument(input: unknown): DraftDocument {
+  const doc = savedDraftDocument.parse(input);
+  const repaired = draftDocument.parse(repairBuilderMetadata(doc));
+  validateWorkoutDefaults(repaired);
+  return doc;
 }
 export function validateWorkoutDefaults(doc: DraftDocument) {
   for (const e of [...doc.occurrences.flatMap(o => o.positions.map(p => p.exercise)), ...(doc.builder?.workouts.flatMap(w => w.rows.map(r => r.exercise)) ?? [])]) {

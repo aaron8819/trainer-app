@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { DraftDocument } from '@/lib/trainer2-contracts/draft';
-import { expandWorkoutDefaults, markOverride, newRow, resetField, restoreWeek, sharedSwapConflicts, type OverrideField, type Row } from '@/lib/engine/trainer2/plan-builder';
+import { changeSetCount, SetCountConflict, removeBuilderRow, expandWorkoutDefaults, markOverride, newRow, resetField, restoreWeek, sharedSwapConflicts, type OverrideField, type Row } from '@/lib/engine/trainer2/plan-builder';
 import { equipmentOptions, swapPrescription } from '@/lib/engine/trainer2/catalog';
 import { DraftEditor, control, TargetFields } from './DraftEditor';
+import { prescriptionSummary } from './prescription-summary';
 import { ExercisePicker } from './ExercisePicker';
 type Position = DraftDocument['occurrences'][number]['positions'][number];
 const roles = ['Main lift', 'Secondary lift', 'Accessory', 'Calves', 'Core'] as const;
@@ -39,7 +40,9 @@ export function PlanBuilder({
   const [weeksOpen, setWeeksOpen] = useState(false);
   const [picker, setPicker] = useState<{
     key?: string;
+    trigger: HTMLElement;
   } | null>(null);
+  const editor = useRef<HTMLFieldSetElement>(null);
   const [notice, setNotice] = useState('');
   const [pending, setPending] = useState<{
     text: string;
@@ -68,42 +71,32 @@ export function PlanBuilder({
     onChange(expandWorkoutDefaults(next));
   }
   function field(key: string, name: OverrideField, value: unknown, confirmed = false) {
-    const cut = name === 'sets' ? doc.occurrences.filter(o => occurrence ? o.id === occurrence.id : o.workoutKey === workout.key && !o.weekOverride && !o.overrides?.fields[o.positions.find(p => p.sourceKey === key)?.id ?? '']?.includes('sets')).flatMap(o => o.positions.filter(p => occurrence ? p.id === key : p.sourceKey === key).flatMap(p => p.targets.slice(occurrence ? Number(value) : b.weeks.find(w => w.stageId === o.stageId)?.deload ? Math.max(1, Math.ceil(Number(value) / 2)) : Number(value)).filter(t => o.overrides?.targets?.[t.id]).map(t => ({
-      occurrenceId: o.id,
-      targetId: t.id
-    })))) : [];
-    if (cut.length && !confirmed) {
-      setPending({
-        text: 'Fewer sets removes ' + cut.length + ' individually edited sets. Other work stays.',
-        run: () => field(key, name, value, true)
-      });
-      return;
-    }
+    if (name === 'sets') { setCount(key, Number(value), confirmed); return; }
     update(d => {
-      for (const c of cut) delete d.occurrences.find(o => o.id === c.occurrenceId)!.overrides!.targets![c.targetId];
       if (occurrence) {
         const o = d.occurrences.find(o => o.id === occurrence.id)!,
           p = o.positions.find(p => p.id === key)!;
-        markOverride(o, p.id, [name], name !== 'sets' && name !== 'role' && name !== 'exercise' ? {
+        markOverride(o, p.id, [name], name !== 'role' && name !== 'exercise' ? {
           [name]: value
         } : undefined);
-        if (name === 'role') p.role = value as Row['role'];else if (name === 'sets') {
-          const count = Math.max(1, Math.min(20, Number(value)));
-          while (p.targets.length < count) p.targets.push({
-            ...structuredClone(p.targets.at(-1) ?? newRow('').prescription),
-            id: crypto.randomUUID()
-          });
-          p.targets.splice(count);
-        } else p.targets.forEach(t => Object.assign(t, {
+        if (name === 'role') p.role = value as Row['role']; else p.targets.forEach(t => Object.assign(t, {
           [name]: value
         }));
       } else {
         const r = d.builder!.workouts[workoutIndex].rows.find(r => r.key === key)!;
-        if (name === 'sets') r.sets = Math.max(1, Math.min(20, Number(value)));else if (name === 'role') r.role = value as Row['role'];else Object.assign(r.prescription, {
+        if (name === 'role') r.role = value as Row['role'];else Object.assign(r.prescription, {
           [name]: value
         });
       }
     });
+  }
+  function setCount(key: string, count: number | null, confirmed = false) {
+    try {
+      onChange(changeSetCount(doc, { key, occurrenceId: occurrence?.id, workoutKey: workout.key }, count, confirmed));
+    } catch (error) {
+      if (!(error instanceof SetCountConflict)) throw error;
+      setPending({ text: 'Fewer sets removes individually edited work: ' + error.affected.join('; ') + '. Other work stays.', run: () => setCount(key, count, true) });
+    }
   }
   function choose(exercise: Position['exercise'], confirmed = false) {
     const selected = rows.find(r => r.key === picker?.key);
@@ -187,33 +180,7 @@ export function PlanBuilder({
   }
   function remove(key: string) {
     const affected = !occurrence ? doc.occurrences.filter(o => o.workoutKey === workout.key && o.positions.some(p => p.sourceKey === key && (o.weekOverride || o.overrides?.fields[p.id] || p.targets.some(t => o.overrides?.targets?.[t.id])))) : [];
-    const run = () => update(d => {
-      if (occurrence) {
-        const o = d.occurrences.find(o => o.id === occurrence.id)!,
-          p = o.positions.find(p => p.id === key)!;
-        if (!o.weekOverride) {
-          o.overrides ??= {
-            removed: [],
-            order: false,
-            fields: {}
-          };
-          if (p.sourceKey) o.overrides.removed.push(p.sourceKey);
-          delete o.overrides.fields[p.id];
-          if (o.overrides.values) delete o.overrides.values[p.id];
-          for (const t of p.targets) if (o.overrides.targets) delete o.overrides.targets[t.id];
-        }
-        o.positions = o.positions.filter(p => p.id !== key);
-      } else {
-        d.builder!.workouts[workoutIndex].rows = d.builder!.workouts[workoutIndex].rows.filter(r => r.key !== key);
-        for (const o of d.occurrences.filter(o => o.workoutKey === workout.key && !o.weekOverride)) {
-          for (const p of o.positions.filter(p => p.sourceKey === key)) if (o.overrides) {
-            delete o.overrides.fields[p.id];
-            for (const t of p.targets) if (o.overrides.targets) delete o.overrides.targets[t.id];
-          }
-          if (o.overrides) o.overrides.removed = o.overrides.removed.filter(k => k !== key);
-        }
-      }
-    });
+    const run = () => onChange(removeBuilderRow(doc, { key, occurrenceId: occurrence?.id, workoutKey: workout.key }));
     if (affected.some(o => !o.weekOverride)) setPending({
       text: `Remove ${rows.find(r => r.key === key)!.exercise.name} from all inheriting weeks? This discards its week-only edits in ${affected.filter(o => !o.weekOverride).map(o => doc.stages.find(s => s.id === o.stageId)!.name).join(', ')}. Other exercises remain.`,
       run
@@ -236,7 +203,7 @@ export function PlanBuilder({
       }
     });
   }
-  return <fieldset disabled={disabled} className="min-w-0 space-y-4">
+  return <fieldset ref={editor} disabled={disabled} className="min-w-0 space-y-4">
     <div className="flex flex-wrap justify-between gap-2"><p className="text-sm text-slate-600">Here’s your plan. Change what you want.</p><button type="button" className="text-sm underline" onClick={() => setPending({
         text: 'Start blank replaces all exercises and week-only edits in this plan. The five-week schedule stays. Save to keep the replacement.',
         run: () => update(d => {
@@ -269,7 +236,7 @@ export function PlanBuilder({
           return <button key={o.id} type="button" className="mt-3 block w-full text-left text-sm" onClick={() => {
             setWorkoutIndex(index);
             setWeekIndex(i);
-          }}><span className="font-medium underline">{o.name}</span>{(o.weekOverride || o.overrides || o.positions.some(p => !p.sourceKey)) && <span className="block text-teal-800">Week-only edits</span>}<span className="block text-xs text-slate-600">{o.positions.map(p => `${p.exercise.name}: ${p.targets.length} × ${p.targets[0]?.reps.min}–${p.targets[0]?.reps.max} · ${p.targets[0]?.rir ?? '–'} left`).join('; ')}</span></button>;
+          }}><span className="font-medium underline">{o.name}</span>{(o.weekOverride || o.overrides || o.positions.some(p => !p.sourceKey)) && <span className="block text-teal-800">Week-only edits</span>}<span className="block text-xs text-slate-600">{o.positions.map(p => `${p.exercise.name}: ${prescriptionSummary(p.targets)}`).join('; ')}</span></button>;
         })}</div>)}</section>}
     <div role="tablist" aria-label="Workouts" className="grid grid-cols-4 gap-2">{b.workouts.map((w, i) => <button type="button" role="tab" aria-selected={i === workoutIndex} key={w.key} onClick={() => setWorkoutIndex(i)} className={`rounded-xl px-2 py-3 text-sm font-medium ${i === workoutIndex ? 'bg-slate-900 text-white' : 'bg-slate-100'}`}>{w.name}</button>)}</div>
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 p-3"><label className="text-sm font-medium">Editing <select aria-label="Edit scope" className={control} value={weekIndex ?? 'all'} onChange={e => setWeekIndex(e.target.value === 'all' ? null : Number(e.target.value))}><option value="all">All weeks</option>{b.weeks.map((w, i) => <option value={i} key={w.stageId}>Week {i + 1} only</option>)}</select></label><p className="text-xs text-slate-600">{occurrence?.weekOverride ? 'Older independent workout. Restore to inherit shared defaults.' : 'Only explicitly edited fields stay week-specific.'}</p>{occurrence && <button type="button" className="text-sm underline" onClick={() => setPending({
@@ -282,9 +249,9 @@ export function PlanBuilder({
     }} cancel={() => setPending(null)} />}
     {notice && <p role="status" className="text-sm text-teal-800">{notice}</p>}
     <div className="space-y-3">{rows.map((r, i) => <section key={r.key} aria-label={`Exercise ${i + 1}`} className="space-y-3 rounded-xl border border-slate-200 p-3">
-      <div className="flex items-start justify-between gap-2"><div><p className="text-xs font-medium text-slate-500">{r.role ?? 'Exercise'}</p><button type="button" className="text-left font-semibold underline-offset-4 hover:underline" onClick={() => setPicker({
+      <div className="flex items-start justify-between gap-2"><div><p className="text-xs font-medium text-slate-500">{r.role ?? 'Exercise'}</p><button type="button" className="text-left font-semibold underline-offset-4 hover:underline" onClick={e => setPicker({ trigger: e.currentTarget,
               key: r.key
-            })}>{r.exercise.name || 'Choose exercise'}</button><p className="text-xs text-slate-500">{r.exercise.variation}{r.prescription?.reps.basis === 'perSide' ? ' · Reps per side' : ''}</p>{r.exercise.kind === 'catalogSnapshot' && b.equipment?.length && r.exercise.equipment.some(e => !b.equipment!.includes(e)) && <p className="text-xs text-amber-800">Outside your equipment preferences</p>}</div><button type="button" className={control} onClick={() => setPicker({
+            })}>{r.exercise.name || 'Choose exercise'}</button><p className="text-xs text-slate-500">{r.exercise.variation}{r.prescription?.reps.basis === 'perSide' ? ' · Reps per side' : ''}</p>{r.exercise.kind === 'catalogSnapshot' && b.equipment?.length && r.exercise.equipment.some(e => !b.equipment!.includes(e)) && <p className="text-xs text-amber-800">Outside your equipment preferences</p>}</div><button type="button" className={control} onClick={e => setPicker({ trigger: e.currentTarget,
             key: r.key
           })}>Swap</button></div>
       {r.prescription && <div className="grid grid-cols-3 gap-2"><label className="text-xs">Sets<input aria-label={`Exercise ${i + 1} sets`} className={`${control} mt-1 w-full`} type="number" min="1" max="20" value={r.sets} onChange={e => field(r.key, 'sets', e.target.value)} /></label>{(['min', 'max'] as const).map(bound => <label key={bound} className="text-xs">Reps {bound === 'min' ? 'from' : 'to'}<input aria-label={`Exercise ${i + 1} reps ${bound}`} className={`${control} mt-1 w-full`} type="number" min="1" max="1000" value={r.prescription.reps[bound]} onChange={e => field(r.key, 'reps', {
@@ -312,7 +279,7 @@ export function PlanBuilder({
                 const o = d.occurrences.find(o => o.id === occurrence.id)!,
                   p = o.positions.find(p => p.id === r.key)!;
                 fn(p.targets.find(target => target.id === t.id)!);
-                if (!o.weekOverride) {
+                if (!o.weekOverride && p.sourceKey) {
                   o.overrides ??= {
                     removed: [],
                     order: false,
@@ -321,15 +288,15 @@ export function PlanBuilder({
                   o.overrides.targets ??= {};
                   o.overrides.targets[t.id] = [...new Set([...(o.overrides.targets[t.id] ?? []), name])];
                 }
-              })} />{occurrence.overrides?.targets?.[t.id]?.map(name => <button key={name} type="button" className="m-1 text-sm underline" onClick={() => update(d => {
+              })} />{r.position?.sourceKey && occurrence.overrides?.targets?.[t.id]?.map(name => <button key={name} type="button" className="m-1 text-sm underline" onClick={() => update(d => {
                 const o = d.occurrences.find(o => o.id === occurrence.id)!;
                 o.overrides!.targets![t.id] = o.overrides!.targets![t.id].filter(f => f !== name);
                 if (!o.overrides!.targets![t.id].length) delete o.overrides!.targets![t.id];
               })}>Reset set {j + 1} {name}</button>)}</div>)}</div></details>}
-      {occurrence?.overrides?.fields[r.key] && <div className="flex flex-wrap gap-2 text-xs">{occurrence.overrides.fields[r.key].map(f => <button type="button" className="min-h-9 rounded bg-teal-50 px-2 text-teal-900" key={f} onClick={() => onChange(resetField(doc, occurrence.id, r.key, f))}>Reset {f === 'exercise' ? 'swap, reps & weight' : f} override</button>)}</div>}
+      {r.position?.sourceKey && occurrence?.overrides?.fields[r.key] && <div className="flex flex-wrap gap-2 text-xs">{occurrence.overrides.fields[r.key].map(f => <button type="button" className="min-h-9 rounded bg-teal-50 px-2 text-teal-900" key={f} onClick={() => f === 'sets' ? setCount(r.key, null) : onChange(resetField(doc, occurrence.id, r.key, f))}>Reset {f === 'exercise' ? 'swap, reps & weight' : f} override</button>)}</div>}
       <div className="flex flex-wrap gap-2"><button type="button" className={`${control} text-xs`} disabled={i === 0} onClick={() => move(r.key, -1)}>Move up</button><button type="button" className={`${control} text-xs`} disabled={i === rows.length - 1} onClick={() => move(r.key, 1)}>Move down</button><button type="button" className={`${control} text-xs`} onClick={() => remove(r.key)}>Remove exercise</button></div>
     </section>)}</div>
-    <button type="button" className={`${control} w-full border-dashed py-3`} disabled={rows.length >= 20} onClick={() => setPicker({})}>Add exercise</button>
-    {picker && <ExercisePicker current={rows.find(r => r.key === picker.key)?.exercise} equipment={b.equipment ?? []} choose={choose} close={() => setPicker(null)} />}
+    <button type="button" className={`${control} w-full border-dashed py-3`} data-add-exercise disabled={rows.length >= 20} onClick={e => setPicker({ trigger: e.currentTarget,})}>Add exercise</button>
+    {picker && <ExercisePicker trigger={picker.trigger} fallback={() => editor.current?.querySelector<HTMLButtonElement>('button[data-add-exercise]:not(:disabled)') ?? editor.current?.querySelector<HTMLSelectElement>('select[aria-label="Edit scope"]') ?? null} current={rows.find(r => r.key === picker.key)?.exercise} equipment={b.equipment ?? []} choose={choose} close={() => setPicker(null)} />}
   </fieldset>;
 }

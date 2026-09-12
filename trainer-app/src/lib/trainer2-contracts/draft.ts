@@ -51,7 +51,8 @@ export const builder = z.object({ version: z.literal(1), template: z.literal("hy
     key: id, exercise: position.shape.exercise, role: role.optional(), sets: z.int().min(1).max(20), prescription: target.omit({ id: true }),
   }).strict()).max(20) }).strict()).length(4),
 }).strict();
-export const draftDocument = z.object({ schemaVersion: z.literal(1), name: label,
+// Read compatibility only. New commands must use draftDocument below.
+export const savedDraftDocument = z.object({ schemaVersion: z.literal(1), name: label,
   builder: builder.optional(),
   endpoint: z.literal("endOfOrderedOccurrences"), stages: z.array(stage).max(100),
   occurrences: z.array(occurrence).max(500),
@@ -93,6 +94,25 @@ export const draftDocument = z.object({ schemaVersion: z.literal(1), name: label
     }));
   } else if (doc.occurrences.some(o => o.workoutKey || o.weekOverride !== undefined || o.overrides || o.positions.some(p => p.sourceKey))) {
     ctx.addIssue({ code: "custom", message: "Counterparts require builder context" });
+  }
+});
+export const draftDocument = savedDraftDocument.superRefine((doc, ctx) => {
+  for (const o of doc.occurrences) {
+    const edits = o.overrides;
+    if (!edits) continue;
+    for (const [key, values] of Object.entries(edits.values ?? {})) {
+      const p = o.positions.find(p => p.id === key);
+      const mask = edits.fields[key] ?? [];
+      if (!p || Object.keys(values).some(field => !mask.includes(field as z.infer<typeof overrideField>)))
+        ctx.addIssue({ code: 'custom', message: 'Override values require a position in this workout and corresponding field masks' });
+      if (p?.exercise.kind === 'catalogSnapshot') {
+        const e = p.exercise;
+        if ((values.reps && values.reps.basis !== e.repBasis) || (values.measurement && (values.measurement.kind !== e.loadKind || values.measurement.convention !== e.convention)))
+          ctx.addIssue({ code: 'custom', message: 'Override values must retain catalog measurement meaning' });
+      }
+    }
+    for (const p of o.positions) if (!p.sourceKey && (edits.fields[p.id] || edits.values?.[p.id] || p.targets.some(t => edits.targets?.[t.id])))
+      ctx.addIssue({ code: 'custom', message: 'Independent additions have no shared inheritance overrides' });
   }
 });
 export type DraftDocument = z.infer<typeof draftDocument>;

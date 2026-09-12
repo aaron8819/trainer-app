@@ -1,0 +1,805 @@
+[
+  {
+    "id": "t2:barbell-back-squat",
+    "name": "Barbell Back Squat",
+    "equipment": [
+      "Barbell",
+      "Rack"
+    ],
+    "purpose": "squat",
+    "aliases": [
+      "squat",
+      "back squat"
+    ],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "barbellTotal",
+    "reps": {
+      "min": 3,
+      "max": 8
+    }
+  },
+  {
+    "id": "t2:front-squat",
+    "name": "Front Squat",
+    "equipment": [
+      "Barbell",
+      "Rack"
+    ],
+    "purpose": "squat",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "barbellTotal",
+    "reps": {
+      "min": 3,
+      "max": 8
+    }
+  },
+  {
+    "id": "t2:goblet-squat",
+    "name": "Goblet Squat",
+    "equipment": [
+      "Dumbbell"
+    ],
+    "purpose": "squat",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "perImplement",
+    "reps": {
+      "min": 6,
+      "max": 12
+    }
+  },
+  {
+    "id": "t2:hack-squat",
+    "name": "Hack Squat",
+    "equipment": [
+      "Machine"
+    ],
+    "purpose": "squat",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "machineDisplayed",
+    "reps": {
+      "min": 6,
+      "max": 12
+    }
+  },
+  {
+    "id": "t2:leg-press",
+    "name": "Leg Press",
+    "equipment": [
+      "Machine"
+    ],
+    "purpose": "squat",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "machineDisplayed",
+    "reps": {
+      "min": 6,
+      "max": 12
+    }
+  },
+  {
+    "id": "t2:bulgarian-split-squat",
+    "name": "Bulgarian Split Squat",
+    "equipment": [
+      "Dumbbell",
+      "Bench"
+    ],
+    "purpose": "lunge",
+    "aliases": [
+      "BSS",
+      "rear foot elevated split squat"
+    ],
+    "repBasis": "perSide",
+    "loadKind": "externalLoad",
+    "convention": "perImplement",
+    "reps": {
+      "min": 6,
+      "max": 12
+    }
+  },
+  {
+    "id": "t2:dumbbell-reverse-lunge",
+    "name": "Dumbbell Reverse Lunge",
+    "equipment": [
+      "Dumbbell"
+    ],
+    "purpose": "lunge",
+    "aliases": [],
+    "repBasis": "perSide",
+    "loadKind": "externalLoad",
+    "convention": "perImplement",
+    "reps": {
+      "min": 6,
+      "max": 12
+    }
+  },
+  {
+    "id": "t2:leg-extension",
+    "name": "Leg Extension",
+    "equipment": [
+      "Machine"
+    ],
+    "purpose": "kneeExtension",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "machineDisplayed",
+    "reps": {
+      "min": 10,
+      "max": 20
+    }
+  },
+  {
+    "id": "t2:barbell-romanian-deadlift",
+    "name": "Barbell Romanian Deadlift",
+    "equipment": [
+      "Barbell"
+    ],
+    "purpose": "hinge",
+    "aliases": [
+      "RDL",
+      "romanian deadlift"
+    ],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "barbellTotal",
+    "reps": {
+      "min": 3,
+      "max": 10
+    }
+  },
+  {
+    "id": "t2:dumbbell-romanian-deadlift",
+    "name": "Dumbbell Romanian Deadlift",
+    "equipment": [
+      "Dumbbell"
+    ],
+    "purpose": "hinge",
+    "aliases": [
+      "DB RDL"
+    ],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "perImplement",
+    "reps": {
+      "min": 3,
+      "max": 10
+    }
+  },
+  {
+    "id": "t2:good-morning",
+    "name": "Good Morning",
+    "equipment": [
+      "Barbell"
+    ],
+    "purpose": "hinge",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "barbellTotal",
+    "reps": {
+      "min": 6,
+      "max": 12
+    }
+  },
+  {
+    "id": "t2:lying-leg-curl",
+    "name": "Lying Leg Curl",
+    "equipment": [
+      "Machine"
+    ],
+    "purpose": "kneeFlexion",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "machineDisplayed",
+    "reps": {
+      "min": 10,
+      "max": 20
+    }
+  },
+  {
+    "id": "t2:seated-leg-curl",
+    "name": "Seated Leg Curl",
+    "equipment": [
+      "Machine"
+    ],
+    "purpose": "kneeFlexion",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "machineDisplayed",
+    "reps": {
+      "min": 10,
+      "max": 20
+    }
+  },
+  {
+    "id": "t2:selectorized-standing-calf-raise",
+    "name": "Selectorized Standing Calf Raise",
+    "equipment": [
+      "Machine"
+    ],
+    "purpose": "calfStraight",
+    "aliases": [
+      "standing calf raise"
+    ],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "machineDisplayed",
+    "reps": {
+      "min": 10,
+      "max": 20
+    }
+  },
+  {
+    "id": "t2:seated-calf-raise",
+    "name": "Seated Calf Raise",
+    "equipment": [
+      "Machine"
+    ],
+    "purpose": "calfBent",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "machineDisplayed",
+    "reps": {
+      "min": 10,
+      "max": 20
+    }
+  },
+  {
+    "id": "t2:barbell-bench-press",
+    "name": "Barbell Bench Press",
+    "equipment": [
+      "Barbell",
+      "Bench"
+    ],
+    "purpose": "chestPress",
+    "aliases": [
+      "bench"
+    ],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "barbellTotal",
+    "reps": {
+      "min": 3,
+      "max": 10
+    }
+  },
+  {
+    "id": "t2:incline-barbell-bench-press",
+    "name": "Incline Barbell Bench Press",
+    "equipment": [
+      "Barbell",
+      "Bench"
+    ],
+    "purpose": "inclinePress",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "barbellTotal",
+    "reps": {
+      "min": 3,
+      "max": 10
+    }
+  },
+  {
+    "id": "t2:dumbbell-bench-press",
+    "name": "Dumbbell Bench Press",
+    "equipment": [
+      "Dumbbell",
+      "Bench"
+    ],
+    "purpose": "chestPress",
+    "aliases": [
+      "DB bench"
+    ],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "perImplement",
+    "reps": {
+      "min": 3,
+      "max": 10
+    }
+  },
+  {
+    "id": "t2:incline-dumbbell-bench-press",
+    "name": "Incline Dumbbell Bench Press",
+    "equipment": [
+      "Dumbbell",
+      "Bench"
+    ],
+    "purpose": "inclinePress",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "perImplement",
+    "reps": {
+      "min": 3,
+      "max": 10
+    }
+  },
+  {
+    "id": "t2:machine-chest-press",
+    "name": "Machine Chest Press",
+    "equipment": [
+      "Machine"
+    ],
+    "purpose": "chestPress",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "machineDisplayed",
+    "reps": {
+      "min": 6,
+      "max": 12
+    }
+  },
+  {
+    "id": "t2:push-up",
+    "name": "Push-Up",
+    "equipment": [
+      "Bodyweight"
+    ],
+    "purpose": "chestPress",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "bodyweight",
+    "convention": "bodyweightOnly",
+    "reps": {
+      "min": 6,
+      "max": 12
+    }
+  },
+  {
+    "id": "t2:barbell-overhead-press",
+    "name": "Barbell Overhead Press",
+    "equipment": [
+      "Barbell",
+      "Rack"
+    ],
+    "purpose": "overheadPress",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "barbellTotal",
+    "reps": {
+      "min": 3,
+      "max": 10
+    }
+  },
+  {
+    "id": "t2:dumbbell-overhead-press",
+    "name": "Dumbbell Overhead Press",
+    "equipment": [
+      "Dumbbell",
+      "Bench"
+    ],
+    "purpose": "overheadPress",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "perImplement",
+    "reps": {
+      "min": 3,
+      "max": 10
+    }
+  },
+  {
+    "id": "t2:machine-shoulder-press",
+    "name": "Machine Shoulder Press",
+    "equipment": [
+      "Machine"
+    ],
+    "purpose": "overheadPress",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "machineDisplayed",
+    "reps": {
+      "min": 6,
+      "max": 12
+    }
+  },
+  {
+    "id": "t2:dumbbell-lateral-raise",
+    "name": "Dumbbell Lateral Raise",
+    "equipment": [
+      "Dumbbell"
+    ],
+    "purpose": "lateralRaise",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "perImplement",
+    "reps": {
+      "min": 10,
+      "max": 20
+    }
+  },
+  {
+    "id": "t2:machine-lateral-raise",
+    "name": "Machine Lateral Raise",
+    "equipment": [
+      "Machine"
+    ],
+    "purpose": "lateralRaise",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "machineDisplayed",
+    "reps": {
+      "min": 10,
+      "max": 20
+    }
+  },
+  {
+    "id": "t2:dumbbell-rear-delt-fly",
+    "name": "Dumbbell Rear Delt Fly",
+    "equipment": [
+      "Dumbbell",
+      "Bench"
+    ],
+    "purpose": "rearDelt",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "perImplement",
+    "reps": {
+      "min": 8,
+      "max": 15
+    }
+  },
+  {
+    "id": "t2:cable-rear-delt-fly",
+    "name": "Cable Rear Delt Fly",
+    "equipment": [
+      "Cable"
+    ],
+    "purpose": "rearDelt",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "machineDisplayed",
+    "reps": {
+      "min": 8,
+      "max": 15
+    }
+  },
+  {
+    "id": "t2:reverse-pec-deck",
+    "name": "Reverse Pec Deck",
+    "equipment": [
+      "Machine"
+    ],
+    "purpose": "rearDelt",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "machineDisplayed",
+    "reps": {
+      "min": 8,
+      "max": 15
+    }
+  },
+  {
+    "id": "t2:overhead-cable-triceps-extension",
+    "name": "Overhead Cable Triceps Extension",
+    "equipment": [
+      "Cable"
+    ],
+    "purpose": "elbowExtension",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "machineDisplayed",
+    "reps": {
+      "min": 8,
+      "max": 15
+    }
+  },
+  {
+    "id": "t2:cable-triceps-pushdown",
+    "name": "Cable Triceps Pushdown",
+    "equipment": [
+      "Cable"
+    ],
+    "purpose": "elbowExtension",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "machineDisplayed",
+    "reps": {
+      "min": 8,
+      "max": 15
+    }
+  },
+  {
+    "id": "t2:rope-triceps-pushdown",
+    "name": "Rope Triceps Pushdown",
+    "equipment": [
+      "Cable"
+    ],
+    "purpose": "elbowExtension",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "machineDisplayed",
+    "reps": {
+      "min": 8,
+      "max": 15
+    }
+  },
+  {
+    "id": "t2:pull-up",
+    "name": "Pull-Up",
+    "equipment": [
+      "Bodyweight"
+    ],
+    "purpose": "verticalPull",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "bodyweight",
+    "convention": "bodyweightOnly",
+    "reps": {
+      "min": 3,
+      "max": 10
+    }
+  },
+  {
+    "id": "t2:weighted-pull-up",
+    "name": "Weighted Pull-Up",
+    "equipment": [
+      "Bodyweight",
+      "Dumbbell",
+      "Kettlebell"
+    ],
+    "purpose": "verticalPull",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "addedLoad",
+    "convention": "addedExternal",
+    "reps": {
+      "min": 3,
+      "max": 10
+    }
+  },
+  {
+    "id": "t2:machine-assisted-pull-up",
+    "name": "Machine-Assisted Pull-Up",
+    "equipment": [
+      "Machine"
+    ],
+    "purpose": "verticalPull",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "assistance",
+    "convention": "displayedAssistance",
+    "reps": {
+      "min": 5,
+      "max": 12
+    }
+  },
+  {
+    "id": "t2:lat-pulldown",
+    "name": "Lat Pulldown",
+    "equipment": [
+      "Cable",
+      "Machine"
+    ],
+    "purpose": "verticalPull",
+    "aliases": [
+      "lat pull down"
+    ],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "machineDisplayed",
+    "reps": {
+      "min": 6,
+      "max": 12
+    }
+  },
+  {
+    "id": "t2:close-grip-lat-pulldown",
+    "name": "Close-Grip Lat Pulldown",
+    "equipment": [
+      "Cable",
+      "Machine"
+    ],
+    "purpose": "verticalPull",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "machineDisplayed",
+    "reps": {
+      "min": 6,
+      "max": 12
+    }
+  },
+  {
+    "id": "t2:barbell-row",
+    "name": "Barbell Row",
+    "equipment": [
+      "Barbell"
+    ],
+    "purpose": "row",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "barbellTotal",
+    "reps": {
+      "min": 3,
+      "max": 10
+    }
+  },
+  {
+    "id": "t2:one-arm-dumbbell-row",
+    "name": "One-Arm Dumbbell Row",
+    "equipment": [
+      "Dumbbell",
+      "Bench"
+    ],
+    "purpose": "row",
+    "aliases": [],
+    "repBasis": "perSide",
+    "loadKind": "externalLoad",
+    "convention": "perImplement",
+    "reps": {
+      "min": 6,
+      "max": 12
+    }
+  },
+  {
+    "id": "t2:chest-supported-dumbbell-row",
+    "name": "Chest-Supported Dumbbell Row",
+    "equipment": [
+      "Dumbbell",
+      "Bench"
+    ],
+    "purpose": "row",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "perImplement",
+    "reps": {
+      "min": 6,
+      "max": 12
+    }
+  },
+  {
+    "id": "t2:seated-cable-row",
+    "name": "Seated Cable Row",
+    "equipment": [
+      "Cable"
+    ],
+    "purpose": "row",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "machineDisplayed",
+    "reps": {
+      "min": 6,
+      "max": 12
+    }
+  },
+  {
+    "id": "t2:ez-bar-curl",
+    "name": "EZ-Bar Curl",
+    "equipment": [
+      "EZ_Bar"
+    ],
+    "purpose": "elbowFlexion",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "barbellTotal",
+    "reps": {
+      "min": 8,
+      "max": 15
+    }
+  },
+  {
+    "id": "t2:dumbbell-curl",
+    "name": "Dumbbell Curl",
+    "equipment": [
+      "Dumbbell"
+    ],
+    "purpose": "elbowFlexion",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "perImplement",
+    "reps": {
+      "min": 8,
+      "max": 15
+    }
+  },
+  {
+    "id": "t2:cable-curl",
+    "name": "Cable Curl",
+    "equipment": [
+      "Cable"
+    ],
+    "purpose": "elbowFlexion",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "machineDisplayed",
+    "reps": {
+      "min": 8,
+      "max": 15
+    }
+  },
+  {
+    "id": "t2:cable-crunch",
+    "name": "Cable Crunch",
+    "equipment": [
+      "Cable"
+    ],
+    "purpose": "coreFlexion",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "machineDisplayed",
+    "reps": {
+      "min": 8,
+      "max": 20
+    }
+  },
+  {
+    "id": "t2:machine-crunch",
+    "name": "Machine Crunch",
+    "equipment": [
+      "Machine"
+    ],
+    "purpose": "coreFlexion",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "externalLoad",
+    "convention": "machineDisplayed",
+    "reps": {
+      "min": 8,
+      "max": 20
+    }
+  },
+  {
+    "id": "t2:hanging-knee-raise",
+    "name": "Hanging Knee Raise",
+    "equipment": [
+      "Bodyweight"
+    ],
+    "purpose": "coreFlexion",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "bodyweight",
+    "convention": "bodyweightOnly",
+    "reps": {
+      "min": 8,
+      "max": 20
+    }
+  },
+  {
+    "id": "t2:reverse-crunch",
+    "name": "Reverse Crunch",
+    "equipment": [
+      "Bodyweight"
+    ],
+    "purpose": "coreFlexion",
+    "aliases": [],
+    "repBasis": "total",
+    "loadKind": "bodyweight",
+    "convention": "bodyweightOnly",
+    "reps": {
+      "min": 8,
+      "max": 20
+    }
+  }
+]

@@ -8,10 +8,10 @@ function apply(before: DraftDocument, after: DraftDocument, history = new Set(id
   const command = editDraftCommand.parse({ schemaVersion: 1, commandType: 'EditDraft', actionId: randomUUID(), originatingAccountId: 'test', deviceId: randomUUID(), ownershipEpoch: 0, dependsOn: [], target: { planId: randomUUID() }, expected: { planRevisionId: randomUUID() }, intent: { operations: draftEdits(before, after) } });
   return editDocument(before, command, history);
 }
-function populated() { const d = createHypertrophyPlan(); d.builder!.workouts[0].rows.push(newRow('Squat')); return expandWorkoutDefaults(d); }
+function populated() { const d = createHypertrophyPlan(undefined, true); d.builder!.workouts[0].rows.push(newRow('Squat')); return expandWorkoutDefaults(d); }
 describe('plan-owned hypertrophy defaults', () => {
   it('starts with 5 weeks and 20 independently identified ordered workouts without dates or invented exercises', () => {
-    const d = draftDocument.parse(createHypertrophyPlan());
+    const d = draftDocument.parse(createHypertrophyPlan(undefined, true));
     expect(d.stages).toHaveLength(5); expect(d.occurrences).toHaveLength(20);
     expect(d.occurrences.slice(0, 4).map(o => o.name)).toEqual(['Lower A', 'Upper A', 'Lower B', 'Upper B']);
     expect(d.occurrences.every(o => !o.positions.length)).toBe(true);
@@ -19,7 +19,7 @@ describe('plan-owned hypertrophy defaults', () => {
     validateWorkoutDefaults(d);
   });
   it('expands prescriptions, keeps rep ranges, optional weight and actual reduced deload sets', () => {
-    const before = createHypertrophyPlan(); const edited = structuredClone(before);
+    const before = createHypertrophyPlan(undefined, true); const edited = structuredClone(before);
     edited.builder!.workouts[0].rows.push(newRow('Squat'));
     const d = apply(before, expandWorkoutDefaults(edited));
     expect(d.occurrences.filter(o => o.name === 'Lower A').map(o => [o.positions[0].targets.length, o.positions[0].targets[0].rir])).toEqual([[3,'3'],[3,'3'],[3,'2'],[3,'1'],[2,'4']]);

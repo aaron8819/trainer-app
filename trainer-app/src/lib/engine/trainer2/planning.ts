@@ -1,10 +1,20 @@
 import { draftDocument, type DraftDocument, type EditDraftCommand, type DraftError } from "../../trainer2-contracts/draft";
 import { expandWorkoutDefaults } from "./plan-builder";
+import { catalog, catalogExercise } from './catalog';
 
 export class DraftFailure extends Error {
   constructor(public readonly code: DraftError) { super(code); }
 }
 export function validateWorkoutDefaults(doc: DraftDocument) {
+  for (const e of [...doc.occurrences.flatMap(o => o.positions.map(p => p.exercise)), ...(doc.builder?.workouts.flatMap(w => w.rows.map(r => r.exercise)) ?? [])]) {
+    if (e.kind !== 'catalogSnapshot') continue;
+    const entry = catalog.find(c => c.id === e.catalogId);
+    if (!entry || JSON.stringify(e) !== JSON.stringify(catalogExercise(entry))) {
+      // Compare parsed values in canonical schema order, independent of JSON key order.
+      const expected = entry && catalogExercise(entry);
+      if (!expected || Object.keys(expected).some(key => JSON.stringify(e[key as keyof typeof e]) !== JSON.stringify(expected[key as keyof typeof expected]))) throw new DraftFailure('INVALID_DOCUMENT');
+    }
+  }
   if (!doc.builder) return;
   try {
     const expanded = expandWorkoutDefaults(doc, () => { throw new Error("Missing counterpart"); });
@@ -40,6 +50,8 @@ export function editDocument(previous: DraftDocument, command: EditDraftCommand,
   const findPosition = (id: string) => requireItem(doc.occurrences.flatMap(o => o.positions).find(p => p.id === id));
   for (const op of command.intent.operations) {
     switch (op.op) {
+      case 'setWeekEdits': { const o = requireItem(doc.occurrences.find(o => o.id === op.occurrenceId)); if (op.overrides) o.overrides = op.overrides; else delete o.overrides; break; }
+      case 'editPositionRole': { const p = findPosition(op.positionId); if (op.role) p.role = op.role; else delete p.role; break; }
       case "editWorkoutDefaults": doc.builder = op.builder; break;
       case "setWeekOverride": requireItem(doc.occurrences.find(o => o.id === op.occurrenceId)).weekOverride = op.weekOverride; break;
       case "editPositionTargets": {

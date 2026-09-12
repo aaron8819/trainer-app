@@ -19,12 +19,14 @@ export function draftEdits(before: DraftDocument, after: DraftDocument): Operati
   for (const o of after.occurrences) {
     const old = before.occurrences.find(n => n.id === o.id);
     if (!old) { ops.push({ op: "addOccurrence", occurrence: o }); continue; }
+    if (!same(old.overrides, o.overrides)) ops.push({ op: 'setWeekEdits', occurrenceId: o.id, ...(o.overrides ? { overrides: o.overrides } : {}) });
     if (o.weekOverride !== undefined && old.weekOverride !== o.weekOverride) ops.push({ op: "setWeekOverride", occurrenceId: o.id, weekOverride: o.weekOverride });
     if (old.name !== o.name || old.stageId !== o.stageId) ops.push({ op: "editOccurrence", occurrenceId: o.id, name: o.name, stageId: o.stageId });
     for (const p of old.positions) if (!o.positions.some(n => n.id === p.id)) ops.push({ op: "removePosition", positionId: p.id });
     for (const p of o.positions) {
       const previous = old.positions.find(n => n.id === p.id);
       if (!previous) { ops.push({ op: "addPosition", occurrenceId: o.id, position: p }); continue; }
+      if (previous.role !== p.role) ops.push({ op: 'editPositionRole', positionId: p.id, ...(p.role ? { role: p.role } : {}) });
       if (!same(previous.exercise, p.exercise)) ops.push({ op: "editExercise", positionId: p.id, exercise: p.exercise });
       if (!same(previous.targets, p.targets)) ops.push({ op: "editPositionTargets", positionId: p.id, targets: p.targets });
     }

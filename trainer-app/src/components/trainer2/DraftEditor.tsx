@@ -31,25 +31,26 @@ function initialMeasurement(kind: Measurement["kind"] | "missing"): Target["meas
     case "externalLoad": return { kind, value: "", unit: "kg", convention: "barbellTotal", zeroMeaning: "notAllowed" };
   }
 }
-export function TargetFields({ target: t, change }: { target: Target; change: (fn: (target: Target) => void) => void }) {
+export function TargetFields({ target: t, change, exercise }: { exercise?: DraftDocument["occurrences"][number]["positions"][number]["exercise"]; target: Target; change: (fn: (target: Target) => void, field: "classification" | "required" | "reps" | "measurement" | "rir" | "restSeconds") => void }) {
   const m = t.measurement;
+  const fixed = exercise?.kind === "catalogSnapshot" ? exercise : undefined;
   return <div className="grid gap-3 sm:grid-cols-3">
-    <Choice label="Classification" value={t.classification} options={["preparation", "rampUp", "working", "optionalFinisher"]} onChange={v => change(t => { t.classification = v; })} />
-    <label><input type="checkbox" checked={t.required} onChange={e => change(t => { t.required = e.target.checked; })} /> Required target</label>
-    <TextField label="Minimum reps" numeric value={String(t.reps.min || "")} onChange={v => change(t => { t.reps.min = Number(v); })} />
-    <TextField label="Maximum reps" numeric value={String(t.reps.max || "")} onChange={v => change(t => { t.reps.max = Number(v); })} />
-    <Choice label="Rep basis" value={t.reps.basis} options={["total", "perSide", "alternating"]} onChange={v => change(t => { t.reps.basis = v; })} />
-    <Choice label="Measurement kind" value={m?.kind ?? "missing"} options={["missing", "externalLoad", "addedLoad", "assistance", "bodyweight"]} onChange={v => change(t => { t.measurement = initialMeasurement(v); })} />
+    <Choice label="Classification" value={t.classification} options={["preparation", "rampUp", "working", "optionalFinisher"]} onChange={v => change(t => { t.classification = v; }, 'classification')} />
+    <label><input type="checkbox" checked={t.required} onChange={e => change(t => { t.required = e.target.checked; }, 'required')} /> Required target</label>
+    <TextField label="Minimum reps" numeric value={String(t.reps.min || "")} onChange={v => change(t => { t.reps.min = Number(v); }, 'reps')} />
+    <TextField label="Maximum reps" numeric value={String(t.reps.max || "")} onChange={v => change(t => { t.reps.max = Number(v); }, 'reps')} />
+    <Choice label="Rep basis" value={t.reps.basis} options={fixed ? [fixed.repBasis] : ["total", "perSide", "alternating"]} onChange={v => change(t => { t.reps.basis = v; }, 'reps')} />
+    <Choice label="Measurement kind" value={m?.kind ?? "missing"} options={fixed ? ["missing", fixed.loadKind] : ["missing", "externalLoad", "addedLoad", "assistance", "bodyweight"]} onChange={v => change(t => { t.measurement = initialMeasurement(v); if (fixed && t.measurement?.kind === "externalLoad") t.measurement.convention = fixed.convention as "barbellTotal" | "perImplement" | "machineDisplayed"; }, 'measurement')} />
     {m && m.kind !== "bodyweight" && <>
-      <TextField label="Load or assistance" numeric value={m.value} onChange={v => change(t => { if (t.measurement && t.measurement.kind !== "bodyweight") t.measurement.value = v; })} />
-      <Choice label="Unit" value={m.unit} options={["kg", "lb"]} onChange={v => change(t => { if (t.measurement && t.measurement.kind !== "bodyweight") t.measurement.unit = v; })} />
+      <TextField label="Load or assistance" numeric value={m.value} onChange={v => change(t => { if (t.measurement && t.measurement.kind !== "bodyweight") t.measurement.value = v; }, 'measurement')} />
+      <Choice label="Unit" value={m.unit} options={["kg", "lb"]} onChange={v => change(t => { if (t.measurement && t.measurement.kind !== "bodyweight") t.measurement.unit = v; }, 'measurement')} />
     </>}
     {m?.kind === "externalLoad" ? <>
-      <Choice label="Convention" value={m.convention} options={["barbellTotal", "perImplement", "machineDisplayed"]} onChange={v => change(t => { if (t.measurement?.kind === "externalLoad") t.measurement.convention = v; })} />
-      <Choice label="Zero meaning" value={m.zeroMeaning} options={["notAllowed", "validZero"]} onChange={v => change(t => { if (t.measurement?.kind === "externalLoad") t.measurement.zeroMeaning = v; })} />
+      <Choice label="Convention" value={m.convention} options={fixed ? [m.convention] : ["barbellTotal", "perImplement", "machineDisplayed"]} onChange={v => change(t => { if (t.measurement?.kind === "externalLoad") t.measurement.convention = v; }, 'measurement')} />
+      <Choice label="Zero meaning" value={m.zeroMeaning} options={["notAllowed", "validZero"]} onChange={v => change(t => { if (t.measurement?.kind === "externalLoad") t.measurement.zeroMeaning = v; }, 'measurement')} />
     </> : <p>{!m ? "Weight is optional. You can choose it later." : m.kind === "bodyweight" ? "Bodyweight only; no numeric load." : m.kind === "addedLoad" ? "Added external load; zero means no added load." : "Displayed assistance; zero means no assistance."}</p>}
-    <TextField label="RIR (blank = unspecified)" numeric value={t.rir ?? ""} onChange={v => change(t => { t.rir = v === "" ? null : v; })} />
-    <TextField label="Rest seconds (blank = unspecified)" numeric value={t.restSeconds ?? ""} onChange={v => change(t => { t.restSeconds = v === "" ? null : v; })} />
+    <TextField label="RIR (blank = unspecified)" numeric value={t.rir ?? ""} onChange={v => change(t => { t.rir = v === "" ? null : v; }, 'rir')} />
+    <TextField label="Rest seconds (blank = unspecified)" numeric value={t.restSeconds ?? ""} onChange={v => change(t => { t.restSeconds = v === "" ? null : v; }, 'restSeconds')} />
   </div>;
 }
 

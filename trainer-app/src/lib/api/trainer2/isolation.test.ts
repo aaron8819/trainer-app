@@ -18,6 +18,7 @@ describe("Trainer2 boundary", () => {
       if (seen.has(file)) return; seen.add(file);
       const relative = file.slice(app.length + 1).replaceAll("\\", "/");
       expect(allowed.some(prefix => relative.startsWith(prefix)) || ["lib/operations/production-write-gate-http.ts", "lib/operations/production-write-gate.ts"].includes(relative), relative).toBe(true);
+      if (file.endsWith(".json")) { JSON.parse(readFileSync(file, "utf8")); return; }
       const source = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
       const visit = (node: ts.Node) => {
         let specifier: string | undefined;
@@ -28,7 +29,7 @@ describe("Trainer2 boundary", () => {
         }
         if (specifier?.startsWith(".") || specifier?.startsWith("@/")) {
           const base = specifier.startsWith("@/") ? resolve(app, specifier.slice(2)) : resolve(dirname(file), specifier);
-          walk(existsSync(`${base}.ts`) ? `${base}.ts` : `${base}.tsx`);
+          walk(existsSync(base) ? base : existsSync(`${base}.ts`) ? `${base}.ts` : `${base}.tsx`);
         }
         ts.forEachChild(node, visit);
       }; visit(source);

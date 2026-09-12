@@ -23,17 +23,32 @@ export const target = z.object({
     basis: z.enum(["total", "perSide", "alternating"]) }).strict().refine(v => v.min <= v.max),
   measurement: measurement.nullable(), rir: decimal.refine(v => Number(v) <= 10, "RIR must be at most 10").nullable(), restSeconds: decimal.nullable(),
 }).strict();
-export const position = z.object({ id, sourceKey: id.optional(), exercise: z.object({
-  kind: z.literal("authoredDescription"), name: label, variation: label,
-}).strict(), targets: z.array(target).max(100) }).strict();
+export const exercise = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('authoredDescription'), name: label, variation: label }).strict(),
+  z.object({ kind: z.literal('catalogSnapshot'), catalogId: label, catalogVersion: z.literal(1), name: label, variation: label,
+    equipment: z.array(label).min(1), purpose: label, repBasis: target.shape.reps.shape.basis,
+    loadKind: z.enum(['externalLoad', 'bodyweight', 'addedLoad', 'assistance']),
+    convention: z.enum(['barbellTotal', 'perImplement', 'machineDisplayed', 'bodyweightOnly', 'addedExternal', 'displayedAssistance']),
+  }).strict(),
+]);
+export const role = z.enum(['Main lift', 'Secondary lift', 'Accessory', 'Calves', 'Core']);
+export const overrideField = z.enum(['exercise', 'role', 'sets', 'reps', 'measurement', 'rir', 'restSeconds', 'classification', 'required']);
+export const weekEdits = z.object({ removed: z.array(id), order: z.boolean(),
+  fields: z.record(id, z.array(overrideField).min(1)),
+  values: z.record(id, target.omit({ id: true }).partial()).optional(),
+  targets: z.record(id, z.array(z.enum(['reps', 'measurement', 'rir', 'restSeconds', 'classification', 'required'])).min(1)).optional(),
+}).strict();
+export const position = z.object({ id, sourceKey: id.optional(), role: role.optional(), exercise, targets: z.array(target).max(100) }).strict();
 export const occurrence = z.object({ id, stageId: id, name: label, workoutKey: id.optional(), weekOverride: z.boolean().optional(),
+  overrides: weekEdits.optional(),
   positions: z.array(position).max(100) }).strict();
 export const stage = z.object({ id, name: label }).strict();
 export const builder = z.object({ version: z.literal(1), template: z.literal("hypertrophy"),
+  starterVersion: z.literal(1).optional(), equipment: z.array(label).optional(),
   weeks: z.array(z.object({ stageId: id, deload: z.boolean(), rir: target.shape.rir }).strict()).length(5)
     .refine(weeks => weeks.every((week, i) => week.deload === (i === 4)), "The supported schedule ends with one deload week"),
   workouts: z.array(z.object({ key: id, name: label, rows: z.array(z.object({
-    key: id, exercise: position.shape.exercise, sets: z.int().min(1).max(20), prescription: target.omit({ id: true }),
+    key: id, exercise: position.shape.exercise, role: role.optional(), sets: z.int().min(1).max(20), prescription: target.omit({ id: true }),
   }).strict()).max(20) }).strict()).length(4),
 }).strict();
 export const draftDocument = z.object({ schemaVersion: z.literal(1), name: label,
@@ -46,7 +61,16 @@ export const draftDocument = z.object({ schemaVersion: z.literal(1), name: label
   for (const o of doc.occurrences) {
     if (!stages.has(o.stageId)) ctx.addIssue({ code: "custom", message: "Unknown stage reference" });
     all.push(o.id);
-    for (const p of o.positions) { all.push(p.id); all.push(...p.targets.map(t => t.id)); }
+    for (const p of o.positions) {
+      all.push(p.id); all.push(...p.targets.map(t => t.id));
+      if (p.exercise.kind === 'catalogSnapshot') {
+        const e = p.exercise;
+        if (p.targets.some(t => t.reps.basis !== e.repBasis || (t.measurement && (t.measurement.kind !== e.loadKind || t.measurement.convention !== e.convention))))
+          ctx.addIssue({ code: 'custom', message: 'Prescription must retain catalog measurement meaning' });
+      }
+    }
+    if (o.overrides && (o.weekOverride || Object.keys(o.overrides.fields).some(key => !o.positions.some(p => p.id === key)) || Object.keys(o.overrides.targets ?? {}).some(key => !o.positions.some(p => p.targets.some(t => t.id === key))) || new Set(o.overrides.removed).size !== o.overrides.removed.length))
+      ctx.addIssue({ code: 'custom', message: 'Invalid explicit week edits' });
   }
   if (new Set(all).size !== all.length) ctx.addIssue({ code: "custom", message: "Duplicate identity" });
   if (doc.builder) {
@@ -63,14 +87,18 @@ export const draftDocument = z.object({ schemaVersion: z.literal(1), name: label
       for (const o of matches) {
         const sources = o.positions.flatMap(p => p.sourceKey ? [p.sourceKey] : []);
         if (new Set(sources).size !== sources.length) ctx.addIssue({ code: "custom", message: "Duplicate exercise counterpart" });
+        if (!o.weekOverride && (sources.some(key => !workout.rows.some(r => r.key === key)) || o.overrides?.removed.some(key => !workout.rows.some(r => r.key === key) || sources.includes(key))))
+          ctx.addIssue({ code: 'custom', message: 'Invalid removed or inherited slot' });
       }
     }));
-  } else if (doc.occurrences.some(o => o.workoutKey || o.weekOverride !== undefined || o.positions.some(p => p.sourceKey))) {
+  } else if (doc.occurrences.some(o => o.workoutKey || o.weekOverride !== undefined || o.overrides || o.positions.some(p => p.sourceKey))) {
     ctx.addIssue({ code: "custom", message: "Counterparts require builder context" });
   }
 });
 export type DraftDocument = z.infer<typeof draftDocument>;
 export const editOperation = z.discriminatedUnion("op", [
+  z.object({ op: z.literal('setWeekEdits'), occurrenceId: id, overrides: weekEdits.optional() }).strict(),
+  z.object({ op: z.literal('editPositionRole'), positionId: id, role: role.optional() }).strict(),
   z.object({ op: z.literal("editWorkoutDefaults"), builder }).strict(),
   z.object({ op: z.literal("setWeekOverride"), occurrenceId: id, weekOverride: z.boolean() }).strict(),
   z.object({ op: z.literal("editPositionTargets"), positionId: id, targets: z.array(target).max(100) }).strict(),

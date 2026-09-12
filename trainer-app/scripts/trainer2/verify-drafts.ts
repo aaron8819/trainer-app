@@ -15,6 +15,7 @@ import { verifyDraftUpgrade } from "./verify-draft-upgrade";
 import { verificationSource } from "./verification-source";
 import { verifyWorkbenchBrowser } from "./verify-workbench-browser";
 import { verifyEditorBrowser } from "./verify-editor-browser";
+import { verifyTemplatePersistence } from './verify-template-persistence';
 import { authWebPlatformEnvironment, authWebEnvironmentProbe } from "./auth-web-environment";
 
 const results: string[] = [];
@@ -282,12 +283,14 @@ export async function verifyDrafts(options: { manualDemo?: boolean; skipBuild?: 
     passed("tombstone hides draft and retries cannot resurrect; dependencies explicitly rejected");
     evidence.upgrade = await verifyDraftUpgrade(adminPool, ownerUrl, runtimeUrl, command, sample);
     passed("fresh migration chain; populated candidate upgrade and historical replay; inconsistent upgrade rejected without repair; second deploy ledger no-op");
+    await verifyTemplatePersistence(runtime, principal);
+    passed('catalog snapshots, equal overrides, individual sets, duplicate exercises, structural edits, reset and legacy drafts persist through real PostgreSQL');
     // Real browser and actual HTTP handlers, using only the limited runtime role.
     const base = await startWeb();
     const { chromium } = await import("@playwright/test");
     browser = await chromium.launch({ channel: "msedge", headless: true });
     evidence.browser = { engine: "installed Edge through Playwright", version: browser.version() };
-    const context = await browser.newContext(); context.setDefaultTimeout(20000);
+    const context = await browser.newContext({ hasTouch: true }); context.setDefaultTimeout(20000);
     const tab = await context.newPage();
     tab.on("response", async response => { if (response.url().includes("/api/trainer2/") && response.status() >= 400) console.log("BROWSER_API_FAILURE", response.status(), await response.text()); });
     const errors: string[] = []; tab.on("pageerror", e => errors.push(e.message));

@@ -43,6 +43,12 @@ export const occurrence = z.object({ id, stageId: id, name: label, workoutKey: i
   overrides: weekEdits.optional(),
   positions: z.array(position).max(100) }).strict();
 export const stage = z.object({ id, name: label }).strict();
+// Plan-wide authored policy. Performance groups/algorithms are a later contract.
+// Absence means unknown, including in historical saved documents.
+export const progressionIntent = z.object({
+  version: z.literal(1), mode: z.literal('plannedPrescriptions'),
+  scope: z.literal('wholePlan'), parameters: z.object({}).strict(),
+}).strict();
 export const builder = z.object({ version: z.literal(1), template: z.literal("hypertrophy"),
   starterVersion: z.literal(1).optional(), equipment: z.array(label).optional(),
   weeks: z.array(z.object({ stageId: id, deload: z.boolean(), rir: target.shape.rir }).strict()).length(5)
@@ -53,6 +59,7 @@ export const builder = z.object({ version: z.literal(1), template: z.literal("hy
 }).strict();
 // Read compatibility only. New commands must use draftDocument below.
 export const savedDraftDocument = z.object({ schemaVersion: z.literal(1), name: label,
+  progression: progressionIntent.optional(),
   builder: builder.optional(),
   endpoint: z.literal("endOfOrderedOccurrences"), stages: z.array(stage).max(100),
   occurrences: z.array(occurrence).max(500),
@@ -117,6 +124,7 @@ export const draftDocument = savedDraftDocument.superRefine((doc, ctx) => {
 });
 export type DraftDocument = z.infer<typeof draftDocument>;
 export const editOperation = z.discriminatedUnion("op", [
+  z.object({ op: z.literal('setProgressionIntent'), progression: progressionIntent.nullable() }).strict(),
   z.object({ op: z.literal('setWeekEdits'), occurrenceId: id, overrides: weekEdits.optional() }).strict(),
   z.object({ op: z.literal('editPositionRole'), positionId: id, role: role.optional() }).strict(),
   z.object({ op: z.literal("editWorkoutDefaults"), builder }).strict(),
@@ -162,11 +170,3 @@ export type DraftOutcome = {
   acceptedSequence: string; result: { planId: string; revisionId: string; revisionNumber: number; contentHash: string };
 } | { status: "Rejected" | "Conflict"; actionId: string; commandType: DraftCommand["commandType"]; code: DraftError };
 export type CommandResponse = { outcome: DraftOutcome; replayed: boolean; outcomeCursor: string };
-
-export function activationBlockers(doc: DraftDocument): string[] {
-  const blockers = ["ACTIVATION_NOT_IMPLEMENTED", "PROGRESSION_INTENT_NOT_IMPLEMENTED"];
-  if (!doc.occurrences.some(o => o.positions.some(p => p.targets.length))) blockers.push("NO_EXECUTABLE_TRAINING");
-  if (doc.occurrences.some(o => !o.positions.length || o.positions.some(p => !p.exercise.name || !p.targets.length || p.targets.some(t => t.measurement === null))))
-    blockers.push("INCOMPLETE_PRESCRIPTION");
-  return blockers;
-}

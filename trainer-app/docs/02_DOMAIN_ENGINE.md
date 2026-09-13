@@ -1,5 +1,7 @@
 # 02 Domain Engine
 
+Trainer2 progression intent and revision-bound read-only review: [contract, ownership, behavior matrix and local verification](architecture/trainer2/PROGRESSION_REVIEW.md).
+
 ## Trainer2 draft planning
 
 `src/lib/engine/trainer2/planning.ts` independently owns explicit draft operations and identity continuity. It operates only on strict full documents from `src/lib/trainer2-contracts/draft.ts`; no legacy generator, accepted seed or lifecycle owner participates. [Supported shape, blockers and identity rules](architecture/trainer2/DRAFT_SLICE.md#actual-supported-draft-shape).

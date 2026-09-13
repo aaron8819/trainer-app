@@ -1,5 +1,7 @@
 # 05 UI Flows
 
+Trainer2 progression intent and revision-bound read-only review: [contract, ownership, behavior matrix and local verification](architecture/trainer2/PROGRESSION_REVIEW.md).
+
 ## Trainer2 sign-in
 
 `/trainer2/auth` supports email PKCE sign-in, dynamic session status and POST logout. Its separate auth routes do not provision accounts or grant Draft/training access. [Flow and protections](architecture/trainer2/SUPABASE_AUTH.md).

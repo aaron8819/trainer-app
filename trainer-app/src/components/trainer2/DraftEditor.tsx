@@ -69,7 +69,7 @@ export function DraftEditor({ document: doc, disabled, onChange }: { document: D
     <button type="button" className={control} onClick={() => update(d => { d.stages.push({ id: crypto.randomUUID(), name: "" }); })}>Add stage</button>
     <h3 className="font-semibold">Ordered sessions</h3>
     <p>Session order defines the finite endpoint independently of stage order.</p>
-    {doc.occurrences.map((o, i) => <fieldset key={o.id} className="space-y-4 rounded border p-4"><legend>Session {i + 1}</legend>
+    {doc.occurrences.map((o, i) => <fieldset id={`edit-${o.id}`} tabIndex={-1} key={o.id} className="space-y-4 rounded border p-4"><legend>Session {i + 1}</legend>
       <TextField label="Session name" value={o.name} onChange={v => update(d => { d.occurrences[i].name = v; })} />
       <label className="block">Assigned stage <select aria-label="Assigned stage" className={control} value={o.stageId} onChange={e => update(d => { d.occurrences[i].stageId = e.target.value; })}>{doc.stages.map((s, j) => <option key={s.id} value={s.id}>{j + 1}. {s.name || "Unnamed stage"}</option>)}</select></label>
       <Order index={i} length={doc.occurrences.length} move={v => update(d => move(d.occurrences, i, v))} />

@@ -29,14 +29,17 @@ function ConfirmReplacement({
 export function PlanBuilder({
   document: doc,
   disabled,
-  onChange
+  onChange,
+  initialOccurrenceId
 }: {
   document: DraftDocument;
   disabled: boolean;
   onChange: (d: DraftDocument) => void;
+  initialOccurrenceId?: string;
 }) {
-  const [workoutIndex, setWorkoutIndex] = useState(0);
-  const [weekIndex, setWeekIndex] = useState<number | null>(null);
+  const initialOccurrence = doc.occurrences.find(o => o.id === initialOccurrenceId);
+  const [workoutIndex, setWorkoutIndex] = useState(() => Math.max(0, doc.builder?.workouts.findIndex(w => w.key === initialOccurrence?.workoutKey) ?? 0));
+  const [weekIndex, setWeekIndex] = useState<number | null>(() => initialOccurrence && doc.builder ? doc.builder.weeks.findIndex(w => w.stageId === initialOccurrence.stageId) : null);
   const [weeksOpen, setWeeksOpen] = useState(false);
   const [picker, setPicker] = useState<{
     key?: string;

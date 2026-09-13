@@ -1,5 +1,7 @@
 # 03 Data Schema
 
+Trainer2 progression intent and revision-bound read-only review: [contract, ownership, behavior matrix and local verification](architecture/trainer2/PROGRESSION_REVIEW.md).
+
 `prisma/trainer2-runtime-grants.sql` prepares fresh dedicated lookup/read/write/provisioning roles and RLS policies separately from automatic migrations. It changes no tables or migration history. Runtime cannot administer AccountPrincipal; these server role policies do not implement per-account RLS. [Privilege and mapping contract](architecture/trainer2/PRINCIPAL_BOUNDARY.md).
 
 ## Trainer2 draft persistence

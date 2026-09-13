@@ -1,5 +1,7 @@
 # 06 Testing
 
+Trainer2 progression intent and revision-bound read-only review: [contract, ownership, behavior matrix and local verification](architecture/trainer2/PROGRESSION_REVIEW.md).
+
 ## Trainer2 Supabase authentication verification
 
 `node node_modules/tsx/dist/cli.mjs scripts/test-trainer2-auth-postgres.ts --confirm-disposable` runs real disposable Supabase Auth, Mailpit, PostgreSQL and Edge sessions, then combines the real verifier with restricted mapping/replay tests. `authentication.test.ts` separately uses controlled signed-token/provider fixtures. [Reproducible setup, exact evidence and limitations](architecture/trainer2/SUPABASE_AUTH.md).

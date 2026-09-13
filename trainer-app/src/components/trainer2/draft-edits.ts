@@ -8,6 +8,7 @@ const ids = (items: { id: string }[]) => items.map(item => item.id);
 // Planning still validates and applies the complete operation batch atomically.
 export function draftEdits(before: DraftDocument, after: DraftDocument): Operations {
   const ops: Operations = [];
+  if (!same(before.progression, after.progression)) ops.push({ op: 'setProgressionIntent', progression: after.progression ?? null });
   if (after.builder && !same(before.builder, after.builder)) ops.push({ op: "editWorkoutDefaults", builder: after.builder });
   if (before.name !== after.name) ops.push({ op: "renamePlan", name: after.name });
   for (const stage of after.stages) {

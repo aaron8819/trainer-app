@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { PrismaClient, Prisma } from "@prisma/client";
-import { createDraftCommand, editDraftCommand, activationBlockers,
+import { createDraftCommand, editDraftCommand,
   type DraftCommand, type DraftDocument, type DraftOutcome, type CommandResponse } from "../../trainer2-contracts/draft";
 import { DraftFailure, editDocument, identities, validateWorkoutDefaults, readSavedDocument } from "../../engine/trainer2/planning";
 import { canonicalJson, commandBinding, integrityHash } from "./integrity";
+import { reviewPlan, REVIEW_POLICY, type SavedPlanReview } from '../../engine/trainer2/plan-review';
 
 import { authorizeAccount as authorize, DraftAccessError, type ServerPrincipal } from "./principal";
 export { DraftAccessError, type ServerPrincipal } from "./principal";
@@ -14,8 +15,13 @@ export async function readDraft(db: PrismaClient | Prisma.TransactionClient, pri
   if (!plan) return null;
   const revision = await db.trainer2PlanRevision.findFirstOrThrow({ where: { id: plan.currentRevisionId, planId, accountId: principal.accountId } });
   const intent = readSavedDocument(revision.document);
+  const issues = reviewPlan(intent);
+  const binding = { accountId: principal.accountId, planId, revisionId: revision.id, contentHash: revision.contentHash,
+    progression: intent.progression ?? null, progressionHash: integrityHash(canonicalJson(intent.progression ?? null)), policyVersion: REVIEW_POLICY } as const;
+  const review: SavedPlanReview = { ...binding, digest: integrityHash(canonicalJson(binding)), issues,
+    status: issues.length ? 'issues' : 'validDraft', intent };
   return { planId, revisionId: revision.id, revisionNumber: revision.revisionNumber, contentHash: revision.contentHash,
-    intent, activationBlockers: activationBlockers(intent) };
+    intent, review, activationBlockers: ['ACTIVATION_NOT_IMPLEMENTED', ...issues.map(i => i.code)] };
 }
 export function createDraft(db: PrismaClient, principal: ServerPrincipal, input: unknown): Promise<CommandResponse> {
   return acceptDraft(db, principal, input, "CreateDraft");

@@ -58,6 +58,7 @@ export function editDocument(previous: DraftDocument, command: EditDraftCommand,
   const findPosition = (id: string) => requireItem(doc.occurrences.flatMap(o => o.positions).find(p => p.id === id));
   for (const op of command.intent.operations) {
     switch (op.op) {
+      case 'setProgressionIntent': if (op.progression) doc.progression = op.progression; else delete doc.progression; break;
       case 'setWeekEdits': { const o = requireItem(doc.occurrences.find(o => o.id === op.occurrenceId)); if (op.overrides) o.overrides = op.overrides; else delete o.overrides; break; }
       case 'editPositionRole': { const p = findPosition(op.positionId); if (op.role) p.role = op.role; else delete p.role; break; }
       case "editWorkoutDefaults": doc.builder = op.builder; break;

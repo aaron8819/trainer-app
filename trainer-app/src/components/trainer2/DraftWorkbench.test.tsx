@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createHypertrophyPlan } from '@/lib/engine/trainer2/plan-builder';
 import { DraftWorkbench } from './DraftWorkbench';
+import { reviewPlan } from '@/lib/engine/trainer2/plan-review';
 const plan = createHypertrophyPlan();
 const state = (name = plan.name, revisionNumber = 1) => ({ planId: '00000000-0000-4000-8000-000000000001', revisionId: `00000000-0000-4000-8000-00000000000${revisionNumber + 1}`, revisionNumber, intent: { ...plan, name }, activationBlockers: [] });
 const json = (body: unknown, ok = true) => ({ ok, json: async () => body });
@@ -9,6 +10,10 @@ const acceptance = () => json({ outcome: { status: 'Accepted', result: { planId:
 const click = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
 const mount = () => render(<DraftWorkbench accountId="account-a" ownershipEpoch={0} />);
 const saved = () => waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/^Saved$/));
+const reviewed = (name = plan.name, revisionNumber = 1) => {
+  const s = state(name, revisionNumber);
+  return { ...s, review: { accountId: 'account-a', planId: s.planId, revisionId: s.revisionId, intent: s.intent, progression: s.intent.progression, issues: reviewPlan(s.intent), status: 'validDraft', digest: String(revisionNumber) } };
+};
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); window.history.replaceState(null, '', '/'); });
 describe('builder save recovery', () => {
   it.each(['non-OK', 'network'])('retains accepted bookmark after %s refresh failure; retries only GET', async failure => {
@@ -58,5 +63,39 @@ describe('builder save recovery', () => {
     expect(screen.getByRole('heading', { name: 'My losing edit' })).toBeVisible();
     click('Continue from latest plan'); expect(screen.getByLabelText('Plan name')).toBeEnabled();
     expect(screen.getByLabelText('Plan name')).toHaveValue('Other tab');
+  });
+});
+describe('saved revision review', () => {
+  it('requires confirmed save, invalidates on edit and rejects delayed review after a new saved revision', async () => {
+    let deliver!: (v: unknown) => void;
+    const fetcher = vi.fn().mockResolvedValueOnce(acceptance()).mockResolvedValueOnce(json(reviewed()))
+      .mockResolvedValueOnce(json(reviewed())).mockImplementationOnce(() => new Promise(resolve => { deliver = resolve; }))
+      .mockResolvedValueOnce(acceptance()).mockResolvedValueOnce(json(reviewed('Changed', 2)))
+      .mockResolvedValueOnce(json(reviewed('Changed', 2)));
+    vi.stubGlobal('fetch', fetcher); mount();
+    expect(screen.getByRole('button', { name: 'Review plan' })).toBeDisabled();
+    click('Save plan'); await saved(); click('Review plan');
+    await screen.findByRole('heading', { name: 'Saved plan checks passed' });
+    click('Review plan');
+    fireEvent.change(screen.getByLabelText('Plan name'), { target: { value: 'Changed' } });
+    expect(screen.getByText(/Review outdated/)).toBeVisible();
+    click('Save plan'); await saved(); click('Review plan');
+    await screen.findByRole('heading', { name: 'Saved plan checks passed' });
+    await act(async () => deliver(json(reviewed())));
+    expect(screen.queryByText(/Review outdated/)).toBeNull();
+    expect(screen.getByLabelText('Plan name')).toHaveValue('Changed');
+  });
+  it('a changed remote head requires reload, and a late older review cannot replace a newer response', async () => {
+    let deliver!: (v: unknown) => void;
+    const fetcher = vi.fn().mockResolvedValueOnce(acceptance()).mockResolvedValueOnce(json(reviewed()))
+      .mockImplementationOnce(() => new Promise(resolve => { deliver = resolve; }))
+      .mockResolvedValueOnce(json(reviewed())).mockResolvedValueOnce(json(reviewed('Remote', 2)));
+    vi.stubGlobal('fetch', fetcher); mount(); click('Save plan'); await saved(); click('Review plan'); click('Reviewing…');
+    await screen.findByRole('heading', { name: 'Saved plan checks passed' });
+    await act(async () => deliver(json(reviewed('Stale remote response', 3))));
+    expect(screen.getByRole('status')).toHaveTextContent(/^Saved$/);
+    click('Review plan');
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('changed in another tab'));
+    expect(screen.queryByRole('heading', { name: 'Saved plan checks passed' })).toBeNull();
   });
 });

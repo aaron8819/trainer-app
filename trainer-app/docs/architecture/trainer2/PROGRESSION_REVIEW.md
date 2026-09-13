@@ -1,0 +1,45 @@
+# Versioned progression intent and saved plan review
+
+Local activation preparation only, based on `b352dad65588b9d753ca28b697b6a2a606a21c20` (tree `dde962d4056035be1c83e8101198c8d84d50b9f7`). The accepted template-builder review remains closed. This slice adds no activation, execution, hosted admission, historical import, provider writes or Phase 0 completion claim.
+
+## Ownership and bounded method
+
+Planning owns full immutable PlanRevision documents. `src/lib/trainer2-contracts/draft.ts` adds optional `progression`, a strict owned value: `{version: 1, mode: 'plannedPrescriptions', scope: 'wholePlan', parameters: {}}`. `setProgressionIntent` is a named EditDraft operation; null deliberately clears it. Existing account-scoped acceptance, expected-revision checks, durable command outcomes, canonical hashing and SQL immutable revisions apply unchanged. No additional table, mutation endpoint or mutable current-template lookup exists.
+
+The one supported choice is **Follow the planned prescriptions**. Follow the saved sets, reps, effort, weekly differences and deload; further target changes are deliberate authored edits. This is bounded plan-level intent (blueprint §21), not either of the later automated recommendation methods. Double/rep progression and their position-owned explicit performance groups remain deferred to the architecture's recommendation slice. This mode establishes no performance comparison groups, eligibility, weight increase or automatic set increase. Whole-plan scope includes every saved position, including custom exercises, week-only additions and older independent workouts. Swaps and structural edits cannot dangle performance references because this policy contains none; unknown reference fields/scopes are rejected, rather than inferred from counterpart IDs.
+
+New starter initialization copies this value alongside the existing Lower A / Upper A / Lower B / Upper B, four training weeks and deload, editable effort 3 / 3 / 2 / 1 / 4, and already-expanded prescriptions. No second deload reduction occurs. No intent is attached during reads, metadata repair or unrelated edits of older plans. An older plan's user explicitly selects the mode and saves a new revision. The intent version fixes its meaning; the containing PlanRevision is its immutable reference. Changing it always uses the ordinary new-revision acceptance path.
+
+## Read contract and UI
+
+`src/lib/engine/trainer2/plan-review.ts::reviewPlan` owns validity policy. `src/lib/api/trainer2/planning.ts::readDraft` computes review from the owner-scoped saved revision. Existing GET runs in a READ ONLY transaction and returns `review` plus its exact `intent`. Binding includes account, plan, revision ID, complete content hash, complete progression value or null, progression hash and `trainer2-plan-review-v1`. A canonical SHA-256 digest covers this binding. Equal visible values on a later revision have a different digest. Hashes are binding evidence, never browser-issued permission.
+
+Checks cover strict document/reference/catalog/override consistency, at least one working target in the plan, nonempty intended workouts, named exercise descriptions and target presence. The strict Draft schema enforces supported classifications, rep ranges/bases, effort bounds and measurement tuples. Optional rest/effort/starting load and custom descriptions remain valid; unknown starting load is not fabricated or blocked. Empty intended workouts are issues, not silently interpreted as rest-day annotations. A recoverable historical override-metadata defect requires the existing explicit repair and Save; read does not repair it. No medical, volume-optimality, readiness or individualized safety verdict is computed.
+
+`Progression.tsx` provides the summary and small editor. Existing weekly effort/set/rep controls edit authored prescriptions. Workbench requires a confirmed saved form for **Review plan**, fetches authoritative review, and refuses a different remote head pending reload. Uncertain saves retain the accepted recovery flow and cannot be reviewed. A monotonic request generation invalidates review responses on edits, save/reload and newer review requests. Old results remain visibly historical after a new saved revision; issues are linked only for the current review. Builder issue links select the actual week/workout; independent draft links focus the session. Normal UI hides IDs, policy versions and hashes. `DraftReview` renders the exact assessed target rows including mixed sets, decimal spelling, measurement/zero conventions and saved deload. No materializer runs while rendering.
+
+Reviews are not persisted: reopening loads saved state and offers fresh review, without claiming a previous human review. No separate acknowledgment is required by this bounded read contract. There is no approval workflow or activation button. Capability text: “Review only. Starting the plan is coming next.” Passing checks means the bounded saved draft is representable, not that it is ready for real training.
+
+## Future activation requirements
+
+Under the account serialization lock, Activate must authenticate/authorize current account ownership and runtime epoch/admission, load the exact current Draft and applicable current instruction/restriction versions, recompute hard validity and the complete review scope/digest under the current policy, and reject stale reviewed inputs. It must check executable work, resolve exclusions via edit or explicit scoped exception (including uncertainty for custom descriptions), and enforce no other Active/Paused plan. It must atomically write initial-approved/current revision semantics, Active lifecycle, PlanDecision and durable action/outcome; safe retry and changed-envelope rejection apply. Concurrent plan edits, restrictions or competing activation must not race through this check. This slice's digest omits unimplemented instruction state and cannot be used unchanged as a complete activation digest. Hosted role/admission/cutover gates remain separately deferred. A passed read alone authorizes nothing.
+
+## Behavior matrix and verification
+
+| Combination | Expected result / coverage |
+| --- | --- |
+| New populated template | Explicit planned mode, unchanged 20 workouts and deload; unit, PostgreSQL and Edge |
+| Older plan without intent | Read/rename preserve absence; issue → select → save; unit, PostgreSQL and Edge |
+| Shared, custom addition, week-only, older independent workout | Same plan-wide method; existing relationships/targets preserved, no fabricated performance groups; unit and PostgreSQL |
+| Valid / missing / malformed / unknown mode or version / foreign reference | Valid draft / actionable choice / strict server rejection with no partial writes; unit and PostgreSQL |
+| Current / prior / later equal-valued revision | Digest binds exact revision; equal content hashes do not restore applicability; PostgreSQL |
+| Prescription / intent / structure / metadata edit | Full revision acceptance; prior review not applicable. Structural/intent PostgreSQL, prescription Edge, metadata focused domain regression plus existing immutable revision owner |
+| Saved / pending / uncertain save | Current review / save required / recovery required; Edge and workbench tests |
+| Two editors / out-of-order review responses | One accepted save, one conflict; request generation discards obsolete responses; PostgreSQL and workbench tests |
+| Retry / changed content with same command ID / other account | Prior outcome / collision / denied; PostgreSQL |
+| GET review / attempted lifecycle action | No table or account-counter changes; lifecycle POST absent; PostgreSQL and actual HTTP |
+| Reopen | Saved intent persists; fresh review required; Edge |
+
+Regression definitions: `plan-review.test.ts`, `DraftWorkbench.test.tsx`, `scripts/trainer2/verify-progression-review.ts`. Run the focused disposable check with `node node_modules/tsx/dist/cli.mjs scripts/test-trainer2-progression-review.ts --confirm-disposable`. It reuses only existing disposable provisioning and clean-up, avoiding rerunning closed Auth/builder/upgrade assessments. Source-qualified sanitized receipts and desktop/mobile screenshots are retained in ignored `artifacts/trainer2`; final delivery binding is recorded after commit. Actual installed Edge uses emulated mobile viewport, not a physical device test.
+
+From this worktree's `trainer-app` directory, the existing demo command is `node node_modules/tsx/dist/cli.mjs scripts/demo-trainer2-drafts.ts --confirm-disposable`. It prints READY and its allocated loopback URL. Enter/Ctrl+C stops only its own app and synthetic PostgreSQL container. Existing demos, worktrees and user data are preserved.

@@ -16,7 +16,9 @@ export function createHypertrophyPlan(id: IdFactory = () => crypto.randomUUID(),
       const row = newRow(key, id); row.exercise = catalogExercise(catalog.find(e => e.id === `t2:${key}`)!);
       row.sets = sets; row.role = role; row.prescription.reps = { min, max, basis: row.exercise.kind === 'catalogSnapshot' ? row.exercise.repBasis : 'total' }; return row;
     }) })) };
-  return expandWorkoutDefaults({ schemaVersion: 1, name: hypertrophyTemplate.name, endpoint: 'endOfOrderedOccurrences', stages, builder,
+  return expandWorkoutDefaults({ schemaVersion: 1, name: hypertrophyTemplate.name,
+    progression: { version: 1, mode: 'plannedPrescriptions', scope: 'wholePlan', parameters: {} },
+    endpoint: 'endOfOrderedOccurrences', stages, builder,
     occurrences: stages.flatMap(s => builder.workouts.map(w => ({ id: id(), stageId: s.id, name: w.name, workoutKey: w.key, weekOverride: false, positions: [] }))) }, id);
 }
 const starter: [string, number, number, number, NonNullable<Row['role']>][][] = [

@@ -51,7 +51,7 @@ function sample(accountId: string): CreateDraftCommand {
 function rename(create: CreateDraftCommand, revisionId: string, name: string): EditDraftCommand {
   return { ...create, commandType: "EditDraft", actionId: randomUUID(), expected: { planRevisionId: revisionId }, intent: { operations: [{ op: "renamePlan", name }] } };
 }
-export async function verifyDrafts(options: { manualDemo?: boolean; skipBuild?: boolean } = {}) {
+export async function verifyDrafts(options: { manualDemo?: boolean; skipBuild?: boolean; progressionReview?: boolean } = {}) {
   if (options.manualDemo) console.log("Starting Trainer plan builder with disposable synthetic data. The clickable URL appears here when ready.");
   const source = verificationSource();
   const started = new Date().toISOString();
@@ -136,6 +136,16 @@ export async function verifyDrafts(options: { manualDemo?: boolean; skipBuild?: 
         await new Promise(r => setTimeout(r, 500));
       }
       return base;
+    }
+    if (options.progressionReview) {
+      const { verifyProgressionReview } = await import('./verify-progression-review');
+      evidence.invocation = 'node node_modules/tsx/dist/cli.mjs scripts/test-trainer2-progression-review.ts --confirm-disposable';
+      evidence.progressionReview = await verifyProgressionReview(runtime, reader, principal, other, startWeb);
+      evidence.sourceAfter = verificationSource();
+      assert.equal((evidence.sourceAfter as ReturnType<typeof verificationSource>).manifestHash, source.manifestHash);
+      evidence.status = 'passed';
+      passed('versioned progression and exact-revision review: PostgreSQL and actual Edge');
+      return;
     }
     if (options.manualDemo) {
       const base = await startWeb();

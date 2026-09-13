@@ -94,3 +94,5 @@ node node_modules/tsx/dist/cli.mjs scripts/demo-trainer2-drafts.ts --confirm-dis
 ```
 
 The launcher prints **READY — Trainer plan builder**, followed by its clickable loopback URL. Enter/Ctrl+C stops the app and deletes its own synthetic database. Installed dependencies, Docker and `postgres:17-alpine` are required. Plan editing only; activation and hosted readiness are not claimed.
+
+The next local slice adds [versioned plan-wide progression intent and exact saved revision review](PROGRESSION_REVIEW.md). Accepted builder behavior and its review remain closed.

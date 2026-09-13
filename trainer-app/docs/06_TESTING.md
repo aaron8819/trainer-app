@@ -370,6 +370,11 @@ CI process when supported, with the original failure and unchanged-tree retry ev
 - Every mutation command uses exact argument matching or an explicitly approved guard-first
   route. Additional or malformed confirmation arguments are rejected before Docker or
   database-dependent loading.
+- When registering a disposable mutation command, review its guard implementation and update
+  the explicit approved route in `test-environment-preflight.test.ts` where appropriate. Run
+  `npm run test:environment-classification` as well as the root command-registry validator;
+  registry coverage alone does not verify the command's approved guard route. This also applies
+  to metadata-only registry corrections after earlier verification.
 - Credential-free subprocesses enumerate actual environment keys and remove every casing variant
   and duplicate of the canonical DB-target names. They also remove
   `TRAINER_DISPOSABLE_DB_CONFIRMED`; inherited authorization can never make credential-free

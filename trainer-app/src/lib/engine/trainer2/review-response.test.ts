@@ -1,3 +1,5 @@
+import { reviewActivation } from '../../api/trainer2/instructions';
+import { emptyInstructions } from '@/lib/trainer2-contracts/activation';
 import { webcrypto } from 'node:crypto';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { createHypertrophyPlan } from './plan-builder';
@@ -14,9 +16,11 @@ function response(missingIntent = false) {
     contentHash: integrityHash(canonicalJson(intent)), progression: intent.progression ?? null,
     progressionHash: integrityHash(canonicalJson(intent.progression ?? null)), policyVersion: REVIEW_POLICY };
   const issues = reviewPlan(intent);
-  return { planId: binding.planId, revisionId: binding.revisionId, revisionNumber: 1, contentHash: binding.contentHash, intent,
-    activationBlockers: ['ACTIVATION_NOT_IMPLEMENTED', ...issues.map(i => i.code)],
+  const result = { planId: binding.planId, revisionId: binding.revisionId, revisionNumber: 1, contentHash: binding.contentHash, intent,
+    activationBlockers: issues.map(i => i.code),
     review: { ...binding, intent, issues, status: issues.length ? 'issues' : 'validDraft', digest: integrityHash(canonicalJson(binding)) } };
+  const instructions = { epoch: 0, revisionId: null, document: emptyInstructions(), contentHash: integrityHash(canonicalJson(emptyInstructions())) };
+  return { ...result, state: { lifecycle: "Draft" as const, initialApprovedRevisionId: null as string | null }, activation: reviewActivation(result.review as import("@/lib/engine/trainer2/plan-review").SavedPlanReview, instructions) };
 }
 describe('complete runtime review binding', () => {
   it.each([false, true])('accepts a complete result; missing progression is an issue (%s)', async missing => {

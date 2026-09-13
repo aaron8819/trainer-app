@@ -1,5 +1,7 @@
 # 07 Operations
 
+Trainer2 local activation: [current contract, immutable approval, instruction scope, API/UI behavior and verification](architecture/trainer2/ACTIVATION.md).
+
 ## Trainer2 principal and role preparation
 
 The application privilege contract is qualified for PostgreSQL 17 and rejects other majors. It checks elevated parameter capabilities, unsafe replication/RLS session modes, MAINTAIN and effective grant options before client admission. The Auth harness isolates Next's environment from disposable setup administrator credentials. [Exact policy, exceptions and regressions](architecture/trainer2/PRINCIPAL_BOUNDARY.md#connections-and-effective-privileges) and [process-isolation limits](architecture/trainer2/SUPABASE_AUTH.md#reproducible-local-qualification) govern these corrections; focused independent re-review is still required.

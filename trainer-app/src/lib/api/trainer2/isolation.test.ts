@@ -39,7 +39,7 @@ describe("Trainer2 boundary", () => {
     walk(resolve(app, "app/trainer2/dev/drafts/page.tsx"));
     expect(seen.size).toBeGreaterThan(6);
     const routeFiles = [...seen].filter(p => p.endsWith("route.ts"));
-    expect(routeFiles).toHaveLength(3);
-    expect(routeFiles.map(p => readFileSync(p, "utf8")).join("\n")).not.toMatch(/activate|execution|finish|DELETE/);
+    expect(routeFiles).toHaveLength(5);
+    expect(routeFiles.map(p => readFileSync(p, "utf8")).join("\n")).not.toMatch(/execution|finish|DELETE/);
   });
 });

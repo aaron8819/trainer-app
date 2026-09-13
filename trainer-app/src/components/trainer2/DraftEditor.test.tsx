@@ -1,3 +1,5 @@
+import { reviewActivation } from '@/lib/api/trainer2/instructions';
+import { emptyInstructions } from '@/lib/trainer2-contracts/activation';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createDraftCommand, editDraftCommand, type DraftDocument } from '@/lib/trainer2-contracts/draft';
@@ -34,9 +36,11 @@ it('prefills before persistence, adds recurring work, saves week overrides and r
     }
     const issues = reviewPlan(doc);
     const binding = { accountId: 'test', planId, revisionId, contentHash: integrityHash(canonicalJson(doc)),
-      progression: doc.progression ?? null, progressionHash: integrityHash(canonicalJson(doc.progression ?? null)), policyVersion: REVIEW_POLICY };
-    return { ok: true, json: async () => ({ planId, revisionId, revisionNumber: posts, intent: doc, contentHash: binding.contentHash,
-      activationBlockers: ['ACTIVATION_NOT_IMPLEMENTED', ...issues.map(i => i.code)],
+      progression: doc.progression ?? null, progressionHash: integrityHash(canonicalJson(doc.progression ?? null)), policyVersion: REVIEW_POLICY } as const;
+    const review = { ...binding, intent: doc, issues, status: issues.length ? 'issues' as const : 'validDraft' as const, digest: integrityHash(canonicalJson(binding)) };
+    const activation = reviewActivation(review, { epoch: 0, revisionId: null, document: emptyInstructions(), contentHash: integrityHash(canonicalJson(emptyInstructions())) });
+    return { ok: true, json: async () => ({ state: { lifecycle: 'Draft', initialApprovedRevisionId: null }, activation, planId, revisionId, revisionNumber: posts, intent: doc, contentHash: binding.contentHash,
+      activationBlockers: issues.map(i => i.code),
       review: { ...binding, intent: doc, issues, status: issues.length ? 'issues' : 'validDraft', digest: integrityHash(canonicalJson(binding)) } }) };
   }));
   const button = (name: string) => fireEvent.click(screen.getByRole('button', { name }));

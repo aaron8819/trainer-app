@@ -1,5 +1,7 @@
 # Versioned progression intent and saved plan review
 
+This document records the accepted progression/read-review slice. Its activation-not-implemented statements are historical; the next implemented local slice is [Exact local plan activation](ACTIVATION.md). Saved progression and ordering semantics remain unchanged.
+
 Local activation preparation only, based on `b352dad65588b9d753ca28b697b6a2a606a21c20` (tree `dde962d4056035be1c83e8101198c8d84d50b9f7`). The accepted template-builder review remains closed. This slice adds no activation, execution, hosted admission, historical import, provider writes or Phase 0 completion claim.
 
 ## Ownership and bounded method

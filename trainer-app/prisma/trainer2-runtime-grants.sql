@@ -27,3 +27,10 @@ CREATE POLICY trainer2_write ON "Trainer2DurableAction" TO trainer2_draft_runtim
 CREATE POLICY trainer2_write ON "Trainer2ActionOutcome" TO trainer2_draft_runtime USING (true) WITH CHECK (true);
 -- RLS admits these server roles to all accounts. Application predicates enforce account scope.
 -- No browser roles, legacy grants, memberships, database/schema ownership, or SECURITY DEFINER functions are added.
+-- Additional local activation owners; same restricted server/account boundary.
+GRANT SELECT ON "Trainer2InstructionRevision", "Trainer2PlanDecision" TO trainer2_draft_reader, trainer2_draft_runtime;
+GRANT INSERT ON "Trainer2InstructionRevision", "Trainer2PlanDecision" TO trainer2_draft_runtime;
+CREATE POLICY trainer2_read ON "Trainer2InstructionRevision" FOR SELECT TO trainer2_draft_reader USING (true);
+CREATE POLICY trainer2_read ON "Trainer2PlanDecision" FOR SELECT TO trainer2_draft_reader USING (true);
+CREATE POLICY trainer2_write ON "Trainer2InstructionRevision" TO trainer2_draft_runtime USING (true) WITH CHECK (true);
+CREATE POLICY trainer2_write ON "Trainer2PlanDecision" TO trainer2_draft_runtime USING (true) WITH CHECK (true);

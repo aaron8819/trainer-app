@@ -51,14 +51,14 @@ function sample(accountId: string): CreateDraftCommand {
 function rename(create: CreateDraftCommand, revisionId: string, name: string): EditDraftCommand {
   return { ...create, commandType: "EditDraft", actionId: randomUUID(), expected: { planRevisionId: revisionId }, intent: { operations: [{ op: "renamePlan", name }] } };
 }
-export async function verifyDrafts(options: { manualDemo?: boolean; skipBuild?: boolean; progressionReview?: boolean } = {}) {
+export async function verifyDrafts(options: { manualDemo?: boolean; skipBuild?: boolean; progressionReview?: boolean; activation?: boolean } = {}) {
   if (options.manualDemo) console.log("Starting Trainer plan builder with disposable synthetic data. The clickable URL appears here when ready.");
   const source = verificationSource();
   const started = new Date().toISOString();
   const evidence: Record<string, unknown> = { source, started, invocation: options.manualDemo ? "node node_modules/tsx/dist/cli.mjs scripts/demo-trainer2-drafts.ts --confirm-disposable" : options.skipBuild ? "node node_modules/tsx/dist/cli.mjs scripts/test-trainer2-draft-editor.ts --confirm-disposable" : "npm run test:db:trainer2-drafts -- --confirm-disposable", node: process.version };
   // Turbopack rejects dependency junctions outside its filesystem root. The
   // installed Next CLI supports webpack for this local dependency arrangement.
-  const bundlerArgs = lstatSync(resolve("node_modules")).isSymbolicLink() ? ["--webpack"] : [];
+  const bundlerArgs = lstatSync(resolve("node_modules")).isSymbolicLink() || lstatSync(resolve("node_modules/next")).isSymbolicLink() ? ["--webpack"] : [];
   evidence.bundler = bundlerArgs.length ? "webpack (dependency junction)" : "default Turbopack";
   const suffix = randomUUID().replaceAll("-", "").slice(0, 12);
   const container = `trainer2-draft-${suffix}`;
@@ -136,6 +136,19 @@ export async function verifyDrafts(options: { manualDemo?: boolean; skipBuild?: 
         await new Promise(r => setTimeout(r, 500));
       }
       return base;
+    }
+    if (options.activation) {
+      const { verifyActivation } = await import('./verify-activation');
+      const upgradeSample = sample(principal.accountId);
+      accepted(await createDraft(runtime, principal, upgradeSample));
+      const { verifyActivationUpgrade } = await import('./verify-activation-upgrade');
+      evidence.activationUpgrade = await verifyActivationUpgrade(adminPool, ownerUrl, command, principal.accountId);
+      evidence.invocation = 'node node_modules/tsx/dist/cli.mjs scripts/test-trainer2-activation.ts --confirm-disposable';
+      evidence.activation = await verifyActivation(runtime, reader, owner, adminPool, principal, startWeb);
+      evidence.sourceAfter = verificationSource();
+      assert.equal((evidence.sourceAfter as ReturnType<typeof verificationSource>).manifestHash, source.manifestHash);
+      evidence.status = 'passed';
+      return;
     }
     if (options.progressionReview) {
       const { verifyProgressionReview } = await import('./verify-progression-review');

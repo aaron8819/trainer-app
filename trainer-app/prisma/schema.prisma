@@ -24,14 +24,46 @@ model Trainer2AccountTrainingState {
   ownershipEpoch   Int @default(0)
   acceptedSequence BigInt @default(0)
   outcomeSequence  BigInt @default(0)
+  instructionEpoch Int @default(0)
 }
 
 model Trainer2Plan {
   id                String @id @db.Uuid
   accountId         String
   currentRevisionId String @db.Uuid
+  lifecycle         String @default("Draft")
+  initialApprovedRevisionId String? @db.Uuid
   tombstonedAt      DateTime? @db.Timestamptz(6)
   @@unique([accountId, id])
+}
+
+model Trainer2InstructionRevision {
+  id String @id @db.Uuid
+  accountId String
+  epoch Int
+  actionId String @db.Uuid
+  document Json
+  canonicalContent String
+  contentHash String
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  @@unique([accountId, epoch])
+  @@unique([accountId, id])
+  @@unique([accountId, actionId])
+}
+
+model Trainer2PlanDecision {
+  id String @id @db.Uuid
+  accountId String
+  planId String @db.Uuid
+  revisionId String @db.Uuid
+  actionId String @db.Uuid
+  kind String
+  instructionRevisionId String? @db.Uuid
+  reviewedDigest String
+  policyVersion String
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  @@unique([accountId, actionId])
+  @@unique([planId, kind])
 }
 
 model Trainer2PlanRevision {

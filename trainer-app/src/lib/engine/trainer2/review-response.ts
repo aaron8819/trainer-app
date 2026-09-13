@@ -3,6 +3,9 @@ import { id, progressionIntent, savedDraftDocument, type DraftDocument } from '.
 import { canonicalJson } from '../../trainer2-contracts/canonical-json';
 import { REVIEW_POLICY, reviewPlan } from './plan-review';
 
+import { activationReview, planState } from '../../trainer2-contracts/activation';
+import { restrictionIssues } from './instructions';
+
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const account = z.string().min(1).max(200).refine(v => v.trim() === v);
 const issue = z.object({ code: z.string().min(1), message: z.string().min(1),
@@ -16,6 +19,7 @@ const savedReview = z.object({
 const responseSchema = z.object({ planId: id, revisionId: id, revisionNumber: z.int().positive(),
   contentHash: hash, intent: savedDraftDocument, review: savedReview,
   activationBlockers: z.array(z.string().min(1)),
+  state: planState, activation: activationReview,
 }).strict();
 export type SavedPlanResponse = z.infer<typeof responseSchema>;
 export type SavedPlanReview = z.infer<typeof savedReview>;
@@ -46,7 +50,16 @@ export async function validateReviewResponse(input: unknown, expected: {
     check(r.digest === await sha256(canonicalJson({ accountId, planId, revisionId, contentHash, progression, progressionHash, policyVersion })));
     const issues = reviewPlan(r.intent);
     check(same(r.issues, issues) && r.status === (issues.length ? 'issues' : 'validDraft'));
-    check(same(result.activationBlockers, ['ACTIVATION_NOT_IMPLEMENTED', ...issues.map(i => i.code)]));
+    const a = result.activation;
+    check(a.binding.accountId === r.accountId && a.binding.planId === r.planId && a.binding.revisionId === r.revisionId && a.binding.reviewDigest === r.digest);
+    check(a.instructions.contentHash === await sha256(canonicalJson(a.instructions.document)));
+    check(a.binding.instructionHash === a.instructions.contentHash && a.binding.instructionEpoch === a.instructions.epoch && a.binding.instructionRevisionId === a.instructions.revisionId);
+    check((a.instructions.epoch === 0) === (a.instructions.revisionId === null));
+    check(a.digest === await sha256(canonicalJson(a.binding)));
+    check(same(a.binding.restrictionIssues, restrictionIssues(a.instructions.document, r.planId, r.intent, a.evaluatedAt, r.revisionId)));
+    check((result.state.lifecycle === 'Draft') === (result.state.initialApprovedRevisionId === null));
+    if (result.state.lifecycle === 'Active') check(result.state.initialApprovedRevisionId === r.revisionId);
+    check(same(result.activationBlockers, [...issues.map(i => i.code), ...(a.binding.restrictionIssues.length ? ['UNRESOLVED_EXCLUSION'] : [])]));
     if (expected.snapshot) {
       check(r.revisionId === id.parse(expected.snapshot.revisionId) && r.contentHash === hash.parse(expected.snapshot.contentHash));
       check(same(r.intent, expected.snapshot.intent));

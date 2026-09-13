@@ -163,10 +163,10 @@ export const editDraftCommand = z.object({ ...envelope, commandType: z.literal("
 export type CreateDraftCommand = z.infer<typeof createDraftCommand>;
 export type EditDraftCommand = z.infer<typeof editDraftCommand>;
 export type DraftCommand = CreateDraftCommand | EditDraftCommand;
-export type DraftError = "STALE_REVISION" | "NOT_FOUND" | "TOMBSTONED" | "IDENTITY_REUSED" |
+export type DraftError = "PLAN_NOT_DRAFT" | "STALE_REVISION" | "NOT_FOUND" | "TOMBSTONED" | "IDENTITY_REUSED" |
   "INVALID_OPERATION" | "INVALID_DOCUMENT" | "DEPENDENCIES_UNSUPPORTED" | "OWNERSHIP_EPOCH";
 export type DraftOutcome = {
-  status: "Accepted"; actionId: string; commandType: DraftCommand["commandType"];
+  status: "Accepted"; actionId: string; commandType: string;
   acceptedSequence: string; result: { planId: string; revisionId: string; revisionNumber: number; contentHash: string };
-} | { status: "Rejected" | "Conflict"; actionId: string; commandType: DraftCommand["commandType"]; code: DraftError };
+} | { status: "Rejected" | "Conflict"; actionId: string; commandType: string; code: string };
 export type CommandResponse = { outcome: DraftOutcome; replayed: boolean; outcomeCursor: string };

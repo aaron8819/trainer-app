@@ -1,3 +1,5 @@
+import { reviewActivation } from '@/lib/api/trainer2/instructions';
+import { emptyInstructions } from '@/lib/trainer2-contracts/activation';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHypertrophyPlan } from '@/lib/engine/trainer2/plan-builder';
@@ -19,11 +21,13 @@ const reviewed = (name = plan.name, revisionNumber = 1) => {
   const contentHash = integrityHash(canonicalJson(s.intent));
   const binding = { accountId: 'account-a', planId: s.planId, revisionId: s.revisionId, contentHash,
     progression: s.intent.progression ?? null, progressionHash: integrityHash(canonicalJson(s.intent.progression ?? null)), policyVersion: REVIEW_POLICY };
-  return { ...s, contentHash, activationBlockers: ['ACTIVATION_NOT_IMPLEMENTED', ...issues.map(i => i.code)],
+  const result = { ...s, contentHash, activationBlockers: issues.map(i => i.code),
     review: { ...binding, intent: s.intent, issues, status: issues.length ? 'issues' : 'validDraft', digest: integrityHash(canonicalJson(binding)) } };
+  const instructions = { epoch: 0, revisionId: null, document: emptyInstructions(), contentHash: integrityHash(canonicalJson(emptyInstructions())) };
+  return { ...result, state: { lifecycle: "Draft" as const, initialApprovedRevisionId: null as string | null }, activation: reviewActivation(result.review as import("@/lib/engine/trainer2/plan-review").SavedPlanReview, instructions) };
 };
 const state = reviewed;
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); window.history.replaceState(null, '', '/'); });
+afterEach(() => { cleanup(); sessionStorage.clear(); vi.unstubAllGlobals(); window.history.replaceState(null, '', '/'); });
 describe('builder save recovery', () => {
   it.each(['non-OK', 'network'])('retains accepted bookmark after %s refresh failure; retries only GET', async failure => {
     const fetcher = vi.fn().mockResolvedValueOnce(acceptance());
@@ -148,4 +152,48 @@ describe('saved revision review', () => {
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('changed in another tab'));
     expect(screen.queryByRole('heading', { name: 'Saved plan checks passed' })).toBeNull();
   });
+});
+
+describe('exact reviewed activation', () => {
+  const activeState = () => { const s = state(); return { ...s, state: { lifecycle: 'Active', initialApprovedRevisionId: s.revisionId } }; };
+  const acceptedActivation = (body: string) => {
+    const c = JSON.parse(body);
+    return { replayed: false, outcomeCursor: '2', outcome: { status: 'Accepted', actionId: c.actionId, commandType: 'ActivatePlan', acceptedSequence: '2', result: { planId: c.target.planId, revisionId: c.expected.planRevisionId, decisionId: crypto.randomUUID(), lifecycle: 'Active' } } };
+  };
+  it('retains the complete envelope for uncertain and malformed outcomes; reads current active state after replay', async () => {
+    const bodies: string[] = []; let posts = 0;
+    const fetcher = vi.fn().mockResolvedValueOnce(acceptance()).mockResolvedValueOnce(json(state())).mockResolvedValueOnce(json(state()))
+      .mockImplementation(async (_url: string, init?: RequestInit) => {
+        if (init?.method !== 'POST') return json(activeState());
+        bodies.push(String(init.body)); posts++;
+        if (posts === 1) return json({ outcome: { status: 'Accepted', result: { planId: state().planId } } });
+        return json({ ...acceptedActivation(String(init.body)), replayed: true });
+      });
+    vi.stubGlobal('fetch', fetcher); mount(); click('Save plan'); await saved(); click('Review plan');
+    await screen.findByRole('heading', { name: 'Saved plan checks passed' }); click('Activate plan');
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Activation could not be confirmed'));
+    expect(screen.getByRole('button', { name: 'Save plan' })).toBeDisabled();
+    click('Check again'); await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/^Plan active$/));
+    expect(bodies[0]).toBe(bodies[1]); expect(screen.getByRole('heading', { name: 'Active plan' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Activate plan' })).toBeNull();
+    expect(sessionStorage.getItem(`trainer2-activation:account-a:${state().planId}`)).toBeNull();
+  }, 20000);
+  it('does not apply a delayed activation success or change the bookmark after switching plans', async () => {
+    let deliver!: (v: unknown) => void; let submitted = '';
+    const next = state('Other bookmarked plan'); next.planId = next.review.planId = '00000000-0000-4000-8000-000000000009';
+    const { accountId, planId, revisionId, contentHash, progression, progressionHash, policyVersion } = next.review;
+    next.review.digest = integrityHash(canonicalJson({ accountId, planId, revisionId, contentHash, progression, progressionHash, policyVersion }));
+    next.activation = reviewActivation(next.review as import('@/lib/engine/trainer2/plan-review').SavedPlanReview, next.activation.instructions);
+    const fetcher = vi.fn().mockResolvedValueOnce(acceptance()).mockResolvedValueOnce(json(state())).mockResolvedValueOnce(json(state()))
+      .mockImplementationOnce((_url: string, init: RequestInit) => { submitted = String(init.body); return new Promise(resolve => { deliver = resolve; }); })
+      .mockResolvedValueOnce(json(next));
+    vi.stubGlobal('fetch', fetcher); const view = mount(); click('Save plan'); await saved(); click('Review plan');
+    await screen.findByRole('heading', { name: 'Saved plan checks passed' }); click('Activate plan');
+    view.rerender(<DraftWorkbench accountId="account-a" ownershipEpoch={0} initialPlanId={next.planId} />); await saved();
+    await act(async () => deliver(json(acceptedActivation(submitted))));
+    expect(screen.getByLabelText('Plan name')).toHaveValue('Other bookmarked plan');
+    expect(new URL(window.location.href).searchParams.get('planId')).toBe(next.planId);
+    expect(screen.queryByRole('heading', { name: 'Active plan' })).toBeNull();
+    expect(sessionStorage.getItem(`trainer2-activation:account-a:${state().planId}`)).toBe(submitted);
+  }, 20000);
 });

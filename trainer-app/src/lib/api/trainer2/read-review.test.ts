@@ -22,7 +22,7 @@ it.each(['complete', 'missing hash', 'null hash', 'wrong hash', 'missing revisio
   if (variant === 'invalid number') revision.revisionNumber = 0;
   if (variant === 'invalid document') revision.document = { ...document, occurrences: null };
   const readOnly = vi.fn();
-  context.db = { trainer2Plan: { findFirst: async () => ({ id: planId, currentRevisionId: revision.id }) },
+  context.db = { trainer2AccountTrainingState: { findUnique: async () => null }, trainer2Plan: { findFirst: async () => ({ id: planId, currentRevisionId: revision.id, lifecycle: "Draft", initialApprovedRevisionId: null }) },
     trainer2PlanRevision: { findFirstOrThrow: async () => revision }, $executeRaw: readOnly,
     $transaction: async (fn: (db: unknown) => Promise<unknown>) => fn(context.db) };
   const result = await draftHttp(new Request(`http://127.0.0.1/api/trainer2/drafts/${planId}`), 'ReadDraft', planId);

@@ -1,5 +1,7 @@
 # 06 Testing
 
+Trainer2 local activation: [current contract, immutable approval, instruction scope, API/UI behavior and verification](architecture/trainer2/ACTIVATION.md).
+
 Trainer2 progression intent and revision-bound read-only review: [contract, ownership, behavior matrix and local verification](architecture/trainer2/PROGRESSION_REVIEW.md).
 
 ## Trainer2 Supabase authentication verification

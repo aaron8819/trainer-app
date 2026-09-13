@@ -7,6 +7,7 @@ import { createDraft, editDraft, readDraft, ActionCollision, type ServerPrincipa
 import { createHypertrophyPlan, changeSetCount, expandWorkoutDefaults, newRow } from '../../src/lib/engine/trainer2/plan-builder';
 import { draftEdits } from '../../src/components/trainer2/draft-edits';
 import type { DraftDocument, CreateDraftCommand, EditDraftCommand } from '../../src/lib/trainer2-contracts/draft';
+import { verifyReviewCorrections } from './verify-review-corrections';
 
 export async function verifyProgressionReview(db: PrismaClient, reader: PrismaClient, principal: ServerPrincipal, other: ServerPrincipal, startWeb: () => Promise<string>) {
   const envelope = () => ({ schemaVersion: 1 as const, actionId: randomUUID(), originatingAccountId: principal.accountId, deviceId: randomUUID(), ownershipEpoch: 0, dependsOn: [] });
@@ -91,13 +92,14 @@ export async function verifyProgressionReview(db: PrismaClient, reader: PrismaCl
     await tab.getByRole('status').filter({ hasText: /^Saved$/ }).waitFor();
     await tab.getByRole('button', { name: 'Review plan', exact: true }).click();
     await tab.getByRole('heading', { name: 'Resolve these plan issues' }).waitFor();
-    const issue = tab.getByRole('link', { name: /Week 3 \/ Upper B: add/ });
+    const issue = tab.getByRole('link', { name: /Week 3 \/ Upper B \(workout 12\): add/ });
     await issue.click();
     assert.equal(await tab.getByLabel('Edit scope').inputValue(), '2');
     assert.equal(await tab.getByRole('tab', { name: 'Upper B' }).getAttribute('aria-selected'), 'true');
     await tab.setViewportSize({ width: 390, height: 844 });
     await tab.getByRole('region', { name: 'Plan review', exact: true }).scrollIntoViewIfNeeded();
     const path = resolve('artifacts/trainer2/progression-issues-mobile.png'); await tab.screenshot({ path }); screenshots.push(path);
+    await verifyReviewCorrections(db, reader, principal, base);
     assert.deepEqual(errors, []);
     return { status: 'passed', browser: browser.version(), screenshots, cases: ['immutable intent', 'same values new digest', 'review read-only', 'two-editor CAS', 'safe retry and collision', 'strict atomic rejection', 'cross-account rejection', 'old plan explicit selection', 'independent/custom/structural edits', 'browser save-review-edit-review-reload', 'mobile issue edit link'] };
   } finally { await browser.close(); }

@@ -9,8 +9,9 @@ import { DraftReview } from './DraftReview';
 import { draftEdits } from './draft-edits';
 import { Progression } from './Progression';
 import { progressionLabel, progressionMeaning, type SavedPlanReview, type PlanIssue } from '@/lib/engine/trainer2/plan-review';
+import { validateReviewResponse, INVALID_REVIEW_MESSAGE, type SavedPlanResponse } from '@/lib/engine/trainer2/review-response';
 
-type Loaded = { planId: string; revisionId: string; revisionNumber: number; intent: DraftDocument; activationBlockers: string[]; review: SavedPlanReview };
+type Loaded = SavedPlanResponse;
 export function DraftWorkbench({ accountId, ownershipEpoch, initialPlanId = '' }: { accountId: string; ownershipEpoch: number; initialPlanId?: string }) {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [form, setForm] = useState<DraftDocument | null>(null);
@@ -25,7 +26,9 @@ export function DraftWorkbench({ accountId, ownershipEpoch, initialPlanId = '' }
   const mounted = useRef(false);
   const [review, setReview] = useState<SavedPlanReview | null>(null);
   const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewError, setReviewError] = useState(false);
   const reviewRequest = useRef(0);
+  useEffect(() => () => { ++reviewRequest.current; }, [accountId, initialPlanId]);
   const [editLocation, setEditLocation] = useState<{ occurrenceId?: string; key: number }>({ key: 0 });
   function bookmark(id: string) { const url = new URL(window.location.href); url.searchParams.set('planId', id); window.history.replaceState(null, '', url); }
   function beginRequest() { if (inFlight.current) return false; ++reviewRequest.current; setReviewBusy(false); inFlight.current = true; setBusy(true); setStale(true); return true; }
@@ -35,8 +38,9 @@ export function DraftWorkbench({ accountId, ownershipEpoch, initialPlanId = '' }
       const response = await fetch(`/api/trainer2/drafts/${encodeURIComponent(id)}`, { cache: 'no-store' });
       const result = await response.json();
       if (!response.ok) throw new Error('Read failed');
-      const intent = readSavedDocument(result.intent);
-      setLoaded({ ...result, intent }); setForm(structuredClone(intent)); setPlanId(id); setStale(false); bookmark(id);
+      const validated = await validateReviewResponse(result, { accountId, planId: id });
+      const intent = readSavedDocument(validated.intent);
+      setLoaded(validated); setForm(structuredClone(intent)); setPlanId(id); setStale(false); bookmark(id);
       setMessage('Saved');
     } catch { setMessage(accepted ? 'Your plan was saved, but could not be reloaded. Reload the latest version.' : 'Could not load this plan. Check your connection and reload.'); }
   }
@@ -86,7 +90,7 @@ export function DraftWorkbench({ accountId, ownershipEpoch, initialPlanId = '' }
   const unsaved = !!form && (!loaded || JSON.stringify(form) !== JSON.stringify(loaded.intent));
   const needsRepair = !!form && JSON.stringify(repairBuilderMetadata(form)) !== JSON.stringify(form);
   const locked = busy || stale || !!conflict || uncertain;
-  const reviewCurrent = !!review && review.revisionId === loaded?.revisionId && !unsaved && !locked;
+  const reviewCurrent = !!review && review.accountId === accountId && review.planId === loaded?.planId && review.revisionId === loaded?.revisionId && !unsaved && !locked;
   function changed(d: DraftDocument) { if (!inFlight.current) { ++reviewRequest.current; setReviewBusy(false); setForm(d); setMessage('Unsaved changes'); } }
   async function reviewSaved() {
     if (!loaded || unsaved || locked) return;
@@ -96,10 +100,13 @@ export function DraftWorkbench({ accountId, ownershipEpoch, initialPlanId = '' }
       const response = await fetch(`/api/trainer2/drafts/${encodeURIComponent(loaded.planId)}`, { cache: 'no-store' });
       const result = await response.json();
       if (request !== reviewRequest.current) return;
-      if (!response.ok || !result.review) throw new Error('Review unavailable');
-      if (result.revisionId !== loaded.revisionId) { setStale(true); setMessage('This plan changed in another tab. Reload the latest version before reviewing.'); return; }
-      setReview(result.review);
-    } catch { if (request === reviewRequest.current) setMessage('Could not review this saved plan. Try Review plan again.'); }
+      if (!response.ok) throw new Error('Review unavailable');
+      const validated = await validateReviewResponse(result, { accountId, planId: loaded.planId,
+        snapshot: result?.revisionId === loaded.revisionId ? loaded : undefined });
+      if (request !== reviewRequest.current) return;
+      if (validated.revisionId !== loaded.revisionId) { setStale(true); setMessage('This plan changed in another tab. Reload the latest version before reviewing.'); return; }
+      setReview(validated.review); setReviewError(false); setMessage('Saved');
+    } catch { if (request === reviewRequest.current) { setReviewError(true); setMessage(INVALID_REVIEW_MESSAGE); } }
     finally { if (request === reviewRequest.current) setReviewBusy(false); }
   }
   function editIssue(issue: PlanIssue) {
@@ -122,9 +129,10 @@ export function DraftWorkbench({ accountId, ownershipEpoch, initialPlanId = '' }
     <section className="space-y-3 rounded-xl border border-slate-200 p-4" aria-label="Plan review">
       <button className={control} disabled={!loaded || unsaved || locked} onClick={() => void reviewSaved()}>{reviewBusy ? 'Reviewing…' : 'Review plan'}</button>
       {unsaved && <p className="text-sm text-slate-600">Save your changes before reviewing.</p>}
+      {reviewError && <p role="alert" className="text-sm text-amber-800">{INVALID_REVIEW_MESSAGE}{review ? ' Previous review retained; refresh failed.' : ''}</p>}
       {review && !reviewCurrent && <p className="font-medium text-amber-800">Review outdated. Save any changes, then review the current plan.</p>}
       {review && <div className="space-y-3">
-        <h2 className="text-lg font-semibold">{reviewCurrent ? (review.issues.length ? 'Resolve these plan issues' : 'Saved plan checks passed') : 'Previous saved plan review'}</h2>
+        <h2 className="text-lg font-semibold">{reviewCurrent && !reviewError ? (review.issues.length ? 'Resolve these plan issues' : 'Saved plan checks passed') : 'Previous saved plan review'}</h2>
         <p className="text-sm text-slate-600">Checks cover plan structure, prescriptions and progression intent. Starting plans and checking personal restrictions are coming later.</p>
         {reviewCurrent && review.issues.map((issue, i) => <p key={i}><a className="text-sm text-teal-800 underline" href={`#${issue.location}`} onClick={e => { e.preventDefault(); editIssue(issue); }}>{issue.message}</a></p>)}
         <p className="font-medium">Progression: {review.progression ? progressionLabel : 'Not selected'}</p>

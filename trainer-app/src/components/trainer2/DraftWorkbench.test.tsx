@@ -1,19 +1,28 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHypertrophyPlan } from '@/lib/engine/trainer2/plan-builder';
 import { DraftWorkbench } from './DraftWorkbench';
-import { reviewPlan } from '@/lib/engine/trainer2/plan-review';
+import { reviewPlan, REVIEW_POLICY } from '@/lib/engine/trainer2/plan-review';
+import { canonicalJson, integrityHash } from '@/lib/api/trainer2/integrity';
+import { webcrypto } from 'node:crypto';
+beforeEach(() => vi.stubGlobal('crypto', webcrypto));
 const plan = createHypertrophyPlan();
-const state = (name = plan.name, revisionNumber = 1) => ({ planId: '00000000-0000-4000-8000-000000000001', revisionId: `00000000-0000-4000-8000-00000000000${revisionNumber + 1}`, revisionNumber, intent: { ...plan, name }, activationBlockers: [] });
+const rawState = (name = plan.name, revisionNumber = 1) => ({ planId: '00000000-0000-4000-8000-000000000001', revisionId: `00000000-0000-4000-8000-00000000000${revisionNumber + 1}`, revisionNumber, intent: { ...plan, name }, activationBlockers: [] });
 const json = (body: unknown, ok = true) => ({ ok, json: async () => body });
 const acceptance = () => json({ outcome: { status: 'Accepted', result: { planId: state().planId } } });
 const click = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
 const mount = () => render(<DraftWorkbench accountId="account-a" ownershipEpoch={0} />);
 const saved = () => waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/^Saved$/));
 const reviewed = (name = plan.name, revisionNumber = 1) => {
-  const s = state(name, revisionNumber);
-  return { ...s, review: { accountId: 'account-a', planId: s.planId, revisionId: s.revisionId, intent: s.intent, progression: s.intent.progression, issues: reviewPlan(s.intent), status: 'validDraft', digest: String(revisionNumber) } };
+  const s = rawState(name, revisionNumber);
+  const issues = reviewPlan(s.intent);
+  const contentHash = integrityHash(canonicalJson(s.intent));
+  const binding = { accountId: 'account-a', planId: s.planId, revisionId: s.revisionId, contentHash,
+    progression: s.intent.progression ?? null, progressionHash: integrityHash(canonicalJson(s.intent.progression ?? null)), policyVersion: REVIEW_POLICY };
+  return { ...s, contentHash, activationBlockers: ['ACTIVATION_NOT_IMPLEMENTED', ...issues.map(i => i.code)],
+    review: { ...binding, intent: s.intent, issues, status: issues.length ? 'issues' : 'validDraft', digest: integrityHash(canonicalJson(binding)) } };
 };
+const state = reviewed;
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); window.history.replaceState(null, '', '/'); });
 describe('builder save recovery', () => {
   it.each(['non-OK', 'network'])('retains accepted bookmark after %s refresh failure; retries only GET', async failure => {
@@ -66,6 +75,47 @@ describe('builder save recovery', () => {
   });
 });
 describe('saved revision review', () => {
+  it('rechecks request generation after asynchronous binding validation and preserves pending input', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(acceptance()).mockResolvedValue(json(reviewed())));
+    mount(); click('Save plan'); await saved();
+    let release!: () => void;
+    let started!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const entered = new Promise<void>(resolve => { started = resolve; });
+    vi.stubGlobal('crypto', { subtle: { digest: async (...args: Parameters<typeof webcrypto.subtle.digest>) => {
+      started(); await gate; return webcrypto.subtle.digest(...args);
+    } } });
+    click('Review plan'); await entered;
+    fireEvent.change(screen.getByLabelText('Plan name'), { target: { value: 'Pending input survives' } });
+    await act(async () => { release(); });
+    expect(screen.queryByRole('heading', { name: 'Saved plan checks passed' })).toBeNull();
+    expect(screen.getByLabelText('Plan name')).toHaveValue('Pending input survives');
+    expect(screen.getByRole('button', { name: 'Review plan' })).toBeDisabled();
+  });
+  it('rejects malformed refreshes, retains the prior valid review with accurate status, and permits a valid retry', async () => {
+    const bad = reviewed(); delete (bad.review as Record<string, unknown>).accountId;
+    const fetcher = vi.fn().mockResolvedValueOnce(acceptance()).mockResolvedValueOnce(json(reviewed()))
+      .mockResolvedValueOnce(json(reviewed())).mockResolvedValueOnce(json(bad)).mockResolvedValueOnce(json(reviewed()));
+    vi.stubGlobal('fetch', fetcher); mount(); click('Save plan'); await saved(); click('Review plan');
+    await screen.findByRole('heading', { name: 'Saved plan checks passed' });
+    click('Review plan'); await screen.findByRole('alert');
+    expect(screen.getByRole('alert')).toHaveTextContent('Previous review retained; refresh failed.');
+    expect(screen.queryByRole('heading', { name: 'Saved plan checks passed' })).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Previous saved plan review' })).toBeVisible();
+    expect(screen.getByLabelText('Plan name')).toHaveValue(plan.name);
+    click('Review plan'); await screen.findByRole('heading', { name: 'Saved plan checks passed' });
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+  it('ignores an older malformed response after a newer valid review', async () => {
+    let deliver!: (v: unknown) => void;
+    const fetcher = vi.fn().mockResolvedValueOnce(acceptance()).mockResolvedValueOnce(json(reviewed()))
+      .mockImplementationOnce(() => new Promise(resolve => { deliver = resolve; })).mockResolvedValueOnce(json(reviewed()));
+    vi.stubGlobal('fetch', fetcher); mount(); click('Save plan'); await saved(); click('Review plan'); click('Reviewing…');
+    await screen.findByRole('heading', { name: 'Saved plan checks passed' });
+    await act(async () => deliver(json({ review: {} })));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Saved plan checks passed' })).toBeVisible();
+  });
   it('requires confirmed save, invalidates on edit and rejects delayed review after a new saved revision', async () => {
     let deliver!: (v: unknown) => void;
     const fetcher = vi.fn().mockResolvedValueOnce(acceptance()).mockResolvedValueOnce(json(reviewed()))

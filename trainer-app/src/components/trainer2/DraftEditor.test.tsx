@@ -6,6 +6,9 @@ import { DraftWorkbench } from './DraftWorkbench';
 import { PlanBuilder } from './PlanBuilder';
 import { createHypertrophyPlan } from '@/lib/engine/trainer2/plan-builder';
 import { draftDocument } from '@/lib/trainer2-contracts/draft';
+import { webcrypto } from 'node:crypto';
+import { canonicalJson, integrityHash } from '@/lib/api/trainer2/integrity';
+import { reviewPlan, REVIEW_POLICY } from '@/lib/engine/trainer2/plan-review';
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); window.history.replaceState(null, '', '/'); });
 it('reorders older independent workouts without inventing field provenance', () => {
   const doc = createHypertrophyPlan(); doc.occurrences[0].weekOverride = true;
@@ -18,6 +21,7 @@ it('reorders older independent workouts without inventing field provenance', () 
   expect(result.occurrences[0].positions[1].id).toBe(doc.occurrences[0].positions[0].id);
 });
 it('prefills before persistence, adds recurring work, saves week overrides and reopens without identity changes', async () => {
+  vi.stubGlobal('crypto', webcrypto);
   let doc: DraftDocument; const history = new Set<string>(); let posts = 0;
   const planId = crypto.randomUUID(), revisionId = crypto.randomUUID();
   vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
@@ -28,7 +32,12 @@ it('prefills before persistence, adds recurring work, saves week overrides and r
       identities(doc).forEach(i => history.add(i.id)); posts++;
       return { ok: true, json: async () => ({ outcome: { status: 'Accepted', result: { planId } } }) };
     }
-    return { ok: true, json: async () => ({ planId, revisionId, revisionNumber: posts, intent: doc }) };
+    const issues = reviewPlan(doc);
+    const binding = { accountId: 'test', planId, revisionId, contentHash: integrityHash(canonicalJson(doc)),
+      progression: doc.progression ?? null, progressionHash: integrityHash(canonicalJson(doc.progression ?? null)), policyVersion: REVIEW_POLICY };
+    return { ok: true, json: async () => ({ planId, revisionId, revisionNumber: posts, intent: doc, contentHash: binding.contentHash,
+      activationBlockers: ['ACTIVATION_NOT_IMPLEMENTED', ...issues.map(i => i.code)],
+      review: { ...binding, intent: doc, issues, status: issues.length ? 'issues' : 'validDraft', digest: integrityHash(canonicalJson(binding)) } }) };
   }));
   const button = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
   const fill = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });

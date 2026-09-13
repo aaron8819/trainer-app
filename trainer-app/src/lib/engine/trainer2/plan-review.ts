@@ -12,8 +12,8 @@ export function reviewPlan(doc: DraftDocument): PlanIssue[] {
   if (!doc.progression) issues.push({ code: 'PROGRESSION_INTENT_REQUIRED', message: 'Choose how to follow this plan in Progression, then save.', location: 'progression' });
   if (!doc.occurrences.some(o => o.positions.some(p => p.targets.some(t => t.classification === 'working'))))
     issues.push({ code: 'NO_EXECUTABLE_TRAINING', message: 'Add a workout with at least one working set.', location: 'editor' });
-  for (const o of doc.occurrences) {
-    const context = `${doc.stages.find(s => s.id === o.stageId)?.name || 'Stage'} / ${o.name || 'Workout'}`;
+  for (const [index, o] of doc.occurrences.entries()) {
+    const context = `${doc.stages.find(s => s.id === o.stageId)?.name || 'Stage'} / ${o.name || 'Workout'} (workout ${index + 1})`;
     if (!o.positions.length) issues.push({ code: 'EMPTY_WORKOUT', message: `${context}: ${doc.builder ? 'add exercises to this workout.' : 'add exercises or remove this empty workout.'}`, location: 'editor', occurrenceId: o.id });
     for (const p of o.positions) {
       if (!p.exercise.name.trim()) issues.push({ code: 'UNNAMED_EXERCISE', message: `${context}: name exercise ${o.positions.indexOf(p) + 1}.`, location: 'editor', occurrenceId: o.id });
@@ -22,9 +22,4 @@ export function reviewPlan(doc: DraftDocument): PlanIssue[] {
   }
   return issues;
 }
-export type SavedPlanReview = {
-  accountId: string; planId: string; revisionId: string; contentHash: string;
-  progression: DraftDocument['progression'] | null; progressionHash: string;
-  policyVersion: typeof REVIEW_POLICY; digest: string; issues: PlanIssue[];
-  status: 'issues' | 'validDraft'; intent: DraftDocument;
-};
+export type { SavedPlanReview } from './review-response';

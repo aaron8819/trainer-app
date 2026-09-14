@@ -79,7 +79,7 @@ describe("L-5 — AppNavigation active tab on /log paths", () => {
     vi.clearAllMocks();
   });
 
-  it.each(["/trainer2/auth", "/trainer2/auth/callback", "/trainer2/dev/drafts"])("does not expose or prefetch legacy links on %s", pathname => {
+  it.each(["/trainer2/auth", "/trainer2/auth/callback", "/trainer2/dev/drafts", "/trainer2/dev/executions/123"])("does not expose or prefetch legacy links on %s", pathname => {
     renderDesktopNav(pathname);
     expect(screen.queryByRole("navigation")).toBeNull();
     expect(screen.queryAllByRole("link")).toHaveLength(0);

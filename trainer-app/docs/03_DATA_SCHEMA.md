@@ -1,6 +1,6 @@
 # 03 Data Schema
 
-Trainer2 adds immutable `Trainer2Execution` and migration `20260914010000_trainer2_workout_start`, with source/outcome seals and one Open execution per account. See [workout start persistence](architecture/trainer2/WORKOUT_START.md).
+Trainer2 performed results now use append-only `Trainer2SetResultRevision` separately from the immutable execution prescription. See [result schema and permissions](architecture/trainer2/SET_RESULTS.md).
 
 Trainer2 local activation: [current contract, immutable approval, instruction scope, API/UI behavior and verification](architecture/trainer2/ACTIVATION.md).
 

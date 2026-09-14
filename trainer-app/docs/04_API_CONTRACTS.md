@@ -1,6 +1,6 @@
 # 04 API Contracts
 
-Trainer2 adds named `StartOccurrence` plus read-only next-workout and execution endpoints. Strict request, retry, source and privacy contracts: [workout start](architecture/trainer2/WORKOUT_START.md).
+Trainer2 adds `RecordSetResult` and `CorrectSetResult` at `/api/trainer2/executions/results`, with per-target expected versions and current results on execution reads. See [result commands](architecture/trainer2/SET_RESULTS.md).
 
 Trainer2 local activation: [current contract, immutable approval, instruction scope, API/UI behavior and verification](architecture/trainer2/ACTIVATION.md).
 

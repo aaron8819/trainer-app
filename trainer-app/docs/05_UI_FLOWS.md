@@ -1,6 +1,6 @@
 # 05 UI Flows
 
-Local Trainer2 activation continues through Start workout, saved prescription, Continue workout and an execution bookmark. Logging remains unavailable. See [workout start UI](architecture/trainer2/WORKOUT_START.md).
+Local Trainer2 executions support record, reload, correct and clear/re-record with preserved original targets and explicit conflict recovery. Execution routes now suppress V1 navigation. See [set result UI](architecture/trainer2/SET_RESULTS.md).
 
 Trainer2 local activation: [current contract, immutable approval, instruction scope, API/UI behavior and verification](architecture/trainer2/ACTIVATION.md).
 

@@ -1,13 +1,14 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { z } from 'zod';
 import { validateExecutionRead, nextWorkoutRead, startOccurrenceCommand, startResponse,
   type ExecutionRead, type StartOccurrenceCommand } from '@/lib/trainer2-contracts/execution';
 import type { DraftDocument } from '@/lib/trainer2-contracts/draft';
 import { canonicalJson } from '@/lib/trainer2-contracts/canonical-json';
+import { SetResultRow } from './SetResultRow';
 import { control } from './DraftEditor';
 
-export function WorkoutPrescription({ workout }: { workout: DraftDocument['occurrences'][number] }) {
+export function WorkoutPrescription({ workout, resultRow }: { workout: DraftDocument['occurrences'][number]; resultRow?: (positionId: string, targetId: string, number: number) => ReactNode }) {
   return <div className="space-y-4"><h3 className="text-xl font-semibold">{workout.name}</h3>{workout.positions.map(p =>
     <section key={p.id} className="rounded-xl border border-slate-200 bg-white p-4"><h4 className="font-semibold">{p.exercise.name}{p.exercise.variation ? ` · ${p.exercise.variation}` : ''}</h4>
       {p.role && <p className="text-sm text-slate-500">{p.role}</p>}
@@ -15,11 +16,8 @@ export function WorkoutPrescription({ workout }: { workout: DraftDocument['occur
         <span className="font-medium">Set {i + 1}</span> · {t.classification === 'working' ? 'Working' : t.classification === 'rampUp' ? 'Ramp-up' : t.classification === 'preparation' ? 'Preparation' : 'Finisher'}{!t.required ? ' · Optional' : ''}
         <div>{t.reps.min}–{t.reps.max} reps{t.reps.basis === 'perSide' ? ' per side' : t.reps.basis === 'alternating' ? ' alternating' : ''} · {t.measurement === null ? 'Load unspecified' : t.measurement.kind === 'bodyweight' ? 'Bodyweight' : `${t.measurement.value} ${t.measurement.unit} ${t.measurement.kind === 'assistance' ? 'assistance' : t.measurement.kind === 'addedLoad' ? 'added' : t.measurement.convention === 'perImplement' ? 'per implement' : t.measurement.convention === 'barbellTotal' ? 'barbell total' : 'machine displayed'}`}</div>
         <div className="text-slate-600">{t.rir === null ? 'Effort unspecified' : `${t.rir} reps left`} · {t.restSeconds === null ? 'Rest unspecified' : `${t.restSeconds}s rest`}</div>
+        {resultRow?.(p.id, t.id, i + 1)}
       </li>)}</ol></section>)}</div>;
-}
-function ExecutionView({ execution }: { execution: ExecutionRead }) {
-  return <section className="space-y-4"><h2 className="text-2xl font-semibold">Workout in progress</h2><p className="text-slate-600">Your starting prescription is saved. Set logging is coming later.</p>
-    <p className="text-sm">{execution.initial.stage.name} · Follow planned prescriptions</p><WorkoutPrescription workout={execution.initial.occurrence} /></section>;
 }
 export function Workout({ accountId, ownershipEpoch, planId, executionId }: { accountId: string; ownershipEpoch: number; planId?: string; executionId?: string }) {
   const [next, setNext] = useState<z.infer<typeof nextWorkoutRead> | null>(null);
@@ -39,7 +37,9 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId }: { ac
       if (!response.ok) throw new Error(body.error === 'INVALID_START_SNAPSHOT' ? 'The saved workout prescription is unavailable. It cannot be rebuilt safely.' : 'Could not load this workout. Reload to try again.');
       if (executionId) {
         const value = await validateExecutionRead(body, accountId, executionId);
-        if (token === generation.current) setExecution(value);
+        if (token === generation.current) setExecution(current => current ? { ...value, results: value.results.map(r => { const prior = current.results.find(p => p.targetId === r.targetId); return prior && prior.version > r.version ? prior : r; }).concat(current.results.filter(p => !value.results.some(r => r.targetId === p.targetId))) } : value);
+        if (token === generation.current) setMessage('');
+        return value.results;
       } else {
         const value = nextWorkoutRead.parse(body);
         if (value.accountId !== accountId || value.planId !== planId || (value.execution && value.execution.initial.accountId !== accountId)) throw new Error('Invalid workout response');
@@ -92,7 +92,15 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId }: { ac
   return <div className="space-y-4">{message && <p role="status">{message}</p>}
     {pending && <button className={control} disabled={busy} onClick={() => void submit(pending)}>Check again</button>}
     {failed && !pending && <button className={control} onClick={() => void load()}>Reload workout</button>}
-    {execution && <ExecutionView execution={execution} />}
+    {execution && <section className="space-y-4"><h2 className="text-2xl font-semibold">Workout in progress</h2>
+      <p className="text-slate-600">Original targets stay saved. Record what you performed; logging sets does not finish the workout.</p>
+      <a className={control} href="/trainer2/dev/drafts">Trainer2 plans</a>
+      <button className={control} onClick={() => void load()}>Refresh saved results</button>
+      <WorkoutPrescription workout={execution.initial.occurrence} resultRow={(positionId, targetId, number) => {
+        const owned = execution.initial.positions.find(p => p.sourcePositionId === positionId)!.targets.find(t => t.sourceTargetId === targetId)!;
+        return <SetResultRow key={owned.id} accountId={accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
+          targetId={owned.id} number={number} saved={execution.results.find(r => r.targetId === owned.id)} refresh={async () => { const results = await load(); if (!results) throw new Error('Read failed'); return results; }} />;
+      }} /></section>}
     {next && !execution && !pending && (next.execution ? <><h2 className="text-xl font-semibold">Workout in progress</h2><p>{next.execution.initial.occurrence.name}</p><a className={control} href={url(next.execution.executionId)}>Continue workout</a></> : <><h2 className="text-xl font-semibold">Next workout</h2><p>{next.occurrence.name} · {next.occurrence.positions.length} exercises · {next.occurrence.positions.reduce((n, p) => n + p.targets.length, 0)} sets</p><button className="rounded-xl bg-teal-700 px-5 py-3 font-semibold text-white disabled:opacity-40" disabled={busy || failed} onClick={start}>Start workout</button><details><summary>Prescription preview</summary><WorkoutPrescription workout={next.occurrence} /></details></>)}
   </div>;
 }

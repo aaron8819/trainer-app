@@ -1,3 +1,4 @@
+import { savedSetResult } from '../../trainer2-contracts/set-results';
 import { randomUUID } from 'node:crypto';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { initialPrescription, START_POLICY, startOccurrenceCommand, type ExecutionRead } from '../../trainer2-contracts/execution';
@@ -33,7 +34,11 @@ export async function readExecution(tx: DB, principal: ServerPrincipal, executio
     initial.planId !== row.planId || initial.revisionId !== row.revisionId || initial.occurrence.id !== row.occurrenceId ||
     initial.startedAt !== row.startedAt.toISOString() || canonicalJson(initial) !== row.canonicalContent ||
     integrityHash(row.canonicalContent) !== row.contentHash) throw new InvalidStartSnapshot();
-  return { executionId: row.id, lifecycle: 'Open', contentHash: row.contentHash, initial };
+  const revisions = await tx.trainer2SetResultRevision.findMany({ where: { accountId: principal.accountId, executionId: row.id }, orderBy: [{ targetId: 'asc' }, { version: 'desc' }] });
+  const seen = new Set<string>();
+  const results = revisions.filter(r => { if (seen.has(r.targetId)) return false; seen.add(r.targetId); return true; })
+    .map(r => savedSetResult.parse({ executionId: r.executionId, targetId: r.targetId, performedSetId: r.performedSetId, version: r.version, result: r.result, reason: r.reason, actionId: r.actionId, recordedAt: r.recordedAt.toISOString() }));
+  return { executionId: row.id, lifecycle: 'Open', contentHash: row.contentHash, initial, results };
 }
 export async function readNextWorkout(tx: DB, principal: ServerPrincipal, planId: string) {
   await authorizeAccount(tx, principal);

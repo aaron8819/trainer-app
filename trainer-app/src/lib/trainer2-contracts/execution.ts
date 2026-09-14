@@ -3,6 +3,8 @@ import { createDraftCommand, id, occurrence, stage, progressionIntent } from './
 import { hash, instructionSnapshot } from './activation';
 import { canonicalJson } from './canonical-json';
 
+import { savedSetResult } from './set-results';
+
 export const START_POLICY = 'trainer2-start-v1';
 export const startOccurrenceCommand = createDraftCommand.pick({ schemaVersion: true, actionId: true,
   originatingAccountId: true, deviceId: true, ownershipEpoch: true, dependsOn: true }).extend({
@@ -32,7 +34,9 @@ export const initialPrescription = z.object({ schemaVersion: z.literal(1), kind:
 });
 export type InitialPrescription = z.infer<typeof initialPrescription>;
 export const executionRead = z.object({ executionId: id, lifecycle: z.literal('Open'),
-  contentHash: hash, initial: initialPrescription }).strict().refine(v => v.executionId === v.initial.executionId);
+  contentHash: hash, initial: initialPrescription, results: z.array(savedSetResult) }).strict().refine(v =>
+    v.executionId === v.initial.executionId && new Set(v.results.map(r => r.targetId)).size === v.results.length &&
+    v.results.every(r => r.executionId === v.executionId && v.initial.positions.some(p => p.targets.some(t => t.id === r.targetId))));
 export type ExecutionRead = z.infer<typeof executionRead>;
 export async function validateExecutionRead(input: unknown, accountId: string, executionId?: string) {
   const value = executionRead.parse(input);

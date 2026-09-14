@@ -1,6 +1,6 @@
 # 06 Testing
 
-Workout-start verification: [contract and runner](architecture/trainer2/WORKOUT_START.md). Two credential-free suites add six focused cases (Workout.test.tsx and execution-http.test.ts): 404 tracked Vitest files = 365 credential-free + 34 import-only + 5 DB-required. The separately registered workout-start harness uses disposable PostgreSQL and real Edge; it is not counted as a Vitest suite.
+Trainer2 result verification: [contract and disposable runner](architecture/trainer2/SET_RESULTS.md). Inventory is now 405 Vitest files = 366 credential-free + 34 import-only + 5 DB-required. The new SetResultRow suite is credential-free; the registered PostgreSQL/Edge harness is separate.
 
 Trainer2 local activation: [current contract, immutable approval, instruction scope, API/UI behavior and verification](architecture/trainer2/ACTIVATION.md).
 

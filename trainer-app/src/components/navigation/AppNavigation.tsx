@@ -113,7 +113,7 @@ export function AppNavigation() {
   }, []);
 
   // Auth is a separate surface. Do not render/prefetch legacy application links here.
-  if (pathname === "/trainer2/dev/drafts" || pathname === "/trainer2/auth" || pathname?.startsWith("/trainer2/auth/")) return null;
+  if (pathname?.startsWith("/trainer2/dev/executions/") || pathname === "/trainer2/dev/drafts" || pathname === "/trainer2/auth" || pathname?.startsWith("/trainer2/auth/")) return null;
 
   const isActive = (href: string) => {
     if (!pathname) return false;

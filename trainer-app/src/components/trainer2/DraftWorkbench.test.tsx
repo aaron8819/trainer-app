@@ -29,6 +29,17 @@ const reviewed = (name = plan.name, revisionNumber = 1) => {
 const state = reviewed;
 afterEach(() => { cleanup(); sessionStorage.clear(); vi.unstubAllGlobals(); window.history.replaceState(null, '', '/'); });
 describe('builder save recovery', () => {
+  it('shows current completed lifecycle when reopening an activated plan', async () => {
+    const s = state();
+    const fetcher = vi.fn().mockResolvedValueOnce(json({ ...s, state: { lifecycle: 'Completed', initialApprovedRevisionId: s.revisionId } }))
+      .mockResolvedValue(json({ accountId: 'account-a', planId: s.planId, revisionId: s.revisionId, instructionEpoch: 0, lifecycle: 'Completed', occurrence: null, execution: null }));
+    vi.stubGlobal('fetch', fetcher);
+    render(<DraftWorkbench accountId="account-a" ownershipEpoch={0} initialPlanId={s.planId} />);
+    await screen.findByRole('heading', { name: 'Completed plan' });
+    expect(screen.queryByRole('heading', { name: 'Active plan' })).toBeNull();
+    await screen.findByText('No next workout.');
+    expect(screen.queryByRole('button', { name: 'Activate plan' })).toBeNull();
+  });
   it.each(['non-OK', 'network'])('retains accepted bookmark after %s refresh failure; retries only GET', async failure => {
     const fetcher = vi.fn().mockResolvedValueOnce(acceptance());
     if (failure === 'non-OK') fetcher.mockResolvedValueOnce(json({}, false)); else fetcher.mockRejectedValueOnce(new Error('offline'));

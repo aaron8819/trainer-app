@@ -7,7 +7,7 @@ import { DraftAccessError } from "./principal";
 export const connectionRoles = { identity: "trainer2_identity_reader", read: "trainer2_draft_reader", write: "trainer2_draft_runtime" } as const;
 export type ConnectionPurpose = keyof typeof connectionRoles;
 const variables = { identity: "TRAINER2_IDENTITY_CONNECTION_STRING", read: "TRAINER2_READ_CONNECTION_STRING", write: "TRAINER2_WRITE_CONNECTION_STRING" } as const;
-const tables = ["Trainer2AccountPrincipal", "Trainer2AccountTrainingState", "Trainer2Plan", "Trainer2PlanRevision", "Trainer2Identity", "Trainer2DurableAction", "Trainer2ActionOutcome", "Trainer2InstructionRevision", "Trainer2PlanDecision", "Trainer2Execution", "Trainer2SetResultRevision"];
+const tables = ["Trainer2AccountPrincipal", "Trainer2AccountTrainingState", "Trainer2Plan", "Trainer2PlanRevision", "Trainer2Identity", "Trainer2DurableAction", "Trainer2ActionOutcome", "Trainer2InstructionRevision", "Trainer2PlanDecision", "Trainer2Execution", "Trainer2SetResultRevision", "Trainer2ExecutionFinish"];
 
 export function connectionString(purpose: ConnectionPurpose, local: boolean, env: Record<string, string | undefined> = process.env) {
   let url: URL;
@@ -67,12 +67,14 @@ export async function assertConnectionPrivileges(client: PoolClient, purpose: Co
   for (const r of relations) {
     const allowed = r.schema === "public" && ["r", "p"].includes(r.kind) && (purpose === "identity" ? r.name === tables[0] : tables.includes(r.name));
     if (r.owner || r.other || r.delegation || (r.read && !allowed) || (r.insert && !(allowed && purpose === "write" && r.name !== tables[0])) ||
-      (r.update && !(allowed && purpose === "write" && ["Trainer2AccountTrainingState", "Trainer2Plan"].includes(r.name)))) fail();
+      (r.update && !(allowed && purpose === "write" && ["Trainer2AccountTrainingState", "Trainer2Plan", "Trainer2Execution"].includes(r.name)))) fail();
   }
+  if ((await client.query(`SELECT 1 FROM pg_attribute WHERE attrelid='"Trainer2Execution"'::regclass AND attnum>0 AND NOT attisdropped
+    AND attname<>'lifecycle' AND has_column_privilege(current_user,attrelid,attnum,'UPDATE')`)).rowCount) fail();
   for (const name of purpose === "identity" ? [tables[0]] : tables) {
     const r = relations.find(r => r.schema === "public" && r.name === name);
     if (!r?.read || (purpose === "write" && name !== tables[0] && !r.insert) ||
-      (purpose === "write" && ["Trainer2AccountTrainingState", "Trainer2Plan"].includes(name) && !r?.update)) fail();
+      (purpose === "write" && ["Trainer2AccountTrainingState", "Trainer2Plan", "Trainer2Execution"].includes(name) && !r?.update)) fail();
   }
   if ((await client.query(`SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema' AND c.relkind='S'
     AND (c.relowner=(SELECT oid FROM pg_roles WHERE rolname=current_user) OR has_sequence_privilege(current_user,c.oid,'USAGE,UPDATE,SELECT WITH GRANT OPTION,USAGE WITH GRANT OPTION,UPDATE WITH GRANT OPTION'))`)).rowCount) fail();

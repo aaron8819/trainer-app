@@ -1,5 +1,7 @@
 # 03 Data Schema
 
+Trainer2 finish adds immutable Trainer2ExecutionFinish and guarded execution/plan transitions; see [finish persistence](architecture/trainer2/WORKOUT_FINISH.md).
+
 Trainer2 performed results now use append-only `Trainer2SetResultRevision` separately from the immutable execution prescription. See [result schema and permissions](architecture/trainer2/SET_RESULTS.md).
 
 Trainer2 local activation: [current contract, immutable approval, instruction scope, API/UI behavior and verification](architecture/trainer2/ACTIVATION.md).

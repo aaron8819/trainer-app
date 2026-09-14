@@ -43,3 +43,9 @@ GRANT SELECT ON "Trainer2SetResultRevision" TO trainer2_draft_reader, trainer2_d
 GRANT INSERT ON "Trainer2SetResultRevision" TO trainer2_draft_runtime;
 CREATE POLICY trainer2_read ON "Trainer2SetResultRevision" FOR SELECT TO trainer2_draft_reader USING (true);
 CREATE POLICY trainer2_write ON "Trainer2SetResultRevision" TO trainer2_draft_runtime USING (true) WITH CHECK (true);
+
+GRANT SELECT ON "Trainer2ExecutionFinish" TO trainer2_draft_reader, trainer2_draft_runtime;
+GRANT INSERT ON "Trainer2ExecutionFinish" TO trainer2_draft_runtime;
+GRANT UPDATE ("lifecycle") ON "Trainer2Execution" TO trainer2_draft_runtime;
+CREATE POLICY trainer2_read ON "Trainer2ExecutionFinish" FOR SELECT TO trainer2_draft_reader USING (true);
+CREATE POLICY trainer2_write ON "Trainer2ExecutionFinish" TO trainer2_draft_runtime USING (true) WITH CHECK (true);

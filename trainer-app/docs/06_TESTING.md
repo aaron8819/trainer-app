@@ -1,5 +1,7 @@
 # 06 Testing
 
+Trainer2 finish: `node node_modules/tsx/dist/cli.mjs scripts/test-trainer2-workout-finish.ts --confirm-disposable` exercises disposable PostgreSQL and browser journeys. FinishWorkout.test.tsx is credential-free. Inventory: 406 total, 367 credential-free, 34 import-only and five DB-required; see [finish verification scope](architecture/trainer2/WORKOUT_FINISH.md).
+
 Trainer2 result verification: [contract and disposable runner](architecture/trainer2/SET_RESULTS.md). Inventory is now 405 Vitest files = 366 credential-free + 34 import-only + 5 DB-required. The new SetResultRow suite is credential-free; the registered PostgreSQL/Edge harness is separate.
 
 Trainer2 local activation: [current contract, immutable approval, instruction scope, API/UI behavior and verification](architecture/trainer2/ACTIVATION.md).

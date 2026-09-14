@@ -1,5 +1,7 @@
 # 00 Start Here
 
+Trainer2 explicit completion: [WORKOUT_FINISH](architecture/trainer2/WORKOUT_FINISH.md) owns finish, reviewed results, next selection and final plan closure.
+
 Owner: Aaron  
 Last reviewed: 2026-03-04  
 Purpose: Canonical entry point for the Trainer app docs. Use this file to find current docs, update docs after code changes, and prevent drift.

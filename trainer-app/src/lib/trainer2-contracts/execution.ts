@@ -1,3 +1,4 @@
+import { finishFact, reviewedResults, unrecordedTargets } from './workout-finish';
 import { z } from 'zod';
 import { createDraftCommand, id, occurrence, stage, progressionIntent } from './draft';
 import { hash, instructionSnapshot } from './activation';
@@ -33,9 +34,9 @@ export const initialPrescription = z.object({ schemaVersion: z.literal(1), kind:
     })) ctx.addIssue({ code: 'custom', message: 'Invalid execution source identity graph' });
 });
 export type InitialPrescription = z.infer<typeof initialPrescription>;
-export const executionRead = z.object({ executionId: id, lifecycle: z.literal('Open'),
+export const executionRead = z.object({ executionId: id, lifecycle: z.enum(['Open', 'Finished']), finish: finishFact.nullable(),
   contentHash: hash, initial: initialPrescription, results: z.array(savedSetResult) }).strict().refine(v =>
-    v.executionId === v.initial.executionId && new Set(v.results.map(r => r.targetId)).size === v.results.length &&
+    v.executionId === v.initial.executionId && (v.lifecycle === 'Finished' ? !!v.finish : !v.finish) && new Set(v.results.map(r => r.targetId)).size === v.results.length &&
     v.results.every(r => r.executionId === v.executionId && v.initial.positions.some(p => p.targets.some(t => t.id === r.targetId))));
 export type ExecutionRead = z.infer<typeof executionRead>;
 export async function validateExecutionRead(input: unknown, accountId: string, executionId?: string) {
@@ -44,6 +45,9 @@ export async function validateExecutionRead(input: unknown, accountId: string, e
   if (value.initial.accountId !== accountId || (executionId && value.executionId !== executionId) ||
     value.contentHash !== await digest(value.initial) || value.initial.instructions.contentHash !== await digest(value.initial.instructions.document))
     throw new Error('Invalid saved workout response');
+  if (value.finish && (canonicalJson(value.finish.expected) !== canonicalJson(reviewedResults(value)) ||
+    canonicalJson(value.finish.unknownTargetIds) !== canonicalJson(unrecordedTargets(value).map(t => t.targetId).sort())))
+    throw new Error('Invalid finish response');
   return value;
 }
 const cursor = z.string().regex(/^[1-9][0-9]*$/);
@@ -55,4 +59,4 @@ export const startResponse = z.object({ replayed: z.boolean(), outcomeCursor: cu
   ]),
 }).strict();
 export const nextWorkoutRead = z.object({ accountId: z.string().min(1), planId: id, revisionId: id,
-  instructionEpoch: z.int().min(0), occurrence, execution: executionRead.nullable() }).strict();
+  instructionEpoch: z.int().min(0), lifecycle: z.enum(['Active', 'Completed']), occurrence: occurrence.nullable(), execution: executionRead.nullable() }).strict().refine(v => (v.lifecycle === 'Completed') === (v.occurrence === null) && (!v.execution || v.execution.lifecycle === 'Open'));

@@ -1,0 +1,33 @@
+import { z } from 'zod';
+import { createDraftCommand, id } from './draft';
+import { hash } from './activation';
+import type { InitialPrescription } from './execution';
+import type { SavedSetResult } from './set-results';
+
+export const finishBinding = z.object({ contentHash: hash, results: z.array(z.object({
+  targetId: id, resultVersion: z.int().min(0), performedSetId: id.nullable(),
+}).strict().refine(r => (r.resultVersion === 0) === (r.performedSetId === null))).max(10000) }).strict();
+export const finishExecutionCommand = createDraftCommand.pick({ schemaVersion: true, actionId: true,
+  originatingAccountId: true, deviceId: true, ownershipEpoch: true, dependsOn: true }).extend({
+  commandType: z.literal('FinishExecution'), target: z.object({ executionId: id }).strict(),
+  expected: finishBinding, intent: z.object({ acknowledgeUnrecorded: z.boolean() }).strict(),
+}).strict();
+export type FinishExecutionCommand = z.infer<typeof finishExecutionCommand>;
+export function reviewedResults(execution: { initial: InitialPrescription; contentHash: string; results: SavedSetResult[] }) {
+  return { contentHash: execution.contentHash, results: execution.initial.positions.flatMap(p => p.targets.map(t => {
+    const r = execution.results.find(r => r.targetId === t.id);
+    return { targetId: t.id, resultVersion: r?.version ?? 0, performedSetId: r?.performedSetId ?? null };
+  })).sort((a, b) => a.targetId.localeCompare(b.targetId)) };
+}
+export function unrecordedTargets(execution: { initial: InitialPrescription; results: SavedSetResult[] }) {
+  return execution.initial.positions.flatMap((p, i) => p.targets.filter(t => !execution.results.find(r => r.targetId === t.id)?.result)
+    .map(t => ({ targetId: t.id, required: execution.initial.occurrence.positions[i].targets.find(s => s.id === t.sourceTargetId)!.required })));
+}
+export const finishFact = z.object({ actionId: id, finishedAt: z.iso.datetime(), expected: finishBinding,
+  unknownTargetIds: z.array(id), planCompleted: z.boolean() }).strict();
+const cursor = z.string().regex(/^[1-9][0-9]*$/);
+export const finishResponse = z.object({ replayed: z.boolean(), outcomeCursor: cursor, outcome: z.discriminatedUnion('status', [
+  z.object({ status: z.literal('Accepted'), actionId: id, commandType: z.literal('FinishExecution'), acceptedSequence: cursor,
+    result: z.object({ executionId: id, planId: id, occurrenceId: id, planCompleted: z.boolean() }).strict() }).strict(),
+  z.object({ status: z.enum(['Rejected', 'Conflict']), actionId: id, commandType: z.literal('FinishExecution'), code: z.string().min(1) }).strict(),
+]) }).strict();

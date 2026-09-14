@@ -8,14 +8,15 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { sanitizeDatabaseTargetEnvironment, validateDisposableDatabaseTargets } from '../../src/lib/operations/test-environment-preflight';
 import { readDraft } from '../../src/lib/api/trainer2/planning';
 import { readExecution } from '../../src/lib/api/trainer2/execution';
-import { saveSetResult } from '../../src/lib/api/trainer2/set-results';
+import { finishExecution } from '../../src/lib/api/trainer2/workout-finish';
+import { reviewedResults } from '../../src/lib/trainer2-contracts/workout-finish';
 type Command = (exe: string, args: string[], env?: NodeJS.ProcessEnv) => string;
-export async function verifySetResultsUpgrade(admin: Pool, ownerUrl: string, sourceRuntimeUrl: string, command: Command, accountId: string) {
-  const candidate = resolve('artifacts/trainer2/set-results-base/prisma'); mkdirSync(resolve(candidate, 'migrations'), { recursive: true });
+export async function verifyWorkoutFinishUpgrade(admin: Pool, ownerUrl: string, sourceRuntimeUrl: string, command: Command, accountId: string) {
+  const candidate = resolve('artifacts/trainer2/workout-finish-base/prisma'); mkdirSync(resolve(candidate, 'migrations'), { recursive: true });
   cpSync(resolve('prisma/schema.prisma'), resolve(candidate, 'schema.prisma')); cpSync(resolve('prisma.config.ts'), resolve(candidate, '../prisma.config.ts'));
-  for (const entry of readdirSync(resolve('prisma/migrations'))) if ((entry < '20260914020000_trainer2_set_results' || entry === 'migration_lock.toml'))
+  for (const entry of readdirSync(resolve('prisma/migrations'))) if ((entry < '20260914030000_trainer2_workout_finish' || entry === 'migration_lock.toml'))
     cpSync(resolve('prisma/migrations', entry), resolve(candidate, 'migrations', entry), { recursive: true });
-  const database = `trainer2_disposable_results_upgrade_${randomUUID().replaceAll('-', '')}`;
+  const database = `trainer2_disposable_finish_upgrade_${randomUUID().replaceAll('-', '')}`;
   await admin.query(`CREATE DATABASE "${database}"`);
   const target = new URL(ownerUrl); target.pathname = `/${database}`;
   const env = { ...sanitizeDatabaseTargetEnvironment(process.env), DATABASE_URL: target.href, DIRECT_URL: target.href, TEST_DATABASE_URL: target.href };
@@ -23,7 +24,7 @@ export async function verifySetResultsUpgrade(admin: Pool, ownerUrl: string, sou
   const migrate = (config: string) => command(process.execPath, [resolve('node_modules/prisma/build/index.js'), 'migrate', 'deploy', '--config', config], env);
   migrate(resolve(candidate, '../prisma.config.ts'));
   const pool = new Pool({ connectionString: target.href });
-  const tables = ['User', 'Trainer2AccountPrincipal', 'Trainer2AccountTrainingState', 'Trainer2DurableAction', 'Trainer2Plan', 'Trainer2PlanRevision', 'Trainer2Identity', 'Trainer2InstructionRevision', 'Trainer2PlanDecision', 'Trainer2Execution', 'Trainer2ActionOutcome'];
+  const tables = ['User', 'Trainer2AccountPrincipal', 'Trainer2AccountTrainingState', 'Trainer2DurableAction', 'Trainer2Plan', 'Trainer2PlanRevision', 'Trainer2Identity', 'Trainer2InstructionRevision', 'Trainer2PlanDecision', 'Trainer2Execution', 'Trainer2SetResultRevision', 'Trainer2ActionOutcome'];
   let runtime: PrismaClient | undefined, runtimePool: Pool | undefined;
   try {
     const snapshot = async () => Object.fromEntries(await Promise.all(tables.map(async table => [table, (await pool.query(`SELECT to_jsonb(t) AS row FROM "${table}" t ORDER BY to_jsonb(t)::text`)).rows.map(r => r.row)])));
@@ -42,7 +43,7 @@ export async function verifySetResultsUpgrade(admin: Pool, ownerUrl: string, sou
     await pool.query('COMMIT'); const before = await snapshot();
     migrate(resolve('prisma.config.ts')); const migrationCount = (await pool.query('SELECT count(*) FROM "_prisma_migrations"')).rows[0].count;
     migrate(resolve('prisma.config.ts')); assert.equal((await pool.query('SELECT count(*) FROM "_prisma_migrations"')).rows[0].count, migrationCount);
-    assert.deepEqual(await snapshot(), before); assert.equal((await pool.query('SELECT count(*) FROM "Trainer2SetResultRevision"')).rows[0].count, '0');
+    assert.deepEqual(await snapshot(), before); assert.equal((await pool.query('SELECT count(*) FROM "Trainer2ExecutionFinish"')).rows[0].count, '0');
     await pool.query(readFileSync(resolve('prisma/trainer2-runtime-grants.sql'), 'utf8').split('\n').filter(l => !l.startsWith('CREATE ROLE ')).join('\n'));
     const runtimeUrl = new URL(sourceRuntimeUrl); runtimeUrl.pathname = target.pathname;
     runtimePool = new Pool({ connectionString: runtimeUrl.href, max: 1 });
@@ -53,14 +54,13 @@ export async function verifySetResultsUpgrade(admin: Pool, ownerUrl: string, sou
     assert.equal(h.state.lifecycle, 'Active');
     const oldExecution = before.Trainer2Execution[0];
     const read = (await readExecution(runtime, principal, oldExecution.id))!;
-    assert.deepEqual(read.results, []);
-    const result = await saveSetResult(runtime, principal, { schemaVersion: 1, commandType: 'RecordSetResult', actionId: randomUUID(),
+    assert(read.results.length > 0);
+    const result = await finishExecution(runtime, principal, { schemaVersion: 1, commandType: 'FinishExecution', actionId: randomUUID(),
       deviceId: randomUUID(), originatingAccountId: accountId, ownershipEpoch: 0, dependsOn: [],
-      target: { executionId: read.executionId, targetId: read.initial.positions[0].targets[0].id },
-      expected: { resultVersion: 0 }, intent: { result: { reps: { value: 0, basis: 'total' }, measurement: null, rir: null } } });
+      target: { executionId: read.executionId }, expected: reviewedResults(read), intent: { acknowledgeUnrecorded: true } });
     assert.equal(result.outcome.status, 'Accepted');
-    assert.equal((await readExecution(runtime, principal, read.executionId))!.results.length, 1);
-    assert.deepEqual((await readExecution(runtime, principal, read.executionId))!.initial, read.initial);
-    return { status: 'passed', base: '1cd24e2d8572e141da685ff223b5aa2cebcecf68', preservedTables: tables.length, existingExecutionRecordable: true, repeatedDeploy: 'no-op' };
+    const after = (await readExecution(runtime, principal, read.executionId))!;
+    assert.equal(after.lifecycle, 'Finished'); assert.deepEqual(after.results, read.results); assert.deepEqual(after.initial, read.initial);
+    return { status: 'passed', base: 'e12bc081be88a7fbd7e5aa65be13fdfc23a2bdf4', preservedTables: tables.length, existingExecutionFinishable: true, repeatedDeploy: 'no-op' };
   } finally { await runtime?.$disconnect(); await runtimePool?.end(); await pool.end(); }
 }

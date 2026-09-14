@@ -1,10 +1,11 @@
 'use client';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { z } from 'zod';
 import { validateExecutionRead, nextWorkoutRead, startOccurrenceCommand, startResponse,
   type ExecutionRead, type StartOccurrenceCommand } from '@/lib/trainer2-contracts/execution';
 import type { DraftDocument } from '@/lib/trainer2-contracts/draft';
 import { canonicalJson } from '@/lib/trainer2-contracts/canonical-json';
+import { FinishWorkout } from './FinishWorkout';
 import { SetResultRow } from './SetResultRow';
 import { control } from './DraftEditor';
 
@@ -26,6 +27,8 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId }: { ac
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('Loading workout…');
   const [failed, setFailed] = useState(false);
+  const [inputStates, setInputStates] = useState<Record<string, boolean>>({}), [finishLocked, setFinishLocked] = useState(false);
+  const onInputState = useCallback((targetId: string, blocked: boolean) => setInputStates(current => current[targetId] === blocked ? current : { ...current, [targetId]: blocked }), []);
   const generation = useRef(0), inFlight = useRef(false);
   const storageKey = `trainer2-start:${accountId}:${planId}`;
   const url = (id: string) => `/trainer2/dev/executions/${id}`;
@@ -37,9 +40,9 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId }: { ac
       if (!response.ok) throw new Error(body.error === 'INVALID_START_SNAPSHOT' ? 'The saved workout prescription is unavailable. It cannot be rebuilt safely.' : 'Could not load this workout. Reload to try again.');
       if (executionId) {
         const value = await validateExecutionRead(body, accountId, executionId);
-        if (token === generation.current) setExecution(current => current ? { ...value, results: value.results.map(r => { const prior = current.results.find(p => p.targetId === r.targetId); return prior && prior.version > r.version ? prior : r; }).concat(current.results.filter(p => !value.results.some(r => r.targetId === p.targetId))) } : value);
+        if (token === generation.current) setExecution(current => current?.lifecycle === 'Finished' && value.lifecycle === 'Open' ? current : current ? { ...value, results: value.results.map(r => { const prior = current.results.find(p => p.targetId === r.targetId); return prior && prior.version > r.version ? prior : r; }).concat(current.results.filter(p => !value.results.some(r => r.targetId === p.targetId))) } : value);
         if (token === generation.current) setMessage('');
-        return value.results;
+        return value;
       } else {
         const value = nextWorkoutRead.parse(body);
         if (value.accountId !== accountId || value.planId !== planId || (value.execution && value.execution.initial.accountId !== accountId)) throw new Error('Invalid workout response');
@@ -83,7 +86,7 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId }: { ac
     finally { inFlight.current = false; if (token === generation.current) setBusy(false); }
   }
   function start() {
-    if (!next || busy || pending || failed) return;
+    if (!next?.occurrence || busy || pending || failed) return;
     const command: StartOccurrenceCommand = { schemaVersion: 1, commandType: 'StartOccurrence', actionId: crypto.randomUUID(),
       deviceId: crypto.randomUUID(), originatingAccountId: accountId, ownershipEpoch, dependsOn: [],
       target: { planId: next.planId, occurrenceId: next.occurrence.id }, expected: { planRevisionId: next.revisionId, instructionEpoch: next.instructionEpoch }, intent: {} };
@@ -92,15 +95,20 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId }: { ac
   return <div className="space-y-4">{message && <p role="status">{message}</p>}
     {pending && <button className={control} disabled={busy} onClick={() => void submit(pending)}>Check again</button>}
     {failed && !pending && <button className={control} onClick={() => void load()}>Reload workout</button>}
-    {execution && <section className="space-y-4"><h2 className="text-2xl font-semibold">Workout in progress</h2>
-      <p className="text-slate-600">Original targets stay saved. Record what you performed; logging sets does not finish the workout.</p>
+    {execution && <section className="space-y-4"><h2 className="text-2xl font-semibold">{execution.lifecycle === 'Finished' ? 'Workout finished' : 'Workout in progress'}</h2>
+      <p className="text-slate-600">{execution.lifecycle === 'Finished' ? 'Original targets and saved results are preserved. Unrecorded work remains unknown.' : 'Original targets stay saved. Record what you performed; logging sets does not finish the workout.'}</p>
       <a className={control} href="/trainer2/dev/drafts">Trainer2 plans</a>
       <button className={control} onClick={() => void load()}>Refresh saved results</button>
       <WorkoutPrescription workout={execution.initial.occurrence} resultRow={(positionId, targetId, number) => {
         const owned = execution.initial.positions.find(p => p.sourcePositionId === positionId)!.targets.find(t => t.sourceTargetId === targetId)!;
         return <SetResultRow key={owned.id} accountId={accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
-          targetId={owned.id} number={number} saved={execution.results.find(r => r.targetId === owned.id)} refresh={async () => { const results = await load(); if (!results) throw new Error('Read failed'); return results; }} />;
-      }} /></section>}
-    {next && !execution && !pending && (next.execution ? <><h2 className="text-xl font-semibold">Workout in progress</h2><p>{next.execution.initial.occurrence.name}</p><a className={control} href={url(next.execution.executionId)}>Continue workout</a></> : <><h2 className="text-xl font-semibold">Next workout</h2><p>{next.occurrence.name} · {next.occurrence.positions.length} exercises · {next.occurrence.positions.reduce((n, p) => n + p.targets.length, 0)} sets</p><button className="rounded-xl bg-teal-700 px-5 py-3 font-semibold text-white disabled:opacity-40" disabled={busy || failed} onClick={start}>Start workout</button><details><summary>Prescription preview</summary><WorkoutPrescription workout={next.occurrence} /></details></>)}
+          readOnly={execution.lifecycle === 'Finished'} locked={finishLocked} onInputState={onInputState} targetId={owned.id} number={number} saved={execution.results.find(r => r.targetId === owned.id)} refresh={async () => { const value = await load(); if (!value) throw new Error('Read failed'); return value.results; }} />;
+      }} />
+      <FinishWorkout key={execution.executionId} execution={execution} ownershipEpoch={ownershipEpoch}
+        blocked={execution.initial.positions.some(p => p.targets.some(t => inputStates[t.id] !== false))}
+        onLock={setFinishLocked} refresh={async () => { const value = await load(); if (!value || value.lifecycle !== 'Finished') throw new Error('Completion read failed'); }} />
+      {execution.lifecycle === 'Finished' && <Workout key={`next:${execution.executionId}`} accountId={accountId} ownershipEpoch={ownershipEpoch} planId={execution.initial.planId} />}
+      </section>}
+    {next && !execution && !pending && (next.execution ? <><h2 className="text-xl font-semibold">Workout in progress</h2><p>{next.execution.initial.occurrence.name}</p><a className={control} href={url(next.execution.executionId)}>Continue workout</a></> : !next.occurrence ? <><h2 className="text-xl font-semibold">Plan complete</h2><p>No next workout.</p></> : <><h2 className="text-xl font-semibold">Next workout</h2><p>{next.occurrence.name} · {next.occurrence.positions.length} exercises · {next.occurrence.positions.reduce((n, p) => n + p.targets.length, 0)} sets</p><button className="rounded-xl bg-teal-700 px-5 py-3 font-semibold text-white disabled:opacity-40" disabled={busy || failed} onClick={start}>Start workout</button><details><summary>Prescription preview</summary><WorkoutPrescription workout={next.occurrence} /></details></>)}
   </div>;
 }

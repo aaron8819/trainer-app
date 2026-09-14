@@ -1,6 +1,6 @@
 # Local performed set results
 
-This bounded local slice implements recording and correcting existing prescribed sets. Execution & Evidence owns `src/lib/api/trainer2/set-results.ts`; `src/lib/trainer2-contracts/set-results.ts` defines measurement and command shapes. The existing command owner supplies trusted account authorization, account-lock ordering, exact envelope identity, atomic accepted sequence and durable outcomes. Domain architecture §§5.4, 7.3, 9, 10 and 13 and blueprint §§15, 17–19 supply the semantic obligations. Broader offline and completion capabilities remain intended architecture, not implemented behavior.
+This bounded local slice implements recording and correcting existing prescribed sets. Execution & Evidence owns `src/lib/api/trainer2/set-results.ts`; `src/lib/trainer2-contracts/set-results.ts` defines measurement and command shapes. The existing command owner supplies trusted account authorization, account-lock ordering, exact envelope identity, atomic accepted sequence and durable outcomes. Domain architecture §§5.4, 7.3, 9, 10 and 13 and blueprint §§15, 17–19 supply the semantic obligations. Broader offline capabilities remain intended architecture. Explicit [workout finish](WORKOUT_FINISH.md) is now implemented locally.
 
 ## Commands and versions
 
@@ -13,7 +13,7 @@ This bounded local slice implements recording and correcting existing prescribed
 | CorrectSetResult with result null | Same correction precondition | Explicit erroneous-removal reason | Excludes current evidence; retains the revision and provenance |
 | CorrectSetResult after clearing | Exact cleared version and same performedSetId | New non-null result and reason | Re-records under the same identity with a newer version |
 
-A new Record after clearing conflicts; clearing never recreates version zero. Equal values do not restore an earlier version. No unconditional upsert or delete exists. Per-target versions define conflict scope; the existing account transaction lock orders acceptance without forcing independent sets to share an expected version. Current lifecycle is Open only. Logging all prescribed sets leaves the execution Open and the occurrence unresolved.
+A new Record after clearing conflicts; clearing never recreates version zero. Equal values do not restore an earlier version. No unconditional upsert or delete exists. Per-target versions define conflict scope; the existing account transaction lock orders acceptance without forcing independent sets to share an expected version. These ongoing result commands require Open; completed results are read-only in this slice. Logging all prescribed sets leaves the execution Open and the occurrence unresolved.
 
 ## Actual measurements
 
@@ -21,7 +21,7 @@ A result contains nullable `reps: { value, basis }`, nullable `measurement`, and
 
 Actual values, units and counting/loading basis may differ from targets. All actual fields are visibly entered/selected; none are copied from targets into saved evidence. Editing starts from the saved result. The actual exercise and classification remain linked to the exact immutable prescribed set in this slice; no exercise substitution or classification correction is introduced. Entry/correction timestamps are server recording times, not inferred performed times or actual performance order.
 
-Workout start currently admits rep targets only. Duration, distance, unequal sided counts, unsupported-measurement notes, exercise/set additions, removal of prescribed work and workout completion are outside this slice. The form states its sided/duration limitation. Unsupported start captures continue to fail explicitly rather than being coerced into reps.
+Workout start currently admits rep targets only. Duration, distance, unequal sided counts, unsupported-measurement notes, exercise/set additions, removal of prescribed work are outside result entry; explicit completion is owned by WORKOUT_FINISH.md. The form states its sided/duration limitation. Unsupported start captures continue to fail explicitly rather than being coerced into reps.
 
 ## Persistence and access
 

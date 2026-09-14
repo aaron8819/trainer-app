@@ -1,3 +1,4 @@
+import { finishBinding } from '../../trainer2-contracts/workout-finish';
 import { savedSetResult } from '../../trainer2-contracts/set-results';
 import { randomUUID } from 'node:crypto';
 import type { Prisma, PrismaClient } from '@prisma/client';
@@ -12,10 +13,10 @@ import { canonicalJson, integrityHash } from './integrity';
 
 type DB = Prisma.TransactionClient;
 export class InvalidStartSnapshot extends Error { constructor() { super('INVALID_START_SNAPSHOT'); } }
-async function activeSource(tx: DB, accountId: string, planId: string) {
+async function activeSource(tx: DB, accountId: string, planId: string, allowCompleted = false) {
   const plan = await tx.trainer2Plan.findFirst({ where: { id: planId, accountId, tombstonedAt: null } });
   if (!plan) throw new CommandFailure('NOT_FOUND');
-  if (plan.lifecycle !== 'Active') throw new CommandFailure('PLAN_NOT_ACTIVE', true);
+  if (plan.lifecycle !== 'Active' && !(allowCompleted && plan.lifecycle === 'Completed')) throw new CommandFailure('PLAN_NOT_ACTIVE', true);
   if (plan.currentRevisionId !== plan.initialApprovedRevisionId) throw new CommandFailure('INVALID_ACTIVATED_REVISION');
   const revision = await tx.trainer2PlanRevision.findFirstOrThrow({ where: { id: plan.currentRevisionId, planId, accountId } });
   const intent = readSavedDocument(revision.document);
@@ -30,7 +31,7 @@ export async function readExecution(tx: DB, principal: ServerPrincipal, executio
   const parsed = initialPrescription.safeParse(row.initialPrescription);
   if (!parsed.success) throw new InvalidStartSnapshot();
   const initial = parsed.data;
-  if (row.lifecycle !== 'Open' || initial.executionId !== row.id || initial.accountId !== principal.accountId ||
+  if (!['Open', 'Finished'].includes(row.lifecycle) || initial.executionId !== row.id || initial.accountId !== principal.accountId ||
     initial.planId !== row.planId || initial.revisionId !== row.revisionId || initial.occurrence.id !== row.occurrenceId ||
     initial.startedAt !== row.startedAt.toISOString() || canonicalJson(initial) !== row.canonicalContent ||
     integrityHash(row.canonicalContent) !== row.contentHash) throw new InvalidStartSnapshot();
@@ -38,15 +39,19 @@ export async function readExecution(tx: DB, principal: ServerPrincipal, executio
   const seen = new Set<string>();
   const results = revisions.filter(r => { if (seen.has(r.targetId)) return false; seen.add(r.targetId); return true; })
     .map(r => savedSetResult.parse({ executionId: r.executionId, targetId: r.targetId, performedSetId: r.performedSetId, version: r.version, result: r.result, reason: r.reason, actionId: r.actionId, recordedAt: r.recordedAt.toISOString() }));
-  return { executionId: row.id, lifecycle: 'Open', contentHash: row.contentHash, initial, results };
+  const finish = await tx.trainer2ExecutionFinish.findUnique({ where: { executionId: row.id } });
+  if ((row.lifecycle === 'Finished') !== !!finish) throw new InvalidStartSnapshot();
+  return { executionId: row.id, lifecycle: row.lifecycle as 'Open' | 'Finished', contentHash: row.contentHash, initial, results,
+    finish: finish ? { actionId: finish.actionId, finishedAt: finish.finishedAt.toISOString(), expected: finishBinding.parse(finish.expected),
+      unknownTargetIds: finish.unknownTargetIds as string[], planCompleted: finish.planCompleted } : null };
 }
 export async function readNextWorkout(tx: DB, principal: ServerPrincipal, planId: string) {
   await authorizeAccount(tx, principal);
-  const { revision, intent } = await activeSource(tx, principal.accountId, planId);
+  const { plan, revision, intent } = await activeSource(tx, principal.accountId, planId, true);
   const open = await tx.trainer2Execution.findFirst({ where: { accountId: principal.accountId, lifecycle: 'Open' } });
   return { accountId: principal.accountId, planId, revisionId: revision.id,
     instructionEpoch: (await readInstructions(tx, principal.accountId)).epoch,
-    occurrence: intent.occurrences[0], execution: open ? await readExecution(tx, principal, open.id) : null };
+    lifecycle: plan.lifecycle, occurrence: plan.lifecycle === 'Completed' ? null : await nextOccurrence(tx, principal.accountId, planId, intent.occurrences), execution: open ? await readExecution(tx, principal, open.id) : null };
 }
 export async function startOccurrence(db: PrismaClient, principal: ServerPrincipal, input: unknown) {
   const command = startOccurrenceCommand.parse(input);
@@ -55,9 +60,10 @@ export async function startOccurrence(db: PrismaClient, principal: ServerPrincip
     if (revision.id !== command.expected.planRevisionId) throw new CommandFailure('STALE_REVISION', true);
     const occurrence = intent.occurrences.find(o => o.id === command.target.occurrenceId);
     if (!occurrence) throw new CommandFailure('OCCURRENCE_NOT_FOUND');
-    if (occurrence.id !== intent.occurrences[0].id) throw new CommandFailure('OCCURRENCE_NOT_NEXT', true);
+
     const existing = await tx.trainer2Execution.findFirst({ where: { accountId: principal.accountId, occurrenceId: occurrence.id } });
     if (existing) throw new CommandFailure('ALREADY_STARTED', true);
+    if (occurrence.id !== (await nextOccurrence(tx, principal.accountId, command.target.planId, intent.occurrences))?.id) throw new CommandFailure('OCCURRENCE_NOT_NEXT', true);
     if (await tx.trainer2Execution.findFirst({ where: { accountId: principal.accountId, lifecycle: 'Open' } }))
       throw new CommandFailure('OPEN_EXECUTION_CONFLICT', true);
     const instructions = await readInstructions(tx, principal.accountId);
@@ -78,4 +84,9 @@ export async function startOccurrence(db: PrismaClient, principal: ServerPrincip
       initialPrescription: initial, canonicalContent, contentHash } });
     return { executionId, planId: command.target.planId, revisionId: revision.id, occurrenceId: occurrence.id, contentHash };
   });
+}
+
+async function nextOccurrence(tx: DB, accountId: string, planId: string, occurrences: ExecutionRead['initial']['occurrence'][]) {
+  const finished = await tx.trainer2Execution.findMany({ where: { accountId, planId, lifecycle: 'Finished' }, select: { occurrenceId: true } });
+  return occurrences.find(o => !finished.some(x => x.occurrenceId === o.id)) ?? null;
 }

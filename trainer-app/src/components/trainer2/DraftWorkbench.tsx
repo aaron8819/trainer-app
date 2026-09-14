@@ -50,7 +50,7 @@ function Workbench({ accountId, ownershipEpoch, initialPlanId = '' }: Props) {
       if (request !== reviewRequest.current) return;
       const intent = readSavedDocument(validated.intent);
       setLoaded(validated); setForm(structuredClone(intent)); setPlanId(id); setStale(false); bookmark(id);
-      setMessage(validated.state.lifecycle === 'Active' ? 'Plan active' : 'Saved');
+      setMessage(validated.state.lifecycle === 'Completed' ? 'Plan complete' : validated.state.lifecycle === 'Active' ? 'Plan active' : 'Saved');
     } catch { if (request !== reviewRequest.current) return; setMessage(accepted === 'activate' ? 'Activation was accepted, but current state could not be loaded. Reload the latest version.' : accepted ? 'Your plan was saved, but could not be reloaded. Reload the latest version.' : 'Could not load this plan. Check your connection and reload.'); }
   }
   async function reload() { if (!planId || uncertain || !beginRequest()) return; try { await refresh(planId); } finally { endRequest(); } }
@@ -142,7 +142,7 @@ function Workbench({ accountId, ownershipEpoch, initialPlanId = '' }: Props) {
         snapshot: result?.revisionId === loaded.revisionId ? loaded : undefined });
       if (request !== reviewRequest.current) return;
       if (validated.revisionId !== loaded.revisionId) { setStale(true); setMessage('This plan changed in another tab. Reload the latest version before reviewing.'); return; }
-      setLoaded(validated); setReview(validated.review); setReviewError(false); setMessage(validated.state.lifecycle === 'Active' ? 'Plan active' : 'Saved');
+      setLoaded(validated); setReview(validated.review); setReviewError(false); setMessage(validated.state.lifecycle === 'Completed' ? 'Plan complete' : validated.state.lifecycle === 'Active' ? 'Plan active' : 'Saved');
     } catch { if (request === reviewRequest.current) { setReviewError(true); setMessage(INVALID_REVIEW_MESSAGE); } }
     finally { if (request === reviewRequest.current) setReviewBusy(false); }
   }
@@ -168,7 +168,7 @@ function Workbench({ accountId, ownershipEpoch, initialPlanId = '' }: Props) {
     {needsRepair && <section id="repair" tabIndex={-1} className="space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-4"><p>This saved plan contains obsolete override labels from an older builder. Remove those labels to continue editing. Exercise prescriptions and saved history stay intact.</p><button className={control} disabled={locked} onClick={() => { changed(repairBuilderMetadata(form!)); }}>Remove obsolete override labels</button></section>}
     {form && !active && <Progression document={form} disabled={locked || needsRepair} onChange={changed} />}
     {form && !active && <div id="editor" tabIndex={-1} className="scroll-mt-4"><PlanBuilder key={editLocation.key} initialOccurrenceId={editLocation.occurrenceId} document={form} disabled={locked || needsRepair} onChange={changed} /></div>}
-    {active && loaded && <section aria-label="Active plan" className="space-y-4 rounded-xl border border-teal-300 bg-teal-50 p-4"><h2 className="text-xl font-semibold">Active plan</h2><p>This is your activated plan and its saved schedule.</p><Workout key={`${accountId}:${loaded.planId}`} accountId={accountId} ownershipEpoch={ownershipEpoch} planId={loaded.planId} /><p>{progressionLabel}</p><details><summary>Full plan</summary><DraftReview intent={loaded.intent} /></details></section>}
+    {active && loaded && <section aria-label={loaded.state.lifecycle === 'Completed' ? 'Completed plan' : 'Active plan'} className="space-y-4 rounded-xl border border-teal-300 bg-teal-50 p-4"><h2 className="text-xl font-semibold">{loaded.state.lifecycle === 'Completed' ? 'Completed plan' : 'Active plan'}</h2><p>{loaded.state.lifecycle === 'Completed' ? 'This plan is complete. Its saved schedule is preserved.' : 'This is your activated plan and its saved schedule.'}</p><Workout key={`${accountId}:${loaded.planId}`} accountId={accountId} ownershipEpoch={ownershipEpoch} planId={loaded.planId} /><p>{progressionLabel}</p><details><summary>Full plan</summary><DraftReview intent={loaded.intent} /></details></section>}
     {!active && <section className="space-y-3 rounded-xl border border-slate-200 p-4" aria-label="Plan review">
       <button className={control} disabled={!loaded || unsaved || locked} onClick={() => void reviewSaved()}>{reviewBusy ? 'Reviewing…' : 'Review plan'}</button>
       {unsaved && <p className="text-sm text-slate-600">Save your changes before reviewing.</p>}

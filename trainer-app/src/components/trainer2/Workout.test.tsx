@@ -7,7 +7,7 @@ import { createHypertrophyPlan } from '@/lib/engine/trainer2/plan-builder';
 const accountId = 'synthetic-workout-account';
 const planId = randomUUID(), revisionId = randomUUID();
 const occurrence = createHypertrophyPlan().occurrences[0];
-const next = { accountId, planId, revisionId, instructionEpoch: 0, occurrence, execution: null };
+const next = { accountId, planId, revisionId, instructionEpoch: 0, lifecycle: 'Active', occurrence, execution: null };
 const response = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
 beforeEach(() => { sessionStorage.clear(); vi.stubGlobal('crypto', webcrypto); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -17,6 +17,12 @@ describe('Workout start consumer', () => {
     render(<Workout accountId={accountId} ownershipEpoch={0} planId={planId} />);
     await screen.findByRole('button', { name: 'Start workout' }); expect(fetch).toHaveBeenCalledTimes(1);
     expect(fetch.mock.calls[0][1]).toEqual({ cache: 'no-store' });
+  });
+  it('rejects a malformed next response instead of reporting a false endpoint', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({ ...next, occurrence: null })));
+    render(<Workout accountId={accountId} ownershipEpoch={0} planId={planId} />);
+    await screen.findByRole('button', { name: 'Reload workout' });
+    expect(screen.queryByText('Plan complete')).not.toBeInTheDocument();
   });
   it('retains the exact uncertain command across remount and blocks repeated clicks', async () => {
     let finish!: (v: Response) => void;

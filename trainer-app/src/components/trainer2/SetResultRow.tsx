@@ -37,8 +37,9 @@ export function resultLabel(r: PerformedResult | null) {
     `${m.value} ${m.unit} ${m.kind === 'assistance' ? 'assistance' : m.kind === 'addedLoad' ? 'added' : m.convention === 'perImplement' ? 'per implement' : m.convention === 'barbellTotal' ? 'barbell total' : 'machine displayed'}`;
   return `${r.reps ? `${r.reps.value} reps ${r.reps.basis === 'perSide' ? 'per side' : r.reps.basis}` : 'reps unspecified'} · ${load} · ${r.rir === null ? 'effort unspecified' : `${r.rir} RIR`}`;
 }
-export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId, number, saved, refresh }: {
+export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId, number, saved, refresh, readOnly = false, locked = false, onInputState }: {
   accountId: string; ownershipEpoch: number; executionId: string; targetId: string; number: number;
+  readOnly?: boolean; locked?: boolean; onInputState?: (targetId: string, blocked: boolean) => void;
   saved?: SavedSetResult; refresh: () => Promise<SavedSetResult[]>;
 }) {
   const [draft, setDraft] = useState<Draft | null>(null), [ready, setReady] = useState(false);
@@ -50,7 +51,7 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
   function store(next: Draft | null) {
     try { if (next) sessionStorage.setItem(key, canonicalJson(next)); else sessionStorage.removeItem(key); }
     catch { setMessage('Browser storage is unavailable. Keep this page open; saving is disabled until storage works.'); return false; }
-    currentDraft.current = next; setDraft(next); return true;
+    currentDraft.current = next; setDraft(next); onInputState?.(targetId, !!next); return true;
   }
   useEffect(() => {
     alive.current = true;
@@ -72,13 +73,14 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
     // Execution and target identity key this row for its lifetime.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  useEffect(() => { onInputState?.(targetId, !ready || !!draft); }, [ready, draft, targetId, onInputState]);
   function begin() { store({ form: formFor(saved?.result), base: saved ?? null, pending: null, conflict: false }); setMessage(''); }
   function change(field: keyof Form, value: string) {
     const d = currentDraft.current; if (!d || d.pending || busy) return;
     store({ ...d, form: { ...d.form, [field]: value } }); setMessage('');
   }
   async function submit(command: SetResultCommand) {
-    if (flight.current || !currentDraft.current) return;
+    if (flight.current || !currentDraft.current || (readOnly && !currentDraft.current.pending)) return;
     if (!store({ ...currentDraft.current, pending: command })) return;
     flight.current = true; setBusy(true); setMessage('Saving…');
     try {
@@ -102,7 +104,7 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
     finally { flight.current = false; if (alive.current) setBusy(false); }
   }
   function save(clear = false) {
-    const d = currentDraft.current; if (!d || d.pending || d.conflict || busy) return;
+    const d = currentDraft.current; if (!d || d.pending || d.conflict || busy || readOnly || locked) return;
     try {
       const envelope = { schemaVersion: 1, actionId: crypto.randomUUID(), deviceId: crypto.randomUUID(), originatingAccountId: accountId,
         ownershipEpoch, dependsOn: [], target: { executionId, targetId } };
@@ -123,14 +125,14 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
     } catch { if (alive.current) setMessage('Could not refresh the result. Your input is retained.'); }
     finally { if (alive.current) setBusy(false); }
   }
-  const f = draft?.form, disabled = busy || !!draft?.pending;
+  const f = draft?.form, disabled = busy || !!draft?.pending || readOnly || locked;
   const input = (field: 'reps' | 'load' | 'rir', label: string) => <label className="grid gap-1 text-sm">{label}<input
     className={control} aria-label={`Set ${number} ${label}`} inputMode={field === 'reps' ? 'numeric' : 'decimal'}
     value={f![field]} onChange={e => change(field, e.target.value)} /></label>;
   return <div className="mt-3 rounded-lg bg-slate-50 p-3" aria-label={`Set ${number} actual result`}>
     <p className="text-sm font-medium">{saved ? `Saved v${saved.version}: ${resultLabel(saved.result)}` : 'Not recorded'}</p>
     {saved?.reason && <p className="text-xs text-slate-600">Correction: {saved.reason}</p>}
-    {!draft && <button className={control} disabled={!ready} onClick={begin}>{saved ? saved.result ? 'Edit result' : 'Re-record result' : 'Enter actual result'}</button>}
+    {!draft && !readOnly && <button className={control} disabled={!ready || locked} onClick={begin}>{saved ? saved.result ? 'Edit result' : 'Re-record result' : 'Enter actual result'}</button>}
     {draft && f && <fieldset disabled={disabled} className="mt-2 space-y-3">
       <legend className="text-sm font-semibold">{draft.pending ? 'Pending confirmation' : 'Unsaved input'}{draft.base ? ` · editing v${draft.base.version}` : ''}</legend>
       <div className="grid grid-cols-2 gap-3">{input('reps', 'Actual reps')}<label className="grid gap-1 text-sm">Rep basis<select className={control} aria-label={`Set ${number} rep basis`} value={f.basis} onChange={e => change('basis', e.target.value)}><option value="total">Total</option><option value="perSide">Per side</option><option value="alternating">Alternating</option></select></label></div>
@@ -144,6 +146,8 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
       {draft.base?.result && !draft.conflict && <button className={control} onClick={() => save(true)}>Clear erroneous result</button>}
       <button className={control} onClick={() => { store(null); setMessage(''); }}>Discard input</button>
     </fieldset>}
+    {readOnly && draft && <p>Workout finished. Retained input cannot change this completed workout.</p>}
+    {readOnly && draft && !draft.pending && <button className={control} onClick={() => store(null)}>Discard retained input</button>}
     {draft?.pending && <button className={control} disabled={busy} onClick={() => void submit(draft.pending!)}>Check again</button>}
     {message && <p role="status" className="mt-2 text-sm">{message}</p>}
   </div>;

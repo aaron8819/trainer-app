@@ -1353,3 +1353,21 @@ model Trainer2SetResultRevision {
   @@unique([accountId, actionId])
   @@unique([performedSetId, version])
 }
+
+// Immutable authoritative finish and mandatory closure provenance.
+model Trainer2ExecutionFinish {
+  executionId String @id @db.Uuid
+  accountId String
+  planId String @db.Uuid
+  revisionId String @db.Uuid
+  occurrenceId String @db.Uuid
+  actionId String @db.Uuid
+  expected Json
+  unknownTargetIds Json
+  planCompleted Boolean
+  priorPlanLifecycle String
+  endpoint Json
+  finishedAt DateTime @db.Timestamptz(3)
+  createdTx BigInt @default(dbgenerated("txid_current()"))
+  @@unique([accountId, actionId])
+}

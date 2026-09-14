@@ -98,6 +98,12 @@ Sources of truth:
   recursive database-target source inventory test alone has a
   60-second timeout because the demonstrated Windows filesystem traversal exceeded Vitest's
   inherited default; the global Vitest timeout is unchanged.
+- When adding, removing, or renaming a Vitest file, reconcile the file delta and environment
+  requirements before updating the fixed total and credential-free counts in
+  `src/lib/operations/test-suite-environment-classification.test.ts`. Ordinary tests default to
+  credential-free; only proven import-only or DB-required files belong in
+  `scripts/test-suite-environments.json`. Verify selection and run the classification gate plus
+  affected tests. A count change alone is not evidence that classification or routing is correct.
 - `src/lib/operations/credential-free-inventory-runner.test.ts`: focused success cleanup, failure
   retention, reporter parsing, subprocess classification, unique/path-safe naming, complete redacted
   capture, and concise failure-summary coverage.

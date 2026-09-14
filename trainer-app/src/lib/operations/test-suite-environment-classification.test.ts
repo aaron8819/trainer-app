@@ -261,8 +261,8 @@ describe("test-suite environment manifest", () => {
       manifest: currentManifest,
       discoveredTestFiles,
     });
-    expect(discoveredTestFiles).toHaveLength(402);
-    expect(selection.credentialFree).toHaveLength(363);
+    expect(discoveredTestFiles).toHaveLength(404);
+    expect(selection.credentialFree).toHaveLength(365);
     expect(selection.credentialFree).toContain("src/lib/api/trainer2/access.test.ts");
     expect(selection.credentialFree).toContain("src/lib/api/trainer2/authentication.test.ts");
     expect(selection.credentialFree).toContain("src/lib/legacy-history/source.test.ts");

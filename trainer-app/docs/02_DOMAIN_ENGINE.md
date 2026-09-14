@@ -1,5 +1,7 @@
 # 02 Domain Engine
 
+Trainer2 workout start now captures planned prescriptions without progression computation; see [local start ownership and semantics](architecture/trainer2/WORKOUT_START.md).
+
 Trainer2 local activation: [current contract, immutable approval, instruction scope, API/UI behavior and verification](architecture/trainer2/ACTIVATION.md).
 
 Trainer2 progression intent and revision-bound read-only review: [contract, ownership, behavior matrix and local verification](architecture/trainer2/PROGRESSION_REVIEW.md).

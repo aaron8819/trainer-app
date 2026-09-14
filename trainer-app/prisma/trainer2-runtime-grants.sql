@@ -34,3 +34,7 @@ CREATE POLICY trainer2_read ON "Trainer2InstructionRevision" FOR SELECT TO train
 CREATE POLICY trainer2_read ON "Trainer2PlanDecision" FOR SELECT TO trainer2_draft_reader USING (true);
 CREATE POLICY trainer2_write ON "Trainer2InstructionRevision" TO trainer2_draft_runtime USING (true) WITH CHECK (true);
 CREATE POLICY trainer2_write ON "Trainer2PlanDecision" TO trainer2_draft_runtime USING (true) WITH CHECK (true);
+GRANT SELECT ON "Trainer2Execution" TO trainer2_draft_reader, trainer2_draft_runtime;
+GRANT INSERT ON "Trainer2Execution" TO trainer2_draft_runtime;
+CREATE POLICY trainer2_read ON "Trainer2Execution" FOR SELECT TO trainer2_draft_reader USING (true);
+CREATE POLICY trainer2_write ON "Trainer2Execution" TO trainer2_draft_runtime USING (true) WITH CHECK (true);

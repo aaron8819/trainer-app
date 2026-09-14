@@ -164,6 +164,7 @@ describe('exact reviewed activation', () => {
     const bodies: string[] = []; let posts = 0;
     const fetcher = vi.fn().mockResolvedValueOnce(acceptance()).mockResolvedValueOnce(json(state())).mockResolvedValueOnce(json(state()))
       .mockImplementation(async (_url: string, init?: RequestInit) => {
+        if (_url.endsWith('/next')) return json({ accountId: 'account-a', planId: state().planId, revisionId: state().revisionId, instructionEpoch: 0, occurrence: state().intent.occurrences[0], execution: null });
         if (init?.method !== 'POST') return json(activeState());
         bodies.push(String(init.body)); posts++;
         if (posts === 1) return json({ outcome: { status: 'Accepted', result: { planId: state().planId } } });
@@ -173,7 +174,7 @@ describe('exact reviewed activation', () => {
     await screen.findByRole('heading', { name: 'Saved plan checks passed' }); click('Activate plan');
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Activation could not be confirmed'));
     expect(screen.getByRole('button', { name: 'Save plan' })).toBeDisabled();
-    click('Check again'); await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/^Plan active$/));
+    click('Check again'); await screen.findByText(/^Plan active$/);
     expect(bodies[0]).toBe(bodies[1]); expect(screen.getByRole('heading', { name: 'Active plan' })).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Activate plan' })).toBeNull();
     expect(sessionStorage.getItem(`trainer2-activation:account-a:${state().planId}`)).toBeNull();

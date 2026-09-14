@@ -1,5 +1,7 @@
 # 07 Operations
 
+Trainer2 local start uses the existing disposable demo launcher with additional append/read execution grants. New environment changes are local synthetic only; see [workout start operations](architecture/trainer2/WORKOUT_START.md).
+
 Trainer2 local activation: [current contract, immutable approval, instruction scope, API/UI behavior and verification](architecture/trainer2/ACTIVATION.md).
 
 ## Trainer2 principal and role preparation

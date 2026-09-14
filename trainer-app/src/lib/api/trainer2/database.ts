@@ -7,7 +7,7 @@ import { DraftAccessError } from "./principal";
 export const connectionRoles = { identity: "trainer2_identity_reader", read: "trainer2_draft_reader", write: "trainer2_draft_runtime" } as const;
 export type ConnectionPurpose = keyof typeof connectionRoles;
 const variables = { identity: "TRAINER2_IDENTITY_CONNECTION_STRING", read: "TRAINER2_READ_CONNECTION_STRING", write: "TRAINER2_WRITE_CONNECTION_STRING" } as const;
-const tables = ["Trainer2AccountPrincipal", "Trainer2AccountTrainingState", "Trainer2Plan", "Trainer2PlanRevision", "Trainer2Identity", "Trainer2DurableAction", "Trainer2ActionOutcome", "Trainer2InstructionRevision", "Trainer2PlanDecision"];
+const tables = ["Trainer2AccountPrincipal", "Trainer2AccountTrainingState", "Trainer2Plan", "Trainer2PlanRevision", "Trainer2Identity", "Trainer2DurableAction", "Trainer2ActionOutcome", "Trainer2InstructionRevision", "Trainer2PlanDecision", "Trainer2Execution"];
 
 export function connectionString(purpose: ConnectionPurpose, local: boolean, env: Record<string, string | undefined> = process.env) {
   let url: URL;

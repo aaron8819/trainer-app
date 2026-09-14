@@ -10,6 +10,25 @@ datasource db {
 
 // Trainer2 draft slice. Owner/root FKs, immutable graph seals and cursor triggers
 // are database-enforced extensions in 20260909120000_trainer2_drafts.
+// Initial prescription is an immutable execution-owned document. Adjustments and results
+// require separate future records; no mutable prescription head exists in this slice.
+model Trainer2Execution {
+  id String @id @db.Uuid
+  accountId String
+  planId String @db.Uuid
+  revisionId String @db.Uuid
+  occurrenceId String @db.Uuid
+  actionId String @db.Uuid
+  lifecycle String @default("Open")
+  startedAt DateTime @db.Timestamptz(3)
+  initialPrescription Json
+  canonicalContent String
+  contentHash String
+  @@unique([accountId, id])
+  @@unique([accountId, actionId])
+  @@unique([occurrenceId])
+}
+
 model Trainer2AccountPrincipal {
   id        String @id @db.Uuid
   accountId String

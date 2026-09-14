@@ -22,6 +22,7 @@ Sources of truth:
 - `trainer-app/src/lib/engine`
 
 ## Canonical docs
+- `docs/architecture/trainer2/WORKOUT_START.md`: local start, immutable initial prescription, next-workout selection and read-only reopening.
 - `docs/architecture/trainer2/DRAFT_SLICE.md`: implemented local Trainer2 draft boundary and targeted 2.0 contract clarifications; adjacent hash-verified blueprint/architecture/gap sources describe intended direction, not implemented runtime.
 - `docs/01_ARCHITECTURE.md`: runtime architecture and boundaries
 - `docs/02_DOMAIN_ENGINE.md`: generation, selection, progression, readiness, periodization, explainability

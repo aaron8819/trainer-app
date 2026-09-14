@@ -12,6 +12,7 @@ import { progressionLabel, progressionMeaning, type SavedPlanReview, type PlanIs
 import { validateReviewResponse, INVALID_REVIEW_MESSAGE, type SavedPlanResponse } from '@/lib/engine/trainer2/review-response';
 
 import { activationResponse, activatePlanCommand, type ActivatePlanCommand, type InstructionCommand } from '@/lib/trainer2-contracts/activation';
+import { Workout } from './Workout';
 import { Instructions } from './Instructions';
 
 type WriteCommand = DraftCommand | ActivatePlanCommand | InstructionCommand;
@@ -158,7 +159,7 @@ function Workbench({ accountId, ownershipEpoch, initialPlanId = '' }: Props) {
       <h1 className="sr-only">Build your training plan</h1>
       {form && <label className="block"><span className="sr-only">Plan name</span><input aria-label="Plan name" className="w-full rounded border border-transparent bg-transparent py-2 text-2xl font-semibold tracking-tight hover:border-slate-200 focus:border-teal-600 sm:text-3xl" disabled={locked} value={form.name} onChange={e => changed({ ...form, name: e.target.value })} /></label>}
       {form?.builder && <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm"><span className="rounded-full bg-teal-50 px-3 py-1 font-medium text-teal-800">Hypertrophy</span><span className="py-1">5 weeks · 4 workouts per week</span><span className="py-1 text-slate-500">4 training weeks + 1 deload week</span></div>}
-      <p className="text-sm text-slate-500">Build, save, review and activate your plan. Starting workouts is not available yet.</p>
+      <p className="text-sm text-slate-500">Build, save, review and activate your plan, then start your next workout.</p>
     </header>
     {stale && !busy && planId && !uncertain && <button className={control} onClick={() => void reload()}>Reload latest version</button>}
     {currentPlanConflict && <a className="text-teal-800 underline" href={`/trainer2/dev/drafts?planId=${encodeURIComponent(currentPlanConflict)}`}>View active plan</a>}
@@ -167,7 +168,7 @@ function Workbench({ accountId, ownershipEpoch, initialPlanId = '' }: Props) {
     {needsRepair && <section id="repair" tabIndex={-1} className="space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-4"><p>This saved plan contains obsolete override labels from an older builder. Remove those labels to continue editing. Exercise prescriptions and saved history stay intact.</p><button className={control} disabled={locked} onClick={() => { changed(repairBuilderMetadata(form!)); }}>Remove obsolete override labels</button></section>}
     {form && !active && <Progression document={form} disabled={locked || needsRepair} onChange={changed} />}
     {form && !active && <div id="editor" tabIndex={-1} className="scroll-mt-4"><PlanBuilder key={editLocation.key} initialOccurrenceId={editLocation.occurrenceId} document={form} disabled={locked || needsRepair} onChange={changed} /></div>}
-    {active && loaded && <section aria-label="Active plan" className="space-y-4 rounded-xl border border-teal-300 bg-teal-50 p-4"><h2 className="text-xl font-semibold">Active plan</h2><p>This is your activated plan and its exact saved schedule. Starting workouts is not available yet.</p><p>{progressionLabel}</p><DraftReview intent={loaded.intent} /></section>}
+    {active && loaded && <section aria-label="Active plan" className="space-y-4 rounded-xl border border-teal-300 bg-teal-50 p-4"><h2 className="text-xl font-semibold">Active plan</h2><p>This is your activated plan and its saved schedule.</p><Workout key={`${accountId}:${loaded.planId}`} accountId={accountId} ownershipEpoch={ownershipEpoch} planId={loaded.planId} /><p>{progressionLabel}</p><details><summary>Full plan</summary><DraftReview intent={loaded.intent} /></details></section>}
     {!active && <section className="space-y-3 rounded-xl border border-slate-200 p-4" aria-label="Plan review">
       <button className={control} disabled={!loaded || unsaved || locked} onClick={() => void reviewSaved()}>{reviewBusy ? 'Reviewing…' : 'Review plan'}</button>
       {unsaved && <p className="text-sm text-slate-600">Save your changes before reviewing.</p>}

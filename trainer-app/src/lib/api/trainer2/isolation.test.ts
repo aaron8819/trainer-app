@@ -17,7 +17,7 @@ describe("Trainer2 boundary", () => {
     function walk(file: string) {
       if (seen.has(file)) return; seen.add(file);
       const relative = file.slice(app.length + 1).replaceAll("\\", "/");
-      expect(allowed.some(prefix => relative.startsWith(prefix)) || ["lib/operations/production-write-gate-http.ts", "lib/operations/production-write-gate.ts"].includes(relative), relative).toBe(true);
+      expect(allowed.some(prefix => relative.startsWith(prefix)) || ["app/trainer2/dev/executions/[executionId]/page.tsx", "lib/operations/production-write-gate-http.ts", "lib/operations/production-write-gate.ts"].includes(relative), relative).toBe(true);
       if (file.endsWith(".json")) { JSON.parse(readFileSync(file, "utf8")); return; }
       const source = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
       const visit = (node: ts.Node) => {
@@ -37,9 +37,10 @@ describe("Trainer2 boundary", () => {
     function routes(dir: string) { for (const entry of readdirSync(dir, { withFileTypes: true })) { const file = resolve(dir, entry.name); if (entry.isDirectory()) routes(file); else if (entry.name === "route.ts") walk(file); } }
     routes(resolve(app, "app/api/trainer2"));
     walk(resolve(app, "app/trainer2/dev/drafts/page.tsx"));
+    walk(resolve(app, "app/trainer2/dev/executions/[executionId]/page.tsx"));
     expect(seen.size).toBeGreaterThan(6);
     const routeFiles = [...seen].filter(p => p.endsWith("route.ts"));
-    expect(routeFiles).toHaveLength(5);
-    expect(routeFiles.map(p => readFileSync(p, "utf8")).join("\n")).not.toMatch(/execution|finish|DELETE/);
+    expect(routeFiles).toHaveLength(8);
+    expect(routeFiles.map(p => readFileSync(p, "utf8")).join("\n")).not.toMatch(/finish|DELETE/);
   });
 });

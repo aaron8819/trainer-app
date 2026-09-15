@@ -151,7 +151,7 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
       {!historical && draft.base?.result && !draft.conflict && <button className={control} onClick={() => save(true)}>Clear erroneous result</button>}
       <button className={control} onClick={cancel}>{historical ? 'Cancel' : 'Discard input'}</button>
     </fieldset>}
-    {readOnly && draft && <p>Workout finished. Retained input cannot change this completed workout.</p>}
+    {readOnly && draft && <p>This workout attempt is closed. Retained input cannot change it.</p>}
     {readOnly && draft && !draft.pending && <button className={control} onClick={() => store(null)}>Discard retained input</button>}
     {draft?.pending && <button className={control} disabled={busy} onClick={() => void submit(draft.pending!)}>Check again</button>}
     {message && <p role="status" className="mt-2 text-sm">{message}</p>}

@@ -5,6 +5,7 @@ import { validateExecutionRead, nextWorkoutRead, startOccurrenceCommand, startRe
   type ExecutionRead, type StartOccurrenceCommand } from '@/lib/trainer2-contracts/execution';
 import type { DraftDocument } from '@/lib/trainer2-contracts/draft';
 import { canonicalJson } from '@/lib/trainer2-contracts/canonical-json';
+import { DiscardWorkout } from './DiscardWorkout';
 import { FinishWorkout } from './FinishWorkout';
 import { SetResultRow } from './SetResultRow';
 import { control } from './DraftEditor';
@@ -27,7 +28,7 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId }: { ac
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('Loading workout…');
   const [failed, setFailed] = useState(false);
-  const [inputStates, setInputStates] = useState<Record<string, boolean>>({}), [finishLocked, setFinishLocked] = useState(false);
+  const [inputStates, setInputStates] = useState<Record<string, boolean>>({}), [finishLocked, setFinishLocked] = useState(false), [discardLocked, setDiscardLocked] = useState(false);
   const onInputState = useCallback((targetId: string, blocked: boolean) => setInputStates(current => current[targetId] === blocked ? current : { ...current, [targetId]: blocked }), []);
   const generation = useRef(0), inFlight = useRef(false);
   const storageKey = `trainer2-start:${accountId}:${planId}`;
@@ -40,7 +41,7 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId }: { ac
       if (!response.ok) throw new Error(body.error === 'INVALID_START_SNAPSHOT' ? 'The saved workout prescription is unavailable. It cannot be rebuilt safely.' : 'Could not load this workout. Reload to try again.');
       if (executionId) {
         const value = await validateExecutionRead(body, accountId, executionId);
-        if (token === generation.current) setExecution(current => current?.lifecycle === 'Finished' && value.lifecycle === 'Open' ? current : current ? { ...value, history: [...(value.history ?? []), ...(current.history ?? []).filter(p => !value.history?.some(r => r.targetId === p.targetId && r.version === p.version))], results: value.results.map(r => { const prior = current.results.find(p => p.targetId === r.targetId); return prior && prior.version > r.version ? prior : r; }).concat(current.results.filter(p => !value.results.some(r => r.targetId === p.targetId))) } : value);
+        if (token === generation.current) setExecution(current => current && current.lifecycle !== 'Open' && value.lifecycle === 'Open' ? current : current ? { ...value, history: [...(value.history ?? []), ...(current.history ?? []).filter(p => !value.history?.some(r => r.targetId === p.targetId && r.version === p.version))], results: value.results.map(r => { const prior = current.results.find(p => p.targetId === r.targetId); return prior && prior.version > r.version ? prior : r; }).concat(current.results.filter(p => !value.results.some(r => r.targetId === p.targetId))) } : value);
         if (token === generation.current) setMessage('');
         return value;
       } else {
@@ -95,8 +96,9 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId }: { ac
   return <div className="space-y-4">{message && <p role="status">{message}</p>}
     {pending && <button className={control} disabled={busy} onClick={() => void submit(pending)}>Check again</button>}
     {failed && !pending && <button className={control} onClick={() => void load()}>Reload workout</button>}
-    {execution && <section className="space-y-4"><h2 className="text-2xl font-semibold">{execution.lifecycle === 'Finished' ? 'Workout finished' : 'Workout in progress'}</h2>
-      <p className="text-slate-600">{execution.lifecycle === 'Finished' ? 'Latest saved results appear below. Corrections preserve completion and the original targets. Result history shows what was acknowledged at finish.' : 'Original targets stay saved. Record what you performed; logging sets does not finish the workout.'}</p>
+    {execution && <section className="space-y-4"><h2 className="text-2xl font-semibold">{execution.lifecycle === 'Discarded' ? 'Workout attempt discarded' : execution.lifecycle === 'Finished' ? 'Workout finished' : 'Workout in progress'}</h2>
+      <p className="text-slate-600">{execution.lifecycle === 'Discarded' ? 'This attempt was discarded. Its original start and prescription are retained. Discarding this attempt did not complete or skip the scheduled workout.' : execution.lifecycle === 'Finished' ? 'Latest saved results appear below. Corrections preserve completion and the original targets. Result history shows what was acknowledged at finish.' : 'Original targets stay saved. Record what you performed; logging sets does not finish the workout.'}</p>
+      {execution.discard && <p>Started {execution.initial.startedAt}. Discarded {execution.discard.discardedAt}.</p>}
       {execution.finish && <p className="text-sm text-slate-600">Started {execution.initial.startedAt}. Finished {execution.finish.finishedAt}. Later correction times appear in result history.</p>}
       <a className={control} href="/trainer2/dev/drafts">Trainer2 plans</a>
       <button className={control} onClick={() => void load()}>Refresh saved results</button>
@@ -105,16 +107,19 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId }: { ac
         const refresh = async () => { const value = await load(); if (!value) throw new Error('Read failed'); return value.results; };
         const saved = execution.results.find(r => r.targetId === owned.id);
         return <Fragment key={owned.id}><SetResultRow key="ongoing" accountId={accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
-          readOnly={execution.lifecycle === 'Finished'} retainedOnly={execution.lifecycle === 'Finished'} locked={finishLocked} onInputState={onInputState} targetId={owned.id} number={number} saved={saved} refresh={refresh} />
+          readOnly={execution.lifecycle !== 'Open'} retainedOnly={execution.lifecycle !== 'Open'} locked={finishLocked || discardLocked} onInputState={onInputState} targetId={owned.id} number={number} saved={saved} refresh={refresh} />
           {execution.lifecycle === 'Finished' && <SetResultRow key="historical" accountId={accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
             historical history={execution.history?.filter(r => r.targetId === owned.id)} finishVersion={execution.finish?.expected.results.find(r => r.targetId === owned.id)?.resultVersion}
             targetId={owned.id} number={number} saved={saved} refresh={refresh} />}</Fragment>;
 
       }} />
       <FinishWorkout key={execution.executionId} execution={execution} ownershipEpoch={ownershipEpoch}
-        blocked={execution.initial.positions.some(p => p.targets.some(t => inputStates[t.id] !== false))}
+        blocked={discardLocked || execution.initial.positions.some(p => p.targets.some(t => inputStates[t.id] !== false))}
         onLock={setFinishLocked} refresh={async () => { const value = await load(); if (!value || value.lifecycle !== 'Finished') throw new Error('Completion read failed'); }} />
-      {execution.lifecycle === 'Finished' && <Workout key={`next:${execution.executionId}`} accountId={accountId} ownershipEpoch={ownershipEpoch} planId={execution.initial.planId} />}
+      <DiscardWorkout key={`discard:${execution.executionId}`} execution={execution} ownershipEpoch={ownershipEpoch}
+        blocked={finishLocked || execution.initial.positions.some(p => p.targets.some(t => inputStates[t.id] !== false))}
+        onLock={setDiscardLocked} refresh={async () => { const value = await load(); if (!value || value.lifecycle !== 'Discarded') throw new Error('Discard read failed'); }} />
+      {execution.lifecycle !== 'Open' && <Workout key={`next:${execution.executionId}`} accountId={accountId} ownershipEpoch={ownershipEpoch} planId={execution.initial.planId} />}
       </section>}
     {next && !execution && !pending && (next.execution ? <><h2 className="text-xl font-semibold">Workout in progress</h2><p>{next.execution.initial.occurrence.name}</p><a className={control} href={url(next.execution.executionId)}>Continue workout</a></> : !next.occurrence ? <><h2 className="text-xl font-semibold">Plan complete</h2><p>No next workout.</p></> : <><h2 className="text-xl font-semibold">Next workout</h2><p>{next.occurrence.name} · {next.occurrence.positions.length} exercises · {next.occurrence.positions.reduce((n, p) => n + p.targets.length, 0)} sets</p><button className="rounded-xl bg-teal-700 px-5 py-3 font-semibold text-white disabled:opacity-40" disabled={busy || failed} onClick={start}>Start workout</button><details><summary>Prescription preview</summary><WorkoutPrescription workout={next.occurrence} /></details></>)}
   </div>;

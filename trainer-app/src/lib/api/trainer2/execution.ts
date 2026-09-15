@@ -31,7 +31,7 @@ export async function readExecution(tx: DB, principal: ServerPrincipal, executio
   const parsed = initialPrescription.safeParse(row.initialPrescription);
   if (!parsed.success) throw new InvalidStartSnapshot();
   const initial = parsed.data;
-  if (!['Open', 'Finished'].includes(row.lifecycle) || initial.executionId !== row.id || initial.accountId !== principal.accountId ||
+  if (!['Open', 'Finished', 'Discarded'].includes(row.lifecycle) || initial.executionId !== row.id || initial.accountId !== principal.accountId ||
     initial.planId !== row.planId || initial.revisionId !== row.revisionId || initial.occurrence.id !== row.occurrenceId ||
     initial.startedAt !== row.startedAt.toISOString() || canonicalJson(initial) !== row.canonicalContent ||
     integrityHash(row.canonicalContent) !== row.contentHash) throw new InvalidStartSnapshot();
@@ -42,7 +42,9 @@ export async function readExecution(tx: DB, principal: ServerPrincipal, executio
     .map(r => savedSetResult.parse({ executionId: r.executionId, targetId: r.targetId, performedSetId: r.performedSetId, version: r.version, result: r.result, reason: r.reason, actionId: r.actionId, recordedAt: r.recordedAt.toISOString() }));
   const finish = await tx.trainer2ExecutionFinish.findUnique({ where: { executionId: row.id } });
   if ((row.lifecycle === 'Finished') !== !!finish) throw new InvalidStartSnapshot();
-  return { executionId: row.id, lifecycle: row.lifecycle as 'Open' | 'Finished', contentHash: row.contentHash, initial, results, history,
+  const discard = await tx.trainer2ExecutionDiscard.findUnique({ where: { executionId: row.id } });
+  if ((row.lifecycle === 'Discarded') !== !!discard || (discard && revisions.length)) throw new InvalidStartSnapshot();
+  return { discard: discard ? { actionId: discard.actionId, actorAccountId: discard.accountId, discardedAt: discard.discardedAt.toISOString() } : null, executionId: row.id, lifecycle: row.lifecycle as 'Open' | 'Finished' | 'Discarded', contentHash: row.contentHash, initial, results, history,
     finish: finish ? { actionId: finish.actionId, finishedAt: finish.finishedAt.toISOString(), expected: finishBinding.parse(finish.expected),
       unknownTargetIds: finish.unknownTargetIds as string[], planCompleted: finish.planCompleted } : null };
 }
@@ -62,7 +64,7 @@ export async function startOccurrence(db: PrismaClient, principal: ServerPrincip
     const occurrence = intent.occurrences.find(o => o.id === command.target.occurrenceId);
     if (!occurrence) throw new CommandFailure('OCCURRENCE_NOT_FOUND');
 
-    const existing = await tx.trainer2Execution.findFirst({ where: { accountId: principal.accountId, occurrenceId: occurrence.id } });
+    const existing = await tx.trainer2Execution.findFirst({ where: { accountId: principal.accountId, occurrenceId: occurrence.id, lifecycle: { not: 'Discarded' } } });
     if (existing) throw new CommandFailure('ALREADY_STARTED', true);
     if (occurrence.id !== (await nextOccurrence(tx, principal.accountId, command.target.planId, intent.occurrences))?.id) throw new CommandFailure('OCCURRENCE_NOT_NEXT', true);
     if (await tx.trainer2Execution.findFirst({ where: { accountId: principal.accountId, lifecycle: 'Open' } }))

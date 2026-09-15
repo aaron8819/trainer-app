@@ -2,8 +2,9 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { executionHttp } from './execution-http';
 import { InvalidStartSnapshot } from './execution';
-const mocks = vi.hoisted(() => ({ context: vi.fn(), read: vi.fn(), next: vi.fn(), start: vi.fn(), save: vi.fn(), finish: vi.fn(), historical: vi.fn() }));
+const mocks = vi.hoisted(() => ({ context: vi.fn(), read: vi.fn(), next: vi.fn(), start: vi.fn(), save: vi.fn(), finish: vi.fn(), historical: vi.fn(), discard: vi.fn() }));
 vi.mock('./access', () => ({ requestContext: mocks.context }));
+vi.mock('./discard-execution', () => ({ discardEmptyExecution: mocks.discard }));
 vi.mock('./workout-finish', () => ({ finishExecution: mocks.finish }));
 vi.mock('./set-results', () => ({ saveSetResult: mocks.save, correctHistoricalSetResult: mocks.historical }));
 vi.mock('./execution', async importOriginal => ({ ...await importOriginal<typeof import('./execution')>(), readExecution: mocks.read, readNextWorkout: mocks.next, startOccurrence: mocks.start }));
@@ -25,9 +26,9 @@ describe('execution HTTP boundary', () => {
     expect(mocks.context).toHaveBeenCalledWith(request, 'write'); expect(mocks.finish).toHaveBeenCalledWith(db, principal, input);
     expect(result.status).toBe(httpStatus); expect(mocks.start).not.toHaveBeenCalled(); expect(mocks.save).not.toHaveBeenCalled();
   });
-  it.each(['StartOccurrence', 'SaveSetResult', 'FinishExecution', 'CorrectHistoricalSetResult'] as const)('retains the per-command body bound for %s', async operation => {
+  it.each(['StartOccurrence', 'SaveSetResult', 'FinishExecution', 'CorrectHistoricalSetResult', 'DiscardEmptyExecution'] as const)('retains the per-command body bound for %s', async operation => {
     mocks.context.mockResolvedValue({ db: {}, principal: { accountId: 'trusted' } });
-    const request = new Request('http://localhost/command', { method: 'POST', body: ' '.repeat(operation === 'FinishExecution' ? 2000001 : 10001) });
+    const request = new Request('http://localhost/command', { method: 'POST', body: ' '.repeat(operation === 'FinishExecution' || operation === 'DiscardEmptyExecution' ? 2000001 : 10001) });
     expect((await executionHttp(request, operation)).status).toBe(413);
     expect(mocks.finish).not.toHaveBeenCalled(); expect(mocks.start).not.toHaveBeenCalled(); expect(mocks.save).not.toHaveBeenCalled();
   });
@@ -51,4 +52,13 @@ it('routes historical correction through its dedicated trusted write command', a
   expect((await executionHttp(request, 'CorrectHistoricalSetResult')).status).toBe(200);
   expect(mocks.context).toHaveBeenCalledWith(request, 'write'); expect(mocks.historical).toHaveBeenCalledWith(db, principal, input);
   expect(mocks.save).not.toHaveBeenCalled(); expect(mocks.finish).not.toHaveBeenCalled();
+});
+
+it('routes discard through trusted write context without redirecting identity', async () => {
+  const db = {}, principal = { accountId: 'trusted' }, input = { commandType: 'DiscardEmptyExecution' };
+  mocks.context.mockResolvedValue({ db, principal }); mocks.discard.mockResolvedValue({ outcome: { status: 'Accepted' } });
+  const request = new Request('http://localhost/discard', { method: 'POST', body: JSON.stringify(input) });
+  expect((await executionHttp(request, 'DiscardEmptyExecution')).status).toBe(200);
+  expect(mocks.context).toHaveBeenCalledWith(request, 'write'); expect(mocks.discard).toHaveBeenCalledWith(db, principal, input);
+  expect(mocks.start).not.toHaveBeenCalled(); expect(mocks.finish).not.toHaveBeenCalled();
 });

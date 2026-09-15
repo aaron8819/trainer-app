@@ -1,5 +1,7 @@
 # 04 API Contracts
 
+Trainer2 empty execution discard: [lifecycle, command, retained attempts, fresh start and verification](architecture/trainer2/DISCARD_EMPTY_EXECUTION.md).
+
 Trainer2 historical result correction: [command, immutable history, completed readback, permissions and verification](architecture/trainer2/HISTORICAL_SET_CORRECTIONS.md).
 
 Trainer2 POST `/api/trainer2/executions/finish` and completed/next reads are defined by [WORKOUT_FINISH](architecture/trainer2/WORKOUT_FINISH.md).

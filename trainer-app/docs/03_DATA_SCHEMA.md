@@ -1,5 +1,7 @@
 # 03 Data Schema
 
+Trainer2 empty execution discard: [lifecycle, command, retained attempts, fresh start and verification](architecture/trainer2/DISCARD_EMPTY_EXECUTION.md).
+
 Trainer2 historical result correction: [command, immutable history, completed readback, permissions and verification](architecture/trainer2/HISTORICAL_SET_CORRECTIONS.md).
 
 Trainer2 finish adds immutable Trainer2ExecutionFinish and guarded execution/plan transitions; see [finish persistence](architecture/trainer2/WORKOUT_FINISH.md).

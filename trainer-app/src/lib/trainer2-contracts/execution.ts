@@ -1,3 +1,4 @@
+import { discardFact } from './discard-execution';
 import { finishFact, reviewedResults, unrecordedTargets } from './workout-finish';
 import { z } from 'zod';
 import { createDraftCommand, id, occurrence, stage, progressionIntent } from './draft';
@@ -34,9 +35,9 @@ export const initialPrescription = z.object({ schemaVersion: z.literal(1), kind:
     })) ctx.addIssue({ code: 'custom', message: 'Invalid execution source identity graph' });
 });
 export type InitialPrescription = z.infer<typeof initialPrescription>;
-export const executionRead = z.object({ executionId: id, lifecycle: z.enum(['Open', 'Finished']), finish: finishFact.nullable(),
+export const executionRead = z.object({ executionId: id, lifecycle: z.enum(['Open', 'Finished', 'Discarded']), discard: discardFact.nullable().optional(), finish: finishFact.nullable(),
   contentHash: hash, initial: initialPrescription, results: z.array(savedSetResult), history: z.array(savedSetResult).optional() }).strict().refine(v =>
-    v.executionId === v.initial.executionId && (v.lifecycle === 'Finished' ? !!v.finish : !v.finish) && new Set(v.results.map(r => r.targetId)).size === v.results.length &&
+    v.executionId === v.initial.executionId && (v.lifecycle === 'Discarded' ? !!v.discard && v.discard.actorAccountId === v.initial.accountId && v.results.length === 0 && v.history?.length === 0 : !v.discard) && (v.lifecycle === 'Finished' ? !!v.finish : !v.finish) && new Set(v.results.map(r => r.targetId)).size === v.results.length &&
     v.results.every(r => r.executionId === v.executionId && v.initial.positions.some(p => p.targets.some(t => t.id === r.targetId))));
 export type ExecutionRead = z.infer<typeof executionRead>;
 export async function validateExecutionRead(input: unknown, accountId: string, executionId?: string) {

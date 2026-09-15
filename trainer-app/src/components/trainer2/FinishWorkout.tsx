@@ -64,6 +64,7 @@ export function FinishWorkout({ execution, ownershipEpoch, blocked, refresh, onL
       expected: reviewedResults(review), intent: { acknowledgeUnrecorded: unrecordedTargets(review).length > 0 } });
   }
   const unknown = review ? unrecordedTargets(review) : [];
+  if (execution.lifecycle !== 'Open' && !pending && !message) return null;
   return <section className="space-y-3 rounded-xl border border-slate-300 p-4" aria-label="Finish workout">
     {message && <p role="status">{message}</p>}
     {pending ? <button className={control} disabled={busy} onClick={() => void submit(pending)}>Check finish again</button> :

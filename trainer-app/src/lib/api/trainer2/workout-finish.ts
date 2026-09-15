@@ -12,6 +12,7 @@ export async function finishExecution(db: PrismaClient, principal: ServerPrincip
     const execution = await readExecution(tx, principal, command.target.executionId);
     if (!execution) throw new CommandFailure('NOT_FOUND');
     if (execution.lifecycle === 'Finished') throw new CommandFailure('ALREADY_FINISHED', true);
+    if (execution.lifecycle !== 'Open') throw new CommandFailure('EXECUTION_NOT_OPEN', true);
     if (canonicalJson(command.expected) !== canonicalJson(reviewedResults(execution))) throw new CommandFailure('STALE_FINISH_RESULTS', true);
     const unknownTargetIds = unrecordedTargets(execution).map(t => t.targetId).sort();
     if (unknownTargetIds.length && !command.intent.acknowledgeUnrecorded) throw new CommandFailure('UNRECORDED_ACKNOWLEDGEMENT_REQUIRED');

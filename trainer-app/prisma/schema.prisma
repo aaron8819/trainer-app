@@ -26,7 +26,7 @@ model Trainer2Execution {
   contentHash String
   @@unique([accountId, id])
   @@unique([accountId, actionId])
-  @@unique([occurrenceId])
+  // Retained discarded attempts are excluded by trainer2_one_ordinary_execution.
 }
 
 model Trainer2AccountPrincipal {
@@ -1368,6 +1368,17 @@ model Trainer2ExecutionFinish {
   priorPlanLifecycle String
   endpoint Json
   finishedAt DateTime @db.Timestamptz(3)
+  createdTx BigInt @default(dbgenerated("txid_current()"))
+  @@unique([accountId, actionId])
+}
+
+model Trainer2ExecutionDiscard {
+  executionId String @id @db.Uuid
+  accountId String
+  occurrenceId String @db.Uuid
+  actionId String @db.Uuid
+  expected Json
+  discardedAt DateTime @default(now()) @db.Timestamptz(3)
   createdTx BigInt @default(dbgenerated("txid_current()"))
   @@unique([accountId, actionId])
 }

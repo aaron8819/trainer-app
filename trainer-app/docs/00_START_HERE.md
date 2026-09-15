@@ -1,5 +1,7 @@
 # 00 Start Here
 
+Trainer2 historical result correction: [command, immutable history, completed readback, permissions and verification](architecture/trainer2/HISTORICAL_SET_CORRECTIONS.md).
+
 Trainer2 explicit completion: [WORKOUT_FINISH](architecture/trainer2/WORKOUT_FINISH.md) owns finish, reviewed results, next selection and final plan closure.
 
 Owner: Aaron  

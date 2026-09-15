@@ -35,7 +35,7 @@ export const initialPrescription = z.object({ schemaVersion: z.literal(1), kind:
 });
 export type InitialPrescription = z.infer<typeof initialPrescription>;
 export const executionRead = z.object({ executionId: id, lifecycle: z.enum(['Open', 'Finished']), finish: finishFact.nullable(),
-  contentHash: hash, initial: initialPrescription, results: z.array(savedSetResult) }).strict().refine(v =>
+  contentHash: hash, initial: initialPrescription, results: z.array(savedSetResult), history: z.array(savedSetResult).optional() }).strict().refine(v =>
     v.executionId === v.initial.executionId && (v.lifecycle === 'Finished' ? !!v.finish : !v.finish) && new Set(v.results.map(r => r.targetId)).size === v.results.length &&
     v.results.every(r => r.executionId === v.executionId && v.initial.positions.some(p => p.targets.some(t => t.id === r.targetId))));
 export type ExecutionRead = z.infer<typeof executionRead>;
@@ -45,9 +45,27 @@ export async function validateExecutionRead(input: unknown, accountId: string, e
   if (value.initial.accountId !== accountId || (executionId && value.executionId !== executionId) ||
     value.contentHash !== await digest(value.initial) || value.initial.instructions.contentHash !== await digest(value.initial.instructions.document))
     throw new Error('Invalid saved workout response');
-  if (value.finish && (canonicalJson(value.finish.expected) !== canonicalJson(reviewedResults(value)) ||
-    canonicalJson(value.finish.unknownTargetIds) !== canonicalJson(unrecordedTargets(value).map(t => t.targetId).sort())))
-    throw new Error('Invalid finish response');
+  const history = value.history ?? value.results;
+  if (value.history) {
+    if (history.some(r => r.executionId !== value.executionId || !value.results.some(c => c.targetId === r.targetId))) throw new Error('Invalid result history');
+    for (const current of value.results) {
+      const chain = history.filter(r => r.targetId === current.targetId).sort((a, b) => a.version - b.version);
+      if (chain.length !== current.version || chain.some((r, i) => r.version !== i + 1 || r.performedSetId !== current.performedSetId) ||
+        canonicalJson(chain.at(-1)) !== canonicalJson(current)) throw new Error('Invalid result history');
+    }
+  }
+  if (value.finish) {
+    const atFinish = value.finish.expected.results.flatMap(binding => {
+      if (binding.resultVersion === 0) return [];
+      const revision = history.find(r => r.targetId === binding.targetId && r.version === binding.resultVersion && r.performedSetId === binding.performedSetId);
+      if (!revision) throw new Error('Missing finish evidence');
+      return [revision];
+    });
+    const original = { ...value, results: atFinish };
+    if (canonicalJson(value.finish.expected) !== canonicalJson(reviewedResults(original)) ||
+      canonicalJson(value.finish.unknownTargetIds) !== canonicalJson(unrecordedTargets(original).map(t => t.targetId).sort()))
+      throw new Error('Invalid finish response');
+  }
   return value;
 }
 const cursor = z.string().regex(/^[1-9][0-9]*$/);

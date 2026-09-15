@@ -13,7 +13,7 @@ This bounded local slice implements recording and correcting existing prescribed
 | CorrectSetResult with result null | Same correction precondition | Explicit erroneous-removal reason | Excludes current evidence; retains the revision and provenance |
 | CorrectSetResult after clearing | Exact cleared version and same performedSetId | New non-null result and reason | Re-records under the same identity with a newer version |
 
-A new Record after clearing conflicts; clearing never recreates version zero. Equal values do not restore an earlier version. No unconditional upsert or delete exists. Per-target versions define conflict scope; the existing account transaction lock orders acceptance without forcing independent sets to share an expected version. These ongoing result commands require Open; completed results are read-only in this slice. Logging all prescribed sets leaves the execution Open and the occurrence unresolved.
+A new Record after clearing conflicts; clearing never recreates version zero. Equal values do not restore an earlier version. No unconditional upsert or delete exists. Per-target versions define conflict scope; the existing account transaction lock orders acceptance without forcing independent sets to share an expected version. These ongoing result commands require Open; completed results use the separate [historical correction command](HISTORICAL_SET_CORRECTIONS.md). Logging all prescribed sets leaves the execution Open and the occurrence unresolved.
 
 ## Actual measurements
 

@@ -6,7 +6,7 @@ Execution & Evidence owns `FinishExecution` in `src/lib/api/trainer2/workout-fin
 
 `POST /api/trainer2/executions/finish` uses the existing version-1 action/device/account/ownership-epoch/dependency envelope and trusted principal. `target.executionId` selects the owned execution. `expected` contains its initial `contentHash` and every execution-owned `targetId`, `resultVersion` and `performedSetId`, sorted by target ID. Never-recorded targets bind zero/null; cleared results retain their positive version and performed identity. Equal-value corrections remain distinguishable newer versions. Missing/extra/stale bindings fail without completion.
 
-Intent is `{ acknowledgeUnrecorded: boolean }`. Required, optional and cleared targets without current results require one explicit acknowledgement and remain unknown. Finish never fabricates results, zeros, omissions, skips or adjustments. Reasons and set-by-set cleanup are not required. Logging all sets alone never finishes. The confirmation shows unknown required/optional counts and says results become read-only; its reviewed snapshot stays fixed across background refresh.
+Intent is `{ acknowledgeUnrecorded: boolean }`. Required, optional and cleared targets without current results require one explicit acknowledgement and remain unknown. Finish never fabricates results, zeros, omissions, skips or adjustments. Reasons and set-by-set cleanup are not required. Logging all sets alone never finishes. The confirmation shows unknown required/optional counts and explains that later correction preserves completion; its reviewed snapshot stays fixed across background refresh.
 
 ## Transaction and lifecycle
 
@@ -14,7 +14,7 @@ The shared acceptCommand owner locks Trainer2AccountTrainingState before reading
 
 Planning derives occurrence resolution from the linked execution's authoritative finish fact; there is no separate editable resolved flag. All ongoing record/correct/clear/re-record commands share account-first locking. The SQL result guard rechecks Open and absence of a finish fact after the lock, preventing stale preflight and direct same-transaction append bypass. Result-first makes an older finish stale; finish-first prevents further ongoing mutations. Finish insert validates versions/unknowns against persisted rows. Lifecycle guards require a same-transaction finish, whose deferred seal requires the execution state, plan consequence and accepted outcome.
 
-Exact envelope replay returns its durable receipt, even after final closure or later workouts. Changed payload under the same identity is an action collision. A distinct finish of a Finished execution returns ALREADY_FINISHED. Historical command success does not claim current plan state. The architecture's separate Correct Historical Evidence and Undo Finish actions remain future work; ongoing result commands are not repurposed after completion. No broad offline synchronization or device-loss durability is claimed.
+Exact envelope replay returns its durable receipt, even after final closure or later workouts. Changed payload under the same identity is an action collision. A distinct finish of a Finished execution returns ALREADY_FINISHED. Historical command success does not claim current plan state. The separate [historical result correction command](HISTORICAL_SET_CORRECTIONS.md) is implemented for existing recorded sets; Undo Finish remains future work. Ongoing result commands are not repurposed after completion. No broad offline synchronization or device-loss durability is claimed.
 
 ## Next selection and UI
 

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
-import { performedResult, savedSetResult, setResultCommand, setResultResponse,
+import { performedResult, savedSetResult, resultMutationCommand, setResultResponse,
   type PerformedResult, type SavedSetResult, type SetResultCommand } from '@/lib/trainer2-contracts/set-results';
 import { canonicalJson } from '@/lib/trainer2-contracts/canonical-json';
 import { control as baseControl } from './DraftEditor';
@@ -13,7 +13,7 @@ const formSchema = z.object({ reps: z.string(), basis: z.enum(['total', 'perSide
   unit: z.enum(['kg', 'lb']), convention: z.enum(['barbellTotal', 'perImplement', 'machineDisplayed']),
   rir: z.string(), reason: z.string() }).strict();
 type Form = z.infer<typeof formSchema>;
-const draftSchema = z.object({ form: formSchema, base: savedSetResult.nullable(), pending: setResultCommand.nullable(), conflict: z.boolean() }).strict();
+const draftSchema = z.object({ form: formSchema, base: savedSetResult.nullable(), pending: resultMutationCommand.nullable(), conflict: z.boolean() }).strict();
 type Draft = z.infer<typeof draftSchema>;
 function formFor(r?: PerformedResult | null): Form {
   const m = r?.measurement;
@@ -37,16 +37,17 @@ export function resultLabel(r: PerformedResult | null) {
     `${m.value} ${m.unit} ${m.kind === 'assistance' ? 'assistance' : m.kind === 'addedLoad' ? 'added' : m.convention === 'perImplement' ? 'per implement' : m.convention === 'barbellTotal' ? 'barbell total' : 'machine displayed'}`;
   return `${r.reps ? `${r.reps.value} reps ${r.reps.basis === 'perSide' ? 'per side' : r.reps.basis}` : 'reps unspecified'} · ${load} · ${r.rir === null ? 'effort unspecified' : `${r.rir} RIR`}`;
 }
-export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId, number, saved, refresh, readOnly = false, locked = false, onInputState }: {
+export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId, number, saved, refresh, readOnly = false, locked = false, onInputState, historical = false, history = [], finishVersion, retainedOnly = false }: {
   accountId: string; ownershipEpoch: number; executionId: string; targetId: string; number: number;
-  readOnly?: boolean; locked?: boolean; onInputState?: (targetId: string, blocked: boolean) => void;
+  retainedOnly?: boolean; historical?: boolean; history?: SavedSetResult[]; finishVersion?: number; readOnly?: boolean; locked?: boolean; onInputState?: (targetId: string, blocked: boolean) => void;
   saved?: SavedSetResult; refresh: () => Promise<SavedSetResult[]>;
 }) {
   const [draft, setDraft] = useState<Draft | null>(null), [ready, setReady] = useState(false);
   const [message, setMessage] = useState(''), [busy, setBusy] = useState(false);
   const [reviewed, setReviewed] = useState<{ latest: SavedSetResult | null } | null>(null);
+  const editButton = useRef<HTMLButtonElement>(null);
   const currentDraft = useRef<Draft | null>(null), alive = useRef(false), flight = useRef(false);
-  const key = `trainer2-result:${accountId}:${executionId}:${targetId}`;
+  const key = `${historical ? 'trainer2-historical-result' : 'trainer2-result'}:${accountId}:${executionId}:${targetId}`;
   const binding = (r: { executionId: string; targetId: string }) => r.executionId === executionId && r.targetId === targetId;
   function store(next: Draft | null) {
     try { if (next) sessionStorage.setItem(key, canonicalJson(next)); else sessionStorage.removeItem(key); }
@@ -74,6 +75,7 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => { onInputState?.(targetId, !ready || !!draft); }, [ready, draft, targetId, onInputState]);
+  function cancel() { if (store(null)) { setMessage(''); setTimeout(() => editButton.current?.focus(), 0); } }
   function begin() { store({ form: formFor(saved?.result), base: saved ?? null, pending: null, conflict: false }); setMessage(''); }
   function change(field: keyof Form, value: string) {
     const d = currentDraft.current; if (!d || d.pending || busy) return;
@@ -84,15 +86,15 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
     if (!store({ ...currentDraft.current, pending: command })) return;
     flight.current = true; setBusy(true); setMessage('Saving…');
     try {
-      const response = await fetch('/api/trainer2/executions/results', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: canonicalJson(command) });
+      const response = await fetch(command.commandType === 'CorrectHistoricalSetResult' ? '/api/trainer2/executions/corrections' : '/api/trainer2/executions/results', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: canonicalJson(command) });
       const { outcome } = setResultResponse.parse(await response.json());
       if (!alive.current) return;
       if (outcome.actionId !== command.actionId || outcome.commandType !== command.commandType ||
         (outcome.status === 'Accepted' && (!response.ok || !binding(outcome.result) || outcome.result.version !== command.expected.resultVersion + 1 ||
-          (command.commandType === 'CorrectSetResult' && outcome.result.performedSetId !== command.expected.performedSetId)))) throw new Error('Unbound outcome');
+          (command.commandType !== 'RecordSetResult' && outcome.result.performedSetId !== command.expected.performedSetId)))) throw new Error('Unbound outcome');
       if (outcome.status !== 'Accepted') {
         store({ ...currentDraft.current!, pending: null, conflict: true });
-        setMessage('Save was not accepted. Your input is retained. Review the latest saved result before deciding how to correct it.'); return;
+        setMessage('Result changed elsewhere. Review the latest value. Your input is retained.'); return;
       }
       // Acceptance can be historical. Only a fresh authoritative read updates the display.
       const results = await refresh();
@@ -105,15 +107,16 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
   }
   function save(clear = false) {
     const d = currentDraft.current; if (!d || d.pending || d.conflict || busy || readOnly || locked) return;
+    if (historical && (!d.base?.result || clear)) return;
     try {
       const envelope = { schemaVersion: 1, actionId: crypto.randomUUID(), deviceId: crypto.randomUUID(), originatingAccountId: accountId,
         ownershipEpoch, dependsOn: [], target: { executionId, targetId } };
       const result = clear ? null : parseForm(d.form);
-      const command = setResultCommand.parse(d.base ? { ...envelope, commandType: 'CorrectSetResult',
-        expected: { resultVersion: d.base.version, performedSetId: d.base.performedSetId }, intent: { result, reason: d.form.reason } } :
+      const command = resultMutationCommand.parse(d.base ? { ...envelope, commandType: historical ? 'CorrectHistoricalSetResult' : 'CorrectSetResult',
+        expected: { resultVersion: d.base.version, performedSetId: d.base.performedSetId }, intent: { result, reason: historical ? 'Correct recorded result' : d.form.reason } } :
         { ...envelope, commandType: 'RecordSetResult', expected: { resultVersion: 0 }, intent: { result } });
       void submit(command);
-    } catch (error) { setMessage(error instanceof z.ZodError ? 'Enter valid actual values (reps 0–1000, nonnegative load, RIR 0–10) and a reason for corrections. Blank fields stay unspecified.' : String(error)); }
+    } catch (error) { setMessage(error instanceof z.ZodError ? 'Enter valid actual values (reps 0–1000, nonnegative load, RIR 0–10) and a reason for ongoing corrections. Blank fields stay unspecified.' : String(error)); }
   }
   async function reviewLatest() {
     if (busy) return;
@@ -126,13 +129,15 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
     finally { if (alive.current) setBusy(false); }
   }
   const f = draft?.form, disabled = busy || !!draft?.pending || readOnly || locked;
-  const input = (field: 'reps' | 'load' | 'rir', label: string) => <label className="grid gap-1 text-sm">{label}<input
+  const input = (field: 'reps' | 'load' | 'rir', label: string) => <label className="grid gap-1 text-sm">{label}<input autoFocus={historical && field === 'reps'}
     className={control} aria-label={`Set ${number} ${label}`} inputMode={field === 'reps' ? 'numeric' : 'decimal'}
     value={f![field]} onChange={e => change(field, e.target.value)} /></label>;
+  if (retainedOnly && !draft) return null;
   return <div className="mt-3 rounded-lg bg-slate-50 p-3" aria-label={`Set ${number} actual result`}>
     <p className="text-sm font-medium">{saved ? `Saved v${saved.version}: ${resultLabel(saved.result)}` : 'Not recorded'}</p>
+    {historical && history.length > 0 && <details className="mt-2 text-sm"><summary className="min-h-11 cursor-pointer">Result history</summary><ol className="space-y-2">{[...history].sort((a, b) => a.version - b.version).map(r => <li key={r.version}><p>{r.version === 1 ? 'Original record' : 'Correction'} · v{r.version}{r.version === finishVersion ? ' · Acknowledged at finish' : ''}</p><p>{resultLabel(r.result)}</p><p>{r.recordedAt} · {r.reason ?? 'Recorded result'}</p></li>)}</ol></details>}
     {saved?.reason && <p className="text-xs text-slate-600">Correction: {saved.reason}</p>}
-    {!draft && !readOnly && <button className={control} disabled={!ready || locked} onClick={begin}>{saved ? saved.result ? 'Edit result' : 'Re-record result' : 'Enter actual result'}</button>}
+    {!draft && !readOnly && (!historical || !!saved?.result) && <button ref={editButton} className={control} disabled={!ready || locked} onClick={begin}>{historical ? 'Correct result' : saved ? saved.result ? 'Edit result' : 'Re-record result' : 'Enter actual result'}</button>}
     {draft && f && <fieldset disabled={disabled} className="mt-2 space-y-3">
       <legend className="text-sm font-semibold">{draft.pending ? 'Pending confirmation' : 'Unsaved input'}{draft.base ? ` · editing v${draft.base.version}` : ''}</legend>
       <div className="grid grid-cols-2 gap-3">{input('reps', 'Actual reps')}<label className="grid gap-1 text-sm">Rep basis<select className={control} aria-label={`Set ${number} rep basis`} value={f.basis} onChange={e => change('basis', e.target.value)}><option value="total">Total</option><option value="perSide">Per side</option><option value="alternating">Alternating</option></select></label></div>
@@ -140,11 +145,11 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
       {!['unspecified', 'bodyweight'].includes(f.kind) && <div className="grid grid-cols-2 gap-3">{input('load', 'Actual load')}<label className="grid gap-1 text-sm">Unit<select className={control} aria-label={`Set ${number} load unit`} value={f.unit} onChange={e => change('unit', e.target.value)}><option>kg</option><option>lb</option></select></label></div>}
       {f.kind === 'externalLoad' && <label className="grid gap-1 text-sm">Load basis<select className={control} aria-label={`Set ${number} load basis`} value={f.convention} onChange={e => change('convention', e.target.value)}><option value="barbellTotal">Barbell total</option><option value="perImplement">Per implement</option><option value="machineDisplayed">Machine displayed</option></select></label>}
       {input('rir', 'Actual RIR (optional)')}
-      {draft.base && <label className="grid gap-1 text-sm">Correction reason<input className={control} aria-label={`Set ${number} correction reason`} maxLength={200} value={f.reason} onChange={e => change('reason', e.target.value)} /></label>}
+      {draft.base && !historical && <label className="grid gap-1 text-sm">Correction reason<input className={control} aria-label={`Set ${number} correction reason`} maxLength={200} value={f.reason} onChange={e => change('reason', e.target.value)} /></label>}
       <p className="text-xs text-slate-600">Blank values are unspecified. Per side records the stated count per side; separate left/right counts and duration are not supported.</p>
       {draft.conflict ? <><button className={control} onClick={() => void reviewLatest()}>Review latest result</button>{reviewed && <div><p>Latest: {resultLabel(reviewed.latest?.result ?? null)} · v{reviewed.latest?.version ?? 0}</p><button className={control} onClick={() => { store({ ...draft, base: reviewed.latest, conflict: false }); setReviewed(null); setMessage('Input retained. Save only if this is your intended correction.'); }}>Use this version for my correction</button></div>}</> : <button className={control} onClick={() => save()}>{draft.base ? 'Save correction' : 'Record set'}</button>}
-      {draft.base?.result && !draft.conflict && <button className={control} onClick={() => save(true)}>Clear erroneous result</button>}
-      <button className={control} onClick={() => { store(null); setMessage(''); }}>Discard input</button>
+      {!historical && draft.base?.result && !draft.conflict && <button className={control} onClick={() => save(true)}>Clear erroneous result</button>}
+      <button className={control} onClick={cancel}>{historical ? 'Cancel' : 'Discard input'}</button>
     </fieldset>}
     {readOnly && draft && <p>Workout finished. Retained input cannot change this completed workout.</p>}
     {readOnly && draft && !draft.pending && <button className={control} onClick={() => store(null)}>Discard retained input</button>}

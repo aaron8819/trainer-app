@@ -2,10 +2,10 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { executionHttp } from './execution-http';
 import { InvalidStartSnapshot } from './execution';
-const mocks = vi.hoisted(() => ({ context: vi.fn(), read: vi.fn(), next: vi.fn(), start: vi.fn(), save: vi.fn(), finish: vi.fn() }));
+const mocks = vi.hoisted(() => ({ context: vi.fn(), read: vi.fn(), next: vi.fn(), start: vi.fn(), save: vi.fn(), finish: vi.fn(), historical: vi.fn() }));
 vi.mock('./access', () => ({ requestContext: mocks.context }));
 vi.mock('./workout-finish', () => ({ finishExecution: mocks.finish }));
-vi.mock('./set-results', () => ({ saveSetResult: mocks.save }));
+vi.mock('./set-results', () => ({ saveSetResult: mocks.save, correctHistoricalSetResult: mocks.historical }));
 vi.mock('./execution', async importOriginal => ({ ...await importOriginal<typeof import('./execution')>(), readExecution: mocks.read, readNextWorkout: mocks.next, startOccurrence: mocks.start }));
 afterEach(() => vi.resetAllMocks());
 describe('execution HTTP boundary', () => {
@@ -25,7 +25,7 @@ describe('execution HTTP boundary', () => {
     expect(mocks.context).toHaveBeenCalledWith(request, 'write'); expect(mocks.finish).toHaveBeenCalledWith(db, principal, input);
     expect(result.status).toBe(httpStatus); expect(mocks.start).not.toHaveBeenCalled(); expect(mocks.save).not.toHaveBeenCalled();
   });
-  it.each(['StartOccurrence', 'SaveSetResult', 'FinishExecution'] as const)('retains the per-command body bound for %s', async operation => {
+  it.each(['StartOccurrence', 'SaveSetResult', 'FinishExecution', 'CorrectHistoricalSetResult'] as const)('retains the per-command body bound for %s', async operation => {
     mocks.context.mockResolvedValue({ db: {}, principal: { accountId: 'trusted' } });
     const request = new Request('http://localhost/command', { method: 'POST', body: ' '.repeat(operation === 'FinishExecution' ? 2000001 : 10001) });
     expect((await executionHttp(request, operation)).status).toBe(413);
@@ -42,4 +42,13 @@ describe('execution HTTP boundary', () => {
     const result = await executionHttp(new Request('http://localhost/workout'), 'ReadExecution', randomUUID());
     expect(result.status).toBe(422); expect(await result.json()).toEqual({ error: 'INVALID_START_SNAPSHOT' }); expect(mocks.start).not.toHaveBeenCalled();
   });
+});
+
+it('routes historical correction through its dedicated trusted write command', async () => {
+  const db = {}, principal = { accountId: 'trusted' }, input = { commandType: 'CorrectHistoricalSetResult' };
+  mocks.context.mockResolvedValue({ db, principal }); mocks.historical.mockResolvedValue({ outcome: { status: 'Accepted' } });
+  const request = new Request('http://localhost/corrections', { method: 'POST', body: JSON.stringify(input) });
+  expect((await executionHttp(request, 'CorrectHistoricalSetResult')).status).toBe(200);
+  expect(mocks.context).toHaveBeenCalledWith(request, 'write'); expect(mocks.historical).toHaveBeenCalledWith(db, principal, input);
+  expect(mocks.save).not.toHaveBeenCalled(); expect(mocks.finish).not.toHaveBeenCalled();
 });

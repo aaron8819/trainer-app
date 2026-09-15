@@ -1,5 +1,7 @@
 # 04 API Contracts
 
+Trainer2 historical result correction: [command, immutable history, completed readback, permissions and verification](architecture/trainer2/HISTORICAL_SET_CORRECTIONS.md).
+
 Trainer2 POST `/api/trainer2/executions/finish` and completed/next reads are defined by [WORKOUT_FINISH](architecture/trainer2/WORKOUT_FINISH.md).
 
 Trainer2 adds `RecordSetResult` and `CorrectSetResult` at `/api/trainer2/executions/results`, with per-target expected versions and current results on execution reads. See [result commands](architecture/trainer2/SET_RESULTS.md).

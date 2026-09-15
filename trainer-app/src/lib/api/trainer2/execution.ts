@@ -36,12 +36,13 @@ export async function readExecution(tx: DB, principal: ServerPrincipal, executio
     initial.startedAt !== row.startedAt.toISOString() || canonicalJson(initial) !== row.canonicalContent ||
     integrityHash(row.canonicalContent) !== row.contentHash) throw new InvalidStartSnapshot();
   const revisions = await tx.trainer2SetResultRevision.findMany({ where: { accountId: principal.accountId, executionId: row.id }, orderBy: [{ targetId: 'asc' }, { version: 'desc' }] });
+  const history = revisions.map(r => savedSetResult.parse({ executionId: r.executionId, targetId: r.targetId, performedSetId: r.performedSetId, version: r.version, result: r.result, reason: r.reason, actionId: r.actionId, recordedAt: r.recordedAt.toISOString() }));
   const seen = new Set<string>();
   const results = revisions.filter(r => { if (seen.has(r.targetId)) return false; seen.add(r.targetId); return true; })
     .map(r => savedSetResult.parse({ executionId: r.executionId, targetId: r.targetId, performedSetId: r.performedSetId, version: r.version, result: r.result, reason: r.reason, actionId: r.actionId, recordedAt: r.recordedAt.toISOString() }));
   const finish = await tx.trainer2ExecutionFinish.findUnique({ where: { executionId: row.id } });
   if ((row.lifecycle === 'Finished') !== !!finish) throw new InvalidStartSnapshot();
-  return { executionId: row.id, lifecycle: row.lifecycle as 'Open' | 'Finished', contentHash: row.contentHash, initial, results,
+  return { executionId: row.id, lifecycle: row.lifecycle as 'Open' | 'Finished', contentHash: row.contentHash, initial, results, history,
     finish: finish ? { actionId: finish.actionId, finishedAt: finish.finishedAt.toISOString(), expected: finishBinding.parse(finish.expected),
       unknownTargetIds: finish.unknownTargetIds as string[], planCompleted: finish.planCompleted } : null };
 }

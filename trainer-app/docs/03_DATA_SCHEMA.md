@@ -1,5 +1,7 @@
 # 03 Data Schema
 
+Trainer2 historical result correction: [command, immutable history, completed readback, permissions and verification](architecture/trainer2/HISTORICAL_SET_CORRECTIONS.md).
+
 Trainer2 finish adds immutable Trainer2ExecutionFinish and guarded execution/plan transitions; see [finish persistence](architecture/trainer2/WORKOUT_FINISH.md).
 
 Trainer2 performed results now use append-only `Trainer2SetResultRevision` separately from the immutable execution prescription. See [result schema and permissions](architecture/trainer2/SET_RESULTS.md).

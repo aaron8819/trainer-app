@@ -51,7 +51,7 @@ function sample(accountId: string): CreateDraftCommand {
 function rename(create: CreateDraftCommand, revisionId: string, name: string): EditDraftCommand {
   return { ...create, commandType: "EditDraft", actionId: randomUUID(), expected: { planRevisionId: revisionId }, intent: { operations: [{ op: "renamePlan", name }] } };
 }
-export async function verifyDrafts(options: { manualDemo?: boolean; skipBuild?: boolean; progressionReview?: boolean; activation?: boolean; workoutStart?: boolean; setResults?: boolean; workoutFinish?: boolean } = {}) {
+export async function verifyDrafts(options: { manualDemo?: boolean; skipBuild?: boolean; progressionReview?: boolean; activation?: boolean; workoutStart?: boolean; setResults?: boolean; historicalCorrections?: boolean; workoutFinish?: boolean } = {}) {
   if (options.manualDemo) console.log("Starting Trainer plan builder with disposable synthetic data. The clickable URL appears here when ready.");
   const source = verificationSource();
   const started = new Date().toISOString();
@@ -136,6 +136,15 @@ export async function verifyDrafts(options: { manualDemo?: boolean; skipBuild?: 
         await new Promise(r => setTimeout(r, 500));
       }
       return base;
+    }
+    if (options.historicalCorrections) {
+      const { verifyHistoricalCorrections } = await import('./verify-historical-corrections');
+      evidence.invocation = 'node node_modules/tsx/dist/cli.mjs scripts/test-trainer2-historical-corrections.ts --confirm-disposable';
+      evidence.historicalCorrections = await verifyHistoricalCorrections(runtime, reader, owner, adminPool, principal, startWeb,
+        async () => { await stopServer(); return startWeb(); }, ownerUrl, runtimeUrl, command);
+      evidence.sourceAfter = verificationSource();
+      assert.equal((evidence.sourceAfter as ReturnType<typeof verificationSource>).manifestHash, source.manifestHash);
+      evidence.status = 'passed'; return;
     }
     if (options.workoutFinish) {
       const { verifyWorkoutFinish } = await import('./verify-workout-finish');

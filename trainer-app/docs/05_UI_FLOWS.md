@@ -1,5 +1,7 @@
 # 05 UI Flows
 
+Trainer2 historical result correction: [command, immutable history, completed readback, permissions and verification](architecture/trainer2/HISTORICAL_SET_CORRECTIONS.md).
+
 Trainer2 supports explicit finish, bound partial-work acknowledgement, completed readback and explicit next start; see [workout finish flow](architecture/trainer2/WORKOUT_FINISH.md).
 
 Local Trainer2 executions support record, reload, correct and clear/re-record with preserved original targets and explicit conflict recovery. Execution routes now suppress V1 navigation. See [set result UI](architecture/trainer2/SET_RESULTS.md).

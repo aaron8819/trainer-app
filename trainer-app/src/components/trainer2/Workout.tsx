@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, Fragment, type ReactNode } from 'react';
 import { z } from 'zod';
 import { validateExecutionRead, nextWorkoutRead, startOccurrenceCommand, startResponse,
   type ExecutionRead, type StartOccurrenceCommand } from '@/lib/trainer2-contracts/execution';
@@ -40,7 +40,7 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId }: { ac
       if (!response.ok) throw new Error(body.error === 'INVALID_START_SNAPSHOT' ? 'The saved workout prescription is unavailable. It cannot be rebuilt safely.' : 'Could not load this workout. Reload to try again.');
       if (executionId) {
         const value = await validateExecutionRead(body, accountId, executionId);
-        if (token === generation.current) setExecution(current => current?.lifecycle === 'Finished' && value.lifecycle === 'Open' ? current : current ? { ...value, results: value.results.map(r => { const prior = current.results.find(p => p.targetId === r.targetId); return prior && prior.version > r.version ? prior : r; }).concat(current.results.filter(p => !value.results.some(r => r.targetId === p.targetId))) } : value);
+        if (token === generation.current) setExecution(current => current?.lifecycle === 'Finished' && value.lifecycle === 'Open' ? current : current ? { ...value, history: [...(value.history ?? []), ...(current.history ?? []).filter(p => !value.history?.some(r => r.targetId === p.targetId && r.version === p.version))], results: value.results.map(r => { const prior = current.results.find(p => p.targetId === r.targetId); return prior && prior.version > r.version ? prior : r; }).concat(current.results.filter(p => !value.results.some(r => r.targetId === p.targetId))) } : value);
         if (token === generation.current) setMessage('');
         return value;
       } else {
@@ -96,13 +96,20 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId }: { ac
     {pending && <button className={control} disabled={busy} onClick={() => void submit(pending)}>Check again</button>}
     {failed && !pending && <button className={control} onClick={() => void load()}>Reload workout</button>}
     {execution && <section className="space-y-4"><h2 className="text-2xl font-semibold">{execution.lifecycle === 'Finished' ? 'Workout finished' : 'Workout in progress'}</h2>
-      <p className="text-slate-600">{execution.lifecycle === 'Finished' ? 'Original targets and saved results are preserved. Unrecorded work remains unknown.' : 'Original targets stay saved. Record what you performed; logging sets does not finish the workout.'}</p>
+      <p className="text-slate-600">{execution.lifecycle === 'Finished' ? 'Latest saved results appear below. Corrections preserve completion and the original targets. Result history shows what was acknowledged at finish.' : 'Original targets stay saved. Record what you performed; logging sets does not finish the workout.'}</p>
+      {execution.finish && <p className="text-sm text-slate-600">Started {execution.initial.startedAt}. Finished {execution.finish.finishedAt}. Later correction times appear in result history.</p>}
       <a className={control} href="/trainer2/dev/drafts">Trainer2 plans</a>
       <button className={control} onClick={() => void load()}>Refresh saved results</button>
       <WorkoutPrescription workout={execution.initial.occurrence} resultRow={(positionId, targetId, number) => {
         const owned = execution.initial.positions.find(p => p.sourcePositionId === positionId)!.targets.find(t => t.sourceTargetId === targetId)!;
-        return <SetResultRow key={owned.id} accountId={accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
-          readOnly={execution.lifecycle === 'Finished'} locked={finishLocked} onInputState={onInputState} targetId={owned.id} number={number} saved={execution.results.find(r => r.targetId === owned.id)} refresh={async () => { const value = await load(); if (!value) throw new Error('Read failed'); return value.results; }} />;
+        const refresh = async () => { const value = await load(); if (!value) throw new Error('Read failed'); return value.results; };
+        const saved = execution.results.find(r => r.targetId === owned.id);
+        return <Fragment key={owned.id}><SetResultRow key="ongoing" accountId={accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
+          readOnly={execution.lifecycle === 'Finished'} retainedOnly={execution.lifecycle === 'Finished'} locked={finishLocked} onInputState={onInputState} targetId={owned.id} number={number} saved={saved} refresh={refresh} />
+          {execution.lifecycle === 'Finished' && <SetResultRow key="historical" accountId={accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
+            historical history={execution.history?.filter(r => r.targetId === owned.id)} finishVersion={execution.finish?.expected.results.find(r => r.targetId === owned.id)?.resultVersion}
+            targetId={owned.id} number={number} saved={saved} refresh={refresh} />}</Fragment>;
+
       }} />
       <FinishWorkout key={execution.executionId} execution={execution} ownershipEpoch={ownershipEpoch}
         blocked={execution.initial.positions.some(p => p.targets.some(t => inputStates[t.id] !== false))}

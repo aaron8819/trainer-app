@@ -16,8 +16,12 @@ export const correctSetResultCommand = commandEnvelope.extend({ commandType: z.l
   target: setTarget, expected: z.object({ resultVersion: z.int().min(1), performedSetId: id }).strict(),
   intent: z.object({ result: performedResult.nullable(), reason: z.string().min(1).max(200).refine(v => v.trim().length > 0) }).strict(),
 }).strict();
+export const historicalCorrectionCommand = correctSetResultCommand.extend({ commandType: z.literal('CorrectHistoricalSetResult'),
+  intent: z.object({ result: performedResult, reason: z.literal('Correct recorded result') }).strict(),
+}).strict();
+export const resultMutationCommand = z.discriminatedUnion('commandType', [recordSetResultCommand, correctSetResultCommand, historicalCorrectionCommand]);
 export const setResultCommand = z.discriminatedUnion('commandType', [recordSetResultCommand, correctSetResultCommand]);
-export type SetResultCommand = z.infer<typeof setResultCommand>;
+export type SetResultCommand = z.infer<typeof resultMutationCommand>;
 export type PerformedResult = z.infer<typeof performedResult>;
 export const savedSetResult = z.object({ executionId: id, targetId: id, performedSetId: id, version: z.int().min(1),
   result: performedResult.nullable(), reason: z.string().max(200).nullable(), actionId: id, recordedAt: z.iso.datetime(),
@@ -26,9 +30,9 @@ export type SavedSetResult = z.infer<typeof savedSetResult>;
 const cursor = z.string().regex(/^[1-9][0-9]*$/);
 export const setResultResponse = z.object({ replayed: z.boolean(), outcomeCursor: cursor,
   outcome: z.discriminatedUnion('status', [
-    z.object({ status: z.literal('Accepted'), actionId: id, commandType: z.enum(['RecordSetResult', 'CorrectSetResult']),
+    z.object({ status: z.literal('Accepted'), actionId: id, commandType: z.enum(['RecordSetResult', 'CorrectSetResult', 'CorrectHistoricalSetResult']),
       acceptedSequence: cursor, result: z.object({ executionId: id, targetId: id, performedSetId: id, version: z.int().min(1) }).strict() }).strict(),
     z.object({ status: z.enum(['Rejected', 'Conflict']), actionId: id,
-      commandType: z.enum(['RecordSetResult', 'CorrectSetResult']), code: z.string().min(1) }).strict(),
+      commandType: z.enum(['RecordSetResult', 'CorrectSetResult', 'CorrectHistoricalSetResult']), code: z.string().min(1) }).strict(),
   ]),
 }).strict();

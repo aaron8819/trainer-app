@@ -1,5 +1,5 @@
 import { finishExecution } from './workout-finish';
-import { saveSetResult } from './set-results';
+import { saveSetResult, correctHistoricalSetResult } from './set-results';
 import { ZodError } from 'zod';
 import { id } from '../../trainer2-contracts/draft';
 import { requestContext } from './access';
@@ -7,11 +7,11 @@ import { DraftAccessError } from './principal';
 import { ActionCollision, CommandFailure } from './command';
 import { InvalidStartSnapshot, readExecution, readNextWorkout, startOccurrence } from './execution';
 
-export async function executionHttp(request: Request, operation: 'FinishExecution' | 'StartOccurrence' | 'SaveSetResult' | 'ReadExecution' | 'ReadNext', target?: string) {
+export async function executionHttp(request: Request, operation: 'CorrectHistoricalSetResult' | 'FinishExecution' | 'StartOccurrence' | 'SaveSetResult' | 'ReadExecution' | 'ReadNext', target?: string) {
   const json = (body: unknown, status: number) => Response.json(body, { status,
     headers: { 'Cache-Control': 'private, no-store', Vary: 'Cookie, Authorization' } });
   try {
-    const { db, principal } = await requestContext(request, operation === 'StartOccurrence' || operation === 'SaveSetResult' || operation === 'FinishExecution' ? 'write' : 'read');
+    const { db, principal } = await requestContext(request, operation === 'CorrectHistoricalSetResult' || operation === 'StartOccurrence' || operation === 'SaveSetResult' || operation === 'FinishExecution' ? 'write' : 'read');
     if (operation === 'ReadExecution' || operation === 'ReadNext') {
       const key = id.parse(target);
       const result = await db.$transaction(async tx => {
@@ -22,7 +22,7 @@ export async function executionHttp(request: Request, operation: 'FinishExecutio
     }
     const text = await request.text();
     if (text.length > (operation === 'FinishExecution' ? 2000000 : 10000)) return json({ error: 'COMMAND_TOO_LARGE' }, 413);
-    const result = await (operation === 'FinishExecution' ? finishExecution : operation === 'SaveSetResult' ? saveSetResult : startOccurrence)(db, principal, JSON.parse(text));
+    const result = await (operation === 'CorrectHistoricalSetResult' ? correctHistoricalSetResult : operation === 'FinishExecution' ? finishExecution : operation === 'SaveSetResult' ? saveSetResult : startOccurrence)(db, principal, JSON.parse(text));
     return json(result, result.outcome.status === 'Accepted' ? 200 : result.outcome.status === 'Conflict' ? 409 : 422);
   } catch (error) {
     if (error instanceof DraftAccessError) return json({ error: error.message }, 403);

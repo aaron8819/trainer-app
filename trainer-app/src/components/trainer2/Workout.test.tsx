@@ -7,7 +7,7 @@ import { createHypertrophyPlan } from '@/lib/engine/trainer2/plan-builder';
 const accountId = 'synthetic-workout-account';
 const planId = randomUUID(), revisionId = randomUUID();
 const occurrence = createHypertrophyPlan().occurrences[0];
-const next = { accountId, planId, revisionId, instructionEpoch: 0, lifecycle: 'Active', occurrence, execution: null };
+const next = { acceptedSequence: '2', occurrences: [{ occurrenceId: occurrence.id, name: occurrence.name, stageName: 'Week 1', status: 'Pending', skip: null }], accountId, planId, revisionId, instructionEpoch: 0, lifecycle: 'Active', occurrence, execution: null };
 const response = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
 beforeEach(() => { sessionStorage.clear(); vi.stubGlobal('crypto', webcrypto); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -28,7 +28,7 @@ describe('Workout start consumer', () => {
     let finish!: (v: Response) => void;
     const fetch = vi.fn().mockResolvedValueOnce(response(next)).mockImplementationOnce(() => new Promise<Response>(resolve => { finish = resolve; })); vi.stubGlobal('fetch', fetch);
     const first = render(<Workout accountId={accountId} ownershipEpoch={0} planId={planId} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Start workout' }));
+    const startButton = await screen.findByRole('button', { name: 'Start workout' }); await waitFor(() => expect(startButton).toBeEnabled()); fireEvent.click(startButton);
     const check = await screen.findByRole('button', { name: 'Check again' }); fireEvent.click(check); expect(fetch).toHaveBeenCalledTimes(2);
     const command = fetch.mock.calls[1][1].body;
     finish(response({ invalid: 'response' })); await waitFor(() => expect(check).not.toBeDisabled());
@@ -43,7 +43,7 @@ describe('Workout start consumer', () => {
     let finish!: (v: Response) => void;
     const fetch = vi.fn().mockResolvedValueOnce(response(next)).mockImplementationOnce(() => new Promise<Response>(resolve => { finish = resolve; })); vi.stubGlobal('fetch', fetch);
     const view = render(<Workout key={planId} accountId={accountId} ownershipEpoch={0} planId={planId} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Start workout' }));
+    const startButton = await screen.findByRole('button', { name: 'Start workout' }); await waitFor(() => expect(startButton).toBeEnabled()); fireEvent.click(startButton);
     const other = randomUUID(); fetch.mockResolvedValueOnce(response({ ...next, planId: other, occurrence: { ...occurrence, name: 'Other workout' } }));
     view.rerender(<Workout key={other} accountId={accountId} ownershipEpoch={0} planId={other} />);
     await screen.findByRole('heading', { name: 'Other workout' });

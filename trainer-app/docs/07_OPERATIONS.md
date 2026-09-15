@@ -1,5 +1,7 @@
 # 07 Operations
 
+Trainer2 Skip Workout: [eligibility, audited resolution, endpoint, exact retry, UI and verification](architecture/trainer2/SKIP_WORKOUT.md).
+
 Trainer2 historical result correction: [command, immutable history, completed readback, permissions and verification](architecture/trainer2/HISTORICAL_SET_CORRECTIONS.md).
 
 Trainer2 explicit finish uses the existing disposable demo launcher and one additive migration with narrow lifecycle privileges. See [WORKOUT_FINISH](architecture/trainer2/WORKOUT_FINISH.md). Hosted admission remains disabled.

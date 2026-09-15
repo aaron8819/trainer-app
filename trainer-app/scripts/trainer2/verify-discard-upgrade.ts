@@ -25,12 +25,12 @@ export async function verifyDiscardUpgrade(admin: Pool, ownerUrl: string, source
   const rp = new Pool({ connectionString: runtimeUrl.href });
   const owner = new PrismaClient({ adapter: new PrismaPg(pool) }), runtime = new PrismaClient({ adapter: new PrismaPg(rp) });
   try {
-    await pool.query(readFileSync(resolve('prisma/trainer2-runtime-grants.sql'), 'utf8').split('\n').filter(l => !l.startsWith('CREATE ROLE ') && !l.includes('Trainer2ExecutionDiscard')).join('\n'));
+    await pool.query(readFileSync(resolve('prisma/trainer2-runtime-grants.sql'), 'utf8').split('\n').filter(l => !l.startsWith('CREATE ROLE ') && !l.includes('Trainer2ExecutionDiscard') && !l.includes('Trainer2OccurrenceSkip') && !l.includes('trainer2_occurrence_resolved')).join('\n'));
     const afterUpgrade = await seed(runtime, owner);
     const tables = (await pool.query(`SELECT tablename FROM pg_tables WHERE schemaname='public' AND (tablename LIKE 'Trainer2%' OR tablename='User') ORDER BY tablename`)).rows.map(r => r.tablename as string);
     const snapshot = async () => Object.fromEntries(await Promise.all(tables.map(async t => [t, (await pool.query(`SELECT to_jsonb(t) row FROM "${t}" t ORDER BY to_jsonb(t)::text`)).rows])));
     const before = await snapshot(); migrate(resolve('prisma.config.ts')); migrate(resolve('prisma.config.ts')); assert.deepEqual(await snapshot(), before);
-    await pool.query(readFileSync(resolve('prisma/trainer2-runtime-grants.sql'), 'utf8').split('\n').filter(l => l.includes('Trainer2ExecutionDiscard')).join('\n'));
+    await pool.query(readFileSync(resolve('prisma/trainer2-runtime-grants.sql'), 'utf8').split('\n').filter(l => l.includes('Trainer2ExecutionDiscard') || l.includes('Trainer2OccurrenceSkip') || l.includes('trainer2_occurrence_resolved')).join('\n'));
     assert.equal((await pool.query('SELECT count(*) FROM "Trainer2ExecutionDiscard"')).rows[0].count, '0');
     await afterUpgrade();
     return { status: 'passed', base: '7dbb7f538e26366a4360df6df19ee6e4214a29e0', preservedTables: tables, existingOpenAndFinished: true, inventedCorrections: 0 };

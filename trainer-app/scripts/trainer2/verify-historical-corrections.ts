@@ -110,7 +110,7 @@ export async function verifyHistoricalCorrections(db: PrismaClient, reader: Pris
     await assert.rejects(validateExecutionRead({...x,history:x.history!.slice(1)},p.accountId));
     await assert.rejects(validateExecutionRead({...x,finish:{...x.finish!,expected:{...x.finish!.expected,results:[]}}},p.accountId));
     assert.deepEqual((await persisted(p)).filter(r=>old.some(o=>o.actionId===r.actionId)),old);
-    await preserve(p,before,'all measurement variants, required/optional and repeated corrections'); assert.deepEqual(await readNextWorkout(reader,p,x.initial.planId),next);
+    await preserve(p,before,'all measurement variants, required/optional and repeated corrections'); assert.deepEqual(await readNextWorkout(reader,p,x.initial.planId),{...next,acceptedSequence:String(BigInt(next.acceptedSequence)+BigInt(values.length))});
     assert.equal(x.lifecycle,'Finished'); assert.equal(next.lifecycle,'Completed'); pass('Required/optional, previous corrections, all load conventions, rep bases, zero and final-plan completion');
     const never=x.initial.positions.flatMap(p=>p.targets)[4].id, cleared=x.results.find(r=>r.result===null)!;
     for(const targetId of [never,cleared.targetId]) conflict(await correctHistoricalSetResult(db,p,{...historical(p,x),target:{executionId:x.executionId,targetId}}),'HISTORICAL_RESULT_REQUIRED');

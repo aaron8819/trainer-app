@@ -1,3 +1,4 @@
+import { occurrenceResolutionRead, skipBinding } from './skip-occurrence';
 import { discardFact } from './discard-execution';
 import { finishFact, reviewedResults, unrecordedTargets } from './workout-finish';
 import { z } from 'zod';
@@ -77,5 +78,9 @@ export const startResponse = z.object({ replayed: z.boolean(), outcomeCursor: cu
     z.object({ status: z.enum(['Rejected', 'Conflict']), actionId: id, commandType: z.literal('StartOccurrence'), code: z.string().min(1) }).strict(),
   ]),
 }).strict();
-export const nextWorkoutRead = z.object({ accountId: z.string().min(1), planId: id, revisionId: id,
-  instructionEpoch: z.int().min(0), lifecycle: z.enum(['Active', 'Completed']), occurrence: occurrence.nullable(), execution: executionRead.nullable() }).strict().refine(v => (v.lifecycle === 'Completed') === (v.occurrence === null) && (!v.execution || v.execution.lifecycle === 'Open'));
+export const nextWorkoutRead = z.object({ acceptedSequence: skipBinding.shape.acceptedSequence, occurrences: z.array(occurrenceResolutionRead).min(1), accountId: z.string().min(1), planId: id, revisionId: id,
+  instructionEpoch: z.int().min(0), lifecycle: z.enum(['Active', 'Completed']), occurrence: occurrence.nullable(), execution: executionRead.nullable() }).strict().refine(v => (v.lifecycle === 'Completed') === (v.occurrence === null) && (!v.execution || v.execution.lifecycle === 'Open') &&
+  new Set(v.occurrences.map(o => o.occurrenceId)).size === v.occurrences.length &&
+  (v.occurrences.find(o => o.status === 'Pending')?.occurrenceId ?? null) === (v.occurrence?.id ?? null) &&
+  v.occurrences.every(o => !o.skip || (o.skip.actorAccountId === v.accountId && o.skip.revisionId === v.revisionId && (!o.skip.planCompleted || v.lifecycle === 'Completed'))));
+export type NextWorkoutRead = z.infer<typeof nextWorkoutRead>;

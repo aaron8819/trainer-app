@@ -6,14 +6,14 @@ import { Pool } from 'pg';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { sanitizeDatabaseTargetEnvironment, validateDisposableDatabaseTargets } from '../../src/lib/operations/test-environment-preflight';
-export async function verifyHistoricalUpgrade(admin: Pool, ownerUrl: string, sourceRuntimeUrl: string,
+export async function verifySkipUpgrade(admin: Pool, ownerUrl: string, sourceRuntimeUrl: string,
   command: (exe: string, args: string[], env?: NodeJS.ProcessEnv) => string,
   seed: (runtime: PrismaClient, owner: PrismaClient) => Promise<() => Promise<void>>) {
-  const candidate = resolve('artifacts/trainer2/historical-base/prisma'); mkdirSync(resolve(candidate, 'migrations'), { recursive: true });
+  const candidate = resolve('artifacts/trainer2/skip-base/prisma'); mkdirSync(resolve(candidate, 'migrations'), { recursive: true });
   cpSync(resolve('prisma/schema.prisma'), resolve(candidate, 'schema.prisma')); cpSync(resolve('prisma.config.ts'), resolve(candidate, '../prisma.config.ts'));
-  for (const entry of readdirSync(resolve('prisma/migrations'))) if (entry < '20260915010000_trainer2_historical_set_corrections' || entry === 'migration_lock.toml')
+  for (const entry of readdirSync(resolve('prisma/migrations'))) if (entry < '20260915030000_trainer2_skip_occurrence' || entry === 'migration_lock.toml')
     cpSync(resolve('prisma/migrations', entry), resolve(candidate, 'migrations', entry), { recursive: true });
-  const database = `trainer2_disposable_historical_upgrade_${randomUUID().replaceAll('-', '')}`;
+  const database = `trainer2_disposable_skip_upgrade_${randomUUID().replaceAll('-', '')}`;
   await admin.query(`CREATE DATABASE "${database}"`);
   const target = new URL(ownerUrl); target.pathname = `/${database}`;
   const env = { ...sanitizeDatabaseTargetEnvironment(process.env), DATABASE_URL: target.href, DIRECT_URL: target.href, TEST_DATABASE_URL: target.href };
@@ -25,24 +25,14 @@ export async function verifyHistoricalUpgrade(admin: Pool, ownerUrl: string, sou
   const rp = new Pool({ connectionString: runtimeUrl.href });
   const owner = new PrismaClient({ adapter: new PrismaPg(pool) }), runtime = new PrismaClient({ adapter: new PrismaPg(rp) });
   try {
-    await pool.query(readFileSync(resolve('prisma/trainer2-runtime-grants.sql'), 'utf8').split('\n').filter(l => !l.startsWith('CREATE ROLE ') && !l.includes('Trainer2ExecutionDiscard') && !l.includes('Trainer2OccurrenceSkip') && !l.includes('trainer2_occurrence_resolved')).join('\n'));
-    // Preserve this accepted-base fixture when later additive lifecycle tables are absent.
-    // Only unavailable discard/skip reads are adapted; all base SQL/command guards still execute.
-    let upgraded = false;
-    const compatible = (client: PrismaClient): PrismaClient => new Proxy(client, { get(target, key) {
-      if (key === 'trainer2OccurrenceSkip' && !upgraded) return { findMany: async () => [] };
-      if (key === 'trainer2ExecutionDiscard' && !upgraded) return { findUnique: async () => null };
-      if (key === '$transaction') return (fn: (tx: PrismaClient) => Promise<unknown>, options: unknown) =>
-        target.$transaction(tx => fn(compatible(tx as PrismaClient)), options as never);
-      const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value;
-    } });
-    const afterUpgrade = await seed(compatible(runtime), owner);
+    await pool.query(readFileSync(resolve('prisma/trainer2-runtime-grants.sql'), 'utf8').split('\n').filter(l => !l.startsWith('CREATE ROLE ') && !l.includes('Trainer2OccurrenceSkip') && !l.includes('trainer2_occurrence_resolved')).join('\n'));
+    const afterUpgrade = await seed(runtime, owner);
     const tables = (await pool.query(`SELECT tablename FROM pg_tables WHERE schemaname='public' AND (tablename LIKE 'Trainer2%' OR tablename='User') ORDER BY tablename`)).rows.map(r => r.tablename as string);
     const snapshot = async () => Object.fromEntries(await Promise.all(tables.map(async t => [t, (await pool.query(`SELECT to_jsonb(t) row FROM "${t}" t ORDER BY to_jsonb(t)::text`)).rows])));
     const before = await snapshot(); migrate(resolve('prisma.config.ts')); migrate(resolve('prisma.config.ts')); assert.deepEqual(await snapshot(), before);
-    await pool.query(readFileSync(resolve('prisma/trainer2-runtime-grants.sql'), 'utf8').split('\n').filter(l => l.includes('Trainer2ExecutionDiscard') || l.includes('Trainer2OccurrenceSkip') || l.includes('trainer2_occurrence_resolved')).join('\n'));
-    upgraded = true;
+    await pool.query(readFileSync(resolve('prisma/trainer2-runtime-grants.sql'), 'utf8').split('\n').filter(l => (l.includes('Trainer2OccurrenceSkip') || l.includes('trainer2_occurrence_resolved'))).join('\n'));
+    assert.equal((await pool.query('SELECT count(*) FROM "Trainer2OccurrenceSkip"')).rows[0].count, '0');
     await afterUpgrade();
-    return { status: 'passed', base: '1fd454d389cf30ce87590f8078d0d168748a62c9', preservedTables: tables, existingOpenAndFinished: true, inventedCorrections: 0 };
+    return { status: 'passed', base: 'fc98700041580e14d2e084105ba323aa933e0f38', preservedTables: tables, existingOpenAndFinished: true, inventedCorrections: 0 };
   } finally { await runtime.$disconnect(); await owner.$disconnect(); await rp.end(); await pool.end(); }
 }

@@ -40,10 +40,11 @@ describe("Trainer2 boundary", () => {
     walk(resolve(app, "app/trainer2/dev/executions/[executionId]/page.tsx"));
     expect(seen.size).toBeGreaterThan(6);
     const routeFiles = [...seen].filter(p => p.endsWith("route.ts"));
-    // Eleven accepted routes plus the dedicated discard endpoint.
-    expect(routeFiles).toHaveLength(12);
+    // Twelve accepted routes plus the dedicated occurrence skip endpoint.
+    expect(routeFiles).toHaveLength(13);
     expect(routeFiles).toContain(resolve(app, "app/api/trainer2/executions/corrections/route.ts"));
     expect(routeFiles).toContain(resolve(app, "app/api/trainer2/executions/discard/route.ts"));
+    expect(routeFiles).toContain(resolve(app, "app/api/trainer2/occurrences/skip/route.ts"));
     expect(routeFiles.map(p => readFileSync(p, "utf8")).join("\n")).not.toMatch(/DELETE/);
   });
 });

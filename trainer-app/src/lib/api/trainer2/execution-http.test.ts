@@ -2,8 +2,9 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { executionHttp } from './execution-http';
 import { InvalidStartSnapshot } from './execution';
-const mocks = vi.hoisted(() => ({ context: vi.fn(), read: vi.fn(), next: vi.fn(), start: vi.fn(), save: vi.fn(), finish: vi.fn(), historical: vi.fn(), discard: vi.fn() }));
+const mocks = vi.hoisted(() => ({ context: vi.fn(), read: vi.fn(), next: vi.fn(), start: vi.fn(), save: vi.fn(), finish: vi.fn(), historical: vi.fn(), discard: vi.fn(), skip: vi.fn() }));
 vi.mock('./access', () => ({ requestContext: mocks.context }));
+vi.mock('./skip-occurrence', () => ({ skipOccurrence: mocks.skip }));
 vi.mock('./discard-execution', () => ({ discardEmptyExecution: mocks.discard }));
 vi.mock('./workout-finish', () => ({ finishExecution: mocks.finish }));
 vi.mock('./set-results', () => ({ saveSetResult: mocks.save, correctHistoricalSetResult: mocks.historical }));
@@ -61,4 +62,13 @@ it('routes discard through trusted write context without redirecting identity', 
   expect((await executionHttp(request, 'DiscardEmptyExecution')).status).toBe(200);
   expect(mocks.context).toHaveBeenCalledWith(request, 'write'); expect(mocks.discard).toHaveBeenCalledWith(db, principal, input);
   expect(mocks.start).not.toHaveBeenCalled(); expect(mocks.finish).not.toHaveBeenCalled();
+});
+
+it.each([['Accepted',200],['Conflict',409],['Rejected',422]])('routes skip through trusted write context: %s', async(status,code)=>{
+  const db={},principal={accountId:'trusted'},input={commandType:'SkipOccurrence'};
+  mocks.context.mockResolvedValue({db,principal});mocks.skip.mockResolvedValue({outcome:{status}});
+  const request=new Request('http://localhost/skip',{method:'POST',body:JSON.stringify(input)});
+  expect((await executionHttp(request,'SkipOccurrence')).status).toBe(code);
+  expect(mocks.context).toHaveBeenCalledWith(request,'write');expect(mocks.skip).toHaveBeenCalledWith(db,principal,input);
+  expect(mocks.start).not.toHaveBeenCalled();expect(mocks.discard).not.toHaveBeenCalled();
 });

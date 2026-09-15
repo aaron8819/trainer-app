@@ -5,6 +5,8 @@ import { validateExecutionRead, nextWorkoutRead, startOccurrenceCommand, startRe
   type ExecutionRead, type StartOccurrenceCommand } from '@/lib/trainer2-contracts/execution';
 import type { DraftDocument } from '@/lib/trainer2-contracts/draft';
 import { canonicalJson } from '@/lib/trainer2-contracts/canonical-json';
+import { SkipWorkout } from './SkipWorkout';
+import type { SkipOccurrenceCommand } from '@/lib/trainer2-contracts/skip-occurrence';
 import { DiscardWorkout } from './DiscardWorkout';
 import { FinishWorkout } from './FinishWorkout';
 import { SetResultRow } from './SetResultRow';
@@ -21,19 +23,20 @@ export function WorkoutPrescription({ workout, resultRow }: { workout: DraftDocu
         {resultRow?.(p.id, t.id, i + 1)}
       </li>)}</ol></section>)}</div>;
 }
-export function Workout({ accountId, ownershipEpoch, planId, executionId }: { accountId: string; ownershipEpoch: number; planId?: string; executionId?: string }) {
+
+export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlanComplete }: { accountId: string; ownershipEpoch: number; planId?: string; executionId?: string; onPlanComplete?: () => void }) {
   const [next, setNext] = useState<z.infer<typeof nextWorkoutRead> | null>(null);
   const [execution, setExecution] = useState<ExecutionRead | null>(null);
   const [pending, setPending] = useState<StartOccurrenceCommand | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(false), [skipLocked, setSkipLocked] = useState(true);
   const [message, setMessage] = useState('Loading workout…');
   const [failed, setFailed] = useState(false);
   const [inputStates, setInputStates] = useState<Record<string, boolean>>({}), [finishLocked, setFinishLocked] = useState(false), [discardLocked, setDiscardLocked] = useState(false);
   const onInputState = useCallback((targetId: string, blocked: boolean) => setInputStates(current => current[targetId] === blocked ? current : { ...current, [targetId]: blocked }), []);
-  const generation = useRef(0), inFlight = useRef(false);
+  const generation = useRef(0), inFlight = useRef(false), latestNextSequence = useRef('0');
   const storageKey = `trainer2-start:${accountId}:${planId}`;
   const url = (id: string) => `/trainer2/dev/executions/${id}`;
-  async function load(token = generation.current) {
+  async function load(token = ++generation.current, expectedSkip?: SkipOccurrenceCommand, skipCompleted?: boolean) {
     setFailed(false);
     try {
       const response = await fetch(executionId ? `/api/trainer2/executions/${executionId}` : `/api/trainer2/plans/${planId}/next`, { cache: 'no-store' });
@@ -48,7 +51,15 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId }: { ac
         const value = nextWorkoutRead.parse(body);
         if (value.accountId !== accountId || value.planId !== planId || (value.execution && value.execution.initial.accountId !== accountId)) throw new Error('Invalid workout response');
         if (value.execution) await validateExecutionRead(value.execution, accountId);
-        if (token === generation.current) setNext(value);
+        if (expectedSkip && (BigInt(value.acceptedSequence) <= BigInt(expectedSkip.expected.acceptedSequence) || !value.occurrences.some(o => o.occurrenceId === expectedSkip.target.occurrenceId &&
+          o.status === 'Skipped' && o.skip?.actionId === expectedSkip.actionId && o.skip.revisionId === expectedSkip.expected.planRevisionId && o.skip.planCompleted === skipCompleted)))
+          throw new Error('Skip readback could not be confirmed.');
+        if (token !== generation.current || BigInt(value.acceptedSequence) < BigInt(latestNextSequence.current)) throw new Error('Superseded workout read');
+        latestNextSequence.current = value.acceptedSequence;
+        if (value.lifecycle === 'Completed') onPlanComplete?.();
+        setNext(value);
+        setMessage('');
+        return value;
       }
       if (token === generation.current) setMessage('');
     } catch (error) { if (token === generation.current) { setFailed(true); setMessage(error instanceof Error ? error.message : 'Could not load workout.'); } }
@@ -63,7 +74,9 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId }: { ac
         setPending(command); setMessage('Start could not be confirmed. Check again to recover the original request.');
       } else void load(token);
     } catch { setFailed(true); setMessage('The saved start request could not be read. Reload to recover it.'); }
-    return () => { generation.current = token + 1; };
+    // This is a request counter, not a DOM ref; invalidate the latest read on unmount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => { ++generation.current; };
     // Parent keys this component by account and subject; pending command survives reload.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -87,12 +100,13 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId }: { ac
     finally { inFlight.current = false; if (token === generation.current) setBusy(false); }
   }
   function start() {
-    if (!next?.occurrence || busy || pending || failed) return;
+    if (!next?.occurrence || busy || pending || failed || skipLocked) return;
     const command: StartOccurrenceCommand = { schemaVersion: 1, commandType: 'StartOccurrence', actionId: crypto.randomUUID(),
       deviceId: crypto.randomUUID(), originatingAccountId: accountId, ownershipEpoch, dependsOn: [],
       target: { planId: next.planId, occurrenceId: next.occurrence.id }, expected: { planRevisionId: next.revisionId, instructionEpoch: next.instructionEpoch }, intent: {} };
     void submit(command);
   }
+  const lastSkipped = next?.occurrences.filter(o => o.status === 'Skipped').at(-1);
   return <div className="space-y-4">{message && <p role="status">{message}</p>}
     {pending && <button className={control} disabled={busy} onClick={() => void submit(pending)}>Check again</button>}
     {failed && !pending && <button className={control} onClick={() => void load()}>Reload workout</button>}
@@ -104,14 +118,13 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId }: { ac
       <button className={control} onClick={() => void load()}>Refresh saved results</button>
       <WorkoutPrescription workout={execution.initial.occurrence} resultRow={(positionId, targetId, number) => {
         const owned = execution.initial.positions.find(p => p.sourcePositionId === positionId)!.targets.find(t => t.sourceTargetId === targetId)!;
-        const refresh = async () => { const value = await load(); if (!value) throw new Error('Read failed'); return value.results; };
+        const refresh = async () => { const value = await load(); if (!value || !('results' in value)) throw new Error('Read failed'); return value.results; };
         const saved = execution.results.find(r => r.targetId === owned.id);
         return <Fragment key={owned.id}><SetResultRow key="ongoing" accountId={accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
           readOnly={execution.lifecycle !== 'Open'} retainedOnly={execution.lifecycle !== 'Open'} locked={finishLocked || discardLocked} onInputState={onInputState} targetId={owned.id} number={number} saved={saved} refresh={refresh} />
           {execution.lifecycle === 'Finished' && <SetResultRow key="historical" accountId={accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
             historical history={execution.history?.filter(r => r.targetId === owned.id)} finishVersion={execution.finish?.expected.results.find(r => r.targetId === owned.id)?.resultVersion}
             targetId={owned.id} number={number} saved={saved} refresh={refresh} />}</Fragment>;
-
       }} />
       <FinishWorkout key={execution.executionId} execution={execution} ownershipEpoch={ownershipEpoch}
         blocked={discardLocked || execution.initial.positions.some(p => p.targets.some(t => inputStates[t.id] !== false))}
@@ -121,6 +134,23 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId }: { ac
         onLock={setDiscardLocked} refresh={async () => { const value = await load(); if (!value || value.lifecycle !== 'Discarded') throw new Error('Discard read failed'); }} />
       {execution.lifecycle !== 'Open' && <Workout key={`next:${execution.executionId}`} accountId={accountId} ownershipEpoch={ownershipEpoch} planId={execution.initial.planId} />}
       </section>}
-    {next && !execution && !pending && (next.execution ? <><h2 className="text-xl font-semibold">Workout in progress</h2><p>{next.execution.initial.occurrence.name}</p><a className={control} href={url(next.execution.executionId)}>Continue workout</a></> : !next.occurrence ? <><h2 className="text-xl font-semibold">Plan complete</h2><p>No next workout.</p></> : <><h2 className="text-xl font-semibold">Next workout</h2><p>{next.occurrence.name} · {next.occurrence.positions.length} exercises · {next.occurrence.positions.reduce((n, p) => n + p.targets.length, 0)} sets</p><button className="rounded-xl bg-teal-700 px-5 py-3 font-semibold text-white disabled:opacity-40" disabled={busy || failed} onClick={start}>Start workout</button><details><summary>Prescription preview</summary><WorkoutPrescription workout={next.occurrence} /></details></>)}
+    {next && !execution && !pending && <section className="space-y-3">
+      {next.execution ? <><h2 className="text-xl font-semibold">Workout in progress</h2><p>{next.execution.initial.occurrence.name}</p><a className={control} href={url(next.execution.executionId)}>Continue workout</a></> :
+        !next.occurrence ? <><h2 className="text-xl font-semibold">Plan complete</h2><p>No next workout.</p></> :
+          <><h2 className="text-xl font-semibold">Next workout</h2><p>{next.occurrence.name} - {next.occurrence.positions.length} exercises - {next.occurrence.positions.reduce((n, p) => n + p.targets.length, 0)} sets</p></>}
+      <div className="flex flex-wrap items-start gap-3">
+        {next.occurrence && !next.execution && <button className="rounded-xl bg-teal-700 px-5 py-3 font-semibold text-white disabled:opacity-40" disabled={busy || failed || skipLocked} onClick={start}>Start workout</button>}
+        <SkipWorkout key={`skip:${accountId}:${next.planId}`} next={next} ownershipEpoch={ownershipEpoch}
+          blocked={busy || failed} onLock={setSkipLocked} refresh={async (command, planCompleted) => {
+            const value = await load(undefined, command, planCompleted); if (!value || !('occurrences' in value)) throw new Error('Plan read failed');
+          }} />
+      </div>
+      {next.occurrence && !next.execution && <details><summary>Prescription preview</summary><WorkoutPrescription workout={next.occurrence} /></details>}
+    </section>}
+    {lastSkipped && !execution && <p>Skipped: {lastSkipped.name}, {lastSkipped.stageName}.</p>}
+    {next && !execution && <details><summary>Workout status</summary><ol className="space-y-2">{next.occurrences.map((o, i) =>
+      <li key={o.occurrenceId}>{i + 1}. {o.name} · {o.stageName}: {o.occurrenceId === next.execution?.initial.occurrence.id ? 'In progress' : o.status === 'Finished' ? 'Completed' : o.status}
+        {o.skip && <span className="text-sm"> · {o.skip.skippedAt}</span>}</li>)}</ol>
+      <p>Completed workouts may contain unrecorded sets. Skipped workouts have no performed execution.</p></details>}
   </div>;
 }

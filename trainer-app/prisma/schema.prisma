@@ -1382,3 +1382,20 @@ model Trainer2ExecutionDiscard {
   createdTx BigInt @default(dbgenerated("txid_current()"))
   @@unique([accountId, actionId])
 }
+
+// Immutable Planning skip decision; no execution or performed evidence is created.
+model Trainer2OccurrenceSkip {
+  occurrenceId String @id @db.Uuid
+  accountId String
+  planId String @db.Uuid
+  revisionId String @db.Uuid
+  actionId String @db.Uuid
+  expected Json
+  planCompleted Boolean
+  priorPlanLifecycle String
+  endpoint Json
+  skippedAt DateTime @default(now()) @db.Timestamptz(3)
+  createdTx BigInt @default(dbgenerated("txid_current()"))
+  @@unique([accountId, actionId])
+  @@index([accountId, planId])
+}

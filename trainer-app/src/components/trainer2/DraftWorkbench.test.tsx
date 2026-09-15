@@ -32,7 +32,7 @@ describe('builder save recovery', () => {
   it('shows current completed lifecycle when reopening an activated plan', async () => {
     const s = state();
     const fetcher = vi.fn().mockResolvedValueOnce(json({ ...s, state: { lifecycle: 'Completed', initialApprovedRevisionId: s.revisionId } }))
-      .mockResolvedValue(json({ accountId: 'account-a', planId: s.planId, revisionId: s.revisionId, instructionEpoch: 0, lifecycle: 'Completed', occurrence: null, execution: null }));
+      .mockResolvedValue(json({ acceptedSequence: '3', occurrences: s.intent.occurrences.map(o => ({ occurrenceId: o.id, name: o.name, stageName: 'Week 1', status: 'Finished', skip: null })), accountId: 'account-a', planId: s.planId, revisionId: s.revisionId, instructionEpoch: 0, lifecycle: 'Completed', occurrence: null, execution: null }));
     vi.stubGlobal('fetch', fetcher);
     render(<DraftWorkbench accountId="account-a" ownershipEpoch={0} initialPlanId={s.planId} />);
     await screen.findByRole('heading', { name: 'Completed plan' });

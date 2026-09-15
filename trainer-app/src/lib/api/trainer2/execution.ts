@@ -1,3 +1,5 @@
+import { unresolvedOccurrences } from '../../engine/trainer2/occurrence-resolution';
+import { readOccurrenceResolution } from './occurrence-resolution';
 import { finishBinding } from '../../trainer2-contracts/workout-finish';
 import { savedSetResult } from '../../trainer2-contracts/set-results';
 import { randomUUID } from 'node:crypto';
@@ -13,7 +15,7 @@ import { canonicalJson, integrityHash } from './integrity';
 
 type DB = Prisma.TransactionClient;
 export class InvalidStartSnapshot extends Error { constructor() { super('INVALID_START_SNAPSHOT'); } }
-async function activeSource(tx: DB, accountId: string, planId: string, allowCompleted = false) {
+export async function activeSource(tx: DB, accountId: string, planId: string, allowCompleted = false) {
   const plan = await tx.trainer2Plan.findFirst({ where: { id: planId, accountId, tombstonedAt: null } });
   if (!plan) throw new CommandFailure('NOT_FOUND');
   if (plan.lifecycle !== 'Active' && !(allowCompleted && plan.lifecycle === 'Completed')) throw new CommandFailure('PLAN_NOT_ACTIVE', true);
@@ -52,9 +54,17 @@ export async function readNextWorkout(tx: DB, principal: ServerPrincipal, planId
   await authorizeAccount(tx, principal);
   const { plan, revision, intent } = await activeSource(tx, principal.accountId, planId, true);
   const open = await tx.trainer2Execution.findFirst({ where: { accountId: principal.accountId, lifecycle: 'Open' } });
-  return { accountId: principal.accountId, planId, revisionId: revision.id,
+  const resolution = await readOccurrenceResolution(tx, principal.accountId, planId);
+  const state = await tx.trainer2AccountTrainingState.findUniqueOrThrow({ where: { accountId: principal.accountId } });
+  return { accountId: principal.accountId, planId, revisionId: revision.id, acceptedSequence: state.acceptedSequence.toString(),
+    occurrences: intent.occurrences.map(o => {
+      const skip = resolution.skips.find(s => s.occurrenceId === o.id);
+      return { occurrenceId: o.id, name: o.name, stageName: intent.stages.find(s => s.id === o.stageId)!.name,
+        status: skip ? 'Skipped' : resolution.resolvedIds.has(o.id) ? 'Finished' : 'Pending',
+        skip: skip ? { actionId: skip.actionId, actorAccountId: skip.accountId, revisionId: skip.revisionId, skippedAt: skip.skippedAt.toISOString(), planCompleted: skip.planCompleted } : null };
+    }),
     instructionEpoch: (await readInstructions(tx, principal.accountId)).epoch,
-    lifecycle: plan.lifecycle, occurrence: plan.lifecycle === 'Completed' ? null : await nextOccurrence(tx, principal.accountId, planId, intent.occurrences), execution: open ? await readExecution(tx, principal, open.id) : null };
+    lifecycle: plan.lifecycle, occurrence: plan.lifecycle === 'Completed' ? null : unresolvedOccurrences(intent.occurrences, resolution.resolvedIds)[0] ?? null, execution: open ? await readExecution(tx, principal, open.id) : null };
 }
 export async function startOccurrence(db: PrismaClient, principal: ServerPrincipal, input: unknown) {
   const command = startOccurrenceCommand.parse(input);
@@ -90,6 +100,6 @@ export async function startOccurrence(db: PrismaClient, principal: ServerPrincip
 }
 
 async function nextOccurrence(tx: DB, accountId: string, planId: string, occurrences: ExecutionRead['initial']['occurrence'][]) {
-  const finished = await tx.trainer2Execution.findMany({ where: { accountId, planId, lifecycle: 'Finished' }, select: { occurrenceId: true } });
-  return occurrences.find(o => !finished.some(x => x.occurrenceId === o.id)) ?? null;
+  const { resolvedIds } = await readOccurrenceResolution(tx, accountId, planId);
+  return unresolvedOccurrences(occurrences, resolvedIds)[0] ?? null;
 }

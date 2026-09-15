@@ -95,6 +95,7 @@ export async function verifyDiscardExecution(db: PrismaClient, reader: PrismaCli
   // The accepted schema has no discard table. This test adapter supplies only that absent read;
   // every base-compatible command and all database guards still run normally.
   const baseCompatible = (client: PrismaClient): PrismaClient => new Proxy(client, { get(target,key) {
+    if(key==='trainer2OccurrenceSkip') return { findMany: async()=>[] };
     if(key==='trainer2ExecutionDiscard') return { findUnique: async()=>null };
     if(key==='$transaction') return (fn: (tx: PrismaClient)=>Promise<unknown>, options: unknown) => target.$transaction(tx=>fn(baseCompatible(tx as PrismaClient)), options as never);
     const value=Reflect.get(target,key); return typeof value==='function'?value.bind(target):value;

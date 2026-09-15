@@ -1,5 +1,7 @@
 # 02 Domain Engine
 
+Trainer2 Skip Workout: [eligibility, audited resolution, endpoint, exact retry, UI and verification](architecture/trainer2/SKIP_WORKOUT.md).
+
 Trainer2 performed-result meaning is owned by Execution & Evidence and the strict result contracts, with no automatic progression or workout resolution. See [result semantics](architecture/trainer2/SET_RESULTS.md).
 
 Trainer2 local activation: [current contract, immutable approval, instruction scope, API/UI behavior and verification](architecture/trainer2/ACTIVATION.md).

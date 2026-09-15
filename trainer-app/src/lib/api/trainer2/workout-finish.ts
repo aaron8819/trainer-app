@@ -1,3 +1,5 @@
+import { unresolvedOccurrences } from '../../engine/trainer2/occurrence-resolution';
+import { readOccurrenceResolution } from './occurrence-resolution';
 import type { PrismaClient } from '@prisma/client';
 import { finishExecutionCommand, reviewedResults, unrecordedTargets } from '../../trainer2-contracts/workout-finish';
 import { acceptCommand, CommandFailure } from './command';
@@ -22,8 +24,9 @@ export async function finishExecution(db: PrismaClient, principal: ServerPrincip
       throw new CommandFailure('PLAN_NOT_ACTIVE', true);
     const revision = await tx.trainer2PlanRevision.findFirstOrThrow({ where: { id: revisionId, accountId: principal.accountId, planId } });
     const intent = readSavedDocument(revision.document);
-    const finished = await tx.trainer2Execution.findMany({ where: { accountId: principal.accountId, planId, lifecycle: 'Finished' }, select: { occurrenceId: true } });
-    const planCompleted = intent.occurrences.every(o => o.id === occurrence.id || finished.some(x => x.occurrenceId === o.id));
+    const { resolvedIds } = await readOccurrenceResolution(tx, principal.accountId, planId);
+    resolvedIds.add(occurrence.id);
+    const planCompleted = unresolvedOccurrences(intent.occurrences, resolvedIds).length === 0;
     // No semantic failures below: all finish, membership, closure and receipt effects commit together.
     await tx.trainer2ExecutionFinish.create({ data: { executionId: execution.executionId, accountId: principal.accountId,
       planId, revisionId, occurrenceId: occurrence.id, actionId: command.actionId, expected: command.expected,

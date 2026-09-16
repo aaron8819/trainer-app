@@ -38,7 +38,9 @@ export function resultLabel(r: PerformedResult | null) {
     `${m.value} ${m.unit} ${m.kind === 'assistance' ? 'assistance' : m.kind === 'addedLoad' ? 'added' : m.convention === 'perImplement' ? 'per implement' : m.convention === 'barbellTotal' ? 'barbell total' : 'machine displayed'}`;
   return `${r.reps ? `${r.reps.value} reps ${r.reps.basis === 'perSide' ? 'per side' : r.reps.basis}` : 'reps unspecified'} · ${load} · ${r.rir === null ? 'effort unspecified' : `${r.rir} RIR`}`;
 }
-export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId, number, saved, refresh, readOnly = false, locked = false, onInputState, historical = false, history = [], finishVersion, retainedOnly = false, prescription, exercise, unitHint }: {
+export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId, number, saved, refresh, readOnly = false, locked = false, onInputState, historical = false, history = [], finishVersion, retainedOnly = false, prescription, exercise, unitHint, active = true, activePanel = false, onSubmission }: {
+  active?: boolean; activePanel?: boolean;
+  onSubmission?: () => (results: SavedSetResult[]) => void;
   unitHint?: 'kg' | 'lb';
   prescription?: DraftDocument['occurrences'][number]['positions'][number]['targets'][number];
   exercise?: DraftDocument['occurrences'][number]['positions'][number]['exercise'];
@@ -85,7 +87,7 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
     const f = formFor();
     f.basis = prescription?.reps.basis ?? 'total'; f.unit = unitHint ?? '';
     const m = prescription?.measurement;
-    if (m) { f.kind = m.kind; if ('unit' in m) f.unit = m.unit; if (m.kind === 'externalLoad') f.convention = m.convention; }
+    if (m) { f.kind = m.kind; if ('unit' in m) f.unit = m.unit; if (m.kind === 'externalLoad') { f.convention = m.convention; f.zeroMeaning = m.zeroMeaning; } }
     else if (exercise?.kind === 'catalogSnapshot') {
       f.kind = exercise.loadKind;
       if (['barbellTotal', 'perImplement', 'machineDisplayed'].includes(exercise.convention)) f.convention = exercise.convention as Form['convention'];
@@ -101,6 +103,7 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
     if (flight.current || !currentDraft.current || (readOnly && !currentDraft.current.pending)) return;
     if (!store({ ...currentDraft.current, pending: command })) return;
     flight.current = true; setBusy(true); setMessage('Saving…');
+    const confirmed = onSubmission?.();
     try {
       const response = await fetch(command.commandType === 'CorrectHistoricalSetResult' ? '/api/trainer2/executions/corrections' : '/api/trainer2/executions/results', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: canonicalJson(command) });
       const { outcome } = setResultResponse.parse(await response.json());
@@ -117,7 +120,10 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
       if (!alive.current) return;
       const latest = results.find(r => r.targetId === targetId);
       if (!latest || latest.version < outcome.result.version || latest.performedSetId !== outcome.result.performedSetId) throw new Error('Unconfirmed read');
-      if (store(null)) setMessage('Saved');
+      if (store(null)) {
+        setMessage('Saved');
+        if (command.intent.result && latest.result && latest.version === outcome.result.version) confirmed?.(results);
+      }
     } catch { if (alive.current) setMessage('Save could not be confirmed. Check again with the original request.'); }
     finally { flight.current = false; if (alive.current) setBusy(false); }
   }
@@ -146,10 +152,17 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
   }
   const compact = !historical && !readOnly && !!prescription && !saved;
   const f = draft?.form ?? (compact ? initialForm() : undefined), disabled = busy || !!draft?.pending || readOnly || locked || !ready;
-  const input = (field: 'reps' | 'load' | 'rir', label: string) => <label className="grid gap-1 text-sm">{field === 'load' ? 'Load' : field === 'reps' ? 'Reps' : 'RIR (opt.)'}<input autoFocus={historical && field === 'reps'} onFocus={e => e.currentTarget.select()}
+  const step = f?.unit === 'lb' ? 5 : 2.5;
+  function adjust(field: 'reps' | 'load', delta: number) {
+    const value = f?.[field] ?? '';
+    if (value !== '' && !/^\d+(\.\d+)?$/.test(value)) return;
+    change(field, String(Math.min(field === 'reps' ? 1000 : 999999999, Math.max(0, Math.round((Number(value || 0) + delta) * 1e6) / 1e6))));
+  }
+  const input = (field: 'reps' | 'load' | 'rir', label: string) => <label className="grid gap-1 text-sm">{field === 'load' ? `Weight / load (${f?.unit || 'choose unit'})` : field === 'reps' ? `Reps${f?.basis === 'perSide' ? ' per side' : f?.basis === 'alternating' ? ' alternating' : ''}` : 'Actual RIR (optional)'}<input autoFocus={historical && field === 'reps'} onFocus={e => e.currentTarget.select()}
     className={control} aria-label={`Set ${number} ${label}`} inputMode={field === 'reps' ? 'numeric' : 'decimal'}
     value={f![field]} onChange={e => change(field, e.target.value)} /></label>;
-  if (retainedOnly && !draft) return null;
+  // Retain recovery state by identity without rendering inactive forms.
+  if (!active || (retainedOnly && !draft)) return null;
   return <div className="mt-3 rounded-lg bg-slate-50 p-3" aria-label={`Set ${number} actual result`}>
     <p className="text-sm font-medium">{saved ? `Saved v${saved.version}: ${resultLabel(saved.result)}` : 'Not recorded'}</p>
     {historical && history.length > 0 && <details className="mt-2 text-sm"><summary className="min-h-11 cursor-pointer">Result history</summary><ol className="space-y-2">{[...history].sort((a, b) => a.version - b.version).map(r => <li key={r.version}><p>{r.version === 1 ? 'Original record' : 'Correction'} · v{r.version}{r.version === finishVersion ? ' · Acknowledged at finish' : ''}</p><p>{resultLabel(r.result)}</p><p>{r.recordedAt} · {r.reason ?? 'Recorded result'}</p></li>)}</ol></details>}
@@ -157,22 +170,30 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
     {!compact && !draft && !readOnly && (!historical || !!saved?.result) && <button ref={editButton} className={control} disabled={!ready || locked} onClick={begin}>{historical ? 'Correct result' : saved ? saved.result ? 'Edit result' : 'Re-record result' : 'Enter actual result'}</button>}
     {(draft || compact) && f && <fieldset disabled={disabled} className="mt-2 space-y-3">
       <legend className={draft ? "text-sm font-semibold" : "sr-only"}>{draft?.pending ? 'Pending confirmation' : draft ? 'Unsaved input' : 'Not recorded · enter actual values'}{draft?.base ? ` · editing v${draft.base.version}` : ''}</legend>
-      <div className="grid grid-cols-3 gap-2">
+      <div className={activePanel ? "grid grid-cols-2 gap-3" : "grid grid-cols-3 gap-2"}>
         {!['unspecified', 'bodyweight'].includes(f.kind) ? input('load', 'Actual load') : <p className="self-center text-xs">{f.kind === 'bodyweight' ? 'Bodyweight' : 'Load optional'}</p>}
-        {input('reps', 'Actual reps')}{input('rir', 'Actual RIR (optional)')}
+        {input('reps', 'Actual reps')}{!activePanel && input('rir', 'Actual RIR (optional)')}
       </div>
+      {activePanel && <>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex gap-2">{!['unspecified', 'bodyweight'].includes(f.kind) && [-step, step].map(delta => <button type="button" key={delta} className={control + ' flex-1'} disabled={!f.unit} aria-label={(delta < 0 ? 'Decrease' : 'Increase') + ' load by ' + step + ' ' + f.unit} onClick={() => adjust('load', delta)}>{delta < 0 ? '−' : '+'}{step} {f.unit}</button>)}</div>
+          <div className="flex gap-2">{[-1, 1].map(delta => <button type="button" key={delta} className={control + ' flex-1'} aria-label={delta < 0 ? 'Decrease reps' : 'Increase reps'} onClick={() => adjust('reps', delta)}>{delta < 0 ? '−' : '+'}1</button>)}</div>
+        </div>
+        {!['unspecified', 'bodyweight'].includes(f.kind) && <label className="flex flex-wrap items-center gap-2 text-sm">Load unit<select className={control} aria-label={'Set ' + number + ' load unit'} value={f.unit} onChange={e => change('unit', e.target.value)}><option value="">Choose unit</option><option>kg</option><option>lb</option></select><span>{f.kind === 'externalLoad' ? f.convention === 'barbellTotal' ? 'Total barbell load' : f.convention === 'perImplement' ? 'Per implement' : 'Machine displayed' : f.kind === 'addedLoad' ? 'Added load' : 'Displayed assistance'}</span></label>}
+        <div className="space-y-1"><p className="text-sm">Actual RIR (optional)</p><div className="flex flex-wrap items-end gap-2">{['0', '1', '2', '3'].map(value => <button type="button" key={value} className={control + (f.rir === value ? ' bg-teal-100' : '')} aria-label={value + ' RIR'} aria-pressed={f.rir === value} onClick={() => change('rir', value)}>{value}</button>)}<input className={control + ' w-16 flex-1'} aria-label={'Set ' + number + ' Actual RIR (optional)'} placeholder="Other" inputMode="decimal" value={f.rir} onFocus={e => e.currentTarget.select()} onChange={e => change('rir', e.target.value)} /></div><p className="text-xs text-slate-500">Blank = unspecified. Enter 0–10.</p></div>
+      </>}
       <details className="text-sm"><summary className="min-h-11 cursor-pointer py-2">Options · {f.unit || (f.kind === 'bodyweight' || f.kind === 'unspecified' ? '' : 'choose unit · ')} {f.basis === 'perSide' ? 'per side · ' : f.basis === 'alternating' ? 'alternating · ' : ''}{f.kind === 'externalLoad' ? f.convention === 'barbellTotal' ? 'barbell total' : f.convention === 'perImplement' ? 'per implement' : 'machine displayed' : f.kind === 'addedLoad' ? 'added load' : f.kind === 'unspecified' ? 'choose load type' : f.kind}</summary>
         <div className="grid grid-cols-2 gap-2">
           <label>Rep basis<select className={control + ' w-full'} aria-label={`Set ${number} rep basis`} value={f.basis} onChange={e => change('basis', e.target.value)}><option value="total">Total</option><option value="perSide">Per side</option><option value="alternating">Alternating</option></select></label>
           <label>Actual load type<select className={control + ' w-full'} aria-label={`Set ${number} actual load type`} value={f.kind} onChange={e => change('kind', e.target.value)}><option value="unspecified">Unspecified</option><option value="bodyweight">Bodyweight</option><option value="externalLoad">External load</option><option value="addedLoad">Added load</option><option value="assistance">Assistance</option></select></label>
-          {!['unspecified', 'bodyweight'].includes(f.kind) && <label>Unit<select className={control + ' w-full'} aria-label={`Set ${number} load unit`} value={f.unit} onChange={e => change('unit', e.target.value)}><option value="">Choose unit</option><option>kg</option><option>lb</option></select></label>}
+          {!activePanel && !['unspecified', 'bodyweight'].includes(f.kind) && <label>Unit<select className={control + ' w-full'} aria-label={`Set ${number} load unit`} value={f.unit} onChange={e => change('unit', e.target.value)}><option value="">Choose unit</option><option>kg</option><option>lb</option></select></label>}
           {f.kind === 'externalLoad' && <label>Load basis<select className={control + ' w-full'} aria-label={`Set ${number} load basis`} value={f.convention} onChange={e => change('convention', e.target.value)}><option value="barbellTotal">Barbell total</option><option value="perImplement">Per implement</option><option value="machineDisplayed">Machine displayed</option></select></label>}
           {f.kind === 'externalLoad' && <label>Zero load<select className={control + ' w-full'} aria-label={`Set ${number} zero load meaning`} value={f.zeroMeaning ?? 'validZero'} onChange={e => change('zeroMeaning', e.target.value)}><option value="validZero">Valid zero</option><option value="notAllowed">Zero not allowed</option></select></label>}
         </div><p className="mt-2 text-xs text-slate-500">Blank values stay unspecified; zero is a value. Per side means the count on each side. Unequal left/right counts and duration are not supported.</p>
       </details>
       {draft?.base && !historical && <label className="grid gap-1 text-sm">Correction reason<input className={control} aria-label={`Set ${number} correction reason`} maxLength={200} value={f.reason} onChange={e => change('reason', e.target.value)} /></label>}
 
-      {draft?.conflict ? <><button className={control} onClick={() => void reviewLatest()}>Review latest result</button>{reviewed && <div><p>Latest: {resultLabel(reviewed.latest?.result ?? null)} · v{reviewed.latest?.version ?? 0}</p><button className={control} onClick={() => { store({ ...draft, base: reviewed.latest, conflict: false }); setReviewed(null); setMessage('Input retained. Save only if this is your intended correction.'); }}>Use this version for my correction</button></div>}</> : <button className={control} onClick={() => { if (!currentDraft.current) begin(); save(); }}>{draft?.base ? 'Save correction' : 'Record set'}</button>}
+      {draft?.conflict ? <><button className={control} onClick={() => void reviewLatest()}>Review latest result</button>{reviewed && <div><p>Latest: {resultLabel(reviewed.latest?.result ?? null)} · v{reviewed.latest?.version ?? 0}</p><button className={control} onClick={() => { store({ ...draft, base: reviewed.latest, conflict: false }); setReviewed(null); setMessage('Input retained. Save only if this is your intended correction.'); }}>Use this version for my correction</button></div>}</> : <button className={activePanel ? 'min-h-11 w-full rounded-xl bg-teal-700 px-5 py-3 font-semibold text-white disabled:opacity-40' : control} onClick={() => { if (!currentDraft.current) begin(); save(); }}>{draft?.base ? 'Save correction' : activePanel ? 'Log set' : 'Record set'}</button>}
       {!historical && draft?.base?.result && !draft.conflict && <button className={control} onClick={() => save(true)}>Clear erroneous result</button>}
       {draft && <button className={control} onClick={cancel}>{historical ? 'Cancel' : 'Discard input'}</button>}
     </fieldset>}

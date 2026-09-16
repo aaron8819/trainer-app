@@ -9,6 +9,7 @@ import { SkipWorkout } from './SkipWorkout';
 import type { SkipOccurrenceCommand } from '@/lib/trainer2-contracts/skip-occurrence';
 import { DiscardWorkout } from './DiscardWorkout';
 import { FinishWorkout } from './FinishWorkout';
+import { ActiveWorkout } from './ActiveWorkout';
 import { SetResultRow, resultLabel } from './SetResultRow';
 import { control } from './DraftEditor';
 import { TrainingOverview, PlannedWorkout } from './TrainingOverview';
@@ -115,13 +116,14 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
     {pending && <button className={control} disabled={busy} onClick={() => void submit(pending)}>Check again</button>}
     {failed && !pending && <button className={control} onClick={() => void load()}>Reload workout</button>}
     {next && document && !execution && <TrainingOverview document={document} next={next} program={program} />}
-    {execution && <section className="space-y-4"><h2 className="text-2xl font-semibold">{execution.lifecycle === 'Discarded' ? 'Workout attempt discarded' : execution.lifecycle === 'Finished' ? 'Workout finished' : 'Workout in progress'}</h2>
+    {execution && <section className="space-y-2"><h2 className="text-xl font-semibold">{execution.lifecycle === 'Discarded' ? 'Workout attempt discarded' : execution.lifecycle === 'Finished' ? 'Workout finished' : execution.initial.occurrence.name}</h2>
       <p className="text-slate-600">{execution.lifecycle === 'Discarded' ? 'This attempt was discarded. Its original start and prescription are retained. Discarding this attempt did not complete or skip the scheduled workout.' : execution.lifecycle === 'Finished' ? 'Latest saved results appear below. Corrections preserve completion and the original targets. Result history shows what was acknowledged at finish.' : ''}</p>
       {execution.discard && <p>Started {execution.initial.startedAt}. Discarded {execution.discard.discardedAt}.</p>}
       {execution.finish && <p className="text-sm text-slate-600">Started {execution.initial.startedAt}. Finished {execution.finish.finishedAt}. Later correction times appear in result history.</p>}
-      <p className="font-medium text-teal-800">{execution.initial.stage.name} · {effortSummary(execution.initial.occurrence)}</p><a className={control} href={trainingUrl(execution.initial.planId)}>Back to training</a>
-      <button className={control} onClick={() => void load()}>Refresh saved results</button>
-      <WorkoutPrescription workout={execution.initial.occurrence} previous={positionId => {
+      <p className="font-medium text-teal-800">{execution.initial.stage.name} · {effortSummary(execution.initial.occurrence)}</p><a className="inline-block min-h-11 py-2 text-sm text-teal-800 underline" href={trainingUrl(execution.initial.planId)}>Back to training</a>
+
+      {execution.lifecycle === 'Open' ? <ActiveWorkout key={`active:${execution.executionId}`} execution={execution} ownershipEpoch={ownershipEpoch} locked={finishLocked || discardLocked} inputStates={inputStates} onInputState={onInputState}
+        refresh={async () => { const value = await load(); if (!value || !('results' in value)) throw new Error('Read failed'); return value.results; }} /> : <WorkoutPrescription workout={execution.initial.occurrence} previous={positionId => {
         const prior = execution.previous?.find(p => p.positionId === positionId);
         return prior ? <aside className="mt-2 rounded-lg bg-teal-50 p-3 text-xs text-teal-950"><a className="font-semibold underline" href={url(prior.executionId)}>Previous · {prior.workoutName} · {new Date(prior.finishedAt).toLocaleDateString()}</a><p className="mt-1">Previous exercise results · latest corrections</p><ul>{prior.results.map(r => <li key={r.targetId}>{resultLabel(r.result)}</li>)}</ul></aside> : <p className="mt-2 text-xs text-slate-500">No comparable previous performance.</p>;
       }} resultRow={(positionId, targetId, number) => {
@@ -134,10 +136,11 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
           {execution.lifecycle === 'Finished' && <SetResultRow key="historical" accountId={accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
             historical history={execution.history?.filter(r => r.targetId === owned.id)} finishVersion={execution.finish?.expected.results.find(r => r.targetId === owned.id)?.resultVersion}
             targetId={owned.id} number={number} saved={saved} refresh={refresh} />}</Fragment>;
-      }} />
+      }} />}
       <FinishWorkout key={execution.executionId} execution={execution} ownershipEpoch={ownershipEpoch}
         blocked={discardLocked || execution.initial.positions.some(p => p.targets.some(t => inputStates[t.id] !== false))}
         onFinished={() => { try { sessionStorage.setItem('trainer2-finished:' + accountId + ':' + execution.initial.planId, execution.executionId); } catch { /* Completion is already confirmed; navigation remains safe. */ } window.location.assign(trainingUrl(execution.initial.planId)); }} onLock={setFinishLocked} refresh={async () => { const value = await load(); if (!value || value.lifecycle !== 'Finished') throw new Error('Completion read failed'); }} />
+      <details><summary className="min-h-11 cursor-pointer py-2 text-sm text-slate-600">Recovery</summary><button className={control} onClick={() => void load()}>Refresh saved results</button></details>
       <DiscardWorkout key={`discard:${execution.executionId}`} execution={execution} ownershipEpoch={ownershipEpoch}
         blocked={finishLocked || execution.initial.positions.some(p => p.targets.some(t => inputStates[t.id] !== false))}
         onLock={setDiscardLocked} refresh={async () => { const value = await load(); if (!value || value.lifecycle !== 'Discarded') throw new Error('Discard read failed'); }} />

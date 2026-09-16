@@ -89,3 +89,126 @@ it('supports independent workouts and truthful final completion with skipped wor
   expect(screen.getAllByRole('article')).toHaveLength(2);
   expect(screen.queryByRole('button', { name: 'Start workout' })).toBeNull();
 });
+
+import { useCallback, useState } from 'react';
+import { ActiveWorkout } from './ActiveWorkout';
+import type { ExecutionRead } from '@/lib/trainer2-contracts/execution';
+import type { SavedSetResult } from '@/lib/trainer2-contracts/set-results';
+function activeFixture() {
+  const workout = structuredClone(occurrence);
+  workout.positions = workout.positions.slice(0, 2);
+  workout.positions.forEach(p => { p.targets = p.targets.slice(0, 2); });
+  workout.positions[1].exercise.name = workout.positions[0].exercise.name;
+  workout.positions[1].role = 'Accessory';
+  workout.positions[0].targets[1].rir = '0';
+  return { executionId: randomUUID(), lifecycle: 'Open', results: [], initial: { accountId, occurrence: workout,
+    positions: workout.positions.map(p => ({ id: randomUUID(), sourcePositionId: p.id, targets: p.targets.map(t => ({ id: randomUUID(), sourceTargetId: t.id })) })) } } as unknown as ExecutionRead;
+}
+function ActiveHarness({ value, read }: { value: ExecutionRead; read: () => Promise<SavedSetResult[]> }) {
+  const [execution, setExecution] = useState(value);
+  const [inputs, setInputs] = useState<Record<string, boolean>>({});
+  const input = useCallback((id: string, blocked: boolean) => setInputs(v => v[id] === blocked ? v : { ...v, [id]: blocked }), []);
+  return <ActiveWorkout execution={execution} ownershipEpoch={0} locked={false} inputStates={inputs} onInputState={input} refresh={async () => { const results = await read(); setExecution(v => ({ ...v, results })); return results; }} />;
+}
+function activeTransport(results: SavedSetResult[]) {
+  return vi.fn().mockImplementation((_url, init) => {
+    const c = JSON.parse(init.body);
+    const saved = { executionId: c.target.executionId, targetId: c.target.targetId, performedSetId: c.expected.performedSetId ?? randomUUID(), version: c.expected.resultVersion + 1,
+      actionId: c.actionId, recordedAt: new Date().toISOString(), reason: c.intent.reason ?? null, result: c.intent.result };
+    results.push(saved);
+    return response({ replayed: false, outcomeCursor: '1', outcome: { status: 'Accepted', actionId: c.actionId, commandType: c.commandType, acceptedSequence: '1', result: { executionId: saved.executionId, targetId: saved.targetId, performedSetId: saved.performedSetId, version: saved.version } } });
+  });
+}
+describe('Single active set and queue', () => {
+  it('renders one editor, preserves drafts by identity, and restores selection on remount', async () => {
+    const value = activeFixture(), read = vi.fn().mockResolvedValue([]);
+    const view = render(<ActiveHarness value={value} read={read} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeEnabled());
+    expect(screen.getAllByLabelText(/Actual reps/)).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '7' } });
+    const chips = screen.getAllByRole('button', { name: /, set 2, unrecorded/ });
+    fireEvent.click(chips[0]);
+    expect(screen.getByText(/Starting target.*0 RIR/)).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Set 2 Actual reps'), { target: { value: '0' } });
+    fireEvent.click(screen.getAllByRole('button', { name: /, set 1, unrecorded/ })[0]);
+    expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('7');
+    view.unmount();
+    render(<ActiveHarness value={value} read={read} />);
+    await waitFor(() => expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('7'));
+    fireEvent.click(screen.getAllByRole('button', { name: /, set 2, unrecorded/ })[0]);
+    expect(screen.getByLabelText('Set 2 Actual reps')).toHaveValue('0');
+    expect(read).not.toHaveBeenCalled();
+  });
+  it('advances only after confirmed readback, across duplicate-name exercise identities', async () => {
+    const value = activeFixture(), results: SavedSetResult[] = [];
+    const fetch = activeTransport(results); vi.stubGlobal('fetch', fetch);
+    let confirm!: (v: SavedSetResult[]) => void;
+    const read = vi.fn().mockImplementationOnce(() => new Promise<SavedSetResult[]>(r => { confirm = r; })).mockImplementation(() => Promise.resolve([...results]));
+    render(<ActiveHarness value={value} read={read} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeEnabled());
+    fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '0' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
+    await waitFor(() => expect(read).toHaveBeenCalled());
+    expect(screen.getByLabelText('Set 1 Actual reps')).toBeInTheDocument();
+    confirm([...results]);
+    await screen.findByLabelText('Set 2 Actual reps');
+    fireEvent.change(screen.getByLabelText('Set 2 Actual reps'), { target: { value: '8' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
+    await screen.findByText('Accessory · Set 1 of 2');
+    expect(results.map(r => r.targetId)).toEqual(value.initial.positions[0].targets.map(t => t.id));
+    expect(screen.getByText('2 of 4 sets recorded')).toBeVisible();
+  });
+  it.each([false, true])('does not pull selection back after a late response (return to original: %s)', async (returnToOriginal) => {
+    const value = activeFixture(), results: SavedSetResult[] = [], transport = activeTransport(results);
+    let reply!: () => void;
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((...args) => new Promise<Response>(resolve => { reply = () => resolve(transport(...args)); })));
+    render(<ActiveHarness value={value} read={async () => [...results]} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeEnabled());
+    fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '8' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
+    fireEvent.click(screen.getAllByRole('button', { name: /, set 2, unrecorded/ })[1]);
+    fireEvent.change(screen.getByLabelText('Set 2 Actual reps'), { target: { value: '11' } });
+    if (returnToOriginal) fireEvent.click(screen.getAllByRole('button', { name: /, set 1, unrecorded/ })[0]);
+    reply();
+    await screen.findByText('1 of 4 sets recorded');
+    if (returnToOriginal) expect(screen.getByRole('button', { name: /, set 1, recorded/ })).toHaveAttribute('aria-pressed', 'true');
+    else expect(screen.getByLabelText('Set 2 Actual reps')).toHaveValue('11');
+    expect(results[0].targetId).toBe(value.initial.positions[0].targets[0].id);
+  });
+  it('adjusts explicit zero and units without saving, with optional RIR distinct from RPE', async () => {
+    const value = activeFixture();
+    render(<ActiveHarness value={value} read={async () => []} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeEnabled());
+    fireEvent.change(screen.getByLabelText('Set 1 load unit'), { target: { value: 'kg' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Increase load by 2.5 kg' }));
+    expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('2.5');
+    fireEvent.click(screen.getByRole('button', { name: 'Decrease load by 2.5 kg' }));
+    expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('0');
+    fireEvent.click(screen.getByRole('button', { name: '0 RIR' }));
+    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('0');
+    fireEvent.change(screen.getByLabelText('Set 1 Actual RIR (optional)'), { target: { value: '' } });
+    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('');
+    expect(screen.getByText('0 of 4 sets recorded')).toBeVisible();
+  });
+});
+
+
+import { createHash } from 'node:crypto';
+import { canonicalJson } from '@/lib/trainer2-contracts/canonical-json';
+it('integrates one active panel with finish controls across input-state updates', async () => {
+  const value = { ...activeFixture(), finish: null }, document = createHypertrophyPlan();
+  const digest = (v: unknown) => createHash('sha256').update(canonicalJson(v)).digest('hex');
+  const instructions = { version: 1, restrictions: [], exceptions: [] };
+  value.initial = { ...value.initial, schemaVersion: 1, kind: 'START', provenance: 'VERIFIED_START', policyVersion: 'trainer2-start-v1',
+    executionId: value.executionId, planId, revisionId, sourceContentHash: 'a'.repeat(64), startedAt: new Date().toISOString(),
+    stage: { id: value.initial.occurrence.stageId, name: 'Week 1' }, progression: document.progression,
+    instructions: { epoch: 0, revisionId: null, contentHash: digest(instructions), document: instructions } } as ExecutionRead['initial'];
+  value.contentHash = digest(value.initial);
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(value)));
+  render(<Workout accountId={accountId} ownershipEpoch={0} executionId={value.executionId} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Finish workout' })).toBeEnabled());
+  fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '8' } });
+  expect(screen.getAllByRole('region', { name: 'Active set' })).toHaveLength(1);
+  expect(screen.getAllByLabelText(/Actual reps/)).toHaveLength(1);
+  expect(screen.getByRole('button', { name: 'Finish workout' })).toBeDisabled();
+});

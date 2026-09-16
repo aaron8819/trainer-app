@@ -33,7 +33,7 @@ Execution GET and next-workout reads include `results`, containing the latest re
 
 ## UI and recovery
 
-`SetResultRow` renders beside each original target in `Workout`. Enter actual result, Record set, Edit result, Save correction, Clear erroneous result and Re-record result are separate explicit actions. Not recorded, unsaved, pending confirmation, saved and failed/conflicting states are distinct. Numeric mobile keyboards, labels and 44px controls support compact inline logging.
+`ActiveWorkout` renders one selected `SetResultRow` above the compact exercise queue in an Open `Workout`; inactive identity-keyed controllers preserve recovery state without rendering forms. See [active-set rules](TRAINING_UI.md#active-set-logging). Enter actual result, Record set, Edit result, Save correction, Clear erroneous result and Re-record result are separate explicit actions. Not recorded, unsaved, pending confirmation, saved and failed/conflicting states are distinct. Numeric mobile keyboards, labels and 44px controls support compact inline logging.
 
 Each row retains its draft and reviewed base in account/execution/target-scoped sessionStorage. Pending exact commands are stored before submission and survive same-tab reload. A ref prevents double submission. Background/unrelated refresh preserves input and expected version; changing executions unmounts the keyed consumer and late replies are ignored. Before-unload and link interception protect pending input. This is same-tab recovery, not a complete offline-first or cross-device local-storage guarantee; acknowledged server results survive application-process restart while the task-owned DB exists.
 

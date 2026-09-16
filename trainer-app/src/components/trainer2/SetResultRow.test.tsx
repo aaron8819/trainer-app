@@ -210,11 +210,11 @@ describe('Pounds and stable logging suggestions', () => {
     const kg = { ...saved, result: { reps: { value: 8, basis: 'total' as const }, measurement: { ...prescription.measurement, value: '20.000000' }, rir: '2' } };
     const fetch = vi.fn().mockImplementation((_url, init) => Promise.resolve(response(accepted(init.body, 2)))); vi.stubGlobal('fetch', fetch);
     const view = render(<SetResultRow {...ui} saved={kg} refresh={vi.fn().mockResolvedValue([{ ...kg, version: 2 }])} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Save correction' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Update set' }));
     expect(fetch).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '9' } });
     fireEvent.change(screen.getByLabelText('Set 1 correction reason'), { target: { value: 'Correct reps' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save correction' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Update set' }));
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
     expect(JSON.parse(fetch.mock.calls[0][1].body).intent.result.measurement).toEqual(kg.result.measurement);
     view.unmount(); sessionStorage.clear();

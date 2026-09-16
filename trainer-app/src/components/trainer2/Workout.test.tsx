@@ -227,3 +227,48 @@ it('deduplicates rest events and anchors retries to recording time, including di
   expect(recordRest(next, { ...record, actionId: randomUUID() }, true)?.deadline).toBe(next.deadline);
   expect(readRest('{"version":1}')).toBeNull();
 });
+
+import { RestBar } from './RestBar';
+import { MuscleTags } from './MuscleTags';
+it('exposes timer adjustments without disclosure and clamps below zero without changing event identity', async () => {
+  const now = Date.now();
+  const state = { version: 1 as const, deadline: now + 10000, duration: 180000, recordedAt: now, actionId: 'event', seen: ['event'] };
+  const change = vi.fn();
+  // Use a real record-derived state to retain the persisted rest-state contract.
+  const record = { executionId: randomUUID(), targetId: randomUUID(), performedSetId: randomUUID(), actionId: randomUUID(), version: 1, reason: null,
+    recordedAt: new Date(now).toISOString(), result: { reps: null, measurement: null, rir: null } };
+  const timer = { ...recordRest(null, record, true)!, deadline: state.deadline };
+  render(<RestBar state={timer} storageKey="timer-test" onChange={change} />);
+  fireEvent.click(await screen.findByRole('button', { name: '+30 seconds' }));
+  expect(change.mock.calls[0][0].deadline).toBe(timer.deadline + 30000);
+  fireEvent.click(screen.getByRole('button', { name: '−30 seconds' }));
+  const adjusted = change.mock.calls[1][0];
+  expect(restRemaining(adjusted, Date.now())).toBe(0);
+  expect(adjusted.seen).toEqual(timer.seen);
+  expect(readRest(localStorage.getItem('timer-test'))).toEqual(adjusted);
+  localStorage.removeItem('timer-test');
+});
+it('resolves V1 muscle metadata by catalog identity and omits custom descriptions', () => {
+  const exercise = createHypertrophyPlan().occurrences[0].positions[0].exercise;
+  const view = render(<MuscleTags exercise={exercise} />);
+  expect(screen.getByText('Primary · Quads')).toBeVisible();
+  expect(screen.getByText('Secondary · Hamstrings')).toBeVisible();
+  view.rerender(<MuscleTags exercise={{ kind: 'authoredDescription', name: exercise.name, variation: '' }} />);
+  expect(view.container).toBeEmptyDOMElement();
+});
+it('returns from a recorded-set edit without discarding input for either target', async () => {
+  const value = activeFixture();
+  const recorded: SavedSetResult = { executionId: value.executionId, targetId: value.initial.positions[0].targets[0].id, performedSetId: randomUUID(), actionId: randomUUID(), version: 1, reason: null,
+    recordedAt: new Date().toISOString(), result: { reps: { value: 8, basis: 'total' }, measurement: null, rir: '0' } };
+  value.results = [recorded];
+  render(<ActiveHarness value={value} read={async () => [recorded]} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeEnabled());
+  fireEvent.change(screen.getByLabelText('Set 2 Actual reps'), { target: { value: '11' } });
+  fireEvent.click(screen.getByRole('button', { name: /, set 1, recorded/ }));
+  expect(screen.getByText('Editing recorded set 1')).toBeVisible();
+  fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '9' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Return to active set' }));
+  expect(screen.getByLabelText('Set 2 Actual reps')).toHaveValue('11');
+  fireEvent.click(screen.getByRole('button', { name: /, set 1, recorded/ }));
+  expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('9');
+});

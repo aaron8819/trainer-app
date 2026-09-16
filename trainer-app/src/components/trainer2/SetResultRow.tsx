@@ -7,7 +7,10 @@ import { performedResult, savedSetResult, resultMutationCommand, setResultRespon
 import { canonicalJson } from '@/lib/trainer2-contracts/canonical-json';
 import type { DraftDocument } from '@/lib/trainer2-contracts/draft';
 import { control as baseControl } from './DraftEditor';
-const control = `${baseControl} min-h-11 min-w-0`;
+const control = `${baseControl} min-h-11 min-w-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700`;
+const fieldControl = 'h-11 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 text-base focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700';
+const stepControl = 'h-11 w-11 shrink-0 rounded-full border border-slate-300 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-emerald-700';
+const fieldLabel = 'text-xs font-medium uppercase tracking-wide text-slate-500';
 const checkedNavigation = new WeakSet<Event>();
 
 const formSchema = z.object({ reps: z.string(), basis: z.enum(['total', 'perSide', 'alternating']),
@@ -200,7 +203,7 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
     value={f![field]} onChange={e => change(field, e.target.value)} /></label>;
   // Retain recovery state by identity without rendering inactive forms.
   if (!active || (retainedOnly && !draft)) return null;
-  return <div className="mt-3 rounded-lg bg-slate-50 p-3" aria-label={`Set ${number} actual result`}>
+  return <div className={activePanel ? "mt-2" : "mt-3 rounded-lg bg-slate-50 p-3"} aria-label={`Set ${number} actual result`}>
     {(!activePanel || saved) && <p className="text-sm font-medium">{saved ? `Saved v${saved.version}: ${resultLabel(saved.result)}` : 'Not recorded'}</p>}
     {historical && history.length > 0 && <details className="mt-2 text-sm"><summary className="min-h-11 cursor-pointer">Result history</summary><ol className="space-y-2">{[...history].sort((a, b) => a.version - b.version).map(r => <li key={r.version}><p>{r.version === 1 ? 'Original record' : 'Correction'} · v{r.version}{r.version === finishVersion ? ' · Acknowledged at finish' : ''}</p><p>{resultLabel(r.result, true)}</p><p>{r.recordedAt} · {r.reason ?? 'Recorded result'}</p></li>)}</ol></details>}
     {saved?.result?.measurement && 'unit' in saved.result.measurement && saved.result.measurement.unit === 'kg' && <details className="text-xs"><summary className="min-h-11 cursor-pointer py-3">Original units</summary>{loadLabel(saved.result.measurement, true)}</details>}
@@ -209,17 +212,17 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
     {(draft || compact) && f && <fieldset disabled={disabled} className="mt-2 space-y-3">
       <legend className={draft ? "text-sm font-semibold" : "sr-only"}>{draft?.pending ? 'Pending confirmation' : draft ? 'Unsaved input' : 'Not recorded · enter actual values'}{draft?.base ? ` · editing v${draft.base.version}` : ''}</legend>
       {activePanel ? <>
-        <div className="flex items-end justify-center gap-3">
-          <button type="button" className="h-11 w-11 shrink-0 rounded-full border border-slate-300" aria-label="Decrease reps" onClick={() => adjust('reps', -1)}>−1</button>
-          <div className="w-28">{input('reps', 'Actual reps')}</div>
-          <button type="button" className="h-11 w-11 shrink-0 rounded-full border border-slate-300" aria-label="Increase reps" onClick={() => adjust('reps', 1)}>+1</button>
-        </div>
+        <div><p className={fieldLabel}>Reps{f.basis === 'perSide' ? ' per side' : f.basis === 'alternating' ? ' alternating' : ''}</p><div className="mt-1 flex items-center gap-2">
+          <button type="button" className={stepControl} aria-label="Decrease reps" onClick={() => adjust('reps', -1)}>−1</button>
+          <input className={fieldControl} aria-label={`Set ${number} Actual reps`} inputMode="numeric" value={f.reps} onFocus={e => e.currentTarget.select()} onChange={e => change('reps', e.target.value)} />
+          <button type="button" className={stepControl} aria-label="Increase reps" onClick={() => adjust('reps', 1)}>+1</button>
+        </div></div>
         {!['unspecified', 'bodyweight'].includes(f.kind) ? <div>
-          <div className="mb-1 flex justify-center gap-2">{[-5, -1, 1, 5].map(delta => <button type="button" key={delta} className="min-h-11 min-w-11 rounded-full border border-slate-300 text-sm" aria-label={(delta < 0 ? 'Decrease' : 'Increase') + ' load by ' + Math.abs(delta) + ' lb'} onClick={() => adjust('load', delta)}>{delta < 0 ? '−' : '+'}{Math.abs(delta)}</button>)}<button className="min-h-11 px-2 text-sm" type="button" onClick={() => change('load', '')}>Clear</button></div>
-          {input('load', 'Actual load')}
+          <p className={fieldLabel}>Weight (lb)</p><div className="my-1 flex gap-2">{[-5, -1, 1, 5].map(delta => <button type="button" key={delta} className={stepControl} aria-label={(delta < 0 ? 'Decrease' : 'Increase') + ' load by ' + Math.abs(delta) + ' lb'} onClick={() => adjust('load', delta)}>{delta < 0 ? '−' : '+'}{Math.abs(delta)}</button>)}<button className="min-h-11 px-2 text-sm" type="button" onClick={() => change('load', '')}>Clear</button></div>
+          <input className={fieldControl} aria-label={`Set ${number} Actual load`} inputMode="decimal" value={f.load} onFocus={e => e.currentTarget.select()} onChange={e => change('load', e.target.value)} />
           <p className="mt-1 text-xs text-slate-500">{f.kind === 'externalLoad' ? f.convention === 'barbellTotal' ? 'Total barbell load' : f.convention === 'perImplement' ? 'Per implement' : 'Machine displayed' : f.kind === 'addedLoad' ? 'Added load' : 'Displayed assistance'}</p>
         </div> : <p className="text-sm">{f.kind === 'bodyweight' ? 'Bodyweight' : 'Load unspecified · choose a load type in Options if needed'}</p>}
-        <div><p className="mb-1 text-sm">RIR (optional)</p><div className="flex items-center gap-2">{['0', '1', '2', '3'].map(value => <button type="button" key={value} className={'h-11 w-11 shrink-0 rounded-full border ' + (f.rir === value ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-slate-300')} aria-label={value + ' RIR'} aria-pressed={f.rir === value} onClick={() => change('rir', value)}>{value}</button>)}<input className={control + ' w-16 flex-1'} aria-label={'Set ' + number + ' Actual RIR (optional)'} placeholder="Other" inputMode="decimal" value={f.rir} onFocus={e => e.currentTarget.select()} onChange={e => change('rir', e.target.value)} /></div></div>
+        <div><p className={fieldLabel}>RIR (optional)</p><div className="my-1 flex items-center gap-2">{['0', '1', '2', '3'].map(value => <button type="button" key={value} className={stepControl + ' ' + (f.rir === value ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-slate-300')} aria-label={value + ' RIR'} aria-pressed={f.rir === value} onClick={() => change('rir', value)}>{value}</button>)}</div><input className={fieldControl} aria-label={'Set ' + number + ' Actual RIR (optional)'} placeholder="Other" inputMode="decimal" value={f.rir} onFocus={e => e.currentTarget.select()} onChange={e => change('rir', e.target.value)} /></div>
       </> : <div className="grid grid-cols-3 gap-2">{!['unspecified', 'bodyweight'].includes(f.kind) && input('load', 'Actual load')}{input('reps', 'Actual reps')}{input('rir', 'Actual RIR (optional)')}</div>}
       <details className="text-sm"><summary className="min-h-11 cursor-pointer py-2">Options · {f.unit || (f.kind === 'bodyweight' || f.kind === 'unspecified' ? '' : 'choose unit · ')} {f.basis === 'perSide' ? 'per side · ' : f.basis === 'alternating' ? 'alternating · ' : ''}{f.kind === 'externalLoad' ? f.convention === 'barbellTotal' ? 'barbell total' : f.convention === 'perImplement' ? 'per implement' : 'machine displayed' : f.kind === 'addedLoad' ? 'added load' : f.kind === 'unspecified' ? 'choose load type' : f.kind}</summary>
         <div className="grid grid-cols-2 gap-2">
@@ -231,7 +234,7 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
       </details>
       {(draft?.base ?? suggestion?.base) && !historical && <label className="grid gap-1 text-sm">Correction reason<input className={control} aria-label={`Set ${number} correction reason`} maxLength={200} value={f.reason} onChange={e => change('reason', e.target.value)} /></label>}
 
-      {draft?.conflict ? <><button className={control} onClick={() => void reviewLatest()}>Review latest result</button>{reviewed && <div><p>Latest: {resultLabel(reviewed.latest?.result ?? null)} · v{reviewed.latest?.version ?? 0}</p><button className={control} onClick={() => { store({ ...draft, base: reviewed.latest, conflict: false }); setReviewed(null); setMessage('Input retained. Save only if this is your intended correction.'); }}>Use this version for my correction</button></div>}</> : <button className={activePanel ? 'min-h-11 w-full rounded-xl bg-emerald-700 px-5 py-2 font-semibold text-white disabled:opacity-40' : control} onClick={() => { if (!currentDraft.current) begin(); save(); }}>{(draft?.base ?? suggestion?.base) ? 'Save correction' : activePanel ? 'Log set' : 'Record set'}</button>}
+      {draft?.conflict ? <><button className={control} onClick={() => void reviewLatest()}>Review latest result</button>{reviewed && <div><p>Latest: {resultLabel(reviewed.latest?.result ?? null)} · v{reviewed.latest?.version ?? 0}</p><button className={control} onClick={() => { store({ ...draft, base: reviewed.latest, conflict: false }); setReviewed(null); setMessage('Input retained. Save only if this is your intended correction.'); }}>Use this version for my correction</button></div>}</> : <button className={activePanel ? 'min-h-11 rounded-full bg-emerald-700 px-5 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-40' : control} onClick={() => { if (!currentDraft.current) begin(); save(); }}>{(draft?.base ?? suggestion?.base) ? activePanel ? 'Update set' : 'Save correction' : activePanel ? 'Log set' : 'Record set'}</button>}
       {!historical && draft?.base?.result && !draft.conflict && <button className={control} onClick={() => save(true)}>Clear erroneous result</button>}
       {draft && <button className={control} onClick={cancel}>{historical ? 'Cancel' : 'Discard input'}</button>}
     </fieldset>}

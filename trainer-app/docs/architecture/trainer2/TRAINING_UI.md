@@ -27,7 +27,7 @@ Reads currently scan prior finish IDs and validate candidate executions until ea
 
 ## Entry, recovery and navigation
 
-`SetResultRow` owns result drafts, suggestions, original version bindings, exact pending commands and conflict recovery. `ActiveWorkout` owns selection, queue presentation, movement and advisory rest. The result, finish and discard server protocols remain unchanged. Only explicit Log set or Save correction records evidence.
+`SetResultRow` owns result drafts, suggestions, original version bindings, exact pending commands and conflict recovery. `ActiveWorkout` owns selection, queue presentation, movement and advisory rest. The result, finish and discard server protocols remain unchanged. Only explicit Log set or Update set records evidence.
 
 Logging defaults to pounds without a preference system or unit picker. `pound-display.ts` divides kg by exactly 0.45359237 and rounds converted presentation to two decimal places; existing lb decimal spelling is retained. Bodyweight and unspecified measurements are not converted. Per-implement, machine-displayed, barbell-total, added and assistance meanings remain explicit. Original kg prescriptions are available in History; saved kg values expose Original units. Immutable prescriptions and persisted result revisions are never relabeled or modified. An unchanged measurement in a correction retains its original value/unit bytes. Saving unchanged values is a no-op, preventing display-only corrections and conversion drift. New numeric mass entered here uses lb. Changing actual load type remains an explicit Options action.
 
@@ -45,7 +45,7 @@ LocalStorage scopes state to account/execution and records seen action IDs, incl
 
 ## Queue, scrolling and focus
 
-Consecutive role groups retain saved exercise order and can collapse; each exercise's set chips can expand/collapse. Native details state persists through logging and selection while the component remains mounted. Reload need not preserve expansion. Counts use non-null saved results only; selected chips are highlighted and logged chips retain mass convention, rep basis and explicit RIR. Trainer2's version-1 catalog has purpose/equipment/measurement metadata but **no verified muscle-group tags**; tags are omitted rather than inferred or sourced from V1.
+Consecutive role groups retain saved exercise order and can collapse; each exercise's set chips can expand/collapse. Native details state persists through logging and selection while the component remains mounted. Reload need not preserve expansion. Counts use non-null saved results only; selected chips are highlighted and logged chips retain mass convention, rep basis and explicit RIR. `MuscleTags` joins version-1 catalog identity to the bounded display-only `catalog-muscles.json` mapping. Its 48 entries were extracted from V1 `prisma/exercises_comprehensive.json` at commit `15783474`, matching each `t2:` ID to `catalogKey` and verifying names offline. Primary and secondary labels use explicit text as well as distinct styling. Custom descriptions, unmatched IDs and other catalog versions receive no tags. This mapping never alters saved exercise identity or prescriptions.
 
 Only an explicit queue selection or confirmed new-record advance requests movement. Target identity and selection generation must still match submission time. Corrections, timers, typing and refresh never move selection. The selected heading receives focus with preventScroll and a polite announcement; numeric inputs are never auto-focused on advance. Scroll occurs only when the relevant card is outside the usable visual viewport, reserving bottom space and honoring reduced motion. Trainer2 excludes the V1 sticky navigation; no hidden fixed header overlaps this route. Reduced-height emulation verifies scrolling, not a physical mobile keyboard.
 
@@ -62,3 +62,11 @@ See `artifacts/trainer2/TRAINING_UI_HANDOFF.md` for source-bound browser/Postgre
 One identity-keyed controller per execution target remains mounted, with only the selected form visible. Selection is retained in account/execution-scoped sessionStorage, falling back to the first unrecorded target in immutable saved order. A bound accepted new record and matching current readback advances to the next unrecorded target, wrapping to earlier work, only while selection identity/generation still match. Newer known result versions prevent stale advancement. Corrections and clear/re-record stay selected. All-recorded work shows Ready to finish; it does not finish automatically.
 
 See [logging polish handoff](../../../artifacts/trainer2/LOGGING_POLISH_HANDOFF.md) for source-bound verification, screenshots, demo instructions and remaining limitations.
+
+## V1 layout refinement
+
+`SetResultRow` uses full-width reps between circular steppers, a left-aligned weight-control row above the weight input, RIR presets above direct entry, and a compact rounded green action. `ActiveWorkout` shows an editing banner and Return to active set without discarding retained input. `RestBar` exposes accessible ±30-second controls directly beside the countdown.
+
+History uses aligned weight/reps/RIR columns, with load convention and rep basis retained. Original kg values are in an optional disclosure; blank actuals display an em dash. Row numbers enumerate available previous results in saved set order; the read model excludes invalid/missing comparison sources and does not expose original set ordinals. They do not identify current-set matches.
+
+The original logging-polish demo's authored targets contain no numeric measurement; its previous results are not a prescription. The explicit-load demo authors 60.00 kg before saving/activation and verifies unchanged saved revision and immutable snapshot against 132.28 lb input/display. Null measurements remain blank. No runtime prefill or conversion policy change was needed. See [visual polish handoff](../../../artifacts/trainer2/LOGGER_VISUAL_POLISH_HANDOFF.md).

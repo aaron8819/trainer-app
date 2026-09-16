@@ -1,0 +1,408 @@
+{
+  "t2:barbell-back-squat": {
+    "primary": [
+      "Quads",
+      "Glutes"
+    ],
+    "secondary": [
+      "Hamstrings",
+      "Core",
+      "Lower Back",
+      "Adductors"
+    ]
+  },
+  "t2:front-squat": {
+    "primary": [
+      "Quads"
+    ],
+    "secondary": [
+      "Glutes",
+      "Core",
+      "Upper Back"
+    ]
+  },
+  "t2:goblet-squat": {
+    "primary": [
+      "Quads",
+      "Glutes"
+    ],
+    "secondary": [
+      "Core"
+    ]
+  },
+  "t2:hack-squat": {
+    "primary": [
+      "Quads"
+    ],
+    "secondary": [
+      "Glutes"
+    ]
+  },
+  "t2:leg-press": {
+    "primary": [
+      "Quads",
+      "Glutes"
+    ],
+    "secondary": [
+      "Hamstrings",
+      "Adductors"
+    ]
+  },
+  "t2:bulgarian-split-squat": {
+    "primary": [
+      "Quads",
+      "Glutes"
+    ],
+    "secondary": [
+      "Hamstrings",
+      "Adductors"
+    ]
+  },
+  "t2:dumbbell-reverse-lunge": {
+    "primary": [
+      "Quads",
+      "Glutes"
+    ],
+    "secondary": [
+      "Hamstrings"
+    ]
+  },
+  "t2:leg-extension": {
+    "primary": [
+      "Quads"
+    ],
+    "secondary": []
+  },
+  "t2:barbell-romanian-deadlift": {
+    "primary": [
+      "Hamstrings",
+      "Glutes"
+    ],
+    "secondary": [
+      "Lower Back",
+      "Forearms"
+    ]
+  },
+  "t2:dumbbell-romanian-deadlift": {
+    "primary": [
+      "Hamstrings",
+      "Glutes"
+    ],
+    "secondary": [
+      "Lower Back",
+      "Forearms"
+    ]
+  },
+  "t2:good-morning": {
+    "primary": [
+      "Hamstrings",
+      "Lower Back"
+    ],
+    "secondary": [
+      "Glutes"
+    ]
+  },
+  "t2:lying-leg-curl": {
+    "primary": [
+      "Hamstrings"
+    ],
+    "secondary": []
+  },
+  "t2:seated-leg-curl": {
+    "primary": [
+      "Hamstrings"
+    ],
+    "secondary": []
+  },
+  "t2:selectorized-standing-calf-raise": {
+    "primary": [
+      "Calves"
+    ],
+    "secondary": []
+  },
+  "t2:seated-calf-raise": {
+    "primary": [
+      "Calves"
+    ],
+    "secondary": []
+  },
+  "t2:barbell-bench-press": {
+    "primary": [
+      "Chest",
+      "Triceps"
+    ],
+    "secondary": [
+      "Front Delts"
+    ]
+  },
+  "t2:incline-barbell-bench-press": {
+    "primary": [
+      "Chest",
+      "Triceps"
+    ],
+    "secondary": [
+      "Front Delts"
+    ]
+  },
+  "t2:dumbbell-bench-press": {
+    "primary": [
+      "Chest",
+      "Triceps"
+    ],
+    "secondary": [
+      "Front Delts"
+    ]
+  },
+  "t2:incline-dumbbell-bench-press": {
+    "primary": [
+      "Chest",
+      "Triceps"
+    ],
+    "secondary": [
+      "Front Delts"
+    ]
+  },
+  "t2:machine-chest-press": {
+    "primary": [
+      "Chest"
+    ],
+    "secondary": [
+      "Triceps",
+      "Front Delts"
+    ]
+  },
+  "t2:push-up": {
+    "primary": [
+      "Chest",
+      "Triceps"
+    ],
+    "secondary": [
+      "Front Delts",
+      "Core"
+    ]
+  },
+  "t2:barbell-overhead-press": {
+    "primary": [
+      "Side Delts",
+      "Triceps"
+    ],
+    "secondary": [
+      "Front Delts",
+      "Upper Back",
+      "Core"
+    ]
+  },
+  "t2:dumbbell-overhead-press": {
+    "primary": [
+      "Side Delts",
+      "Triceps"
+    ],
+    "secondary": [
+      "Front Delts",
+      "Core"
+    ]
+  },
+  "t2:machine-shoulder-press": {
+    "primary": [
+      "Side Delts",
+      "Triceps"
+    ],
+    "secondary": [
+      "Front Delts"
+    ]
+  },
+  "t2:dumbbell-lateral-raise": {
+    "primary": [
+      "Side Delts"
+    ],
+    "secondary": []
+  },
+  "t2:machine-lateral-raise": {
+    "primary": [
+      "Side Delts"
+    ],
+    "secondary": []
+  },
+  "t2:dumbbell-rear-delt-fly": {
+    "primary": [
+      "Rear Delts"
+    ],
+    "secondary": [
+      "Upper Back"
+    ]
+  },
+  "t2:cable-rear-delt-fly": {
+    "primary": [
+      "Rear Delts"
+    ],
+    "secondary": [
+      "Upper Back"
+    ]
+  },
+  "t2:reverse-pec-deck": {
+    "primary": [
+      "Rear Delts"
+    ],
+    "secondary": [
+      "Upper Back"
+    ]
+  },
+  "t2:overhead-cable-triceps-extension": {
+    "primary": [
+      "Triceps"
+    ],
+    "secondary": []
+  },
+  "t2:cable-triceps-pushdown": {
+    "primary": [
+      "Triceps"
+    ],
+    "secondary": []
+  },
+  "t2:rope-triceps-pushdown": {
+    "primary": [
+      "Triceps"
+    ],
+    "secondary": []
+  },
+  "t2:pull-up": {
+    "primary": [
+      "Lats",
+      "Biceps"
+    ],
+    "secondary": [
+      "Upper Back",
+      "Forearms"
+    ]
+  },
+  "t2:weighted-pull-up": {
+    "primary": [
+      "Lats",
+      "Biceps"
+    ],
+    "secondary": [
+      "Upper Back",
+      "Forearms"
+    ]
+  },
+  "t2:machine-assisted-pull-up": {
+    "primary": [
+      "Lats",
+      "Biceps"
+    ],
+    "secondary": [
+      "Upper Back",
+      "Forearms"
+    ]
+  },
+  "t2:lat-pulldown": {
+    "primary": [
+      "Lats"
+    ],
+    "secondary": [
+      "Biceps",
+      "Upper Back",
+      "Forearms"
+    ]
+  },
+  "t2:close-grip-lat-pulldown": {
+    "primary": [
+      "Lats"
+    ],
+    "secondary": [
+      "Biceps",
+      "Upper Back"
+    ]
+  },
+  "t2:barbell-row": {
+    "primary": [
+      "Lats",
+      "Upper Back"
+    ],
+    "secondary": [
+      "Biceps",
+      "Lower Back",
+      "Forearms"
+    ]
+  },
+  "t2:one-arm-dumbbell-row": {
+    "primary": [
+      "Lats",
+      "Upper Back"
+    ],
+    "secondary": [
+      "Biceps",
+      "Forearms"
+    ]
+  },
+  "t2:chest-supported-dumbbell-row": {
+    "primary": [
+      "Lats",
+      "Upper Back"
+    ],
+    "secondary": [
+      "Biceps",
+      "Forearms"
+    ]
+  },
+  "t2:seated-cable-row": {
+    "primary": [
+      "Lats",
+      "Upper Back"
+    ],
+    "secondary": [
+      "Biceps",
+      "Forearms"
+    ]
+  },
+  "t2:ez-bar-curl": {
+    "primary": [
+      "Biceps"
+    ],
+    "secondary": [
+      "Forearms"
+    ]
+  },
+  "t2:dumbbell-curl": {
+    "primary": [
+      "Biceps"
+    ],
+    "secondary": [
+      "Forearms"
+    ]
+  },
+  "t2:cable-curl": {
+    "primary": [
+      "Biceps"
+    ],
+    "secondary": [
+      "Forearms"
+    ]
+  },
+  "t2:cable-crunch": {
+    "primary": [
+      "Abs"
+    ],
+    "secondary": []
+  },
+  "t2:machine-crunch": {
+    "primary": [
+      "Abs"
+    ],
+    "secondary": []
+  },
+  "t2:hanging-knee-raise": {
+    "primary": [
+      "Abs"
+    ],
+    "secondary": [
+      "Forearms"
+    ]
+  },
+  "t2:reverse-crunch": {
+    "primary": [
+      "Abs"
+    ],
+    "secondary": []
+  }
+}

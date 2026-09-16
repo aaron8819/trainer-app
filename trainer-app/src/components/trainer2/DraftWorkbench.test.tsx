@@ -35,7 +35,7 @@ describe('builder save recovery', () => {
       .mockResolvedValue(json({ acceptedSequence: '3', occurrences: s.intent.occurrences.map(o => ({ occurrenceId: o.id, name: o.name, stageName: 'Week 1', status: 'Finished', skip: null })), accountId: 'account-a', planId: s.planId, revisionId: s.revisionId, instructionEpoch: 0, lifecycle: 'Completed', occurrence: null, execution: null }));
     vi.stubGlobal('fetch', fetcher);
     render(<DraftWorkbench accountId="account-a" ownershipEpoch={0} initialPlanId={s.planId} />);
-    await screen.findByRole('heading', { name: 'Completed plan' });
+    await screen.findByText('Program complete');
     expect(screen.queryByRole('heading', { name: 'Active plan' })).toBeNull();
     await screen.findByText('No next workout.');
     expect(screen.queryByRole('button', { name: 'Activate plan' })).toBeNull();
@@ -175,7 +175,7 @@ describe('exact reviewed activation', () => {
     const bodies: string[] = []; let posts = 0;
     const fetcher = vi.fn().mockResolvedValueOnce(acceptance()).mockResolvedValueOnce(json(state())).mockResolvedValueOnce(json(state()))
       .mockImplementation(async (_url: string, init?: RequestInit) => {
-        if (_url.endsWith('/next')) return json({ accountId: 'account-a', planId: state().planId, revisionId: state().revisionId, instructionEpoch: 0, occurrence: state().intent.occurrences[0], execution: null });
+        if (_url.endsWith('/next')) return json({ acceptedSequence: '2', lifecycle: 'Active', occurrences: state().intent.occurrences.map(o => ({ occurrenceId: o.id, name: o.name, stageName: 'Week 1', status: 'Pending', skip: null })), accountId: 'account-a', planId: state().planId, revisionId: state().revisionId, instructionEpoch: 0, occurrence: state().intent.occurrences[0], execution: null });
         if (init?.method !== 'POST') return json(activeState());
         bodies.push(String(init.body)); posts++;
         if (posts === 1) return json({ outcome: { status: 'Accepted', result: { planId: state().planId } } });
@@ -185,8 +185,8 @@ describe('exact reviewed activation', () => {
     await screen.findByRole('heading', { name: 'Saved plan checks passed' }); click('Activate plan');
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Activation could not be confirmed'));
     expect(screen.getByRole('button', { name: 'Save plan' })).toBeDisabled();
-    click('Check again'); await screen.findByText(/^Plan active$/);
-    expect(bodies[0]).toBe(bodies[1]); expect(screen.getByRole('heading', { name: 'Active plan' })).toBeVisible();
+    click('Check again'); await screen.findByRole('link', { name: 'View Program' });
+    expect(bodies[0]).toBe(bodies[1]); expect(screen.queryByRole('button', { name: 'Save plan' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Activate plan' })).toBeNull();
     expect(sessionStorage.getItem(`trainer2-activation:account-a:${state().planId}`)).toBeNull();
   }, 20000);

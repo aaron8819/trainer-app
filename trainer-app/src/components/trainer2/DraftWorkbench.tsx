@@ -16,10 +16,10 @@ import { Workout } from './Workout';
 import { Instructions } from './Instructions';
 
 type WriteCommand = DraftCommand | ActivatePlanCommand | InstructionCommand;
-type Props = { accountId: string; ownershipEpoch: number; initialPlanId?: string };
+type Props = { accountId: string; ownershipEpoch: number; initialPlanId?: string; view?: 'program' };
 export function DraftWorkbench(props: Props) { return <Workbench key={`${props.accountId}:${props.initialPlanId ?? ''}`} {...props} />; }
 type Loaded = SavedPlanResponse;
-function Workbench({ accountId, ownershipEpoch, initialPlanId = '' }: Props) {
+function Workbench({ accountId, ownershipEpoch, initialPlanId = '', view }: Props) {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [form, setForm] = useState<DraftDocument | null>(null);
   const [planId, setPlanId] = useState(initialPlanId);
@@ -154,6 +154,10 @@ function Workbench({ accountId, ownershipEpoch, initialPlanId = '' }: Props) {
     if (issue.location === 'editor') setEditLocation(previous => ({ occurrenceId: issue.occurrenceId, key: previous.key + 1 }));
     requestAnimationFrame(() => { const element = document.getElementById(issue.occurrenceId && !form?.builder ? `edit-${issue.occurrenceId}` : issue.location); element?.scrollIntoView({ block: 'start' }); element?.focus(); });
   }
+  if (active && loaded && form) return <main className="min-h-screen bg-slate-50 text-slate-900"><div className="mx-auto max-w-4xl space-y-5 px-4 py-5 sm:px-8">
+    <Workout key={accountId + ':' + loaded.planId} accountId={accountId} ownershipEpoch={ownershipEpoch} planId={loaded.planId} document={form} program={view === 'program'} />
+    <a className="inline-flex min-h-11 items-center text-sm text-slate-600 underline" href="/trainer2/dev/drafts">Create a new draft</a>
+  </div></main>;
   return <main className="min-h-screen bg-white text-slate-900"><div className="mx-auto max-w-5xl space-y-5 px-4 py-4 pb-28 sm:px-8 sm:pt-10">
     <header className="space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-semibold uppercase tracking-widest text-teal-700">Trainer / Plan builder</p><p className="rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-900">Demo: plans are deleted when the demo stops.</p></div>
       <h1 className="sr-only">Build your training plan</h1>
@@ -168,7 +172,6 @@ function Workbench({ accountId, ownershipEpoch, initialPlanId = '' }: Props) {
     {needsRepair && <section id="repair" tabIndex={-1} className="space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-4"><p>This saved plan contains obsolete override labels from an older builder. Remove those labels to continue editing. Exercise prescriptions and saved history stay intact.</p><button className={control} disabled={locked} onClick={() => { changed(repairBuilderMetadata(form!)); }}>Remove obsolete override labels</button></section>}
     {form && !active && <Progression document={form} disabled={locked || needsRepair} onChange={changed} />}
     {form && !active && <div id="editor" tabIndex={-1} className="scroll-mt-4"><PlanBuilder key={editLocation.key} initialOccurrenceId={editLocation.occurrenceId} document={form} disabled={locked || needsRepair} onChange={changed} /></div>}
-    {active && loaded && <section aria-label={loaded.state.lifecycle === 'Completed' ? 'Completed plan' : 'Active plan'} className="space-y-4 rounded-xl border border-teal-300 bg-teal-50 p-4"><h2 className="text-xl font-semibold">{loaded.state.lifecycle === 'Completed' ? 'Completed plan' : 'Active plan'}</h2><p>{loaded.state.lifecycle === 'Completed' ? 'This plan is complete. Its saved schedule is preserved.' : 'This is your activated plan and its saved schedule.'}</p><Workout key={`${accountId}:${loaded.planId}`} accountId={accountId} ownershipEpoch={ownershipEpoch} planId={loaded.planId} onPlanComplete={() => { setLoaded(current => current && current.state.lifecycle !== 'Completed' ? { ...current, state: { ...current.state, lifecycle: 'Completed' } } : current); setMessage('Plan complete'); }} /><p>{progressionLabel}</p><details><summary>Full plan</summary><DraftReview intent={loaded.intent} /></details></section>}
     {!active && <section className="space-y-3 rounded-xl border border-slate-200 p-4" aria-label="Plan review">
       <button className={control} disabled={!loaded || unsaved || locked} onClick={() => void reviewSaved()}>{reviewBusy ? 'Reviewing…' : 'Review plan'}</button>
       {unsaved && <p className="text-sm text-slate-600">Save your changes before reviewing.</p>}

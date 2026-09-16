@@ -117,8 +117,8 @@ export async function verifyDrafts(options: { manualDemo?: boolean; skipBuild?: 
     const runtime = client(runtimeUrl);
     const runtimePool = new Pool({ connectionString: runtimeUrl }); pools.push(runtimePool);
     const reader = client(`postgresql://trainer2_draft_reader:${rolePasswords.trainer2_draft_reader}@127.0.0.1:${port}/${database}`);
-    async function startWeb() {
-      const webPort = 32000 + Math.floor(Math.random() * 10000);
+    async function startWeb(requestedPort?: number) {
+      const webPort = requestedPort ?? 32000 + Math.floor(Math.random() * 10000);
       const webEnv: NodeJS.ProcessEnv = { ...authWebPlatformEnvironment(process.env), NODE_ENV: "development", TRAINER2_LOCAL_DRAFTS: "enabled",
         TRAINER2_IDENTITY_CONNECTION_STRING: `postgresql://trainer2_identity_reader:${rolePasswords.trainer2_identity_reader}@127.0.0.1:${port}/${database}`,
         TRAINER2_READ_CONNECTION_STRING: `postgresql://trainer2_draft_reader:${rolePasswords.trainer2_draft_reader}@127.0.0.1:${port}/${database}`,
@@ -222,9 +222,22 @@ export async function verifyDrafts(options: { manualDemo?: boolean; skipBuild?: 
       const base = await startWeb();
       console.log("\nREADY — Trainer plan builder\n"); console.log(`${base}/trainer2/dev/drafts`);
       console.log("\nDemo: plans are deleted when the demo stops.\nKeep this terminal open. Press Enter or Ctrl+C to stop.\n");
-      await new Promise<void>(resolve => {
-        const stop = () => { process.off("SIGINT", stop); process.off("SIGTERM", stop); process.stdin.off("data", stop); process.stdin.pause(); resolve(); };
-        process.once("SIGINT", stop); process.once("SIGTERM", stop); process.stdin.once("data", stop); process.stdin.resume();
+      console.log("Type r then Enter to restart only the application, keeping this database and URL.");
+      await new Promise<void>((resolve, reject) => {
+        let restarting = false;
+        const stop = () => { process.off("SIGINT", stop); process.off("SIGTERM", stop); process.stdin.off("data", input); process.stdin.pause(); resolve(); };
+        const input = (data: Buffer) => {
+          if (restarting) return;
+          if (data.toString().trim().toLowerCase() !== 'r') { stop(); return; }
+          restarting = true;
+          void (async () => {
+            await stopServer();
+            await startWeb(Number(new URL(base).port));
+            console.log('APP RESTARTED — database retained: ' + base + '/trainer2/dev/drafts');
+            restarting = false;
+          })().catch(error => { process.stdin.off('data', input); reject(error); });
+        };
+        process.once("SIGINT", stop); process.once("SIGTERM", stop); process.stdin.on("data", input); process.stdin.resume();
       });
       evidence.status = "demo-stopped"; return;
     }

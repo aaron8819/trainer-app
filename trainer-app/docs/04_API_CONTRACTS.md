@@ -1,5 +1,7 @@
 # 04 API Contracts
 
+Trainer2 training interface: [home, Program, compact logging, previous-performance read rules and local demo restart](architecture/trainer2/TRAINING_UI.md).
+
 Trainer2 Skip Workout: [eligibility, audited resolution, endpoint, exact retry, UI and verification](architecture/trainer2/SKIP_WORKOUT.md).
 
 Trainer2 empty execution discard: [lifecycle, command, retained attempts, fresh start and verification](architecture/trainer2/DISCARD_EMPTY_EXECUTION.md).

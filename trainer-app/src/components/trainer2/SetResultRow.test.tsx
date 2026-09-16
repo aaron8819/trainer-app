@@ -142,3 +142,26 @@ describe('Historical corrections', () => {
       expect(historicalCorrectionCommand.safeParse({ ...command, intent: { ...command.intent, result: bad } }).success).toBe(false);
   });
 });
+import { createHypertrophyPlan } from '@/lib/engine/trainer2/plan-builder';
+it('keeps compact catalog defaults unrecorded and reuses only a known unit', async () => {
+  const position = createHypertrophyPlan().occurrences[0].positions[0];
+  const fetch = vi.fn(); vi.stubGlobal('fetch', fetch); const blocked = vi.fn();
+  render(<SetResultRow {...props} prescription={position.targets[0]} exercise={position.exercise} unitHint="lb" refresh={vi.fn()} onInputState={blocked} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Record set' })).toBeEnabled());
+  expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('');
+  expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('');
+  expect(screen.getByLabelText('Set 1 load unit')).toHaveValue('lb');
+  expect(screen.getByLabelText('Set 1 actual load type')).toHaveValue('externalLoad');
+  expect(fetch).not.toHaveBeenCalled(); expect(sessionStorage.length).toBe(0);
+  expect(blocked).toHaveBeenLastCalledWith(props.targetId, false);
+  fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '0' } });
+  expect(blocked).toHaveBeenLastCalledWith(props.targetId, true);
+  expect(JSON.parse(sessionStorage.getItem(`trainer2-result:${props.accountId}:${props.executionId}:${props.targetId}`)!).form.reps).toBe('0');
+});
+it('does not guess a custom exercise load convention or a catalog unit', async () => {
+  const position = createHypertrophyPlan().occurrences[0].positions[0];
+  render(<SetResultRow {...props} prescription={position.targets[0]} exercise={{ kind: 'authoredDescription', name: 'Barbell squat', variation: '' }} refresh={vi.fn()} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Record set' })).toBeEnabled());
+  expect(screen.getByLabelText('Set 1 actual load type')).toHaveValue('unspecified');
+  expect(screen.queryByLabelText('Set 1 Actual load')).toBeNull();
+});

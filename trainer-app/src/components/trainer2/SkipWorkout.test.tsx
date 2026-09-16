@@ -26,7 +26,7 @@ describe('exact skip confirmation and delivery', () => {
   it('names the reviewed workout/stage; cancel writes nothing and restores focus', async () => {
     const fetch = vi.fn(); vi.stubGlobal('fetch', fetch); render(<SkipWorkout {...props} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Skip workout' }));
-    expect(screen.getByText(`Skip ${occurrence.name}, Week 1?`)).toBeVisible(); expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    expect(screen.getByText(`Skip ${occurrence.name}, Week 1 · Workout 1 of 2?`)).toBeVisible(); expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' })); expect(screen.getByRole('button', { name: 'Skip workout' })).toHaveFocus();
     expect(fetch).not.toHaveBeenCalled(); expect(sessionStorage.length).toBe(0);
   });
@@ -38,7 +38,7 @@ describe('exact skip confirmation and delivery', () => {
     const fetch = vi.fn(); vi.stubGlobal('fetch', fetch); const view = render(<SkipWorkout {...props} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Skip workout' }));
     view.rerender(<SkipWorkout {...props} next={{ ...next, ...(field === 'occurrence' ? { occurrence: plan.occurrences[1] } : field === 'revision' ? { revisionId: randomUUID() } : { acceptedSequence: '3' }) }} />);
-    expect(screen.getByText(`Skip ${occurrence.name}, Week 1?`)).toBeVisible(); expect(screen.getByRole('button', { name: 'Confirm skip' })).toBeDisabled();
+    expect(screen.getByText(`Skip ${occurrence.name}, Week 1 · Workout 1 of 2?`)).toBeVisible(); expect(screen.getByRole('button', { name: 'Confirm skip' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Confirm skip' })); expect(fetch).not.toHaveBeenCalled();
   });
   it('blocks duplicate actions, retains exact request through reload and later next state', async () => {

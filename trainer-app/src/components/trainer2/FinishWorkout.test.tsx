@@ -54,3 +54,16 @@ describe('Finish workout decisions', () => {
     await screen.findByText(/Finish could not be confirmed/); expect(sessionStorage.getItem(`trainer2-finish:finish-test:${execution.executionId}`)).not.toBeNull();
   });
 });
+
+it('navigates only after accepted finish has authoritative successful readback', async () => {
+  let confirmRead!: () => void;
+  const refresh = vi.fn().mockImplementation(() => new Promise<void>(resolve => { confirmRead = resolve; }));
+  const onFinished = vi.fn();
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((_u, init) => response(accepted(init.body))));
+  render(<FinishWorkout {...props} refresh={refresh} onFinished={onFinished} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Finish workout' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Finish with unrecorded sets' }));
+  await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1)); expect(onFinished).not.toHaveBeenCalled();
+  confirmRead(); await waitFor(() => expect(onFinished).toHaveBeenCalledTimes(1));
+  expect(sessionStorage.getItem(`trainer2-finish:${execution.initial.accountId}:${execution.executionId}`)).toBeNull();
+});

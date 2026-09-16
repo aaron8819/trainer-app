@@ -59,7 +59,7 @@ export async function readNextWorkout(tx: DB, principal: ServerPrincipal, planId
   return { accountId: principal.accountId, planId, revisionId: revision.id, acceptedSequence: state.acceptedSequence.toString(),
     occurrences: intent.occurrences.map(o => {
       const skip = resolution.skips.find(s => s.occurrenceId === o.id);
-      return { occurrenceId: o.id, name: o.name, stageName: intent.stages.find(s => s.id === o.stageId)!.name,
+      return { executionId: resolution.finished.find(e => e.occurrenceId === o.id)?.id ?? null, occurrenceId: o.id, name: o.name, stageName: intent.stages.find(s => s.id === o.stageId)!.name,
         status: skip ? 'Skipped' : resolution.resolvedIds.has(o.id) ? 'Finished' : 'Pending',
         skip: skip ? { actionId: skip.actionId, actorAccountId: skip.accountId, revisionId: skip.revisionId, skippedAt: skip.skippedAt.toISOString(), planCompleted: skip.planCompleted } : null };
     }),

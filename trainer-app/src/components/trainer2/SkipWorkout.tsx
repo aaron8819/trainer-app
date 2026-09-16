@@ -71,7 +71,7 @@ export function SkipWorkout({ next, ownershipEpoch, blocked, refresh, onLock }: 
     {message && <p role="status">{message}</p>}
     {pending ? <button className={`${control} min-h-11`} disabled={busy} onClick={() => void submit(pending)}>Check skip again</button> : review ?
       <div role="group" aria-label="Confirm skip" className="space-y-3 rounded-xl border border-slate-300 p-4">
-        <p>Skip {reviewedOccurrence?.name}, {reviewedOccurrence?.stageName}?</p>
+        <p>Skip {reviewedOccurrence?.name}, {reviewedOccurrence?.stageName} · Workout {review.occurrences.findIndex(o => o.occurrenceId === reviewedOccurrence?.occurrenceId) + 1} of {review.occurrences.length}?</p>
         <p>It will be marked skipped and the plan will move on.{review.occurrences.filter(o => o.status === 'Pending').length === 1 ? ' This is the final workout. Skipping it will finish the plan.' : ''}</p>
         {stale && <p role="status">The next workout changed. Cancel and review the current workout.</p>}
         <button className={`${control} min-h-11`} disabled={blocked || busy || stale} onClick={confirm}>Confirm skip</button>

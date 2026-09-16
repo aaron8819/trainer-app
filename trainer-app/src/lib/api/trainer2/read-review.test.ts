@@ -31,3 +31,22 @@ it.each(['complete', 'missing hash', 'null hash', 'wrong hash', 'missing revisio
   if (variant === 'complete') { expect(result.status).toBe(200); expect(body.review.status).toBe('validDraft'); }
   else { expect(result.ok).toBe(false); expect(body.review).toBeUndefined(); }
 });
+import { compatiblePrevious } from './previous-performance';
+
+it('requires catalog identity, compatible units/load type and rep basis for previous performance', () => {
+  const p = createHypertrophyPlan().occurrences[0].positions[0];
+  const r = { reps: { value: 8, basis: 'total' as const }, measurement: { kind: 'externalLoad' as const, value: '70', unit: 'kg' as const, convention: 'barbellTotal' as const, zeroMeaning: 'validZero' as const }, rir: '2' };
+  expect(compatiblePrevious(p, p, r)).toBe(true);
+  const custom = { ...p, exercise: { kind: 'authoredDescription' as const, name: p.exercise.name, variation: '' } };
+  expect(compatiblePrevious(custom, custom, r)).toBe(false);
+  expect(compatiblePrevious(p, { ...p, exercise: { ...p.exercise, variation: 'other' } }, r)).toBe(false);
+  expect(compatiblePrevious(p, p, { ...r, measurement: null })).toBe(false);
+  expect(compatiblePrevious(p, p, { ...r, reps: { value: 8, basis: 'perSide' } })).toBe(false);
+  expect(compatiblePrevious(p, p, { ...r, measurement: { kind: 'bodyweight', convention: 'bodyweightOnly' } })).toBe(false);
+  const lb = { ...p, targets: p.targets.map(t => ({ ...t, measurement: { ...r.measurement, unit: 'lb' as const } })) };
+  expect(compatiblePrevious(lb, p, r)).toBe(false);
+  expect(compatiblePrevious(p, p, r, [{ ...r, measurement: { ...r.measurement, unit: 'lb' } }])).toBe(false);
+  expect(compatiblePrevious(p, p, r, [{ ...r, measurement: { kind: 'bodyweight', convention: 'bodyweightOnly' } }])).toBe(false);
+  expect(compatiblePrevious(p, p, r, [{ reps: null, measurement: { ...r.measurement, unit: 'lb' }, rir: null }])).toBe(false);
+  expect(compatiblePrevious(p, p, r, [{ reps: null, measurement: r.measurement, rir: null }])).toBe(true);
+});

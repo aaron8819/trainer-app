@@ -10,7 +10,7 @@ export const skipOccurrenceCommand = createDraftCommand.pick({ schemaVersion: tr
 export type SkipOccurrenceCommand = z.infer<typeof skipOccurrenceCommand>;
 export const skipFact = z.object({ actionId: id, actorAccountId: z.string().min(1), skippedAt: z.iso.datetime(),
   revisionId: id, planCompleted: z.boolean() }).strict();
-export const occurrenceResolutionRead = z.object({ occurrenceId: id, name: z.string(), stageName: z.string(),
+export const occurrenceResolutionRead = z.object({ occurrenceId: id, name: z.string(), stageName: z.string(), executionId: id.nullable().optional(),
   status: z.enum(['Pending', 'Finished', 'Skipped']), skip: skipFact.nullable() }).strict()
   .refine(v => (v.status === 'Skipped') === !!v.skip);
 const cursor = z.string().regex(/^[1-9][0-9]*$/);

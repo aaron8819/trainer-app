@@ -7,7 +7,7 @@ import { createHypertrophyPlan } from '@/lib/engine/trainer2/plan-builder';
 const accountId = 'synthetic-workout-account';
 const planId = randomUUID(), revisionId = randomUUID();
 const occurrence = createHypertrophyPlan().occurrences[0];
-const next = { acceptedSequence: '2', occurrences: [{ occurrenceId: occurrence.id, name: occurrence.name, stageName: 'Week 1', status: 'Pending', skip: null }], accountId, planId, revisionId, instructionEpoch: 0, lifecycle: 'Active', occurrence, execution: null };
+const next = { acceptedSequence: '2', occurrences: [{ occurrenceId: occurrence.id, name: occurrence.name, stageName: 'Week 1', status: 'Pending', skip: null }], accountId, planId, revisionId, instructionEpoch: 0, lifecycle: 'Active' as const, occurrence, execution: null };
 const response = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
 beforeEach(() => { sessionStorage.clear(); vi.stubGlobal('crypto', webcrypto); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -55,6 +55,37 @@ describe('Workout start consumer', () => {
     workout.positions[0].targets = [{ ...workout.positions[0].targets[0], required: false, classification: 'optionalFinisher',
       reps: { min: 5, max: 8, basis: 'perSide' }, measurement: { kind: 'addedLoad', value: '0.00', unit: 'lb', convention: 'addedExternal', zeroMeaning: 'noAddedLoad' }, rir: '0', restSeconds: null }];
     render(<WorkoutPrescription workout={workout} />);
-    expect(screen.getByText(/0.00 lb added/)).toBeInTheDocument(); expect(screen.getByText(/per side/)).toBeInTheDocument(); expect(screen.getByText(/Optional/)).toBeInTheDocument(); expect(screen.getByText(/Rest unspecified/)).toBeInTheDocument();
+    expect(screen.getByText(/0.00 lb added/)).toBeInTheDocument(); expect(screen.getByText(/per side/)).toBeInTheDocument(); expect(screen.getByText(/Optional/)).toBeInTheDocument(); expect(screen.queryByText(/Rest unspecified/)).not.toBeInTheDocument();
   });
+});
+import { TrainingOverview } from './TrainingOverview';
+import { effortSummary, targetGroups } from './training-summary';
+
+it('shows program position and mixed effort without treating skipped work as performed', () => {
+  const document = createHypertrophyPlan();
+  const selected = document.occurrences[4];
+  selected.positions[0].targets[0].rir = '0';
+  const read = { ...next, occurrence: selected, occurrences: document.occurrences.map((o, i) => ({ occurrenceId: o.id, name: o.name, stageName: document.stages.find(s => s.id === o.stageId)!.name, status: i < 3 ? 'Finished' as const : i === 3 ? 'Skipped' as const : 'Pending' as const, skip: null })) };
+  render(<TrainingOverview document={document} next={read} />);
+  expect(screen.getByText('Week 2 of 5 · Accumulation')).toBeVisible();
+  expect(screen.getByText(/Target 0–3 RIR/)).toBeVisible();
+  expect(screen.getByRole('heading', { name: /0 of 4 workouts completed · 0 skipped/ })).toBeVisible();
+  expect(screen.getAllByRole('article')).toHaveLength(4);
+  expect(screen.getByRole('link', { name: 'View Program' })).toHaveAttribute('href', expect.stringContaining('view=program'));
+});
+it('does not collapse unlike targets, units, roles, zero or per-side counts', () => {
+  const target = occurrence.positions[0].targets[0];
+  const copy = { ...target, id: randomUUID() };
+  expect(targetGroups([target, copy])).toHaveLength(1);
+  for (const changed of [{ ...copy, rir: '0' }, { ...copy, required: false }, { ...copy, classification: 'rampUp' as const }, { ...copy, restSeconds: '0' }, { ...copy, reps: { ...copy.reps, basis: 'perSide' as const } }, { ...copy, measurement: { kind: 'externalLoad' as const, value: '0', unit: 'lb' as const, convention: 'barbellTotal' as const, zeroMeaning: 'validZero' as const } }]) expect(targetGroups([target, changed])).toHaveLength(2);
+  expect(effortSummary({ ...occurrence, positions: [{ ...occurrence.positions[0], targets: [{ ...target, rir: null }] }] })).toBe('Effort not prescribed');
+});
+it('supports independent workouts and truthful final completion with skipped work', () => {
+  const document = createHypertrophyPlan(); delete document.builder;
+  document.stages = document.stages.slice(0, 2); document.occurrences = [document.occurrences[0], document.occurrences[4]];
+  const read = { ...next, lifecycle: 'Completed' as const, occurrence: null, occurrences: document.occurrences.map((o, i) => ({ occurrenceId: o.id, name: 'Same name', stageName: 'Same stage', status: i ? 'Skipped' as const : 'Finished' as const, skip: null })) };
+  render(<TrainingOverview document={document} next={read} program />);
+  expect(screen.getAllByText(/1 workouts completed · 1 skipped/).length).toBeGreaterThan(0);
+  expect(screen.getAllByRole('article')).toHaveLength(2);
+  expect(screen.queryByRole('button', { name: 'Start workout' })).toBeNull();
 });

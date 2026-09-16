@@ -1,3 +1,4 @@
+import { readExecutionWithPrevious } from './previous-performance';
 import { skipOccurrence } from './skip-occurrence';
 import { discardEmptyExecution } from './discard-execution';
 import { finishExecution } from './workout-finish';
@@ -7,7 +8,7 @@ import { id } from '../../trainer2-contracts/draft';
 import { requestContext } from './access';
 import { DraftAccessError } from './principal';
 import { ActionCollision, CommandFailure } from './command';
-import { InvalidStartSnapshot, readExecution, readNextWorkout, startOccurrence } from './execution';
+import { InvalidStartSnapshot, readNextWorkout, startOccurrence } from './execution';
 
 export async function executionHttp(request: Request, operation: 'SkipOccurrence' | 'DiscardEmptyExecution' | 'CorrectHistoricalSetResult' | 'FinishExecution' | 'StartOccurrence' | 'SaveSetResult' | 'ReadExecution' | 'ReadNext', target?: string) {
   const json = (body: unknown, status: number) => Response.json(body, { status,
@@ -18,7 +19,7 @@ export async function executionHttp(request: Request, operation: 'SkipOccurrence
       const key = id.parse(target);
       const result = await db.$transaction(async tx => {
         await tx.$executeRaw`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`;
-        return operation === 'ReadExecution' ? readExecution(tx, principal, key) : readNextWorkout(tx, principal, key);
+        return operation === 'ReadExecution' ? readExecutionWithPrevious(tx, principal, key) : readNextWorkout(tx, principal, key);
       });
       return json(result ?? { error: 'NOT_FOUND' }, result ? 200 : 404);
     }

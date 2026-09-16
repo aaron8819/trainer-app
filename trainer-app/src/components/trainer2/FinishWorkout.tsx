@@ -5,9 +5,9 @@ import { finishExecutionCommand, finishResponse, reviewedResults, unrecordedTarg
 import { canonicalJson } from '@/lib/trainer2-contracts/canonical-json';
 import { control } from './DraftEditor';
 
-export function FinishWorkout({ execution, ownershipEpoch, blocked, refresh, onLock }: {
+export function FinishWorkout({ execution, ownershipEpoch, blocked, refresh, onLock, onFinished }: {
   execution: ExecutionRead; ownershipEpoch: number; blocked: boolean;
-  refresh: () => Promise<unknown>; onLock: (locked: boolean) => void;
+  onFinished?: () => void; refresh: () => Promise<unknown>; onLock: (locked: boolean) => void;
 }) {
   const [review, setReview] = useState<ExecutionRead | null>(null), [pending, setPending] = useState<FinishExecutionCommand | null>(null);
   const [message, setMessage] = useState(''), [busy, setBusy] = useState(false), [ready, setReady] = useState(false);
@@ -44,7 +44,7 @@ export function FinishWorkout({ execution, ownershipEpoch, blocked, refresh, onL
       if (outcome.status === 'Accepted') {
         // A replay is historical. Load authoritative completion before clearing delivery state.
         await refresh(); if (!alive.current) return;
-        sessionStorage.removeItem(key); setPending(null); setReview(null); onLock(false); setMessage('Workout finished.');
+        sessionStorage.removeItem(key); setPending(null); setReview(null); onLock(false); setMessage('Workout finished.'); onFinished?.();
       } else {
         sessionStorage.removeItem(key); setPending(null); setReview(null); onLock(false);
         setMessage('Finish was not accepted. Reload saved results, review them, then choose Finish workout again. Your input is retained.');

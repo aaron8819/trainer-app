@@ -52,10 +52,10 @@ describe('Performed result input and recovery', () => {
     fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '0' } });
     const button = screen.getByRole('button', { name: 'Record set' }); fireEvent.click(button); fireEvent.click(button);
     expect(fetch).toHaveBeenCalledTimes(1); const body = fetch.mock.calls[0][1].body;
-    finish(response({ malformed: true })); await waitFor(() => expect(screen.getByRole('button', { name: 'Check again' })).toBeEnabled());
+    finish(response({ malformed: true })); await waitFor(() => expect(screen.getByRole('button', { name: 'Retry save' })).toBeEnabled());
     view.unmount(); fetch.mockResolvedValueOnce(response(accepted(body)));
     render(<SetResultRow {...props} refresh={refresh} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Check again' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry save' }));
     await screen.findByText('Saved'); expect(fetch.mock.calls[1][1].body).toBe(body); expect(refresh).toHaveBeenCalledTimes(1);
     expect(sessionStorage.length).toBe(0);
   });
@@ -100,7 +100,7 @@ describe('Historical corrections', () => {
     fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: 'bad' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save correction' })); expect(fetch).not.toHaveBeenCalled();
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('bad');
-    fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '0' } });
+    fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '1' } });
     view.rerender(<SetResultRow {...props} historical saved={latest} refresh={refresh} />);
     fireEvent.click(screen.getByRole('button', { name: 'Save correction' }));
     await screen.findByText(/Result changed elsewhere/);
@@ -121,13 +121,14 @@ describe('Historical corrections', () => {
     const refresh = vi.fn().mockResolvedValue([{ ...saved, version: 5 }]);
     const view = render(<SetResultRow {...props} historical saved={saved} refresh={refresh} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Correct result' }));
+    fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '1' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save correction' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Check again' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Retry save' })).toBeEnabled());
     expect(screen.queryByText('Saved')).toBeNull();
     const body = fetch.mock.calls[0][1].body; view.unmount();
     fetch.mockResolvedValueOnce(response(accepted(body, 2)));
     render(<SetResultRow {...props} historical saved={{ ...saved, version: 5 }} refresh={refresh} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Check again' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry save' }));
     await screen.findByText('Saved'); expect(fetch.mock.calls[1][1].body).toBe(body);
     expect(screen.getByText(/^Saved v5/)).toBeInTheDocument();
   });
@@ -143,14 +144,14 @@ describe('Historical corrections', () => {
   });
 });
 import { createHypertrophyPlan } from '@/lib/engine/trainer2/plan-builder';
-it('keeps compact catalog defaults unrecorded and reuses only a known unit', async () => {
+it('keeps compact catalog suggestions unrecorded and uses pounds without a picker', async () => {
   const position = createHypertrophyPlan().occurrences[0].positions[0];
   const fetch = vi.fn(); vi.stubGlobal('fetch', fetch); const blocked = vi.fn();
-  render(<SetResultRow {...props} prescription={position.targets[0]} exercise={position.exercise} unitHint="lb" refresh={vi.fn()} onInputState={blocked} />);
+  render(<SetResultRow {...props} prescription={position.targets[0]} exercise={position.exercise} refresh={vi.fn()} onInputState={blocked} />);
   await waitFor(() => expect(screen.getByRole('button', { name: 'Record set' })).toBeEnabled());
   expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('');
   expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('');
-  expect(screen.getByLabelText('Set 1 load unit')).toHaveValue('lb');
+  expect(screen.queryByLabelText('Set 1 load unit')).toBeNull();
   expect(screen.getByLabelText('Set 1 actual load type')).toHaveValue('externalLoad');
   expect(fetch).not.toHaveBeenCalled(); expect(sessionStorage.length).toBe(0);
   expect(blocked).toHaveBeenLastCalledWith(props.targetId, false);
@@ -164,4 +165,75 @@ it('does not guess a custom exercise load convention or a catalog unit', async (
   await waitFor(() => expect(screen.getByRole('button', { name: 'Record set' })).toBeEnabled());
   expect(screen.getByLabelText('Set 1 actual load type')).toHaveValue('unspecified');
   expect(screen.queryByLabelText('Set 1 Actual load')).toBeNull();
+});
+
+import { pounds, loadLabel } from './pound-display';
+describe('Pounds and stable logging suggestions', () => {
+  const position = createHypertrophyPlan().occurrences[0].positions[0];
+  const prescription = { ...position.targets[0], reps: { min: 8, max: 8, basis: 'total' as const }, rir: '2',
+    measurement: { kind: 'externalLoad' as const, value: '20', unit: 'kg' as const, convention: 'barbellTotal' as const, zeroMeaning: 'validZero' as const } };
+  const ui = { ...props, activePanel: true, prescription, exercise: position.exercise };
+  it('converts mass to two decimals while retaining bodyweight, zero and unspecified meaning', () => {
+    expect(pounds('20', 'kg')).toBe('44.09'); expect(pounds('0', 'kg')).toBe('0');
+    expect(pounds('140.125', 'lb')).toBe('140.125');
+    expect(loadLabel(null)).toBe('load unspecified');
+    expect(loadLabel({ kind: 'bodyweight', convention: 'bodyweightOnly' })).toBe('bodyweight');
+    expect(loadLabel({ kind: 'assistance', convention: 'displayedAssistance', zeroMeaning: 'noAssistance', value: '20', unit: 'kg' }, true)).toBe('44.09 lb assistance (recorded 20 kg)');
+  });
+  it('prefills explicit targets without creating dirty input and freezes what was presented across refresh and remount', async () => {
+    const blocked = vi.fn(), fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
+    const view = render(<SetResultRow {...ui} refresh={vi.fn()} onInputState={blocked} />);
+    await waitFor(() => expect(blocked).toHaveBeenLastCalledWith(props.targetId, false));
+    expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('44.09');
+    expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('8');
+    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('2');
+    const preceding = [{ ...saved, result: { reps: { value: 5, basis: 'total' as const }, measurement: prescription.measurement, rir: '0' } }];
+    view.rerender(<SetResultRow {...ui} preceding={preceding} refresh={vi.fn()} onInputState={blocked} />);
+    expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('8');
+    view.unmount(); render(<SetResultRow {...ui} preceding={preceding} refresh={vi.fn()} />);
+    expect(await screen.findByLabelText('Set 1 Actual reps')).toHaveValue('8');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it('uses compatible preceding actuals, preserves missing fields, and does not use incompatible load conventions', async () => {
+    const prior = { ...saved, result: { reps: null, measurement: null, rir: null } };
+    const view = render(<SetResultRow {...ui} preceding={[prior]} refresh={vi.fn()} />);
+    await screen.findByRole('button', { name: 'Log set' });
+    expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('');
+    expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('');
+    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('');
+    view.unmount(); sessionStorage.clear();
+    render(<SetResultRow {...ui} preceding={[{ ...saved, result: { ...result, measurement: { ...prescription.measurement, convention: 'perImplement' } } }]} refresh={vi.fn()} />);
+    expect(await screen.findByLabelText('Set 1 Actual load')).toHaveValue('44.09');
+    expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('8');
+  });
+  it('leaves ranged reps and absent mass blank; untouched saved kg creates no correction and rep-only correction retains kg bytes', async () => {
+    const kg = { ...saved, result: { reps: { value: 8, basis: 'total' as const }, measurement: { ...prescription.measurement, value: '20.000000' }, rir: '2' } };
+    const fetch = vi.fn().mockImplementation((_url, init) => Promise.resolve(response(accepted(init.body, 2)))); vi.stubGlobal('fetch', fetch);
+    const view = render(<SetResultRow {...ui} saved={kg} refresh={vi.fn().mockResolvedValue([{ ...kg, version: 2 }])} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Save correction' }));
+    expect(fetch).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '9' } });
+    fireEvent.change(screen.getByLabelText('Set 1 correction reason'), { target: { value: 'Correct reps' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save correction' }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(fetch.mock.calls[0][1].body).intent.result.measurement).toEqual(kg.result.measurement);
+    view.unmount(); sessionStorage.clear();
+    render(<SetResultRow {...ui} prescription={{ ...prescription, reps: { ...prescription.reps, max: 12 }, measurement: null }} refresh={vi.fn()} />);
+    expect(await screen.findByLabelText('Set 1 Actual load')).toHaveValue('');
+    expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('');
+  });
+});
+it('upgrades retained unitless mass drafts to pounds without losing typed values or original binding', async () => {
+  const position = createHypertrophyPlan().occurrences[0].positions[0];
+  sessionStorage.setItem(`trainer2-result:${props.accountId}:${props.executionId}:${props.targetId}`, JSON.stringify({
+    form: { reps: '8', basis: 'total', load: '140', kind: 'externalLoad', unit: '', zeroMeaning: 'validZero', convention: 'barbellTotal', rir: '', reason: '' },
+    base: null, pending: null, conflict: false,
+  }));
+  const fetch = vi.fn().mockResolvedValue(response({ malformed: true })); vi.stubGlobal('fetch', fetch);
+  render(<SetResultRow {...props} activePanel prescription={position.targets[0]} exercise={position.exercise} refresh={vi.fn()} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeEnabled());
+  expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('140');
+  fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
+  expect(JSON.parse(fetch.mock.calls[0][1].body).intent.result.measurement).toMatchObject({ value: '140', unit: 'lb', kind: 'externalLoad' });
+  await screen.findByRole('button', { name: 'Retry save' });
 });

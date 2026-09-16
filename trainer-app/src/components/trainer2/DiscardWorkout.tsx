@@ -6,11 +6,12 @@ import { discardExecutionCommand, discardResponse, type DiscardExecutionCommand 
 import { canonicalJson } from '@/lib/trainer2-contracts/canonical-json';
 import { control } from './DraftEditor';
 
-export function DiscardWorkout({ execution, ownershipEpoch, blocked, refresh, onLock }: {
+export function DiscardWorkout({ execution, ownershipEpoch, blocked, refresh, checkResults, onLock }: {
   execution: ExecutionRead; ownershipEpoch: number; blocked: boolean;
-  refresh: () => Promise<unknown>; onLock: (locked: boolean) => void;
+  checkResults?: () => Promise<unknown>; refresh: () => Promise<unknown>; onLock: (locked: boolean) => void;
 }) {
   const [review, setReview] = useState<ExecutionRead | null>(null), [pending, setPending] = useState<DiscardExecutionCommand | null>(null);
+  const [needsCheck, setNeedsCheck] = useState(false);
   const [message, setMessage] = useState(''), [busy, setBusy] = useState(false), [ready, setReady] = useState(false);
   const [staleView, setStaleView] = useState<ExecutionRead | null>(null);
   const wasReview = useRef(false);
@@ -52,7 +53,7 @@ export function DiscardWorkout({ execution, ownershipEpoch, blocked, refresh, on
         sessionStorage.removeItem(key); setPending(null); setReview(null); onLock(false); setMessage('Workout attempt discarded.');
       } else {
         sessionStorage.removeItem(key); setPending(null); setReview(null); onLock(false); setStaleView(execution);
-        setMessage('Discard was not accepted. Refresh saved results and make a new discard decision. Your input is retained.');
+        setNeedsCheck(true); setMessage('Discard was not accepted. Refresh saved results and make a new discard decision. Your input is retained.');
       }
     } catch { if (alive.current) setMessage('Discard could not be confirmed. Check discard again with the original request.'); }
     finally { flight.current = false; if (alive.current) setBusy(false); }
@@ -69,9 +70,15 @@ export function DiscardWorkout({ execution, ownershipEpoch, blocked, refresh, on
       expected: reviewedResults(review), intent: {} });
   }
   const empty = execution.history?.length === 0 && execution.results.length === 0;
-  if (execution.lifecycle !== 'Open' && !pending && !message) return null;
-  return <section className="space-y-3 rounded-xl border border-slate-300 p-4" aria-label="Discard empty workout">
+  if ((execution.lifecycle !== 'Open' || !empty) && !pending && !message) return null;
+  return <details open={pending || review || message ? true : undefined}><summary className="min-h-11 cursor-pointer py-3 text-sm">Workout menu</summary><section className="space-y-3 rounded-xl border border-slate-300 p-4" aria-label="Discard empty workout">
     {message && <p role="status">{message}</p>}
+    {needsCheck && checkResults && <button className={control} disabled={busy} onClick={async () => {
+      setBusy(true); setMessage('Checking…');
+      try { await checkResults(); setNeedsCheck(false); setMessage('Results are up to date. Review them before making a new decision.'); }
+      catch { setMessage('Could not check saved results. Try again when connected.'); }
+      finally { setBusy(false); }
+    }}>Review latest values</button>}
     {pending ? <button className={`${control} min-h-11`} disabled={busy} onClick={() => void submit(pending)}>Check discard again</button> :
       execution.lifecycle === 'Open' && (review ? <div role="group" aria-label="Confirm discard">
         <p>This removes this workout attempt. The workout will still be next in your plan.</p>
@@ -80,5 +87,5 @@ export function DiscardWorkout({ execution, ownershipEpoch, blocked, refresh, on
         <button ref={cancel} className={`${control} min-h-11`} disabled={busy} onClick={() => { setReview(null); onLock(false); }}>Cancel</button>
       </div> : <><button ref={trigger} className={`${control} min-h-11`} disabled={blocked || !ready || !empty || staleView === execution} onClick={begin}>Discard empty workout</button>
         {!empty ? <p>Workouts with recorded set history cannot be discarded, even after a result is cleared.</p> : blocked && <p>Save, cancel, or recover result input before discarding.</p>}</>)}
-  </section>;
+  </section></details>;
 }

@@ -11,14 +11,13 @@ export function compatiblePrevious(current: Position, source: Position, result: 
   if (a.kind !== 'catalogSnapshot' || b.kind !== 'catalogSnapshot' || canonicalJson(a) !== canonicalJson(b)) return false;
   // Missing measurements cannot establish comparability. Never infer a custom identity from a name.
   if (!result.reps || !result.measurement) return false;
+  // Both supported numeric units measure mass; the UI converts kg to lb without changing source evidence.
   const observed = currentResults.filter(r => r.reps || r.measurement);
   if (observed.length) return observed.some(r => (!r.reps || r.reps.basis === result.reps!.basis) && (!r.measurement ||
-    (r.measurement.kind === result.measurement!.kind && r.measurement.convention === result.measurement!.convention &&
-      (!('unit' in r.measurement) || ('unit' in result.measurement! && r.measurement.unit === result.measurement.unit)))));
+    (r.measurement.kind === result.measurement!.kind && r.measurement.convention === result.measurement!.convention)));
   if (result.reps.basis !== a.repBasis || result.measurement.kind !== a.loadKind || result.measurement.convention !== a.convention) return false;
   return current.targets.some(t => t.reps.basis === result.reps!.basis && (!t.measurement ||
-    (t.measurement.kind === result.measurement!.kind && t.measurement.convention === result.measurement!.convention &&
-      (!('unit' in t.measurement) || ('unit' in result.measurement! && t.measurement.unit === result.measurement.unit)))));
+    (t.measurement.kind === result.measurement!.kind && t.measurement.convention === result.measurement!.convention)));
 }
 
 // Presentation-only enrichment, called inside the existing authorized read-only transaction.

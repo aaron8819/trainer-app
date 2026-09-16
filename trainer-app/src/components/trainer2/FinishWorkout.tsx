@@ -5,11 +5,12 @@ import { finishExecutionCommand, finishResponse, reviewedResults, unrecordedTarg
 import { canonicalJson } from '@/lib/trainer2-contracts/canonical-json';
 import { control } from './DraftEditor';
 
-export function FinishWorkout({ execution, ownershipEpoch, blocked, refresh, onLock, onFinished }: {
+export function FinishWorkout({ execution, ownershipEpoch, blocked, refresh, checkResults, onLock, onFinished }: {
   execution: ExecutionRead; ownershipEpoch: number; blocked: boolean;
-  onFinished?: () => void; refresh: () => Promise<unknown>; onLock: (locked: boolean) => void;
+  onFinished?: () => void; checkResults?: () => Promise<unknown>; refresh: () => Promise<unknown>; onLock: (locked: boolean) => void;
 }) {
   const [review, setReview] = useState<ExecutionRead | null>(null), [pending, setPending] = useState<FinishExecutionCommand | null>(null);
+  const [needsCheck, setNeedsCheck] = useState(false);
   const [message, setMessage] = useState(''), [busy, setBusy] = useState(false), [ready, setReady] = useState(false);
   const alive = useRef(false), flight = useRef(false);
   const accountId = execution.initial.accountId, executionId = execution.executionId;
@@ -47,7 +48,7 @@ export function FinishWorkout({ execution, ownershipEpoch, blocked, refresh, onL
         sessionStorage.removeItem(key); setPending(null); setReview(null); onLock(false); setMessage('Workout finished.'); onFinished?.();
       } else {
         sessionStorage.removeItem(key); setPending(null); setReview(null); onLock(false);
-        setMessage('Finish was not accepted. Reload saved results, review them, then choose Finish workout again. Your input is retained.');
+        setNeedsCheck(true); setMessage('Finish was not accepted. Reload saved results, review them, then choose Finish workout again. Your input is retained.');
       }
     } catch { if (alive.current) setMessage('Finish could not be confirmed. Check finish again with the original request.'); }
     finally { flight.current = false; if (alive.current) setBusy(false); }
@@ -67,6 +68,12 @@ export function FinishWorkout({ execution, ownershipEpoch, blocked, refresh, onL
   if (execution.lifecycle !== 'Open' && !pending && !message) return null;
   return <section className="space-y-3 rounded-xl border border-slate-300 p-4" aria-label="Finish workout">
     {message && <p role="status">{message}</p>}
+    {needsCheck && checkResults && <button className={control} disabled={busy} onClick={async () => {
+      setBusy(true); setMessage('Checking…');
+      try { await checkResults(); setNeedsCheck(false); setMessage('Results are up to date. Review them before making a new decision.'); }
+      catch { setMessage('Could not check saved results. Try again when connected.'); }
+      finally { setBusy(false); }
+    }}>Review latest values</button>}
     {pending ? <button className={control} disabled={busy} onClick={() => void submit(pending)}>Check finish again</button> :
       execution.lifecycle === 'Open' && (review ? <><p>{unknown.length ? `${unknown.filter(t => t.required).length} required and ${unknown.filter(t => !t.required).length} optional sets are unrecorded. They will remain unknown, not marked performed or omitted.` : 'All prescribed sets have saved results.'}</p>
         <p>Finish this workout and resolve its planned occurrence? Recorded results can later be corrected without reopening. The next workout will not start automatically.</p>

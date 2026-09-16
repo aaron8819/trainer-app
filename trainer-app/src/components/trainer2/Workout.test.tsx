@@ -9,7 +9,7 @@ const planId = randomUUID(), revisionId = randomUUID();
 const occurrence = createHypertrophyPlan().occurrences[0];
 const next = { acceptedSequence: '2', occurrences: [{ occurrenceId: occurrence.id, name: occurrence.name, stageName: 'Week 1', status: 'Pending', skip: null }], accountId, planId, revisionId, instructionEpoch: 0, lifecycle: 'Active' as const, occurrence, execution: null };
 const response = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
-beforeEach(() => { sessionStorage.clear(); vi.stubGlobal('crypto', webcrypto); });
+beforeEach(() => { vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true }))); vi.stubGlobal('scrollBy', vi.fn()); localStorage.clear(); sessionStorage.clear(); vi.stubGlobal('crypto', webcrypto); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe('Workout start consumer', () => {
   it('only reads on mount and previews without starting', async () => {
@@ -179,10 +179,9 @@ describe('Single active set and queue', () => {
     const value = activeFixture();
     render(<ActiveHarness value={value} read={async () => []} />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeEnabled());
-    fireEvent.change(screen.getByLabelText('Set 1 load unit'), { target: { value: 'kg' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Increase load by 2.5 kg' }));
-    expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('2.5');
-    fireEvent.click(screen.getByRole('button', { name: 'Decrease load by 2.5 kg' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Increase load by 5 lb' }));
+    expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('5');
+    fireEvent.click(screen.getByRole('button', { name: 'Decrease load by 5 lb' }));
     expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('0');
     fireEvent.click(screen.getByRole('button', { name: '0 RIR' }));
     expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('0');
@@ -211,4 +210,20 @@ it('integrates one active panel with finish controls across input-state updates'
   expect(screen.getAllByRole('region', { name: 'Active set' })).toHaveLength(1);
   expect(screen.getAllByLabelText(/Actual reps/)).toHaveLength(1);
   expect(screen.getByRole('button', { name: 'Finish workout' })).toBeDisabled();
+});
+
+import { recordRest, restRemaining, readRest } from './rest-state';
+it('deduplicates rest events and anchors retries to recording time, including dismissal and corrections', () => {
+  const record = { executionId: randomUUID(), targetId: randomUUID(), performedSetId: randomUUID(), actionId: randomUUID(), version: 1, reason: null,
+    recordedAt: '2026-09-16T00:00:00.000Z', result: { reps: { value: 8, basis: 'total' as const }, measurement: null, rir: null } };
+  const start = Date.parse(record.recordedAt), timer = recordRest(null, record, true)!;
+  expect(restRemaining(timer, start + 60000)).toBe(120); expect(restRemaining(timer, start + 190000)).toBe(0);
+  expect(recordRest(timer, record, true)).toBe(timer);
+  const dismissed = { ...timer, deadline: start };
+  expect(recordRest(readRest(JSON.stringify(dismissed)), record, true)).toEqual(dismissed);
+  expect(recordRest(timer, { ...record, version: 2, actionId: randomUUID() }, true)).toBe(timer);
+  const newer = { ...record, actionId: randomUUID(), recordedAt: new Date(start + 10000).toISOString() };
+  const next = recordRest(timer, newer, false)!; expect(restRemaining(next, start + 10000)).toBe(120);
+  expect(recordRest(next, { ...record, actionId: randomUUID() }, true)?.deadline).toBe(next.deadline);
+  expect(readRest('{"version":1}')).toBeNull();
 });

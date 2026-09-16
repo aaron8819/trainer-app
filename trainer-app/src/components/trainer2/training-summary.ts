@@ -1,3 +1,4 @@
+import { loadLabel } from './pound-display';
 import type { DraftDocument } from '@/lib/trainer2-contracts/draft';
 import { canonicalJson } from '@/lib/trainer2-contracts/canonical-json';
 
@@ -8,7 +9,7 @@ export function targetLabel(t: Target) {
   return [
     `${t.reps.min === t.reps.max ? t.reps.min : `${t.reps.min}–${t.reps.max}`} reps${t.reps.basis === 'total' ? '' : t.reps.basis === 'perSide' ? ' per side' : ' alternating'}`,
     t.rir === null ? null : `${t.rir} RIR`,
-    m === null ? null : m.kind === 'bodyweight' ? 'Bodyweight' : `${m.value} ${m.unit} ${m.kind === 'addedLoad' ? 'added' : m.kind === 'assistance' ? 'assistance' : m.convention === 'perImplement' ? 'per implement' : m.convention === 'barbellTotal' ? 'barbell total' : 'machine displayed'}`,
+    m === null ? null : loadLabel(m),
     t.restSeconds === null ? null : `${t.restSeconds}s rest`,
     t.classification === 'working' ? null : t.classification === 'rampUp' ? 'Ramp-up' : t.classification === 'preparation' ? 'Preparation' : 'Finisher',
     t.required ? null : 'Optional',

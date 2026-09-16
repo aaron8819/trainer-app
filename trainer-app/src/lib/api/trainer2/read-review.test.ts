@@ -33,7 +33,7 @@ it.each(['complete', 'missing hash', 'null hash', 'wrong hash', 'missing revisio
 });
 import { compatiblePrevious } from './previous-performance';
 
-it('requires catalog identity, compatible units/load type and rep basis for previous performance', () => {
+it('requires catalog identity, mass units, load type and rep basis for previous performance', () => {
   const p = createHypertrophyPlan().occurrences[0].positions[0];
   const r = { reps: { value: 8, basis: 'total' as const }, measurement: { kind: 'externalLoad' as const, value: '70', unit: 'kg' as const, convention: 'barbellTotal' as const, zeroMeaning: 'validZero' as const }, rir: '2' };
   expect(compatiblePrevious(p, p, r)).toBe(true);
@@ -44,9 +44,9 @@ it('requires catalog identity, compatible units/load type and rep basis for prev
   expect(compatiblePrevious(p, p, { ...r, reps: { value: 8, basis: 'perSide' } })).toBe(false);
   expect(compatiblePrevious(p, p, { ...r, measurement: { kind: 'bodyweight', convention: 'bodyweightOnly' } })).toBe(false);
   const lb = { ...p, targets: p.targets.map(t => ({ ...t, measurement: { ...r.measurement, unit: 'lb' as const } })) };
-  expect(compatiblePrevious(lb, p, r)).toBe(false);
-  expect(compatiblePrevious(p, p, r, [{ ...r, measurement: { ...r.measurement, unit: 'lb' } }])).toBe(false);
+  expect(compatiblePrevious(lb, p, r)).toBe(true);
+  expect(compatiblePrevious(p, p, r, [{ ...r, measurement: { ...r.measurement, unit: 'lb' } }])).toBe(true);
   expect(compatiblePrevious(p, p, r, [{ ...r, measurement: { kind: 'bodyweight', convention: 'bodyweightOnly' } }])).toBe(false);
-  expect(compatiblePrevious(p, p, r, [{ reps: null, measurement: { ...r.measurement, unit: 'lb' }, rir: null }])).toBe(false);
+  expect(compatiblePrevious(p, p, r, [{ reps: null, measurement: { ...r.measurement, unit: 'lb' }, rir: null }])).toBe(true);
   expect(compatiblePrevious(p, p, r, [{ reps: null, measurement: r.measurement, rir: null }])).toBe(true);
 });

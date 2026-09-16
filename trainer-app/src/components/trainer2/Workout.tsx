@@ -9,6 +9,7 @@ import { SkipWorkout } from './SkipWorkout';
 import type { SkipOccurrenceCommand } from '@/lib/trainer2-contracts/skip-occurrence';
 import { DiscardWorkout } from './DiscardWorkout';
 import { FinishWorkout } from './FinishWorkout';
+import { restKey } from './rest-state';
 import { ActiveWorkout } from './ActiveWorkout';
 import { SetResultRow, resultLabel } from './SetResultRow';
 import { control } from './DraftEditor';
@@ -35,6 +36,11 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
   const [failed, setFailed] = useState(false);
   const [inputStates, setInputStates] = useState<Record<string, boolean>>({}), [finishLocked, setFinishLocked] = useState(false), [discardLocked, setDiscardLocked] = useState(false);
   const onInputState = useCallback((targetId: string, blocked: boolean) => setInputStates(current => current[targetId] === blocked ? current : { ...current, [targetId]: blocked }), []);
+  useEffect(() => {
+    if (execution && execution.lifecycle !== 'Open') {
+      try { localStorage.removeItem(restKey(accountId, execution.executionId)); } catch { /* Advisory storage only. */ }
+    }
+  }, [accountId, execution]);
   const generation = useRef(0), inFlight = useRef(false), latestNextSequence = useRef('0');
   const storageKey = `trainer2-start:${accountId}:${planId}`;
   const url = (id: string) => `/trainer2/dev/executions/${id}`;
@@ -129,21 +135,19 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
       }} resultRow={(positionId, targetId, number) => {
         const owned = execution.initial.positions.find(p => p.sourcePositionId === positionId)!.targets.find(t => t.sourceTargetId === targetId)!;
         const refresh = async () => { const value = await load(); if (!value || !('results' in value)) throw new Error('Read failed'); return value.results; };
-        const units = [...new Set(execution.results.flatMap(r => r.result?.measurement && 'unit' in r.result.measurement ? [r.result.measurement.unit] : []))];
         const saved = execution.results.find(r => r.targetId === owned.id);
         return <Fragment key={owned.id}><SetResultRow key="ongoing" accountId={accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
-          readOnly={execution.lifecycle !== 'Open'} retainedOnly={execution.lifecycle !== 'Open'} locked={finishLocked || discardLocked} onInputState={onInputState} targetId={owned.id} number={number} saved={saved} unitHint={units.length === 1 ? units[0] : undefined} prescription={execution.initial.occurrence.positions.find(p => p.id === positionId)!.targets.find(t => t.id === targetId)} exercise={execution.initial.occurrence.positions.find(p => p.id === positionId)!.exercise} refresh={refresh} />
+          readOnly={execution.lifecycle !== 'Open'} retainedOnly={execution.lifecycle !== 'Open'} locked={finishLocked || discardLocked} onInputState={onInputState} targetId={owned.id} number={number} saved={saved} prescription={execution.initial.occurrence.positions.find(p => p.id === positionId)!.targets.find(t => t.id === targetId)} exercise={execution.initial.occurrence.positions.find(p => p.id === positionId)!.exercise} refresh={refresh} />
           {execution.lifecycle === 'Finished' && <SetResultRow key="historical" accountId={accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
             historical history={execution.history?.filter(r => r.targetId === owned.id)} finishVersion={execution.finish?.expected.results.find(r => r.targetId === owned.id)?.resultVersion}
             targetId={owned.id} number={number} saved={saved} refresh={refresh} />}</Fragment>;
       }} />}
       <FinishWorkout key={execution.executionId} execution={execution} ownershipEpoch={ownershipEpoch}
         blocked={discardLocked || execution.initial.positions.some(p => p.targets.some(t => inputStates[t.id] !== false))}
-        onFinished={() => { try { sessionStorage.setItem('trainer2-finished:' + accountId + ':' + execution.initial.planId, execution.executionId); } catch { /* Completion is already confirmed; navigation remains safe. */ } window.location.assign(trainingUrl(execution.initial.planId)); }} onLock={setFinishLocked} refresh={async () => { const value = await load(); if (!value || value.lifecycle !== 'Finished') throw new Error('Completion read failed'); }} />
-      <details><summary className="min-h-11 cursor-pointer py-2 text-sm text-slate-600">Recovery</summary><button className={control} onClick={() => void load()}>Refresh saved results</button></details>
+        onFinished={() => { try { localStorage.removeItem(restKey(accountId, execution.executionId)); sessionStorage.setItem('trainer2-finished:' + accountId + ':' + execution.initial.planId, execution.executionId); } catch { /* Completion is already confirmed; navigation remains safe. */ } window.location.assign(trainingUrl(execution.initial.planId)); }} onLock={setFinishLocked} checkResults={async () => { if (!await load()) throw new Error('Read failed'); }} refresh={async () => { const value = await load(); if (!value || value.lifecycle !== 'Finished') throw new Error('Completion read failed'); }} />
       <DiscardWorkout key={`discard:${execution.executionId}`} execution={execution} ownershipEpoch={ownershipEpoch}
         blocked={finishLocked || execution.initial.positions.some(p => p.targets.some(t => inputStates[t.id] !== false))}
-        onLock={setDiscardLocked} refresh={async () => { const value = await load(); if (!value || value.lifecycle !== 'Discarded') throw new Error('Discard read failed'); }} />
+        onLock={setDiscardLocked} checkResults={async () => { if (!await load()) throw new Error('Read failed'); }} refresh={async () => { const value = await load(); if (!value || value.lifecycle !== 'Discarded') throw new Error('Discard read failed'); }} />
       </section>}
     {next && !execution && !pending && !program && <section className="space-y-3">
       {next.execution ? <><h2 className="text-xl font-semibold">Workout in progress</h2><p>{next.execution.initial.occurrence.name}</p><a className={control} href={url(next.execution.executionId)}>Continue workout</a></> :

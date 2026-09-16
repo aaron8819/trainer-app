@@ -19,7 +19,7 @@ describe('Discard empty workout decisions', () => {
   it('blocks unsaved or pending input without submitting or discarding it', async () => {
     const fetch = vi.fn(); vi.stubGlobal('fetch', fetch); render(<DiscardWorkout {...props} blocked />);
     expect(await screen.findByRole('button', { name: 'Discard empty workout' })).toBeDisabled(); expect(fetch).not.toHaveBeenCalled();
-    expect(screen.getByText(/Save, cancel, or recover/)).toBeVisible();
+    fireEvent.click(screen.getByText('Workout menu')); expect(screen.getByText(/Save, cancel, or recover/)).toBeVisible();
   });
   it('cancels without writes and returns keyboard focus', async () => {
     const fetch = vi.fn(); vi.stubGlobal('fetch', fetch); render(<DiscardWorkout {...props} />);
@@ -40,7 +40,7 @@ describe('Discard empty workout decisions', () => {
   });
   it.each([null, { reps: { value: 0, basis: 'total' }, measurement: null, rir: null }])('rejects any history including cleared and zero results', async result => {
     render(<DiscardWorkout {...props} execution={{ ...execution, history: [{ result }] as ExecutionRead['history'] }} />);
-    expect(await screen.findByRole('button', { name: 'Discard empty workout' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Discard empty workout' })).toBeNull();
   });
   it('retains malformed/lost responses and replays the identical command after reload', async () => {
     const fetch = vi.fn().mockResolvedValue(response({ broken: true })); vi.stubGlobal('fetch', fetch);

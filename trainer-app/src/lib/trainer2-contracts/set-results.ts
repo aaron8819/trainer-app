@@ -10,7 +10,7 @@ export const performedResult = z.object({
 const correctionReason = z.string().min(1).max(200).refine(v => v.trim().length > 0).optional();
 const setTarget = z.object({ executionId: id, targetId: id }).strict();
 export const recordSetResultCommand = commandEnvelope.extend({ commandType: z.literal('RecordSetResult'),
-  target: setTarget, expected: z.object({ resultVersion: z.literal(0) }).strict(),
+  target: setTarget, expected: z.object({ resultVersion: z.literal(0), skipActionId: id.optional() }).strict(),
   intent: z.object({ result: performedResult }).strict(),
 }).strict();
 export const correctSetResultCommand = commandEnvelope.extend({ commandType: z.literal('CorrectSetResult'),

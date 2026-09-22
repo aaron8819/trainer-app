@@ -21,6 +21,9 @@ async function appendResult(db: PrismaClient, principal: ServerPrincipal, input:
     if (!historical && execution.lifecycle !== 'Open') throw new CommandFailure('EXECUTION_NOT_OPEN', true);
     if (!execution.initial.positions.some(p => p.targets.some(t => t.id === command.target.targetId)))
       throw new CommandFailure('SET_NOT_FOUND');
+    if (command.commandType === 'RecordSetResult' &&
+      execution.skips?.find(s => s.targetId === command.target.targetId)?.actionId !== command.expected.skipActionId)
+      throw new CommandFailure('STALE_SET_SKIP', true);
     const current = execution.results.find(r => r.targetId === command.target.targetId);
     if (historical && !current?.result) throw new CommandFailure('HISTORICAL_RESULT_REQUIRED', true);
     if ((current?.version ?? 0) !== command.expected.resultVersion ||

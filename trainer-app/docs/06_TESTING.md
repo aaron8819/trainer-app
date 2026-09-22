@@ -1,5 +1,7 @@
 # 06 Testing
 
+Trainer2 set skipping: [durable command, lifecycle, finish/discard evidence, logger and local verification](architecture/trainer2/SKIP_SET.md).
+
 Trainer2 Skip Workout: [eligibility, audited resolution, endpoint, exact retry, UI and verification](architecture/trainer2/SKIP_WORKOUT.md).
 
 Trainer2 empty execution discard: [lifecycle, command, retained attempts, fresh start and verification](architecture/trainer2/DISCARD_EMPTY_EXECUTION.md).

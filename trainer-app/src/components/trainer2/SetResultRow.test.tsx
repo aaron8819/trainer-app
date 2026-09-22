@@ -306,6 +306,37 @@ describe('Logger correction regressions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
     expect(JSON.parse(fetch.mock.calls[0][1].body).intent.result.measurement).toEqual(kg.result.measurement);
   });
+  it('confirms edited input before skipping, preserves cancellation and retries the exact skip', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const fetch = vi.fn().mockRejectedValue(new Error('uncertain')); vi.stubGlobal('fetch', fetch);
+    render(<SetResultRow {...ui} refreshExecution={vi.fn()} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Skip set' })).toBeEnabled());
+    fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '12' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Skip set' }));
+    expect(fetch).not.toHaveBeenCalled(); expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('12');
+    confirm.mockReturnValue(true); fireEvent.click(screen.getByRole('button', { name: 'Skip set' }));
+    await screen.findByText(/Skip could not be confirmed/);
+    const command = JSON.parse(fetch.mock.calls[0][1].body);
+    expect(command.commandType).toBe('SkipSet'); expect(command.intent).toEqual({});
+    expect(command.target).toEqual({ executionId: props.executionId, targetId: props.targetId });
+    fireEvent.click(screen.getByRole('button', { name: 'Retry save' }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    expect(fetch.mock.calls[1][1].body).toBe(fetch.mock.calls[0][1].body); confirm.mockRestore();
+  });
+  it('requires explicit reopening, binds the skip event, and never offers skip on recorded sets', async () => {
+    const skipped = { executionId: props.executionId, targetId: props.targetId, actionId: randomUUID(), skippedAt: new Date().toISOString() };
+    const fetch = vi.fn().mockRejectedValue(new Error('uncertain')); vi.stubGlobal('fetch', fetch);
+    const view = render(<SetResultRow {...ui} skipped={skipped} />);
+    expect(screen.queryByRole('button', { name: 'Log set' })).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'Log this set' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(fetch.mock.calls[0][1].body).expected.skipActionId).toBe(skipped.actionId);
+    view.unmount(); sessionStorage.clear(); render(<SetResultRow {...ui} saved={saved} />);
+    expect(screen.queryByRole('button', { name: 'Skip set' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Return to active set' })).toBeVisible();
+  });
   it('allows absent correction reasons, rejects blank provided reasons and keeps clear reason mandatory', () => {
     const c = { schemaVersion: 1, actionId: randomUUID(), deviceId: randomUUID(), originatingAccountId: props.accountId, ownershipEpoch: 0, dependsOn: [], target: { executionId: props.executionId, targetId: props.targetId }, expected: { resultVersion: 1, performedSetId: saved.performedSetId } };
     for (const commandType of ['CorrectSetResult', 'CorrectHistoricalSetResult']) {

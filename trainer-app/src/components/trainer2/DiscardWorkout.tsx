@@ -69,7 +69,7 @@ export function DiscardWorkout({ execution, ownershipEpoch, blocked, refresh, ch
       ownershipEpoch, dependsOn: [], commandType: 'DiscardEmptyExecution', target: { executionId, occurrenceId: review.initial.occurrence.id },
       expected: reviewedResults(review), intent: {} });
   }
-  const empty = execution.history?.length === 0 && execution.results.length === 0;
+  const empty = !execution.skips?.length && execution.history?.length === 0 && execution.results.length === 0;
   if ((execution.lifecycle !== 'Open' || !empty) && !pending && !message) return null;
   return <details open={pending || review || message ? true : undefined}><summary className="min-h-11 cursor-pointer py-3 text-sm">Workout menu</summary><section className="space-y-3 rounded-xl border border-slate-300 p-4" aria-label="Discard empty workout">
     {message && <p role="status">{message}</p>}
@@ -86,6 +86,6 @@ export function DiscardWorkout({ execution, ownershipEpoch, blocked, refresh, ch
         <button className={`${control} min-h-11`} disabled={blocked || busy} onClick={confirm}>Confirm discard</button>
         <button ref={cancel} className={`${control} min-h-11`} disabled={busy} onClick={() => { setReview(null); onLock(false); }}>Cancel</button>
       </div> : <><button ref={trigger} className={`${control} min-h-11`} disabled={blocked || !ready || !empty || staleView === execution} onClick={begin}>Discard empty workout</button>
-        {!empty ? <p>Workouts with recorded set history cannot be discarded, even after a result is cleared.</p> : blocked && <p>Save, cancel, or recover result input before discarding.</p>}</>)}
+        {!empty ? <p>Workouts with logged or skipped set history cannot be discarded, even after a result is cleared.</p> : blocked && <p>Save, cancel, or recover result input before discarding.</p>}</>)}
   </section></details>;
 }

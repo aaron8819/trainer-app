@@ -1,3 +1,4 @@
+import { setSkip } from './skip-set';
 import { occurrenceResolutionRead, skipBinding } from './skip-occurrence';
 import { discardFact } from './discard-execution';
 import { finishFact, reviewedResults, unrecordedTargets } from './workout-finish';
@@ -38,6 +39,7 @@ export const initialPrescription = z.object({ schemaVersion: z.literal(1), kind:
 export type InitialPrescription = z.infer<typeof initialPrescription>;
 const previousPerformance = z.object({ positionId: id, sourcePositionId: id, executionId: id, workoutName: z.string(), finishedAt: z.iso.datetime(), results: z.array(savedSetResult).min(1) }).strict();
 export const executionRead = z.object({ executionId: id, lifecycle: z.enum(['Open', 'Finished', 'Discarded']), discard: discardFact.nullable().optional(), finish: finishFact.nullable(),
+  skips: z.array(setSkip).optional(),
   firstSetLoads: z.array(z.object({ positionId: id, executionId: id, result: savedSetResult }).strict()).optional(),
   previous: z.array(previousPerformance).optional(), contentHash: hash, initial: initialPrescription, results: z.array(savedSetResult), history: z.array(savedSetResult).optional() }).strict().refine(v =>
     v.executionId === v.initial.executionId && (v.lifecycle === 'Discarded' ? !!v.discard && v.discard.actorAccountId === v.initial.accountId && v.results.length === 0 && v.history?.length === 0 : !v.discard) && (v.lifecycle === 'Finished' ? !!v.finish : !v.finish) && new Set(v.results.map(r => r.targetId)).size === v.results.length &&
@@ -54,6 +56,9 @@ export async function validateExecutionRead(input: unknown, accountId: string, e
     !p.result.result?.measurement || !('value' in p.result.result.measurement) ||
     !value.initial.occurrence.positions.some(o => o.id === p.positionId)) ||
     new Set(value.firstSetLoads?.map(p => p.positionId)).size !== (value.firstSetLoads?.length ?? 0)) throw new Error('Invalid first-set load');
+  if (new Set(value.skips?.map(s => s.targetId)).size !== (value.skips?.length ?? 0) ||
+    value.skips?.some(s => s.executionId !== value.executionId || !value.initial.positions.some(p => p.targets.some(t => t.id === s.targetId))) ||
+    (value.lifecycle === 'Discarded' && value.skips?.length)) throw new Error('Invalid skip history');
   const history = value.history ?? value.results;
   if (value.history) {
     if (history.some(r => r.executionId !== value.executionId || !value.results.some(c => c.targetId === r.targetId))) throw new Error('Invalid result history');

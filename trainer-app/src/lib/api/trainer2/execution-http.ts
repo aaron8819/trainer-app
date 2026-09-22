@@ -1,3 +1,4 @@
+import { skipSet } from './skip-set';
 import { readExecutionWithPrevious } from './previous-performance';
 import { skipOccurrence } from './skip-occurrence';
 import { discardEmptyExecution } from './discard-execution';
@@ -10,11 +11,11 @@ import { DraftAccessError } from './principal';
 import { ActionCollision, CommandFailure } from './command';
 import { InvalidStartSnapshot, readNextWorkout, startOccurrence } from './execution';
 
-export async function executionHttp(request: Request, operation: 'SkipOccurrence' | 'DiscardEmptyExecution' | 'CorrectHistoricalSetResult' | 'FinishExecution' | 'StartOccurrence' | 'SaveSetResult' | 'ReadExecution' | 'ReadNext', target?: string) {
+export async function executionHttp(request: Request, operation: 'SkipSet' | 'SkipOccurrence' | 'DiscardEmptyExecution' | 'CorrectHistoricalSetResult' | 'FinishExecution' | 'StartOccurrence' | 'SaveSetResult' | 'ReadExecution' | 'ReadNext', target?: string) {
   const json = (body: unknown, status: number) => Response.json(body, { status,
     headers: { 'Cache-Control': 'private, no-store', Vary: 'Cookie, Authorization' } });
   try {
-    const { db, principal } = await requestContext(request, operation === 'SkipOccurrence' || operation === 'DiscardEmptyExecution' || operation === 'CorrectHistoricalSetResult' || operation === 'StartOccurrence' || operation === 'SaveSetResult' || operation === 'FinishExecution' ? 'write' : 'read');
+    const { db, principal } = await requestContext(request, operation === 'SkipSet' || operation === 'SkipOccurrence' || operation === 'DiscardEmptyExecution' || operation === 'CorrectHistoricalSetResult' || operation === 'StartOccurrence' || operation === 'SaveSetResult' || operation === 'FinishExecution' ? 'write' : 'read');
     if (operation === 'ReadExecution' || operation === 'ReadNext') {
       const key = id.parse(target);
       const result = await db.$transaction(async tx => {
@@ -25,7 +26,7 @@ export async function executionHttp(request: Request, operation: 'SkipOccurrence
     }
     const text = await request.text();
     if (text.length > (operation === 'FinishExecution' || operation === 'DiscardEmptyExecution' ? 2000000 : 10000)) return json({ error: 'COMMAND_TOO_LARGE' }, 413);
-    const result = await (operation === 'SkipOccurrence' ? skipOccurrence : operation === 'DiscardEmptyExecution' ? discardEmptyExecution : operation === 'CorrectHistoricalSetResult' ? correctHistoricalSetResult : operation === 'FinishExecution' ? finishExecution : operation === 'SaveSetResult' ? saveSetResult : startOccurrence)(db, principal, JSON.parse(text));
+    const result = await (operation === 'SkipSet' ? skipSet : operation === 'SkipOccurrence' ? skipOccurrence : operation === 'DiscardEmptyExecution' ? discardEmptyExecution : operation === 'CorrectHistoricalSetResult' ? correctHistoricalSetResult : operation === 'FinishExecution' ? finishExecution : operation === 'SaveSetResult' ? saveSetResult : startOccurrence)(db, principal, JSON.parse(text));
     return json(result, result.outcome.status === 'Accepted' ? 200 : result.outcome.status === 'Conflict' ? 409 : 422);
   } catch (error) {
     if (error instanceof DraftAccessError) return json({ error: error.message }, 403);

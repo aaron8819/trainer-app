@@ -19,7 +19,7 @@ describe('Finish workout decisions', () => {
   it('blocks unsaved or pending input without submitting or discarding it', async () => {
     const fetch = vi.fn(); vi.stubGlobal('fetch', fetch); render(<FinishWorkout {...props} blocked />);
     expect(await screen.findByRole('button', { name: 'Finish workout' })).toBeDisabled(); expect(fetch).not.toHaveBeenCalled();
-    expect(screen.getByText(/Save, discard, or recover/)).toBeVisible();
+    expect(screen.getByText(/Save or recover retained/)).toBeVisible();
   });
   it('freezes reviewed versions across background refresh and requires explicit retry after conflict', async () => {
     const fetch = vi.fn().mockImplementation((_u, init) => { const c = JSON.parse(init.body); return response({ replayed: false, outcomeCursor: '1', outcome: { status: 'Conflict', actionId: c.actionId, commandType: 'FinishExecution', code: 'STALE_FINISH_RESULTS' } }, 409); }); vi.stubGlobal('fetch', fetch);
@@ -66,4 +66,18 @@ it('navigates only after accepted finish has authoritative successful readback',
   await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1)); expect(onFinished).not.toHaveBeenCalled();
   confirmRead(); await waitFor(() => expect(onFinished).toHaveBeenCalledTimes(1));
   expect(sessionStorage.getItem(`trainer2-finish:${execution.initial.accountId}:${execution.executionId}`)).toBeNull();
+});
+
+it('binds explicit skips in the reviewed snapshot and acknowledges them without claiming performance', async () => {
+  const skipped = { ...execution, skips: [{ executionId: execution.executionId, targetId, actionId: randomUUID(), skippedAt: new Date().toISOString() }] };
+  const fetch = vi.fn().mockRejectedValue(new Error('uncertain')); vi.stubGlobal('fetch', fetch);
+  const view = render(<FinishWorkout {...props} execution={skipped} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Finish workout' }));
+  expect(screen.getByText(/1 explicitly skipped; 0 required and 0 optional sets untouched/)).toBeVisible();
+  view.rerender(<FinishWorkout {...props} execution={execution} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Finish with unrecorded sets' }));
+  await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+  const command = JSON.parse(fetch.mock.calls[0][1].body);
+  expect(command.expected.results[0].skipActionId).toBe(skipped.skips[0].actionId);
+  expect(command.intent.acknowledgeUnrecorded).toBe(true);
 });

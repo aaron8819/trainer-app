@@ -2,8 +2,9 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { executionHttp } from './execution-http';
 import { InvalidStartSnapshot } from './execution';
-const mocks = vi.hoisted(() => ({ context: vi.fn(), read: vi.fn(), next: vi.fn(), start: vi.fn(), save: vi.fn(), finish: vi.fn(), historical: vi.fn(), discard: vi.fn(), skip: vi.fn() }));
+const mocks = vi.hoisted(() => ({ context: vi.fn(), read: vi.fn(), next: vi.fn(), start: vi.fn(), save: vi.fn(), finish: vi.fn(), historical: vi.fn(), discard: vi.fn(), skip: vi.fn(), skipSet: vi.fn() }));
 vi.mock('./access', () => ({ requestContext: mocks.context }));
+vi.mock('./skip-set', () => ({ skipSet: mocks.skipSet }));
 vi.mock('./skip-occurrence', () => ({ skipOccurrence: mocks.skip }));
 vi.mock('./discard-execution', () => ({ discardEmptyExecution: mocks.discard }));
 vi.mock('./workout-finish', () => ({ finishExecution: mocks.finish }));
@@ -27,7 +28,7 @@ describe('execution HTTP boundary', () => {
     expect(mocks.context).toHaveBeenCalledWith(request, 'write'); expect(mocks.finish).toHaveBeenCalledWith(db, principal, input);
     expect(result.status).toBe(httpStatus); expect(mocks.start).not.toHaveBeenCalled(); expect(mocks.save).not.toHaveBeenCalled();
   });
-  it.each(['StartOccurrence', 'SaveSetResult', 'FinishExecution', 'CorrectHistoricalSetResult', 'DiscardEmptyExecution'] as const)('retains the per-command body bound for %s', async operation => {
+  it.each(['SkipSet', 'StartOccurrence', 'SaveSetResult', 'FinishExecution', 'CorrectHistoricalSetResult', 'DiscardEmptyExecution'] as const)('retains the per-command body bound for %s', async operation => {
     mocks.context.mockResolvedValue({ db: {}, principal: { accountId: 'trusted' } });
     const request = new Request('http://localhost/command', { method: 'POST', body: ' '.repeat(operation === 'FinishExecution' || operation === 'DiscardEmptyExecution' ? 2000001 : 10001) });
     expect((await executionHttp(request, operation)).status).toBe(413);
@@ -111,4 +112,43 @@ it('selects the latest eligible workout and first corrected working mass in save
   mocks.read.mockResolvedValueOnce(current).mockResolvedValueOnce(makeSource(invalidId, 'perImplement')).mockResolvedValueOnce(makeSource(eligibleId, 'barbellTotal')).mockResolvedValueOnce(makeSource(olderId, 'barbellTotal'));
   const read = await readExecutionWithPrevious(tx, { accountId: 'trusted', issuer: 'test', subject: 'test' }, current.executionId);
   expect(read?.firstSetLoads).toEqual([{ positionId: p.id, executionId: eligibleId, result: expect.objectContaining({ targetId: owned[1].id, version: 2, result: expect.objectContaining({ measurement: expect.objectContaining({ value: '101' }) }) }) }]);
+});
+
+it.each([['Accepted', 200], ['Conflict', 409], ['Rejected', 422]])('routes set skip %s through trusted writes', async (status, httpStatus) => {
+  const db = {}, principal = { accountId: 'trusted' }, input = { commandType: 'SkipSet' };
+  mocks.context.mockResolvedValue({ db, principal }); mocks.skipSet.mockResolvedValue({ outcome: { status } });
+  const request = new Request('http://localhost/skip-set', { method: 'POST', body: JSON.stringify(input) });
+  expect((await executionHttp(request, 'SkipSet')).status).toBe(httpStatus);
+  expect(mocks.context).toHaveBeenCalledWith(request, 'write'); expect(mocks.skipSet).toHaveBeenCalledWith(db, principal, input);
+  expect(mocks.skip).not.toHaveBeenCalled(); expect(mocks.save).not.toHaveBeenCalled();
+});
+
+
+it('blocks SkipSet at the central maintenance gate before opening a write context', async () => {
+  vi.stubEnv('TRAINER_WRITE_PAUSE', 'enabled');
+  const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  try {
+    const { POST } = await import('../../../app/api/trainer2/executions/skip-set/route');
+    const response = await POST(new Request('http://localhost/api/trainer2/executions/skip-set', { method: 'POST', body: '{}' }));
+    expect(response.status).toBe(503);
+    expect((await response.json()).code).toBe('PRODUCTION_WRITE_PAUSED');
+    expect(mocks.context).not.toHaveBeenCalled();
+    expect(mocks.skipSet).not.toHaveBeenCalled();
+  } finally {
+    vi.unstubAllEnvs();
+    warning.mockRestore();
+  }
+});
+
+
+it('delegates admitted SkipSet requests through the registered route', async () => {
+  vi.stubEnv('TRAINER_WRITE_PAUSE', '');
+  try {
+    mocks.context.mockResolvedValue({ db: {}, principal: { accountId: 'trusted' } });
+    mocks.skipSet.mockResolvedValue({ outcome: { status: 'Accepted' } });
+    const { POST } = await import('../../../app/api/trainer2/executions/skip-set/route');
+    const response = await POST(new Request('http://localhost/api/trainer2/executions/skip-set', { method: 'POST', body: '{"commandType":"SkipSet"}' }));
+    expect(response.status).toBe(200);
+    expect(mocks.skipSet).toHaveBeenCalledOnce();
+  } finally { vi.unstubAllEnvs(); }
 });

@@ -75,11 +75,11 @@ export function FinishWorkout({ execution, ownershipEpoch, blocked, refresh, che
       finally { setBusy(false); }
     }}>Review latest values</button>}
     {pending ? <button className={control} disabled={busy} onClick={() => void submit(pending)}>Check finish again</button> :
-      execution.lifecycle === 'Open' && (review ? <><p>{unknown.length ? `${unknown.filter(t => t.required).length} required and ${unknown.filter(t => !t.required).length} optional sets are unrecorded. They will remain unknown, not marked performed or omitted.` : 'All prescribed sets have saved results.'}</p>
+      execution.lifecycle === 'Open' && (review ? <><p>{unknown.length ? `${unknown.filter(t => t.skipped).length} explicitly skipped; ${unknown.filter(t => !t.skipped && t.required).length} required and ${unknown.filter(t => !t.skipped && !t.required).length} optional sets untouched. None will be marked performed.` : 'All prescribed sets have saved results.'}</p>
         <p>Finish this workout and resolve its planned occurrence? Recorded results can later be corrected without reopening. The next workout will not start automatically.</p>
         <button className={control} disabled={blocked || busy} onClick={confirm}>{unknown.length ? 'Finish with unrecorded sets' : 'Confirm finish'}</button>
         <button className={control} disabled={busy} onClick={() => { setReview(null); onLock(false); }}>Keep working</button></> :
-        <><button className="rounded-xl bg-teal-700 px-5 py-3 font-semibold text-white disabled:opacity-40" disabled={blocked || !ready} onClick={begin}>Finish workout</button>
-          {blocked && <p>Save, discard, or recover pending result input before finishing.</p>}</>)}
+        <><button className="rounded-xl bg-black px-5 py-3 font-semibold text-white disabled:opacity-40" disabled={blocked || !ready} onClick={begin}>Finish workout</button>
+          {blocked && <p>Save or recover retained result input before finishing. Select its queue chip to continue editing.</p>}</>)}
   </section>;
 }

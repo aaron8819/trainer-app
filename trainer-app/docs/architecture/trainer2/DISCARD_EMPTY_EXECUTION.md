@@ -45,3 +45,5 @@ It uses synthetic accounts, fresh PostgreSQL, populated accepted-base upgrade, o
 One credential-free Vitest file is added: `DiscardWorkout.test.tsx`. Inventory is 407 = 368 credential-free + 34 import-only + five DB-required. The standalone PostgreSQL/browser launcher is separately registered, with explicit confirmation and guard coverage. Twelve Trainer2 routes include the dedicated discard endpoint. See `artifacts/trainer2/DISCARD_EMPTY_EXECUTION_HANDOFF.md` for actual results, source bindings and limitations. No independent acceptance or hosted/real-training readiness is implied.
 
 [Skip Workout](SKIP_WORKOUT.md) can subsequently resolve the same occurrence through a separate explicit decision. Discard itself still never resolves or skips it.
+
+Persisted [set skip](SKIP_SET.md) history also prevents empty discard, enforced in the application, SQL guard and deferred seal. An unperformed skip is authored history rather than an untouched attempt.

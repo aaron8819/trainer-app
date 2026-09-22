@@ -1,3 +1,4 @@
+import type { SetSkip } from './skip-set';
 import { z } from 'zod';
 import { createDraftCommand, id } from './draft';
 import { hash } from './activation';
@@ -5,7 +6,7 @@ import type { InitialPrescription } from './execution';
 import type { SavedSetResult } from './set-results';
 
 export const finishBinding = z.object({ contentHash: hash, results: z.array(z.object({
-  targetId: id, resultVersion: z.int().min(0), performedSetId: id.nullable(),
+  targetId: id, resultVersion: z.int().min(0), performedSetId: id.nullable(), skipActionId: id.optional(),
 }).strict().refine(r => (r.resultVersion === 0) === (r.performedSetId === null))).max(10000) }).strict();
 export const finishExecutionCommand = createDraftCommand.pick({ schemaVersion: true, actionId: true,
   originatingAccountId: true, deviceId: true, ownershipEpoch: true, dependsOn: true }).extend({
@@ -13,15 +14,16 @@ export const finishExecutionCommand = createDraftCommand.pick({ schemaVersion: t
   expected: finishBinding, intent: z.object({ acknowledgeUnrecorded: z.boolean() }).strict(),
 }).strict();
 export type FinishExecutionCommand = z.infer<typeof finishExecutionCommand>;
-export function reviewedResults(execution: { initial: InitialPrescription; contentHash: string; results: SavedSetResult[] }) {
+export function reviewedResults(execution: { initial: InitialPrescription; contentHash: string; results: SavedSetResult[]; skips?: SetSkip[] }) {
   return { contentHash: execution.contentHash, results: execution.initial.positions.flatMap(p => p.targets.map(t => {
     const r = execution.results.find(r => r.targetId === t.id);
-    return { targetId: t.id, resultVersion: r?.version ?? 0, performedSetId: r?.performedSetId ?? null };
+    const skip = execution.skips?.find(s => s.targetId === t.id);
+    return { ...(skip ? { skipActionId: skip.actionId } : {}), targetId: t.id, resultVersion: r?.version ?? 0, performedSetId: r?.performedSetId ?? null };
   })).sort((a, b) => a.targetId.localeCompare(b.targetId)) };
 }
-export function unrecordedTargets(execution: { initial: InitialPrescription; results: SavedSetResult[] }) {
+export function unrecordedTargets(execution: { initial: InitialPrescription; results: SavedSetResult[]; skips?: SetSkip[] }) {
   return execution.initial.positions.flatMap((p, i) => p.targets.filter(t => !execution.results.find(r => r.targetId === t.id)?.result)
-    .map(t => ({ targetId: t.id, required: execution.initial.occurrence.positions[i].targets.find(s => s.id === t.sourceTargetId)!.required })));
+    .map(t => ({ targetId: t.id, skipped: !execution.results.some(r => r.targetId === t.id) && !!execution.skips?.some(s => s.targetId === t.id), required: execution.initial.occurrence.positions[i].targets.find(s => s.id === t.sourceTargetId)!.required })));
 }
 export const finishFact = z.object({ actionId: id, finishedAt: z.iso.datetime(), expected: finishBinding,
   unknownTargetIds: z.array(id), planCompleted: z.boolean() }).strict();

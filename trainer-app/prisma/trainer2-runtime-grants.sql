@@ -60,3 +60,8 @@ GRANT INSERT ON "Trainer2OccurrenceSkip" TO trainer2_draft_runtime;
 CREATE POLICY trainer2_read ON "Trainer2OccurrenceSkip" FOR SELECT TO trainer2_draft_reader USING (true);
 CREATE POLICY trainer2_write ON "Trainer2OccurrenceSkip" TO trainer2_draft_runtime USING (true) WITH CHECK (true);
 GRANT EXECUTE ON FUNCTION trainer2_occurrence_resolved(text,uuid,text) TO trainer2_draft_runtime;
+
+GRANT SELECT ON "Trainer2SetSkip" TO trainer2_draft_reader, trainer2_draft_runtime;
+GRANT INSERT ON "Trainer2SetSkip" TO trainer2_draft_runtime;
+CREATE POLICY trainer2_read ON "Trainer2SetSkip" FOR SELECT TO trainer2_draft_reader USING (true);
+CREATE POLICY trainer2_write ON "Trainer2SetSkip" TO trainer2_draft_runtime USING (true) WITH CHECK (true);

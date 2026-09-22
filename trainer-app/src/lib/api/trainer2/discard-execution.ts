@@ -14,7 +14,7 @@ export async function discardEmptyExecution(db: PrismaClient, principal: ServerP
     if (execution.initial.occurrence.id !== command.target.occurrenceId) throw new CommandFailure('OCCURRENCE_MISMATCH');
     if (execution.lifecycle !== 'Open') throw new CommandFailure('EXECUTION_NOT_OPEN', true);
     // Authoritative append-only history: clearing is not erasure of performed work.
-    if (await tx.trainer2SetResultRevision.count({ where: { accountId: principal.accountId, executionId: execution.executionId } }))
+    if (execution.skips?.length || await tx.trainer2SetResultRevision.count({ where: { accountId: principal.accountId, executionId: execution.executionId } }))
       throw new CommandFailure('EXECUTION_NOT_EMPTY', true);
     if (canonicalJson(command.expected) !== canonicalJson(reviewedResults(execution))) throw new CommandFailure('STALE_DISCARD_BINDING', true);
     // All subsequent effects and the durable outcome commit under the shared account lock.

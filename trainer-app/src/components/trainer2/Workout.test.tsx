@@ -108,7 +108,7 @@ function ActiveHarness({ value, read }: { value: ExecutionRead; read: () => Prom
   const [execution, setExecution] = useState(value);
   const [inputs, setInputs] = useState<Record<string, boolean>>({});
   const input = useCallback((id: string, blocked: boolean) => setInputs(v => v[id] === blocked ? v : { ...v, [id]: blocked }), []);
-  return <ActiveWorkout execution={execution} ownershipEpoch={0} locked={false} inputStates={inputs} onInputState={input} refresh={async () => { const results = await read(); setExecution(v => ({ ...v, results })); return results; }} />;
+  return <ActiveWorkout refreshExecution={async () => execution} execution={execution} ownershipEpoch={0} locked={false} inputStates={inputs} onInputState={input} refresh={async () => { const results = await read(); setExecution(v => ({ ...v, results })); return results; }} />;
 }
 function activeTransport(results: SavedSetResult[]) {
   return vi.fn().mockImplementation((_url, init) => {
@@ -156,7 +156,7 @@ describe('Single active set and queue', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
     await screen.findByText('Accessory · Set 1 of 2');
     expect(results.map(r => r.targetId)).toEqual(value.initial.positions[0].targets.map(t => t.id));
-    expect(screen.getByText('2 of 4 sets recorded')).toBeVisible();
+    expect(screen.getByText('2/4 resolved')).toBeVisible();
   });
   it.each([false, true])('does not pull selection back after a late response (return to original: %s)', async (returnToOriginal) => {
     const value = activeFixture(), results: SavedSetResult[] = [], transport = activeTransport(results);
@@ -170,7 +170,7 @@ describe('Single active set and queue', () => {
     fireEvent.change(screen.getByLabelText('Set 2 Actual reps'), { target: { value: '11' } });
     if (returnToOriginal) fireEvent.click(screen.getAllByRole('button', { name: /, set 1, unrecorded/ })[0]);
     reply();
-    await screen.findByText('1 of 4 sets recorded');
+    await screen.findByText('1/4 resolved');
     if (returnToOriginal) expect(screen.getByRole('button', { name: /, set 1, recorded/ })).toHaveAttribute('aria-pressed', 'true');
     else expect(screen.getByLabelText('Set 2 Actual reps')).toHaveValue('11');
     expect(results[0].targetId).toBe(value.initial.positions[0].targets[0].id);
@@ -187,7 +187,7 @@ describe('Single active set and queue', () => {
     expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('0');
     fireEvent.change(screen.getByLabelText('Set 1 Actual RIR (optional)'), { target: { value: '' } });
     expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('');
-    expect(screen.getByText('0 of 4 sets recorded')).toBeVisible();
+    expect(screen.getByText('0/4 resolved')).toBeVisible();
   });
 });
 
@@ -251,8 +251,8 @@ it('exposes timer adjustments without disclosure and clamps below zero without c
 it('resolves V1 muscle metadata by catalog identity and omits custom descriptions', () => {
   const exercise = createHypertrophyPlan().occurrences[0].positions[0].exercise;
   const view = render(<MuscleTags exercise={exercise} />);
-  expect(screen.getByText('Primary · Quads')).toBeVisible();
-  expect(screen.getByText('Secondary · Hamstrings')).toBeVisible();
+  expect(screen.getByLabelText('Primary muscle: Quads')).toBeVisible();
+  expect(screen.getByLabelText('Secondary muscle: Hamstrings')).toBeVisible();
   view.rerender(<MuscleTags exercise={{ kind: 'authoredDescription', name: exercise.name, variation: '' }} />);
   expect(view.container).toBeEmptyDOMElement();
 });

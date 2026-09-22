@@ -1,4 +1,6 @@
 'use client';
+import { skipSetCommand, skipSetResponse, type SkipSetCommand, type SetSkip } from '@/lib/trainer2-contracts/skip-set';
+import type { ExecutionRead } from '@/lib/trainer2-contracts/execution';
 import { useEffect, useRef, useState } from 'react';
 import { compatibleLoggingLoad, startingPounds } from '@/lib/engine/trainer2/logging-prefill';
 import { pounds, loadLabel } from './pound-display';
@@ -19,7 +21,7 @@ const formSchema = z.object({ reps: z.string(), basis: z.enum(['total', 'perSide
   unit: z.enum(['', 'kg', 'lb']), zeroMeaning: z.enum(['validZero', 'notAllowed']).optional(), convention: z.enum(['barbellTotal', 'perImplement', 'machineDisplayed']),
   rir: z.string(), reason: z.string() }).strict();
 type Form = z.infer<typeof formSchema>;
-const draftSchema = z.object({ form: formSchema, base: savedSetResult.nullable(), pending: resultMutationCommand.nullable(), conflict: z.boolean(), carriedMeasurement: performedResult.shape.measurement.optional() }).strict();
+const draftSchema = z.object({ form: formSchema, base: savedSetResult.nullable(), pending: z.union([resultMutationCommand, skipSetCommand]).nullable(), skipActionId: z.string().uuid().optional(), conflict: z.boolean(), carriedMeasurement: performedResult.shape.measurement.optional() }).strict();
 type Draft = z.infer<typeof draftSchema>;
 function formFor(r?: PerformedResult | null): Form {
   const m = r?.measurement;
@@ -40,18 +42,20 @@ export function resultLabel(r: PerformedResult | null, original = false) {
   if (!r) return 'Cleared as erroneous · no current performed result';
   return `${loadLabel(r.measurement, original)} × ${r.reps ? `${r.reps.value}${r.reps.basis === 'perSide' ? ' per side' : r.reps.basis === 'alternating' ? ' alternating' : ''}` : 'reps unspecified'} · ${r.rir === null ? 'RIR unspecified' : `${r.rir} RIR`}`;
 }
-export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId, number, saved, refresh, readOnly = false, locked = false, onInputState, historical = false, history = [], finishVersion, retainedOnly = false, prescription, exercise, active = true, activePanel = false, onSubmission, preceding, onRecorded, firstSetLoad }: {
+export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId, number, saved, refresh, readOnly = false, locked = false, onInputState, historical = false, history = [], finishVersion, retainedOnly = false, prescription, exercise, active = true, activePanel = false, onSubmission, preceding, onRecorded, firstSetLoad, skipped, refreshExecution, onReturn }: {
+  skipped?: SetSkip; refreshExecution?: () => Promise<ExecutionRead>; onReturn?: () => void;
   active?: boolean; activePanel?: boolean;
   preceding?: SavedSetResult[];
   firstSetLoad?: SavedSetResult;
   onRecorded?: (record: SavedSetResult) => void;
-  onSubmission?: () => (results: SavedSetResult[]) => void;
+  onSubmission?: () => (results: SavedSetResult[], skips?: SetSkip[]) => void;
   prescription?: DraftDocument['occurrences'][number]['positions'][number]['targets'][number];
   exercise?: DraftDocument['occurrences'][number]['positions'][number]['exercise'];
   accountId: string; ownershipEpoch: number; executionId: string; targetId: string; number: number;
   retainedOnly?: boolean; historical?: boolean; history?: SavedSetResult[]; finishVersion?: number; readOnly?: boolean; locked?: boolean; onInputState?: (targetId: string, blocked: boolean) => void;
   saved?: SavedSetResult; refresh: () => Promise<SavedSetResult[]>;
 }) {
+  const [reopening, setReopening] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null), [ready, setReady] = useState(false);
   const [message, setMessage] = useState(''), [busy, setBusy] = useState(false);
@@ -121,14 +125,47 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
     const carriedMeasurement = !saved && prior?.measurement && prescription && exercise &&
       (!prior.reps || prior.reps.basis === form.basis) && compatibleLoggingLoad(prior.measurement, prescription, exercise)
       ? prior.measurement : undefined;
-    return { form, base: saved ?? null, pending: null, conflict: false, ...(carriedMeasurement ? { carriedMeasurement } : {}) };
+    return { form, ...(skipped ? { skipActionId: skipped.actionId } : {}), base: saved ?? null, pending: null, conflict: false, ...(carriedMeasurement ? { carriedMeasurement } : {}) };
   }
   function begin() { store(initialDraft()); setMessage(''); }
   function change(field: keyof Form, value: string) {
     const d = currentDraft.current ?? initialDraft(); if (d.pending || busy || readOnly || locked || !ready) return;
     store({ ...d, form: { ...d.form, [field]: value } }); setMessage('');
   }
-  async function submit(command: SetResultCommand) {
+  async function submitSkip(command: SkipSetCommand) {
+    if (flight.current || !currentDraft.current || !refreshExecution) return;
+    if (!store({ ...currentDraft.current, pending: command })) return;
+    flight.current = true; setBusy(true); setMessage('Saving skip…');
+    const confirmed = onSubmission?.();
+    try {
+      const response = await fetch('/api/trainer2/executions/skip-set', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: canonicalJson(command) });
+      const { outcome } = skipSetResponse.parse(await response.json());
+      if (!alive.current) return;
+      if (outcome.actionId !== command.actionId || (outcome.status === 'Accepted' && (!response.ok || !binding(outcome.result)))) throw new Error('Unbound skip');
+      if (outcome.status !== 'Accepted') {
+        store({ ...currentDraft.current!, pending: null, conflict: true });
+        setMessage('Skip was not accepted. Review the latest result. Your input is retained.'); return;
+      }
+      const value = await refreshExecution();
+      if (!alive.current) return;
+      if (!value.skips?.some(s => s.targetId === targetId && s.actionId === command.actionId)) throw new Error('Unconfirmed skip');
+      if (store(null)) {
+        setMessage('Set skipped'); setReopening(false);
+        if (value.lifecycle === 'Open' && !value.results.some(r => r.targetId === targetId)) confirmed?.(value.results, value.skips);
+      }
+    } catch { if (alive.current) setMessage('Skip could not be confirmed. Retry with the original request.'); }
+    finally { flight.current = false; if (alive.current) setBusy(false); }
+  }
+  function skip() {
+    if (saved || skipped || flight.current || locked || readOnly || !ready || currentDraft.current?.pending) return;
+    if (currentDraft.current && !window.confirm('Skip this set and discard its edited input?')) return;
+    if (!currentDraft.current && !store(initialDraft())) return;
+    void submitSkip(skipSetCommand.parse({ schemaVersion: 1, actionId: crypto.randomUUID(), deviceId: crypto.randomUUID(),
+      originatingAccountId: accountId, ownershipEpoch, dependsOn: [], commandType: 'SkipSet', target: { executionId, targetId },
+      expected: { resultVersion: 0, skipActionId: null }, intent: {} }));
+  }
+  async function submit(command: SetResultCommand | SkipSetCommand) {
+    if (command.commandType === 'SkipSet') return submitSkip(command);
     if (flight.current || !currentDraft.current || (readOnly && !currentDraft.current.pending)) return;
     if (!store({ ...currentDraft.current, pending: command })) return;
     flight.current = true; setBusy(true); setMessage('Saving…');
@@ -177,7 +214,7 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
       }
       const command = resultMutationCommand.parse(d.base ? { ...envelope, commandType: historical ? 'CorrectHistoricalSetResult' : 'CorrectSetResult',
         expected: { resultVersion: d.base.version, performedSetId: d.base.performedSetId }, intent: { result, ...(clear ? { reason: d.form.reason } : {}) } } :
-        { ...envelope, commandType: 'RecordSetResult', expected: { resultVersion: 0 }, intent: { result } });
+        { ...envelope, commandType: 'RecordSetResult', expected: { resultVersion: 0, ...(d.skipActionId ? { skipActionId: d.skipActionId } : {}) }, intent: { result } });
       void submit(command);
     } catch (error) { setMessage(error instanceof z.ZodError ? 'Enter valid actual values (reps 0–1000, nonnegative load, RIR 0–10). Blank fields stay unspecified.' : String(error)); }
   }
@@ -191,7 +228,7 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
     } catch { if (alive.current) setMessage('Could not refresh the result. Your input is retained.'); }
     finally { if (alive.current) setBusy(false); }
   }
-  const compact = !historical && !readOnly && !!prescription && (activePanel || !saved);
+  const compact = (!skipped || !!saved || reopening || !!draft) && !historical && !readOnly && !!prescription && (activePanel || !saved);
   const f = draft?.form ?? (compact ? initialForm() : undefined), disabled = busy || !!draft?.pending || readOnly || locked || !ready;
   function adjust(field: 'reps' | 'load', delta: number) {
     const value = f?.[field] ?? '';
@@ -204,12 +241,13 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
   // Retain recovery state by identity without rendering inactive forms.
   if (!active || (retainedOnly && !draft)) return null;
   return <div className={activePanel ? "mt-2" : "mt-3 rounded-lg bg-slate-50 p-3"} aria-label={`Set ${number} actual result`}>
-    {(!activePanel || saved) && <p className="text-sm font-medium">{saved ? `Saved v${saved.version}: ${resultLabel(saved.result)}` : 'Not recorded'}</p>}
+    {!activePanel && <p className="text-sm font-medium">{saved ? `Saved v${saved.version}: ${resultLabel(saved.result)}` : 'Not recorded'}</p>}
     {historical && history.length > 0 && <details className="mt-2 text-sm"><summary className="min-h-11 cursor-pointer">Result history</summary><ol className="space-y-2">{[...history].sort((a, b) => a.version - b.version).map(r => <li key={r.version}><p>{r.version === 1 ? 'Original record' : 'Correction'} · v{r.version}{r.version === finishVersion ? ' · Acknowledged at finish' : ''}</p><p>{resultLabel(r.result)}</p><p>{r.recordedAt} · {r.reason ?? 'Recorded result'}</p></li>)}</ol></details>}
     {saved?.reason && <p className="text-xs text-slate-600">Correction: {saved.reason}</p>}
     {!compact && !draft && !readOnly && (!historical || !!saved?.result) && <button ref={editButton} className={control} disabled={!ready || locked} onClick={begin}>{historical ? 'Correct result' : saved ? saved.result ? 'Edit result' : 'Re-record result' : 'Enter actual result'}</button>}
+    {skipped && !saved && !compact && <div className="py-3"><p className="mb-2 text-sm">Skipped · no performed result</p><button className={control} disabled={locked || readOnly} onClick={() => setReopening(true)}>Log this set</button></div>}
     {(draft || compact) && f && <fieldset disabled={disabled} className="mt-2 space-y-3">
-      <legend className={draft ? "text-sm font-semibold" : "sr-only"}>{draft?.pending ? 'Pending confirmation' : draft ? 'Unsaved input' : 'Not recorded · enter actual values'}{draft?.base ? ` · editing v${draft.base.version}` : ''}</legend>
+      <legend className="sr-only">{draft?.pending ? 'Pending confirmation' : 'Set values'}{draft?.base ? ` · editing v${draft.base.version}` : ''}</legend>
       {activePanel ? <>
         <div><p className={fieldLabel}>Reps{f.basis === 'perSide' ? ' per side' : f.basis === 'alternating' ? ' alternating' : ''}</p><div className="mt-1 flex items-center gap-2">
           <button type="button" className={stepControl} aria-label="Decrease reps" onClick={() => adjust('reps', -1)}>−1</button>
@@ -217,11 +255,11 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
           <button type="button" className={stepControl} aria-label="Increase reps" onClick={() => adjust('reps', 1)}>+1</button>
         </div></div>
         {!['unspecified', 'bodyweight'].includes(f.kind) ? <div>
-          <p className={fieldLabel}>Weight (lb)</p><div className="my-1 flex gap-2">{[-10, -5, 5, 10].map(delta => <button type="button" key={delta} className={stepControl} aria-label={(delta < 0 ? 'Decrease' : 'Increase') + ' load by ' + Math.abs(delta) + ' lb'} onClick={() => adjust('load', delta)}>{delta < 0 ? '−' : '+'}{Math.abs(delta)}</button>)}<button className="min-h-11 px-2 text-sm" type="button" onClick={() => change('load', '')}>Clear</button></div>
+          <p className={fieldLabel}>{f.kind === 'externalLoad' ? f.convention === 'barbellTotal' ? 'Barbell total (lb)' : f.convention === 'perImplement' ? exercise?.kind === 'catalogSnapshot' && exercise.equipment.some(e => /dumbbell/i.test(e)) ? 'Per dumbbell (lb)' : 'Per implement (lb)' : 'Machine weight (lb)' : f.kind === 'addedLoad' ? 'Added load (lb)' : 'Assistance (lb)'}</p><div className="my-1 flex gap-2">{[-10, -5, 5, 10].map(delta => <button type="button" key={delta} className={stepControl} aria-label={(delta < 0 ? 'Decrease' : 'Increase') + ' load by ' + Math.abs(delta) + ' lb'} onClick={() => adjust('load', delta)}>{delta < 0 ? '−' : '+'}{Math.abs(delta)}</button>)}<button className="min-h-11 px-2 text-sm" type="button" onClick={() => change('load', '')}>Clear</button></div>
           <input className={fieldControl} aria-label={`Set ${number} Actual load`} inputMode="decimal" value={f.load} onFocus={e => e.currentTarget.select()} onChange={e => change('load', e.target.value)} />
-          <p className="mt-1 text-xs text-slate-500">{f.kind === 'externalLoad' ? f.convention === 'barbellTotal' ? 'Total barbell load' : f.convention === 'perImplement' ? 'Per implement' : 'Machine displayed' : f.kind === 'addedLoad' ? 'Added load' : 'Displayed assistance'}</p>
+
         </div> : <p className="text-sm">{f.kind === 'bodyweight' ? 'Bodyweight' : 'Load unspecified · choose a load type in Options if needed'}</p>}
-        <div><p className={fieldLabel}>RIR (optional)</p><div className="my-1 flex flex-wrap items-center gap-2">{['0', '1', '2', '3', '4', '5'].map(value => <button type="button" key={value} className={stepControl + ' ' + (f.rir === value ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-slate-300')} aria-label={value + ' RIR'} aria-pressed={f.rir === value} onClick={() => change('rir', value)}>{value}</button>)}</div><input className={fieldControl} aria-label={'Set ' + number + ' Actual RIR (optional)'} placeholder="Other" inputMode="decimal" value={f.rir} onFocus={e => e.currentTarget.select()} onChange={e => change('rir', e.target.value)} /></div>
+        <div><p className={fieldLabel}>RIR (optional)</p><div className="my-1 flex flex-wrap items-center gap-2">{['0', '1', '2', '3', '4', '5'].map(value => <button type="button" key={value} className={stepControl + ' ' + (f.rir === value ? 'border-black bg-black text-white' : 'border-slate-300')} aria-label={value + ' RIR'} aria-pressed={f.rir === value} onClick={() => change('rir', value)}>{value}</button>)}</div><input className={fieldControl} aria-label={'Set ' + number + ' Actual RIR (optional)'} placeholder="Other" inputMode="decimal" value={f.rir} onFocus={e => e.currentTarget.select()} onChange={e => change('rir', e.target.value)} /></div>
       </> : <div className="grid grid-cols-3 gap-2">{!['unspecified', 'bodyweight'].includes(f.kind) && input('load', 'Actual load')}{input('reps', 'Actual reps')}{input('rir', 'Actual RIR (optional)')}</div>}
       <details className="text-sm"><summary className="min-h-11 cursor-pointer py-2">Options · {f.unit || (f.kind === 'bodyweight' || f.kind === 'unspecified' ? '' : 'choose unit · ')} {f.basis === 'perSide' ? 'per side · ' : f.basis === 'alternating' ? 'alternating · ' : ''}{f.kind === 'externalLoad' ? f.convention === 'barbellTotal' ? 'barbell total' : f.convention === 'perImplement' ? 'per implement' : 'machine displayed' : f.kind === 'addedLoad' ? 'added load' : f.kind === 'unspecified' ? 'choose load type' : f.kind}</summary>
         <div className="grid grid-cols-2 gap-2">
@@ -230,12 +268,16 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
           {f.kind === 'externalLoad' && <label>Load basis<select className={control + ' w-full'} aria-label={`Set ${number} load basis`} value={f.convention} onChange={e => change('convention', e.target.value)}><option value="barbellTotal">Barbell total</option><option value="perImplement">Per implement</option><option value="machineDisplayed">Machine displayed</option></select></label>}
           {f.kind === 'externalLoad' && <label>Zero load<select className={control + ' w-full'} aria-label={`Set ${number} zero load meaning`} value={f.zeroMeaning ?? 'validZero'} onChange={e => change('zeroMeaning', e.target.value)}><option value="validZero">Valid zero</option><option value="notAllowed">Zero not allowed</option></select></label>}
         </div>
+        {activePanel && saved?.result && !draft?.conflict && <button className={control + ' mt-2'} onClick={() => { if (!currentDraft.current) begin(); if (clearing) save(true); else setClearing(true); }}>{clearing ? 'Confirm clear erroneous result' : 'Clear erroneous result'}</button>}
       </details>
       {clearing && !historical && <label className="grid gap-1 text-sm">Reason for clearing<input className={control} aria-label={`Set ${number} correction reason`} maxLength={200} value={f.reason} onChange={e => change('reason', e.target.value)} /></label>}
 
-      {draft?.conflict ? <><button className={control} onClick={() => void reviewLatest()}>Review latest result</button>{reviewed && <div><p>Latest: {resultLabel(reviewed.latest?.result ?? null)} · v{reviewed.latest?.version ?? 0}</p><button className={control} onClick={() => { store({ ...draft, base: reviewed.latest, conflict: false }); setReviewed(null); setMessage('Input retained. Save only if this is your intended correction.'); }}>Use this version for my correction</button></div>}</> : <button className={activePanel ? 'min-h-11 rounded-full bg-emerald-700 px-5 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-40' : control} onClick={() => { if (!currentDraft.current) begin(); save(); }}>{(draft ? draft.base : saved) ? activePanel ? 'Update set' : 'Save correction' : activePanel ? 'Log set' : 'Record set'}</button>}
-      {!historical && draft?.base?.result && !draft.conflict && <button className={control} onClick={() => { if (clearing) save(true); else setClearing(true); }}>{clearing ? 'Confirm clear erroneous result' : 'Clear erroneous result'}</button>}
-      {draft && <button className={control} onClick={cancel}>{historical ? 'Cancel' : 'Discard input'}</button>}
+      <div className={activePanel ? 'grid grid-cols-2 gap-2' : 'flex flex-wrap gap-2'}>
+      {draft?.conflict ? <><button className={control} onClick={() => void reviewLatest()}>Review latest result</button>{reviewed && <div><p>Latest: {resultLabel(reviewed.latest?.result ?? null)} · v{reviewed.latest?.version ?? 0}</p><button className={control} onClick={() => { store({ ...draft, base: reviewed.latest, conflict: false }); setReviewed(null); setMessage('Input retained. Save only if this is your intended correction.'); }}>Use this version for my correction</button></div>}</> : <button className={activePanel ? 'min-h-11 rounded-full bg-black px-5 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-40' : control} onClick={() => { if (!currentDraft.current) begin(); save(); }}>{(draft ? draft.base : saved) ? activePanel ? 'Update set' : 'Save correction' : activePanel ? 'Log set' : 'Record set'}</button>}
+      {activePanel && (saved ? <button className="min-h-11 rounded-full border border-slate-300 px-3 text-sm font-medium" onClick={onReturn}>Return to active set</button> : !skipped && <button className="min-h-11 rounded-full border border-slate-300 px-3 text-sm font-medium" onClick={skip}>Skip set</button>)}
+      </div>
+      {!activePanel && !historical && draft?.base?.result && !draft.conflict && <button className={control} onClick={() => { if (clearing) save(true); else setClearing(true); }}>{clearing ? 'Confirm clear erroneous result' : 'Clear erroneous result'}</button>}
+      {draft && !activePanel && <button className={control} onClick={cancel}>{historical ? 'Cancel' : 'Discard input'}</button>}
     </fieldset>}
     {readOnly && draft && <p>This workout attempt is closed. Retained input cannot change it.</p>}
     {readOnly && draft && !draft.pending && <button className={control} onClick={() => store(null)}>Discard retained input</button>}
@@ -245,6 +287,6 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
       catch { setMessage('Could not check saved results. Retry when connected; your input is retained.'); }
       finally { setBusy(false); }
     }}>Check saved results</button></div>}
-    {message && <p role="status" className="mt-2 text-sm">{message}</p>}
+    <div className="mt-2 h-10 overflow-y-auto text-sm" role="status" tabIndex={message ? 0 : -1} aria-live="polite">{message}</div>
   </div>;
 }

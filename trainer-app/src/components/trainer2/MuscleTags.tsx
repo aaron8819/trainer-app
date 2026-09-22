@@ -9,7 +9,7 @@ export function MuscleTags({ exercise }: { exercise: WorkoutIntent['positions'][
   const groups = (muscles as Record<string, { primary: string[]; secondary: string[] }>)[exercise.catalogId];
   if (!groups) return null;
   return <div className="mt-1 flex flex-wrap gap-1 text-[11px] leading-5">
-    {groups.primary.map(name => <span key={name} className="rounded-full bg-emerald-100 px-2 font-medium text-emerald-900">Primary · {name}</span>)}
-    {groups.secondary.map(name => <span key={name} className="rounded-full border border-slate-200 px-2 text-slate-600">Secondary · {name}</span>)}
+    {groups.primary.map(name => <span key={name} aria-label={`Primary muscle: ${name}`} className="rounded-full bg-slate-100 px-2 font-medium text-slate-700">{name}</span>)}
+    {groups.secondary.map(name => <span key={name} aria-label={`Secondary muscle: ${name}`} className="rounded-full border border-slate-200 px-2 text-slate-600">{name}</span>)}
   </div>;
 }

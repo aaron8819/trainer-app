@@ -8,7 +8,7 @@ This bounded local slice implements recording and correcting existing prescribed
 
 | Command | Expected state | Intent | Effect |
 | --- | --- | --- | --- |
-| RecordSetResult | `resultVersion: 0`, no previous revision for this target | Non-null result | Creates one performedSetId and version 1 |
+| RecordSetResult | `resultVersion: 0`, no previous revision; reviewed `skipActionId` if previously skipped | Non-null result | Creates one performedSetId and version 1 |
 | CorrectSetResult | Exact positive resultVersion and performedSetId reviewed by the user | Result and optional nonblank correction reason, at most 200 characters | Appends version + 1, preserving performedSetId |
 | CorrectSetResult with result null | Same correction precondition | Explicit erroneous-removal reason | Excludes current evidence; retains the revision and provenance |
 | CorrectSetResult after clearing | Exact cleared version and same performedSetId | New non-null result and optional reason | Re-records under the same identity with a newer version |
@@ -48,3 +48,5 @@ Run the registered `node node_modules/tsx/dist/cli.mjs scripts/test-trainer2-set
 `SetResultRow.test.tsx` adds five credential-free cases; existing HTTP and navigation suites cover the extended boundaries. Inventory is 405 files: 366 credential-free, 34 import-only and five DB-required. The disposable harness is separately registered, not a new Vitest DB suite. See `artifacts/trainer2/SET_RESULTS_HANDOFF.md` for source-bound receipts and explicit qualifications. The existing disposable demo launcher remains usable; no hosted deployment, independent acceptance, real-training readiness or Phase 0 completion is claimed.
 
 Forward migration `20260916010000_trainer2_optional_correction_reason` makes value-edit reasons optional in the command contract and append-only database guard/check. Absent reasons persist as SQL null and remain bound to the submitted envelope. Historical reasons and immutable records are untouched. Clearing a result still requires a nonblank reason and retains the Open-only lifecycle rule; historical clearing remains prohibited. Actor, timestamp, action identity, contiguous versions, stale preconditions and replay seals are unchanged.
+
+[Skip set](SKIP_SET.md) adds immutable skip history without performed values. Recording after an explicit skip requires its reviewed action ID; stale logging conflicts.

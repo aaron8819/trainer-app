@@ -1399,3 +1399,14 @@ model Trainer2OccurrenceSkip {
   @@unique([accountId, actionId])
   @@index([accountId, planId])
 }
+
+// Immutable skip audit; subsequent first recording explicitly binds this action.
+model Trainer2SetSkip {
+  executionId String @db.Uuid
+  targetId String @db.Uuid
+  accountId String
+  actionId String @db.Uuid
+  skippedAt DateTime @default(now()) @db.Timestamptz(3)
+  @@id([executionId, targetId])
+  @@unique([accountId, actionId])
+}

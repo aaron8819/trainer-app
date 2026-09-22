@@ -96,3 +96,19 @@ it('reads latest corrected exercise summaries in finished-date order with exact 
   expect((await readExecutionWithPrevious(tx, principal, currentId))?.previous).toEqual([]);
   expect(candidates).toHaveBeenCalledTimes(2);
 });
+
+it('selects the latest eligible workout and first corrected working mass in saved order without requiring reps', async () => {
+  const p = createHypertrophyPlan().occurrences[0].positions[0];
+  p.targets = [p.targets[0], { ...p.targets[0], id: randomUUID() }, { ...p.targets[0], id: randomUUID() }];
+  p.targets[0] = { ...p.targets[0], classification: 'rampUp' };
+  const make = (load: string, convention = 'barbellTotal') => ({ result: { reps: null, rir: null, measurement: { kind: 'externalLoad', value: load, unit: 'lb', convention, zeroMeaning: 'validZero' } }, version: 2 });
+  const owned = p.targets.map(t => ({ id: randomUUID(), sourceTargetId: t.id }));
+  const current = { executionId: randomUUID(), lifecycle: 'Open', results: [], initial: { positions: [], startedAt: '2026-09-16T12:00:00.000Z', occurrence: { positions: [p] } } } as unknown as ExecutionRead;
+  const makeSource = (id: string, convention: string) => ({ executionId: id, lifecycle: 'Finished', finish: { finishedAt: '2026-09-15T12:00:00.000Z' }, initial: { occurrence: { name: 'History', positions: [p] }, positions: [{ sourcePositionId: p.id, targets: owned }] }, results: [2, 0, 1].map(i => ({ ...make(String(100 + i), convention), targetId: owned[i].id })) });
+  const invalidId = randomUUID(), eligibleId = randomUUID(), olderId = randomUUID();
+  const candidates = vi.fn().mockResolvedValue([invalidId, eligibleId, olderId].map(executionId => ({ executionId })));
+  const tx = { trainer2ExecutionFinish: { findMany: candidates } } as unknown as Prisma.TransactionClient;
+  mocks.read.mockResolvedValueOnce(current).mockResolvedValueOnce(makeSource(invalidId, 'perImplement')).mockResolvedValueOnce(makeSource(eligibleId, 'barbellTotal')).mockResolvedValueOnce(makeSource(olderId, 'barbellTotal'));
+  const read = await readExecutionWithPrevious(tx, { accountId: 'trusted', issuer: 'test', subject: 'test' }, current.executionId);
+  expect(read?.firstSetLoads).toEqual([{ positionId: p.id, executionId: eligibleId, result: expect.objectContaining({ targetId: owned[1].id, version: 2, result: expect.objectContaining({ measurement: expect.objectContaining({ value: '101' }) }) }) }]);
+});

@@ -1,4 +1,5 @@
 'use client';
+import { startingPounds } from '@/lib/engine/trainer2/logging-prefill';
 import { useEffect, useRef, useState } from 'react';
 import type { ExecutionRead } from '@/lib/trainer2-contracts/execution';
 import type { SavedSetResult } from '@/lib/trainer2-contracts/set-results';
@@ -67,6 +68,7 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
   const active = sets.find(s => s.id === selected);
   const count = sets.filter(s => execution.results.some(r => r.targetId === s.id && r.result)).length;
   const prior = active && execution.previous?.find(p => p.positionId === active.position.id);
+  const historyMeanings = [...new Set(prior?.results.flatMap(r => { const m = r.result?.measurement; return m && 'value' in m ? [loadLabel(m).split(' lb ')[1]] : []; }) ?? [])];
   function onSubmission(id: string) {
     const start = selection.current;
     return (results: SavedSetResult[]) => {
@@ -92,25 +94,23 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
       <div aria-live="polite" aria-atomic="true"><h3 ref={heading} tabIndex={-1} className="text-lg font-semibold outline-none">{active?.position.exercise.name ?? (count === sets.length ? 'Ready to finish' : 'Choose your next set')}</h3>
       {active && <p className="text-xs text-slate-500">{active.position.role ?? 'Exercise'} · Set {active.number} of {active.position.targets.length}</p>}</div>
       {active && <>
-        <MuscleTags exercise={active.position.exercise} />
         {execution.results.some(r => r.targetId === active.id && r.result) && <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-1"><p className="text-sm font-semibold text-amber-900">Editing recorded set {active.number}</p>{firstUnrecorded(execution.results) && <button type="button" className="min-h-11 rounded-full px-3 text-xs font-semibold text-amber-900" onClick={() => select(firstUnrecorded(execution.results), true)}>Return to active set</button>}</div>}
-        <p className="mt-1 text-sm text-slate-600">Starting target · {targetLabel(active.target)}</p>
+        <p className="mt-1 text-sm text-slate-600">Starting target · {targetLabel({ ...active.target, measurement: null })}{active.target.measurement && <> · {startingPounds(active.target.measurement) === null ? 'Bodyweight' : `${startingPounds(active.target.measurement)} lb suggested from prescription`}</>}{!active.target.measurement && active.number === 1 && execution.firstSetLoads?.some(h => h.positionId === active.position.id) && ' · Last time'}</p>
         <details key={active.positionId} className="mt-1 text-sm"><summary className="min-h-11 cursor-pointer py-3 text-xs font-medium text-emerald-800">History</summary>
-          {active.target.measurement && 'unit' in active.target.measurement && active.target.measurement.unit === 'kg' && <p>Original prescription: {active.target.measurement.value} kg</p>}
           {prior ? <><p className="mb-2 text-xs text-slate-600">Previous · {prior.workoutName} · {new Date(prior.finishedAt).toLocaleDateString()}</p>
+            {historyMeanings.length > 0 && <p className="mb-1 text-xs text-slate-500">{historyMeanings.join(' · ')}</p>}
             <table className="w-full text-left text-sm tabular-nums"><caption className="sr-only">Previous exercise results</caption><thead className="border-b text-xs text-slate-500"><tr>{['Set', 'Weight', 'Reps', 'RIR'].map(label => <th key={label} scope="col" className="py-1 pr-2 font-medium">{label}</th>)}</tr></thead>
               <tbody>{prior.results.map((r, index) => {
                 const m = r.result?.measurement, reps = r.result?.reps;
-                const meaning = m && 'value' in m ? loadLabel(m).split(' lb ')[1] : null;
-                return <tr key={r.targetId} className="border-b border-slate-100 align-top"><th scope="row" className="py-2 pr-2 font-normal">{index + 1}</th><td className="py-2 pr-2">{m && 'value' in m ? `${pounds(m.value, m.unit)} lb` : m?.kind === 'bodyweight' ? 'Bodyweight' : '—'}{meaning && <span className="block text-[11px] text-slate-500">{meaning}</span>}</td><td className="py-2 pr-2">{reps?.value ?? '—'}{reps && reps.basis !== 'total' && <span className="block text-[11px] text-slate-500">{reps.basis === 'perSide' ? 'per side' : 'alternating'}</span>}</td><td className="py-2">{r.result?.rir ?? '—'}</td></tr>;
+                return <tr key={r.targetId} className="border-b border-slate-100 align-top"><th scope="row" className="py-2 pr-2 font-normal">{index + 1}</th><td className="py-2 pr-2">{m && 'value' in m ? `${pounds(m.value, m.unit)} lb` : m?.kind === 'bodyweight' ? 'Bodyweight' : '—'}{historyMeanings.length > 1 && m && 'value' in m && <span className="block text-[11px] text-slate-500">{loadLabel(m).split(' lb ')[1]}</span>}</td><td className="py-2 pr-2">{reps?.value ?? '—'}{reps && reps.basis !== 'total' && <span className="block text-[11px] text-slate-500">{reps.basis === 'perSide' ? 'per side' : 'alternating'}</span>}</td><td className="py-2">{r.result?.rir ?? '—'}</td></tr>;
               })}</tbody></table>
-            {prior.results.some(r => r.result?.measurement && 'unit' in r.result.measurement && r.result.measurement.unit === 'kg') && <details className="text-xs text-slate-500"><summary className="min-h-11 cursor-pointer py-3">Original units</summary>{prior.results.map((r, i) => <p key={r.targetId}>Set {i + 1} · {loadLabel(r.result?.measurement ?? null, true)}</p>)}</details>}
             <a className="inline-block min-h-11 py-2 underline" href={`/trainer2/dev/executions/${prior.executionId}`}>View source workout</a></> : <p>No previous exercise results.</p>}
 
         </details>
       </>}
       {sets.map(s => <SetResultRow key={s.id} active={selected === s.id} activePanel accountId={execution.initial.accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
         targetId={s.id} number={s.number} saved={execution.results.find(r => r.targetId === s.id)} prescription={s.target} exercise={s.position.exercise}
+        firstSetLoad={execution.firstSetLoads?.find(h => h.positionId === s.position.id)?.result}
         preceding={sets.filter(p => p.positionId === s.positionId && p.number < s.number).reverse().flatMap(p => execution.results.filter(r => r.targetId === p.id))}
         locked={locked} onInputState={onInputState} refresh={refresh} onRecorded={recorded} onSubmission={() => onSubmission(s.id)} />)}
     </section>
@@ -122,11 +122,11 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
           return <div key={owned.id} className={`rounded-xl border p-3 ${active?.positionId === owned.id ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-white'}`}>
             <button className="flex min-h-11 w-full items-center justify-between gap-3 text-left" onClick={() => select(items.find(s => !execution.results.some(r => r.targetId === s.id && r.result))?.id ?? items[0].id, true)}><span className="font-medium">{position.exercise.name}</span><span className="shrink-0 text-xs">{recordedCount}/{items.length} recorded</span></button>
             <MuscleTags exercise={position.exercise} />
-            <details open><summary className="min-h-11 cursor-pointer py-3 text-xs text-slate-600">Sets</summary><div className="flex flex-wrap gap-2">{items.map(s => {
+            <div className="mt-2 flex flex-wrap gap-2">{items.map(s => {
               const saved = execution.results.find(r => r.targetId === s.id);
               return <button key={s.id} aria-label={`${position.exercise.name}, set ${s.number}, ${saved?.result ? 'recorded' : 'unrecorded'}${inputStates[s.id] ? ', retained input' : ''}`} aria-pressed={selected === s.id}
                 className={`min-h-11 rounded-lg border px-3 py-2 text-left text-sm ${selected === s.id ? 'border-emerald-800 bg-emerald-800 text-white' : saved?.result ? 'border-emerald-200 text-emerald-800' : 'border-slate-300'}`} onClick={() => select(s.id, true)}>Set {s.number}{saved?.result ? ' · ' + resultLabel(saved.result) : ''}{inputStates[s.id] ? ' •' : ''}</button>;
-            })}</div></details>
+            })}</div>
           </div>;
         })}
       </details>)}

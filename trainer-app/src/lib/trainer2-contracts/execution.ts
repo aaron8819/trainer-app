@@ -38,6 +38,7 @@ export const initialPrescription = z.object({ schemaVersion: z.literal(1), kind:
 export type InitialPrescription = z.infer<typeof initialPrescription>;
 const previousPerformance = z.object({ positionId: id, sourcePositionId: id, executionId: id, workoutName: z.string(), finishedAt: z.iso.datetime(), results: z.array(savedSetResult).min(1) }).strict();
 export const executionRead = z.object({ executionId: id, lifecycle: z.enum(['Open', 'Finished', 'Discarded']), discard: discardFact.nullable().optional(), finish: finishFact.nullable(),
+  firstSetLoads: z.array(z.object({ positionId: id, executionId: id, result: savedSetResult }).strict()).optional(),
   previous: z.array(previousPerformance).optional(), contentHash: hash, initial: initialPrescription, results: z.array(savedSetResult), history: z.array(savedSetResult).optional() }).strict().refine(v =>
     v.executionId === v.initial.executionId && (v.lifecycle === 'Discarded' ? !!v.discard && v.discard.actorAccountId === v.initial.accountId && v.results.length === 0 && v.history?.length === 0 : !v.discard) && (v.lifecycle === 'Finished' ? !!v.finish : !v.finish) && new Set(v.results.map(r => r.targetId)).size === v.results.length &&
     v.results.every(r => r.executionId === v.executionId && v.initial.positions.some(p => p.targets.some(t => t.id === r.targetId))));
@@ -49,6 +50,10 @@ export async function validateExecutionRead(input: unknown, accountId: string, e
     value.contentHash !== await digest(value.initial) || value.initial.instructions.contentHash !== await digest(value.initial.instructions.document))
     throw new Error('Invalid saved workout response');
   if (value.previous?.some(p => p.executionId === value.executionId || !value.initial.occurrence.positions.some(o => o.id === p.positionId) || p.results.some(r => r.executionId !== p.executionId || !r.result) || p.finishedAt > value.initial.startedAt) || new Set(value.previous?.map(p => p.positionId)).size !== (value.previous?.length ?? 0)) throw new Error('Invalid previous performance');
+  if (value.firstSetLoads?.some(p => p.executionId === value.executionId || p.result.executionId !== p.executionId ||
+    !p.result.result?.measurement || !('value' in p.result.result.measurement) ||
+    !value.initial.occurrence.positions.some(o => o.id === p.positionId)) ||
+    new Set(value.firstSetLoads?.map(p => p.positionId)).size !== (value.firstSetLoads?.length ?? 0)) throw new Error('Invalid first-set load');
   const history = value.history ?? value.results;
   if (value.history) {
     if (history.some(r => r.executionId !== value.executionId || !value.results.some(c => c.targetId === r.targetId))) throw new Error('Invalid result history');

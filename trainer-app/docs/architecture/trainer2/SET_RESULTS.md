@@ -9,9 +9,9 @@ This bounded local slice implements recording and correcting existing prescribed
 | Command | Expected state | Intent | Effect |
 | --- | --- | --- | --- |
 | RecordSetResult | `resultVersion: 0`, no previous revision for this target | Non-null result | Creates one performedSetId and version 1 |
-| CorrectSetResult | Exact positive resultVersion and performedSetId reviewed by the user | Result and nonblank correction reason, at most 200 characters | Appends version + 1, preserving performedSetId |
+| CorrectSetResult | Exact positive resultVersion and performedSetId reviewed by the user | Result and optional nonblank correction reason, at most 200 characters | Appends version + 1, preserving performedSetId |
 | CorrectSetResult with result null | Same correction precondition | Explicit erroneous-removal reason | Excludes current evidence; retains the revision and provenance |
-| CorrectSetResult after clearing | Exact cleared version and same performedSetId | New non-null result and reason | Re-records under the same identity with a newer version |
+| CorrectSetResult after clearing | Exact cleared version and same performedSetId | New non-null result and optional reason | Re-records under the same identity with a newer version |
 
 A new Record after clearing conflicts; clearing never recreates version zero. Equal values do not restore an earlier version. No unconditional upsert or delete exists. Per-target versions define conflict scope; the existing account transaction lock orders acceptance without forcing independent sets to share an expected version. These ongoing result commands require Open; completed results use the separate [historical correction command](HISTORICAL_SET_CORRECTIONS.md). Logging all prescribed sets leaves the execution Open and the occurrence unresolved.
 
@@ -21,7 +21,7 @@ A result contains nullable `reps: { value, basis }`, nullable `measurement`, and
 
 Actual values, units and counting/loading basis may differ from targets. The logging UI may suggest explicit prescription or compatible preceding-set values, but only an explicit Log set records them as performed evidence; suggestions alone write nothing. Editing starts from the saved result. The actual exercise and classification remain linked to the exact immutable prescribed set in this slice; no exercise substitution or classification correction is introduced. Entry/correction timestamps are server recording times, not inferred performed times or actual performance order.
 
-Workout start currently admits rep targets only. Duration, distance, unequal sided counts, unsupported-measurement notes, exercise/set additions, removal of prescribed work are outside result entry; explicit completion is owned by WORKOUT_FINISH.md. The form states its sided/duration limitation. Unsupported start captures continue to fail explicitly rather than being coerced into reps.
+Workout start currently admits rep targets only. Duration, distance, unequal sided counts, unsupported-measurement notes, exercise/set additions, removal of prescribed work are outside result entry; explicit completion is owned by WORKOUT_FINISH.md. Contextual validation retains these sided/duration limitations. Unsupported start captures continue to fail explicitly rather than being coerced into reps.
 
 ## Persistence and access
 
@@ -46,3 +46,5 @@ Root layout still renders `AppNavigation`; its existing Trainer2 exclusion now i
 Run the registered `node node_modules/tsx/dist/cli.mjs scripts/test-trainer2-set-results.ts --confirm-disposable` only with task-owned synthetic database authorization. It creates disposable PostgreSQL 17, applies fresh migrations and an accepted-base upgrade, uses restricted runtime/read roles, observes blocking chains for controlled races, checks rollback and direct-write denial, independently inspects current/history rows and compares original prescription/plan rows after mutation categories. The Edge journey records, reloads, corrects, loses a committed response and replays, conflicts across tabs, preserves unrelated drafts, inspects desktop/mobile and restarts the app against the same DB. Services are cleaned up in finally blocks.
 
 `SetResultRow.test.tsx` adds five credential-free cases; existing HTTP and navigation suites cover the extended boundaries. Inventory is 405 files: 366 credential-free, 34 import-only and five DB-required. The disposable harness is separately registered, not a new Vitest DB suite. See `artifacts/trainer2/SET_RESULTS_HANDOFF.md` for source-bound receipts and explicit qualifications. The existing disposable demo launcher remains usable; no hosted deployment, independent acceptance, real-training readiness or Phase 0 completion is claimed.
+
+Forward migration `20260916010000_trainer2_optional_correction_reason` makes value-edit reasons optional in the command contract and append-only database guard/check. Absent reasons persist as SQL null and remain bound to the submitted envelope. Historical reasons and immutable records are untouched. Clearing a result still requires a nonblank reason and retains the Open-only lifecycle rule; historical clearing remains prohibited. Actor, timestamp, action identity, contiguous versions, stale preconditions and replay seals are unchanged.

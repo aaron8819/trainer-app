@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import { compatibleLoggingLoad, startingPounds } from '@/lib/engine/trainer2/logging-prefill';
 import { pounds, loadLabel } from './pound-display';
 import { z } from 'zod';
 import { performedResult, savedSetResult, resultMutationCommand, setResultResponse,
@@ -18,7 +19,7 @@ const formSchema = z.object({ reps: z.string(), basis: z.enum(['total', 'perSide
   unit: z.enum(['', 'kg', 'lb']), zeroMeaning: z.enum(['validZero', 'notAllowed']).optional(), convention: z.enum(['barbellTotal', 'perImplement', 'machineDisplayed']),
   rir: z.string(), reason: z.string() }).strict();
 type Form = z.infer<typeof formSchema>;
-const draftSchema = z.object({ form: formSchema, base: savedSetResult.nullable(), pending: resultMutationCommand.nullable(), conflict: z.boolean() }).strict();
+const draftSchema = z.object({ form: formSchema, base: savedSetResult.nullable(), pending: resultMutationCommand.nullable(), conflict: z.boolean(), carriedMeasurement: performedResult.shape.measurement.optional() }).strict();
 type Draft = z.infer<typeof draftSchema>;
 function formFor(r?: PerformedResult | null): Form {
   const m = r?.measurement;
@@ -39,9 +40,10 @@ export function resultLabel(r: PerformedResult | null, original = false) {
   if (!r) return 'Cleared as erroneous · no current performed result';
   return `${loadLabel(r.measurement, original)} × ${r.reps ? `${r.reps.value}${r.reps.basis === 'perSide' ? ' per side' : r.reps.basis === 'alternating' ? ' alternating' : ''}` : 'reps unspecified'} · ${r.rir === null ? 'RIR unspecified' : `${r.rir} RIR`}`;
 }
-export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId, number, saved, refresh, readOnly = false, locked = false, onInputState, historical = false, history = [], finishVersion, retainedOnly = false, prescription, exercise, active = true, activePanel = false, onSubmission, preceding, onRecorded }: {
+export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId, number, saved, refresh, readOnly = false, locked = false, onInputState, historical = false, history = [], finishVersion, retainedOnly = false, prescription, exercise, active = true, activePanel = false, onSubmission, preceding, onRecorded, firstSetLoad }: {
   active?: boolean; activePanel?: boolean;
   preceding?: SavedSetResult[];
+  firstSetLoad?: SavedSetResult;
   onRecorded?: (record: SavedSetResult) => void;
   onSubmission?: () => (results: SavedSetResult[]) => void;
   prescription?: DraftDocument['occurrences'][number]['positions'][number]['targets'][number];
@@ -50,7 +52,7 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
   retainedOnly?: boolean; historical?: boolean; history?: SavedSetResult[]; finishVersion?: number; readOnly?: boolean; locked?: boolean; onInputState?: (targetId: string, blocked: boolean) => void;
   saved?: SavedSetResult; refresh: () => Promise<SavedSetResult[]>;
 }) {
-  const [suggestion, setSuggestion] = useState<Draft | null>(null);
+  const [clearing, setClearing] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null), [ready, setReady] = useState(false);
   const [message, setMessage] = useState(''), [busy, setBusy] = useState(false);
   const [reviewed, setReviewed] = useState<{ latest: SavedSetResult | null } | null>(null);
@@ -75,13 +77,8 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
         if (restored.form.unit !== 'lb') restored.form = { ...restored.form, load: restored.form.unit === 'kg' && restored.form.load !== '' ? pounds(restored.form.load, 'kg') : restored.form.load, unit: 'lb' };
         currentDraft.current = restored; setDraft(restored);
       }
-      try {
-        const suggested = sessionStorage.getItem(suggestionKey);
-        if (suggested) {
-          const restored = draftSchema.parse(JSON.parse(suggested));
-          if (!restored.pending && (!restored.base || binding(restored.base)) && (!saved || restored.base?.version === saved.version)) setSuggestion(restored);
-        }
-      } catch { /* Invalid convenience suggestions cannot prevent recovery of a valid command/draft. */ }
+      // Convenience snapshots are not user drafts; derive suggestions from the current read.
+      sessionStorage.removeItem(suggestionKey);
       setReady(true);
     } catch { setMessage('The retained result request could not be read. Keep this page open and recover browser storage before saving.'); }
     const beforeUnload = (e: BeforeUnloadEvent) => { if (currentDraft.current) { e.preventDefault(); e.returnValue = ''; } };
@@ -95,23 +92,23 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
   useEffect(() => { onInputState?.(targetId, !ready || !!draft); }, [ready, draft, targetId, onInputState]);
   function cancel() { if (store(null)) { setMessage(''); setTimeout(() => editButton.current?.focus(), 0); } }
   function initialForm(): Form {
-    if (saved?.result) return formFor(saved.result);
+    if (saved) return formFor(saved.result);
     const f = formFor();
     f.basis = prescription?.reps.basis ?? 'total';
     const m = prescription?.measurement;
-    if (m) { f.kind = m.kind; if ('value' in m) f.load = pounds(m.value, m.unit); if (m.kind === 'externalLoad') { f.convention = m.convention; f.zeroMeaning = m.zeroMeaning; } }
+    if (m) { f.kind = m.kind; if ('value' in m && number === 1) f.load = startingPounds(m) ?? ''; if (m.kind === 'externalLoad') { f.convention = m.convention; f.zeroMeaning = m.zeroMeaning; } }
     else if (exercise?.kind === 'catalogSnapshot') {
       f.kind = exercise.loadKind;
       if (['barbellTotal', 'perImplement', 'machineDisplayed'].includes(exercise.convention)) f.convention = exercise.convention as Form['convention'];
     }
     f.reps = prescription && prescription.reps.min === prescription.reps.max ? String(prescription.reps.min) : '';
     f.rir = prescription?.rir ?? '';
-    const prior = preceding?.find(r => {
-      if (!r.result) return false;
-      const p = formFor(r.result);
-      return (!r.result.reps || p.basis === f.basis) && (!r.result.measurement ||
-        (p.kind === f.kind && (p.kind !== 'externalLoad' || (p.convention === f.convention && p.zeroMeaning === f.zeroMeaning))));
-    });
+    if (number === 1 && !m && prescription && exercise && firstSetLoad?.result?.measurement &&
+      compatibleLoggingLoad(firstSetLoad.result.measurement, prescription, exercise)) f.load = startingPounds(firstSetLoad.result.measurement) ?? '';
+    // Nearest recorded target in this position's saved order, never another exercise or an older compatible fallback.
+    const candidate = preceding?.find(r => r.result), value = candidate?.result;
+    const prior = value && (!value.reps || value.reps.basis === f.basis) &&
+      (!value.measurement || (prescription && exercise && compatibleLoggingLoad(value.measurement, prescription, exercise))) ? candidate : undefined;
     if (prior?.result) {
       const p = formFor(prior.result);
       f.reps = p.reps; f.load = p.load; f.rir = p.rir;
@@ -119,17 +116,16 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
     }
     return f;
   }
-  useEffect(() => {
-    if (!activePanel || !active || !ready || draft || suggestion) return;
-    const next = { form: initialForm(), base: saved ?? null, pending: null, conflict: false };
-    setSuggestion(next);
-    try { sessionStorage.setItem(suggestionKey, canonicalJson(next)); } catch { /* Draft writes remain guarded. */ }
-    // Capture once when first presented; refresh must not replace values or base.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, activePanel, ready, draft, suggestion]);
-  function begin() { store(suggestion ?? { form: initialForm(), base: saved ?? null, pending: null, conflict: false }); setMessage(''); }
+  function initialDraft(): Draft {
+    const form = initialForm(), prior = preceding?.find(r => r.result)?.result;
+    const carriedMeasurement = !saved && prior?.measurement && prescription && exercise &&
+      (!prior.reps || prior.reps.basis === form.basis) && compatibleLoggingLoad(prior.measurement, prescription, exercise)
+      ? prior.measurement : undefined;
+    return { form, base: saved ?? null, pending: null, conflict: false, ...(carriedMeasurement ? { carriedMeasurement } : {}) };
+  }
+  function begin() { store(initialDraft()); setMessage(''); }
   function change(field: keyof Form, value: string) {
-    const d = currentDraft.current ?? suggestion ?? { form: initialForm(), base: saved ?? null, pending: null, conflict: false }; if (d.pending || busy || readOnly || locked || !ready) return;
+    const d = currentDraft.current ?? initialDraft(); if (d.pending || busy || readOnly || locked || !ready) return;
     store({ ...d, form: { ...d.form, [field]: value } }); setMessage('');
   }
   async function submit(command: SetResultCommand) {
@@ -154,7 +150,7 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
       const latest = results.find(r => r.targetId === targetId);
       if (!latest || latest.version < outcome.result.version || latest.performedSetId !== outcome.result.performedSetId) throw new Error('Unconfirmed read');
       if (store(null)) {
-        setSuggestion(null); sessionStorage.removeItem(suggestionKey);
+        sessionStorage.removeItem(suggestionKey); setClearing(false);
         setMessage('Saved');
         if (command.commandType === 'RecordSetResult' && latest.version === 1 && latest.actionId === command.actionId) onRecorded?.(latest);
         if (command.commandType === 'RecordSetResult' && command.intent.result && latest.result && latest.version === outcome.result.version) confirmed?.(results);
@@ -169,6 +165,10 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
       const envelope = { schemaVersion: 1, actionId: crypto.randomUUID(), deviceId: crypto.randomUUID(), originatingAccountId: accountId,
         ownershipEpoch, dependsOn: [], target: { executionId, targetId } };
       const result = clear ? null : parseForm(d.form);
+      if (result && !d.base && d.carriedMeasurement) {
+        const original = formFor({ reps: null, measurement: d.carriedMeasurement, rir: null });
+        if (['load', 'kind', 'unit', 'convention', 'zeroMeaning'].every(k => d.form[k as keyof Form] === original[k as keyof Form])) result.measurement = d.carriedMeasurement;
+      }
       // Preserve the original measurement if only its display changed to pounds.
       if (result && d.base?.result) {
         const original = formFor(d.base.result);
@@ -176,10 +176,10 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
         if (canonicalJson(result) === canonicalJson(d.base.result)) { store(null); setMessage('Results are up to date. No values changed.'); return; }
       }
       const command = resultMutationCommand.parse(d.base ? { ...envelope, commandType: historical ? 'CorrectHistoricalSetResult' : 'CorrectSetResult',
-        expected: { resultVersion: d.base.version, performedSetId: d.base.performedSetId }, intent: { result, reason: historical ? 'Correct recorded result' : d.form.reason } } :
+        expected: { resultVersion: d.base.version, performedSetId: d.base.performedSetId }, intent: { result, ...(clear ? { reason: d.form.reason } : {}) } } :
         { ...envelope, commandType: 'RecordSetResult', expected: { resultVersion: 0 }, intent: { result } });
       void submit(command);
-    } catch (error) { setMessage(error instanceof z.ZodError ? 'Enter valid actual values (reps 0–1000, nonnegative load, RIR 0–10) and give a reason for ongoing corrections. Blank fields stay unspecified.' : String(error)); }
+    } catch (error) { setMessage(error instanceof z.ZodError ? 'Enter valid actual values (reps 0–1000, nonnegative load, RIR 0–10). Blank fields stay unspecified.' : String(error)); }
   }
   async function reviewLatest() {
     if (busy) return;
@@ -192,10 +192,10 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
     finally { if (alive.current) setBusy(false); }
   }
   const compact = !historical && !readOnly && !!prescription && (activePanel || !saved);
-  const f = draft?.form ?? (compact ? suggestion?.form ?? initialForm() : undefined), disabled = busy || !!draft?.pending || readOnly || locked || !ready;
+  const f = draft?.form ?? (compact ? initialForm() : undefined), disabled = busy || !!draft?.pending || readOnly || locked || !ready;
   function adjust(field: 'reps' | 'load', delta: number) {
     const value = f?.[field] ?? '';
-    if (value !== '' && !/^\d+(\.\d+)?$/.test(value)) return;
+    if ((value === '' && delta < 0) || (value !== '' && !/^\d+(\.\d+)?$/.test(value))) return;
     change(field, String(Math.min(field === 'reps' ? 1000 : 999999999, Math.max(0, Math.round((Number(value || 0) + delta) * 1e6) / 1e6))));
   }
   const input = (field: 'reps' | 'load' | 'rir', label: string) => <label className="grid gap-1 text-sm">{field === 'load' ? 'Weight (lb)' : field === 'reps' ? `Reps${f?.basis === 'perSide' ? ' per side' : f?.basis === 'alternating' ? ' alternating' : ''}` : 'Actual RIR (optional)'}<input autoFocus={historical && field === 'reps'} onFocus={e => e.currentTarget.select()}
@@ -205,8 +205,7 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
   if (!active || (retainedOnly && !draft)) return null;
   return <div className={activePanel ? "mt-2" : "mt-3 rounded-lg bg-slate-50 p-3"} aria-label={`Set ${number} actual result`}>
     {(!activePanel || saved) && <p className="text-sm font-medium">{saved ? `Saved v${saved.version}: ${resultLabel(saved.result)}` : 'Not recorded'}</p>}
-    {historical && history.length > 0 && <details className="mt-2 text-sm"><summary className="min-h-11 cursor-pointer">Result history</summary><ol className="space-y-2">{[...history].sort((a, b) => a.version - b.version).map(r => <li key={r.version}><p>{r.version === 1 ? 'Original record' : 'Correction'} · v{r.version}{r.version === finishVersion ? ' · Acknowledged at finish' : ''}</p><p>{resultLabel(r.result, true)}</p><p>{r.recordedAt} · {r.reason ?? 'Recorded result'}</p></li>)}</ol></details>}
-    {saved?.result?.measurement && 'unit' in saved.result.measurement && saved.result.measurement.unit === 'kg' && <details className="text-xs"><summary className="min-h-11 cursor-pointer py-3">Original units</summary>{loadLabel(saved.result.measurement, true)}</details>}
+    {historical && history.length > 0 && <details className="mt-2 text-sm"><summary className="min-h-11 cursor-pointer">Result history</summary><ol className="space-y-2">{[...history].sort((a, b) => a.version - b.version).map(r => <li key={r.version}><p>{r.version === 1 ? 'Original record' : 'Correction'} · v{r.version}{r.version === finishVersion ? ' · Acknowledged at finish' : ''}</p><p>{resultLabel(r.result)}</p><p>{r.recordedAt} · {r.reason ?? 'Recorded result'}</p></li>)}</ol></details>}
     {saved?.reason && <p className="text-xs text-slate-600">Correction: {saved.reason}</p>}
     {!compact && !draft && !readOnly && (!historical || !!saved?.result) && <button ref={editButton} className={control} disabled={!ready || locked} onClick={begin}>{historical ? 'Correct result' : saved ? saved.result ? 'Edit result' : 'Re-record result' : 'Enter actual result'}</button>}
     {(draft || compact) && f && <fieldset disabled={disabled} className="mt-2 space-y-3">
@@ -218,11 +217,11 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
           <button type="button" className={stepControl} aria-label="Increase reps" onClick={() => adjust('reps', 1)}>+1</button>
         </div></div>
         {!['unspecified', 'bodyweight'].includes(f.kind) ? <div>
-          <p className={fieldLabel}>Weight (lb)</p><div className="my-1 flex gap-2">{[-5, -1, 1, 5].map(delta => <button type="button" key={delta} className={stepControl} aria-label={(delta < 0 ? 'Decrease' : 'Increase') + ' load by ' + Math.abs(delta) + ' lb'} onClick={() => adjust('load', delta)}>{delta < 0 ? '−' : '+'}{Math.abs(delta)}</button>)}<button className="min-h-11 px-2 text-sm" type="button" onClick={() => change('load', '')}>Clear</button></div>
+          <p className={fieldLabel}>Weight (lb)</p><div className="my-1 flex gap-2">{[-10, -5, 5, 10].map(delta => <button type="button" key={delta} className={stepControl} aria-label={(delta < 0 ? 'Decrease' : 'Increase') + ' load by ' + Math.abs(delta) + ' lb'} onClick={() => adjust('load', delta)}>{delta < 0 ? '−' : '+'}{Math.abs(delta)}</button>)}<button className="min-h-11 px-2 text-sm" type="button" onClick={() => change('load', '')}>Clear</button></div>
           <input className={fieldControl} aria-label={`Set ${number} Actual load`} inputMode="decimal" value={f.load} onFocus={e => e.currentTarget.select()} onChange={e => change('load', e.target.value)} />
           <p className="mt-1 text-xs text-slate-500">{f.kind === 'externalLoad' ? f.convention === 'barbellTotal' ? 'Total barbell load' : f.convention === 'perImplement' ? 'Per implement' : 'Machine displayed' : f.kind === 'addedLoad' ? 'Added load' : 'Displayed assistance'}</p>
         </div> : <p className="text-sm">{f.kind === 'bodyweight' ? 'Bodyweight' : 'Load unspecified · choose a load type in Options if needed'}</p>}
-        <div><p className={fieldLabel}>RIR (optional)</p><div className="my-1 flex items-center gap-2">{['0', '1', '2', '3'].map(value => <button type="button" key={value} className={stepControl + ' ' + (f.rir === value ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-slate-300')} aria-label={value + ' RIR'} aria-pressed={f.rir === value} onClick={() => change('rir', value)}>{value}</button>)}</div><input className={fieldControl} aria-label={'Set ' + number + ' Actual RIR (optional)'} placeholder="Other" inputMode="decimal" value={f.rir} onFocus={e => e.currentTarget.select()} onChange={e => change('rir', e.target.value)} /></div>
+        <div><p className={fieldLabel}>RIR (optional)</p><div className="my-1 flex flex-wrap items-center gap-2">{['0', '1', '2', '3', '4', '5'].map(value => <button type="button" key={value} className={stepControl + ' ' + (f.rir === value ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-slate-300')} aria-label={value + ' RIR'} aria-pressed={f.rir === value} onClick={() => change('rir', value)}>{value}</button>)}</div><input className={fieldControl} aria-label={'Set ' + number + ' Actual RIR (optional)'} placeholder="Other" inputMode="decimal" value={f.rir} onFocus={e => e.currentTarget.select()} onChange={e => change('rir', e.target.value)} /></div>
       </> : <div className="grid grid-cols-3 gap-2">{!['unspecified', 'bodyweight'].includes(f.kind) && input('load', 'Actual load')}{input('reps', 'Actual reps')}{input('rir', 'Actual RIR (optional)')}</div>}
       <details className="text-sm"><summary className="min-h-11 cursor-pointer py-2">Options · {f.unit || (f.kind === 'bodyweight' || f.kind === 'unspecified' ? '' : 'choose unit · ')} {f.basis === 'perSide' ? 'per side · ' : f.basis === 'alternating' ? 'alternating · ' : ''}{f.kind === 'externalLoad' ? f.convention === 'barbellTotal' ? 'barbell total' : f.convention === 'perImplement' ? 'per implement' : 'machine displayed' : f.kind === 'addedLoad' ? 'added load' : f.kind === 'unspecified' ? 'choose load type' : f.kind}</summary>
         <div className="grid grid-cols-2 gap-2">
@@ -230,12 +229,12 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
           <label>Actual load type<select className={control + ' w-full'} aria-label={`Set ${number} actual load type`} value={f.kind} onChange={e => change('kind', e.target.value)}><option value="unspecified">Unspecified</option><option value="bodyweight">Bodyweight</option><option value="externalLoad">External load</option><option value="addedLoad">Added load</option><option value="assistance">Assistance</option></select></label>
           {f.kind === 'externalLoad' && <label>Load basis<select className={control + ' w-full'} aria-label={`Set ${number} load basis`} value={f.convention} onChange={e => change('convention', e.target.value)}><option value="barbellTotal">Barbell total</option><option value="perImplement">Per implement</option><option value="machineDisplayed">Machine displayed</option></select></label>}
           {f.kind === 'externalLoad' && <label>Zero load<select className={control + ' w-full'} aria-label={`Set ${number} zero load meaning`} value={f.zeroMeaning ?? 'validZero'} onChange={e => change('zeroMeaning', e.target.value)}><option value="validZero">Valid zero</option><option value="notAllowed">Zero not allowed</option></select></label>}
-        </div><p className="mt-2 text-xs text-slate-500">Blank values stay unspecified; zero is a value. Per side means the count on each side. Unequal left/right counts and duration are not supported.</p>
+        </div>
       </details>
-      {(draft?.base ?? suggestion?.base) && !historical && <label className="grid gap-1 text-sm">Correction reason<input className={control} aria-label={`Set ${number} correction reason`} maxLength={200} value={f.reason} onChange={e => change('reason', e.target.value)} /></label>}
+      {clearing && !historical && <label className="grid gap-1 text-sm">Reason for clearing<input className={control} aria-label={`Set ${number} correction reason`} maxLength={200} value={f.reason} onChange={e => change('reason', e.target.value)} /></label>}
 
-      {draft?.conflict ? <><button className={control} onClick={() => void reviewLatest()}>Review latest result</button>{reviewed && <div><p>Latest: {resultLabel(reviewed.latest?.result ?? null)} · v{reviewed.latest?.version ?? 0}</p><button className={control} onClick={() => { store({ ...draft, base: reviewed.latest, conflict: false }); setReviewed(null); setMessage('Input retained. Save only if this is your intended correction.'); }}>Use this version for my correction</button></div>}</> : <button className={activePanel ? 'min-h-11 rounded-full bg-emerald-700 px-5 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-40' : control} onClick={() => { if (!currentDraft.current) begin(); save(); }}>{(draft?.base ?? suggestion?.base) ? activePanel ? 'Update set' : 'Save correction' : activePanel ? 'Log set' : 'Record set'}</button>}
-      {!historical && draft?.base?.result && !draft.conflict && <button className={control} onClick={() => save(true)}>Clear erroneous result</button>}
+      {draft?.conflict ? <><button className={control} onClick={() => void reviewLatest()}>Review latest result</button>{reviewed && <div><p>Latest: {resultLabel(reviewed.latest?.result ?? null)} · v{reviewed.latest?.version ?? 0}</p><button className={control} onClick={() => { store({ ...draft, base: reviewed.latest, conflict: false }); setReviewed(null); setMessage('Input retained. Save only if this is your intended correction.'); }}>Use this version for my correction</button></div>}</> : <button className={activePanel ? 'min-h-11 rounded-full bg-emerald-700 px-5 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-40' : control} onClick={() => { if (!currentDraft.current) begin(); save(); }}>{(draft ? draft.base : saved) ? activePanel ? 'Update set' : 'Save correction' : activePanel ? 'Log set' : 'Record set'}</button>}
+      {!historical && draft?.base?.result && !draft.conflict && <button className={control} onClick={() => { if (clearing) save(true); else setClearing(true); }}>{clearing ? 'Confirm clear erroneous result' : 'Clear erroneous result'}</button>}
       {draft && <button className={control} onClick={cancel}>{historical ? 'Cancel' : 'Discard input'}</button>}
     </fieldset>}
     {readOnly && draft && <p>This workout attempt is closed. Retained input cannot change it.</p>}

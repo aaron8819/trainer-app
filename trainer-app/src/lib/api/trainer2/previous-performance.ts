@@ -1,3 +1,4 @@
+import { sameLoggingExercise, compatibleLoggingLoad } from '../../engine/trainer2/logging-prefill';
 import type { Prisma } from '@prisma/client';
 import type { ExecutionRead } from '../../trainer2-contracts/execution';
 import type { PerformedResult } from '../../trainer2-contracts/set-results';
@@ -25,12 +26,30 @@ export async function readExecutionWithPrevious(tx: Prisma.TransactionClient, pr
   const current = await readExecution(tx, principal, executionId);
   if (!current) return null;
   const previous: NonNullable<ExecutionRead['previous']> = [];
+  const firstSetLoads: NonNullable<ExecutionRead['firstSetLoads']> = [];
   const wanted = current.initial.occurrence.positions.filter(p => p.exercise.kind === 'catalogSnapshot');
-  if (!wanted.length || current.lifecycle === 'Discarded') return { ...current, previous };
+  if (!wanted.length || current.lifecycle === 'Discarded') return { ...current, previous, firstSetLoads };
   const candidates = await tx.trainer2ExecutionFinish.findMany({ where: { accountId: principal.accountId, executionId: { not: executionId }, finishedAt: { lte: new Date(current.initial.startedAt) } }, orderBy: [{ finishedAt: 'desc' }, { executionId: 'asc' }], select: { executionId: true } });
   for (const candidate of candidates) {
     const source = await readExecution(tx, principal, candidate.executionId);
     if (source?.lifecycle !== 'Finished' || !source.finish) continue;
+    // Separate from history display: weight suggestions need no performed reps and use working sets only.
+    for (const position of wanted.filter(p => !firstSetLoads.some(h => h.positionId === p.id))) {
+      const target = position.targets[0];
+      if (!target) continue;
+      const matches = source.initial.occurrence.positions.filter(p => sameLoggingExercise(p.exercise, position.exercise));
+      const result = matches.flatMap(match => {
+        const owned = source.initial.positions.find(p => p.sourcePositionId === match.id);
+        if (!owned) return [];
+        return owned.targets.flatMap(t => {
+          if (match.targets.find(s => s.id === t.sourceTargetId)?.classification !== 'working') return [];
+          const saved = source.results.find(r => r.targetId === t.id);
+          const m = saved?.result?.measurement;
+          return saved && m && 'value' in m && compatibleLoggingLoad(m, target, position.exercise) ? [saved] : [];
+        });
+      })[0];
+      if (result) firstSetLoads.push({ positionId: position.id, executionId: source.executionId, result });
+    }
     for (const position of wanted.filter(p => !previous.some(h => h.positionId === p.id))) {
       const matches = source.initial.occurrence.positions.filter(p => canonicalJson(p.exercise) === canonicalJson(position.exercise));
       // Multiple appearances are not a one-to-one position match. Omit instead of inventing one.
@@ -45,7 +64,7 @@ export async function readExecutionWithPrevious(tx: Prisma.TransactionClient, pr
       if (results.length) previous.push({ positionId: position.id, sourcePositionId: match.id, executionId: source.executionId,
         workoutName: source.initial.occurrence.name, finishedAt: source.finish.finishedAt, results });
     }
-    if (previous.length === wanted.length) break;
+    if (previous.length === wanted.length && firstSetLoads.length === wanted.length) break;
   }
-  return { ...current, previous };
+  return { ...current, previous, firstSetLoads };
 }

@@ -30,7 +30,7 @@ async function appendResult(db: PrismaClient, principal: ServerPrincipal, input:
     // Every semantic check precedes this append. Any later failure rolls back action, revision and sequence.
     await tx.trainer2SetResultRevision.create({ data: { ...command.target, accountId: principal.accountId,
       performedSetId, version, actionId: command.actionId, result: command.intent.result ?? Prisma.JsonNull,
-      reason: command.commandType !== 'RecordSetResult' ? command.intent.reason : null } });
+      reason: command.commandType !== 'RecordSetResult' ? command.intent.reason ?? null : null } });
     return { ...command.target, performedSetId, version };
   });
 }

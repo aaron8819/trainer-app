@@ -29,7 +29,6 @@ describe('Performed result input and recovery', () => {
     const view = render(<SetResultRow {...props} saved={saved} refresh={refresh} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Edit result' }));
     fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '9' } });
-    fireEvent.change(screen.getByLabelText('Set 1 correction reason'), { target: { value: 'Typo' } });
     view.rerender(<SetResultRow {...props} saved={latest} refresh={refresh} />);
     fireEvent.click(screen.getByRole('button', { name: 'Save correction' }));
     await screen.findByRole('button', { name: 'Review latest result' });
@@ -180,18 +179,18 @@ describe('Pounds and stable logging suggestions', () => {
     expect(loadLabel({ kind: 'bodyweight', convention: 'bodyweightOnly' })).toBe('bodyweight');
     expect(loadLabel({ kind: 'assistance', convention: 'displayedAssistance', zeroMeaning: 'noAssistance', value: '20', unit: 'kg' }, true)).toBe('44.09 lb assistance (recorded 20 kg)');
   });
-  it('prefills explicit targets without creating dirty input and freezes what was presented across refresh and remount', async () => {
+  it('refreshes untouched suggestions when preceding saves arrive, including remount', async () => {
     const blocked = vi.fn(), fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
     const view = render(<SetResultRow {...ui} refresh={vi.fn()} onInputState={blocked} />);
     await waitFor(() => expect(blocked).toHaveBeenLastCalledWith(props.targetId, false));
-    expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('44.09');
+    expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('45');
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('8');
     expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('2');
     const preceding = [{ ...saved, result: { reps: { value: 5, basis: 'total' as const }, measurement: prescription.measurement, rir: '0' } }];
     view.rerender(<SetResultRow {...ui} preceding={preceding} refresh={vi.fn()} onInputState={blocked} />);
-    expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('8');
+    expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('5');
     view.unmount(); render(<SetResultRow {...ui} preceding={preceding} refresh={vi.fn()} />);
-    expect(await screen.findByLabelText('Set 1 Actual reps')).toHaveValue('8');
+    expect(await screen.findByLabelText('Set 1 Actual reps')).toHaveValue('5');
     expect(fetch).not.toHaveBeenCalled();
   });
   it('uses compatible preceding actuals, preserves missing fields, and does not use incompatible load conventions', async () => {
@@ -203,7 +202,7 @@ describe('Pounds and stable logging suggestions', () => {
     expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('');
     view.unmount(); sessionStorage.clear();
     render(<SetResultRow {...ui} preceding={[{ ...saved, result: { ...result, measurement: { ...prescription.measurement, convention: 'perImplement' } } }]} refresh={vi.fn()} />);
-    expect(await screen.findByLabelText('Set 1 Actual load')).toHaveValue('44.09');
+    expect(await screen.findByLabelText('Set 1 Actual load')).toHaveValue('45');
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('8');
   });
   it('leaves ranged reps and absent mass blank; untouched saved kg creates no correction and rep-only correction retains kg bytes', async () => {
@@ -213,7 +212,6 @@ describe('Pounds and stable logging suggestions', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Update set' }));
     expect(fetch).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '9' } });
-    fireEvent.change(screen.getByLabelText('Set 1 correction reason'), { target: { value: 'Correct reps' } });
     fireEvent.click(screen.getByRole('button', { name: 'Update set' }));
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
     expect(JSON.parse(fetch.mock.calls[0][1].body).intent.result.measurement).toEqual(kg.result.measurement);
@@ -236,4 +234,85 @@ it('upgrades retained unitless mass drafts to pounds without losing typed values
   fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
   expect(JSON.parse(fetch.mock.calls[0][1].body).intent.result.measurement).toMatchObject({ value: '140', unit: 'lb', kind: 'externalLoad' });
   await screen.findByRole('button', { name: 'Retry save' });
+});
+
+import { startingPounds, sameLoggingExercise, compatibleLoggingLoad } from '@/lib/engine/trainer2/logging-prefill';
+describe('Logger correction regressions', () => {
+  const p = createHypertrophyPlan().occurrences[0].positions[0];
+  const m = { kind: 'externalLoad' as const, value: '60', unit: 'kg' as const, convention: 'barbellTotal' as const, zeroMeaning: 'validZero' as const };
+  const target = { ...p.targets[0], measurement: m, reps: { min: 8, max: 8, basis: 'total' as const }, rir: '3' };
+  const ui = { ...props, activePanel: true, prescription: target, exercise: p.exercise, refresh: vi.fn() };
+  const prior = { ...saved, result: { reps: { value: 9, basis: 'total' as const }, measurement: { ...m, value: '137.125', unit: 'lb' as const }, rir: '0' } };
+  it('rounds only initial suggestions, including positive ties and zero', () => {
+    expect(startingPounds(m)).toBe('130');
+    expect(startingPounds({ ...m, value: '132.5', unit: 'lb' })).toBe('135');
+    expect(startingPounds({ ...m, value: '0' })).toBe('0');
+    expect(startingPounds({ kind: 'bodyweight', convention: 'bodyweightOnly' })).toBeNull();
+    expect(sameLoggingExercise(p.exercise, { kind: 'authoredDescription', name: p.exercise.name, variation: '' })).toBe(false);
+    if (p.exercise.kind === 'catalogSnapshot') {
+      expect(sameLoggingExercise(p.exercise, { ...p.exercise, name: 'Display rename' })).toBe(true);
+      expect(sameLoggingExercise(p.exercise, { ...p.exercise, equipment: ['Different machine'] })).toBe(false);
+    }
+    expect(compatibleLoggingLoad({ ...m, convention: 'perImplement' }, target, p.exercise)).toBe(false);
+  });
+  it('updates an untouched pre-mounted form but preserves deliberate clearing and typing', async () => {
+    const view = render(<SetResultRow {...ui} number={2} preceding={[]} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeEnabled());
+    expect(screen.getByLabelText('Set 2 Actual load')).toHaveValue('');
+    view.rerender(<SetResultRow {...ui} number={2} preceding={[prior]} />);
+    expect(screen.getByLabelText('Set 2 Actual load')).toHaveValue('137.125');
+    expect(screen.getByLabelText('Set 2 Actual reps')).toHaveValue('9');
+    fireEvent.change(screen.getByLabelText('Set 2 Actual load'), { target: { value: '' } });
+    view.rerender(<SetResultRow {...ui} number={2} preceding={[{ ...prior, version: 2, result: { ...prior.result, rir: '4' } }]} />);
+    expect(screen.getByLabelText('Set 2 Actual load')).toHaveValue('');
+    expect(screen.getByLabelText('Set 2 Actual RIR (optional)')).toHaveValue('0');
+  });
+  it('refreshes saved values/action over an old untouched suggestion, but keeps a stale user draft', async () => {
+    const view = render(<SetResultRow {...ui} />);
+    await screen.findByRole('button', { name: 'Log set' });
+    expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('130');
+    view.rerender(<SetResultRow {...ui} saved={{ ...saved, result: { measurement: null, reps: null, rir: '3' } }} />);
+    expect(screen.getByRole('button', { name: 'Update set' })).toBeEnabled();
+    expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('');
+    expect(screen.queryByLabelText('Set 1 Actual load')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '11' } });
+    view.rerender(<SetResultRow {...ui} saved={{ ...prior, version: 2 }} />);
+    expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('11');
+  });
+  it('prefers prescription over history; history only supplies first-set weight; blank decrement is not zero', async () => {
+    const view = render(<SetResultRow {...ui} firstSetLoad={prior} />);
+    await screen.findByRole('button', { name: 'Log set' });
+    expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('130');
+    view.rerender(<SetResultRow {...ui} prescription={{ ...target, measurement: null, reps: { ...target.reps, max: 10 } }} firstSetLoad={prior} />);
+    expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('135');
+    expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('');
+    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('3');
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Decrease load by 10 lb' }));
+    expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('');
+    fireEvent.click(screen.getByRole('button', { name: '5 RIR' }));
+    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('5');
+  });
+  it('does not skip an incompatible preceding result for an older compatible result', async () => {
+    render(<SetResultRow {...ui} number={3} preceding={[{ ...prior, result: { ...prior.result, measurement: { ...m, convention: 'perImplement' } } }, prior]} />);
+    expect(await screen.findByLabelText('Set 3 Actual load')).toHaveValue('');
+  });
+  it('keeps exact kg actuals internally when carrying forward and changing only reps', async () => {
+    const kg = { ...prior, result: { ...prior.result, measurement: { ...m, value: '60.123456' } } };
+    const fetch = vi.fn().mockResolvedValue(response({ malformed: true })); vi.stubGlobal('fetch', fetch);
+    render(<SetResultRow {...ui} number={2} preceding={[kg]} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeEnabled());
+    fireEvent.change(screen.getByLabelText('Set 2 Actual reps'), { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
+    expect(JSON.parse(fetch.mock.calls[0][1].body).intent.result.measurement).toEqual(kg.result.measurement);
+  });
+  it('allows absent correction reasons, rejects blank provided reasons and keeps clear reason mandatory', () => {
+    const c = { schemaVersion: 1, actionId: randomUUID(), deviceId: randomUUID(), originatingAccountId: props.accountId, ownershipEpoch: 0, dependsOn: [], target: { executionId: props.executionId, targetId: props.targetId }, expected: { resultVersion: 1, performedSetId: saved.performedSetId } };
+    for (const commandType of ['CorrectSetResult', 'CorrectHistoricalSetResult']) {
+      expect(resultMutationCommand.safeParse({ ...c, commandType, intent: { result } }).success).toBe(true);
+      expect(resultMutationCommand.safeParse({ ...c, commandType, intent: { result, reason: '' } }).success).toBe(false);
+      expect(resultMutationCommand.safeParse({ ...c, commandType, intent: { result: null } }).success).toBe(false);
+    }
+    expect(resultMutationCommand.safeParse({ ...c, commandType: 'CorrectSetResult', intent: { result: null, reason: 'Erroneous entry' } }).success).toBe(true);
+  });
 });

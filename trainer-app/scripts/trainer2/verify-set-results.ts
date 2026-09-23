@@ -70,7 +70,7 @@ export async function verifySetResults(db: PrismaClient, reader: PrismaClient, o
     const targets = x.initial.positions.flatMap(p => p.targets);
     const values: PerformedResult[] = [actual(0), { reps: { value: 4, basis: 'perSide' }, measurement: { kind: 'bodyweight', convention: 'bodyweightOnly' }, rir: '0' },
       { reps: { value: 5, basis: 'alternating' }, measurement: { kind: 'addedLoad', value: '0.00', unit: 'lb', convention: 'addedExternal', zeroMeaning: 'noAddedLoad' }, rir: null },
-      { reps: null, measurement: { kind: 'assistance', value: '0', unit: 'kg', convention: 'displayedAssistance', zeroMeaning: 'noAssistance' }, rir: '1.50' },
+      { reps: { value: 0, basis: 'total' }, measurement: { kind: 'assistance', value: '0', unit: 'kg', convention: 'displayedAssistance', zeroMeaning: 'noAssistance' }, rir: '1.50' },
       { reps: { value: 9, basis: 'total' }, measurement: { kind: 'externalLoad', value: '12.500', unit: 'lb', convention: 'perImplement', zeroMeaning: 'notAllowed' }, rir: null },
       { reps: { value: 2, basis: 'total' }, measurement: { kind: 'externalLoad', value: '0', unit: 'kg', convention: 'machineDisplayed', zeroMeaning: 'validZero' }, rir: null }];
     const commands = values.slice(0, targets.length).map((v, i) => record(p, x, i, v));
@@ -116,7 +116,8 @@ export async function verifySetResults(db: PrismaClient, reader: PrismaClient, o
   conflict(await saveSetResult(db, p, { ...c, actionId: randomUUID(), target: { ...c.target, executionId: foreign.executionId } }), 'NOT_FOUND');
   for (const invalid of [actual(-1), actual(1.5), actual(1001), { ...actual(), rir: '11' }, { ...actual(), rir: '-1' },
     { ...actual(), measurement: { kind: 'externalLoad', value: '0', unit: 'kg', convention: 'barbellTotal', zeroMeaning: 'notAllowed' } },
-    { ...actual(), reps: { value: 20, basis: 'duration' } }, { reps: null, measurement: null, rir: null }]) await assert.rejects(saveSetResult(db, p, { ...c, actionId: randomUUID(), intent: { result: invalid } }));
+    { ...actual(), reps: { value: 20, basis: 'duration' } }, { reps: null, measurement: null, rir: null },
+    { ...actual(), reps: null }, { reps: null, measurement: null, rir: '3' }]) await assert.rejects(saveSetResult(db, p, { ...c, actionId: randomUUID(), intent: { result: invalid } }));
   await preserved(p, before, 'invalid shapes and cross-owner references');
   const rows = async () => ({ results: await persisted(p), actions: await owner.trainer2DurableAction.findMany({ where: { accountId: p.accountId }, orderBy: { actionId: 'asc' } }),
     outcomes: await owner.trainer2ActionOutcome.findMany({ where: { accountId: p.accountId }, orderBy: { outcomeCursor: 'asc' } }), state: await owner.trainer2AccountTrainingState.findUnique({ where: { accountId: p.accountId } }) });

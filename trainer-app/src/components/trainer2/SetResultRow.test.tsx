@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID, webcrypto } from 'node:crypto';
 import { SetResultRow } from './SetResultRow';
-import { performedResult, resultMutationCommand, historicalCorrectionCommand, type SavedSetResult } from '@/lib/trainer2-contracts/set-results';
+import { performedResult, recordSetResultCommand, resultMutationCommand, historicalCorrectionCommand, type SavedSetResult } from '@/lib/trainer2-contracts/set-results';
 
 const props = { accountId: 'synthetic-results', ownershipEpoch: 0, executionId: randomUUID(), targetId: randomUUID(), number: 1 };
 const result = { reps: { value: 0, basis: 'perSide' as const }, measurement: null, rir: '0' };
@@ -21,6 +21,14 @@ describe('Performed result input and recovery', () => {
     for (const r of [{ reps: null, measurement: null, rir: null }, { ...result, rir: '-1' }, { ...result, rir: '11' },
       { ...result, reps: { value: 1.5, basis: 'total' } }, { ...result, reps: { value: -1, basis: 'total' } },
       { ...result, reps: { value: 1, basis: 'duration' } }, { ...result, duration: 20 }]) expect(performedResult.safeParse(r).success).toBe(false);
+  });
+  it('requires reps in a new record even with load or RIR, while accepting zero reps without load', () => {
+    const command = { schemaVersion: 1, actionId: randomUUID(), deviceId: randomUUID(), originatingAccountId: props.accountId,
+      ownershipEpoch: 0, dependsOn: [], commandType: 'RecordSetResult', target: { executionId: props.executionId, targetId: props.targetId },
+      expected: { resultVersion: 0 }, intent: { result } };
+    expect(recordSetResultCommand.safeParse(command).success).toBe(true);
+    expect(recordSetResultCommand.safeParse({ ...command, intent: { result: { ...result, reps: null } } }).success).toBe(false);
+    expect(recordSetResultCommand.safeParse({ ...command, intent: { result: { ...result, reps: null, measurement: { kind: 'bodyweight', convention: 'bodyweightOnly' } } } }).success).toBe(false);
   });
   it('keeps original expected version and draft through background refresh, then requires explicit conflict recovery', async () => {
     const latest = { ...saved, version: 3 }; const refresh = vi.fn().mockResolvedValue([latest]);
@@ -50,6 +58,8 @@ describe('Performed result input and recovery', () => {
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('');
     fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '0' } });
     const button = screen.getByRole('button', { name: 'Record set' }); fireEvent.click(button); fireEvent.click(button);
+    expect(screen.queryByRole('button', { name: 'Retry save' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Check saved results' })).toBeNull();
     expect(fetch).toHaveBeenCalledTimes(1); const body = fetch.mock.calls[0][1].body;
     finish(response({ malformed: true })); await waitFor(() => expect(screen.getByRole('button', { name: 'Retry save' })).toBeEnabled());
     view.unmount(); fetch.mockResolvedValueOnce(response(accepted(body)));
@@ -147,7 +157,7 @@ it('keeps compact catalog suggestions unrecorded and uses pounds without a picke
   const position = createHypertrophyPlan().occurrences[0].positions[0];
   const fetch = vi.fn(); vi.stubGlobal('fetch', fetch); const blocked = vi.fn();
   render(<SetResultRow {...props} prescription={position.targets[0]} exercise={position.exercise} refresh={vi.fn()} onInputState={blocked} />);
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Record set' })).toBeEnabled());
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Record set' })).toBeDisabled());
   expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('');
   expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('');
   expect(screen.queryByLabelText('Set 1 load unit')).toBeNull();
@@ -155,13 +165,26 @@ it('keeps compact catalog suggestions unrecorded and uses pounds without a picke
   expect(fetch).not.toHaveBeenCalled(); expect(sessionStorage.length).toBe(0);
   expect(blocked).toHaveBeenLastCalledWith(props.targetId, false);
   fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '0' } });
+  expect(screen.getByRole('button', { name: 'Record set' })).toBeEnabled();
   expect(blocked).toHaveBeenLastCalledWith(props.targetId, true);
   expect(JSON.parse(sessionStorage.getItem(`trainer2-result:${props.accountId}:${props.executionId}:${props.targetId}`)!).form.reps).toBe('0');
+});
+it('adds exact 2.5 lb steps only for machine-displayed loads', async () => {
+  const position = createHypertrophyPlan().occurrences[0].positions[0];
+  const prescription = { ...position.targets[0], measurement: { kind: 'externalLoad' as const, value: '40', unit: 'lb' as const,
+    convention: 'machineDisplayed' as const, zeroMeaning: 'validZero' as const } };
+  render(<SetResultRow {...props} activePanel prescription={prescription} exercise={position.exercise} refresh={vi.fn()} />);
+  const load = await screen.findByLabelText('Set 1 Actual load');
+  expect(load).toHaveValue('40');
+  fireEvent.click(screen.getByRole('button', { name: 'Increase load by 2.5 lb' }));
+  expect(load).toHaveValue('42.5');
+  fireEvent.click(screen.getByRole('button', { name: 'Decrease load by 2.5 lb' }));
+  expect(load).toHaveValue('40');
 });
 it('does not guess a custom exercise load convention or a catalog unit', async () => {
   const position = createHypertrophyPlan().occurrences[0].positions[0];
   render(<SetResultRow {...props} prescription={position.targets[0]} exercise={{ kind: 'authoredDescription', name: 'Barbell squat', variation: '' }} refresh={vi.fn()} />);
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Record set' })).toBeEnabled());
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Record set' })).toBeDisabled());
   expect(screen.getByLabelText('Set 1 actual load type')).toHaveValue('unspecified');
   expect(screen.queryByLabelText('Set 1 Actual load')).toBeNull();
 });

@@ -7,11 +7,12 @@ export const performedResult = z.object({
   reps: z.object({ value: z.int().min(0).max(1000), basis: target.shape.reps.shape.basis }).strict().nullable(),
   measurement: measurement.nullable(), rir: target.shape.rir,
 }).strict().refine(r => r.reps !== null || r.measurement !== null || r.rir !== null, 'Enter at least one actual result');
+const recordedResult = performedResult.refine(r => r.reps !== null, 'Enter reps to log a set');
 const correctionReason = z.string().min(1).max(200).refine(v => v.trim().length > 0).optional();
 const setTarget = z.object({ executionId: id, targetId: id }).strict();
 export const recordSetResultCommand = commandEnvelope.extend({ commandType: z.literal('RecordSetResult'),
   target: setTarget, expected: z.object({ resultVersion: z.literal(0), skipActionId: id.optional() }).strict(),
-  intent: z.object({ result: performedResult }).strict(),
+  intent: z.object({ result: recordedResult }).strict(),
 }).strict();
 export const correctSetResultCommand = commandEnvelope.extend({ commandType: z.literal('CorrectSetResult'),
   target: setTarget, expected: z.object({ resultVersion: z.int().min(1), performedSetId: id }).strict(),

@@ -202,6 +202,7 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
       const envelope = { schemaVersion: 1, actionId: crypto.randomUUID(), deviceId: crypto.randomUUID(), originatingAccountId: accountId,
         ownershipEpoch, dependsOn: [], target: { executionId, targetId } };
       const result = clear ? null : parseForm(d.form);
+      if (!d.base && !result?.reps) { setMessage('Enter reps to log a set. Load may be left blank.'); return; }
       if (result && !d.base && d.carriedMeasurement) {
         const original = formFor({ reps: null, measurement: d.carriedMeasurement, rir: null });
         if (['load', 'kind', 'unit', 'convention', 'zeroMeaning'].every(k => d.form[k as keyof Form] === original[k as keyof Form])) result.measurement = d.carriedMeasurement;
@@ -216,7 +217,7 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
         expected: { resultVersion: d.base.version, performedSetId: d.base.performedSetId }, intent: { result, ...(clear ? { reason: d.form.reason } : {}) } } :
         { ...envelope, commandType: 'RecordSetResult', expected: { resultVersion: 0, ...(d.skipActionId ? { skipActionId: d.skipActionId } : {}) }, intent: { result } });
       void submit(command);
-    } catch (error) { setMessage(error instanceof z.ZodError ? 'Enter valid actual values (reps 0–1000, nonnegative load, RIR 0–10). Blank fields stay unspecified.' : String(error)); }
+    } catch (error) { setMessage(error instanceof z.ZodError ? 'Enter valid actual values (reps 0–1000, nonnegative load, RIR 0–10). Load may be blank.' : String(error)); }
   }
   async function reviewLatest() {
     if (busy) return;
@@ -249,13 +250,13 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
     {(draft || compact) && f && <fieldset disabled={disabled} className="mt-2 space-y-3">
       <legend className="sr-only">{draft?.pending ? 'Pending confirmation' : 'Set values'}{draft?.base ? ` · editing v${draft.base.version}` : ''}</legend>
       {activePanel ? <>
-        <div><p className={fieldLabel}>Reps{f.basis === 'perSide' ? ' per side' : f.basis === 'alternating' ? ' alternating' : ''}</p><div className="mt-1 flex items-center gap-2">
+        <div><p className={fieldLabel}>Reps{!saved && ' (required)'}{f.basis === 'perSide' ? ' per side' : f.basis === 'alternating' ? ' alternating' : ''}</p><div className="mt-1 flex items-center gap-2">
           <button type="button" className={stepControl} aria-label="Decrease reps" onClick={() => adjust('reps', -1)}>−1</button>
-          <input className={fieldControl} aria-label={`Set ${number} Actual reps`} inputMode="numeric" value={f.reps} onFocus={e => e.currentTarget.select()} onChange={e => change('reps', e.target.value)} />
+          <input className={fieldControl} aria-label={`Set ${number} Actual reps`} aria-required={!saved} inputMode="numeric" value={f.reps} onFocus={e => e.currentTarget.select()} onChange={e => change('reps', e.target.value)} />
           <button type="button" className={stepControl} aria-label="Increase reps" onClick={() => adjust('reps', 1)}>+1</button>
         </div></div>
         {!['unspecified', 'bodyweight'].includes(f.kind) ? <div>
-          <p className={fieldLabel}>{f.kind === 'externalLoad' ? f.convention === 'barbellTotal' ? 'Barbell total (lb)' : f.convention === 'perImplement' ? exercise?.kind === 'catalogSnapshot' && exercise.equipment.some(e => /dumbbell/i.test(e)) ? 'Per dumbbell (lb)' : 'Per implement (lb)' : 'Machine weight (lb)' : f.kind === 'addedLoad' ? 'Added load (lb)' : 'Assistance (lb)'}</p><div className="my-1 flex gap-2">{[-10, -5, 5, 10].map(delta => <button type="button" key={delta} className={stepControl} aria-label={(delta < 0 ? 'Decrease' : 'Increase') + ' load by ' + Math.abs(delta) + ' lb'} onClick={() => adjust('load', delta)}>{delta < 0 ? '−' : '+'}{Math.abs(delta)}</button>)}<button className="min-h-11 px-2 text-sm" type="button" onClick={() => change('load', '')}>Clear</button></div>
+          <p className={fieldLabel}>{f.kind === 'externalLoad' ? f.convention === 'barbellTotal' ? 'Barbell total (lb)' : f.convention === 'perImplement' ? exercise?.kind === 'catalogSnapshot' && exercise.equipment.some(e => /dumbbell/i.test(e)) ? 'Per dumbbell (lb)' : 'Per implement (lb)' : 'Machine weight (lb)' : f.kind === 'addedLoad' ? 'Added load (lb)' : 'Assistance (lb)'}</p><div className="my-1 flex flex-wrap gap-1">{(f.kind === 'externalLoad' && f.convention === 'machineDisplayed' ? [-10, -5, -2.5, 2.5, 5, 10] : [-10, -5, 5, 10]).map(delta => <button type="button" key={delta} className={stepControl} aria-label={(delta < 0 ? 'Decrease' : 'Increase') + ' load by ' + Math.abs(delta) + ' lb'} onClick={() => adjust('load', delta)}>{delta < 0 ? '−' : '+'}{Math.abs(delta)}</button>)}<button className="min-h-11 px-1 text-sm" type="button" onClick={() => change('load', '')}>Clear</button></div>
           <input className={fieldControl} aria-label={`Set ${number} Actual load`} inputMode="decimal" value={f.load} onFocus={e => e.currentTarget.select()} onChange={e => change('load', e.target.value)} />
 
         </div> : <p className="text-sm">{f.kind === 'bodyweight' ? 'Bodyweight' : 'Load unspecified · choose a load type in Options if needed'}</p>}
@@ -273,7 +274,7 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
       {clearing && !historical && <label className="grid gap-1 text-sm">Reason for clearing<input className={control} aria-label={`Set ${number} correction reason`} maxLength={200} value={f.reason} onChange={e => change('reason', e.target.value)} /></label>}
 
       <div className={activePanel ? 'grid grid-cols-2 gap-2' : 'flex flex-wrap gap-2'}>
-      {draft?.conflict ? <><button className={control} onClick={() => void reviewLatest()}>Review latest result</button>{reviewed && <div><p>Latest: {resultLabel(reviewed.latest?.result ?? null)} · v{reviewed.latest?.version ?? 0}</p><button className={control} onClick={() => { store({ ...draft, base: reviewed.latest, conflict: false }); setReviewed(null); setMessage('Input retained. Save only if this is your intended correction.'); }}>Use this version for my correction</button></div>}</> : <button className={activePanel ? 'min-h-11 rounded-full bg-black px-5 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-40' : control} onClick={() => { if (!currentDraft.current) begin(); save(); }}>{(draft ? draft.base : saved) ? activePanel ? 'Update set' : 'Save correction' : activePanel ? 'Log set' : 'Record set'}</button>}
+      {draft?.conflict ? <><button className={control} onClick={() => void reviewLatest()}>Review latest result</button>{reviewed && <div><p>Latest: {resultLabel(reviewed.latest?.result ?? null)} · v{reviewed.latest?.version ?? 0}</p><button className={control} onClick={() => { store({ ...draft, base: reviewed.latest, conflict: false }); setReviewed(null); setMessage('Input retained. Save only if this is your intended correction.'); }}>Use this version for my correction</button></div>}</> : <button className={activePanel ? 'min-h-11 rounded-full bg-black px-5 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-40' : control} disabled={disabled || (!draft?.base && !saved && f.reps === '')} onClick={() => { if (!currentDraft.current) begin(); save(); }}>{busy && draft?.pending ? 'Saving…' : (draft ? draft.base : saved) ? activePanel ? 'Update set' : 'Save correction' : activePanel ? 'Log set' : 'Record set'}</button>}
       {activePanel && (saved ? <button className="min-h-11 rounded-full border border-slate-300 px-3 text-sm font-medium" onClick={onReturn}>Return to active set</button> : !skipped && <button className="min-h-11 rounded-full border border-slate-300 px-3 text-sm font-medium" onClick={skip}>Skip set</button>)}
       </div>
       {!activePanel && !historical && draft?.base?.result && !draft.conflict && <button className={control} onClick={() => { if (clearing) save(true); else setClearing(true); }}>{clearing ? 'Confirm clear erroneous result' : 'Clear erroneous result'}</button>}
@@ -281,12 +282,7 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
     </fieldset>}
     {readOnly && draft && <p>This workout attempt is closed. Retained input cannot change it.</p>}
     {readOnly && draft && !draft.pending && <button className={control} onClick={() => store(null)}>Discard retained input</button>}
-    {draft?.pending && <div className="flex flex-wrap gap-2"><button className={control} disabled={busy} onClick={() => void submit(draft.pending!)}>Retry save</button><button className={control} disabled={busy} onClick={async () => {
-      setBusy(true); setMessage('Checking…');
-      try { await refresh(); setMessage('Results are up to date. Retry save to confirm the original command. Your input is retained.'); }
-      catch { setMessage('Could not check saved results. Retry when connected; your input is retained.'); }
-      finally { setBusy(false); }
-    }}>Check saved results</button></div>}
-    <div className="mt-2 h-10 overflow-y-auto text-sm" role="status" tabIndex={message ? 0 : -1} aria-live="polite">{message}</div>
+    {draft?.pending && !busy && <button className={control + ' mt-2'} onClick={() => void submit(draft.pending!)}>Retry save</button>}
+    {message && !(busy && draft?.pending) && <p className="mt-2 text-sm" role="status" tabIndex={0} aria-live="polite">{message}</p>}
   </div>;
 }

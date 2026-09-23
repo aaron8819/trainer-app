@@ -123,7 +123,7 @@ describe('Single active set and queue', () => {
   it('renders one editor, preserves drafts by identity, and restores selection on remount', async () => {
     const value = activeFixture(), read = vi.fn().mockResolvedValue([]);
     const view = render(<ActiveHarness value={value} read={read} />);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeDisabled());
     expect(screen.getAllByLabelText(/Actual reps/)).toHaveLength(1);
     fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '7' } });
     const chips = screen.getAllByRole('button', { name: /, set 2, unrecorded/ });
@@ -145,7 +145,7 @@ describe('Single active set and queue', () => {
     let confirm!: (v: SavedSetResult[]) => void;
     const read = vi.fn().mockImplementationOnce(() => new Promise<SavedSetResult[]>(r => { confirm = r; })).mockImplementation(() => Promise.resolve([...results]));
     render(<ActiveHarness value={value} read={read} />);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeDisabled());
     fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '0' } });
     fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
     await waitFor(() => expect(read).toHaveBeenCalled());
@@ -163,7 +163,7 @@ describe('Single active set and queue', () => {
     let reply!: () => void;
     vi.stubGlobal('fetch', vi.fn().mockImplementation((...args) => new Promise<Response>(resolve => { reply = () => resolve(transport(...args)); })));
     render(<ActiveHarness value={value} read={async () => [...results]} />);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeDisabled());
     fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '8' } });
     fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
     fireEvent.click(screen.getAllByRole('button', { name: /, set 2, unrecorded/ })[1]);
@@ -178,7 +178,7 @@ describe('Single active set and queue', () => {
   it('adjusts explicit zero and units without saving, with optional RIR distinct from RPE', async () => {
     const value = activeFixture();
     render(<ActiveHarness value={value} read={async () => []} />);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeDisabled());
     fireEvent.click(screen.getByRole('button', { name: 'Increase load by 5 lb' }));
     expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('5');
     fireEvent.click(screen.getByRole('button', { name: 'Decrease load by 5 lb' }));

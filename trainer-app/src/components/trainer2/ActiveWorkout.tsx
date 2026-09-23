@@ -120,19 +120,19 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
         skipped={execution.skips?.find(k => k.targetId === s.id)} refreshExecution={refreshExecution} onReturn={() => select(firstUnrecorded(execution.results), true)}
         locked={locked} onInputState={onInputState} refresh={refresh} onRecorded={recorded} onSubmission={() => onSubmission(s.id)} />)}
     </section>
-    <section aria-label="Exercise queue" className="space-y-2"><div className="flex justify-between gap-2"><h3 className="font-semibold">Exercise queue</h3><span className="text-sm text-slate-500">{count} logged · {skippedCount} skipped · {sets.length - count - skippedCount} remaining</span></div>
-      {groups.map(group => <details key={group.id} open className="space-y-2"><summary className="min-h-11 cursor-pointer py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">{group.role}</summary>
+    <section aria-label="Exercise queue" className="mt-4 space-y-3 border-t border-slate-100 pt-4"><div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"><h3 className="font-semibold">Exercise queue</h3><span className="text-xs tabular-nums text-slate-500">{count} logged · {skippedCount} skipped · {sets.length - count - skippedCount} remaining</span></div>
+      {groups.map(group => <details key={group.id} open className="space-y-2"><summary className="min-h-10 cursor-pointer py-2 text-xs font-semibold uppercase tracking-wider text-slate-500">{group.role}</summary>
         {group.positions.map(owned => {
           const items = sets.filter(s => s.positionId === owned.id), position = items[0].position;
           const recordedCount = items.filter(s => execution.results.some(r => r.targetId === s.id && r.result)).length;
-          return <div key={owned.id} className={`rounded-xl border p-3 ${active?.positionId === owned.id ? 'border-slate-500 bg-white' : 'border-slate-200 bg-white'}`}>
-            <button className="flex min-h-11 w-full items-center justify-between gap-3 text-left" onClick={() => select(items.find(s => !execution.results.some(r => r.targetId === s.id && r.result) && (!execution.skips?.some(k => k.targetId === s.id) || execution.results.some(r => r.targetId === s.id)))?.id ?? items[0].id, true)}><span className="font-medium">{position.exercise.name}</span><span className="shrink-0 text-xs">{recordedCount}/{items.length} recorded</span></button>
+          return <div key={owned.id} className={`rounded-2xl border bg-white p-3 shadow-sm ${active?.positionId === owned.id ? 'border-slate-400 ring-1 ring-slate-100' : 'border-slate-200'}`}>
+            <button className="flex min-h-11 w-full items-center justify-between gap-3 text-left hover:text-slate-700 focus-visible:rounded-md" onClick={() => select(items.find(s => !execution.results.some(r => r.targetId === s.id && r.result) && (!execution.skips?.some(k => k.targetId === s.id) || execution.results.some(r => r.targetId === s.id)))?.id ?? items[0].id, true)}><span className="font-semibold">{position.exercise.name}</span><span className="shrink-0 text-xs tabular-nums text-slate-500">{recordedCount}/{items.length} recorded</span></button>
             <MuscleTags exercise={position.exercise} />
-            <div className="mt-2 flex flex-wrap gap-2">{items.map(s => {
+            <div className="mt-2 flex flex-wrap gap-1.5">{items.map(s => {
               const skipped = execution.skips?.some(k => k.targetId === s.id) && !execution.results.some(r => r.targetId === s.id);
               const saved = execution.results.find(r => r.targetId === s.id);
               return <button key={s.id} aria-label={`${position.exercise.name}, set ${s.number}, ${saved?.result ? 'recorded' : skipped ? 'skipped' : 'unrecorded'}${inputStates[s.id] ? ', retained input' : ''}`} aria-pressed={selected === s.id}
-                className={`min-h-11 rounded-lg border px-3 py-2 text-left text-sm ${selected === s.id ? 'border-black bg-black text-white' : saved?.result ? 'border-emerald-200 text-emerald-800' : skipped ? 'border-dashed border-slate-400 text-slate-500' : 'border-slate-300'}`} onClick={() => select(s.id, true)}>{s.number}{saved?.result ? ' · ' + resultLabel(saved.result).replace(/ lb (?:barbell total|per implement|machine displayed) × /, ' lb × ') : skipped ? ' · Skipped' : ' · Unrecorded'}{inputStates[s.id] ? ' •' : ''}</button>;
+                className={`min-h-11 rounded-lg border px-3 py-2 text-left text-sm tabular-nums transition-colors ${selected === s.id ? 'border-black bg-black font-medium text-white' : saved?.result ? 'border-emerald-200 bg-emerald-50/40 text-emerald-900 hover:bg-emerald-50' : skipped ? 'border-dashed border-slate-400 text-slate-600 hover:bg-slate-50' : 'border-slate-300 text-slate-700 hover:bg-slate-50'}`} onClick={() => select(s.id, true)}>{s.number}{saved?.result ? ' · ' + resultLabel(saved.result).replace(/ lb (?:barbell total|per implement|machine displayed) × /, ' lb × ') : skipped ? ' · Skipped' : ' · Unrecorded'}{inputStates[s.id] ? ' •' : ''}</button>;
             })}</div>
           </div>;
         })}

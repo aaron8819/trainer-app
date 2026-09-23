@@ -19,7 +19,7 @@ describe('Finish workout decisions', () => {
   it('blocks unsaved or pending input without submitting or discarding it', async () => {
     const fetch = vi.fn(); vi.stubGlobal('fetch', fetch); render(<FinishWorkout {...props} blocked />);
     expect(await screen.findByRole('button', { name: 'Finish workout' })).toBeDisabled(); expect(fetch).not.toHaveBeenCalled();
-    expect(screen.getByText(/Save or recover retained/)).toBeVisible();
+    expect(screen.queryByText(/Save or recover retained/)).toBeNull();
   });
   it('freezes reviewed versions across background refresh and requires explicit retry after conflict', async () => {
     const fetch = vi.fn().mockImplementation((_u, init) => { const c = JSON.parse(init.body); return response({ replayed: false, outcomeCursor: '1', outcome: { status: 'Conflict', actionId: c.actionId, commandType: 'FinishExecution', code: 'STALE_FINISH_RESULTS' } }, 409); }); vi.stubGlobal('fetch', fetch);

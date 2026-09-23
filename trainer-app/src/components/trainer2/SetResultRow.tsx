@@ -79,6 +79,10 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
         if ((restored.base && !binding(restored.base)) || (restored.pending &&
           (!binding(restored.pending.target) || restored.pending.originatingAccountId !== accountId))) throw new Error('Invalid draft');
         if (restored.form.unit !== 'lb') restored.form = { ...restored.form, load: restored.form.unit === 'kg' && restored.form.load !== '' ? pounds(restored.form.load, 'kg') : restored.form.load, unit: 'lb' };
+        if (restored.base?.result && !restored.base.result.measurement && !restored.pending && !restored.conflict &&
+          saved?.version === restored.base.version && canonicalJson(restored.form) === canonicalJson(formFor(restored.base.result))) {
+          restored.form = initialForm();
+        }
         currentDraft.current = restored; setDraft(restored);
       }
       // Convenience snapshots are not user drafts; derive suggestions from the current read.
@@ -96,15 +100,16 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
   useEffect(() => { onInputState?.(targetId, !ready || !!draft); }, [ready, draft, targetId, onInputState]);
   function cancel() { if (store(null)) { setMessage(''); setTimeout(() => editButton.current?.focus(), 0); } }
   function initialForm(): Form {
-    if (saved) return formFor(saved.result);
-    const f = formFor();
-    f.basis = prescription?.reps.basis ?? 'total';
+    const f = formFor(saved?.result);
+    if (saved?.result?.measurement) return f;
+    if (!saved) f.basis = prescription?.reps.basis ?? 'total';
     const m = prescription?.measurement;
-    if (m) { f.kind = m.kind; if ('value' in m && number === 1) f.load = startingPounds(m) ?? ''; if (m.kind === 'externalLoad') { f.convention = m.convention; f.zeroMeaning = m.zeroMeaning; } }
+    if (m) { f.kind = m.kind; if ('value' in m && number === 1 && !saved) f.load = startingPounds(m) ?? ''; if (m.kind === 'externalLoad') { f.convention = m.convention; f.zeroMeaning = m.zeroMeaning; } }
     else if (exercise?.kind === 'catalogSnapshot') {
       f.kind = exercise.loadKind;
       if (['barbellTotal', 'perImplement', 'machineDisplayed'].includes(exercise.convention)) f.convention = exercise.convention as Form['convention'];
     }
+    if (saved) return f;
     f.reps = prescription && prescription.reps.min === prescription.reps.max ? String(prescription.reps.min) : '';
     f.rir = prescription?.rir ?? '';
     if (number === 1 && !m && prescription && exercise && firstSetLoad?.result?.measurement &&

@@ -181,6 +181,27 @@ it('adds exact 2.5 lb steps only for machine-displayed loads', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Decrease load by 2.5 lb' }));
   expect(load).toHaveValue('40');
 });
+it('defaults a saved sparse machine result to machine-displayed controls without inventing a weight', async () => {
+  const position = createHypertrophyPlan().occurrences.flatMap(o => o.positions).find(p => p.exercise.name === 'Machine Crunch')!;
+  const sparse = { ...saved, result: { reps: null, measurement: null, rir: '3' } };
+  render(<SetResultRow {...props} activePanel saved={sparse} prescription={{ ...position.targets[0], measurement: null }} exercise={position.exercise} refresh={vi.fn()} />);
+  expect(await screen.findByText('Machine weight (lb)')).toBeVisible();
+  expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('');
+  expect(screen.getByLabelText('Set 1 actual load type')).toHaveValue('externalLoad');
+  expect(screen.getByLabelText('Set 1 load basis')).toHaveValue('machineDisplayed');
+  expect(screen.getByRole('button', { name: 'Increase load by 2.5 lb' })).toBeVisible();
+});
+it('updates an untouched retained sparse correction to the catalog machine controls', async () => {
+  const position = createHypertrophyPlan().occurrences.flatMap(o => o.positions).find(p => p.exercise.name === 'Machine Crunch')!;
+  const sparse = { ...saved, result: { reps: null, measurement: null, rir: '3' } };
+  sessionStorage.setItem(`trainer2-result:${props.accountId}:${props.executionId}:${props.targetId}`, JSON.stringify({
+    form: { reps: '', basis: 'total', load: '', kind: 'unspecified', unit: 'lb', zeroMeaning: 'validZero', convention: 'barbellTotal', rir: '3', reason: '' },
+    base: sparse, pending: null, conflict: false,
+  }));
+  render(<SetResultRow {...props} activePanel saved={sparse} prescription={{ ...position.targets[0], measurement: null }} exercise={position.exercise} refresh={vi.fn()} />);
+  expect(await screen.findByText('Machine weight (lb)')).toBeVisible();
+  expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('');
+});
 it('does not guess a custom exercise load convention or a catalog unit', async () => {
   const position = createHypertrophyPlan().occurrences[0].positions[0];
   render(<SetResultRow {...props} prescription={position.targets[0]} exercise={{ kind: 'authoredDescription', name: 'Barbell squat', variation: '' }} refresh={vi.fn()} />);
@@ -297,7 +318,7 @@ describe('Logger correction regressions', () => {
     view.rerender(<SetResultRow {...ui} saved={{ ...saved, result: { measurement: null, reps: null, rir: '3' } }} />);
     expect(screen.getByRole('button', { name: 'Update set' })).toBeEnabled();
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('');
-    expect(screen.queryByLabelText('Set 1 Actual load')).toBeNull();
+    expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('');
     fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '11' } });
     view.rerender(<SetResultRow {...ui} saved={{ ...prior, version: 2 }} />);
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('11');

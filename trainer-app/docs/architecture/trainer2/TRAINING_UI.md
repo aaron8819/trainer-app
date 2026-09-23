@@ -77,4 +77,4 @@ See [prefill corrections handoff](../../../artifacts/trainer2/LOGGER_PREFILL_HAN
 
 ## V1 logger alignment and durable Skip set
 
-[SKIP_SET.md](SKIP_SET.md) owns the current layout, durable skipping and finish/discard integration. Active input uses a hidden legend and reserved feedback area; there is no normal Discard input action. The timer is outside and above the card in a reserved sticky slot. Queue counts distinguish logged/skipped/remaining, and progress is labeled resolved. Existing draft protection, prefill, measurement meaning and rest deadlines remain.
+[SKIP_SET.md](SKIP_SET.md) owns the current layout, durable skipping and finish/discard integration. Active input uses a hidden legend and reserved feedback area; there is no normal Discard input action. The timer appears outside and above the card only while active, and sticks during scrolling. Queue counts distinguish logged/skipped/remaining, and progress is labeled resolved. Existing draft protection, prefill, measurement meaning and rest deadlines remain.

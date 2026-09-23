@@ -7,6 +7,14 @@ import { readExecution } from './execution';
 import type { ServerPrincipal } from './principal';
 
 type Position = ExecutionRead['initial']['occurrence']['positions'][number];
+type PositionMatch = { status: 'none' } | { status: 'ambiguous' } | { status: 'unique'; position: Position };
+
+function resolvePreviousPosition(current: Position, source: Position[]): PositionMatch {
+  const matches = source.filter(position => sameLoggingExercise(position.exercise, current.exercise));
+  if (matches.length === 0) return { status: 'none' };
+  if (matches.length > 1) return { status: 'ambiguous' };
+  return { status: 'unique', position: matches[0] };
+}
 export function compatiblePrevious(current: Position, source: Position, result: PerformedResult, currentResults: PerformedResult[] = []) {
   const a = current.exercise, b = source.exercise;
   if (a.kind !== 'catalogSnapshot' || b.kind !== 'catalogSnapshot' || canonicalJson(a) !== canonicalJson(b)) return false;
@@ -28,33 +36,32 @@ export async function readExecutionWithPrevious(tx: Prisma.TransactionClient, pr
   const previous: NonNullable<ExecutionRead['previous']> = [];
   const firstSetLoads: NonNullable<ExecutionRead['firstSetLoads']> = [];
   const wanted = current.initial.occurrence.positions.filter(p => p.exercise.kind === 'catalogSnapshot');
+  const ambiguous = new Set<string>();
   if (!wanted.length || current.lifecycle === 'Discarded') return { ...current, previous, firstSetLoads };
   const candidates = await tx.trainer2ExecutionFinish.findMany({ where: { accountId: principal.accountId, executionId: { not: executionId }, finishedAt: { lte: new Date(current.initial.startedAt) } }, orderBy: [{ finishedAt: 'desc' }, { executionId: 'asc' }], select: { executionId: true } });
   for (const candidate of candidates) {
     const source = await readExecution(tx, principal, candidate.executionId);
     if (source?.lifecycle !== 'Finished' || !source.finish) continue;
-    // Separate from history display: weight suggestions need no performed reps and use working sets only.
-    for (const position of wanted.filter(p => !firstSetLoads.some(h => h.positionId === p.id))) {
+    for (const position of wanted.filter(p => !ambiguous.has(p.id))) {
+      const decision = resolvePreviousPosition(position, source.initial.occurrence.positions);
+      if (decision.status === 'ambiguous') { ambiguous.add(position.id); continue; }
+      if (decision.status === 'none') continue;
+      const match = decision.position;
+      // Weight suggestions need no performed reps and use working sets only.
       const target = position.targets[0];
-      if (!target) continue;
-      const matches = source.initial.occurrence.positions.filter(p => sameLoggingExercise(p.exercise, position.exercise));
-      const result = matches.flatMap(match => {
+      if (target && !firstSetLoads.some(h => h.positionId === position.id)) {
         const owned = source.initial.positions.find(p => p.sourcePositionId === match.id);
-        if (!owned) return [];
-        return owned.targets.flatMap(t => {
+        const result = owned?.targets.flatMap(t => {
           if (match.targets.find(s => s.id === t.sourceTargetId)?.classification !== 'working') return [];
           const saved = source.results.find(r => r.targetId === t.id);
           const m = saved?.result?.measurement;
           return saved && m && 'value' in m && compatibleLoggingLoad(m, target, position.exercise) ? [saved] : [];
-        });
-      })[0];
-      if (result) firstSetLoads.push({ positionId: position.id, executionId: source.executionId, result });
-    }
-    for (const position of wanted.filter(p => !previous.some(h => h.positionId === p.id))) {
-      const matches = source.initial.occurrence.positions.filter(p => canonicalJson(p.exercise) === canonicalJson(position.exercise));
-      // Multiple appearances are not a one-to-one position match. Omit instead of inventing one.
-      if (matches.length !== 1) continue;
-      const match = matches[0], owned = source.initial.positions.find(p => p.sourcePositionId === match.id)!;
+        })[0];
+        if (result) firstSetLoads.push({ positionId: position.id, executionId: source.executionId, result });
+      }
+      if (previous.some(h => h.positionId === position.id)) continue;
+      const owned = source.initial.positions.find(p => p.sourcePositionId === match.id);
+      if (!owned) continue;
       const currentOwned = current.initial.positions.find(p => p.sourcePositionId === position.id);
       const currentResults = current.results.flatMap(r => r.result && currentOwned?.targets.some(t => t.id === r.targetId) ? [r.result] : []);
       const results = owned.targets.flatMap(t => {
@@ -64,7 +71,7 @@ export async function readExecutionWithPrevious(tx: Prisma.TransactionClient, pr
       if (results.length) previous.push({ positionId: position.id, sourcePositionId: match.id, executionId: source.executionId,
         workoutName: source.initial.occurrence.name, finishedAt: source.finish.finishedAt, results });
     }
-    if (previous.length === wanted.length && firstSetLoads.length === wanted.length) break;
+    if (wanted.every(p => ambiguous.has(p.id) || (previous.some(h => h.positionId === p.id) && firstSetLoads.some(h => h.positionId === p.id)))) break;
   }
   return { ...current, previous, firstSetLoads };
 }

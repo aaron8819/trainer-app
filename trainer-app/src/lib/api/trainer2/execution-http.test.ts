@@ -92,7 +92,9 @@ it('reads latest corrected exercise summaries in finished-date order with exact 
   expect(candidates).toHaveBeenCalledWith(expect.objectContaining({ where: { accountId: 'trusted', executionId: { not: currentId }, finishedAt: { lte: new Date(current.initial.startedAt) } } }));
   expect(read?.previous?.[0]).toMatchObject({ positionId: p.id, executionId: sourceId, workoutName: 'Previous workout', results: [result] });
   mocks.read.mockResolvedValueOnce(current).mockResolvedValueOnce({ ...prior, initial: { ...prior.initial, occurrence: { ...prior.initial.occurrence, positions: [p, { ...p, id: randomUUID() }] } } });
-  expect((await readExecutionWithPrevious(tx, principal, currentId))?.previous).toEqual([]);
+  const ambiguous = await readExecutionWithPrevious(tx, principal, currentId);
+  expect(ambiguous?.previous).toEqual([]);
+  expect(ambiguous?.firstSetLoads).toEqual([]);
   mocks.read.mockResolvedValueOnce({ ...current, lifecycle: 'Discarded' });
   expect((await readExecutionWithPrevious(tx, principal, currentId))?.previous).toEqual([]);
   expect(candidates).toHaveBeenCalledTimes(2);
@@ -112,6 +114,37 @@ it('selects the latest eligible workout and first corrected working mass in save
   mocks.read.mockResolvedValueOnce(current).mockResolvedValueOnce(makeSource(invalidId, 'perImplement')).mockResolvedValueOnce(makeSource(eligibleId, 'barbellTotal')).mockResolvedValueOnce(makeSource(olderId, 'barbellTotal'));
   const read = await readExecutionWithPrevious(tx, { accountId: 'trusted', issuer: 'test', subject: 'test' }, current.executionId);
   expect(read?.firstSetLoads).toEqual([{ positionId: p.id, executionId: eligibleId, result: expect.objectContaining({ targetId: owned[1].id, version: 2, result: expect.objectContaining({ measurement: expect.objectContaining({ value: '101' }) }) }) }]);
+});
+
+it.each([['original', false], ['reversed', true], ['equal loads', false]])('omits prefill and displayed history for ambiguous %s exercise occurrences', async (label, reversed) => {
+  const position = createHypertrophyPlan().occurrences[0].positions[0];
+  const other = { ...position, id: randomUUID(), targets: position.targets.map(t => ({ ...t, id: randomUUID() })) };
+  const positions = reversed ? [other, position] : [position, other];
+  const loads = positions.map(p => label === 'equal loads' ? '100' : p.id === position.id ? '100' : '200');
+  const current = { executionId: randomUUID(), lifecycle: 'Open', results: [], initial: { positions: [], startedAt: '2026-09-16T12:00:00.000Z', occurrence: { positions: [position] } } } as unknown as ExecutionRead;
+  const sourceId = randomUUID();
+  const owned = positions.map(p => ({ sourcePositionId: p.id, targets: [{ id: randomUUID(), sourceTargetId: p.targets[0].id }] }));
+  const source = { executionId: sourceId, lifecycle: 'Finished', finish: { finishedAt: '2026-09-15T12:00:00.000Z' }, initial: { occurrence: { name: 'History', positions }, positions: owned },
+    results: owned.map((p, i) => ({ executionId: sourceId, targetId: p.targets[0].id, version: 2, result: { reps: { value: 8, basis: position.exercise.kind === 'catalogSnapshot' ? position.exercise.repBasis : 'total' }, measurement: { kind: 'externalLoad', value: loads[i], unit: 'lb', convention: 'barbellTotal', zeroMeaning: 'validZero' }, rir: null } })) };
+  const tx = { trainer2ExecutionFinish: { findMany: vi.fn().mockResolvedValue([{ executionId: sourceId }]) } } as unknown as Prisma.TransactionClient;
+  mocks.read.mockResolvedValueOnce(current).mockResolvedValueOnce(source);
+  const read = await readExecutionWithPrevious(tx, { accountId: 'trusted', issuer: 'test', subject: 'test' }, current.executionId);
+  expect(read?.firstSetLoads).toEqual([]);
+  expect(read?.previous).toEqual([]);
+});
+
+it('does not search an older workout past an ambiguous compatible occurrence', async () => {
+  const position = createHypertrophyPlan().occurrences[0].positions[0];
+  const duplicate = { ...position, id: randomUUID() };
+  const current = { executionId: randomUUID(), lifecycle: 'Open', results: [], initial: { positions: [], startedAt: '2026-09-16T12:00:00.000Z', occurrence: { positions: [position] } } } as unknown as ExecutionRead;
+  const source = { executionId: randomUUID(), lifecycle: 'Finished', finish: { finishedAt: '2026-09-15T12:00:00.000Z' }, initial: { occurrence: { name: 'Ambiguous', positions: [position, duplicate] }, positions: [] }, results: [] };
+  const older = { ...source, executionId: randomUUID(), initial: { ...source.initial, occurrence: { name: 'Older', positions: [position] } } };
+  const tx = { trainer2ExecutionFinish: { findMany: vi.fn().mockResolvedValue([{ executionId: source.executionId }, { executionId: older.executionId }]) } } as unknown as Prisma.TransactionClient;
+  mocks.read.mockResolvedValueOnce(current).mockResolvedValueOnce(source);
+  const read = await readExecutionWithPrevious(tx, { accountId: 'trusted', issuer: 'test', subject: 'test' }, current.executionId);
+  expect(read?.firstSetLoads).toEqual([]);
+  expect(read?.previous).toEqual([]);
+  expect(mocks.read).toHaveBeenCalledTimes(2);
 });
 
 it.each([['Accepted', 200], ['Conflict', 409], ['Rejected', 422]])('routes set skip %s through trusted writes', async (status, httpStatus) => {

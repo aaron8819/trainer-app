@@ -272,3 +272,12 @@ it('returns from a recorded-set edit without discarding input for either target'
   fireEvent.click(screen.getByRole('button', { name: /, set 1, recorded/ }));
   expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('9');
 });
+
+it('keeps legacy sparse results compact in the exercise queue', () => {
+  const value = activeFixture();
+  value.results = [{ executionId: value.executionId, targetId: value.initial.positions[0].targets[0].id, performedSetId: randomUUID(), actionId: randomUUID(), version: 1, reason: null,
+    recordedAt: new Date().toISOString(), result: { reps: null, measurement: null, rir: '3' } }];
+  render(<ActiveHarness value={value} read={async () => value.results} />);
+  expect(screen.getByRole('button', { name: /, set 1, recorded/ })).toHaveTextContent(/1· 3 RIR/);
+  expect(screen.getByRole('button', { name: /, set 1, recorded/ })).not.toHaveTextContent('unspecified');
+});

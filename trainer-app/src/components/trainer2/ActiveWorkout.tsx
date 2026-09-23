@@ -4,12 +4,18 @@ import { useEffect, useRef, useState } from 'react';
 import type { ExecutionRead } from '@/lib/trainer2-contracts/execution';
 import type { SavedSetResult } from '@/lib/trainer2-contracts/set-results';
 import type { SetSkip } from '@/lib/trainer2-contracts/skip-set';
-import { SetResultRow, resultLabel } from './SetResultRow';
+import { SetResultRow } from './SetResultRow';
 import { targetLabel } from './training-summary';
 import { loadLabel, pounds } from './pound-display';
 import { MuscleTags } from './MuscleTags';
 import { RestBar } from './RestBar';
 import { readRest, recordRest, restKey, type RestState } from './rest-state';
+
+function queueResultLabel(result: NonNullable<SavedSetResult['result']>) {
+  const load = result.measurement ? loadLabel(result.measurement).replace(/ lb (?:barbell total|per implement|machine displayed)/, ' lb') : null;
+  const reps = result.reps ? `${result.reps.value}${result.reps.basis === 'perSide' ? '/side' : result.reps.basis === 'alternating' ? ' alt' : ''} reps` : null;
+  return [load, reps, result.rir === null ? null : `${result.rir} RIR`].filter(Boolean).join(' · ');
+}
 
 export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState, inputStates, refresh, refreshExecution }: {
   execution: ExecutionRead; ownershipEpoch: number; locked: boolean;
@@ -125,14 +131,14 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
         {group.positions.map(owned => {
           const items = sets.filter(s => s.positionId === owned.id), position = items[0].position;
           const recordedCount = items.filter(s => execution.results.some(r => r.targetId === s.id && r.result)).length;
-          return <div key={owned.id} className={`rounded-2xl border bg-white p-3 shadow-sm ${active?.positionId === owned.id ? 'border-slate-400 ring-1 ring-slate-100' : 'border-slate-200'}`}>
-            <button className="flex min-h-11 w-full items-center justify-between gap-3 text-left hover:text-slate-700 focus-visible:rounded-md" onClick={() => select(items.find(s => !execution.results.some(r => r.targetId === s.id && r.result) && (!execution.skips?.some(k => k.targetId === s.id) || execution.results.some(r => r.targetId === s.id)))?.id ?? items[0].id, true)}><span className="font-semibold">{position.exercise.name}</span><span className="shrink-0 text-xs tabular-nums text-slate-500">{recordedCount}/{items.length} recorded</span></button>
+          return <div key={owned.id} className={`rounded-xl border bg-white p-3 ${active?.positionId === owned.id ? 'border-slate-400 border-l-4 border-l-slate-900 shadow-sm' : 'border-slate-200'}`}>
+            <button className="flex min-h-11 w-full items-center justify-between gap-3 text-left hover:text-slate-700 focus-visible:rounded-md" onClick={() => select(items.find(s => !execution.results.some(r => r.targetId === s.id && r.result) && (!execution.skips?.some(k => k.targetId === s.id) || execution.results.some(r => r.targetId === s.id)))?.id ?? items[0].id, true)}><span className="font-semibold">{position.exercise.name}</span><span className="shrink-0 text-xs tabular-nums text-slate-500">{recordedCount}/{items.length} logged</span></button>
             <MuscleTags exercise={position.exercise} />
             <div className="mt-2 flex flex-wrap gap-1.5">{items.map(s => {
               const skipped = execution.skips?.some(k => k.targetId === s.id) && !execution.results.some(r => r.targetId === s.id);
               const saved = execution.results.find(r => r.targetId === s.id);
               return <button key={s.id} aria-label={`${position.exercise.name}, set ${s.number}, ${saved?.result ? 'recorded' : skipped ? 'skipped' : 'unrecorded'}${inputStates[s.id] ? ', retained input' : ''}`} aria-pressed={selected === s.id}
-                className={`min-h-11 rounded-lg border px-3 py-2 text-left text-sm tabular-nums transition-colors ${selected === s.id ? 'border-black bg-black font-medium text-white' : saved?.result ? 'border-emerald-200 bg-emerald-50/40 text-emerald-900 hover:bg-emerald-50' : skipped ? 'border-dashed border-slate-400 text-slate-600 hover:bg-slate-50' : 'border-slate-300 text-slate-700 hover:bg-slate-50'}`} onClick={() => select(s.id, true)}>{s.number}{saved?.result ? ' · ' + resultLabel(saved.result).replace(/ lb (?:barbell total|per implement|machine displayed) × /, ' lb × ') : skipped ? ' · Skipped' : ' · Unrecorded'}{inputStates[s.id] ? ' •' : ''}</button>;
+                className={`min-h-11 rounded-lg border px-3 py-2 text-left text-sm tabular-nums transition-colors ${selected === s.id ? 'border-black bg-black font-medium text-white' : saved?.result ? 'border-emerald-200 bg-emerald-50/40 text-emerald-900 hover:bg-emerald-50' : skipped ? 'border-dashed border-slate-400 text-slate-600 hover:bg-slate-50' : 'border-slate-300 text-slate-700 hover:bg-slate-50'}`} onClick={() => select(s.id, true)}><span className="font-semibold">{s.number}</span><span className="ml-1.5">· {saved?.result ? queueResultLabel(saved.result) : skipped ? 'Skipped' : 'To log'}</span>{inputStates[s.id] ? ' •' : ''}</button>;
             })}</div>
           </div>;
         })}

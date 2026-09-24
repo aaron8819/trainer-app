@@ -19,7 +19,10 @@ describe("production write-gate static verification", () => {
   it("covers every classified application mutation before any mutation work", () => {
     const result = verifyProductionWriteGate(process.cwd());
     expect(result.failures).toEqual([]);
-    expect(result.mutationRoutes).toHaveLength(48);
+    expect(result.mutationRoutes).toHaveLength(56);
+    expect(result.mutationRoutes).toContainEqual(["trainer2/drafts/activate/route.ts#POST", "mesocycle_acceptance"]);
+    expect(result.mutationRoutes).toContainEqual(["trainer2/executions/start/route.ts#POST", "workout_materialization"]);
+    expect(result.mutationRoutes).toContainEqual(["trainer2/executions/corrections/route.ts#POST", "set_logging"]);
     expect(result.mutationRoutes).toContainEqual(["trainer2/drafts/create/route.ts#POST", "trainer2_draft"]);
     expect(result.mutationRoutes).toContainEqual(["trainer2/drafts/edit/route.ts#POST", "trainer2_draft"]);
     expect(result.mutationRoutes).toContainEqual(["trainer2/executions/skip-set/route.ts#POST", "set_logging"]);
@@ -33,6 +36,16 @@ describe("production write-gate static verification", () => {
     ).toContain(
       "Unsupported route method declaration: example/route.ts#POST",
     );
+  });
+
+  it("rejects a Trainer2 result writer without its central gate", () => {
+    expect(verifyProductionWriteGate(fixture("missing-trainer2-gate"), { fixtureMode: true }).failures)
+      .toContain("Missing central gate for trainer2/executions/results/route.ts#POST (set_logging)");
+  });
+
+  it("rejects a Trainer2 result writer classified under another operation", () => {
+    expect(verifyProductionWriteGate(fixture("wrong-trainer2-operation"), { fixtureMode: true }).failures)
+      .toContain("Wrong central gate operation for trainer2/executions/results/route.ts#POST; expected set_logging");
   });
 
   it("rejects a registered production writer without target-aware enforcement", () => {

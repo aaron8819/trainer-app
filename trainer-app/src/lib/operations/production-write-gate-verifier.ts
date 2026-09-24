@@ -3,6 +3,14 @@ import { join, relative, resolve } from "node:path";
 import ts from "typescript";
 
 export const APPLICATION_MUTATION_ROUTES = new Map<string, string>([
+  ["trainer2/drafts/activate/route.ts#POST", "mesocycle_acceptance"],
+  ["trainer2/drafts/instructions/route.ts#POST", "trainer2_draft"],
+  ["trainer2/executions/start/route.ts#POST", "workout_materialization"],
+  ["trainer2/executions/discard/route.ts#POST", "workout_structural_edit"],
+  ["trainer2/executions/finish/route.ts#POST", "mesocycle_lifecycle"],
+  ["trainer2/executions/results/route.ts#POST", "set_logging"],
+  ["trainer2/executions/corrections/route.ts#POST", "set_logging"],
+  ["trainer2/occurrences/skip/route.ts#POST", "mesocycle_lifecycle"],
   ["trainer2/executions/skip-set/route.ts#POST", "set_logging"],
   ["trainer2/drafts/create/route.ts#POST", "trainer2_draft"],
   ["trainer2/drafts/edit/route.ts#POST", "trainer2_draft"],

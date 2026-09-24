@@ -1,3 +1,9 @@
 import { executionHttp } from '@/lib/api/trainer2/execution-http';
+import { productionWritePauseResponse } from '@/lib/operations/production-write-gate-http';
 export const runtime = 'nodejs';
-export async function POST(request: Request) { return executionHttp(request, 'SkipOccurrence'); }
+
+export async function POST(request: Request) {
+  const paused = productionWritePauseResponse('mesocycle_lifecycle', '/api/trainer2/occurrences/skip');
+  if (paused) return paused;
+  return executionHttp(request, 'SkipOccurrence');
+}

@@ -1,0 +1,51 @@
+# Trainer2 logger verification closure
+
+## Source and scope
+
+Base: `codex/trainer2-prefill-history-correction`, commit `8523b88d634fe9f10557dccf1e22358a133b79e4`, tree `88e10db2c9118f61c2540480ae99267ce382af36`. The base coordinates were checked before creating this isolated `codex/trainer2-logger-verification-closure` worktree. Final clean commit/tree and artifact hashes are recorded after commit in ignored `trainer-app/artifacts/review/logger-verification-evidence/FINAL_BINDING.json`; this tracked report cannot contain its own commit hash.
+
+This is preparation for focused independent re-review, not acceptance. V1 remains live, hosting stays paused, and persistent local trial remains deferred.
+
+## Eight route findings
+
+The unchanged base reproduced all eight findings with `scripts/check-production-write-gate.ts` (exit 1; `base-route-gate-reproduction.log`). Every listed route supports POST. Each delegates to `draftHttp` or `executionHttp`, which opens a trusted write `requestContext` before parsing and dispatching the named command. The context enforces local request origin or hosted authentication and unconditional hosted admission denial; the command owners retain account, target, expected-state and mutation authority. Neither adapter called the central production write-pause guard. Consequently these were runtime pause-contract defects as well as registration/declaration findings, not merely classifier limitations. The documented contract in `docs/04_API_CONTRACTS.md` requires the guard before owner resolution or database access.
+
+| Route suffix under `/api/trainer2/` | Base diagnostic | Delegated command and intended classification | Correction and result |
+| --- | --- | --- | --- |
+| `drafts/activate` | Unclassified mutation | `ActivatePlan`; `mesocycle_acceptance` | Added route-level guard and exact registry entry; passes. |
+| `drafts/instructions` | Unclassified mutation | `ChangeInstructions`; `trainer2_draft` | Added route-level guard and exact registry entry; passes. |
+| `executions/discard` | Unclassified mutation | `DiscardEmptyExecution`; `workout_structural_edit` | Added route-level guard and exact registry entry; passes. |
+| `executions/finish` | Unclassified mutation | `FinishExecution`; `mesocycle_lifecycle` | Added route-level guard and exact registry entry; passes. |
+| `executions/results` | Unclassified mutation | `SaveSetResult`; `set_logging` | Added route-level guard and exact registry entry; passes. |
+| `occurrences/skip` | Unclassified mutation | `SkipOccurrence`; `mesocycle_lifecycle` | Added route-level guard and exact registry entry; passes. |
+| `executions/corrections` | Unsupported route method declaration | `CorrectHistoricalSetResult`; `set_logging` | Changed the arrow-function export to a function with a dominating route-level guard and registered it; passes. |
+| `executions/start` | Unsupported route method declaration | `StartOccurrence`; `workout_materialization` | Changed the arrow-function export to a function with a dominating route-level guard and registered it; passes. |
+
+These operation names are pause/audit classifications. They do not route Trainer2 through legacy mutation authority. The eight adapters were the smallest owner for the missing pre-context enforcement; `production-write-gate-verifier.ts` owns the explicit inventory. No classifier recognition rule was broadened. The 56-entry registry now matches actual route methods, including the existing three Trainer2 entries. The canonical route policy documentation was updated after implementation.
+
+## Controls and final verification
+
+- Positive controls: `trainer2-route-write-gate.test.ts` drives all eight actual POST exports with the pause enabled and disabled. Paused requests return 503 and `Retry-After: 60` without calling either delegated adapter; unpaused requests dispatch the exact command. The classifier verifies every registered route. `route-focused.log`: 23/23 passed.
+- Negative controls: task-owned `missing-trainer2-gate` and `wrong-trainer2-operation` fixtures prove that removing the result guard or changing its operation still fails static verification. Existing unsupported-declaration, pre-gate mutation, stale-inventory and operational-command controls remain active. No production route was temporarily mutated.
+- First full-gate attempt was an environment failure: ESLint traversed a task-owned dependency junction and exhausted Node's heap. The junction was removed without touching its target. `corrected-verify-gate.log` records exit 134. The later `verify-gate-final.log` records exit 0 after a standalone exact-lock install and Prisma generation; lint, TypeScript, 86 fast tests, 55 review/contract tests, 13 version/ownership tests, contract generation/checks and production write-gate ownership passed. `dependency-install.log`, `prisma-generate.log`, and `preflight.log` identify preparation; no DB target was inherited.
+- `trainer2-focused.log`: 95/95 prior execution HTTP, read, logger, workout and finish tests passed. The new credential-free test increases the suite inventory to 410 total and 371 credential-free; the classification assertion was updated. `environment-classification-final.log` records the final outcome. Repository command-registry and worktree verification evidence is recorded in the binding.
+
+## Original-review evidence gaps
+
+| Required claim | Existing evidence and source it tested | Applicability and new check | Final disposition |
+| --- | --- | --- | --- |
+| Current source-bound verification after the older alignment commits | The original review cited a stale `edd43709` binding. The prefill correction supplied a `8523b88d` binding and focused/browser evidence. | Eight routes and the classifier changed here, so the old gate result does not qualify. Fresh route tests, full gate, focused tests and browser checks target this worktree. Browser source manifests precede only the later test-inventory assertion and report; route/runtime file hashes are checked in `FINAL_BINDING.json`. | Gate and affected checks pass on final source. |
+| Duplicate compatible prior occurrences cannot suggest a weight or display misleading history; unique/prescribed and same-workout behavior remain | `prefill-history-evidence/browser-ambiguity.json` at `8523b88d` tested the corrected read model. | Fresh `prefill-history-evidence/browser-ambiguity.json` on this worktree proves two distinct corrected source weights yield blank load and history, while explicit 60 kg suggests 130 lb; PostgreSQL counted two history revisions. Focused read/component tests retain unique and carry-forward controls. | Passed; the prefill owner and contracts are unchanged. |
+| Input submission, persistence, reload and next-set prefill; Skip set, logging a skipped set, replay and controlled races | Earlier `alignment-evidence/browser-and-races.json` tested the older alignment source and was hash checked by the prefill report. | Fresh `alignment-evidence/browser-and-races.json` on this source records actual Edge/HTTP/PostgreSQL behavior, SQL readback, delayed responses, Log/Skip and Skip/Finish lock orders, replay and rollback. | Passed; five recorded race cases and no page errors. |
+| Reason-free current and historical correction; finish acknowledgement, completed readback and return home | Earlier alignment and prefill runs covered the feature owners. | Fresh prepared browser history includes the no-reason historical correction; alignment exercises correction, completion, all-skipped acknowledgement and home navigation. Focused tests cover command/read shapes. | Passed for exercised paths. |
+| Migration, permissions and restart | `prefill-history-evidence/reused-evidence.json` hashes the earlier populated upgrade/role evidence and byte-identical migration, grants, schema and command owners; `restart-readback.json` tests the corrected prefill read after app restart at `8523b88d`. | The final diff changes none of those SQL/schema/grant/read-owner files. The fresh run uses a migrated restricted disposable database and checks SQL, but does not repeat the populated upgrade or app restart. | Reused exact-owner evidence; fresh route-level pause/dispatch and live DB behavior pass. Restart and upgrade claims remain bounded to the unchanged owners tested previously. |
+| Timer, selection, unsaved input and narrow layout | Earlier alignment browser evidence was for a prior source. | Fresh alignment browser checks timer continuity, selection, typed draft/focus/viewport under delayed accepted log, and 1360/390/320 px layouts. | Passed on current runtime source. |
+| Eight required-gate classifications | The prefill gate exit 1 and matching older-base comparison identify the exact eight. | Unchanged base reproduced all eight with exit 1. Exact route registrations and runtime guards were then added. | Full gate exit 0; no waiver or broad exemption. |
+
+The successful ambiguity reproduction supports only its stated prefill/history claims. It is combined with the separate alignment run, focused tests, gate and exact-owner reuse above; it is not presented as proof of the entire logger/Skip set implementation by itself.
+
+## Evidence and limits
+
+Task-owned ignored evidence: `trainer-app/artifacts/review/logger-verification-evidence/`, `trainer-app/artifacts/trainer2/alignment-evidence/browser-and-races.json`, and `trainer-app/artifacts/review/prefill-history-evidence/browser-ambiguity.json`. `FINAL_BINDING.json` records commands, tool versions, UTC timestamps, exit codes, SHA-256 hashes, Git source coordinates, browser source comparison and cleanup. The failed inspection after the alignment run (`inspect-browser.log`) expected the preparatory next occurrence to remain untouched; that precondition was invalid after alignment advanced it. It is not counted as a product failure or a passing check. The preparatory fixture copy corrected an old synthetic missing-reps command; the tracked fixture was untouched.
+
+No hosted access, production data, persistent storage, deployment, push, merge or admission change occurred. The task-owned disposable app and PostgreSQL container were stopped; pre-existing demos and containers were preserved. The final source is ready for independent re-review, with no independent acceptance claim.

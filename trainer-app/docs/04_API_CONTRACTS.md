@@ -557,6 +557,11 @@ resolution or database access. The server-only environment variable is
 `TRAINER_WRITE_PAUSE`; only the exact value `enabled` pauses writes. Missing, empty, or any
 other value leaves existing behavior unchanged.
 
+The Trainer2 Draft activate/instructions and Execution start/discard/finish/results/corrections
+and occurrence skip POST routes use the same route-level gate before their shared HTTP
+adapters open a trusted request context. Their registration is explicit in
+`src/lib/operations/production-write-gate-verifier.ts`; the gate adds no command authority.
+
 While paused, classified mutation handlers return:
 
 ```http

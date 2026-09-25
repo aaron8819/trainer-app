@@ -1,27 +1,29 @@
 import { headers } from "next/headers";
-import { authenticateHostedRequest } from "@/lib/api/trainer2/authentication";
+import { databaseFor } from "@/lib/api/trainer2/database";
+import { developmentEnabled } from "@/lib/api/trainer2/development";
+import { sessionForRequest, soleOwner } from "@/lib/api/trainer2/sessions";
 
 export const dynamic = "force-dynamic";
 
-export default async function AuthPage({ searchParams }: { searchParams: Promise<{ notice?: string }> }) {
+export default async function AuthPage() {
   let signedIn = false;
-  try {
-    await authenticateHostedRequest(new Request("https://request.invalid", { headers: await headers() }));
+  let setup = false;
+  if (developmentEnabled()) try {
+    const db = await databaseFor("identity", developmentEnabled());
+    setup = !(await soleOwner(db)).passcodeVerifier;
+    await sessionForRequest(db, new Request("https://request.invalid", { headers: await headers() }));
     signedIn = true;
-  } catch { /* render signed-out state without provider details */ }
-  const { notice } = await searchParams;
+  } catch { /* render signed-out state without persistence details */ }
   return <main className="mx-auto max-w-lg space-y-5 p-8">
     <h1 className="text-2xl font-semibold">Trainer2 sign in</h1>
     <p>{signedIn ? "Signed in." : "Signed out."}</p>
-    <p>Trainer2 application access is disabled. Signing in does not create a training account or grant Draft access.</p>
-    {notice === "sent" && <p role="status">If this address is eligible, a sign-in link will arrive. Open it in this browser.</p>}
-    {notice === "logout-incomplete" && <p role="status">This browser is signed out. The identity service could not confirm session revocation.</p>}
-    <form action="/trainer2/auth/sign-in" method="post" className="space-y-3">
-      <label className="block">Email <input className="block border p-2" name="email" type="email" required maxLength={254} autoComplete="email" /></label>
-      <button className="rounded border px-3 py-2" type="submit">Send sign-in link</button>
-    </form>
-    <form action="/trainer2/auth/logout" method="post">
-      <button className="rounded border px-3 py-2" type="submit">Sign out</button>
-    </form>
+    <p>Hosted training access remains disabled.</p>
+    {developmentEnabled() && !signedIn && <form action={setup ? "/trainer2/auth/setup" : "/trainer2/auth/sign-in"} method="post" className="space-y-3">
+      {setup && <label className="block">One-time setup code <input className="block border p-2" name="setupCode" type="password" required autoComplete="off" /></label>}
+      <label className="block">Passcode <input className="block border p-2" name="passcode" type="password" required minLength={12} maxLength={128} autoComplete={setup ? "new-password" : "current-password"} /></label>
+      <button className="rounded border px-3 py-2" type="submit">{setup ? "Set passcode" : "Sign in"}</button>
+    </form>}
+    {signedIn && <><form action="/trainer2/auth/logout" method="post"><button className="rounded border px-3 py-2" type="submit">Sign out this device</button></form>
+      <form action="/trainer2/auth/revoke-all" method="post"><button className="rounded border px-3 py-2" type="submit">Sign out every device</button></form></>}
   </main>;
 }

@@ -20,7 +20,7 @@ Trainer2 progression intent and revision-bound read-only review: [contract, owne
 
 ## Trainer2 sign-in
 
-`/trainer2/auth` supports email PKCE sign-in, dynamic session status and POST logout. Its separate auth routes do not provision accounts or grant Draft/training access. [Flow and protections](architecture/trainer2/SUPABASE_AUTH.md).
+`/trainer2/auth` shows one-time setup, passcode sign-in, local session status, Sign out this device and Sign out every device. The passcode form uses POST; a Secure, HttpOnly, SameSite cookie keeps each device signed in through browser and app restarts until expiry or revocation. The page cannot provision a User or owner binding, and hosted training remains disabled. [Flow and protections](architecture/trainer2/PRINCIPAL_BOUNDARY.md).
 
 ## Trainer2 developer draft loop
 

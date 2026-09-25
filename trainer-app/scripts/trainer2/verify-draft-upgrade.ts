@@ -44,7 +44,7 @@ export async function verifyDraftUpgrade(admin: Pool, ownerUrl: string, runtimeU
         if (name !== "AccountPrincipal") await pool.query(`GRANT INSERT ON ${table} TO trainer2_draft_runtime`);
       }
       await pool.query('GRANT UPDATE ON "Trainer2AccountTrainingState","Trainer2Plan" TO trainer2_draft_runtime');
-      const principal = { accountId: randomUUID(), issuer: "upgrade-fixture", subject: "developer" };
+      const principal = { accountId: randomUUID(), sessionId: randomUUID(), issuer: "upgrade-fixture", subject: "developer" };
       await owner.user.create({ data: { id: principal.accountId, email: `${principal.accountId}@trainer2.invalid` } });
       await owner.trainer2AccountPrincipal.create({ data: { id: randomUUID(), ...principal } });
       const create = sample(principal.accountId);

@@ -18,7 +18,7 @@ Trainer2 local activation: [current contract, immutable approval, instruction sc
 
 Trainer2 progression intent and revision-bound read-only review: [contract, ownership, behavior matrix and local verification](architecture/trainer2/PROGRESSION_REVIEW.md).
 
-Trainer2 Draft routes resolve identity and exact account mapping through the dedicated access boundary. Supabase cookie authentication is server-verified and fails closed, and mapped identity cannot bypass the unconditional hosted admission denial. Local GET uses a reader/read-only transaction; local POSTs retain write-pause and Origin checks. All Draft responses are private/no-store. See [principal boundary](architecture/trainer2/PRINCIPAL_BOUNDARY.md) for mapping freshness, connection and hosted qualification contracts.
+Every Trainer2 API route resolves the sole owner and a persistent, revocable device session server-side before a data read or command. Transaction-level rechecks cover revocation and owner changes. Local GET uses a reader/read-only transaction; local POSTs retain write-pause and exact Origin checks. Hosted training admission remains unconditional denial. All Trainer2 responses are private/no-store. [Access boundary](architecture/trainer2/PRINCIPAL_BOUNDARY.md).
 
 ## Trainer2 local draft commands
 

@@ -1,20 +1,20 @@
-import { authenticateHostedRequest } from "./authentication";
-import { assertLocalRequest, developmentContext, developmentEnabled } from "./development";
+import { assertLocalRequest, developmentEnabled } from "./development";
 import { databaseFor } from "./database";
 import { DraftAccessError, resolveAccount } from "./principal";
+import { renewSession } from "./sessions";
+import { assertSessionMutationOrigin } from "./authentication";
+import { productionWriteStatus } from "@/lib/operations/production-write-gate";
 
 // No flag can enable hosted Draft/training admission in this slice.
 export function assertHostedAdmission(): never { throw new DraftAccessError("HOSTED_ADMISSION_DISABLED"); }
 
 export async function requestContext(request: Request, purpose: "read" | "write") {
-  if (developmentEnabled()) {
-    assertLocalRequest(request);
-    return developmentContext(purpose);
-  }
-  // Authentication failure propagates. Never retry with the development identity.
-  const verified = await authenticateHostedRequest(request);
-  await resolveAccount(await databaseFor("identity", false), verified);
-  // When admission is separately implemented, validate configured canonical origin
-  // for cookie mutations before opening a write connection. No write pool opens here.
-  return assertHostedAdmission();
+  const local = developmentEnabled();
+  if (local) assertLocalRequest(request);
+  if (purpose === "write") assertSessionMutationOrigin(request);
+  const identity = await databaseFor("identity", local);
+  const principal = await resolveAccount(identity, request);
+  if (productionWriteStatus() !== "PAUSED") await renewSession(identity, request);
+  if (!local) return assertHostedAdmission();
+  return { db: await databaseFor(purpose, true), principal };
 }

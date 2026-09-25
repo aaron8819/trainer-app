@@ -26,7 +26,7 @@ export async function verifyDiscardExecution(db: PrismaClient, reader: PrismaCli
   const results: string[] = [], preservation: unknown[] = [];
   const pass = (s: string) => { results.push(s); console.log(`PASS ${s}`); writeFileSync(resolve('artifacts/trainer2/discard-progress.json'), JSON.stringify({ results, preservation }, null, 2)); };
   const envelope = (p: ServerPrincipal) => ({ schemaVersion: 1 as const, actionId: randomUUID(), originatingAccountId: p.accountId, deviceId: randomUUID(), ownershipEpoch: 0, dependsOn: [] });
-  const account = async () => { const p = { accountId: randomUUID(), issuer: 'result-test', subject: randomUUID() }; await owner.user.create({ data: { id: p.accountId, email: `${p.subject}@trainer2.invalid` } }); await owner.trainer2AccountPrincipal.create({ data: { id: randomUUID(), ...p } }); return p; };
+  const account = async () => { const p = { accountId: randomUUID(), sessionId: randomUUID(), issuer: 'result-test', subject: randomUUID() }; await owner.user.create({ data: { id: p.accountId, email: `${p.subject}@trainer2.invalid` } }); await owner.trainer2AccountPrincipal.create({ data: { id: randomUUID(), ...p } }); return p; };
   const starts = new Map<string, unknown>();
   const create = async (p: ServerPrincipal, independent: boolean | 'mixed' = false, optionalOnly = false, write = db, readDb = reader) => {
     let intent = createHypertrophyPlan();
@@ -101,7 +101,7 @@ export async function verifyDiscardExecution(db: PrismaClient, reader: PrismaCli
     const value=Reflect.get(target,key); return typeof value==='function'?value.bind(target):value;
   } });
   const upgrade=await verifyDiscardUpgrade(admin,ownerUrl,runtimeUrl,command,async(up,upOwner)=>{
-    const p={accountId:randomUUID(),issuer:'upgrade',subject:randomUUID()}; await upOwner.user.create({data:{id:p.accountId,email:`${p.subject}@trainer2.invalid`}});await upOwner.trainer2AccountPrincipal.create({data:{id:randomUUID(),...p}});
+    const p={accountId:randomUUID(),sessionId: randomUUID(), issuer:'upgrade',subject:randomUUID()}; await upOwner.user.create({data:{id:p.accountId,email:`${p.subject}@trainer2.invalid`}});await upOwner.trainer2AccountPrincipal.create({data:{id:randomUUID(),...p}});
     const base=baseCompatible(up); let x=await create(p,true,false,base,base); accept(await saveSetResult(base,p,record(p,x)));x=(await readExecution(base,p,x.executionId))!;ok(await finishExecution(base,p,finish(p,x)));
     const empty=await create(p,true,false,base,base);
     return async()=>{ok(await discardEmptyExecution(up,p,discard(p,empty)));assert.equal((await readExecution(up,p,x.executionId))!.lifecycle,'Finished');};

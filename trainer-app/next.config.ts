@@ -6,12 +6,12 @@ const isUiAuditFixtureMode =
 const uiAuditFixtureDistDir = process.env.UI_AUDIT_NEXT_DIST_DIR?.trim();
 
 const nextConfig: NextConfig = {
+  env: { TRAINER_BUILT_MODE: process.env.TRAINER_BUILD_MODE === "preview" ||
+    process.env.VERCEL_ENV === "preview" ? "preview" : "v1" },
   ...(isUiAuditFixtureMode
     ? { distDir: uiAuditFixtureDistDir || ".next-ui-audit/managed" }
     : {}),
   devIndicators: false,
-  // PKCE codes are single-use credentials; never write callback query strings to dev logs.
-  logging: { incomingRequests: { ignore: [/^\/trainer2\/auth\/callback(?:\?|$)/] } },
   turbopack: {
     root: path.resolve(__dirname),
   },

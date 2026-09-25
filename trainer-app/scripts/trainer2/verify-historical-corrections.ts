@@ -25,7 +25,7 @@ export async function verifyHistoricalCorrections(db: PrismaClient, reader: Pris
   const results: string[] = [], preservation: unknown[] = [];
   const pass = (s: string) => { results.push(s); console.log(`PASS ${s}`); writeFileSync(resolve('artifacts/trainer2/historical-corrections-progress.json'), JSON.stringify({ results, preservation }, null, 2)); };
   const envelope = (p: ServerPrincipal) => ({ schemaVersion: 1 as const, actionId: randomUUID(), originatingAccountId: p.accountId, deviceId: randomUUID(), ownershipEpoch: 0, dependsOn: [] });
-  const account = async () => { const p = { accountId: randomUUID(), issuer: 'result-test', subject: randomUUID() }; await owner.user.create({ data: { id: p.accountId, email: `${p.subject}@trainer2.invalid` } }); await owner.trainer2AccountPrincipal.create({ data: { id: randomUUID(), ...p } }); return p; };
+  const account = async () => { const p = { accountId: randomUUID(), sessionId: randomUUID(), issuer: 'result-test', subject: randomUUID() }; await owner.user.create({ data: { id: p.accountId, email: `${p.subject}@trainer2.invalid` } }); await owner.trainer2AccountPrincipal.create({ data: { id: randomUUID(), ...p } }); return p; };
   const create = async (p: ServerPrincipal, independent: boolean | 'mixed' = false, optionalOnly = false, write = db, readDb = reader) => {
     let intent = createHypertrophyPlan();
     if (independent) {
@@ -93,7 +93,7 @@ export async function verifyHistoricalCorrections(db: PrismaClient, reader: Pris
     x=await read(p,x); ok(await finishExecution(db,p,finish(p,x))); return read(p,x);
   };
   const upgrade = await verifyHistoricalUpgrade(admin,ownerUrl,runtimeUrl,command,async (up,upOwner) => {
-    const p={accountId:randomUUID(),issuer:'upgrade',subject:randomUUID()};
+    const p={accountId:randomUUID(),sessionId: randomUUID(), issuer:'upgrade',subject:randomUUID()};
     await upOwner.user.create({data:{id:p.accountId,email:`${p.subject}@trainer2.invalid`}}); await upOwner.trainer2AccountPrincipal.create({data:{id:randomUUID(),...p}});
     let x=await create(p,true,false,up,up); accept(await saveSetResult(up,p,record(p,x))); x=(await readExecution(up,p,x.executionId))!;
     ok(await finishExecution(up,p,finish(p,x))); const finished=(await readExecution(up,p,x.executionId))!;

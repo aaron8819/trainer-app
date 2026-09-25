@@ -1,24 +1,23 @@
 // Next rejects this module in a client import graph. No identity enters a browser bundle.
 import "next/headers";
 import type { PrismaClient, Prisma } from "@prisma/client";
+import { sessionForRequest } from "./sessions";
 
 export class DraftAccessError extends Error {}
-/** Output of a supported server verifier, never a request DTO or decoded token. */
-export type VerifiedPrincipal = Readonly<{ issuer: string; subject: string }>;
-export type ServerPrincipal = VerifiedPrincipal & Readonly<{ accountId: string }>;
+export type ServerPrincipal = Readonly<{ accountId: string; sessionId: string }>;
 
-export async function resolveAccount(db: PrismaClient | Prisma.TransactionClient, verified: VerifiedPrincipal): Promise<ServerPrincipal> {
-  if (!verified.issuer || !verified.subject || verified.issuer.trim() !== verified.issuer || verified.subject.trim() !== verified.subject)
-    throw new DraftAccessError("INVALID_PRINCIPAL");
-  const mapping = await db.trainer2AccountPrincipal.findUnique({ where: { issuer_subject: {
-    issuer: verified.issuer, subject: verified.subject,
-  } } });
-  if (!mapping) throw new DraftAccessError("UNAUTHORIZED");
-  // No email matching, provisioning, or authorization cache. Read on every operation.
-  return { issuer: mapping.issuer, subject: mapping.subject, accountId: mapping.accountId };
+export async function resolveAccount(db: PrismaClient | Prisma.TransactionClient, request: Request): Promise<ServerPrincipal> {
+  return sessionForRequest(db, request);
 }
 
 export async function authorizeAccount(db: PrismaClient | Prisma.TransactionClient, principal: ServerPrincipal) {
-  const current = await resolveAccount(db, principal);
-  if (current.accountId !== principal.accountId) throw new DraftAccessError("UNAUTHORIZED");
+  const rows = await db.trainer2Owner.findMany({ take: 2, select: { id: true, accountId: true, sessionEpoch: true } });
+  const owner = rows[0];
+  if (rows.length !== 1 || owner.id !== 1 || owner.accountId !== process.env.TRAINER2_OWNER_USER_ID ||
+    owner.accountId !== principal.accountId) throw new DraftAccessError("UNAUTHORIZED");
+  const session = await db.trainer2DeviceSession.findUnique({ where: { id: principal.sessionId },
+    select: { ownerId: true, epoch: true, revokedAt: true, expiresAt: true, absoluteExpiresAt: true } });
+  if (!session || session.ownerId !== owner.id || session.epoch !== owner.sessionEpoch ||
+    session.revokedAt || session.expiresAt <= new Date() || session.absoluteExpiresAt <= new Date())
+    throw new DraftAccessError("UNAUTHORIZED");
 }

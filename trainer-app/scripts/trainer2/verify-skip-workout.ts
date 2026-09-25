@@ -27,7 +27,7 @@ export async function verifySkipWorkout(db: PrismaClient, reader: PrismaClient, 
   const pass = (name: string) => { results.push(name); console.log('PASS '+name); writeFileSync(resolve('artifacts/trainer2/skip-progress.json'),JSON.stringify({results,evidence},null,2)); };
   const envelope = (p: ServerPrincipal) => ({ schemaVersion: 1 as const, actionId: randomUUID(), deviceId: randomUUID(), originatingAccountId: p.accountId, ownershipEpoch: 0, dependsOn: [] });
   const ok = <T,>(r: { outcome: { status: string; result?: T } }): T => { assert.equal(r.outcome.status,'Accepted',JSON.stringify(r)); return r.outcome.result!; };
-  const account = async (write = owner) => { const p={accountId:randomUUID(),issuer:'skip-synthetic',subject:randomUUID()}; await write.user.create({data:{id:p.accountId,email:`${p.subject}@trainer2.invalid`}}); await write.trainer2AccountPrincipal.create({data:{id:randomUUID(),...p}});return p; };
+  const account = async (write = owner) => { const p={accountId:randomUUID(),sessionId: randomUUID(), issuer:'skip-synthetic',subject:randomUUID()}; await write.user.create({data:{id:p.accountId,email:`${p.subject}@trainer2.invalid`}}); await write.trainer2AccountPrincipal.create({data:{id:randomUUID(),...p}});return p; };
   const create = async (p: ServerPrincipal, count=3, write=db, read=reader, optional=false) => {
     const template=createHypertrophyPlan(); const stages=[{id:randomUUID(),name:'Week 2'},{id:randomUUID(),name:'Week 1'}];
     const intent={schemaVersion:1 as const,name:'Synthetic skip plan',endpoint:template.endpoint,progression:template.progression,stages,

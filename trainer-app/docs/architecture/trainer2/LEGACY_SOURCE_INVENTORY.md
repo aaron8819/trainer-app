@@ -121,7 +121,7 @@ The retained final verification under ignored `artifacts/trainer2-legacy/` binds
 
 Focused source and accepted Draft engine/boundary/component regressions, TypeScript, lint and repository-selected checks qualify this local slice. The prior independent Draft database/browser evidence remains attached to the accepted base; its implementation and migration files are unchanged. No new full Draft browser/release performance claim is made.
 
-Phase 0 is **not complete**. Hosted authenticated subject mapping/admission, deployed role/schema/source inventory, writer-era and device/backup completeness, and real source qualification remain unverified. Future import admission, cutover fencing and late-source reconciliation are not delivered. The next bounded step should validate the hosted identity/role boundary in an explicitly authorized environment while keeping training admission disabled, or deepen source fixtures if review reveals a concrete missing source contract. Do not start Phase 1 activation/execution under this slice's authorization.
+Phase 0 is **not complete**. Hosted single-user admission, verified real `User.id` binding, deployed role/schema/source inventory, writer-era and device/backup completeness, and real source qualification remain unverified. Future import admission, cutover fencing and late-source reconciliation are not delivered. The next bounded step is the authorized disposable restore and identity/role rehearsal while keeping hosted training admission disabled. Do not start real activation/execution under this slice's authorization.
 
 ### Bounded RLS correction and tracked follow-ups
 

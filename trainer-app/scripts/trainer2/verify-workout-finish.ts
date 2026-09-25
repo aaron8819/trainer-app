@@ -22,7 +22,7 @@ export async function verifyWorkoutFinish(db: PrismaClient, reader: PrismaClient
   const results: string[] = [], preservation: unknown[] = [];
   const pass = (s: string) => { results.push(s); console.log(`PASS ${s}`); writeFileSync(resolve('artifacts/trainer2/workout-finish-progress.json'), JSON.stringify({ results, preservation }, null, 2)); };
   const envelope = (p: ServerPrincipal) => ({ schemaVersion: 1 as const, actionId: randomUUID(), originatingAccountId: p.accountId, deviceId: randomUUID(), ownershipEpoch: 0, dependsOn: [] });
-  const account = async () => { const p = { accountId: randomUUID(), issuer: 'result-test', subject: randomUUID() }; await owner.user.create({ data: { id: p.accountId, email: `${p.subject}@trainer2.invalid` } }); await owner.trainer2AccountPrincipal.create({ data: { id: randomUUID(), ...p } }); return p; };
+  const account = async () => { const p = { accountId: randomUUID(), sessionId: randomUUID(), issuer: 'result-test', subject: randomUUID() }; await owner.user.create({ data: { id: p.accountId, email: `${p.subject}@trainer2.invalid` } }); await owner.trainer2AccountPrincipal.create({ data: { id: randomUUID(), ...p } }); return p; };
   const create = async (p: ServerPrincipal, independent: boolean | 'mixed' = false, optionalOnly = false) => {
     let intent = createHypertrophyPlan();
     if (independent) {

@@ -1,12 +1,15 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
+import { assertLegacyDatabaseAllowed, previewBuildPlaceholder } from "@/lib/operations/deployment-boundary";
+
+assertLegacyDatabaseAllowed();
 
 declare global {
   var prisma: PrismaClient | undefined;
 }
 
-const connectionString = process.env.DATABASE_URL;
+const connectionString = process.env.DATABASE_URL || previewBuildPlaceholder();
 
 if (!connectionString) {
   throw new Error("Missing DATABASE_URL");

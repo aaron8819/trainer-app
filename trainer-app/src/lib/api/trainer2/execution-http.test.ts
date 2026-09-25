@@ -86,7 +86,7 @@ it('reads latest corrected exercise summaries in finished-date order with exact 
   const prior = { executionId: sourceId, lifecycle: 'Finished', finish: { finishedAt: '2026-09-14T12:00:00.000Z' }, initial: { occurrence: { name: 'Previous workout', positions: [p] }, positions: [{ sourcePositionId: p.id, targets: [{ id: ownedTarget }] }] }, results: [result] };
   const candidates = vi.fn().mockResolvedValue([{ executionId: sourceId }]);
   const tx = { trainer2ExecutionFinish: { findMany: candidates } } as unknown as Prisma.TransactionClient;
-  const principal = { accountId: 'trusted', issuer: 'test', subject: 'test' };
+  const principal = { accountId: 'trusted', sessionId: 'fixture-session' };
   mocks.read.mockResolvedValueOnce(current).mockResolvedValueOnce(prior);
   const read = await readExecutionWithPrevious(tx, principal, currentId);
   expect(candidates).toHaveBeenCalledWith(expect.objectContaining({ where: { accountId: 'trusted', executionId: { not: currentId }, finishedAt: { lte: new Date(current.initial.startedAt) } } }));
@@ -112,7 +112,7 @@ it('selects the latest eligible workout and first corrected working mass in save
   const candidates = vi.fn().mockResolvedValue([invalidId, eligibleId, olderId].map(executionId => ({ executionId })));
   const tx = { trainer2ExecutionFinish: { findMany: candidates } } as unknown as Prisma.TransactionClient;
   mocks.read.mockResolvedValueOnce(current).mockResolvedValueOnce(makeSource(invalidId, 'perImplement')).mockResolvedValueOnce(makeSource(eligibleId, 'barbellTotal')).mockResolvedValueOnce(makeSource(olderId, 'barbellTotal'));
-  const read = await readExecutionWithPrevious(tx, { accountId: 'trusted', issuer: 'test', subject: 'test' }, current.executionId);
+  const read = await readExecutionWithPrevious(tx, { accountId: 'trusted', sessionId: 'fixture-session' }, current.executionId);
   expect(read?.firstSetLoads).toEqual([{ positionId: p.id, executionId: eligibleId, result: expect.objectContaining({ targetId: owned[1].id, version: 2, result: expect.objectContaining({ measurement: expect.objectContaining({ value: '101' }) }) }) }]);
 });
 
@@ -128,7 +128,7 @@ it.each([['original', false], ['reversed', true], ['equal loads', false]])('omit
     results: owned.map((p, i) => ({ executionId: sourceId, targetId: p.targets[0].id, version: 2, result: { reps: { value: 8, basis: position.exercise.kind === 'catalogSnapshot' ? position.exercise.repBasis : 'total' }, measurement: { kind: 'externalLoad', value: loads[i], unit: 'lb', convention: 'barbellTotal', zeroMeaning: 'validZero' }, rir: null } })) };
   const tx = { trainer2ExecutionFinish: { findMany: vi.fn().mockResolvedValue([{ executionId: sourceId }]) } } as unknown as Prisma.TransactionClient;
   mocks.read.mockResolvedValueOnce(current).mockResolvedValueOnce(source);
-  const read = await readExecutionWithPrevious(tx, { accountId: 'trusted', issuer: 'test', subject: 'test' }, current.executionId);
+  const read = await readExecutionWithPrevious(tx, { accountId: 'trusted', sessionId: 'fixture-session' }, current.executionId);
   expect(read?.firstSetLoads).toEqual([]);
   expect(read?.previous).toEqual([]);
 });
@@ -141,7 +141,7 @@ it('does not search an older workout past an ambiguous compatible occurrence', a
   const older = { ...source, executionId: randomUUID(), initial: { ...source.initial, occurrence: { name: 'Older', positions: [position] } } };
   const tx = { trainer2ExecutionFinish: { findMany: vi.fn().mockResolvedValue([{ executionId: source.executionId }, { executionId: older.executionId }]) } } as unknown as Prisma.TransactionClient;
   mocks.read.mockResolvedValueOnce(current).mockResolvedValueOnce(source);
-  const read = await readExecutionWithPrevious(tx, { accountId: 'trusted', issuer: 'test', subject: 'test' }, current.executionId);
+  const read = await readExecutionWithPrevious(tx, { accountId: 'trusted', sessionId: 'fixture-session' }, current.executionId);
   expect(read?.firstSetLoads).toEqual([]);
   expect(read?.previous).toEqual([]);
   expect(mocks.read).toHaveBeenCalledTimes(2);

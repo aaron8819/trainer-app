@@ -1555,7 +1555,6 @@ describe("command coverage honesty", () => {
       "trainer-app/scripts/test-trainer2-skip-workout.ts",
       "trainer-app/scripts/demo-trainer2-drafts.ts",
       "trainer-app/scripts/test-trainer2-principal-postgres.ts",
-      "trainer-app/scripts/test-trainer2-auth-postgres.ts",
       "trainer-app/scripts/test-trainer2-legacy-postgres.ts",
       "trainer-app/scripts/verify-seed-revision-concurrency.ts",
     ]);

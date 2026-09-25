@@ -16,7 +16,7 @@ Trainer2 local activation: [current contract, immutable approval, instruction sc
 
 Trainer2 progression intent and revision-bound read-only review: [contract, ownership, behavior matrix and local verification](architecture/trainer2/PROGRESSION_REVIEW.md).
 
-`prisma/trainer2-runtime-grants.sql` prepares fresh dedicated lookup/read/write/provisioning roles and RLS policies separately from automatic migrations. It changes no tables or migration history. Runtime cannot administer AccountPrincipal; these server role policies do not implement per-account RLS. [Privilege and mapping contract](architecture/trainer2/PRINCIPAL_BOUNDARY.md).
+Migration `20260924190000_trainer2_single_user_access` adds the fixed singleton `Trainer2Owner` binding to an existing `User.id` and durable `Trainer2DeviceSession` rows. It does not migrate historical `Trainer2AccountPrincipal` data. `prisma/trainer2-runtime-grants.sql` prepares fresh, restricted identity/read/write roles and RLS policies separately from migrations. Training roles cannot read verifier or token-hash columns; runtime cannot change the bound account ID. These server roles do not implement per-account RLS. [Access and privilege contract](architecture/trainer2/PRINCIPAL_BOUNDARY.md).
 
 ## Trainer2 draft persistence
 

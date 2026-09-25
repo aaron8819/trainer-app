@@ -1,15 +1,21 @@
 -- Administrative preparation, NOT an automatic migration. Fresh dedicated roles only.
 -- Execute in one transaction after the accepted migration chain. No passwords here.
 -- Hosted application of this file requires named environment/action authorization.
-CREATE ROLE trainer2_identity_reader NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+CREATE ROLE trainer2_identity_runtime NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 CREATE ROLE trainer2_draft_reader NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 CREATE ROLE trainer2_draft_runtime NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
-CREATE ROLE trainer2_principal_admin NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
-GRANT USAGE ON SCHEMA public TO trainer2_identity_reader, trainer2_draft_reader, trainer2_draft_runtime, trainer2_principal_admin;
-GRANT SELECT ON "Trainer2AccountPrincipal" TO trainer2_identity_reader, trainer2_draft_reader, trainer2_draft_runtime, trainer2_principal_admin;
-GRANT INSERT, DELETE ON "Trainer2AccountPrincipal" TO trainer2_principal_admin;
-CREATE POLICY trainer2_principal_lookup ON "Trainer2AccountPrincipal" FOR SELECT TO trainer2_identity_reader, trainer2_draft_reader, trainer2_draft_runtime USING (true);
-CREATE POLICY trainer2_principal_administration ON "Trainer2AccountPrincipal" TO trainer2_principal_admin USING (true) WITH CHECK (true);
+GRANT USAGE ON SCHEMA public TO trainer2_identity_runtime, trainer2_draft_reader, trainer2_draft_runtime;
+-- Historical issuer/subject rows receive no runtime or administration grant.
+GRANT SELECT ON "Trainer2Owner", "Trainer2DeviceSession" TO trainer2_identity_runtime;
+GRANT SELECT ("id", "accountId", "sessionEpoch") ON "Trainer2Owner" TO trainer2_draft_reader, trainer2_draft_runtime;
+GRANT SELECT ("id", "ownerId", "epoch", "revokedAt", "expiresAt", "absoluteExpiresAt") ON "Trainer2DeviceSession" TO trainer2_draft_reader, trainer2_draft_runtime;
+GRANT UPDATE ("passcodeVerifier", "setupVerifier", "failedAttempts", "lockedUntil", "sessionEpoch") ON "Trainer2Owner" TO trainer2_identity_runtime;
+GRANT UPDATE ("expiresAt", "renewedAt", "revokedAt") ON "Trainer2DeviceSession" TO trainer2_identity_runtime;
+GRANT INSERT ON "Trainer2DeviceSession" TO trainer2_identity_runtime;
+CREATE POLICY trainer2_owner_identity ON "Trainer2Owner" TO trainer2_identity_runtime USING (true) WITH CHECK (true);
+CREATE POLICY trainer2_session_identity ON "Trainer2DeviceSession" TO trainer2_identity_runtime USING (true) WITH CHECK (true);
+CREATE POLICY trainer2_owner_training_read ON "Trainer2Owner" FOR SELECT TO trainer2_draft_reader, trainer2_draft_runtime USING (true);
+CREATE POLICY trainer2_session_training_read ON "Trainer2DeviceSession" FOR SELECT TO trainer2_draft_reader, trainer2_draft_runtime USING (true);
 GRANT SELECT ON "Trainer2AccountTrainingState", "Trainer2Plan", "Trainer2PlanRevision", "Trainer2Identity", "Trainer2DurableAction", "Trainer2ActionOutcome" TO trainer2_draft_reader, trainer2_draft_runtime;
 GRANT INSERT ON "Trainer2AccountTrainingState", "Trainer2Plan", "Trainer2PlanRevision", "Trainer2Identity", "Trainer2DurableAction", "Trainer2ActionOutcome" TO trainer2_draft_runtime;
 GRANT UPDATE ON "Trainer2AccountTrainingState", "Trainer2Plan" TO trainer2_draft_runtime;

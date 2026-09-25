@@ -92,3 +92,27 @@ describe("UI audit request boundary", () => {
     }
   });
 });
+
+describe("Preview route boundary", () => {
+  const request = (path: string) => proxy(new NextRequest(`https://preview.invalid${path}`));
+  it("blocks V1 routes and permits only Trainer2 routes when Preview is correctly bound", () => {
+    vi.stubEnv("TRAINER_BUILT_MODE", "preview"); vi.stubEnv("TRAINER_DEPLOYMENT_MODE", "preview");
+    vi.stubEnv("VERCEL_ENV", "preview");
+    for (const key of ["DATABASE_URL", "DIRECT_URL", "OWNER_EMAIL", "DATABASE_SSL_NO_VERIFY"]) vi.stubEnv(key, "");
+    expect(request("/api/program").status).toBe(404);
+    expect(request("/plans").status).toBe(404);
+    expect(request("/api/trainer2/drafts").headers.get("x-middleware-next")).toBe("1");
+  });
+  it("fails closed for missing or empty runtime mode, inherited credentials, and opposite mismatch", () => {
+    vi.stubEnv("TRAINER_BUILT_MODE", "preview"); vi.stubEnv("VERCEL_ENV", "preview");
+    for (const key of ["DATABASE_URL", "DIRECT_URL", "OWNER_EMAIL", "DATABASE_SSL_NO_VERIFY"]) vi.stubEnv(key, "");
+    for (const runtime of ["", "v1"]) {
+      vi.stubEnv("TRAINER_DEPLOYMENT_MODE", runtime);
+      expect(request("/api/program").status).toBe(503);
+    }
+    vi.stubEnv("TRAINER_DEPLOYMENT_MODE", "preview"); vi.stubEnv("DATABASE_URL", "postgresql://inherited.invalid/db");
+    expect(request("/trainer2/auth").status).toBe(503);
+    vi.stubEnv("TRAINER_BUILT_MODE", "v1"); vi.stubEnv("DATABASE_URL", "");
+    expect(request("/api/program").status).toBe(503);
+  });
+});

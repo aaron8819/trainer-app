@@ -99,7 +99,7 @@ There is no generic repository framework, plugin command bus, or shared mutable 
 
 Use server-side Prisma for new data. No browser Data API mutations, Realtime-based acceptance, or provider-specific distributed synchronization is necessary. Proposed new tables use explicit `Trainer2` names in the existing schema to minimize ORM reconfiguration; deny browser database roles access and enable RLS if the schema is exposed by Supabase. Use a dedicated least-privilege server role for new runtime writes and a separate read-only legacy adapter connection/role. Deployment must verify the actual grants; a naming prefix is not isolation. No existing privileged credential is assumed safe by virtue of current configuration.
 
-Authentication resolves a verified server principal to the existing stable User ID through a unique issuer/subject mapping. A browser-supplied account ID is checked, never trusted. The prototype `OWNER_EMAIL`/`owner@local` lookup is not an authentication mechanism. Local development can have an explicitly isolated development principal; hosted writes must fail closed without a verified identity. Authentication provider wiring must be tested with the deployed access model before user admission; this plan does not require changing providers.
+Trainer2 has one server-owned binding to the operator-verified existing stable `User.id`. A browser-supplied account ID is checked, never trusted. The V1 `OWNER_EMAIL`/`owner@local` lookup is not Trainer2 authentication. A persistent passcode device session is required even in local development; hosted writes remain disabled until a separate reviewed admission decision. The [current single-user contract](PRINCIPAL_BOUNDARY.md) supersedes the older external-principal design in this plan.
 
 ## 4. Target persistence model
 
@@ -123,7 +123,7 @@ All immutable versions carry creator/action, recorded time, previous-version/sou
 
 | Table/entity | Authoritative purpose and owner | Primary identity and relationships | Mutable versus immutable; provenance | Delete |
 | --- | --- | --- | --- | --- |
-| AccountPrincipal | Verified external principal → account; access infrastructure | UUID; unique `(issuer, subject)` → existing User | Binding changed only through deliberate account administration, audited; never client email guessing | P |
+| Single-user owner and device session | Verified existing User ID → one owner; passcode verifier and revocable device sessions | Fixed owner key with FK to existing User; session ID and hashed random secret | Binding changed only through deliberate administration; never client email guessing or historical principal reinterpretation | P |
 | AccountWorkspaceKey | Recover encrypted pending workspace after authenticated sign-in; Sync/access infrastructure | Composite `(accountId, keyVersion)` → User | Immutable server-wrapped account data key and wrapping-key version; rotation adds a version and retains decryptability until old pending journals migrate. Plaintext keys never enter action/export metadata | P; explicit erasure separate |
 | AccountTrainingState | Serialization point, runtime ownership and freshness counters; acceptance infrastructure | PK accountId → User; `runtimeOwner=LEGACY/FENCED/TRAINER2`, `ownershipEpoch`, `acceptedSequence`, `evidenceEpoch`, `instructionEpoch` | Explicit transitions/counters mutable under row lock; ownership transition audit immutable. Contains no current-plan/open-execution pointer | P |
 | Plan | Intent root and lifecycle; Planning | UUID + account; heads to current and initial-approved PlanRevision; optional copied-source revision/import artifact | Lifecycle enum Draft/Active/Paused/Completed/ConcludedEarly, CAS revision, current head mutable; identity/origin and initial-approved pointer fixed after activation | D/P |
@@ -758,7 +758,7 @@ These are implementation/rollout validation tasks, not unresolved product contra
 
 | Risk or unknown | Chosen design/default | Validation point |
 | --- | --- | --- |
-| Actual auth/deployed account identity | Verified server subject → stable User mapping; no OWNER_EMAIL trust; explicit local-dev mode only | Phase 0 identity spike and before hosted writes; verify provider/session integration actually deployed |
+| Actual single-user/deployed account identity | Operator-verified existing User ID, exact server binding and persistent device sessions; no OWNER_EMAIL trust | Phase 0 and before hosted writes; verify the deployed binding, session and revocation behavior |
 | PostgreSQL role/schema exposure and bypass writers | Server-only new writes, deny browser roles, RLS on exposed tables, constrained legacy reads, DB-backed fence | Phase 0 disposable grants tests; authorized provider/role inventory before Phase 6 |
 | Full revision document growth/reference checks | Full finite intent documents + immutable identity registries, seal validation, no duplicate latest relational prescription | Phase 1 realistic plan/capture sizes and DB tests; normalize revision children only if evidence warrants |
 | Account lock contention | Short per-account serial transactions, no external work while locked | Phase 1 concurrent command latency; shard by narrower invariant only after measured need |

@@ -20,7 +20,7 @@ assert.deepEqual(Object.keys(process.env).sort(), ${JSON.stringify(keys.sort())}
 for (const file of ['.env', '.env.local', '.env.development', '.env.development.local'])
   assert(!fs.existsSync(file), 'Auth qualification requires a dotenv-free checkout');
 for (const [key, role] of Object.entries({
-  TRAINER2_IDENTITY_CONNECTION_STRING: 'trainer2_identity_reader',
+  TRAINER2_IDENTITY_CONNECTION_STRING: 'trainer2_identity_runtime',
   TRAINER2_READ_CONNECTION_STRING: 'trainer2_draft_reader',
   TRAINER2_WRITE_CONNECTION_STRING: 'trainer2_draft_runtime'
 })) assert.equal(new URL(process.env[key]).username, role);

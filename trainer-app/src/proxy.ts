@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { privateAuthResponse, refreshAuthRequest } from "@/lib/api/trainer2/auth-http";
+import { privateAuthResponse } from "@/lib/api/trainer2/auth-http";
+import { currentDeploymentDecision } from "@/lib/operations/deployment-boundary";
 import {
   UI_AUDIT_FIXTURE_HEADER,
   authorizeUiAuditFixtureRequest,
@@ -7,6 +8,13 @@ import {
 
 export function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+  const deployment = currentDeploymentDecision();
+  if (deployment === "deny") return new NextResponse(null, { status: 503 });
+  if (deployment === "preview" && !(pathname === "/trainer2/auth" || pathname.startsWith("/trainer2/auth/") ||
+    pathname.startsWith("/api/trainer2/") || pathname.startsWith("/trainer2/dev/") ||
+    pathname.startsWith("/_next/") || pathname.startsWith("/brand/") || pathname.startsWith("/icons/") ||
+    pathname === "/favicon.ico" || pathname === "/apple-icon.png"))
+    return new NextResponse(null, { status: 404 });
   if (
     pathname.startsWith("/ui-audit-fixture") ||
     pathname.startsWith("/_next") ||
@@ -26,9 +34,8 @@ export function proxy(request: NextRequest) {
   });
   if (!scenario) {
     if (pathname.startsWith("/trainer2/auth/")) return privateAuthResponse(NextResponse.next());
-    if (pathname === "/trainer2/auth" || pathname.startsWith("/api/trainer2/") || pathname.startsWith("/trainer2/dev/")) {
-      return refreshAuthRequest(request);
-    }
+    if (pathname === "/trainer2/auth" || pathname.startsWith("/api/trainer2/") || pathname.startsWith("/trainer2/dev/"))
+      return privateAuthResponse(NextResponse.next());
     return NextResponse.next();
   }
   if (pathname.startsWith("/api/")) {

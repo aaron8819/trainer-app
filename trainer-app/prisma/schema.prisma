@@ -37,6 +37,32 @@ model Trainer2AccountPrincipal {
   @@unique([issuer, subject])
 }
 
+// Explicit single-user binding. Historical issuer/subject rows are never imported.
+model Trainer2Owner {
+  id                Int       @id
+  accountId         String    @unique
+  account           User      @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  passcodeVerifier  String?
+  setupVerifier     String?
+  failedAttempts    Int       @default(0)
+  lockedUntil       DateTime? @db.Timestamptz(3)
+  sessionEpoch      Int       @default(0)
+  sessions          Trainer2DeviceSession[]
+}
+
+model Trainer2DeviceSession {
+  id          String    @id @db.Uuid
+  ownerId     Int
+  tokenHash   String    @unique
+  createdAt   DateTime  @db.Timestamptz(3)
+  expiresAt   DateTime  @db.Timestamptz(3)
+  absoluteExpiresAt DateTime @db.Timestamptz(3)
+  renewedAt   DateTime  @db.Timestamptz(3)
+  revokedAt   DateTime? @db.Timestamptz(3)
+  epoch       Int
+  owner       Trainer2Owner @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+}
+
 model Trainer2AccountTrainingState {
   accountId        String @id
   runtimeOwner     String @default("LEGACY")
@@ -464,6 +490,7 @@ model User {
   activeMacroCycleId String?     @unique
   activeMacroCycle   MacroCycle? @relation("ActiveMacroCycle", fields: [activeMacroCycleId], references: [id], onDelete: Restrict)
   createdAt          DateTime    @default(now())
+  trainer2Owner      Trainer2Owner?
 
   profile                      Profile?
   constraints                  Constraints?

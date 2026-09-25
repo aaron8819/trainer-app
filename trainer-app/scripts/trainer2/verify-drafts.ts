@@ -7,7 +7,7 @@ import { Pool } from "pg";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { sanitizeDatabaseTargetEnvironment, validateDisposableDatabaseTargets } from "../../src/lib/operations/test-environment-preflight";
-import { createDraft, editDraft, readDraft, readOutcomeChanges, type ServerPrincipal } from "../../src/lib/api/trainer2/planning";
+import { createDraft, editDraft, readDraft, readOutcomeChanges } from "../../src/lib/api/trainer2/planning";
 import { canonicalJson, commandBinding, integrityHash } from "../../src/lib/api/trainer2/integrity";
 import type { CreateDraftCommand, EditDraftCommand, CommandResponse } from "../../src/lib/trainer2-contracts/draft";
 import { verifyAcceptance } from "./verify-acceptance";
@@ -64,7 +64,7 @@ export async function verifyDrafts(options: { manualDemo?: boolean; skipBuild?: 
   const container = `trainer2-draft-${suffix}`;
   const database = `trainer2_disposable_${suffix}`;
   const password = randomUUID();
-  const rolePasswords = { trainer2_identity_reader: randomUUID(), trainer2_draft_reader: randomUUID(), trainer2_draft_runtime: randomUUID() };
+  const rolePasswords = { trainer2_identity_runtime: randomUUID(), trainer2_draft_reader: randomUUID(), trainer2_draft_runtime: randomUUID() };
   secrets.push(password, ...Object.values(rolePasswords));
   const clients: PrismaClient[] = [];
   const pools: Pool[] = [];
@@ -106,13 +106,13 @@ export async function verifyDrafts(options: { manualDemo?: boolean; skipBuild?: 
     evidence.prisma = command(process.execPath, [resolve("node_modules/prisma/build/index.js"), "version"], env);
     const owner = client(ownerUrl);
     await adminPool.query(`BEGIN; ${readFileSync(resolve("prisma/trainer2-runtime-grants.sql"), "utf8")} COMMIT;`);
-    for (const role of ["trainer2_identity_reader", "trainer2_draft_reader", "trainer2_draft_runtime"])
+    for (const role of ["trainer2_identity_runtime", "trainer2_draft_reader", "trainer2_draft_runtime"])
       await adminPool.query(`ALTER ROLE ${role} LOGIN PASSWORD '${rolePasswords[role as keyof typeof rolePasswords]}'`);
-    const principal: ServerPrincipal = { accountId: randomUUID(), issuer: "trainer2-local-disposable", subject: "developer" };
-    const other: ServerPrincipal = { accountId: randomUUID(), issuer: "trainer2-local-disposable", subject: "other" };
+    const principal = { accountId: randomUUID(), sessionId: randomUUID(), issuer: "trainer2-local-disposable", subject: "developer" };
+    const other = { accountId: randomUUID(), sessionId: randomUUID(), issuer: "trainer2-local-disposable", subject: "other" };
     for (const p of [principal, other]) {
       await owner.user.create({ data: { id: p.accountId, email: `${p.subject}@trainer2.invalid` } });
-      await owner.trainer2AccountPrincipal.create({ data: { id: randomUUID(), ...p } });
+      await owner.trainer2AccountPrincipal.create({ data: { id: randomUUID(), accountId: p.accountId, issuer: p.issuer, subject: p.subject } });
     }
     const runtime = client(runtimeUrl);
     const runtimePool = new Pool({ connectionString: runtimeUrl }); pools.push(runtimePool);
@@ -120,7 +120,7 @@ export async function verifyDrafts(options: { manualDemo?: boolean; skipBuild?: 
     async function startWeb(requestedPort?: number) {
       const webPort = requestedPort ?? 32000 + Math.floor(Math.random() * 10000);
       const webEnv: NodeJS.ProcessEnv = { ...authWebPlatformEnvironment(process.env), NODE_ENV: "development", TRAINER2_LOCAL_DRAFTS: "enabled",
-        TRAINER2_IDENTITY_CONNECTION_STRING: `postgresql://trainer2_identity_reader:${rolePasswords.trainer2_identity_reader}@127.0.0.1:${port}/${database}`,
+        TRAINER2_IDENTITY_CONNECTION_STRING: `postgresql://trainer2_identity_runtime:${rolePasswords.trainer2_identity_runtime}@127.0.0.1:${port}/${database}`,
         TRAINER2_READ_CONNECTION_STRING: `postgresql://trainer2_draft_reader:${rolePasswords.trainer2_draft_reader}@127.0.0.1:${port}/${database}`,
         TRAINER2_WRITE_CONNECTION_STRING: runtimeUrl };
       delete webEnv.CI;

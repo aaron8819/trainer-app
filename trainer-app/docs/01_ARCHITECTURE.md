@@ -1,5 +1,7 @@
 # 01 Architecture
 
+Trainer2 has one server-bound owner and persistent device sessions. `src/lib/api/trainer2/sessions.ts` owns passcode/session persistence, `principal.ts` rechecks the same owner and session inside commands, and `access.ts` admits HTTP requests before a training pool opens. Historical issuer/subject bindings are inert. `src/lib/operations/deployment-boundary.ts` binds Preview intent into the Next artifact; `src/proxy.ts` denies V1 routes there, while `src/lib/db/prisma.ts` independently denies the legacy pool. [Exact access contract](architecture/trainer2/PRINCIPAL_BOUNDARY.md). Ordinary V1 production behavior remains as described below.
+
 ## Optional post-workout Finisher boundary
 
 `src/lib/api/finisher-service.ts` is the sole DB-backed orchestration owner for

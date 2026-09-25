@@ -19,7 +19,7 @@ export async function verifyWorkoutStart(db: PrismaClient, reader: PrismaClient,
   const results: string[] = [];
   const pass = (s: string) => { results.push(s); console.log(`PASS ${s}`); writeFileSync(resolve('artifacts/trainer2/workout-start-results.json'), JSON.stringify(results, null, 2)); };
   const envelope = (p: ServerPrincipal) => ({ schemaVersion: 1 as const, actionId: randomUUID(), originatingAccountId: p.accountId, deviceId: randomUUID(), ownershipEpoch: 0, dependsOn: [] });
-  const account = async () => { const p = { accountId: randomUUID(), issuer: 'start-test', subject: randomUUID() }; await owner.user.create({ data: { id: p.accountId, email: `${p.subject}@trainer2.invalid` } }); await owner.trainer2AccountPrincipal.create({ data: { id: randomUUID(), ...p } }); return p; };
+  const account = async () => { const p = { accountId: randomUUID(), sessionId: randomUUID(), issuer: 'start-test', subject: randomUUID() }; await owner.user.create({ data: { id: p.accountId, email: `${p.subject}@trainer2.invalid` } }); await owner.trainer2AccountPrincipal.create({ data: { id: randomUUID(), ...p } }); return p; };
   const create = async (p: ServerPrincipal, intent = createHypertrophyPlan(), activate = true) => {
     const planId = randomUUID(); assert.equal((await createDraft(db, p, { ...envelope(p), commandType: 'CreateDraft', target: { planId }, expected: {}, intent })).outcome.status, 'Accepted');
     const h = (await readDraft(reader, p, planId))!;

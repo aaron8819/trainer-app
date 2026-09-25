@@ -4,7 +4,8 @@ async function main() {
   if (!parseExactDisposableConfirmationArgs(process.argv.slice(2)).valid) throw new Error("Expected exactly --confirm-disposable");
   if (!validateDisposableDatabaseTargets({ environment: process.env, confirmed: true, requiredTargets: [] }).valid)
     throw new Error("TRAINER2_DB_TEST_TARGET_INVALID");
-  const { verifyPrincipal } = await import("./trainer2/verify-principal");
-  await verifyPrincipal();
+  const { verifySingleUser } = await import("./trainer2/verify-single-user");
+  await verifySingleUser();
 }
-void main().catch(() => { console.error("TRAINER2_PRINCIPAL_VERIFICATION_FAILED; see sanitized evidence"); process.exitCode = 1; });
+void main().catch(error => { console.error("TRAINER2_SINGLE_USER_VERIFICATION_FAILED", error instanceof Error &&
+  /^(DESKTOP|PHONE)_PLAN_RENDER_TIMEOUT$/.test(error.message) ? error.message : "see sanitized evidence"); process.exitCode = 1; });

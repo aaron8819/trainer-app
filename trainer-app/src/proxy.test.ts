@@ -116,3 +116,25 @@ describe("Preview route boundary", () => {
     expect(request("/api/program").status).toBe(503);
   });
 });
+
+describe("protected hosted-test route boundary", () => {
+  it("permits Trainer2 only on its exact origin and denies V1 paths", () => {
+    vi.stubEnv("TRAINER_BUILT_MODE", "hosted-test");
+    vi.stubEnv("TRAINER_DEPLOYMENT_MODE", "hosted-test");
+    vi.stubEnv("VERCEL_ENV", "preview");
+    vi.stubEnv("TRAINER2_APP_ORIGIN", "https://synthetic.example.test");
+    vi.stubEnv("TRAINER2_OWNER_USER_ID", "00000000-0000-0000-0000-000000000001");
+    vi.stubEnv("TRAINER2_DB_CA_CERT_PEM", "test-ca");
+    vi.stubEnv("TRAINER2_IDENTITY_CONNECTION_STRING", "restricted-identity");
+    vi.stubEnv("TRAINER2_READ_CONNECTION_STRING", "restricted-read");
+    vi.stubEnv("TRAINER2_WRITE_CONNECTION_STRING", "restricted-write");
+    for (const key of ["DATABASE_URL", "DIRECT_URL", "OWNER_EMAIL", "DATABASE_SSL_NO_VERIFY"]) vi.stubEnv(key, "");
+    const request = (host: string, path: string) => proxy(new NextRequest(`https://${host}${path}`, { headers: { host } }));
+    expect(request("synthetic.example.test", "/api/trainer2/drafts").headers.get("x-middleware-next")).toBe("1");
+    expect(request("synthetic.example.test", "/api/workouts").status).toBe(404);
+    expect(request("synthetic.example.test", "/plans").status).toBe(404);
+    expect(request("other.example.test", "/api/trainer2/drafts").status).toBe(404);
+    vi.stubEnv("DATABASE_URL", "postgresql://admin.invalid/db");
+    expect(request("synthetic.example.test", "/api/trainer2/drafts").status).toBe(503);
+  });
+});

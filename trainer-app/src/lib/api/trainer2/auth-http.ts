@@ -6,6 +6,7 @@ import { developmentEnabled } from "./development";
 import { DraftAccessError } from "./principal";
 import { enterPasscode, revokeSession, SESSION_COOKIE, sessionCookieOptions } from "./sessions";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
+import { hostedTestEnabled } from "./access";
 
 export function privateAuthResponse(response: NextResponse) {
   response.headers.set("Cache-Control", "private, no-store");
@@ -19,11 +20,11 @@ export async function authHttp(request: NextRequest, operation: "sign-in" | "set
   const paused = productionWritePauseResponse("operational_principal", request.nextUrl.pathname);
   if (paused) return privateAuthResponse(paused);
   try {
-    if (!developmentEnabled()) throw new DraftAccessError("HOSTED_ADMISSION_DISABLED");
+    if (!developmentEnabled() && !hostedTestEnabled()) throw new DraftAccessError("HOSTED_ADMISSION_DISABLED");
     const { origin } = authConfiguration();
     assertSessionMutationOrigin(request);
     if (request.headers.has("authorization")) throw new DraftAccessError("UNSUPPORTED_CREDENTIAL_TRANSPORT");
-    const db = await databaseFor("identity", true);
+    const db = await databaseFor("identity", developmentEnabled());
     if (operation === "logout" || operation === "revoke-all") {
       await revokeSession(db, request, operation === "revoke-all");
       const response = NextResponse.redirect(origin + AUTH_HOME, 303);

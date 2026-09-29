@@ -10,7 +10,9 @@ export function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const deployment = currentDeploymentDecision();
   if (deployment === "deny") return new NextResponse(null, { status: 503 });
-  if (deployment === "preview" && !(pathname === "/trainer2/auth" || pathname.startsWith("/trainer2/auth/") ||
+  if (deployment === "hosted-test" && request.headers.get("host") !== new URL(process.env.TRAINER2_APP_ORIGIN!).host)
+    return new NextResponse(null, { status: 404 });
+  if ((deployment === "preview" || deployment === "hosted-test") && !(pathname === "/trainer2/auth" || pathname.startsWith("/trainer2/auth/") ||
     pathname.startsWith("/api/trainer2/") || pathname.startsWith("/trainer2/dev/") ||
     pathname.startsWith("/_next/") || pathname.startsWith("/brand/") || pathname.startsWith("/icons/") ||
     pathname === "/favicon.ico" || pathname === "/apple-icon.png"))

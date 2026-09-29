@@ -17,7 +17,7 @@ describe("Trainer2 boundary", () => {
     function walk(file: string) {
       if (seen.has(file)) return; seen.add(file);
       const relative = file.slice(app.length + 1).replaceAll("\\", "/");
-      expect(allowed.some(prefix => relative.startsWith(prefix)) || ["app/trainer2/dev/executions/[executionId]/page.tsx", "lib/operations/production-write-gate-http.ts", "lib/operations/production-write-gate.ts"].includes(relative), relative).toBe(true);
+      expect(allowed.some(prefix => relative.startsWith(prefix)) || ["app/trainer2/dev/executions/[executionId]/page.tsx", "lib/operations/production-write-gate-http.ts", "lib/operations/production-write-gate.ts", "lib/operations/deployment-boundary.ts"].includes(relative), relative).toBe(true);
       if (file.endsWith(".json")) { JSON.parse(readFileSync(file, "utf8")); return; }
       const source = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
       const visit = (node: ts.Node) => {
@@ -40,8 +40,8 @@ describe("Trainer2 boundary", () => {
     walk(resolve(app, "app/trainer2/dev/executions/[executionId]/page.tsx"));
     expect(seen.size).toBeGreaterThan(6);
     const routeFiles = [...seen].filter(p => p.endsWith("route.ts"));
-    // Twelve accepted routes plus the dedicated occurrence skip endpoint.
-    expect(routeFiles).toHaveLength(13);
+    // All current Trainer2 API route modules must stay within the isolated graph.
+    expect(routeFiles).toHaveLength(14);
     expect(routeFiles).toContain(resolve(app, "app/api/trainer2/executions/corrections/route.ts"));
     expect(routeFiles).toContain(resolve(app, "app/api/trainer2/executions/discard/route.ts"));
     expect(routeFiles).toContain(resolve(app, "app/api/trainer2/occurrences/skip/route.ts"));

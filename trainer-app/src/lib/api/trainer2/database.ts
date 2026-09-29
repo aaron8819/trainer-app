@@ -101,7 +101,7 @@ export async function assertConnectionPrivileges(client: PoolClient, purpose: Co
 const connections = new Map<ConnectionPurpose, { url: string; local: boolean; pool: Pool; db: PrismaClient }>();
 export async function databaseFor(purpose: ConnectionPurpose, local: boolean): Promise<PrismaClient> {
   const deployment = currentDeploymentDecision();
-  if (deployment !== "v1")
+  if (deployment !== "v1" && !(deployment === "hosted-test" && !local))
     throw new DraftAccessError("DEPLOYMENT_BOUNDARY_DENIED");
   const url = connectionString(purpose, local);
   if (purpose !== "identity") {

@@ -1,12 +1,13 @@
 import { notFound } from 'next/navigation';
 import { developmentEnabled } from '@/lib/api/trainer2/development';
+import { hostedTestEnabled } from '@/lib/api/trainer2/access';
 import { requestContext } from '@/lib/api/trainer2/access';
 import { headers } from 'next/headers';
 import { Workout } from '@/components/trainer2/Workout';
 import { id } from '@/lib/trainer2-contracts/draft';
 export const dynamic = 'force-dynamic';
 export default async function ExecutionPage({ params }: { params: Promise<{ executionId: string }> }) {
-  if (!developmentEnabled()) notFound();
+  if (!developmentEnabled() && !hostedTestEnabled()) notFound();
   const parsed = id.safeParse((await params).executionId);
   if (!parsed.success) notFound();
   const { principal } = await requestContext(new Request('http://localhost/trainer2/dev/executions', { headers: await headers() }), 'read');

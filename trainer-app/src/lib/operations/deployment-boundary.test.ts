@@ -17,4 +17,14 @@ describe("built deployment boundary", () => {
     expect(deploymentDecision({ built: "v1", runtime: undefined, vercelEnvironment: "production", legacyCredentialsPresent: true })).toBe("v1");
     expect(deploymentDecision({ built: "v1", runtime: "", vercelEnvironment: "production", legacyCredentialsPresent: true })).toBe("v1");
   });
+  it("requires an explicit hosted-test build, runtime, Preview environment, and restricted configuration", () => {
+    const hosted = { built: "hosted-test", runtime: "hosted-test", vercelEnvironment: "preview",
+      legacyCredentialsPresent: false, restrictedCredentialsPresent: true, hostedConfigurationPresent: true };
+    expect(deploymentDecision(hosted)).toBe("hosted-test");
+    for (const change of [
+      { built: "preview" }, { runtime: undefined }, { runtime: "" }, { vercelEnvironment: "production" },
+      { legacyCredentialsPresent: true }, { restrictedCredentialsPresent: false }, { hostedConfigurationPresent: false },
+    ]) expect(deploymentDecision({ ...hosted, ...change })).toBe("deny");
+    expect(deploymentDecision({ ...base, restrictedCredentialsAny: true })).toBe("deny");
+  });
 });

@@ -12,6 +12,17 @@ vi.mock('./set-results', () => ({ saveSetResult: mocks.save, correctHistoricalSe
 vi.mock('./execution', async importOriginal => ({ ...await importOriginal<typeof import('./execution')>(), readExecution: mocks.read, readNextWorkout: mocks.next, startOccurrence: mocks.start }));
 afterEach(() => vi.resetAllMocks());
 describe('execution HTTP boundary', () => {
+  it('logs bounded failure metadata without exception text or submitted secrets', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      mocks.context.mockRejectedValue(Object.assign(new Error('postgresql://secret-password cookie-secret'), { code: 'P2028', cause: { code: '08006' } }));
+      const result = await executionHttp(new Request('http://localhost/results'), 'SaveSetResult');
+      expect(result.status).toBe(503);
+      expect(log).toHaveBeenCalledWith('trainer2_execution_failed', { operation: 'SaveSetResult', stage: 'admission', elapsedMs: expect.any(Number), code: 'P2028', causeCode: '08006', errorType: 'Error' });
+      expect(JSON.stringify(log.mock.calls)).not.toContain('secret');
+      expect(await result.json()).toEqual({ error: 'EXECUTION_TRANSACTION_FAILED', retry: 'Retry the same action envelope' });
+    } finally { log.mockRestore(); }
+  });
   it.each([['Accepted', 200], ['Conflict', 409], ['Rejected', 422]])('uses the trusted write context and durable %s outcome for set results', async (status, httpStatus) => {
     const db = {}, principal = { accountId: 'trusted' }, input = { commandType: 'RecordSetResult' };
     mocks.context.mockResolvedValue({ db, principal }); mocks.save.mockResolvedValue({ outcome: { status } });

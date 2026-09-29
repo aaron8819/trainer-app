@@ -12,10 +12,13 @@ import { ActionCollision, CommandFailure } from './command';
 import { InvalidStartSnapshot, readNextWorkout, startOccurrence } from './execution';
 
 export async function executionHttp(request: Request, operation: 'SkipSet' | 'SkipOccurrence' | 'DiscardEmptyExecution' | 'CorrectHistoricalSetResult' | 'FinishExecution' | 'StartOccurrence' | 'SaveSetResult' | 'ReadExecution' | 'ReadNext', target?: string) {
+  const started = Date.now();
+  let stage = 'admission';
   const json = (body: unknown, status: number) => Response.json(body, { status,
     headers: { 'Cache-Control': 'private, no-store', Vary: 'Cookie, Authorization' } });
   try {
     const { db, principal } = await requestContext(request, operation === 'SkipSet' || operation === 'SkipOccurrence' || operation === 'DiscardEmptyExecution' || operation === 'CorrectHistoricalSetResult' || operation === 'StartOccurrence' || operation === 'SaveSetResult' || operation === 'FinishExecution' ? 'write' : 'read');
+    stage = 'transaction';
     if (operation === 'ReadExecution' || operation === 'ReadNext') {
       const key = id.parse(target);
       const result = await db.$transaction(async tx => {
@@ -34,6 +37,12 @@ export async function executionHttp(request: Request, operation: 'SkipSet' | 'Sk
     if (error instanceof InvalidStartSnapshot) return json({ error: 'INVALID_START_SNAPSHOT' }, 422);
     if (error instanceof CommandFailure) return json({ error: error.code }, error.code === 'NOT_FOUND' ? 404 : 409);
     if (error instanceof ZodError || error instanceof SyntaxError) return json({ error: 'INVALID_COMMAND' }, 400);
+    // Never log the exception text, request envelope or connection configuration.
+    const failure = error as { code?: unknown; name?: unknown; cause?: { code?: unknown } } | null;
+    const safeCode = (value: unknown) => typeof value === 'string' && /^[A-Z0-9_]{1,40}$/.test(value) ? value : undefined;
+    console.error('trainer2_execution_failed', { operation, stage, elapsedMs: Date.now() - started,
+      code: safeCode(failure?.code), causeCode: safeCode(failure?.cause?.code),
+      errorType: typeof failure?.name === 'string' && /^[A-Za-z]{1,60}$/.test(failure.name) ? failure.name : 'Unknown' });
     return json({ error: 'EXECUTION_TRANSACTION_FAILED', retry: 'Retry the same action envelope' }, 503);
   }
 }

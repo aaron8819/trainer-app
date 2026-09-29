@@ -11,5 +11,5 @@ export default async function ExecutionPage({ params }: { params: Promise<{ exec
   const parsed = id.safeParse((await params).executionId);
   if (!parsed.success) notFound();
   const { principal } = await requestContext(new Request('http://localhost/trainer2/dev/executions', { headers: await headers() }), 'read');
-  return <main className="mx-auto min-h-screen max-w-3xl space-y-5 bg-white p-4 pb-24 text-slate-900 sm:p-8"><p className="text-sm text-amber-900">Disposable demo · workouts are deleted when the demo stops.</p><Workout key={`${principal.accountId}:${parsed.data}`} accountId={principal.accountId} ownershipEpoch={0} executionId={parsed.data} /></main>;
+  return <main className="mx-auto min-h-screen max-w-3xl space-y-5 bg-white p-4 pb-24 text-slate-900 sm:p-8"><p className="text-sm text-amber-900">{hostedTestEnabled() ? 'Protected synthetic trial · workouts are saved in durable database storage.' : 'Disposable demo · workouts are deleted when the demo stops.'}</p><Workout key={`${principal.accountId}:${parsed.data}`} accountId={principal.accountId} ownershipEpoch={0} executionId={parsed.data} /></main>;
 }

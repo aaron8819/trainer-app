@@ -11,5 +11,5 @@ export default async function DraftPage({ searchParams }: { searchParams: Promis
   const { db, principal } = await requestContext(new Request("http://localhost/trainer2/dev/drafts", { headers: await headers() }), "read");
   const state = await db.trainer2AccountTrainingState.findUnique({ where: { accountId: principal.accountId } });
   const { planId, view } = await searchParams;
-  return <DraftWorkbench view={view === "program" ? "program" : undefined} key={planId ?? "scratch"} initialPlanId={typeof planId === "string" ? planId : ""} accountId={principal.accountId} ownershipEpoch={state?.ownershipEpoch ?? 0} />;
+  return <DraftWorkbench hostedTrial={hostedTestEnabled()} view={view === "program" ? "program" : undefined} key={planId ?? "scratch"} initialPlanId={typeof planId === "string" ? planId : ""} accountId={principal.accountId} ownershipEpoch={state?.ownershipEpoch ?? 0} />;
 }

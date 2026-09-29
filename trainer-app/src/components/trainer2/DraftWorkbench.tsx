@@ -16,10 +16,10 @@ import { Workout } from './Workout';
 import { Instructions } from './Instructions';
 
 type WriteCommand = DraftCommand | ActivatePlanCommand | InstructionCommand;
-type Props = { accountId: string; ownershipEpoch: number; initialPlanId?: string; view?: 'program' };
+type Props = { accountId: string; ownershipEpoch: number; initialPlanId?: string; view?: 'program'; hostedTrial?: boolean };
 export function DraftWorkbench(props: Props) { return <Workbench key={`${props.accountId}:${props.initialPlanId ?? ''}`} {...props} />; }
 type Loaded = SavedPlanResponse;
-function Workbench({ accountId, ownershipEpoch, initialPlanId = '', view }: Props) {
+function Workbench({ accountId, ownershipEpoch, initialPlanId = '', view, hostedTrial = false }: Props) {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [form, setForm] = useState<DraftDocument | null>(null);
   const [planId, setPlanId] = useState(initialPlanId);
@@ -159,7 +159,7 @@ function Workbench({ accountId, ownershipEpoch, initialPlanId = '', view }: Prop
     <a className="inline-flex min-h-11 items-center text-sm text-slate-600 underline" href="/trainer2/dev/drafts">Create a new draft</a>
   </div></main>;
   return <main className="min-h-screen bg-white text-slate-900"><div className="mx-auto max-w-5xl space-y-5 px-4 py-4 pb-28 sm:px-8 sm:pt-10">
-    <header className="space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-semibold uppercase tracking-widest text-teal-700">Trainer / Plan builder</p><p className="rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-900">Demo: plans are deleted when the demo stops.</p></div>
+    <header className="space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-semibold uppercase tracking-widest text-teal-700">Trainer / Plan builder</p><p className="rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-900">{hostedTrial ? 'Protected synthetic trial: plans are saved in durable database storage.' : 'Demo: plans are deleted when the demo stops.'}</p></div>
       <h1 className="sr-only">Build your training plan</h1>
       {form && <label className="block"><span className="sr-only">Plan name</span><input aria-label="Plan name" className="w-full rounded border border-transparent bg-transparent py-2 text-2xl font-semibold tracking-tight hover:border-slate-200 focus:border-teal-600 sm:text-3xl" disabled={locked} value={form.name} onChange={e => changed({ ...form, name: e.target.value })} /></label>}
       {form?.builder && <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm"><span className="rounded-full bg-teal-50 px-3 py-1 font-medium text-teal-800">Hypertrophy</span><span className="py-1">5 weeks · 4 workouts per week</span><span className="py-1 text-slate-500">4 training weeks + 1 deload week</span></div>}

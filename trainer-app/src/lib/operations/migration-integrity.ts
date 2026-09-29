@@ -28,6 +28,16 @@ export const EXPECTED_MIGRATION_CHAIN = [
   "20260823120000_add_zero_load_meaning",
   "20260909120000_trainer2_drafts",
   "20260910020000_trainer2_acceptance_integrity",
+  "20260913120000_trainer2_activation",
+  "20260914010000_trainer2_workout_start",
+  "20260914020000_trainer2_set_results",
+  "20260914030000_trainer2_workout_finish",
+  "20260915010000_trainer2_historical_set_corrections",
+  "20260915020000_trainer2_discard_empty_execution",
+  "20260915030000_trainer2_skip_occurrence",
+  "20260916010000_trainer2_optional_correction_reason",
+  "20260922010000_trainer2_set_skip",
+  "20260924190000_trainer2_single_user_access",
 ] as const;
 
 export type LedgerRow = {

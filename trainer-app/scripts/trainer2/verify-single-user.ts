@@ -7,11 +7,11 @@ import { Pool } from "pg";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { provisionSingleUser } from "./provision-single-user";
-import { assertConnectionPrivileges } from "../../src/lib/api/trainer2/database";
+import { assertConnectionPrivileges, connectionString } from "../../src/lib/api/trainer2/database";
 import { authorizeAccount } from "../../src/lib/api/trainer2/principal";
 import { createDraft, readDraft } from "../../src/lib/api/trainer2/planning";
 import { enterPasscode, revokeSession, sessionForRequest, SESSION_COOKIE } from "../../src/lib/api/trainer2/sessions";
-import { sanitizeDatabaseTargetEnvironment } from "../../src/lib/operations/test-environment-preflight";
+import { EXPECTED_MIGRATION_CHAIN } from "../../src/lib/operations/migration-integrity";
 
 function run(command: string, args: string[], env?: NodeJS.ProcessEnv) {
   const result = spawnSync(command, args, { encoding: "utf8", env, windowsHide: true });
@@ -39,10 +39,70 @@ export async function verifySingleUser() {
     }
     const port = run("docker", ["port", container, "5432/tcp"]).match(/:(\d+)$/)?.[1]; assert(port);
     const url = (role: string) => `postgresql://${role}:${password}@127.0.0.1:${port}/${database}`;
-    const env = { ...sanitizeDatabaseTargetEnvironment(process.env), DATABASE_URL: url("postgres"), DIRECT_URL: url("postgres") };
-    run(process.execPath, [resolve("node_modules/prisma/build/index.js"), "migrate", "deploy"], env);
     const admin = db(url("postgres"));
+    await pools[0].query(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
+      ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+      ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON FUNCTIONS TO anon, authenticated, service_role;`);
+    const trainer2Start = EXPECTED_MIGRATION_CHAIN.indexOf("20260909120000_trainer2_drafts");
+    assert(trainer2Start > 0);
+    const apply = async (name: string) => pools[0].query(readFileSync(resolve("prisma/migrations", name, "migration.sql"), "utf8"));
+    for (const name of EXPECTED_MIGRATION_CHAIN.slice(0, trainer2Start)) await apply(name);
+    const accountId = randomUUID();
+    process.env.TRAINER2_OWNER_USER_ID = accountId;
+    await admin.user.create({ data: { id: accountId, email: `${suffix}@synthetic.invalid` } });
+    const v1Columns = await pools[0].query(`SELECT table_name,column_name,data_type,is_nullable FROM information_schema.columns
+      WHERE table_schema='public' AND table_name NOT LIKE 'Trainer2%' ORDER BY table_name,ordinal_position`);
+    const v1Definitions = async () => (await pools[0].query(`
+      SELECT 'index' AS kind, c.relname AS name, pg_get_indexdef(i.indexrelid) AS definition
+        FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid JOIN pg_class t ON t.oid=i.indrelid JOIN pg_namespace n ON n.oid=t.relnamespace
+        WHERE n.nspname='public' AND t.relname NOT LIKE 'Trainer2%'
+      UNION ALL SELECT 'constraint', con.conname, pg_get_constraintdef(con.oid)
+        FROM pg_constraint con JOIN pg_class t ON t.oid=con.conrelid JOIN pg_namespace n ON n.oid=t.relnamespace
+        WHERE n.nspname='public' AND t.relname NOT LIKE 'Trainer2%'
+      UNION ALL SELECT 'trigger', t.tgname, pg_get_triggerdef(t.oid)
+        FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname='public' AND c.relname NOT LIKE 'Trainer2%' AND NOT t.tgisinternal
+      UNION ALL SELECT 'function', p.proname, pg_get_functiondef(p.oid)
+        FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+        WHERE n.nspname='public' AND left(p.proname,9) <> 'trainer2_' AND p.prokind IN ('f','p')
+      UNION ALL SELECT 'relation_acl', c.relname, coalesce(c.relacl::text,'')
+        FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname='public' AND c.relname NOT LIKE 'Trainer2%' AND c.relkind IN ('r','p','v','m','S')
+      UNION ALL SELECT 'function_acl', p.proname, coalesce(p.proacl::text,'')
+        FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+        WHERE n.nspname='public' AND left(p.proname,9) <> 'trainer2_'
+      ORDER BY kind,name,definition`)).rows;
+    const v1Before = await v1Definitions();
+    for (const name of EXPECTED_MIGRATION_CHAIN.slice(trainer2Start)) await apply(name);
+    const afterColumns = await pools[0].query(`SELECT table_name,column_name,data_type,is_nullable FROM information_schema.columns
+      WHERE table_schema='public' AND table_name NOT LIKE 'Trainer2%' ORDER BY table_name,ordinal_position`);
+    assert.deepEqual(afterColumns.rows, v1Columns.rows, "Trainer2 migrations changed V1 columns");
+    assert.deepEqual(await v1Definitions(), v1Before, "Trainer2 migrations changed V1 definitions");
+    assert.equal((await admin.user.findUnique({ where: { id: accountId } }))?.email, `${suffix}@synthetic.invalid`);
+    await admin.user.update({ where: { id: accountId }, data: { email: `updated-${suffix}@synthetic.invalid` } });
+    assert.equal((await admin.user.findUnique({ where: { id: accountId } }))?.email, `updated-${suffix}@synthetic.invalid`);
+    await pools[0].query(`CREATE SCHEMA extensions;
+      CREATE VIEW extensions.pg_stat_statements AS SELECT 1 AS calls;
+      CREATE VIEW extensions.pg_stat_statements_info AS SELECT 1 AS dealloc;
+      GRANT USAGE ON SCHEMA extensions TO PUBLIC;
+      GRANT SELECT ON extensions.pg_stat_statements, extensions.pg_stat_statements_info TO PUBLIC;`);
     await pools[0].query(`BEGIN; ${readFileSync(resolve("prisma/trainer2-runtime-grants.sql"), "utf8")} COMMIT;`);
+    for (const apiRole of ["anon", "authenticated", "service_role"]) {
+      const access = await pools[0].query(`SELECT count(*)::int AS unsafe FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname='public' AND c.relname LIKE 'Trainer2%' AND c.relkind IN ('r','p')
+        AND has_table_privilege($1,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE')`, [apiRole]);
+      assert.equal(access.rows[0].unsafe, 0, `${apiRole} retained Trainer2 access`);
+      const sequenceAccess = await pools[0].query(`SELECT count(*)::int AS unsafe FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname='public' AND c.relname LIKE 'Trainer2%' AND c.relkind='S'
+        AND CASE WHEN c.relkind='S' THEN has_sequence_privilege($1,c.oid,'USAGE,SELECT,UPDATE') ELSE false END`, [apiRole]);
+      assert.equal(sequenceAccess.rows[0].unsafe, 0, `${apiRole} retained Trainer2 sequence access`);
+      const functionAccess = await pools[0].query(`SELECT count(*)::int AS unsafe FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+        WHERE n.nspname='public' AND left(p.proname,9) = 'trainer2_'
+        AND has_function_privilege($1,p.oid,'EXECUTE')`, [apiRole]);
+      assert.equal(functionAccess.rows[0].unsafe, 0, `${apiRole} retained Trainer2 function access`);
+    }
+    assert.equal(connectionString("identity", false, { TRAINER2_IDENTITY_CONNECTION_STRING:
+      "postgresql://trainer2_identity_runtime.siqmohcbvnbdrssgofzu:secret@aws-0-us-east-1.pooler.supabase.com:5432/postgres" }).includes("pooler.supabase.com"), true);
     for (const role of ["trainer2_identity_runtime", "trainer2_draft_reader", "trainer2_draft_runtime"])
       await pools[0].query(`ALTER ROLE ${role} LOGIN PASSWORD '${password}'`);
     const identity = db(url("trainer2_identity_runtime"));
@@ -52,9 +112,6 @@ export async function verifySingleUser() {
       const connection = await pool.connect();
       try { await assertConnectionPrivileges(connection, purpose); } finally { connection.release(); }
     }
-    const accountId = randomUUID();
-    process.env.TRAINER2_OWNER_USER_ID = accountId;
-    await admin.user.create({ data: { id: accountId, email: `${suffix}@synthetic.invalid` } });
     const setupCode = randomBytes(32).toString("base64url");
     await provisionSingleUser(admin, accountId, setupCode);
     await assert.rejects(provisionSingleUser(admin, accountId, setupCode), /OWNER_ALREADY_BOUND/);

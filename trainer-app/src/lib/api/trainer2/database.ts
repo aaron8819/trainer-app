@@ -15,7 +15,10 @@ const tables = [...identityTables, ...trainingTables];
 export function connectionString(purpose: ConnectionPurpose, local: boolean, env: Record<string, string | undefined> = process.env) {
   let url: URL;
   try { url = new URL(env[variables[purpose]] ?? ""); } catch { throw new DraftAccessError("DATABASE_CONFIGURATION_REQUIRED"); }
-  if (url.protocol !== "postgresql:" || url.username !== connectionRoles[purpose] || !url.password || url.hash || url.search || !url.pathname.slice(1))
+  const expectedRole = connectionRoles[purpose];
+  const pooledUsername = new RegExp(`^${expectedRole}\\.[a-z0-9]{20}$`).test(url.username);
+  const providerPooler = url.hostname.endsWith(".pooler.supabase.com");
+  if (url.protocol !== "postgresql:" || (url.username !== expectedRole && !(providerPooler && pooledUsername)) || !url.password || url.hash || url.search || !url.pathname.slice(1))
     throw new DraftAccessError("DATABASE_CONFIGURATION_INVALID");
   if (local && (url.hostname !== "127.0.0.1" || !/^\/trainer2_disposable_[a-z0-9_]+$/.test(url.pathname)))
     throw new DraftAccessError("DISPOSABLE_TARGET_REQUIRED");
@@ -70,7 +73,10 @@ export async function assertConnectionPrivileges(client: PoolClient, purpose: Co
   for (const r of relations) {
     const allowed = r.schema === "public" && ["r", "p"].includes(r.kind) &&
       (purpose === "identity" ? identityTables.includes(r.name) : tables.includes(r.name));
-    if (r.owner || r.other || r.delegation || (r.read && !allowed) ||
+    // Supabase exposes these two extension statistics views to PUBLIC by default.
+    // They contain no Trainer2 table rows and receive no grant from this app.
+    const providerStatistic = r.schema === "extensions" && ["pg_stat_statements", "pg_stat_statements_info"].includes(r.name) && r.kind === "v";
+    if (r.owner || r.other || r.delegation || (r.read && !allowed && !providerStatistic) ||
       (r.insert && !(allowed && (purpose === "identity" ? r.name === "Trainer2DeviceSession" : purpose === "write" && trainingTables.includes(r.name)))) ||
       (r.update && !(allowed && (purpose === "identity" ? identityTables.includes(r.name) : purpose === "write" && ["Trainer2AccountTrainingState", "Trainer2Plan", "Trainer2Execution"].includes(r.name))))) fail();
   }
@@ -106,7 +112,8 @@ export async function databaseFor(purpose: ConnectionPurpose, local: boolean): P
   let connection = connections.get(purpose);
   if (connection && (connection.url !== url || connection.local !== local)) throw new DraftAccessError("DATABASE_CONFIGURATION_CHANGED_RESTART_REQUIRED");
   if (!connection) {
-    const pool = new Pool({ connectionString: url, max: 5, connectionTimeoutMillis: 5000, ssl: local ? false : { rejectUnauthorized: true } });
+    const ca = process.env.TRAINER2_DB_CA_CERT_PEM;
+    const pool = new Pool({ connectionString: url, max: 5, connectionTimeoutMillis: 5000, ssl: local ? false : { rejectUnauthorized: true, ...(ca ? { ca } : {}) } });
     connection = { url, local, pool, db: new PrismaClient({ adapter: new PrismaPg(pool) }) };
     connections.set(purpose, connection);
   }

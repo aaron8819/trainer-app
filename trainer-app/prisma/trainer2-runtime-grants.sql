@@ -1,6 +1,28 @@
 -- Administrative preparation, NOT an automatic migration. Fresh dedicated roles only.
 -- Execute in one transaction after the accepted migration chain. No passwords here.
 -- Hosted application of this file requires named environment/action authorization.
+-- Supabase grants new public objects to named API roles by default. Remove only
+-- grants on Trainer2 objects; leave V1 and provider objects untouched.
+DO $$
+DECLARE object record;
+DECLARE api_role text;
+BEGIN
+  FOR object IN SELECT p.oid::regprocedure AS signature FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public' AND left(p.proname, 9) = 'trainer2_' LOOP
+    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC', object.signature);
+  END LOOP;
+  FOR api_role IN SELECT rolname FROM pg_roles WHERE rolname IN ('anon', 'authenticated', 'service_role') LOOP
+    FOR object IN SELECT c.relname, c.relkind FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relname LIKE 'Trainer2%' AND c.relkind IN ('r', 'p', 'S') LOOP
+      EXECUTE format('REVOKE ALL ON %s public.%I FROM %I',
+        CASE WHEN object.relkind = 'S' THEN 'SEQUENCE' ELSE 'TABLE' END, object.relname, api_role);
+    END LOOP;
+    FOR object IN SELECT p.oid::regprocedure AS signature FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public' AND left(p.proname, 9) = 'trainer2_' LOOP
+      EXECUTE format('REVOKE ALL ON FUNCTION %s FROM %I', object.signature, api_role);
+    END LOOP;
+  END LOOP;
+END $$;
 CREATE ROLE trainer2_identity_runtime NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 CREATE ROLE trainer2_draft_reader NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 CREATE ROLE trainer2_draft_runtime NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
@@ -17,6 +39,7 @@ CREATE POLICY trainer2_session_identity ON "Trainer2DeviceSession" TO trainer2_i
 CREATE POLICY trainer2_owner_training_read ON "Trainer2Owner" FOR SELECT TO trainer2_draft_reader, trainer2_draft_runtime USING (true);
 CREATE POLICY trainer2_session_training_read ON "Trainer2DeviceSession" FOR SELECT TO trainer2_draft_reader, trainer2_draft_runtime USING (true);
 GRANT SELECT ON "Trainer2AccountTrainingState", "Trainer2Plan", "Trainer2PlanRevision", "Trainer2Identity", "Trainer2DurableAction", "Trainer2ActionOutcome" TO trainer2_draft_reader, trainer2_draft_runtime;
+GRANT EXECUTE ON FUNCTION trainer2_check_acceptance(text), trainer2_document_ids(jsonb) TO trainer2_draft_runtime;
 GRANT INSERT ON "Trainer2AccountTrainingState", "Trainer2Plan", "Trainer2PlanRevision", "Trainer2Identity", "Trainer2DurableAction", "Trainer2ActionOutcome" TO trainer2_draft_runtime;
 GRANT UPDATE ON "Trainer2AccountTrainingState", "Trainer2Plan" TO trainer2_draft_runtime;
 CREATE POLICY trainer2_read ON "Trainer2AccountTrainingState" FOR SELECT TO trainer2_draft_reader USING (true);

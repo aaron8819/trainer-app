@@ -1,5 +1,7 @@
 # 07 Operations
 
+Trainer2 shared-database preparation and the exact operator migration sequence are recorded in [SHARED_DATABASE_MIGRATION_PROCEDURE](architecture/trainer2/SHARED_DATABASE_MIGRATION_PROCEDURE.md). Production migration, grants and owner binding require separate authorization. The owner has chosen no fresh backup or restore rehearsal; recovery from a database-level mistake is limited.
+
 Trainer2 set skipping: [durable command, lifecycle, finish/discard evidence, logger and local verification](architecture/trainer2/SKIP_SET.md).
 
 Trainer2 training interface: [home, Program, compact logging, previous-performance read rules and local demo restart](architecture/trainer2/TRAINING_UI.md).

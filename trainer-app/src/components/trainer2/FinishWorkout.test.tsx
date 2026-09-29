@@ -13,9 +13,20 @@ const props = { execution, ownershipEpoch: 0, blocked: false, refresh: vi.fn(), 
 const response = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status });
 const accepted = (body: string) => { const c = JSON.parse(body); return { replayed: false, outcomeCursor: '1', outcome: { status: 'Accepted', actionId: c.actionId,
   commandType: 'FinishExecution', acceptedSequence: '1', result: { executionId: c.target.executionId, planId: execution.initial.planId, occurrenceId: execution.initial.occurrence.id, planCompleted: true } } }; };
-beforeEach(() => { sessionStorage.clear(); vi.stubGlobal('crypto', webcrypto); vi.clearAllMocks(); });
+beforeEach(() => { sessionStorage.clear(); vi.stubGlobal('crypto', webcrypto); vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true }))); vi.clearAllMocks(); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe('Finish workout decisions', () => {
+  it('reveals explicit confirmation and retries the exact finish envelope after a transient failure', async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(response({}, 503)).mockImplementationOnce((_u, init) => response(accepted(init.body)));
+    vi.stubGlobal('fetch', fetch); const refresh = vi.fn().mockResolvedValue(undefined);
+    render(<FinishWorkout {...props} refresh={refresh} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Finish workout' }));
+    const confirm = screen.getByRole('button', { name: 'Finish with unrecorded sets' });
+    expect(confirm).toHaveFocus(); expect(fetch).not.toHaveBeenCalled();
+    fireEvent.click(confirm); await screen.findByText('Workout finished.');
+    expect(fetch).toHaveBeenCalledTimes(2); expect(fetch.mock.calls[1][1].body).toBe(fetch.mock.calls[0][1].body);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
   it('blocks unsaved or pending input without submitting or discarding it', async () => {
     const fetch = vi.fn(); vi.stubGlobal('fetch', fetch); render(<FinishWorkout {...props} blocked />);
     expect(await screen.findByRole('button', { name: 'Finish workout' })).toBeDisabled(); expect(fetch).not.toHaveBeenCalled();

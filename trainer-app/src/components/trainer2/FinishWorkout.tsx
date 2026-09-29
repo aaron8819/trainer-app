@@ -4,6 +4,7 @@ import type { ExecutionRead } from '@/lib/trainer2-contracts/execution';
 import { finishExecutionCommand, finishResponse, reviewedResults, unrecordedTargets, type FinishExecutionCommand } from '@/lib/trainer2-contracts/workout-finish';
 import { canonicalJson } from '@/lib/trainer2-contracts/canonical-json';
 import { control } from './DraftEditor';
+import { fetchWithRecovery } from './request-recovery';
 
 export function FinishWorkout({ execution, ownershipEpoch, blocked, refresh, checkResults, onLock, onFinished }: {
   execution: ExecutionRead; ownershipEpoch: number; blocked: boolean;
@@ -13,6 +14,12 @@ export function FinishWorkout({ execution, ownershipEpoch, blocked, refresh, che
   const [needsCheck, setNeedsCheck] = useState(false);
   const [message, setMessage] = useState(''), [busy, setBusy] = useState(false), [ready, setReady] = useState(false);
   const alive = useRef(false), flight = useRef(false);
+  const confirmation = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!review) return;
+    confirmation.current?.focus({ preventScroll: true });
+    confirmation.current?.scrollIntoView?.({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+  }, [review]);
   const accountId = execution.initial.accountId, executionId = execution.executionId;
   const key = `trainer2-finish:${accountId}:${executionId}`;
   useEffect(() => {
@@ -36,7 +43,7 @@ export function FinishWorkout({ execution, ownershipEpoch, blocked, refresh, che
     catch { setMessage('Browser storage is unavailable. Keep this page open and try again.'); return; }
     flight.current = true; setBusy(true); setPending(command); onLock(true);
     try {
-      const response = await fetch('/api/trainer2/executions/finish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: canonicalJson(command) });
+      const response = await fetchWithRecovery('/api/trainer2/executions/finish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: canonicalJson(command) }, () => alive.current);
       const { outcome } = finishResponse.parse(await response.json());
       if (!alive.current) return;
       if (outcome.actionId !== command.actionId || (outcome.status === 'Accepted' && (!response.ok ||
@@ -77,7 +84,7 @@ export function FinishWorkout({ execution, ownershipEpoch, blocked, refresh, che
     {pending ? <button className={control} disabled={busy} onClick={() => void submit(pending)}>Check finish again</button> :
       execution.lifecycle === 'Open' && (review ? <><p>{unknown.length ? `${unknown.filter(t => t.skipped).length} explicitly skipped; ${unknown.filter(t => !t.skipped && t.required).length} required and ${unknown.filter(t => !t.skipped && !t.required).length} optional sets untouched. None will be marked performed.` : 'All prescribed sets have saved results.'}</p>
         <p>Finish this workout and resolve its planned occurrence? Recorded results can later be corrected without reopening. The next workout will not start automatically.</p>
-        <button className={control} disabled={blocked || busy} onClick={confirm}>{unknown.length ? 'Finish with unrecorded sets' : 'Confirm finish'}</button>
+        <button ref={confirmation} className={control} disabled={blocked || busy} onClick={confirm}>{unknown.length ? 'Finish with unrecorded sets' : 'Confirm finish'}</button>
         <button className={control} disabled={busy} onClick={() => { setReview(null); onLock(false); }}>Keep working</button></> :
         <button className="rounded-xl bg-black px-5 py-3 font-semibold text-white" disabled={blocked || !ready} onClick={begin}>Finish workout</button>)}
   </section>;

@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { performedResult, savedSetResult, resultMutationCommand, setResultResponse,
   type PerformedResult, type SavedSetResult, type SetResultCommand } from '@/lib/trainer2-contracts/set-results';
 import { canonicalJson } from '@/lib/trainer2-contracts/canonical-json';
+import { fetchWithRecovery } from './request-recovery';
 import type { DraftDocument } from '@/lib/trainer2-contracts/draft';
 import { control as baseControl } from './DraftEditor';
 const control = `${baseControl} min-h-11 min-w-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700`;
@@ -176,7 +177,7 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
     flight.current = true; setBusy(true); setMessage('Saving…');
     const confirmed = onSubmission?.();
     try {
-      const response = await fetch(command.commandType === 'CorrectHistoricalSetResult' ? '/api/trainer2/executions/corrections' : '/api/trainer2/executions/results', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: canonicalJson(command) });
+      const response = await fetchWithRecovery(command.commandType === 'CorrectHistoricalSetResult' ? '/api/trainer2/executions/corrections' : '/api/trainer2/executions/results', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: canonicalJson(command) }, () => alive.current);
       const { outcome } = setResultResponse.parse(await response.json());
       if (!alive.current) return;
       if (outcome.actionId !== command.actionId || outcome.commandType !== command.commandType ||

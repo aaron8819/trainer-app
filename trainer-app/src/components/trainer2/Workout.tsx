@@ -15,6 +15,7 @@ import { SetResultRow, resultLabel } from './SetResultRow';
 import { control } from './DraftEditor';
 import { TrainingOverview, PlannedWorkout } from './TrainingOverview';
 import { effortSummary, targetLabel, trainingUrl } from './training-summary';
+import { fetchWithRecovery } from './request-recovery';
 
 export function WorkoutPrescription({ workout, resultRow, previous }: { workout: DraftDocument['occurrences'][number]; resultRow?: (positionId: string, targetId: string, number: number) => ReactNode; previous?: (positionId: string) => ReactNode }) {
   if (!resultRow) return <PlannedWorkout workout={workout} />;
@@ -47,7 +48,7 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
   async function load(token = ++generation.current, expectedSkip?: SkipOccurrenceCommand, skipCompleted?: boolean) {
     setFailed(false);
     try {
-      const response = await fetch(executionId ? `/api/trainer2/executions/${executionId}` : `/api/trainer2/plans/${planId}/next`, { cache: 'no-store' });
+      const response = await fetchWithRecovery(executionId ? `/api/trainer2/executions/${executionId}` : `/api/trainer2/plans/${planId}/next`, { cache: 'no-store' }, () => token === generation.current);
       const body = await response.json();
       if (!response.ok) throw new Error(body.error === 'INVALID_START_SNAPSHOT' ? 'The saved workout prescription is unavailable. It cannot be rebuilt safely.' : 'Could not load this workout. Reload to try again.');
       if (executionId) {

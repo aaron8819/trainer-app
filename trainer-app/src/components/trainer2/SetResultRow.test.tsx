@@ -15,6 +15,20 @@ const accepted = (body: string, version = 1) => { const c = resultMutationComman
 beforeEach(() => { sessionStorage.clear(); vi.stubGlobal('crypto', webcrypto); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe('Performed result input and recovery', () => {
+  it('recovers a transient save without manual retry or a new action and advances once', async () => {
+    let submitted = '';
+    const fetch = vi.fn().mockImplementationOnce((_u, init) => { submitted = init.body; return response({}, 503); })
+      .mockImplementationOnce((_u, init) => { expect(init.body).toBe(submitted); return response(accepted(init.body)); });
+    vi.stubGlobal('fetch', fetch);
+    const onRecorded = vi.fn(), advance = vi.fn();
+    render(<SetResultRow {...props} refresh={vi.fn().mockImplementation(() => [{ ...saved, actionId: JSON.parse(submitted).actionId }])} onRecorded={onRecorded} onSubmission={() => advance} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Enter actual result' }));
+    fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '8' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Record set' }));
+    await screen.findByText('Saved'); expect(fetch).toHaveBeenCalledTimes(2);
+    expect(onRecorded).toHaveBeenCalledTimes(1); expect(advance).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: 'Retry save' })).toBeNull();
+  });
   it('validates zero, unspecified, precise load and shapes without deriving targets', () => {
     expect(performedResult.parse(result)).toEqual(result);
     expect(performedResult.parse({ reps: null, measurement: { kind: 'assistance', value: '0.00', unit: 'lb', convention: 'displayedAssistance', zeroMeaning: 'noAssistance' }, rir: null }).measurement).toMatchObject({ value: '0.00' });

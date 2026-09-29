@@ -213,17 +213,17 @@ it('integrates one active panel with finish controls across input-state updates'
 });
 
 import { recordRest, restRemaining, readRest } from './rest-state';
-it('deduplicates rest events and anchors retries to recording time, including dismissal and corrections', () => {
+it('starts full rest at confirmation and preserves the deadline through retries, dismissal and corrections', () => {
   const record = { executionId: randomUUID(), targetId: randomUUID(), performedSetId: randomUUID(), actionId: randomUUID(), version: 1, reason: null,
     recordedAt: '2026-09-16T00:00:00.000Z', result: { reps: { value: 8, basis: 'total' as const }, measurement: null, rir: null } };
-  const start = Date.parse(record.recordedAt), timer = recordRest(null, record, true)!;
-  expect(restRemaining(timer, start + 60000)).toBe(120); expect(restRemaining(timer, start + 190000)).toBe(0);
+  const start = Date.parse(record.recordedAt), confirmed = start + 59000, timer = recordRest(null, record, true, confirmed)!;
+  expect(restRemaining(timer, confirmed)).toBe(180); expect(restRemaining(timer, confirmed + 60000)).toBe(120); expect(restRemaining(timer, confirmed + 190000)).toBe(0);
   expect(recordRest(timer, record, true)).toBe(timer);
   const dismissed = { ...timer, deadline: start };
   expect(recordRest(readRest(JSON.stringify(dismissed)), record, true)).toEqual(dismissed);
   expect(recordRest(timer, { ...record, version: 2, actionId: randomUUID() }, true)).toBe(timer);
   const newer = { ...record, actionId: randomUUID(), recordedAt: new Date(start + 10000).toISOString() };
-  const next = recordRest(timer, newer, false)!; expect(restRemaining(next, start + 10000)).toBe(120);
+  const next = recordRest(timer, newer, false, confirmed + 10000)!; expect(restRemaining(next, confirmed + 10000)).toBe(120);
   expect(recordRest(next, { ...record, actionId: randomUUID() }, true)?.deadline).toBe(next.deadline);
   expect(readRest('{"version":1}')).toBeNull();
 });

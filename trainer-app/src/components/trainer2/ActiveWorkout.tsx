@@ -117,7 +117,7 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
       <div className="flex items-start justify-between gap-3"><div><h3 ref={heading} tabIndex={-1} className="text-lg font-semibold outline-none">{active?.position.exercise.name ?? (count + skippedCount === sets.length ? 'Ready to finish' : 'Choose your next set')}</h3>
       {active && <p className="text-xs text-slate-500">{active.position.role ?? 'Exercise'} · Set {active.number} of {active.position.targets.length}</p>}</div><div className="flex items-start gap-2">      {execution.initial.positions.map(p => <span key={p.id} hidden={active?.positionId !== p.id}><SwapExercise execution={execution} positionId={p.id} ownershipEpoch={ownershipEpoch} locked={locked}
         refresh={refreshExecution} onLock={lockCallbacks.current[p.id]} onChanged={() => { setInputEpoch(e => e+1); setHistoryOpen(false); setTimeout(reveal, 0); }} /></span>)}
-{active && <button type="button" aria-expanded={historyOpen} className="min-h-9 shrink-0 rounded-full border border-slate-200 px-3 text-xs font-semibold" onClick={() => setHistoryOpen(v => !v)}>History</button>}</div></div>
+{active && <button type="button" aria-expanded={historyOpen} className="min-h-11 min-w-20 shrink-0 rounded-full border border-slate-200 px-3 text-xs font-semibold" onClick={() => setHistoryOpen(v => !v)}>History</button>}</div></div>
       {!active && count + skippedCount === sets.length && <button type="submit" form={finishFormId(execution.executionId)}
         disabled={locked || sets.some(s => inputStates[s.id] !== false)}
         className="mt-3 min-h-11 rounded-xl bg-black px-5 py-3 font-semibold text-white disabled:opacity-40">Finish workout</button>}
@@ -147,9 +147,13 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
       {groups.map(group => <details key={group.id} open className="space-y-2"><summary className="min-h-10 cursor-pointer py-2 text-xs font-semibold uppercase tracking-wider text-slate-500">{group.role}</summary>
         {group.positions.map(owned => {
           const items = sets.filter(s => s.positionId === owned.id), position = items[0].position;
+          const original = execution.initial.occurrence.positions.find(p => p.id === owned.sourcePositionId)!;
+          const assignment = currentAssignment(execution, owned.id);
+          const swap = execution.swaps?.find(s => s.positionId === owned.id && s.version === assignment.version);
           const recordedCount = items.filter(s => execution.results.some(r => r.targetId === s.id && r.result)).length;
           return <div key={owned.id} className={`rounded-xl border bg-white p-3 ${active?.positionId === owned.id ? 'border-slate-400 border-l-4 border-l-slate-900 shadow-sm' : 'border-slate-200'}`}>
             <button className="flex min-h-11 w-full items-center justify-between gap-3 text-left hover:text-slate-700 focus-visible:rounded-md" onClick={() => select(items.find(s => !execution.results.some(r => r.targetId === s.id && r.result) && (!execution.skips?.some(k => k.targetId === s.id) || execution.results.some(r => r.targetId === s.id)))?.id ?? items[0].id, true)}><span className="font-semibold">{position.exercise.name}</span><span className="shrink-0 text-xs tabular-nums text-slate-500">{recordedCount}/{items.length} logged</span></button>
+            {swap && <p className="mb-2 text-xs text-slate-600">{swap.content.restoreOriginal ? `Returned to original: ${original.exercise.name}` : `${original.exercise.name} → ${position.exercise.name} · Swapped for today`}</p>}
             <MuscleTags exercise={position.exercise} />
             <div className="mt-2 flex flex-wrap gap-1.5">{items.map(s => {
               const skipped = execution.skips?.some(k => k.targetId === s.id) && !execution.results.some(r => r.targetId === s.id);

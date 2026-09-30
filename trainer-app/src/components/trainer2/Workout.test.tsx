@@ -2,6 +2,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID, webcrypto } from 'node:crypto';
 import { Workout, WorkoutPrescription } from './Workout';
+import { ExerciseSwapHistory } from './ExerciseSwapHistory';
+import { replacementContent } from '@/lib/engine/trainer2/exercise-swap';
+import { catalog } from '@/lib/engine/trainer2/catalog';
 import { createHypertrophyPlan } from '@/lib/engine/trainer2/plan-builder';
 
 const accountId = 'synthetic-workout-account';
@@ -104,6 +107,56 @@ function activeFixture() {
   return { contentHash: 'a'.repeat(64), executionId: randomUUID(), lifecycle: 'Open', results: [], initial: { accountId, occurrence: workout,
     positions: workout.positions.map(p => ({ id: randomUUID(), sourcePositionId: p.id, targets: p.targets.map(t => ({ id: randomUUID(), sourceTargetId: t.id })) })) } } as unknown as ExecutionRead;
 }
+function swappedFixture() {
+  const value = activeFixture(), positionId = value.initial.positions[0].id;
+  const entry = catalog.find(e => e.name === 'Front Squat')!;
+  value.swaps = [{ executionId: value.executionId, positionId, version: 1, actionId: randomUUID(),
+    previousActionId: null, instructionEpoch: 0, contentHash: 'b'.repeat(64),
+    content: replacementContent(value, positionId, entry), recordedAt: '2026-09-30T15:00:00.000Z' }];
+  return value;
+}
+describe('Exercise swap presentation', () => {
+  it.each(['result', 'skip'] as const)('hides Swap after a resolved %s while retaining History', kind => {
+    const value = activeFixture(), targetId = value.initial.positions[0].targets[0].id;
+    if (kind === 'result') value.history = [{ targetId } as SavedSetResult];
+    else value.skips = [{ targetId } as NonNullable<ExecutionRead['skips']>[number]];
+    render(<ActiveHarness value={value} read={async () => value.results} />);
+    expect(screen.queryByRole('button', { name: 'Swap', hidden: false })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'History' })).toBeVisible();
+  });
+  it('shows the original and replacement in the queue without changing START', () => {
+    const value = swappedFixture(), original = value.initial.occurrence.positions[0].exercise.name;
+    render(<ActiveHarness value={value} read={async () => []} />);
+    expect(screen.getByText(`${original} → Front Squat · Swapped for today`)).toBeVisible();
+    expect(value.initial.occurrence.positions[0].exercise.name).toBe(original);
+    const swap = screen.getByRole('button', { name: 'Swap' }), history = screen.getByRole('button', { name: 'History' });
+    for (const button of [swap, history]) expect(button).toHaveClass('min-h-11', 'min-w-20', 'px-3', 'text-xs');
+  });
+  it('retains every swap and restore in review history, ordered by version', () => {
+    const value = swappedFixture(), first = value.swaps![0], original = value.initial.occurrence.positions[0].exercise.name;
+    const restore = { ...first, version: 2, actionId: randomUUID(), previousActionId: first.actionId,
+      content: replacementContent(value, first.positionId, null), recordedAt: '2026-09-30T15:01:00.000Z' };
+    value.swaps = [restore, first];
+    render(<ExerciseSwapHistory execution={value} />);
+    fireEvent.click(screen.getByText('Exercise swap history'));
+    expect(screen.getByText(`Originally ${original}`)).toBeInTheDocument();
+    const rows = screen.getAllByRole('listitem');
+    expect(rows[1]).toHaveTextContent(`${original} → Front Squat · Swapped for today`);
+    expect(rows[2]).toHaveTextContent(`Front Squat → ${original} · Returned to original`);
+    expect(rows[2]).toHaveTextContent(restore.recordedAt);
+  });
+  it('labels a restored queue position and omits swap history for untouched workouts', () => {
+    const value = swappedFixture(), first = value.swaps![0], original = value.initial.occurrence.positions[0].exercise.name;
+    value.swaps!.push({ ...first, version: 2, actionId: randomUUID(), previousActionId: first.actionId,
+      content: replacementContent(value, first.positionId, null) });
+    const view = render(<ActiveHarness value={value} read={async () => []} />);
+    expect(screen.getByText(`Returned to original: ${original}`)).toBeVisible();
+    expect(screen.queryByText(/Swapped for today/)).not.toBeInTheDocument();
+    view.unmount();
+    render(<ExerciseSwapHistory execution={activeFixture()} />);
+    expect(screen.queryByText('Exercise swap history')).not.toBeInTheDocument();
+  });
+});
 function ActiveHarness({ value, read }: { value: ExecutionRead; read: () => Promise<SavedSetResult[]> }) {
   const [execution, setExecution] = useState(value);
   const [inputs, setInputs] = useState<Record<string, boolean>>({});

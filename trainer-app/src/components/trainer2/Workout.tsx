@@ -1,4 +1,5 @@
 'use client';
+import { ExerciseSwapHistory } from './ExerciseSwapHistory';
 import { effectiveOccurrence, currentAssignment } from '@/lib/engine/trainer2/exercise-swap';
 import { useCallback, useEffect, useRef, useState, Fragment, type ReactNode } from 'react';
 import { z } from 'zod';
@@ -129,6 +130,7 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
       <p className="text-slate-600">{execution.lifecycle === 'Discarded' ? 'This attempt was discarded. Its original start and prescription are retained. Discarding this attempt did not complete or skip the scheduled workout.' : execution.lifecycle === 'Finished' ? 'Latest saved results appear below. Corrections preserve completion and the original targets. Result history shows what was acknowledged at finish.' : ''}</p>
       {execution.discard && <p>Started {execution.initial.startedAt}. Discarded {execution.discard.discardedAt}.</p>}
       {execution.finish && <p className="text-sm text-slate-600">Started {execution.initial.startedAt}. Finished {execution.finish.finishedAt}. Later correction times appear in result history.</p>}
+      {execution.lifecycle === 'Finished' && <ExerciseSwapHistory execution={execution} />}
       {execution.lifecycle === 'Finished' && execution.initial.occurrence.positions.map(p => { const changed = effectiveOccurrence(execution).positions.find(e => e.id === p.id)!; return execution.swaps?.some(s => s.positionId === execution.initial.positions.find(o => o.sourcePositionId === p.id)?.id) ? <p key={p.id}>{changed.exercise.name} · originally {p.exercise.name}</p> : null; })}<p className="font-medium text-teal-800">{execution.initial.stage.name} · {effortSummary(execution.initial.occurrence)}</p><a className="inline-block min-h-11 py-2 text-sm text-teal-800 underline" href={trainingUrl(execution.initial.planId)}>Back to training</a>
 
       {execution.lifecycle === 'Open' ? <ActiveWorkout key={`active:${execution.executionId}`} execution={execution} ownershipEpoch={ownershipEpoch} locked={finishLocked || discardLocked} inputStates={inputStates} onInputState={onInputState} onSwapLock={setSwapLocked}

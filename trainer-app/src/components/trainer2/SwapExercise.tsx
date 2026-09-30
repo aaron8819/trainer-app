@@ -117,7 +117,7 @@ export function SwapExercise({ execution, positionId, ownershipEpoch, locked, re
     setOpen(true); setMessage('');
   }
   return <>
-    <button ref={trigger} className={control} disabled={locked || busy || !!pending || unreadablePending || !swapEligible(execution, positionId)} onClick={showPicker}>Swap</button>
+    {swapEligible(execution, positionId) && <button ref={trigger} className="min-h-11 min-w-20 shrink-0 rounded-full border border-slate-200 px-3 text-xs font-semibold disabled:opacity-40" disabled={locked || busy || !!pending || unreadablePending} onClick={showPicker}>Swap</button>}
     {pending && <button className={control} disabled={busy} onClick={() => void submit(pending)}>Check swap again</button>}
     {!open && message && <p role="status">{message}</p>}
     {open && <dialog ref={dialog} aria-labelledby={`swap-title-${positionId}`} onCancel={e => { e.preventDefault(); if (!pending) close(); }} className="m-auto max-h-[90dvh] w-[min(96vw,640px)] overflow-y-auto rounded-2xl p-4 backdrop:bg-black/40">

@@ -10,12 +10,12 @@ export class DraftFailure extends Error {
 export function readSavedDocument(input: unknown): DraftDocument {
   const doc = savedDraftDocument.parse(input);
   const repaired = draftDocument.parse(repairBuilderMetadata(doc));
-  validateWorkoutDefaults(repaired);
+  validateWorkoutDefaults(repaired, false);
   return doc;
 }
-export function validateWorkoutDefaults(doc: DraftDocument) {
+export function validateWorkoutDefaults(doc: DraftDocument, qualifyCatalog = true) {
   for (const e of [...doc.occurrences.flatMap(o => o.positions.map(p => p.exercise)), ...(doc.builder?.workouts.flatMap(w => w.rows.map(r => r.exercise)) ?? [])]) {
-    if (e.kind !== 'catalogSnapshot') continue;
+    if (e.kind !== 'catalogSnapshot' || !qualifyCatalog) continue;
     const entry = catalog.find(c => c.id === e.catalogId);
     if (!entry || JSON.stringify(e) !== JSON.stringify(catalogExercise(entry))) {
       // Compare parsed values in canonical schema order, independent of JSON key order.

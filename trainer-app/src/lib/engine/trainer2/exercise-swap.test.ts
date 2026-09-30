@@ -5,7 +5,7 @@ import { catalog } from './catalog';
 import { currentAssignment, effectiveOccurrence, replacementContent, swapEligible } from './exercise-swap';
 import { startingPounds } from './logging-prefill';
 import type { ExecutionRead } from '../../trainer2-contracts/execution';
-import library from './swap-library.json';
+import { library } from './catalog';
 
 function fixture() {
   const document = createHypertrophyPlan();

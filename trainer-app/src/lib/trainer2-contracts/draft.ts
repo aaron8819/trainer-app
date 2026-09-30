@@ -29,6 +29,11 @@ export const exercise = z.discriminatedUnion('kind', [
     equipment: z.array(label).min(1), purpose: label, repBasis: target.shape.reps.shape.basis,
     loadKind: z.enum(['externalLoad', 'bodyweight', 'addedLoad', 'assistance']),
     convention: z.enum(['barbellTotal', 'perImplement', 'machineDisplayed', 'bodyweightOnly', 'addedExternal', 'displayedAssistance']),
+    // Absent in the frozen released v1 definitions; never backfilled on read.
+    catalogFacts: z.object({ movementPatterns: z.array(label).min(1), primaryMuscles: z.array(label),
+      secondaryMuscles: z.array(label), externalZeroMeaning: z.enum(['validZero', 'notAllowed']).nullable(),
+      repDefaults: z.object({ min: z.int().min(1).max(1000), max: z.int().min(1).max(1000) }).strict().refine(v => v.min <= v.max),
+    }).strict().optional(),
   }).strict(),
 ]);
 export const role = z.enum(['Main lift', 'Secondary lift', 'Accessory', 'Calves', 'Core']);
@@ -73,7 +78,8 @@ export const savedDraftDocument = z.object({ schemaVersion: z.literal(1), name: 
       all.push(p.id); all.push(...p.targets.map(t => t.id));
       if (p.exercise.kind === 'catalogSnapshot') {
         const e = p.exercise;
-        if (p.targets.some(t => t.reps.basis !== e.repBasis || (t.measurement && (t.measurement.kind !== e.loadKind || t.measurement.convention !== e.convention))))
+        if (p.targets.some(t => t.reps.basis !== e.repBasis || (t.measurement && (t.measurement.kind !== e.loadKind || t.measurement.convention !== e.convention ||
+          (t.measurement.kind === 'externalLoad' && e.catalogFacts && t.measurement.zeroMeaning !== e.catalogFacts.externalZeroMeaning)))))
           ctx.addIssue({ code: 'custom', message: 'Prescription must retain catalog measurement meaning' });
       }
     }

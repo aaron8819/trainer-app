@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ExecutionRead } from '@/lib/trainer2-contracts/execution';
 import { swapExerciseCommand, swapPreview, swapResponse, type SwapExerciseCommand } from '@/lib/trainer2-contracts/exercise-swap';
 import { currentAssignment, swapEligible, effectiveOccurrence } from '@/lib/engine/trainer2/exercise-swap';
-import library from '@/lib/engine/trainer2/swap-library.json';
+import { library, matchesCatalogSearch } from '@/lib/engine/trainer2/catalog';
 import { canonicalJson } from '@/lib/trainer2-contracts/canonical-json';
 import { targetLabel } from './training-summary';
 import { fetchWithRecovery } from './request-recovery';
@@ -28,7 +28,7 @@ export function SwapExercise({ execution, positionId, ownershipEpoch, locked, re
   const score = (entry: typeof library[number]) => metadata ? entry.movementPatterns.filter(m => metadata.movementPatterns.includes(m)).length * 100 +
     entry.primaryMuscles.filter(m => metadata.primaryMuscles.includes(m)).length * 10 + entry.secondaryMuscles.filter(m => metadata.secondaryMuscles.includes(m)).length * 2 +
     entry.equipment.filter(m => metadata.equipment.includes(m)).length : 0;
-  const entries = library.filter(e => e.name.toLowerCase().includes(query.toLowerCase()) && (!equipment || e.equipment.includes(equipment)))
+  const entries = library.filter(e => matchesCatalogSearch(e, query) && (!equipment || e.equipment.includes(equipment)))
     .sort((a,b) => score(b)-score(a) || a.name.localeCompare(b.name) || a.catalogId.localeCompare(b.catalogId));
   useEffect(() => {
     alive.current = true;

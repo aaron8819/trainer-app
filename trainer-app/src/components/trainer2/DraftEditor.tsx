@@ -47,7 +47,7 @@ export function TargetFields({ target: t, change, exercise }: { exercise?: Draft
     </>}
     {m?.kind === "externalLoad" ? <>
       <Choice label="Convention" value={m.convention} options={fixed ? [m.convention] : ["barbellTotal", "perImplement", "machineDisplayed"]} onChange={v => change(t => { if (t.measurement?.kind === "externalLoad") t.measurement.convention = v; }, 'measurement')} />
-      <Choice label="Zero meaning" value={m.zeroMeaning} options={["notAllowed", "validZero"]} onChange={v => change(t => { if (t.measurement?.kind === "externalLoad") t.measurement.zeroMeaning = v; }, 'measurement')} />
+      <Choice label="Zero meaning" value={m.zeroMeaning} options={fixed?.catalogFacts?.externalZeroMeaning ? [fixed.catalogFacts.externalZeroMeaning] : ["notAllowed", "validZero"]} onChange={v => change(t => { if (t.measurement?.kind === "externalLoad") t.measurement.zeroMeaning = v; }, 'measurement')} />
     </> : <p>{!m ? "Weight is optional. You can choose it later." : m.kind === "bodyweight" ? "Bodyweight only; no numeric load." : m.kind === "addedLoad" ? "Added external load; zero means no added load." : "Displayed assistance; zero means no assistance."}</p>}
     <TextField label="RIR (blank = unspecified)" numeric value={t.rir ?? ""} onChange={v => change(t => { t.rir = v === "" ? null : v; }, 'rir')} />
     <TextField label="Rest seconds (blank = unspecified)" numeric value={t.restSeconds ?? ""} onChange={v => change(t => { t.restSeconds = v === "" ? null : v; }, 'restSeconds')} />

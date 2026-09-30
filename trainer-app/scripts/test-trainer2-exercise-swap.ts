@@ -24,6 +24,7 @@ import { authWebPlatformEnvironment } from './trainer2/auth-web-environment';
 import { verificationSource } from './trainer2/verification-source';
 import { inspectFinisherSchemaDiff } from '../src/lib/operations/finisher-schema-drift';
 import { parseExactDisposableConfirmationArgs } from '../src/lib/operations/test-environment-preflight';
+import { verifyCatalogCoverage } from './trainer2/verify-catalog-coverage';
 
 async function main() {
   assert(parseExactDisposableConfirmationArgs(process.argv.slice(2)).valid, 'Expected exactly --confirm-disposable');
@@ -220,6 +221,7 @@ async function main() {
     const remote=await read(open);assert.equal(remote.results.find(r=>r.targetId===remote.initial.positions[0].targets[0].id)?.assignment?.version,3);
     pass('Remote change conflicts, retains stale input and requires explicit exercise reconciliation');
     await stopWeb();launch();await new Promise(r=>setTimeout(r,2000));await page.reload();await page.getByRole('heading',{name:'Leg Press',exact:true}).waitFor();assert.deepEqual(errors,[]);pass('Desktop/mobile preview, cancel, confirm, reload, application restart');
+    await verifyCatalogCoverage(db, readDb, principal, page, base, artifact, pass);
     writeFileSync(resolve(artifact,'server.log'),serverLog.replaceAll(password,'[secret]').replaceAll(rolePassword,'[secret]'));
     const sourceAfter=verificationSource();assert.equal(sourceAfter.manifestHash,source.manifestHash,'Verification source changed during the run');
     writeFileSync(resolve(artifact,'report.json'),JSON.stringify({source,checks,sourceAfter,postgres:(await admin.query('SELECT version()')).rows[0]},null,2));

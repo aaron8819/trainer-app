@@ -1,5 +1,7 @@
 # 04 API Contracts
 
+Trainer2 catalog coverage: [canonical adapter, frozen snapshots, qualification, inventory and verification](architecture/trainer2/CATALOG_COVERAGE.md).
+
 Trainer2 set skipping: [durable command, lifecycle, finish/discard evidence, logger and local verification](architecture/trainer2/SKIP_SET.md).
 
 Trainer2 training interface: [home, Program, compact logging, previous-performance read rules and local demo restart](architecture/trainer2/TRAINING_UI.md).

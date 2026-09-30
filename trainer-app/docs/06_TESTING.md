@@ -1,5 +1,7 @@
 # 06 Testing
 
+Trainer2 catalog coverage: [canonical adapter, frozen snapshots, qualification, inventory and verification](architecture/trainer2/CATALOG_COVERAGE.md).
+
 Trainer2 set skipping: [durable command, lifecycle, finish/discard evidence, logger and local verification](architecture/trainer2/SKIP_SET.md).
 
 Trainer2 Skip Workout: [eligibility, audited resolution, endpoint, exact retry, UI and verification](architecture/trainer2/SKIP_WORKOUT.md).

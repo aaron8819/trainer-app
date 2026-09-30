@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID, webcrypto } from 'node:crypto';
 import { SetResultRow } from './SetResultRow';
+import { catalog, catalogExercise } from '@/lib/engine/trainer2/catalog';
 import { performedResult, recordSetResultCommand, resultMutationCommand, historicalCorrectionCommand, type SavedSetResult } from '@/lib/trainer2-contracts/set-results';
 
 const props = { accountId: 'synthetic-results', ownershipEpoch: 0, executionId: randomUUID(), targetId: randomUUID(), number: 1 };
@@ -14,6 +15,30 @@ const accepted = (body: string, version = 1) => { const c = resultMutationComman
     acceptedSequence: '1', result: { ...c.target, version, performedSetId: saved.performedSetId } } }; };
 beforeEach(() => { sessionStorage.clear(); vi.stubGlobal('crypto', webcrypto); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+it('records newly qualified per-side dumbbell work with its captured policy and fixed options', async () => {
+  const exercise = catalogExercise(catalog.find(e => e.id === 't2:concentration-curl')!);
+  const prescription = { id: props.targetId, classification: 'working' as const, required: true,
+    reps: { min: 8, max: 15, basis: 'perSide' as const }, measurement: null, rir: '2', restSeconds: null };
+  let submitted = '';
+  const fetch = vi.fn().mockImplementation((_url, init) => { submitted = init.body; return response(accepted(submitted)); });
+  vi.stubGlobal('fetch', fetch);
+  render(<SetResultRow {...props} activePanel exercise={exercise} prescription={prescription}
+    refresh={async () => [{ ...saved, actionId: JSON.parse(submitted).actionId, result: JSON.parse(submitted).intent.result }]} />);
+  await screen.findByLabelText('Set 1 Actual reps');
+  for (const label of ['rep basis', 'actual load type', 'load basis', 'zero load meaning']) {
+    expect(screen.getByLabelText('Set 1 ' + label, { exact: true })).toBeDisabled();
+  }
+  expect(screen.getByLabelText('Set 1 rep basis')).toHaveValue('perSide');
+  expect(screen.getByLabelText('Set 1 load basis')).toHaveValue('perImplement');
+  expect(screen.getByLabelText('Set 1 zero load meaning')).toHaveValue('notAllowed');
+  fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '8' } });
+  fireEvent.change(screen.getByLabelText('Set 1 Actual load', { exact: true }), { target: { value: '25' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
+  await screen.findByText('Saved');
+  expect(JSON.parse(submitted).intent.result).toEqual({ reps: { value: 8, basis: 'perSide' },
+    measurement: { kind: 'externalLoad', value: '25', unit: 'lb', convention: 'perImplement', zeroMeaning: 'notAllowed' }, rir: '2' });
+});
 describe('Performed result input and recovery', () => {
   it('recovers a transient save without manual retry or a new action and advances once', async () => {
     let submitted = '';

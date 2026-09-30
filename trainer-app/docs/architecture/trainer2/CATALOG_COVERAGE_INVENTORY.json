@@ -1,0 +1,7119 @@
+{
+  "source": "prisma/exercises_comprehensive.json",
+  "baselineCommit": "3a2e057d3a205241849827a1f7e7ca580787acaf",
+  "totals": {
+    "canonical": 150,
+    "before": 48,
+    "after": 91,
+    "currentlySupported": 48,
+    "compatibleMissingIntegration": 43,
+    "missingOrConflictingMetadata": 48,
+    "requiresNewCapability": 11
+  },
+  "rows": [
+    {
+      "catalogId": "t2:barbell-back-squat",
+      "catalogKey": "barbell-back-squat",
+      "name": "Barbell Back Squat",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell",
+        "Rack"
+      ],
+      "movementPatterns": [
+        "squat"
+      ],
+      "primaryMuscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Hamstrings",
+        "Core",
+        "Lower Back",
+        "Adductors"
+      ],
+      "prescription": {
+        "min": 3,
+        "max": 8
+      },
+      "normalized": {
+        "id": "t2:barbell-back-squat",
+        "name": "Barbell Back Squat",
+        "equipment": [
+          "Barbell",
+          "Rack"
+        ],
+        "purpose": "squat",
+        "aliases": [
+          "squat",
+          "back squat"
+        ],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "barbellTotal",
+        "reps": {
+          "min": 3,
+          "max": 8
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:front-squat",
+      "catalogKey": "front-squat",
+      "name": "Front Squat",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell",
+        "Rack"
+      ],
+      "movementPatterns": [
+        "squat"
+      ],
+      "primaryMuscles": [
+        "Quads"
+      ],
+      "secondaryMuscles": [
+        "Glutes",
+        "Core",
+        "Upper Back"
+      ],
+      "prescription": {
+        "min": 3,
+        "max": 8
+      },
+      "normalized": {
+        "id": "t2:front-squat",
+        "name": "Front Squat",
+        "equipment": [
+          "Barbell",
+          "Rack"
+        ],
+        "purpose": "squat",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "barbellTotal",
+        "reps": {
+          "min": 3,
+          "max": 8
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:goblet-squat",
+      "catalogKey": "goblet-squat",
+      "name": "Goblet Squat",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell",
+        "Kettlebell"
+      ],
+      "movementPatterns": [
+        "squat"
+      ],
+      "primaryMuscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Core"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:goblet-squat",
+        "name": "Goblet Squat",
+        "equipment": [
+          "Dumbbell"
+        ],
+        "purpose": "squat",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "perImplement",
+        "reps": {
+          "min": 6,
+          "max": 12
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:hack-squat",
+      "catalogKey": "hack-squat",
+      "name": "Hack Squat",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD",
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "squat"
+      ],
+      "primaryMuscles": [
+        "Quads"
+      ],
+      "secondaryMuscles": [
+        "Glutes"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:hack-squat",
+        "name": "Hack Squat",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "squat",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 6,
+          "max": 12
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:leg-press",
+      "catalogKey": "leg-press",
+      "name": "Leg Press",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "squat"
+      ],
+      "primaryMuscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Hamstrings",
+        "Adductors"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:leg-press",
+        "name": "Leg Press",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "squat",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 6,
+          "max": 12
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:belt-squat",
+      "catalogKey": "belt-squat",
+      "name": "Belt Squat",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "squat"
+      ],
+      "primaryMuscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Adductors",
+        "Calves"
+      ],
+      "prescription": {
+        "min": 3,
+        "max": 10
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Specify the concrete machine configuration, displayed versus added-plate load, rep-count basis and zero capability. Keep differing configurations separate."
+    },
+    {
+      "catalogId": "t2:bulgarian-split-squat",
+      "catalogKey": "bulgarian-split-squat",
+      "name": "Bulgarian Split Squat",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "PER_SIDE",
+      "zeroLoadMeaning": "BODYWEIGHT_NO_ADDED_LOAD",
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "lunge"
+      ],
+      "primaryMuscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Hamstrings",
+        "Adductors"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:bulgarian-split-squat",
+        "name": "Bulgarian Split Squat",
+        "equipment": [
+          "Dumbbell",
+          "Bench"
+        ],
+        "purpose": "lunge",
+        "aliases": [
+          "BSS",
+          "rear foot elevated split squat"
+        ],
+        "repBasis": "perSide",
+        "loadKind": "externalLoad",
+        "convention": "perImplement",
+        "reps": {
+          "min": 6,
+          "max": 12
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:walking-lunge",
+      "catalogKey": "walking-lunge",
+      "name": "Walking Lunge",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell",
+        "Barbell"
+      ],
+      "movementPatterns": [
+        "lunge"
+      ],
+      "primaryMuscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Hamstrings",
+        "Calves",
+        "Core"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Split barbell and dumbbell executions; review total steps versus reps per side and the corresponding load basis."
+    },
+    {
+      "catalogId": "t2:dumbbell-reverse-lunge",
+      "catalogKey": "dumbbell-reverse-lunge",
+      "name": "Dumbbell Reverse Lunge",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "PER_SIDE",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell"
+      ],
+      "movementPatterns": [
+        "lunge"
+      ],
+      "primaryMuscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Hamstrings"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:dumbbell-reverse-lunge",
+        "name": "Dumbbell Reverse Lunge",
+        "equipment": [
+          "Dumbbell"
+        ],
+        "purpose": "lunge",
+        "aliases": [],
+        "repBasis": "perSide",
+        "loadKind": "externalLoad",
+        "convention": "perImplement",
+        "reps": {
+          "min": 6,
+          "max": 12
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:reverse-lunge",
+      "catalogKey": "reverse-lunge",
+      "name": "Reverse Lunge",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell",
+        "Barbell"
+      ],
+      "movementPatterns": [
+        "lunge"
+      ],
+      "primaryMuscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Hamstrings"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Split barbell and dumbbell executions; review total steps versus reps per side and the corresponding load basis."
+    },
+    {
+      "catalogId": "t2:leg-extension",
+      "catalogKey": "leg-extension",
+      "name": "Leg Extension",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "extension"
+      ],
+      "primaryMuscles": [
+        "Quads"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 10,
+        "max": 20
+      },
+      "normalized": {
+        "id": "t2:leg-extension",
+        "name": "Leg Extension",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "kneeExtension",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 10,
+          "max": 20
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:sissy-squat",
+      "catalogKey": "sissy-squat",
+      "name": "Sissy Squat",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight",
+        "Machine"
+      ],
+      "movementPatterns": [
+        "squat"
+      ],
+      "primaryMuscles": [
+        "Quads"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review and split the catalog equipment variants (Bodyweight, Machine); define the load basis and rep counting independently for each executable variant, including unloaded/assisted variants where applicable."
+    },
+    {
+      "catalogId": "t2:conventional-deadlift",
+      "catalogKey": "conventional-deadlift",
+      "name": "Conventional Deadlift",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell"
+      ],
+      "movementPatterns": [
+        "hinge"
+      ],
+      "primaryMuscles": [
+        "Hamstrings",
+        "Glutes",
+        "Lower Back"
+      ],
+      "secondaryMuscles": [
+        "Quads",
+        "Upper Back",
+        "Lats",
+        "Core",
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 1,
+        "max": 6
+      },
+      "normalized": {
+        "id": "t2:conventional-deadlift",
+        "name": "Conventional Deadlift",
+        "equipment": [
+          "Barbell"
+        ],
+        "purpose": "hinge",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "barbellTotal",
+        "reps": {
+          "min": 1,
+          "max": 6
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "hinge"
+          ],
+          "primaryMuscles": [
+            "Hamstrings",
+            "Glutes",
+            "Lower Back"
+          ],
+          "secondaryMuscles": [
+            "Quads",
+            "Upper Back",
+            "Lats",
+            "Core",
+            "Forearms"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 1,
+            "max": 6
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:sumo-deadlift",
+      "catalogKey": "sumo-deadlift",
+      "name": "Sumo Deadlift",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell"
+      ],
+      "movementPatterns": [
+        "hinge"
+      ],
+      "primaryMuscles": [
+        "Glutes",
+        "Hamstrings",
+        "Adductors"
+      ],
+      "secondaryMuscles": [
+        "Quads",
+        "Lower Back",
+        "Upper Back",
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 1,
+        "max": 6
+      },
+      "normalized": {
+        "id": "t2:sumo-deadlift",
+        "name": "Sumo Deadlift",
+        "equipment": [
+          "Barbell"
+        ],
+        "purpose": "hinge",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "barbellTotal",
+        "reps": {
+          "min": 1,
+          "max": 6
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "hinge"
+          ],
+          "primaryMuscles": [
+            "Glutes",
+            "Hamstrings",
+            "Adductors"
+          ],
+          "secondaryMuscles": [
+            "Quads",
+            "Lower Back",
+            "Upper Back",
+            "Forearms"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 1,
+            "max": 6
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:trap-bar-deadlift",
+      "catalogKey": "trap-bar-deadlift",
+      "name": "Trap Bar Deadlift",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Trap_Bar"
+      ],
+      "movementPatterns": [
+        "hinge"
+      ],
+      "primaryMuscles": [
+        "Quads",
+        "Glutes",
+        "Hamstrings"
+      ],
+      "secondaryMuscles": [
+        "Lower Back",
+        "Upper Back",
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 1,
+        "max": 6
+      },
+      "normalized": {
+        "id": "t2:trap-bar-deadlift",
+        "name": "Trap Bar Deadlift",
+        "equipment": [
+          "Trap_Bar"
+        ],
+        "purpose": "hinge",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "barbellTotal",
+        "reps": {
+          "min": 1,
+          "max": 6
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "hinge"
+          ],
+          "primaryMuscles": [
+            "Quads",
+            "Glutes",
+            "Hamstrings"
+          ],
+          "secondaryMuscles": [
+            "Lower Back",
+            "Upper Back",
+            "Forearms"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 1,
+            "max": 6
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:barbell-romanian-deadlift",
+      "catalogKey": "barbell-romanian-deadlift",
+      "name": "Barbell Romanian Deadlift",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell"
+      ],
+      "movementPatterns": [
+        "hinge"
+      ],
+      "primaryMuscles": [
+        "Hamstrings",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Lower Back",
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 3,
+        "max": 10
+      },
+      "normalized": {
+        "id": "t2:barbell-romanian-deadlift",
+        "name": "Barbell Romanian Deadlift",
+        "equipment": [
+          "Barbell"
+        ],
+        "purpose": "hinge",
+        "aliases": [
+          "RDL",
+          "romanian deadlift"
+        ],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "barbellTotal",
+        "reps": {
+          "min": 3,
+          "max": 10
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:dumbbell-romanian-deadlift",
+      "catalogKey": "dumbbell-romanian-deadlift",
+      "name": "Dumbbell Romanian Deadlift",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell"
+      ],
+      "movementPatterns": [
+        "hinge"
+      ],
+      "primaryMuscles": [
+        "Hamstrings",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Lower Back",
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 3,
+        "max": 10
+      },
+      "normalized": {
+        "id": "t2:dumbbell-romanian-deadlift",
+        "name": "Dumbbell Romanian Deadlift",
+        "equipment": [
+          "Dumbbell"
+        ],
+        "purpose": "hinge",
+        "aliases": [
+          "DB RDL"
+        ],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "perImplement",
+        "reps": {
+          "min": 3,
+          "max": 10
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:romanian-deadlift",
+      "catalogKey": "romanian-deadlift",
+      "name": "Romanian Deadlift",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell",
+        "Dumbbell"
+      ],
+      "movementPatterns": [
+        "hinge"
+      ],
+      "primaryMuscles": [
+        "Hamstrings",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Lower Back",
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 3,
+        "max": 10
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Use the already qualified barbell-romanian-deadlift or dumbbell-romanian-deadlift stable identity for those executions; retain this broad identity as ambiguous."
+    },
+    {
+      "catalogId": "t2:stiff-legged-deadlift",
+      "catalogKey": "stiff-legged-deadlift",
+      "name": "Stiff-Legged Deadlift",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell",
+        "Dumbbell"
+      ],
+      "movementPatterns": [
+        "hinge"
+      ],
+      "primaryMuscles": [
+        "Hamstrings"
+      ],
+      "secondaryMuscles": [
+        "Glutes",
+        "Lower Back"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review and split the catalog equipment variants (Barbell, Dumbbell); define the load basis and rep counting independently for each executable variant, including unloaded/assisted variants where applicable."
+    },
+    {
+      "catalogId": "t2:good-morning",
+      "catalogKey": "good-morning",
+      "name": "Good Morning",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell"
+      ],
+      "movementPatterns": [
+        "hinge"
+      ],
+      "primaryMuscles": [
+        "Hamstrings",
+        "Lower Back"
+      ],
+      "secondaryMuscles": [
+        "Glutes"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:good-morning",
+        "name": "Good Morning",
+        "equipment": [
+          "Barbell"
+        ],
+        "purpose": "hinge",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "barbellTotal",
+        "reps": {
+          "min": 6,
+          "max": 12
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:lying-leg-curl",
+      "catalogKey": "lying-leg-curl",
+      "name": "Lying Leg Curl",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Hamstrings"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 10,
+        "max": 20
+      },
+      "normalized": {
+        "id": "t2:lying-leg-curl",
+        "name": "Lying Leg Curl",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "kneeFlexion",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 10,
+          "max": 20
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:seated-leg-curl",
+      "catalogKey": "seated-leg-curl",
+      "name": "Seated Leg Curl",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Hamstrings"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 10,
+        "max": 20
+      },
+      "normalized": {
+        "id": "t2:seated-leg-curl",
+        "name": "Seated Leg Curl",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "kneeFlexion",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 10,
+          "max": 20
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:nordic-hamstring-curl",
+      "catalogKey": "nordic-hamstring-curl",
+      "name": "Nordic Hamstring Curl",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight",
+        "Band"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Hamstrings"
+      ],
+      "secondaryMuscles": [
+        "Glutes"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Separate bodyweight, assisted and added-load executions. Review how any band assistance can be recorded before qualifying it."
+    },
+    {
+      "catalogId": "t2:barbell-hip-thrust",
+      "catalogKey": "barbell-hip-thrust",
+      "name": "Barbell Hip Thrust",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "hinge"
+      ],
+      "primaryMuscles": [
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Hamstrings",
+        "Adductors"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:barbell-hip-thrust",
+        "name": "Barbell Hip Thrust",
+        "equipment": [
+          "Barbell",
+          "Bench"
+        ],
+        "purpose": "hinge",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "barbellTotal",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "hinge"
+          ],
+          "primaryMuscles": [
+            "Glutes"
+          ],
+          "secondaryMuscles": [
+            "Hamstrings",
+            "Adductors"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:machine-hip-thrust",
+      "catalogKey": "machine-hip-thrust",
+      "name": "Machine Hip Thrust",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "hinge"
+      ],
+      "primaryMuscles": [
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Hamstrings"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Specify the concrete machine configuration, displayed versus added-plate load, rep-count basis and zero capability. Keep differing configurations separate."
+    },
+    {
+      "catalogId": "t2:single-leg-hip-thrust",
+      "catalogKey": "single-leg-hip-thrust",
+      "name": "Single-Leg Hip Thrust",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell",
+        "Bench",
+        "Bodyweight"
+      ],
+      "movementPatterns": [
+        "hinge"
+      ],
+      "primaryMuscles": [
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Hamstrings"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review and split the catalog equipment variants (Dumbbell, Bench, Bodyweight); define the load basis and rep counting independently for each executable variant, including unloaded/assisted variants where applicable."
+    },
+    {
+      "catalogId": "t2:glute-bridge",
+      "catalogKey": "glute-bridge",
+      "name": "Glute Bridge",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell",
+        "Dumbbell",
+        "Bodyweight"
+      ],
+      "movementPatterns": [
+        "hinge"
+      ],
+      "primaryMuscles": [
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Hamstrings"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review and split the catalog equipment variants (Barbell, Dumbbell, Bodyweight); define the load basis and rep counting independently for each executable variant, including unloaded/assisted variants where applicable."
+    },
+    {
+      "catalogId": "t2:back-extension-45-degree",
+      "catalogKey": "back-extension-45-degree",
+      "name": "Back Extension (45 Degree)",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine",
+        "Bodyweight"
+      ],
+      "movementPatterns": [
+        "extension"
+      ],
+      "primaryMuscles": [
+        "Glutes",
+        "Hamstrings",
+        "Lower Back"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review and split the catalog equipment variants (Machine, Bodyweight); define the load basis and rep counting independently for each executable variant, including unloaded/assisted variants where applicable."
+    },
+    {
+      "catalogId": "t2:45-degree-back-extension-hamstring-bias",
+      "catalogKey": "45-degree-back-extension-hamstring-bias",
+      "name": "45-Degree Back Extension, Hamstring Bias",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine",
+        "Bodyweight"
+      ],
+      "movementPatterns": [
+        "extension"
+      ],
+      "primaryMuscles": [
+        "Hamstrings",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Lower Back"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review and split the catalog equipment variants (Machine, Bodyweight); define the load basis and rep counting independently for each executable variant, including unloaded/assisted variants where applicable."
+    },
+    {
+      "catalogId": "t2:reverse-hyperextension",
+      "catalogKey": "reverse-hyperextension",
+      "name": "Reverse Hyperextension",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "extension"
+      ],
+      "primaryMuscles": [
+        "Glutes",
+        "Hamstrings"
+      ],
+      "secondaryMuscles": [
+        "Lower Back"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Specify the concrete machine configuration, displayed versus added-plate load, rep-count basis and zero capability. Keep differing configurations separate."
+    },
+    {
+      "catalogId": "t2:cable-pull-through",
+      "catalogKey": "cable-pull-through",
+      "name": "Cable Pull-Through",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable"
+      ],
+      "movementPatterns": [
+        "hinge"
+      ],
+      "primaryMuscles": [
+        "Glutes",
+        "Hamstrings"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:cable-pull-through",
+        "name": "Cable Pull-Through",
+        "equipment": [
+          "Cable"
+        ],
+        "purpose": "hinge",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "hinge"
+          ],
+          "primaryMuscles": [
+            "Glutes",
+            "Hamstrings"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:hip-abduction-machine",
+      "catalogKey": "hip-abduction-machine",
+      "name": "Hip Abduction Machine",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "abduction"
+      ],
+      "primaryMuscles": [
+        "Abductors"
+      ],
+      "secondaryMuscles": [
+        "Glutes"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:hip-abduction-machine",
+        "name": "Hip Abduction Machine",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "abduction",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "abduction"
+          ],
+          "primaryMuscles": [
+            "Abductors"
+          ],
+          "secondaryMuscles": [
+            "Glutes"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:cable-hip-abduction",
+      "catalogKey": "cable-hip-abduction",
+      "name": "Cable Hip Abduction",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "PER_SIDE",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable"
+      ],
+      "movementPatterns": [
+        "abduction"
+      ],
+      "primaryMuscles": [
+        "Abductors"
+      ],
+      "secondaryMuscles": [
+        "Glutes"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:cable-hip-abduction",
+        "name": "Cable Hip Abduction",
+        "equipment": [
+          "Cable"
+        ],
+        "purpose": "abduction",
+        "aliases": [],
+        "repBasis": "perSide",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "abduction"
+          ],
+          "primaryMuscles": [
+            "Abductors"
+          ],
+          "secondaryMuscles": [
+            "Glutes"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:hip-adduction-machine",
+      "catalogKey": "hip-adduction-machine",
+      "name": "Hip Adduction Machine",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "adduction"
+      ],
+      "primaryMuscles": [
+        "Adductors"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:hip-adduction-machine",
+        "name": "Hip Adduction Machine",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "adduction",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "adduction"
+          ],
+          "primaryMuscles": [
+            "Adductors"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:copenhagen-plank",
+      "catalogKey": "copenhagen-plank",
+      "name": "Copenhagen Plank",
+      "status": "requiresNewCapability",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bench",
+        "Bodyweight"
+      ],
+      "movementPatterns": [
+        "adduction"
+      ],
+      "primaryMuscles": [
+        "Adductors"
+      ],
+      "secondaryMuscles": [
+        "Core"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Duration or distance recording is not supported.",
+      "recommendation": "Define duration/distance targets and performed evidence, identity/basis, history compatibility and prefill before enabling."
+    },
+    {
+      "catalogId": "t2:selectorized-standing-calf-raise",
+      "catalogKey": "selectorized-standing-calf-raise",
+      "name": "Selectorized Standing Calf Raise",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "isolation"
+      ],
+      "primaryMuscles": [
+        "Calves"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 10,
+        "max": 20
+      },
+      "normalized": {
+        "id": "t2:selectorized-standing-calf-raise",
+        "name": "Selectorized Standing Calf Raise",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "calfStraight",
+        "aliases": [
+          "standing calf raise"
+        ],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 10,
+          "max": 20
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:standing-calf-raise",
+      "catalogKey": "standing-calf-raise",
+      "name": "Standing Calf Raise",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine",
+        "Barbell"
+      ],
+      "movementPatterns": [
+        "calf_raise_extended"
+      ],
+      "primaryMuscles": [
+        "Calves"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 10,
+        "max": 20
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Use the qualified selectorized-standing-calf-raise identity for that execution; review and separate barbell or other machine variants."
+    },
+    {
+      "catalogId": "t2:seated-calf-raise",
+      "catalogKey": "seated-calf-raise",
+      "name": "Seated Calf Raise",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "isolation"
+      ],
+      "primaryMuscles": [
+        "Calves"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 10,
+        "max": 20
+      },
+      "normalized": {
+        "id": "t2:seated-calf-raise",
+        "name": "Seated Calf Raise",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "calfBent",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 10,
+          "max": 20
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:leg-press-calf-raise",
+      "catalogKey": "leg-press-calf-raise",
+      "name": "Leg Press Calf Raise",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "isolation"
+      ],
+      "primaryMuscles": [
+        "Calves"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 10,
+        "max": 20
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Specify the concrete machine configuration, displayed versus added-plate load, rep-count basis and zero capability. Keep differing configurations separate."
+    },
+    {
+      "catalogId": "t2:barbell-bench-press",
+      "catalogKey": "barbell-bench-press",
+      "name": "Barbell Bench Press",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "primaryMuscles": [
+        "Chest",
+        "Triceps"
+      ],
+      "secondaryMuscles": [
+        "Front Delts"
+      ],
+      "prescription": {
+        "min": 3,
+        "max": 10
+      },
+      "normalized": {
+        "id": "t2:barbell-bench-press",
+        "name": "Barbell Bench Press",
+        "equipment": [
+          "Barbell",
+          "Bench"
+        ],
+        "purpose": "chestPress",
+        "aliases": [
+          "bench"
+        ],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "barbellTotal",
+        "reps": {
+          "min": 3,
+          "max": 10
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:incline-barbell-bench-press",
+      "catalogKey": "incline-barbell-bench-press",
+      "name": "Incline Barbell Bench Press",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "primaryMuscles": [
+        "Chest",
+        "Triceps"
+      ],
+      "secondaryMuscles": [
+        "Front Delts"
+      ],
+      "prescription": {
+        "min": 3,
+        "max": 10
+      },
+      "normalized": {
+        "id": "t2:incline-barbell-bench-press",
+        "name": "Incline Barbell Bench Press",
+        "equipment": [
+          "Barbell",
+          "Bench"
+        ],
+        "purpose": "inclinePress",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "barbellTotal",
+        "reps": {
+          "min": 3,
+          "max": 10
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:decline-barbell-bench-press",
+      "catalogKey": "decline-barbell-bench-press",
+      "name": "Decline Barbell Bench Press",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": [
+        "Triceps",
+        "Front Delts"
+      ],
+      "prescription": {
+        "min": 3,
+        "max": 10
+      },
+      "normalized": {
+        "id": "t2:decline-barbell-bench-press",
+        "name": "Decline Barbell Bench Press",
+        "equipment": [
+          "Barbell",
+          "Bench"
+        ],
+        "purpose": "horizontal_push",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "barbellTotal",
+        "reps": {
+          "min": 3,
+          "max": 10
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "horizontal_push"
+          ],
+          "primaryMuscles": [
+            "Chest"
+          ],
+          "secondaryMuscles": [
+            "Triceps",
+            "Front Delts"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 3,
+            "max": 10
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:dumbbell-bench-press",
+      "catalogKey": "dumbbell-bench-press",
+      "name": "Dumbbell Bench Press",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "primaryMuscles": [
+        "Chest",
+        "Triceps"
+      ],
+      "secondaryMuscles": [
+        "Front Delts"
+      ],
+      "prescription": {
+        "min": 3,
+        "max": 10
+      },
+      "normalized": {
+        "id": "t2:dumbbell-bench-press",
+        "name": "Dumbbell Bench Press",
+        "equipment": [
+          "Dumbbell",
+          "Bench"
+        ],
+        "purpose": "chestPress",
+        "aliases": [
+          "DB bench"
+        ],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "perImplement",
+        "reps": {
+          "min": 3,
+          "max": 10
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:incline-dumbbell-bench-press",
+      "catalogKey": "incline-dumbbell-bench-press",
+      "name": "Incline Dumbbell Bench Press",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "primaryMuscles": [
+        "Chest",
+        "Triceps"
+      ],
+      "secondaryMuscles": [
+        "Front Delts"
+      ],
+      "prescription": {
+        "min": 3,
+        "max": 10
+      },
+      "normalized": {
+        "id": "t2:incline-dumbbell-bench-press",
+        "name": "Incline Dumbbell Bench Press",
+        "equipment": [
+          "Dumbbell",
+          "Bench"
+        ],
+        "purpose": "inclinePress",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "perImplement",
+        "reps": {
+          "min": 3,
+          "max": 10
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:decline-dumbbell-bench-press",
+      "catalogKey": "decline-dumbbell-bench-press",
+      "name": "Decline Dumbbell Bench Press",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": [
+        "Triceps",
+        "Front Delts"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:decline-dumbbell-bench-press",
+        "name": "Decline Dumbbell Bench Press",
+        "equipment": [
+          "Dumbbell",
+          "Bench"
+        ],
+        "purpose": "horizontal_push",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "perImplement",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "horizontal_push"
+          ],
+          "primaryMuscles": [
+            "Chest"
+          ],
+          "secondaryMuscles": [
+            "Triceps",
+            "Front Delts"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:machine-chest-press",
+      "catalogKey": "machine-chest-press",
+      "name": "Machine Chest Press",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": [
+        "Triceps",
+        "Front Delts"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:machine-chest-press",
+        "name": "Machine Chest Press",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "chestPress",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 6,
+          "max": 12
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:incline-machine-press",
+      "catalogKey": "incline-machine-press",
+      "name": "Incline Machine Press",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": [
+        "Triceps",
+        "Front Delts"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Specify the concrete machine configuration, displayed versus added-plate load, rep-count basis and zero capability. Keep differing configurations separate."
+    },
+    {
+      "catalogId": "t2:iso-lateral-incline-press",
+      "catalogKey": "iso-lateral-incline-press",
+      "name": "Iso-Lateral Incline Press",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": [
+        "Front Delts",
+        "Triceps"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review independent-arm execution, load per arm versus combined/displayed load and total versus per-side reps. Split differing machine conventions into distinct stable IDs."
+    },
+    {
+      "catalogId": "t2:iso-lateral-decline-press",
+      "catalogKey": "iso-lateral-decline-press",
+      "name": "Iso-Lateral Decline Press",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": [
+        "Triceps",
+        "Front Delts"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review independent-arm execution, load per arm versus combined/displayed load and total versus per-side reps. Split differing machine conventions into distinct stable IDs."
+    },
+    {
+      "catalogId": "t2:dumbbell-fly",
+      "catalogKey": "dumbbell-fly",
+      "name": "Dumbbell Fly",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:dumbbell-fly",
+        "name": "Dumbbell Fly",
+        "equipment": [
+          "Dumbbell",
+          "Bench"
+        ],
+        "purpose": "horizontal_push",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "perImplement",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "horizontal_push"
+          ],
+          "primaryMuscles": [
+            "Chest"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:incline-dumbbell-fly",
+      "catalogKey": "incline-dumbbell-fly",
+      "name": "Incline Dumbbell Fly",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:incline-dumbbell-fly",
+        "name": "Incline Dumbbell Fly",
+        "equipment": [
+          "Dumbbell",
+          "Bench"
+        ],
+        "purpose": "horizontal_push",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "perImplement",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "horizontal_push"
+          ],
+          "primaryMuscles": [
+            "Chest"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:cable-fly",
+      "catalogKey": "cable-fly",
+      "name": "Cable Fly",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable"
+      ],
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:cable-fly",
+        "name": "Cable Fly",
+        "equipment": [
+          "Cable"
+        ],
+        "purpose": "horizontal_push",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "horizontal_push"
+          ],
+          "primaryMuscles": [
+            "Chest"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:low-to-high-cable-fly",
+      "catalogKey": "low-to-high-cable-fly",
+      "name": "Low-to-High Cable Fly",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable"
+      ],
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:low-to-high-cable-fly",
+        "name": "Low-to-High Cable Fly",
+        "equipment": [
+          "Cable"
+        ],
+        "purpose": "horizontal_push",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "horizontal_push"
+          ],
+          "primaryMuscles": [
+            "Chest"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:pec-deck-machine",
+      "catalogKey": "pec-deck-machine",
+      "name": "Pec Deck Machine",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:pec-deck-machine",
+        "name": "Pec Deck Machine",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "horizontal_push",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "horizontal_push"
+          ],
+          "primaryMuscles": [
+            "Chest"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:push-up",
+      "catalogKey": "push-up",
+      "name": "Push-Up",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_BODYWEIGHT",
+      "loadConvention": null,
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight"
+      ],
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "primaryMuscles": [
+        "Chest",
+        "Triceps"
+      ],
+      "secondaryMuscles": [
+        "Front Delts",
+        "Core"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:push-up",
+        "name": "Push-Up",
+        "equipment": [
+          "Bodyweight"
+        ],
+        "purpose": "chestPress",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "bodyweight",
+        "convention": "bodyweightOnly",
+        "reps": {
+          "min": 6,
+          "max": 12
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:deficit-push-up",
+      "catalogKey": "deficit-push-up",
+      "name": "Deficit Push-Up",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_BODYWEIGHT",
+      "loadConvention": null,
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight"
+      ],
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": [
+        "Triceps",
+        "Front Delts",
+        "Core"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:deficit-push-up",
+        "name": "Deficit Push-Up",
+        "equipment": [
+          "Bodyweight"
+        ],
+        "purpose": "horizontal_push",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "bodyweight",
+        "convention": "bodyweightOnly",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "horizontal_push"
+          ],
+          "primaryMuscles": [
+            "Chest"
+          ],
+          "secondaryMuscles": [
+            "Triceps",
+            "Front Delts",
+            "Core"
+          ],
+          "externalZeroMeaning": null,
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:dip-chest-emphasis",
+      "catalogKey": "dip-chest-emphasis",
+      "name": "Dip (Chest Emphasis)",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight",
+        "Machine"
+      ],
+      "movementPatterns": [
+        "vertical_push"
+      ],
+      "primaryMuscles": [
+        "Chest",
+        "Triceps"
+      ],
+      "secondaryMuscles": [
+        "Front Delts"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review and split the catalog equipment variants (Bodyweight, Machine); define the load basis and rep counting independently for each executable variant, including unloaded/assisted variants where applicable."
+    },
+    {
+      "catalogId": "t2:barbell-overhead-press",
+      "catalogKey": "barbell-overhead-press",
+      "name": "Barbell Overhead Press",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell",
+        "Rack"
+      ],
+      "movementPatterns": [
+        "vertical_push"
+      ],
+      "primaryMuscles": [
+        "Side Delts",
+        "Triceps"
+      ],
+      "secondaryMuscles": [
+        "Front Delts",
+        "Upper Back",
+        "Core"
+      ],
+      "prescription": {
+        "min": 3,
+        "max": 10
+      },
+      "normalized": {
+        "id": "t2:barbell-overhead-press",
+        "name": "Barbell Overhead Press",
+        "equipment": [
+          "Barbell",
+          "Rack"
+        ],
+        "purpose": "overheadPress",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "barbellTotal",
+        "reps": {
+          "min": 3,
+          "max": 10
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:seated-barbell-overhead-press",
+      "catalogKey": "seated-barbell-overhead-press",
+      "name": "Seated Barbell Overhead Press",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "vertical_push"
+      ],
+      "primaryMuscles": [
+        "Side Delts",
+        "Triceps"
+      ],
+      "secondaryMuscles": [
+        "Front Delts",
+        "Upper Back"
+      ],
+      "prescription": {
+        "min": 3,
+        "max": 10
+      },
+      "normalized": {
+        "id": "t2:seated-barbell-overhead-press",
+        "name": "Seated Barbell Overhead Press",
+        "equipment": [
+          "Barbell",
+          "Bench"
+        ],
+        "purpose": "vertical_push",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "barbellTotal",
+        "reps": {
+          "min": 3,
+          "max": 10
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "vertical_push"
+          ],
+          "primaryMuscles": [
+            "Side Delts",
+            "Triceps"
+          ],
+          "secondaryMuscles": [
+            "Front Delts",
+            "Upper Back"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 3,
+            "max": 10
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:dumbbell-overhead-press",
+      "catalogKey": "dumbbell-overhead-press",
+      "name": "Dumbbell Overhead Press",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "vertical_push"
+      ],
+      "primaryMuscles": [
+        "Side Delts",
+        "Triceps"
+      ],
+      "secondaryMuscles": [
+        "Front Delts",
+        "Core"
+      ],
+      "prescription": {
+        "min": 3,
+        "max": 10
+      },
+      "normalized": {
+        "id": "t2:dumbbell-overhead-press",
+        "name": "Dumbbell Overhead Press",
+        "equipment": [
+          "Dumbbell",
+          "Bench"
+        ],
+        "purpose": "overheadPress",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "perImplement",
+        "reps": {
+          "min": 3,
+          "max": 10
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:arnold-press",
+      "catalogKey": "arnold-press",
+      "name": "Arnold Press",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "vertical_push"
+      ],
+      "primaryMuscles": [
+        "Side Delts"
+      ],
+      "secondaryMuscles": [
+        "Front Delts",
+        "Triceps"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:arnold-press",
+        "name": "Arnold Press",
+        "equipment": [
+          "Dumbbell",
+          "Bench"
+        ],
+        "purpose": "vertical_push",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "perImplement",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "vertical_push"
+          ],
+          "primaryMuscles": [
+            "Side Delts"
+          ],
+          "secondaryMuscles": [
+            "Front Delts",
+            "Triceps"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:machine-shoulder-press",
+      "catalogKey": "machine-shoulder-press",
+      "name": "Machine Shoulder Press",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "vertical_push"
+      ],
+      "primaryMuscles": [
+        "Side Delts",
+        "Triceps"
+      ],
+      "secondaryMuscles": [
+        "Front Delts"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:machine-shoulder-press",
+        "name": "Machine Shoulder Press",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "overheadPress",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 6,
+          "max": 12
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:landmine-press",
+      "catalogKey": "landmine-press",
+      "name": "Landmine Press",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell"
+      ],
+      "movementPatterns": [
+        "vertical_push"
+      ],
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": [
+        "Front Delts",
+        "Triceps",
+        "Core"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Angled-bar load convention is not supported or reviewed.",
+      "recommendation": "Review whether recorded angled-bar load means plates, total assembly or another explicit basis. Qualify only after defining the supported convention and rep basis; do not reuse total-barbell meaning automatically."
+    },
+    {
+      "catalogId": "t2:dumbbell-lateral-raise",
+      "catalogKey": "dumbbell-lateral-raise",
+      "name": "Dumbbell Lateral Raise",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell"
+      ],
+      "movementPatterns": [
+        "abduction"
+      ],
+      "primaryMuscles": [
+        "Side Delts"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 10,
+        "max": 20
+      },
+      "normalized": {
+        "id": "t2:dumbbell-lateral-raise",
+        "name": "Dumbbell Lateral Raise",
+        "equipment": [
+          "Dumbbell"
+        ],
+        "purpose": "lateralRaise",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "perImplement",
+        "reps": {
+          "min": 10,
+          "max": 20
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:cable-lateral-raise",
+      "catalogKey": "cable-lateral-raise",
+      "name": "Cable Lateral Raise",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable"
+      ],
+      "movementPatterns": [
+        "abduction"
+      ],
+      "primaryMuscles": [
+        "Side Delts"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 10,
+        "max": 20
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review the Cable execution: specify unilateral/bilateral use, how logged reps count, load per implement versus displayed/combined load, and whether zero is meaningful. Publish that concrete tuple before enabling."
+    },
+    {
+      "catalogId": "t2:machine-lateral-raise",
+      "catalogKey": "machine-lateral-raise",
+      "name": "Machine Lateral Raise",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "abduction"
+      ],
+      "primaryMuscles": [
+        "Side Delts"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 10,
+        "max": 20
+      },
+      "normalized": {
+        "id": "t2:machine-lateral-raise",
+        "name": "Machine Lateral Raise",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "lateralRaise",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 10,
+          "max": 20
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:dumbbell-front-raise",
+      "catalogKey": "dumbbell-front-raise",
+      "name": "Dumbbell Front Raise",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Front Delts"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review the Dumbbell execution: specify unilateral/bilateral use, how logged reps count, load per implement versus displayed/combined load, and whether zero is meaningful. Publish that concrete tuple before enabling."
+    },
+    {
+      "catalogId": "t2:cable-front-raise",
+      "catalogKey": "cable-front-raise",
+      "name": "Cable Front Raise",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Front Delts"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review the Cable execution: specify unilateral/bilateral use, how logged reps count, load per implement versus displayed/combined load, and whether zero is meaningful. Publish that concrete tuple before enabling."
+    },
+    {
+      "catalogId": "t2:dumbbell-rear-delt-fly",
+      "catalogKey": "dumbbell-rear-delt-fly",
+      "name": "Dumbbell Rear Delt Fly",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Rear Delts"
+      ],
+      "secondaryMuscles": [
+        "Upper Back"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:dumbbell-rear-delt-fly",
+        "name": "Dumbbell Rear Delt Fly",
+        "equipment": [
+          "Dumbbell",
+          "Bench"
+        ],
+        "purpose": "rearDelt",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "perImplement",
+        "reps": {
+          "min": 8,
+          "max": 15
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:cable-rear-delt-fly",
+      "catalogKey": "cable-rear-delt-fly",
+      "name": "Cable Rear Delt Fly",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Rear Delts"
+      ],
+      "secondaryMuscles": [
+        "Upper Back"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:cable-rear-delt-fly",
+        "name": "Cable Rear Delt Fly",
+        "equipment": [
+          "Cable"
+        ],
+        "purpose": "rearDelt",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 8,
+          "max": 15
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:reverse-pec-deck",
+      "catalogKey": "reverse-pec-deck",
+      "name": "Reverse Pec Deck",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Rear Delts"
+      ],
+      "secondaryMuscles": [
+        "Upper Back"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:reverse-pec-deck",
+        "name": "Reverse Pec Deck",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "rearDelt",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 8,
+          "max": 15
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:face-pull",
+      "catalogKey": "face-pull",
+      "name": "Face Pull",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Rear Delts",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:face-pull",
+        "name": "Face Pull",
+        "equipment": [
+          "Cable"
+        ],
+        "purpose": "horizontal_pull",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "horizontal_pull"
+          ],
+          "primaryMuscles": [
+            "Rear Delts",
+            "Upper Back"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:close-grip-bench-press",
+      "catalogKey": "close-grip-bench-press",
+      "name": "Close-Grip Bench Press",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "primaryMuscles": [
+        "Triceps"
+      ],
+      "secondaryMuscles": [
+        "Chest",
+        "Front Delts"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:close-grip-bench-press",
+        "name": "Close-Grip Bench Press",
+        "equipment": [
+          "Barbell",
+          "Bench"
+        ],
+        "purpose": "horizontal_push",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "barbellTotal",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "horizontal_push"
+          ],
+          "primaryMuscles": [
+            "Triceps"
+          ],
+          "secondaryMuscles": [
+            "Chest",
+            "Front Delts"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:dip-triceps-emphasis",
+      "catalogKey": "dip-triceps-emphasis",
+      "name": "Dip (Triceps Emphasis)",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight",
+        "Machine"
+      ],
+      "movementPatterns": [
+        "vertical_push"
+      ],
+      "primaryMuscles": [
+        "Triceps"
+      ],
+      "secondaryMuscles": [
+        "Chest",
+        "Front Delts"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review and split the catalog equipment variants (Bodyweight, Machine); define the load basis and rep counting independently for each executable variant, including unloaded/assisted variants where applicable."
+    },
+    {
+      "catalogId": "t2:seated-dip-machine",
+      "catalogKey": "seated-dip-machine",
+      "name": "Seated Dip Machine",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "vertical_push"
+      ],
+      "primaryMuscles": [
+        "Triceps"
+      ],
+      "secondaryMuscles": [
+        "Chest",
+        "Front Delts"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:seated-dip-machine",
+        "name": "Seated Dip Machine",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "vertical_push",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "vertical_push"
+          ],
+          "primaryMuscles": [
+            "Triceps"
+          ],
+          "secondaryMuscles": [
+            "Chest",
+            "Front Delts"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:overhead-cable-triceps-extension",
+      "catalogKey": "overhead-cable-triceps-extension",
+      "name": "Overhead Cable Triceps Extension",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable"
+      ],
+      "movementPatterns": [
+        "extension"
+      ],
+      "primaryMuscles": [
+        "Triceps"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:overhead-cable-triceps-extension",
+        "name": "Overhead Cable Triceps Extension",
+        "equipment": [
+          "Cable"
+        ],
+        "purpose": "elbowExtension",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 8,
+          "max": 15
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:overhead-dumbbell-extension",
+      "catalogKey": "overhead-dumbbell-extension",
+      "name": "Overhead Dumbbell Extension",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell"
+      ],
+      "movementPatterns": [
+        "extension"
+      ],
+      "primaryMuscles": [
+        "Triceps"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Resolve one shared dumbbell versus one implement per arm and the rep-count convention; split distinct executions."
+    },
+    {
+      "catalogId": "t2:lying-triceps-extension-skull-crusher",
+      "catalogKey": "lying-triceps-extension-skull-crusher",
+      "name": "Lying Triceps Extension (Skull Crusher)",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell",
+        "EZ_Bar",
+        "Dumbbell",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "extension"
+      ],
+      "primaryMuscles": [
+        "Triceps"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review and split the catalog equipment variants (Barbell, EZ_Bar, Dumbbell, Bench); define the load basis and rep counting independently for each executable variant, including unloaded/assisted variants where applicable."
+    },
+    {
+      "catalogId": "t2:cable-triceps-pushdown",
+      "catalogKey": "cable-triceps-pushdown",
+      "name": "Cable Triceps Pushdown",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable"
+      ],
+      "movementPatterns": [
+        "extension"
+      ],
+      "primaryMuscles": [
+        "Triceps"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:cable-triceps-pushdown",
+        "name": "Cable Triceps Pushdown",
+        "equipment": [
+          "Cable"
+        ],
+        "purpose": "elbowExtension",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 8,
+          "max": 15
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:rope-triceps-pushdown",
+      "catalogKey": "rope-triceps-pushdown",
+      "name": "Rope Triceps Pushdown",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable"
+      ],
+      "movementPatterns": [
+        "extension"
+      ],
+      "primaryMuscles": [
+        "Triceps"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:rope-triceps-pushdown",
+        "name": "Rope Triceps Pushdown",
+        "equipment": [
+          "Cable"
+        ],
+        "purpose": "elbowExtension",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 8,
+          "max": 15
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:diamond-push-up",
+      "catalogKey": "diamond-push-up",
+      "name": "Diamond Push-Up",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_BODYWEIGHT",
+      "loadConvention": null,
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight"
+      ],
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "primaryMuscles": [
+        "Triceps"
+      ],
+      "secondaryMuscles": [
+        "Chest",
+        "Front Delts",
+        "Core"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:diamond-push-up",
+        "name": "Diamond Push-Up",
+        "equipment": [
+          "Bodyweight"
+        ],
+        "purpose": "horizontal_push",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "bodyweight",
+        "convention": "bodyweightOnly",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "horizontal_push"
+          ],
+          "primaryMuscles": [
+            "Triceps"
+          ],
+          "secondaryMuscles": [
+            "Chest",
+            "Front Delts",
+            "Core"
+          ],
+          "externalZeroMeaning": null,
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:pull-up",
+      "catalogKey": "pull-up",
+      "name": "Pull-Up",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_BODYWEIGHT",
+      "loadConvention": null,
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight"
+      ],
+      "movementPatterns": [
+        "vertical_pull"
+      ],
+      "primaryMuscles": [
+        "Lats",
+        "Biceps"
+      ],
+      "secondaryMuscles": [
+        "Upper Back",
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 3,
+        "max": 10
+      },
+      "normalized": {
+        "id": "t2:pull-up",
+        "name": "Pull-Up",
+        "equipment": [
+          "Bodyweight"
+        ],
+        "purpose": "verticalPull",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "bodyweight",
+        "convention": "bodyweightOnly",
+        "reps": {
+          "min": 3,
+          "max": 10
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:chin-up",
+      "catalogKey": "chin-up",
+      "name": "Chin-Up",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_BODYWEIGHT",
+      "loadConvention": null,
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight"
+      ],
+      "movementPatterns": [
+        "vertical_pull"
+      ],
+      "primaryMuscles": [
+        "Lats",
+        "Biceps"
+      ],
+      "secondaryMuscles": [
+        "Upper Back",
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 3,
+        "max": 10
+      },
+      "normalized": {
+        "id": "t2:chin-up",
+        "name": "Chin-Up",
+        "equipment": [
+          "Bodyweight"
+        ],
+        "purpose": "vertical_pull",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "bodyweight",
+        "convention": "bodyweightOnly",
+        "reps": {
+          "min": 3,
+          "max": 10
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "vertical_pull"
+          ],
+          "primaryMuscles": [
+            "Lats",
+            "Biceps"
+          ],
+          "secondaryMuscles": [
+            "Upper Back",
+            "Forearms"
+          ],
+          "externalZeroMeaning": null,
+          "repDefaults": {
+            "min": 3,
+            "max": 10
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:weighted-pull-up",
+      "catalogKey": "weighted-pull-up",
+      "name": "Weighted Pull-Up",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_BODYWEIGHT_PLUS_LOAD",
+      "loadConvention": "ADDED_EXTERNAL_LOAD",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight",
+        "Dumbbell",
+        "Kettlebell"
+      ],
+      "movementPatterns": [
+        "vertical_pull"
+      ],
+      "primaryMuscles": [
+        "Lats",
+        "Biceps"
+      ],
+      "secondaryMuscles": [
+        "Upper Back",
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 3,
+        "max": 10
+      },
+      "normalized": {
+        "id": "t2:weighted-pull-up",
+        "name": "Weighted Pull-Up",
+        "equipment": [
+          "Bodyweight",
+          "Dumbbell",
+          "Kettlebell"
+        ],
+        "purpose": "verticalPull",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "addedLoad",
+        "convention": "addedExternal",
+        "reps": {
+          "min": 3,
+          "max": 10
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:machine-assisted-pull-up",
+      "catalogKey": "machine-assisted-pull-up",
+      "name": "Machine-Assisted Pull-Up",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_ASSISTED",
+      "loadConvention": "DISPLAYED_ASSISTANCE",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "vertical_pull"
+      ],
+      "primaryMuscles": [
+        "Lats",
+        "Biceps"
+      ],
+      "secondaryMuscles": [
+        "Upper Back",
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 5,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:machine-assisted-pull-up",
+        "name": "Machine-Assisted Pull-Up",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "verticalPull",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "assistance",
+        "convention": "displayedAssistance",
+        "reps": {
+          "min": 5,
+          "max": 12
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:lat-pulldown",
+      "catalogKey": "lat-pulldown",
+      "name": "Lat Pulldown",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable",
+        "Machine"
+      ],
+      "movementPatterns": [
+        "vertical_pull"
+      ],
+      "primaryMuscles": [
+        "Lats"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Upper Back",
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:lat-pulldown",
+        "name": "Lat Pulldown",
+        "equipment": [
+          "Cable",
+          "Machine"
+        ],
+        "purpose": "verticalPull",
+        "aliases": [
+          "lat pull down"
+        ],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 6,
+          "max": 12
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:iso-lateral-front-lat-pulldown",
+      "catalogKey": "iso-lateral-front-lat-pulldown",
+      "name": "Iso-Lateral Front Lat Pulldown",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "vertical_pull"
+      ],
+      "primaryMuscles": [
+        "Lats"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Upper Back"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review independent-arm execution, load per arm versus combined/displayed load and total versus per-side reps. Split differing machine conventions into distinct stable IDs."
+    },
+    {
+      "catalogId": "t2:close-grip-lat-pulldown",
+      "catalogKey": "close-grip-lat-pulldown",
+      "name": "Close-Grip Lat Pulldown",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable",
+        "Machine"
+      ],
+      "movementPatterns": [
+        "vertical_pull"
+      ],
+      "primaryMuscles": [
+        "Lats"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Upper Back"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:close-grip-lat-pulldown",
+        "name": "Close-Grip Lat Pulldown",
+        "equipment": [
+          "Cable",
+          "Machine"
+        ],
+        "purpose": "verticalPull",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 6,
+          "max": 12
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:straight-arm-pulldown",
+      "catalogKey": "straight-arm-pulldown",
+      "name": "Straight-Arm Pulldown",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable"
+      ],
+      "movementPatterns": [
+        "vertical_pull"
+      ],
+      "primaryMuscles": [
+        "Lats"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:straight-arm-pulldown",
+        "name": "Straight-Arm Pulldown",
+        "equipment": [
+          "Cable"
+        ],
+        "purpose": "vertical_pull",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "vertical_pull"
+          ],
+          "primaryMuscles": [
+            "Lats"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:dumbbell-pullover",
+      "catalogKey": "dumbbell-pullover",
+      "name": "Dumbbell Pullover",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "vertical_pull"
+      ],
+      "primaryMuscles": [
+        "Lats"
+      ],
+      "secondaryMuscles": [
+        "Chest"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:dumbbell-pullover",
+        "name": "Dumbbell Pullover",
+        "equipment": [
+          "Dumbbell",
+          "Bench"
+        ],
+        "purpose": "vertical_pull",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "perImplement",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "vertical_pull"
+          ],
+          "primaryMuscles": [
+            "Lats"
+          ],
+          "secondaryMuscles": [
+            "Chest"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:cable-pullover",
+      "catalogKey": "cable-pullover",
+      "name": "Cable Pullover",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable"
+      ],
+      "movementPatterns": [
+        "vertical_pull"
+      ],
+      "primaryMuscles": [
+        "Lats"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:cable-pullover",
+        "name": "Cable Pullover",
+        "equipment": [
+          "Cable"
+        ],
+        "purpose": "vertical_pull",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "vertical_pull"
+          ],
+          "primaryMuscles": [
+            "Lats"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:barbell-row",
+      "catalogKey": "barbell-row",
+      "name": "Barbell Row",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Lower Back",
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 3,
+        "max": 10
+      },
+      "normalized": {
+        "id": "t2:barbell-row",
+        "name": "Barbell Row",
+        "equipment": [
+          "Barbell"
+        ],
+        "purpose": "row",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "barbellTotal",
+        "reps": {
+          "min": 3,
+          "max": 10
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:pendlay-row",
+      "catalogKey": "pendlay-row",
+      "name": "Pendlay Row",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Lower Back",
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 3,
+        "max": 10
+      },
+      "normalized": {
+        "id": "t2:pendlay-row",
+        "name": "Pendlay Row",
+        "equipment": [
+          "Barbell"
+        ],
+        "purpose": "horizontal_pull",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "barbellTotal",
+        "reps": {
+          "min": 3,
+          "max": 10
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "horizontal_pull"
+          ],
+          "primaryMuscles": [
+            "Lats",
+            "Upper Back"
+          ],
+          "secondaryMuscles": [
+            "Biceps",
+            "Lower Back",
+            "Forearms"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 3,
+            "max": 10
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:t-bar-row",
+      "catalogKey": "t-bar-row",
+      "name": "T-Bar Row",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell",
+        "Machine"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Lower Back",
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 3,
+        "max": 10
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review and split the catalog equipment variants (Barbell, Machine); define the load basis and rep counting independently for each executable variant, including unloaded/assisted variants where applicable."
+    },
+    {
+      "catalogId": "t2:chest-supported-t-bar-row",
+      "catalogKey": "chest-supported-t-bar-row",
+      "name": "Chest-Supported T-Bar Row",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Specify the concrete machine configuration, displayed versus added-plate load, rep-count basis and zero capability. Keep differing configurations separate."
+    },
+    {
+      "catalogId": "t2:one-arm-dumbbell-row",
+      "catalogKey": "one-arm-dumbbell-row",
+      "name": "One-Arm Dumbbell Row",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "PER_SIDE",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:one-arm-dumbbell-row",
+        "name": "One-Arm Dumbbell Row",
+        "equipment": [
+          "Dumbbell",
+          "Bench"
+        ],
+        "purpose": "row",
+        "aliases": [],
+        "repBasis": "perSide",
+        "loadKind": "externalLoad",
+        "convention": "perImplement",
+        "reps": {
+          "min": 6,
+          "max": 12
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:dumbbell-row",
+      "catalogKey": "dumbbell-row",
+      "name": "Dumbbell Row",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Lower Back",
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Resolve single-arm versus bilateral execution and the recorded load per implement; split the variants if both are intended."
+    },
+    {
+      "catalogId": "t2:chest-supported-dumbbell-row",
+      "catalogKey": "chest-supported-dumbbell-row",
+      "name": "Chest-Supported Dumbbell Row",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:chest-supported-dumbbell-row",
+        "name": "Chest-Supported Dumbbell Row",
+        "equipment": [
+          "Dumbbell",
+          "Bench"
+        ],
+        "purpose": "row",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "perImplement",
+        "reps": {
+          "min": 6,
+          "max": 12
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:seated-cable-row",
+      "catalogKey": "seated-cable-row",
+      "name": "Seated Cable Row",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:seated-cable-row",
+        "name": "Seated Cable Row",
+        "equipment": [
+          "Cable"
+        ],
+        "purpose": "row",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 6,
+          "max": 12
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:close-grip-seated-cable-row",
+      "catalogKey": "close-grip-seated-cable-row",
+      "name": "Close-Grip Seated Cable Row",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:close-grip-seated-cable-row",
+        "name": "Close-Grip Seated Cable Row",
+        "equipment": [
+          "Cable"
+        ],
+        "purpose": "horizontal_pull",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "horizontal_pull"
+          ],
+          "primaryMuscles": [
+            "Lats",
+            "Upper Back"
+          ],
+          "secondaryMuscles": [
+            "Biceps",
+            "Forearms"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:iso-lateral-high-row",
+      "catalogKey": "iso-lateral-high-row",
+      "name": "Iso-Lateral High Row",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Upper Back",
+        "Lats"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Rear Delts"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review independent-arm execution, load per arm versus combined/displayed load and total versus per-side reps. Split differing machine conventions into distinct stable IDs."
+    },
+    {
+      "catalogId": "t2:iso-lateral-low-row",
+      "catalogKey": "iso-lateral-low-row",
+      "name": "Iso-Lateral Low Row",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Rear Delts"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review independent-arm execution, load per arm versus combined/displayed load and total versus per-side reps. Split differing machine conventions into distinct stable IDs."
+    },
+    {
+      "catalogId": "t2:meadows-row",
+      "catalogKey": "meadows-row",
+      "name": "Meadows Row",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Angled-bar load convention is not supported or reviewed.",
+      "recommendation": "Review whether recorded angled-bar load means plates, total assembly or another explicit basis. Qualify only after defining the supported convention and rep basis; do not reuse total-barbell meaning automatically."
+    },
+    {
+      "catalogId": "t2:inverted-row",
+      "catalogKey": "inverted-row",
+      "name": "Inverted Row",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_BODYWEIGHT",
+      "loadConvention": null,
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Core"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:inverted-row",
+        "name": "Inverted Row",
+        "equipment": [
+          "Bodyweight"
+        ],
+        "purpose": "horizontal_pull",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "bodyweight",
+        "convention": "bodyweightOnly",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "horizontal_pull"
+          ],
+          "primaryMuscles": [
+            "Lats",
+            "Upper Back"
+          ],
+          "secondaryMuscles": [
+            "Biceps",
+            "Core"
+          ],
+          "externalZeroMeaning": null,
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:barbell-shrug",
+      "catalogKey": "barbell-shrug",
+      "name": "Barbell Shrug",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell"
+      ],
+      "movementPatterns": [
+        "isolation"
+      ],
+      "primaryMuscles": [
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:barbell-shrug",
+        "name": "Barbell Shrug",
+        "equipment": [
+          "Barbell"
+        ],
+        "purpose": "isolation",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "barbellTotal",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "isolation"
+          ],
+          "primaryMuscles": [
+            "Upper Back"
+          ],
+          "secondaryMuscles": [
+            "Forearms"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:dumbbell-shrug",
+      "catalogKey": "dumbbell-shrug",
+      "name": "Dumbbell Shrug",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell"
+      ],
+      "movementPatterns": [
+        "isolation"
+      ],
+      "primaryMuscles": [
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:dumbbell-shrug",
+        "name": "Dumbbell Shrug",
+        "equipment": [
+          "Dumbbell"
+        ],
+        "purpose": "isolation",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "perImplement",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "isolation"
+          ],
+          "primaryMuscles": [
+            "Upper Back"
+          ],
+          "secondaryMuscles": [
+            "Forearms"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:seated-machine-shrug",
+      "catalogKey": "seated-machine-shrug",
+      "name": "Seated Machine Shrug",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "isolation"
+      ],
+      "primaryMuscles": [
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Specify the concrete machine configuration, displayed versus added-plate load, rep-count basis and zero capability. Keep differing configurations separate."
+    },
+    {
+      "catalogId": "t2:barbell-curl",
+      "catalogKey": "barbell-curl",
+      "name": "Barbell Curl",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell",
+        "EZ_Bar"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review and split the catalog equipment variants (Barbell, EZ_Bar); define the load basis and rep counting independently for each executable variant, including unloaded/assisted variants where applicable."
+    },
+    {
+      "catalogId": "t2:ez-bar-curl",
+      "catalogKey": "ez-bar-curl",
+      "name": "EZ-Bar Curl",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "EZ_Bar"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:ez-bar-curl",
+        "name": "EZ-Bar Curl",
+        "equipment": [
+          "EZ_Bar"
+        ],
+        "purpose": "elbowFlexion",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "barbellTotal",
+        "reps": {
+          "min": 8,
+          "max": 15
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:dumbbell-curl",
+      "catalogKey": "dumbbell-curl",
+      "name": "Dumbbell Curl",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:dumbbell-curl",
+        "name": "Dumbbell Curl",
+        "equipment": [
+          "Dumbbell"
+        ],
+        "purpose": "elbowFlexion",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "perImplement",
+        "reps": {
+          "min": 8,
+          "max": 15
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:alternating-dumbbell-curl",
+      "catalogKey": "alternating-dumbbell-curl",
+      "name": "Alternating Dumbbell Curl",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "PER_SIDE",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:alternating-dumbbell-curl",
+        "name": "Alternating Dumbbell Curl",
+        "equipment": [
+          "Dumbbell"
+        ],
+        "purpose": "flexion",
+        "aliases": [],
+        "repBasis": "perSide",
+        "loadKind": "externalLoad",
+        "convention": "perImplement",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "flexion"
+          ],
+          "primaryMuscles": [
+            "Biceps"
+          ],
+          "secondaryMuscles": [
+            "Forearms"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:incline-dumbbell-curl",
+      "catalogKey": "incline-dumbbell-curl",
+      "name": "Incline Dumbbell Curl",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review and split the catalog equipment variants (Dumbbell, Bench); define the load basis and rep counting independently for each executable variant, including unloaded/assisted variants where applicable."
+    },
+    {
+      "catalogId": "t2:hammer-curl",
+      "catalogKey": "hammer-curl",
+      "name": "Hammer Curl",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:hammer-curl",
+        "name": "Hammer Curl",
+        "equipment": [
+          "Dumbbell"
+        ],
+        "purpose": "flexion",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "perImplement",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "flexion"
+          ],
+          "primaryMuscles": [
+            "Biceps"
+          ],
+          "secondaryMuscles": [
+            "Forearms"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:cross-body-hammer-curl",
+      "catalogKey": "cross-body-hammer-curl",
+      "name": "Cross-Body Hammer Curl",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "PER_SIDE",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:cross-body-hammer-curl",
+        "name": "Cross-Body Hammer Curl",
+        "equipment": [
+          "Dumbbell"
+        ],
+        "purpose": "flexion",
+        "aliases": [],
+        "repBasis": "perSide",
+        "loadKind": "externalLoad",
+        "convention": "perImplement",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "flexion"
+          ],
+          "primaryMuscles": [
+            "Biceps"
+          ],
+          "secondaryMuscles": [
+            "Forearms"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:cable-curl",
+      "catalogKey": "cable-curl",
+      "name": "Cable Curl",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:cable-curl",
+        "name": "Cable Curl",
+        "equipment": [
+          "Cable"
+        ],
+        "purpose": "elbowFlexion",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 8,
+          "max": 15
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:bayesian-curl",
+      "catalogKey": "bayesian-curl",
+      "name": "Bayesian Curl",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review the Cable execution: specify unilateral/bilateral use, how logged reps count, load per implement versus displayed/combined load, and whether zero is meaningful. Publish that concrete tuple before enabling."
+    },
+    {
+      "catalogId": "t2:preacher-curl",
+      "catalogKey": "preacher-curl",
+      "name": "Preacher Curl",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell",
+        "EZ_Bar",
+        "Dumbbell",
+        "Machine"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review and split the catalog equipment variants (Barbell, EZ_Bar, Dumbbell, Machine); define the load basis and rep counting independently for each executable variant, including unloaded/assisted variants where applicable."
+    },
+    {
+      "catalogId": "t2:spider-curl",
+      "catalogKey": "spider-curl",
+      "name": "Spider Curl",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell",
+        "EZ_Bar",
+        "Dumbbell",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review and split the catalog equipment variants (Barbell, EZ_Bar, Dumbbell, Bench); define the load basis and rep counting independently for each executable variant, including unloaded/assisted variants where applicable."
+    },
+    {
+      "catalogId": "t2:concentration-curl",
+      "catalogKey": "concentration-curl",
+      "name": "Concentration Curl",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "PER_SIDE",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:concentration-curl",
+        "name": "Concentration Curl",
+        "equipment": [
+          "Dumbbell"
+        ],
+        "purpose": "flexion",
+        "aliases": [],
+        "repBasis": "perSide",
+        "loadKind": "externalLoad",
+        "convention": "perImplement",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "flexion"
+          ],
+          "primaryMuscles": [
+            "Biceps"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:reverse-curl",
+      "catalogKey": "reverse-curl",
+      "name": "Reverse Curl",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell",
+        "EZ_Bar"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Forearms",
+        "Biceps"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:reverse-curl",
+        "name": "Reverse Curl",
+        "equipment": [
+          "Barbell",
+          "EZ_Bar"
+        ],
+        "purpose": "flexion",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "barbellTotal",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "flexion"
+          ],
+          "primaryMuscles": [
+            "Forearms",
+            "Biceps"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:wrist-curl",
+      "catalogKey": "wrist-curl",
+      "name": "Wrist Curl",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell",
+        "Dumbbell"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Forearms"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review and split the catalog equipment variants (Barbell, Dumbbell); define the load basis and rep counting independently for each executable variant, including unloaded/assisted variants where applicable."
+    },
+    {
+      "catalogId": "t2:reverse-wrist-curl",
+      "catalogKey": "reverse-wrist-curl",
+      "name": "Reverse Wrist Curl",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell",
+        "Dumbbell"
+      ],
+      "movementPatterns": [
+        "extension"
+      ],
+      "primaryMuscles": [
+        "Forearms"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review and split the catalog equipment variants (Barbell, Dumbbell); define the load basis and rep counting independently for each executable variant, including unloaded/assisted variants where applicable."
+    },
+    {
+      "catalogId": "t2:farmers-walk",
+      "catalogKey": "farmers-walk",
+      "name": "Farmer's Walk",
+      "status": "requiresNewCapability",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell",
+        "Kettlebell"
+      ],
+      "movementPatterns": [
+        "carry"
+      ],
+      "primaryMuscles": [
+        "Forearms",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Core",
+        "Calves"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Duration or distance recording is not supported.",
+      "recommendation": "Define duration/distance targets and performed evidence, identity/basis, history compatibility and prefill before enabling."
+    },
+    {
+      "catalogId": "t2:dead-hang",
+      "catalogKey": "dead-hang",
+      "name": "Dead Hang",
+      "status": "requiresNewCapability",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight"
+      ],
+      "movementPatterns": [
+        "carry"
+      ],
+      "primaryMuscles": [
+        "Forearms"
+      ],
+      "secondaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Duration or distance recording is not supported.",
+      "recommendation": "Define duration/distance targets and performed evidence, identity/basis, history compatibility and prefill before enabling."
+    },
+    {
+      "catalogId": "t2:plank",
+      "catalogKey": "plank",
+      "name": "Plank",
+      "status": "requiresNewCapability",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight"
+      ],
+      "movementPatterns": [
+        "anti_rotation"
+      ],
+      "primaryMuscles": [
+        "Core"
+      ],
+      "secondaryMuscles": [
+        "Front Delts"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 20
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Duration or distance recording is not supported.",
+      "recommendation": "Define duration/distance targets and performed evidence, identity/basis, history compatibility and prefill before enabling."
+    },
+    {
+      "catalogId": "t2:rkc-plank",
+      "catalogKey": "rkc-plank",
+      "name": "RKC Plank",
+      "status": "requiresNewCapability",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight"
+      ],
+      "movementPatterns": [
+        "anti_rotation"
+      ],
+      "primaryMuscles": [
+        "Core"
+      ],
+      "secondaryMuscles": [
+        "Glutes",
+        "Front Delts"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 20
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Duration or distance recording is not supported.",
+      "recommendation": "Define duration/distance targets and performed evidence, identity/basis, history compatibility and prefill before enabling."
+    },
+    {
+      "catalogId": "t2:side-plank",
+      "catalogKey": "side-plank",
+      "name": "Side Plank",
+      "status": "requiresNewCapability",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight"
+      ],
+      "movementPatterns": [
+        "anti_rotation"
+      ],
+      "primaryMuscles": [
+        "Core"
+      ],
+      "secondaryMuscles": [
+        "Abductors"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 20
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Duration or distance recording is not supported.",
+      "recommendation": "Define duration/distance targets and performed evidence, identity/basis, history compatibility and prefill before enabling."
+    },
+    {
+      "catalogId": "t2:ab-wheel-rollout",
+      "catalogKey": "ab-wheel-rollout",
+      "name": "Ab Wheel Rollout",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_BODYWEIGHT",
+      "loadConvention": null,
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight"
+      ],
+      "movementPatterns": [
+        "anti_extension"
+      ],
+      "primaryMuscles": [
+        "Abs",
+        "Core"
+      ],
+      "secondaryMuscles": [
+        "Lats"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 20
+      },
+      "normalized": {
+        "id": "t2:ab-wheel-rollout",
+        "name": "Ab Wheel Rollout",
+        "equipment": [
+          "Bodyweight"
+        ],
+        "purpose": "anti_extension",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "bodyweight",
+        "convention": "bodyweightOnly",
+        "reps": {
+          "min": 8,
+          "max": 20
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "anti_extension"
+          ],
+          "primaryMuscles": [
+            "Abs",
+            "Core"
+          ],
+          "secondaryMuscles": [
+            "Lats"
+          ],
+          "externalZeroMeaning": null,
+          "repDefaults": {
+            "min": 8,
+            "max": 20
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:pallof-press",
+      "catalogKey": "pallof-press",
+      "name": "Pallof Press",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable",
+        "Band"
+      ],
+      "movementPatterns": [
+        "anti_rotation"
+      ],
+      "primaryMuscles": [
+        "Core"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 20
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Separate cable and band variants; use the already reviewed cable-pallof-press identity for its qualified execution. Review band-load representation independently."
+    },
+    {
+      "catalogId": "t2:cable-pallof-press",
+      "catalogKey": "cable-pallof-press",
+      "name": "Cable Pallof Press",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "PER_SIDE",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable"
+      ],
+      "movementPatterns": [
+        "anti_rotation"
+      ],
+      "primaryMuscles": [
+        "Core"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 20
+      },
+      "normalized": {
+        "id": "t2:cable-pallof-press",
+        "name": "Cable Pallof Press",
+        "equipment": [
+          "Cable"
+        ],
+        "purpose": "anti_rotation",
+        "aliases": [],
+        "repBasis": "perSide",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 8,
+          "max": 20
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "anti_rotation"
+          ],
+          "primaryMuscles": [
+            "Core"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 20
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:cable-crunch",
+      "catalogKey": "cable-crunch",
+      "name": "Cable Crunch",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Abs"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 20
+      },
+      "normalized": {
+        "id": "t2:cable-crunch",
+        "name": "Cable Crunch",
+        "equipment": [
+          "Cable"
+        ],
+        "purpose": "coreFlexion",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 8,
+          "max": 20
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:machine-crunch",
+      "catalogKey": "machine-crunch",
+      "name": "Machine Crunch",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Abs"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 20
+      },
+      "normalized": {
+        "id": "t2:machine-crunch",
+        "name": "Machine Crunch",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "coreFlexion",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 8,
+          "max": 20
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:oblique-crunch-machine",
+      "catalogKey": "oblique-crunch-machine",
+      "name": "Oblique Crunch Machine",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "flexion",
+        "rotation"
+      ],
+      "primaryMuscles": [
+        "Abs",
+        "Core"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 10,
+        "max": 20
+      },
+      "normalized": {
+        "id": "t2:oblique-crunch-machine",
+        "name": "Oblique Crunch Machine",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "flexion + rotation",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 10,
+          "max": 20
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "flexion",
+            "rotation"
+          ],
+          "primaryMuscles": [
+            "Abs",
+            "Core"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 10,
+            "max": 20
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:hanging-leg-raise",
+      "catalogKey": "hanging-leg-raise",
+      "name": "Hanging Leg Raise",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_BODYWEIGHT",
+      "loadConvention": null,
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Abs"
+      ],
+      "secondaryMuscles": [
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 20
+      },
+      "normalized": {
+        "id": "t2:hanging-leg-raise",
+        "name": "Hanging Leg Raise",
+        "equipment": [
+          "Bodyweight"
+        ],
+        "purpose": "flexion",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "bodyweight",
+        "convention": "bodyweightOnly",
+        "reps": {
+          "min": 8,
+          "max": 20
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "flexion"
+          ],
+          "primaryMuscles": [
+            "Abs"
+          ],
+          "secondaryMuscles": [
+            "Forearms"
+          ],
+          "externalZeroMeaning": null,
+          "repDefaults": {
+            "min": 8,
+            "max": 20
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:hanging-knee-raise",
+      "catalogKey": "hanging-knee-raise",
+      "name": "Hanging Knee Raise",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_BODYWEIGHT",
+      "loadConvention": null,
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Abs"
+      ],
+      "secondaryMuscles": [
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 20
+      },
+      "normalized": {
+        "id": "t2:hanging-knee-raise",
+        "name": "Hanging Knee Raise",
+        "equipment": [
+          "Bodyweight"
+        ],
+        "purpose": "coreFlexion",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "bodyweight",
+        "convention": "bodyweightOnly",
+        "reps": {
+          "min": 8,
+          "max": 20
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:dragon-flag",
+      "catalogKey": "dragon-flag",
+      "name": "Dragon Flag",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "anti_rotation"
+      ],
+      "primaryMuscles": [
+        "Abs",
+        "Core"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 20
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review dynamic repetitions versus static holds and confirm the movement definition. Qualify a rep variant separately from any hold variant."
+    },
+    {
+      "catalogId": "t2:decline-sit-up",
+      "catalogKey": "decline-sit-up",
+      "name": "Decline Sit-Up",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_BODYWEIGHT",
+      "loadConvention": null,
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Abs"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 20
+      },
+      "normalized": {
+        "id": "t2:decline-sit-up",
+        "name": "Decline Sit-Up",
+        "equipment": [
+          "Bodyweight",
+          "Bench"
+        ],
+        "purpose": "flexion",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "bodyweight",
+        "convention": "bodyweightOnly",
+        "reps": {
+          "min": 8,
+          "max": 20
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "flexion"
+          ],
+          "primaryMuscles": [
+            "Abs"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": null,
+          "repDefaults": {
+            "min": 8,
+            "max": 20
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:reverse-crunch",
+      "catalogKey": "reverse-crunch",
+      "name": "Reverse Crunch",
+      "status": "currentlySupported",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_BODYWEIGHT",
+      "loadConvention": null,
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Abs"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 20
+      },
+      "normalized": {
+        "id": "t2:reverse-crunch",
+        "name": "Reverse Crunch",
+        "equipment": [
+          "Bodyweight"
+        ],
+        "purpose": "coreFlexion",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "bodyweight",
+        "convention": "bodyweightOnly",
+        "reps": {
+          "min": 8,
+          "max": 20
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:bicycle-crunch",
+      "catalogKey": "bicycle-crunch",
+      "name": "Bicycle Crunch",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight"
+      ],
+      "movementPatterns": [
+        "rotation"
+      ],
+      "primaryMuscles": [
+        "Abs"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 20
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Resolve single-side reps versus total alternating reps or paired cycles; publish the reviewed counting convention."
+    },
+    {
+      "catalogId": "t2:russian-twist",
+      "catalogKey": "russian-twist",
+      "name": "Russian Twist",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight",
+        "Dumbbell"
+      ],
+      "movementPatterns": [
+        "rotation"
+      ],
+      "primaryMuscles": [
+        "Abs"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 20
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review and split the catalog equipment variants (Bodyweight, Dumbbell); define the load basis and rep counting independently for each executable variant, including unloaded/assisted variants where applicable."
+    },
+    {
+      "catalogId": "t2:torso-rotation-machine",
+      "catalogKey": "torso-rotation-machine",
+      "name": "Torso Rotation Machine",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "rotation"
+      ],
+      "primaryMuscles": [
+        "Core"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 10,
+        "max": 20
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Specify the concrete machine configuration, displayed versus added-plate load, rep-count basis and zero capability. Keep differing configurations separate."
+    },
+    {
+      "catalogId": "t2:wood-chop",
+      "catalogKey": "wood-chop",
+      "name": "Wood Chop",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable"
+      ],
+      "movementPatterns": [
+        "rotation"
+      ],
+      "primaryMuscles": [
+        "Abs",
+        "Core"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 20
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Reviewed measurement definition missing: measurementProfile, repBasis, loadConvention.",
+      "recommendation": "Review the Cable execution: specify unilateral/bilateral use, how logged reps count, load per implement versus displayed/combined load, and whether zero is meaningful. Publish that concrete tuple before enabling."
+    },
+    {
+      "catalogId": "t2:landmine-rotation",
+      "catalogKey": "landmine-rotation",
+      "name": "Landmine Rotation",
+      "status": "missingOrConflictingMetadata",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell"
+      ],
+      "movementPatterns": [
+        "rotation"
+      ],
+      "primaryMuscles": [
+        "Abs",
+        "Core"
+      ],
+      "secondaryMuscles": [
+        "Front Delts"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 20
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Angled-bar load convention is not supported or reviewed.",
+      "recommendation": "Review whether recorded angled-bar load means plates, total assembly or another explicit basis. Qualify only after defining the supported convention and rep basis; do not reuse total-barbell meaning automatically."
+    },
+    {
+      "catalogId": "t2:suitcase-carry",
+      "catalogKey": "suitcase-carry",
+      "name": "Suitcase Carry",
+      "status": "requiresNewCapability",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell",
+        "Kettlebell"
+      ],
+      "movementPatterns": [
+        "carry"
+      ],
+      "primaryMuscles": [
+        "Core",
+        "Forearms"
+      ],
+      "secondaryMuscles": [
+        "Upper Back"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Duration or distance recording is not supported.",
+      "recommendation": "Define duration/distance targets and performed evidence, identity/basis, history compatibility and prefill before enabling."
+    },
+    {
+      "catalogId": "t2:overhead-carry",
+      "catalogKey": "overhead-carry",
+      "name": "Overhead Carry",
+      "status": "requiresNewCapability",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell",
+        "Kettlebell"
+      ],
+      "movementPatterns": [
+        "carry"
+      ],
+      "primaryMuscles": [
+        "Core",
+        "Front Delts"
+      ],
+      "secondaryMuscles": [
+        "Upper Back"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Duration or distance recording is not supported.",
+      "recommendation": "Define duration/distance targets and performed evidence, identity/basis, history compatibility and prefill before enabling."
+    },
+    {
+      "catalogId": "t2:sled-push",
+      "catalogKey": "sled-push",
+      "name": "Sled Push",
+      "status": "requiresNewCapability",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Sled"
+      ],
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "primaryMuscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Calves",
+        "Core"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Duration or distance recording is not supported.",
+      "recommendation": "Define duration/distance targets and performed evidence, identity/basis, history compatibility and prefill before enabling."
+    },
+    {
+      "catalogId": "t2:sled-pull",
+      "catalogKey": "sled-pull",
+      "name": "Sled Pull",
+      "status": "requiresNewCapability",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Sled"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Hamstrings",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Upper Back",
+        "Core"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Duration or distance recording is not supported.",
+      "recommendation": "Define duration/distance targets and performed evidence, identity/basis, history compatibility and prefill before enabling."
+    },
+    {
+      "catalogId": "t2:sled-drag",
+      "catalogKey": "sled-drag",
+      "name": "Sled Drag",
+      "status": "requiresNewCapability",
+      "supportedAfter": false,
+      "measurementProfile": null,
+      "loadConvention": null,
+      "repBasis": null,
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Sled"
+      ],
+      "movementPatterns": [
+        "carry"
+      ],
+      "primaryMuscles": [
+        "Hamstrings",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Calves",
+        "Core"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": null,
+      "missingFields": [
+        "measurementProfile",
+        "loadConvention",
+        "repBasis"
+      ],
+      "reason": "Duration or distance recording is not supported.",
+      "recommendation": "Define duration/distance targets and performed evidence, identity/basis, history compatibility and prefill before enabling."
+    },
+    {
+      "catalogId": "t2:cable-crossover",
+      "catalogKey": "cable-crossover",
+      "name": "Cable Crossover",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable"
+      ],
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 10,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:cable-crossover",
+        "name": "Cable Crossover",
+        "equipment": [
+          "Cable"
+        ],
+        "purpose": "horizontal_push",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 10,
+          "max": 15
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "horizontal_push"
+          ],
+          "primaryMuscles": [
+            "Chest"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 10,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:neutral-grip-pull-up",
+      "catalogKey": "neutral-grip-pull-up",
+      "name": "Neutral Grip Pull-Up",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_BODYWEIGHT",
+      "loadConvention": null,
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight"
+      ],
+      "movementPatterns": [
+        "vertical_pull"
+      ],
+      "primaryMuscles": [
+        "Lats",
+        "Biceps"
+      ],
+      "secondaryMuscles": [
+        "Upper Back",
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 5,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:neutral-grip-pull-up",
+        "name": "Neutral Grip Pull-Up",
+        "equipment": [
+          "Bodyweight"
+        ],
+        "purpose": "vertical_pull",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "bodyweight",
+        "convention": "bodyweightOnly",
+        "reps": {
+          "min": 5,
+          "max": 12
+        },
+        "catalogFacts": {
+          "movementPatterns": [
+            "vertical_pull"
+          ],
+          "primaryMuscles": [
+            "Lats",
+            "Biceps"
+          ],
+          "secondaryMuscles": [
+            "Upper Back",
+            "Forearms"
+          ],
+          "externalZeroMeaning": null,
+          "repDefaults": {
+            "min": 5,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    }
+  ]
+}

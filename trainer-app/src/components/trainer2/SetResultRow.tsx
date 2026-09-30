@@ -3,7 +3,7 @@ import { skipSetCommand, skipSetResponse, type SkipSetCommand, type SetSkip } fr
 import { assignmentBinding, type AssignmentBinding } from '@/lib/trainer2-contracts/exercise-swap';
 import type { ExecutionRead } from '@/lib/trainer2-contracts/execution';
 import { useEffect, useRef, useState } from 'react';
-import { compatibleLoggingLoad, startingPounds } from '@/lib/engine/trainer2/logging-prefill';
+import { compatibleCatalogResult, compatibleLoggingLoad, startingPounds } from '@/lib/engine/trainer2/logging-prefill';
 import { pounds, loadLabel } from './pound-display';
 import { z } from 'zod';
 import { performedResult, savedSetResult, resultMutationCommand, setResultResponse,
@@ -107,12 +107,14 @@ export function SetResultRow({ assignment, accountId, ownershipEpoch, executionI
   function cancel() { if (store(null)) { setMessage(''); setTimeout(() => editButton.current?.focus(), 0); } }
   function initialForm(): Form {
     const f = formFor(saved?.result);
+    if (exercise?.kind === 'catalogSnapshot' && exercise.catalogFacts && !saved?.result?.reps) f.basis = exercise.repBasis;
     if (saved?.result?.measurement) return f;
     if (!saved) f.basis = prescription?.reps.basis ?? 'total';
     const m = prescription?.measurement;
     if (m) { f.kind = m.kind; if ('value' in m && number === 1 && !saved) f.load = startingPounds(m) ?? ''; if (m.kind === 'externalLoad') { f.convention = m.convention; f.zeroMeaning = m.zeroMeaning; } }
     else if (exercise?.kind === 'catalogSnapshot') {
       f.kind = exercise.loadKind;
+      f.zeroMeaning = exercise.catalogFacts?.externalZeroMeaning ?? 'validZero';
       if (['barbellTotal', 'perImplement', 'machineDisplayed'].includes(exercise.convention)) f.convention = exercise.convention as Form['convention'];
     }
     if (saved) return f;
@@ -224,6 +226,7 @@ export function SetResultRow({ assignment, accountId, ownershipEpoch, executionI
         if (['load', 'kind', 'unit', 'convention', 'zeroMeaning'].every(k => d.form[k as keyof Form] === original[k as keyof Form])) result.measurement = d.base.result.measurement;
         if (canonicalJson(result) === canonicalJson(d.base.result)) { store(null); setMessage('Results are up to date. No values changed.'); return; }
       }
+      if (exercise && !compatibleCatalogResult(result, exercise)) throw new Error('Use this exercise’s reviewed rep and load basis.');
       const command = resultMutationCommand.parse(d.base ? { ...envelope, commandType: historical ? 'CorrectHistoricalSetResult' : 'CorrectSetResult',
         expected: { resultVersion: d.base.version, performedSetId: d.base.performedSetId }, intent: { result, ...(clear ? { reason: d.form.reason } : {}) } } :
         { ...envelope, commandType: 'RecordSetResult', expected: { resultVersion: 0, ...(d.assignment ? { assignment: d.assignment } : {}), ...(d.skipActionId ? { skipActionId: d.skipActionId } : {}) }, intent: { result } });
@@ -284,10 +287,10 @@ export function SetResultRow({ assignment, accountId, ownershipEpoch, executionI
       {draft && !activePanel && <button className={control} onClick={cancel}>{historical ? 'Cancel' : 'Discard input'}</button>}
       <details className="text-sm"><summary className="min-h-11 cursor-pointer py-2 text-slate-500">Set options</summary>
         <div className="grid grid-cols-2 gap-2">
-          <label>Rep basis<select className={control + ' w-full'} aria-label={`Set ${number} rep basis`} value={f.basis} onChange={e => change('basis', e.target.value)}><option value="total">Total</option><option value="perSide">Per side</option><option value="alternating">Alternating</option></select></label>
-          <label>Actual load type<select className={control + ' w-full'} aria-label={`Set ${number} actual load type`} value={f.kind} onChange={e => change('kind', e.target.value)}><option value="unspecified">Unspecified</option><option value="bodyweight">Bodyweight</option><option value="externalLoad">External load</option><option value="addedLoad">Added load</option><option value="assistance">Assistance</option></select></label>
-          {f.kind === 'externalLoad' && <label>Load basis<select className={control + ' w-full'} aria-label={`Set ${number} load basis`} value={f.convention} onChange={e => change('convention', e.target.value)}><option value="barbellTotal">Barbell total</option><option value="perImplement">Per implement</option><option value="machineDisplayed">Machine displayed</option></select></label>}
-          {f.kind === 'externalLoad' && <label>Zero load<select className={control + ' w-full'} aria-label={`Set ${number} zero load meaning`} value={f.zeroMeaning ?? 'validZero'} onChange={e => change('zeroMeaning', e.target.value)}><option value="validZero">Valid zero</option><option value="notAllowed">Zero not allowed</option></select></label>}
+          <label>Rep basis<select className={control + ' w-full'} disabled={exercise?.kind === 'catalogSnapshot' && !!exercise.catalogFacts} aria-label={`Set ${number} rep basis`} value={f.basis} onChange={e => change('basis', e.target.value)}><option value="total">Total</option><option value="perSide">Per side</option><option value="alternating">Alternating</option></select></label>
+          <label>Actual load type<select className={control + ' w-full'} disabled={exercise?.kind === 'catalogSnapshot' && !!exercise.catalogFacts} aria-label={`Set ${number} actual load type`} value={f.kind} onChange={e => change('kind', e.target.value)}><option value="unspecified">Unspecified</option><option value="bodyweight">Bodyweight</option><option value="externalLoad">External load</option><option value="addedLoad">Added load</option><option value="assistance">Assistance</option></select></label>
+          {f.kind === 'externalLoad' && <label>Load basis<select className={control + ' w-full'} disabled={exercise?.kind === 'catalogSnapshot' && !!exercise.catalogFacts} aria-label={`Set ${number} load basis`} value={f.convention} onChange={e => change('convention', e.target.value)}><option value="barbellTotal">Barbell total</option><option value="perImplement">Per implement</option><option value="machineDisplayed">Machine displayed</option></select></label>}
+          {f.kind === 'externalLoad' && <label>Zero load<select className={control + ' w-full'} disabled={exercise?.kind === 'catalogSnapshot' && !!exercise.catalogFacts} aria-label={`Set ${number} zero load meaning`} value={f.zeroMeaning ?? 'validZero'} onChange={e => change('zeroMeaning', e.target.value)}><option value="validZero">Valid zero</option><option value="notAllowed">Zero not allowed</option></select></label>}
         </div>
         {activePanel && saved?.result && !draft?.conflict && <button className={control + ' mt-2'} onClick={() => { if (!currentDraft.current) begin(); if (clearing) save(true); else setClearing(true); }}>{clearing ? 'Confirm clear erroneous result' : 'Clear erroneous result'}</button>}
       </details>

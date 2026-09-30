@@ -1,6 +1,7 @@
 import { draftDocument, savedDraftDocument, type DraftDocument, type EditDraftCommand, type DraftError } from "../../trainer2-contracts/draft";
 import { expandWorkoutDefaults, repairBuilderMetadata } from "./plan-builder";
 import { catalog, catalogExercise } from './catalog';
+import { canonicalJson } from '../../trainer2-contracts/canonical-json';
 
 export class DraftFailure extends Error {
   constructor(public readonly code: DraftError) { super(code); }
@@ -17,11 +18,11 @@ export function validateWorkoutDefaults(doc: DraftDocument, qualifyCatalog = tru
   for (const e of [...doc.occurrences.flatMap(o => o.positions.map(p => p.exercise)), ...(doc.builder?.workouts.flatMap(w => w.rows.map(r => r.exercise)) ?? [])]) {
     if (e.kind !== 'catalogSnapshot' || !qualifyCatalog) continue;
     const entry = catalog.find(c => c.id === e.catalogId);
-    if (!entry || JSON.stringify(e) !== JSON.stringify(catalogExercise(entry))) {
-      // Compare parsed values in canonical schema order, independent of JSON key order.
-      const expected = entry && catalogExercise(entry);
-      if (!expected || Object.keys(expected).some(key => JSON.stringify(e[key as keyof typeof e]) !== JSON.stringify(expected[key as keyof typeof expected]))) throw new DraftFailure('INVALID_DOCUMENT');
-    }
+    // Compare the complete snapshot, including optional-field presence and nested
+    // facts. Object order is immaterial; saved prescriptions are never enriched.
+    try {
+      if (!entry || canonicalJson(e) !== canonicalJson(catalogExercise(entry))) throw new Error('Unqualified snapshot');
+    } catch { throw new DraftFailure('INVALID_DOCUMENT'); }
   }
   if (!doc.builder) return;
   try {

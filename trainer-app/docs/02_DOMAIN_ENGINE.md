@@ -750,3 +750,5 @@ Plan Health derives direct/effective sets, frequency, coverage, redundancy, equi
 ## Trainer2 exercise swapping
 
 Pure Trainer2 exercise-swap eligibility and target derivation live in `src/lib/engine/trainer2/exercise-swap.ts`. Every replacement derives from immutable START, preserving compatible rep ranges and slot meaning. See [exercise swapping](architecture/trainer2/EXERCISE_SWAP.md).
+
+Trainer2 incoming catalog snapshot qualification is owned by `src/lib/engine/trainer2/planning.ts:validateWorkoutDefaults`. Create/Edit and activation review require complete canonical equality with the qualified snapshot, including optional-field presence and nested catalog facts. Swap requests select qualified catalog IDs server-side. Saved-document reads and Return to original preserve captured meaning without enrichment. Coverage remains 91/150; exclusion classifications and unresolved static/dynamic variants are detailed in [catalog coverage](architecture/trainer2/CATALOG_COVERAGE.md).

@@ -3,12 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import type { Page } from '@playwright/test';
 import type { PrismaClient } from '@prisma/client';
-import { createDraft, readDraft } from '../../src/lib/api/trainer2/planning';
+import { createDraft, editDraft, readDraft } from '../../src/lib/api/trainer2/planning';
 import { activatePlan } from '../../src/lib/api/trainer2/activation';
 import { startOccurrence, readExecution, readNextWorkout } from '../../src/lib/api/trainer2/execution';
 import { readExecutionWithPrevious } from '../../src/lib/api/trainer2/previous-performance';
 import { saveSetResult } from '../../src/lib/api/trainer2/set-results';
 import { finishExecution } from '../../src/lib/api/trainer2/workout-finish';
+import { previewExerciseSwap, swapExercise } from '../../src/lib/api/trainer2/exercise-swap';
 import { reviewedResults } from '../../src/lib/trainer2-contracts/workout-finish';
 import { currentAssignment, effectiveOccurrence } from '../../src/lib/engine/trainer2/exercise-swap';
 import { catalog, catalogExercise } from '../../src/lib/engine/trainer2/catalog';
@@ -183,11 +184,67 @@ export async function verifyCatalogCoverage(db: PrismaClient, reader: PrismaClie
     stages: [{ id: stageId, name: 'Synthetic coverage' }],
     occurrences: Array.from({ length: 2 }, () => ({ id: randomUUID(), stageId, name: 'All definitions', positions: positions() })) };
   assert.equal((await createDraft(db, principal, { ...envelope(), commandType: 'CreateDraft', target: { planId: allId }, expected: {}, intent: allDocument })).outcome.status, 'Accepted');
-  const allSaved = (await readDraft(reader, principal, allId))!;
+  let allSaved = (await readDraft(reader, principal, allId))!;
   assert.deepEqual(allSaved.intent, allDocument);
+  for (const id of ['t2:barbell-bench-press', 't2:decline-barbell-bench-press']) {
+    const position = allDocument.occurrences[0].positions.find(p => p.exercise.kind === 'catalogSnapshot' && p.exercise.catalogId === id)!;
+    assert.equal((await editDraft(db, principal, { ...envelope(), commandType: 'EditDraft', target: { planId: allId },
+      expected: { planRevisionId: allSaved.revisionId }, intent: { operations: [{ op: 'editExercise', positionId: position.id, exercise: position.exercise }] } })).outcome.status, 'Accepted');
+    allSaved = (await readDraft(reader, principal, allId))!;
+    assert.deepEqual(allSaved.intent, allDocument);
+  }
+  // Exercise real Create/Edit transactions before activation; rejection must
+  // preserve the accepted revision and never install competing snapshot facts.
+  const legacyIndex = catalog.findIndex(e => e.id === 't2:barbell-bench-press');
+  const currentIndex = catalog.findIndex(e => e.id === 't2:decline-barbell-bench-press');
+  const legacySnapshot = allDocument.occurrences[0].positions[legacyIndex].exercise;
+  const currentSnapshot = allDocument.occurrences[0].positions[currentIndex].exercise;
+  assert(currentSnapshot.kind === 'catalogSnapshot' && currentSnapshot.catalogFacts);
+  const facts = currentSnapshot.catalogFacts;
+  const omitted = { ...currentSnapshot }; delete omitted.catalogFacts;
+  for (const [index, snapshot] of [
+    [legacyIndex, { ...legacySnapshot, catalogFacts: facts }],
+    [currentIndex, omitted],
+    [currentIndex, { ...currentSnapshot, catalogFacts: { ...facts, externalZeroMeaning: 'validZero' } }],
+    [currentIndex, { ...currentSnapshot, catalogFacts: { ...facts, primaryMuscles: ['Invented'] } }],
+    [currentIndex, { ...currentSnapshot, catalogFacts: { ...facts, secondaryMuscles: [] } }],
+    [currentIndex, { ...currentSnapshot, catalogFacts: { ...facts, movementPatterns: ['Invented'] } }],
+    [currentIndex, { ...currentSnapshot, catalogFacts: { ...facts, repDefaults: { min: 900, max: 999 } } }],
+  ] as const) {
+    const invalid = structuredClone(allDocument), invalidId = randomUUID();
+    invalid.occurrences[0].positions[index].exercise = snapshot as typeof legacySnapshot;
+    const created = await createDraft(db, principal, { ...envelope(), commandType: 'CreateDraft',
+      target: { planId: invalidId }, expected: {}, intent: invalid });
+    assert.equal(created.outcome.status, 'Rejected');
+    assert(created.outcome.status === 'Rejected'); assert.equal(created.outcome.code, 'INVALID_DOCUMENT');
+    assert.equal(await db.trainer2Plan.count({ where: { id: invalidId } }), 0);
+    const edited = await editDraft(db, principal, { ...envelope(), commandType: 'EditDraft', target: { planId: allId },
+      expected: { planRevisionId: allSaved.revisionId }, intent: { operations: [{ op: 'editExercise',
+        positionId: allDocument.occurrences[0].positions[index].id, exercise: snapshot }] } });
+    assert.equal(edited.outcome.status, 'Rejected');
+    assert(edited.outcome.status === 'Rejected'); assert.equal(edited.outcome.code, 'INVALID_DOCUMENT');
+    const unchanged = (await readDraft(reader, principal, allId))!;
+    assert.equal(unchanged.revisionId, allSaved.revisionId); assert.deepEqual(unchanged.intent, allDocument);
+  }
+  pass('Complete catalog qualification: forged legacy facts, omitted current facts and modified restrictions/muscles/movement/nested defaults rejected by Create/Edit without changing revisions');
   assert.equal((await activatePlan(db, principal, { ...envelope(), commandType: 'ActivatePlan', target: { planId: allId },
     expected: { planRevisionId: allSaved.revisionId }, intent: { reviewed: allSaved.activation } })).outcome.status, 'Accepted');
   const execution = await start(allId), initial = canonicalJson(execution.initial);
+  for (const snapshot of [legacySnapshot, currentSnapshot]) {
+    assert(snapshot.kind === 'catalogSnapshot');
+    const target = { executionId: execution.executionId, positionId: execution.initial.positions[0].id };
+    const intent = { restoreOriginal: false as const, catalogId: snapshot.catalogId };
+    const preview = await reader.$transaction(tx => previewExerciseSwap(tx, principal, { ...target, intent }));
+    assert.deepEqual(preview.content.exercise, snapshot);
+    const command = { ...envelope(), commandType: 'SwapExercise', target, intent,
+      expected: { contentHash: preview.contentHash, assignment: preview.assignment, instructionEpoch: preview.instructionEpoch, effectiveHash: preview.effectiveHash } };
+    for (const patch of [{ catalogFacts: facts }, { exercise: snapshot }]) {
+      await assert.rejects(reader.$transaction(tx => previewExerciseSwap(tx, principal, { ...target, intent: { ...intent, ...patch } })));
+      await assert.rejects(swapExercise(db, principal, { ...command, intent: { ...intent, ...patch } }));
+    }
+  }
+  assert.equal((await read(execution.executionId)).swaps?.length ?? 0, 0);
+  pass('Legacy/current swap previews use exact qualified snapshots; preview/commit reject injected facts before mutation');
   for (let i = 0; i < catalog.length; i++) {
     const entry = catalog[i], owned = execution.initial.positions[i];
     const measurement = entry.loadKind === 'bodyweight' ? { kind: 'bodyweight' as const, convention: 'bodyweightOnly' as const } :

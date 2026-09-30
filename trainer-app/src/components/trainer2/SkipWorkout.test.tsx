@@ -77,11 +77,19 @@ describe('exact skip confirmation and delivery', () => {
 });
 
 describe('Workout authoritative skip readback', () => {
+  it('automatically recovers a transient read failure before offering manual reload', async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(response({}, 503)).mockResolvedValueOnce(response(next));
+    vi.stubGlobal('fetch', fetch);
+    render(<Workout accountId={next.accountId} ownershipEpoch={0} planId={next.planId} />);
+    await screen.findByRole('button', { name: 'Start workout' });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('button', { name: 'Reload workout' })).toBeNull();
+  });
   it('does not publish a completion read after the plan component is replaced', async () => {
     let late!: (r: Response) => void; const complete = vi.fn();
-    const fetch = vi.fn().mockResolvedValueOnce(response({}, 503)).mockImplementationOnce(() => new Promise<Response>(r => { late = r; })); vi.stubGlobal('fetch', fetch);
+    const fetch = vi.fn().mockResolvedValueOnce(response({}, 503)).mockResolvedValueOnce(response({}, 503)).mockResolvedValueOnce(response({}, 503)).mockImplementationOnce(() => new Promise<Response>(r => { late = r; })); vi.stubGlobal('fetch', fetch);
     const view = render(<Workout accountId={next.accountId} ownershipEpoch={0} planId={next.planId} onPlanComplete={complete} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Reload workout' })); view.unmount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Reload workout' }, { timeout: 3000 })); view.unmount();
     await act(async () => late(response({ ...next, acceptedSequence: '4', lifecycle: 'Completed', occurrence: null, occurrences: next.occurrences.map(o => ({ ...o, status: 'Finished' })) })));
     expect(complete).not.toHaveBeenCalled();
   });
@@ -108,9 +116,9 @@ describe('Workout authoritative skip readback', () => {
   it('ignores an older pending read after a newer completion read', async () => {
     let old!: (r: Response) => void;
     const completed = { ...next, acceptedSequence: '4', lifecycle: 'Completed', occurrence: null, occurrences: next.occurrences.map(o => ({ ...o, status: 'Finished' })) };
-    const fetch = vi.fn().mockResolvedValueOnce(response({}, 503)).mockImplementationOnce(() => new Promise<Response>(r => { old = r; })).mockResolvedValueOnce(response(completed)); vi.stubGlobal('fetch', fetch);
+    const fetch = vi.fn().mockResolvedValueOnce(response({}, 503)).mockResolvedValueOnce(response({}, 503)).mockResolvedValueOnce(response({}, 503)).mockImplementationOnce(() => new Promise<Response>(r => { old = r; })).mockResolvedValueOnce(response(completed)); vi.stubGlobal('fetch', fetch);
     render(<Workout accountId={next.accountId} ownershipEpoch={0} planId={next.planId} />);
-    const reload = await screen.findByRole('button', { name: 'Reload workout' });
+    const reload = await screen.findByRole('button', { name: 'Reload workout' }, { timeout: 3000 });
     // Dispatch both reads before React replaces the recovery control.
     act(() => { fireEvent.click(reload); fireEvent.click(reload); });
     await screen.findByRole('heading', { name: 'Plan complete' }); await act(async () => old(response(next)));
@@ -131,7 +139,7 @@ describe('Workout authoritative skip readback', () => {
       return response(kind === 'missing fact' ? next : kind === 'malformed' ? {} : after, kind === 'failed' ? 503 : 200);
     }); vi.stubGlobal('fetch', fetch);
     render(<Workout accountId={next.accountId} ownershipEpoch={0} planId={next.planId} />); await confirm();
-    await screen.findByText(/Skip could not be confirmed/); expect(screen.queryByText('Workout marked skipped.')).toBeNull();
+    await screen.findByText(/Skip could not be confirmed/, {}, { timeout: 3000 }); expect(screen.queryByText('Workout marked skipped.')).toBeNull();
     const body = sessionStorage.getItem(key)!; expect(body).toBeTruthy(); valid = true;
     fireEvent.click(screen.getByRole('button', { name: 'Check skip again' })); await screen.findByText('Workout marked skipped.');
     expect(fetch.mock.calls.filter(c => c[0].endsWith('/skip')).map(c => c[1].body)).toEqual([body, body]);

@@ -261,8 +261,9 @@ describe("test-suite environment manifest", () => {
       manifest: currentManifest,
       discoveredTestFiles,
     });
-    expect(discoveredTestFiles).toHaveLength(415);
-    expect(selection.credentialFree).toHaveLength(376);
+    expect(discoveredTestFiles).toHaveLength(416);
+    expect(selection.credentialFree).toHaveLength(377);
+    expect(selection.credentialFree).toContain("src/lib/engine/trainer2/catalog-qualification.test.ts");
     expect(selection.credentialFree).toContain("src/lib/engine/trainer2/catalog-coverage.test.ts");
     expect(selection.credentialFree).toContain("src/lib/operations/trainer2-route-write-gate.test.ts");
     expect(selection.credentialFree).toContain("src/components/trainer2/SkipWorkout.test.tsx");

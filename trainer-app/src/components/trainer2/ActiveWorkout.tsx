@@ -52,10 +52,10 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
     // Include the visible, non-sticky timer in deliberate reveals. Expired or
     // dismissed timers render no child, so the card remains the fallback.
     const rect = (timer.current?.firstElementChild ?? element).getBoundingClientRect(), viewport = window.visualViewport;
-    const top = (viewport?.offsetTop ?? 0) + 16, bottom = (viewport?.height ?? window.innerHeight) + (viewport?.offsetTop ?? 0) - 72;
+    const top = (viewport?.offsetTop ?? 0) + 16;
     // Focus the heading, never a numeric input: moving sets must not open the keyboard.
     heading.current?.focus({ preventScroll: true });
-    if (rect.top < top || rect.top > bottom - 100 || (rect.bottom > bottom && rect.height < bottom - top)) {
+    if (Math.abs(rect.top - top) > 1) {
       window.scrollBy({ top: rect.top - top, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
     }
   }

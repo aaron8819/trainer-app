@@ -224,6 +224,9 @@ it('starts full rest at confirmation and preserves the deadline through retries,
   expect(recordRest(timer, { ...record, version: 2, actionId: randomUUID() }, true)).toBe(timer);
   const newer = { ...record, actionId: randomUUID(), recordedAt: new Date(start + 10000).toISOString() };
   const next = recordRest(timer, newer, false, confirmed + 10000)!; expect(restRemaining(next, confirmed + 10000)).toBe(120);
+  expect(restRemaining(next, confirmed + 9750)).toBe(120); // Previous UI tick, before confirmation.
+  expect(restRemaining(timer, confirmed - 250)).toBe(180);
+  expect(restRemaining(next, confirmed + 11000)).toBe(119);
   expect(recordRest(next, { ...record, actionId: randomUUID() }, true)?.deadline).toBe(next.deadline);
   expect(readRest('{"version":1}')).toBeNull();
 });
@@ -297,9 +300,9 @@ it('offers Finish in the ready card for a mix of logged and explicitly skipped s
   expect(screen.queryByText('To log')).toBeNull();
 });
 
-it('reveals the rest timer after confirmed logging and falls back to the card after dismissal', async () => {
+it.each([-180, 200])('aligns the rest timer from top %i after confirmed logging and falls back to the card after dismissal', async (timerTop) => {
   const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
-    const top = this.getAttribute('aria-label') === 'Rest timer' ? -180 : -100;
+    const top = this.getAttribute('aria-label') === 'Rest timer' ? timerTop : -100;
     return { top, bottom: top + 72, height: 72, left: 0, right: 390, width: 390, x: 0, y: top, toJSON: () => ({}) };
   });
   const scroll = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
@@ -312,7 +315,7 @@ it('reveals the rest timer after confirmed logging and falls back to the card af
     fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
     await screen.findByLabelText('Set 2 Actual reps');
     expect(screen.getByLabelText('Rest timer')).toBeVisible();
-    expect(scroll).toHaveBeenLastCalledWith(expect.objectContaining({ top: -196 }));
+    expect(scroll).toHaveBeenLastCalledWith(expect.objectContaining({ top: timerTop - 16 }));
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss rest timer' }));
     await waitFor(() => expect(screen.queryByLabelText('Rest timer')).toBeNull());
     fireEvent.click(screen.getAllByRole('button', { name: /, set 1, unrecorded/ }).at(-1)!);

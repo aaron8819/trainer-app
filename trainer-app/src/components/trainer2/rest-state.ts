@@ -19,4 +19,6 @@ export function recordRest(state: RestState | null, record: SavedSetResult, main
   const duration = main ? 180000 : 120000;
   return { version: 1, seen, event: record.actionId, recordedAt, deadline: confirmedAt + duration, duration };
 }
-export const restRemaining = (state: RestState, now: number) => Math.max(0, Math.ceil((state.deadline - now) / 1000));
+// A new deadline can arrive between UI clock ticks. Never display more than
+// the timer's duration just because the last tick predates its start.
+export const restRemaining = (state: RestState, now: number) => Math.max(0, Math.ceil(Math.min(state.duration, state.deadline - now) / 1000));

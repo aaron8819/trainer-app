@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { assignmentBinding } from './exercise-swap';
 import { id, measurement, target, createDraftCommand } from './draft';
 
 const commandEnvelope = createDraftCommand.pick({ schemaVersion: true, actionId: true, originatingAccountId: true, deviceId: true, ownershipEpoch: true, dependsOn: true });
@@ -11,7 +12,7 @@ const recordedResult = performedResult.refine(r => r.reps !== null, 'Enter reps 
 const correctionReason = z.string().min(1).max(200).refine(v => v.trim().length > 0).optional();
 const setTarget = z.object({ executionId: id, targetId: id }).strict();
 export const recordSetResultCommand = commandEnvelope.extend({ commandType: z.literal('RecordSetResult'),
-  target: setTarget, expected: z.object({ resultVersion: z.literal(0), skipActionId: id.optional() }).strict(),
+  target: setTarget, expected: z.object({ resultVersion: z.literal(0), skipActionId: id.optional(), assignment: assignmentBinding.optional() }).strict(),
   intent: z.object({ result: recordedResult }).strict(),
 }).strict();
 export const correctSetResultCommand = commandEnvelope.extend({ commandType: z.literal('CorrectSetResult'),
@@ -27,6 +28,7 @@ export const setResultCommand = z.discriminatedUnion('commandType', [recordSetRe
 export type SetResultCommand = z.infer<typeof resultMutationCommand>;
 export type PerformedResult = z.infer<typeof performedResult>;
 export const savedSetResult = z.object({ executionId: id, targetId: id, performedSetId: id, version: z.int().min(1),
+  assignment: assignmentBinding.optional(),
   result: performedResult.nullable(), reason: z.string().max(200).nullable(), actionId: id, recordedAt: z.iso.datetime(),
 }).strict();
 export type SavedSetResult = z.infer<typeof savedSetResult>;

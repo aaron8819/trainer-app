@@ -193,17 +193,17 @@ describe("migration integrity", () => {
     );
   });
 
-  it("accepts the conventional chain with single-user access pending", () => {
+  it("accepts the conventional chain with exercise swapping pending", () => {
     const result = report();
 
     expect(EXPECTED_MIGRATION_CHAIN.at(-1)).toBe(
-      "20260924190000_trainer2_single_user_access",
+      "20260930010000_trainer2_exercise_swap",
     );
     expect(result.chain).toMatchObject({
       checkedIn: EXPECTED_MIGRATION_CHAIN.length,
       applied: EXPECTED_MIGRATION_CHAIN.length - 1,
       pending: 1,
-      pendingNames: ["20260924190000_trainer2_single_user_access"],
+      pendingNames: ["20260930010000_trainer2_exercise_swap"],
       exactExpectedChain: true,
     });
     expect(result.migrationIntegrityValid).toBe(true);

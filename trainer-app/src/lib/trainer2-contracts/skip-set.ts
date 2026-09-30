@@ -1,10 +1,11 @@
 import { z } from 'zod';
+import { assignmentBinding } from './exercise-swap';
 import { createDraftCommand, id } from './draft';
 
 export const skipSetCommand = createDraftCommand.pick({ schemaVersion: true, actionId: true,
   originatingAccountId: true, deviceId: true, ownershipEpoch: true, dependsOn: true }).extend({
   commandType: z.literal('SkipSet'), target: z.object({ executionId: id, targetId: id }).strict(),
-  expected: z.object({ resultVersion: z.literal(0), skipActionId: z.null() }).strict(),
+  expected: z.object({ resultVersion: z.literal(0), skipActionId: z.null(), assignment: assignmentBinding.optional() }).strict(),
   intent: z.object({}).strict(),
 }).strict();
 export type SkipSetCommand = z.infer<typeof skipSetCommand>;

@@ -1,5 +1,6 @@
 'use client';
 import { skipSetCommand, skipSetResponse, type SkipSetCommand, type SetSkip } from '@/lib/trainer2-contracts/skip-set';
+import { assignmentBinding, type AssignmentBinding } from '@/lib/trainer2-contracts/exercise-swap';
 import type { ExecutionRead } from '@/lib/trainer2-contracts/execution';
 import { useEffect, useRef, useState } from 'react';
 import { compatibleLoggingLoad, startingPounds } from '@/lib/engine/trainer2/logging-prefill';
@@ -22,7 +23,7 @@ const formSchema = z.object({ reps: z.string(), basis: z.enum(['total', 'perSide
   unit: z.enum(['', 'kg', 'lb']), zeroMeaning: z.enum(['validZero', 'notAllowed']).optional(), convention: z.enum(['barbellTotal', 'perImplement', 'machineDisplayed']),
   rir: z.string(), reason: z.string() }).strict();
 type Form = z.infer<typeof formSchema>;
-const draftSchema = z.object({ form: formSchema, base: savedSetResult.nullable(), pending: z.union([resultMutationCommand, skipSetCommand]).nullable(), skipActionId: z.string().uuid().optional(), conflict: z.boolean(), carriedMeasurement: performedResult.shape.measurement.optional() }).strict();
+const draftSchema = z.object({ assignment: assignmentBinding.optional(), form: formSchema, base: savedSetResult.nullable(), pending: z.union([resultMutationCommand, skipSetCommand]).nullable(), skipActionId: z.string().uuid().optional(), conflict: z.boolean(), carriedMeasurement: performedResult.shape.measurement.optional() }).strict();
 type Draft = z.infer<typeof draftSchema>;
 function formFor(r?: PerformedResult | null): Form {
   const m = r?.measurement;
@@ -43,7 +44,8 @@ export function resultLabel(r: PerformedResult | null, original = false) {
   if (!r) return 'Cleared as erroneous · no current performed result';
   return `${loadLabel(r.measurement, original)} × ${r.reps ? `${r.reps.value}${r.reps.basis === 'perSide' ? ' per side' : r.reps.basis === 'alternating' ? ' alternating' : ''}` : 'reps unspecified'} · ${r.rir === null ? 'RIR unspecified' : `${r.rir} RIR`}`;
 }
-export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId, number, saved, refresh, readOnly = false, locked = false, onInputState, historical = false, history = [], finishVersion, retainedOnly = false, prescription, exercise, active = true, activePanel = false, onSubmission, preceding, onRecorded, firstSetLoad, skipped, refreshExecution, onReturn }: {
+export function SetResultRow({ assignment, accountId, ownershipEpoch, executionId, targetId, number, saved, refresh, readOnly = false, locked = false, onInputState, historical = false, history = [], finishVersion, retainedOnly = false, prescription, exercise, active = true, activePanel = false, onSubmission, preceding, onRecorded, firstSetLoad, skipped, refreshExecution, onReturn }: {
+  assignment?: AssignmentBinding;
   skipped?: SetSkip; refreshExecution?: () => Promise<ExecutionRead>; onReturn?: () => void;
   active?: boolean; activePanel?: boolean;
   preceding?: SavedSetResult[];
@@ -88,6 +90,9 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
       }
       // Convenience snapshots are not user drafts; derive suggestions from the current read.
       sessionStorage.removeItem(suggestionKey);
+      if (currentDraft.current && assignment && (currentDraft.current.assignment ? canonicalJson(currentDraft.current.assignment) !== canonicalJson(assignment) : assignment.version !== 0)) {
+        store({ ...currentDraft.current, conflict: true }); setMessage('Exercise changed on another device—review before logging. Your input is retained.');
+      }
       setReady(true);
     } catch { setMessage('The retained result request could not be read. Keep this page open and recover browser storage before saving.'); }
     const beforeUnload = (e: BeforeUnloadEvent) => { if (currentDraft.current) { e.preventDefault(); e.returnValue = ''; } };
@@ -131,7 +136,7 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
     const carriedMeasurement = !saved && prior?.measurement && prescription && exercise &&
       (!prior.reps || prior.reps.basis === form.basis) && compatibleLoggingLoad(prior.measurement, prescription, exercise)
       ? prior.measurement : undefined;
-    return { form, ...(skipped ? { skipActionId: skipped.actionId } : {}), base: saved ?? null, pending: null, conflict: false, ...(carriedMeasurement ? { carriedMeasurement } : {}) };
+    return { ...(assignment ? { assignment } : {}), form, ...(skipped ? { skipActionId: skipped.actionId } : {}), base: saved ?? null, pending: null, conflict: false, ...(carriedMeasurement ? { carriedMeasurement } : {}) };
   }
   function begin() { store(initialDraft()); setMessage(''); }
   function change(field: keyof Form, value: string) {
@@ -168,7 +173,7 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
     if (!currentDraft.current && !store(initialDraft())) return;
     void submitSkip(skipSetCommand.parse({ schemaVersion: 1, actionId: crypto.randomUUID(), deviceId: crypto.randomUUID(),
       originatingAccountId: accountId, ownershipEpoch, dependsOn: [], commandType: 'SkipSet', target: { executionId, targetId },
-      expected: { resultVersion: 0, skipActionId: null }, intent: {} }));
+      expected: { resultVersion: 0, skipActionId: null, ...(currentDraft.current?.assignment ? { assignment: currentDraft.current.assignment } : {}) }, intent: {} }));
   }
   async function submit(command: SetResultCommand | SkipSetCommand) {
     if (command.commandType === 'SkipSet') return submitSkip(command);
@@ -221,7 +226,7 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
       }
       const command = resultMutationCommand.parse(d.base ? { ...envelope, commandType: historical ? 'CorrectHistoricalSetResult' : 'CorrectSetResult',
         expected: { resultVersion: d.base.version, performedSetId: d.base.performedSetId }, intent: { result, ...(clear ? { reason: d.form.reason } : {}) } } :
-        { ...envelope, commandType: 'RecordSetResult', expected: { resultVersion: 0, ...(d.skipActionId ? { skipActionId: d.skipActionId } : {}) }, intent: { result } });
+        { ...envelope, commandType: 'RecordSetResult', expected: { resultVersion: 0, ...(d.assignment ? { assignment: d.assignment } : {}), ...(d.skipActionId ? { skipActionId: d.skipActionId } : {}) }, intent: { result } });
       void submit(command);
     } catch (error) { setMessage(error instanceof z.ZodError ? 'Enter valid actual values (reps 0–1000, nonnegative load, RIR 0–10). Load may be blank.' : String(error)); }
   }
@@ -272,7 +277,7 @@ export function SetResultRow({ accountId, ownershipEpoch, executionId, targetId,
       {clearing && !historical && <label className="grid gap-1 text-sm">Reason for clearing<input className={control} aria-label={`Set ${number} correction reason`} maxLength={200} value={f.reason} onChange={e => change('reason', e.target.value)} /></label>}
 
       <div className={activePanel ? 'grid grid-cols-2 gap-2' : 'flex flex-wrap gap-2'}>
-      {draft?.conflict ? <><button className={control} onClick={() => void reviewLatest()}>Review latest result</button>{reviewed && <div><p>Latest: {resultLabel(reviewed.latest?.result ?? null)} · v{reviewed.latest?.version ?? 0}</p><button className={control} onClick={() => { store({ ...draft, base: reviewed.latest, conflict: false }); setReviewed(null); setMessage('Input retained. Save only if this is your intended correction.'); }}>Use this version for my correction</button></div>}</> : <button className={activePanel ? 'min-h-11 rounded-full bg-black px-5 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-40' : control} disabled={disabled || (!draft?.base && !saved && f.reps === '')} onClick={() => { if (!currentDraft.current) begin(); save(); }}>{busy && draft?.pending ? 'Saving…' : (draft ? draft.base : saved) ? activePanel ? 'Update set' : 'Save correction' : activePanel ? 'Log set' : 'Record set'}</button>}
+      {draft?.conflict ? <><button className={control} onClick={() => void reviewLatest()}>Review latest result</button>{reviewed && <div><p>Latest: {resultLabel(reviewed.latest?.result ?? null)}</p><button className={control} onClick={() => { store({ ...draft, ...(assignment ? { assignment } : {}), base: reviewed.latest, conflict: false }); setReviewed(null); setMessage('Input retained. Save only if this is your intended correction.'); }}>{draft.assignment && assignment && canonicalJson(draft.assignment) !== canonicalJson(assignment) ? `Use ${exercise?.name ?? "this exercise"} for my retained input` : "Use latest result for my correction"}</button></div>}</> : <button className={activePanel ? 'min-h-11 rounded-full bg-black px-5 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-40' : control} disabled={disabled || (!draft?.base && !saved && f.reps === '')} onClick={() => { if (!currentDraft.current) begin(); save(); }}>{busy && draft?.pending ? 'Saving…' : (draft ? draft.base : saved) ? activePanel ? 'Update set' : 'Save correction' : activePanel ? 'Log set' : 'Record set'}</button>}
       {activePanel && (saved ? <button className="min-h-11 rounded-full border border-slate-300 px-3 text-sm font-medium" onClick={onReturn}>Return to active set</button> : !skipped && <button className="min-h-11 rounded-full border border-slate-300 px-3 text-sm font-medium" onClick={skip}>Skip set</button>)}
       </div>
       {!activePanel && !historical && draft?.base?.result && !draft.conflict && <button className={control} onClick={() => { if (clearing) save(true); else setClearing(true); }}>{clearing ? 'Confirm clear erroneous result' : 'Clear erroneous result'}</button>}

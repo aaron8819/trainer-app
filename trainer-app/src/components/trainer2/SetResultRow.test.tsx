@@ -57,7 +57,7 @@ describe('Performed result input and recovery', () => {
     expect(JSON.parse(fetch.mock.calls[0][1].body).expected.resultVersion).toBe(1);
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('9');
     fireEvent.click(screen.getByRole('button', { name: 'Review latest result' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Use this version for my correction' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Use latest result for my correction' }));
     expect(fetch).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: 'Save correction' }));
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
@@ -130,7 +130,7 @@ describe('Historical corrections', () => {
     expect(fetch.mock.calls[0][0]).toBe('/api/trainer2/executions/corrections');
     expect(JSON.parse(fetch.mock.calls[0][1].body).expected.resultVersion).toBe(1);
     fireEvent.click(screen.getByRole('button', { name: 'Review latest result' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Use this version for my correction' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Use latest result for my correction' }));
     expect(fetch).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: 'Save correction' }));
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));

@@ -293,3 +293,7 @@ SetLog / logged performance
 `Short today` is an explicit pre-creation composition transform, not a planner, repair, readiness, or runtime-edit policy. V2 acceptance compiles one concrete reduction manifest from the accepted materialized rows. Normal replay still consumes only immutable seed `exerciseId`, `role`, and `setCount`.
 
 The canonical order is immutable seed replay, prescriptions, readiness intensity adjustment, full generated audit snapshot and original receipt capture, then the optional reduction. The explicit path validates only the narrow manifest against the active revision, week, slot, phase, and executable-row hash. The persisted reduced structure is offered truth; the full generated snapshot remains planned truth; set logs remain performed truth. Reconciliation records the authorized reduction with future generation and seed carry-forward set to `ignore`.
+
+## Trainer2 exercise swapping
+
+Execution & Evidence owns today-only exercise substitutions through the existing command acceptance owner. See [exercise swapping](architecture/trainer2/EXERCISE_SWAP.md) for immutable snapshots, performed assignments, and concurrency boundaries.

@@ -1,3 +1,4 @@
+import { readExerciseSwaps } from './exercise-swap';
 import { readSetSkips } from './skip-set';
 import { unresolvedOccurrences } from '../../engine/trainer2/occurrence-resolution';
 import { readOccurrenceResolution } from './occurrence-resolution';
@@ -39,16 +40,17 @@ export async function readExecution(tx: DB, principal: ServerPrincipal, executio
     initial.startedAt !== row.startedAt.toISOString() || canonicalJson(initial) !== row.canonicalContent ||
     integrityHash(row.canonicalContent) !== row.contentHash) throw new InvalidStartSnapshot();
   const revisions = await tx.trainer2SetResultRevision.findMany({ where: { accountId: principal.accountId, executionId: row.id }, orderBy: [{ targetId: 'asc' }, { version: 'desc' }] });
-  const history = revisions.map(r => savedSetResult.parse({ executionId: r.executionId, targetId: r.targetId, performedSetId: r.performedSetId, version: r.version, result: r.result, reason: r.reason, actionId: r.actionId, recordedAt: r.recordedAt.toISOString() }));
+  const history = revisions.map(r => savedSetResult.parse({ executionId: r.executionId, targetId: r.targetId, performedSetId: r.performedSetId, version: r.version, result: r.result, reason: r.reason, actionId: r.actionId, recordedAt: r.recordedAt.toISOString(), ...(r.assignment ? { assignment: r.assignment } : {}) }));
   const seen = new Set<string>();
   const results = revisions.filter(r => { if (seen.has(r.targetId)) return false; seen.add(r.targetId); return true; })
-    .map(r => savedSetResult.parse({ executionId: r.executionId, targetId: r.targetId, performedSetId: r.performedSetId, version: r.version, result: r.result, reason: r.reason, actionId: r.actionId, recordedAt: r.recordedAt.toISOString() }));
+    .map(r => savedSetResult.parse({ executionId: r.executionId, targetId: r.targetId, performedSetId: r.performedSetId, version: r.version, result: r.result, reason: r.reason, actionId: r.actionId, recordedAt: r.recordedAt.toISOString(), ...(r.assignment ? { assignment: r.assignment } : {}) }));
   const skips = await readSetSkips(tx, principal.accountId, row.id);
+  const swaps = await readExerciseSwaps(tx, principal.accountId, row.id);
   const finish = await tx.trainer2ExecutionFinish.findUnique({ where: { executionId: row.id } });
   if ((row.lifecycle === 'Finished') !== !!finish) throw new InvalidStartSnapshot();
   const discard = await tx.trainer2ExecutionDiscard.findUnique({ where: { executionId: row.id } });
   if ((row.lifecycle === 'Discarded') !== !!discard || (discard && (revisions.length || skips.length))) throw new InvalidStartSnapshot();
-  return { skips, discard: discard ? { actionId: discard.actionId, actorAccountId: discard.accountId, discardedAt: discard.discardedAt.toISOString() } : null, executionId: row.id, lifecycle: row.lifecycle as 'Open' | 'Finished' | 'Discarded', contentHash: row.contentHash, initial, results, history,
+  return { swaps, skips, discard: discard ? { actionId: discard.actionId, actorAccountId: discard.accountId, discardedAt: discard.discardedAt.toISOString() } : null, executionId: row.id, lifecycle: row.lifecycle as 'Open' | 'Finished' | 'Discarded', contentHash: row.contentHash, initial, results, history,
     finish: finish ? { actionId: finish.actionId, finishedAt: finish.finishedAt.toISOString(), expected: finishBinding.parse(finish.expected),
       unknownTargetIds: finish.unknownTargetIds as string[], planCompleted: finish.planCompleted } : null };
 }

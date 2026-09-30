@@ -19,13 +19,14 @@ describe("production write-gate static verification", () => {
   it("covers every classified application mutation before any mutation work", () => {
     const result = verifyProductionWriteGate(process.cwd());
     expect(result.failures).toEqual([]);
-    expect(result.mutationRoutes).toHaveLength(56);
+    expect(result.mutationRoutes).toHaveLength(57);
     expect(result.mutationRoutes).toContainEqual(["trainer2/drafts/activate/route.ts#POST", "mesocycle_acceptance"]);
     expect(result.mutationRoutes).toContainEqual(["trainer2/executions/start/route.ts#POST", "workout_materialization"]);
     expect(result.mutationRoutes).toContainEqual(["trainer2/executions/corrections/route.ts#POST", "set_logging"]);
     expect(result.mutationRoutes).toContainEqual(["trainer2/drafts/create/route.ts#POST", "trainer2_draft"]);
     expect(result.mutationRoutes).toContainEqual(["trainer2/drafts/edit/route.ts#POST", "trainer2_draft"]);
     expect(result.mutationRoutes).toContainEqual(["trainer2/executions/skip-set/route.ts#POST", "set_logging"]);
+    expect(result.mutationRoutes).toContainEqual(["trainer2/executions/swap-exercise/route.ts#POST", "set_logging"]);
     expect(result.operationalCommands).toHaveLength(21);
   });
 

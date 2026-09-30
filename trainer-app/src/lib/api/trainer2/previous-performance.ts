@@ -1,3 +1,4 @@
+import { effectiveOccurrence } from '../../engine/trainer2/exercise-swap';
 import { sameLoggingExercise, compatibleLoggingLoad } from '../../engine/trainer2/logging-prefill';
 import type { Prisma } from '@prisma/client';
 import type { ExecutionRead } from '../../trainer2-contracts/execution';
@@ -30,12 +31,12 @@ export function compatiblePrevious(current: Position, source: Position, result: 
 }
 
 // Presentation-only enrichment, called inside the existing authorized read-only transaction.
-export async function readExecutionWithPrevious(tx: Prisma.TransactionClient, principal: ServerPrincipal, executionId: string) {
-  const current = await readExecution(tx, principal, executionId);
+export async function readExecutionWithPrevious(tx: Prisma.TransactionClient, principal: ServerPrincipal, executionId: string, preview?: ExecutionRead) {
+  const current = preview ?? await readExecution(tx, principal, executionId);
   if (!current) return null;
   const previous: NonNullable<ExecutionRead['previous']> = [];
   const firstSetLoads: NonNullable<ExecutionRead['firstSetLoads']> = [];
-  const wanted = current.initial.occurrence.positions.filter(p => p.exercise.kind === 'catalogSnapshot');
+  const wanted = effectiveOccurrence(current).positions.filter(p => p.exercise.kind === 'catalogSnapshot');
   const ambiguous = new Set<string>();
   if (!wanted.length || current.lifecycle === 'Discarded') return { ...current, previous, firstSetLoads };
   const candidates = await tx.trainer2ExecutionFinish.findMany({ where: { accountId: principal.accountId, executionId: { not: executionId }, finishedAt: { lte: new Date(current.initial.startedAt) } }, orderBy: [{ finishedAt: 'desc' }, { executionId: 'asc' }], select: { executionId: true } });
@@ -43,7 +44,7 @@ export async function readExecutionWithPrevious(tx: Prisma.TransactionClient, pr
     const source = await readExecution(tx, principal, candidate.executionId);
     if (source?.lifecycle !== 'Finished' || !source.finish) continue;
     for (const position of wanted.filter(p => !ambiguous.has(p.id))) {
-      const decision = resolvePreviousPosition(position, source.initial.occurrence.positions);
+      const decision = resolvePreviousPosition(position, effectiveOccurrence(source).positions);
       if (decision.status === 'ambiguous') { ambiguous.add(position.id); continue; }
       if (decision.status === 'none') continue;
       const match = decision.position;

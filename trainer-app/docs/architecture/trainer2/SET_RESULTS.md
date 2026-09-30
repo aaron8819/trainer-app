@@ -50,3 +50,5 @@ Run the registered `node node_modules/tsx/dist/cli.mjs scripts/test-trainer2-set
 Forward migration `20260916010000_trainer2_optional_correction_reason` makes value-edit reasons optional in the command contract and append-only database guard/check. Absent reasons persist as SQL null and remain bound to the submitted envelope. Historical reasons and immutable records are untouched. Clearing a result still requires a nonblank reason and retains the Open-only lifecycle rule; historical clearing remains prohibited. Actor, timestamp, action identity, contiguous versions, stale preconditions and replay seals are unchanged.
 
 [Skip set](SKIP_SET.md) adds immutable skip history without performed values. Recording after an explicit skip requires its reviewed action ID; stale logging conflicts.
+
+[Exercise swapping](EXERCISE_SWAP.md) now extends this slice with immutable reviewed performed-assignment bindings. Corrections and clearing preserve that binding; original/version-zero evidence remains unchanged.

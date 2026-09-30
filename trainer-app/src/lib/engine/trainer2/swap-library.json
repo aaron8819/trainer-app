@@ -1,0 +1,2959 @@
+[
+  {
+    "catalogId": "t2:barbell-back-squat",
+    "catalogKey": "barbell-back-squat",
+    "name": "Barbell Back Squat",
+    "equipment": [
+      "Barbell",
+      "Rack"
+    ],
+    "movementPatterns": [
+      "squat"
+    ],
+    "primaryMuscles": [
+      "Quads",
+      "Glutes"
+    ],
+    "secondaryMuscles": [
+      "Hamstrings",
+      "Core",
+      "Lower Back",
+      "Adductors"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:front-squat",
+    "catalogKey": "front-squat",
+    "name": "Front Squat",
+    "equipment": [
+      "Barbell",
+      "Rack"
+    ],
+    "movementPatterns": [
+      "squat"
+    ],
+    "primaryMuscles": [
+      "Quads"
+    ],
+    "secondaryMuscles": [
+      "Glutes",
+      "Core",
+      "Upper Back"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:goblet-squat",
+    "catalogKey": "goblet-squat",
+    "name": "Goblet Squat",
+    "equipment": [
+      "Dumbbell",
+      "Kettlebell"
+    ],
+    "movementPatterns": [
+      "squat"
+    ],
+    "primaryMuscles": [
+      "Quads",
+      "Glutes"
+    ],
+    "secondaryMuscles": [
+      "Core"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:hack-squat",
+    "catalogKey": "hack-squat",
+    "name": "Hack Squat",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "squat"
+    ],
+    "primaryMuscles": [
+      "Quads"
+    ],
+    "secondaryMuscles": [
+      "Glutes"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:leg-press",
+    "catalogKey": "leg-press",
+    "name": "Leg Press",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "squat"
+    ],
+    "primaryMuscles": [
+      "Quads",
+      "Glutes"
+    ],
+    "secondaryMuscles": [
+      "Hamstrings",
+      "Adductors"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:belt-squat",
+    "catalogKey": "belt-squat",
+    "name": "Belt Squat",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "squat"
+    ],
+    "primaryMuscles": [
+      "Quads",
+      "Glutes"
+    ],
+    "secondaryMuscles": [
+      "Adductors",
+      "Calves"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:bulgarian-split-squat",
+    "catalogKey": "bulgarian-split-squat",
+    "name": "Bulgarian Split Squat",
+    "equipment": [
+      "Dumbbell",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "lunge"
+    ],
+    "primaryMuscles": [
+      "Quads",
+      "Glutes"
+    ],
+    "secondaryMuscles": [
+      "Hamstrings",
+      "Adductors"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:walking-lunge",
+    "catalogKey": "walking-lunge",
+    "name": "Walking Lunge",
+    "equipment": [
+      "Dumbbell",
+      "Barbell"
+    ],
+    "movementPatterns": [
+      "lunge"
+    ],
+    "primaryMuscles": [
+      "Quads",
+      "Glutes"
+    ],
+    "secondaryMuscles": [
+      "Hamstrings",
+      "Calves",
+      "Core"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:dumbbell-reverse-lunge",
+    "catalogKey": "dumbbell-reverse-lunge",
+    "name": "Dumbbell Reverse Lunge",
+    "equipment": [
+      "Dumbbell"
+    ],
+    "movementPatterns": [
+      "lunge"
+    ],
+    "primaryMuscles": [
+      "Quads",
+      "Glutes"
+    ],
+    "secondaryMuscles": [
+      "Hamstrings"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:reverse-lunge",
+    "catalogKey": "reverse-lunge",
+    "name": "Reverse Lunge",
+    "equipment": [
+      "Dumbbell",
+      "Barbell"
+    ],
+    "movementPatterns": [
+      "lunge"
+    ],
+    "primaryMuscles": [
+      "Quads",
+      "Glutes"
+    ],
+    "secondaryMuscles": [
+      "Hamstrings"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:leg-extension",
+    "catalogKey": "leg-extension",
+    "name": "Leg Extension",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "extension"
+    ],
+    "primaryMuscles": [
+      "Quads"
+    ],
+    "secondaryMuscles": [],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:sissy-squat",
+    "catalogKey": "sissy-squat",
+    "name": "Sissy Squat",
+    "equipment": [
+      "Bodyweight",
+      "Machine"
+    ],
+    "movementPatterns": [
+      "squat"
+    ],
+    "primaryMuscles": [
+      "Quads"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:conventional-deadlift",
+    "catalogKey": "conventional-deadlift",
+    "name": "Conventional Deadlift",
+    "equipment": [
+      "Barbell"
+    ],
+    "movementPatterns": [
+      "hinge"
+    ],
+    "primaryMuscles": [
+      "Hamstrings",
+      "Glutes",
+      "Lower Back"
+    ],
+    "secondaryMuscles": [
+      "Quads",
+      "Upper Back",
+      "Lats",
+      "Core",
+      "Forearms"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:sumo-deadlift",
+    "catalogKey": "sumo-deadlift",
+    "name": "Sumo Deadlift",
+    "equipment": [
+      "Barbell"
+    ],
+    "movementPatterns": [
+      "hinge"
+    ],
+    "primaryMuscles": [
+      "Glutes",
+      "Hamstrings",
+      "Adductors"
+    ],
+    "secondaryMuscles": [
+      "Quads",
+      "Lower Back",
+      "Upper Back",
+      "Forearms"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:trap-bar-deadlift",
+    "catalogKey": "trap-bar-deadlift",
+    "name": "Trap Bar Deadlift",
+    "equipment": [
+      "Trap_Bar"
+    ],
+    "movementPatterns": [
+      "hinge"
+    ],
+    "primaryMuscles": [
+      "Quads",
+      "Glutes",
+      "Hamstrings"
+    ],
+    "secondaryMuscles": [
+      "Lower Back",
+      "Upper Back",
+      "Forearms"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:barbell-romanian-deadlift",
+    "catalogKey": "barbell-romanian-deadlift",
+    "name": "Barbell Romanian Deadlift",
+    "equipment": [
+      "Barbell"
+    ],
+    "movementPatterns": [
+      "hinge"
+    ],
+    "primaryMuscles": [
+      "Hamstrings",
+      "Glutes"
+    ],
+    "secondaryMuscles": [
+      "Lower Back",
+      "Forearms"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:dumbbell-romanian-deadlift",
+    "catalogKey": "dumbbell-romanian-deadlift",
+    "name": "Dumbbell Romanian Deadlift",
+    "equipment": [
+      "Dumbbell"
+    ],
+    "movementPatterns": [
+      "hinge"
+    ],
+    "primaryMuscles": [
+      "Hamstrings",
+      "Glutes"
+    ],
+    "secondaryMuscles": [
+      "Lower Back",
+      "Forearms"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:romanian-deadlift",
+    "catalogKey": "romanian-deadlift",
+    "name": "Romanian Deadlift",
+    "equipment": [
+      "Barbell",
+      "Dumbbell"
+    ],
+    "movementPatterns": [
+      "hinge"
+    ],
+    "primaryMuscles": [
+      "Hamstrings",
+      "Glutes"
+    ],
+    "secondaryMuscles": [
+      "Lower Back",
+      "Forearms"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:stiff-legged-deadlift",
+    "catalogKey": "stiff-legged-deadlift",
+    "name": "Stiff-Legged Deadlift",
+    "equipment": [
+      "Barbell",
+      "Dumbbell"
+    ],
+    "movementPatterns": [
+      "hinge"
+    ],
+    "primaryMuscles": [
+      "Hamstrings"
+    ],
+    "secondaryMuscles": [
+      "Glutes",
+      "Lower Back"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:good-morning",
+    "catalogKey": "good-morning",
+    "name": "Good Morning",
+    "equipment": [
+      "Barbell"
+    ],
+    "movementPatterns": [
+      "hinge"
+    ],
+    "primaryMuscles": [
+      "Hamstrings",
+      "Lower Back"
+    ],
+    "secondaryMuscles": [
+      "Glutes"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:lying-leg-curl",
+    "catalogKey": "lying-leg-curl",
+    "name": "Lying Leg Curl",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Hamstrings"
+    ],
+    "secondaryMuscles": [],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:seated-leg-curl",
+    "catalogKey": "seated-leg-curl",
+    "name": "Seated Leg Curl",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Hamstrings"
+    ],
+    "secondaryMuscles": [],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:nordic-hamstring-curl",
+    "catalogKey": "nordic-hamstring-curl",
+    "name": "Nordic Hamstring Curl",
+    "equipment": [
+      "Bodyweight",
+      "Band"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Hamstrings"
+    ],
+    "secondaryMuscles": [
+      "Glutes"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:barbell-hip-thrust",
+    "catalogKey": "barbell-hip-thrust",
+    "name": "Barbell Hip Thrust",
+    "equipment": [
+      "Barbell",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "hinge"
+    ],
+    "primaryMuscles": [
+      "Glutes"
+    ],
+    "secondaryMuscles": [
+      "Hamstrings",
+      "Adductors"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:machine-hip-thrust",
+    "catalogKey": "machine-hip-thrust",
+    "name": "Machine Hip Thrust",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "hinge"
+    ],
+    "primaryMuscles": [
+      "Glutes"
+    ],
+    "secondaryMuscles": [
+      "Hamstrings"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:single-leg-hip-thrust",
+    "catalogKey": "single-leg-hip-thrust",
+    "name": "Single-Leg Hip Thrust",
+    "equipment": [
+      "Dumbbell",
+      "Bench",
+      "Bodyweight"
+    ],
+    "movementPatterns": [
+      "hinge"
+    ],
+    "primaryMuscles": [
+      "Glutes"
+    ],
+    "secondaryMuscles": [
+      "Hamstrings"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:glute-bridge",
+    "catalogKey": "glute-bridge",
+    "name": "Glute Bridge",
+    "equipment": [
+      "Barbell",
+      "Dumbbell",
+      "Bodyweight"
+    ],
+    "movementPatterns": [
+      "hinge"
+    ],
+    "primaryMuscles": [
+      "Glutes"
+    ],
+    "secondaryMuscles": [
+      "Hamstrings"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:back-extension-45-degree",
+    "catalogKey": "back-extension-45-degree",
+    "name": "Back Extension (45 Degree)",
+    "equipment": [
+      "Machine",
+      "Bodyweight"
+    ],
+    "movementPatterns": [
+      "extension"
+    ],
+    "primaryMuscles": [
+      "Glutes",
+      "Hamstrings",
+      "Lower Back"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:45-degree-back-extension-hamstring-bias",
+    "catalogKey": "45-degree-back-extension-hamstring-bias",
+    "name": "45-Degree Back Extension, Hamstring Bias",
+    "equipment": [
+      "Machine",
+      "Bodyweight"
+    ],
+    "movementPatterns": [
+      "extension"
+    ],
+    "primaryMuscles": [
+      "Hamstrings",
+      "Glutes"
+    ],
+    "secondaryMuscles": [
+      "Lower Back"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:reverse-hyperextension",
+    "catalogKey": "reverse-hyperextension",
+    "name": "Reverse Hyperextension",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "extension"
+    ],
+    "primaryMuscles": [
+      "Glutes",
+      "Hamstrings"
+    ],
+    "secondaryMuscles": [
+      "Lower Back"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:cable-pull-through",
+    "catalogKey": "cable-pull-through",
+    "name": "Cable Pull-Through",
+    "equipment": [
+      "Cable"
+    ],
+    "movementPatterns": [
+      "hinge"
+    ],
+    "primaryMuscles": [
+      "Glutes",
+      "Hamstrings"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:hip-abduction-machine",
+    "catalogKey": "hip-abduction-machine",
+    "name": "Hip Abduction Machine",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "abduction"
+    ],
+    "primaryMuscles": [
+      "Abductors"
+    ],
+    "secondaryMuscles": [
+      "Glutes"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:cable-hip-abduction",
+    "catalogKey": "cable-hip-abduction",
+    "name": "Cable Hip Abduction",
+    "equipment": [
+      "Cable"
+    ],
+    "movementPatterns": [
+      "abduction"
+    ],
+    "primaryMuscles": [
+      "Abductors"
+    ],
+    "secondaryMuscles": [
+      "Glutes"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:hip-adduction-machine",
+    "catalogKey": "hip-adduction-machine",
+    "name": "Hip Adduction Machine",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "adduction"
+    ],
+    "primaryMuscles": [
+      "Adductors"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:copenhagen-plank",
+    "catalogKey": "copenhagen-plank",
+    "name": "Copenhagen Plank",
+    "equipment": [
+      "Bench",
+      "Bodyweight"
+    ],
+    "movementPatterns": [
+      "adduction"
+    ],
+    "primaryMuscles": [
+      "Adductors"
+    ],
+    "secondaryMuscles": [
+      "Core"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:selectorized-standing-calf-raise",
+    "catalogKey": "selectorized-standing-calf-raise",
+    "name": "Selectorized Standing Calf Raise",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "isolation"
+    ],
+    "primaryMuscles": [
+      "Calves"
+    ],
+    "secondaryMuscles": [],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:standing-calf-raise",
+    "catalogKey": "standing-calf-raise",
+    "name": "Standing Calf Raise",
+    "equipment": [
+      "Machine",
+      "Barbell"
+    ],
+    "movementPatterns": [
+      "calf_raise_extended"
+    ],
+    "primaryMuscles": [
+      "Calves"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:seated-calf-raise",
+    "catalogKey": "seated-calf-raise",
+    "name": "Seated Calf Raise",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "isolation"
+    ],
+    "primaryMuscles": [
+      "Calves"
+    ],
+    "secondaryMuscles": [],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:leg-press-calf-raise",
+    "catalogKey": "leg-press-calf-raise",
+    "name": "Leg Press Calf Raise",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "isolation"
+    ],
+    "primaryMuscles": [
+      "Calves"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:barbell-bench-press",
+    "catalogKey": "barbell-bench-press",
+    "name": "Barbell Bench Press",
+    "equipment": [
+      "Barbell",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "horizontal_push"
+    ],
+    "primaryMuscles": [
+      "Chest",
+      "Triceps"
+    ],
+    "secondaryMuscles": [
+      "Front Delts"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:incline-barbell-bench-press",
+    "catalogKey": "incline-barbell-bench-press",
+    "name": "Incline Barbell Bench Press",
+    "equipment": [
+      "Barbell",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "horizontal_push"
+    ],
+    "primaryMuscles": [
+      "Chest",
+      "Triceps"
+    ],
+    "secondaryMuscles": [
+      "Front Delts"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:decline-barbell-bench-press",
+    "catalogKey": "decline-barbell-bench-press",
+    "name": "Decline Barbell Bench Press",
+    "equipment": [
+      "Barbell",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "horizontal_push"
+    ],
+    "primaryMuscles": [
+      "Chest"
+    ],
+    "secondaryMuscles": [
+      "Triceps",
+      "Front Delts"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:dumbbell-bench-press",
+    "catalogKey": "dumbbell-bench-press",
+    "name": "Dumbbell Bench Press",
+    "equipment": [
+      "Dumbbell",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "horizontal_push"
+    ],
+    "primaryMuscles": [
+      "Chest",
+      "Triceps"
+    ],
+    "secondaryMuscles": [
+      "Front Delts"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:incline-dumbbell-bench-press",
+    "catalogKey": "incline-dumbbell-bench-press",
+    "name": "Incline Dumbbell Bench Press",
+    "equipment": [
+      "Dumbbell",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "horizontal_push"
+    ],
+    "primaryMuscles": [
+      "Chest",
+      "Triceps"
+    ],
+    "secondaryMuscles": [
+      "Front Delts"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:decline-dumbbell-bench-press",
+    "catalogKey": "decline-dumbbell-bench-press",
+    "name": "Decline Dumbbell Bench Press",
+    "equipment": [
+      "Dumbbell",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "horizontal_push"
+    ],
+    "primaryMuscles": [
+      "Chest"
+    ],
+    "secondaryMuscles": [
+      "Triceps",
+      "Front Delts"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:machine-chest-press",
+    "catalogKey": "machine-chest-press",
+    "name": "Machine Chest Press",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "horizontal_push"
+    ],
+    "primaryMuscles": [
+      "Chest"
+    ],
+    "secondaryMuscles": [
+      "Triceps",
+      "Front Delts"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:incline-machine-press",
+    "catalogKey": "incline-machine-press",
+    "name": "Incline Machine Press",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "horizontal_push"
+    ],
+    "primaryMuscles": [
+      "Chest"
+    ],
+    "secondaryMuscles": [
+      "Triceps",
+      "Front Delts"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:iso-lateral-incline-press",
+    "catalogKey": "iso-lateral-incline-press",
+    "name": "Iso-Lateral Incline Press",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "horizontal_push"
+    ],
+    "primaryMuscles": [
+      "Chest"
+    ],
+    "secondaryMuscles": [
+      "Front Delts",
+      "Triceps"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:iso-lateral-decline-press",
+    "catalogKey": "iso-lateral-decline-press",
+    "name": "Iso-Lateral Decline Press",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "horizontal_push"
+    ],
+    "primaryMuscles": [
+      "Chest"
+    ],
+    "secondaryMuscles": [
+      "Triceps",
+      "Front Delts"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:dumbbell-fly",
+    "catalogKey": "dumbbell-fly",
+    "name": "Dumbbell Fly",
+    "equipment": [
+      "Dumbbell",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "horizontal_push"
+    ],
+    "primaryMuscles": [
+      "Chest"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:incline-dumbbell-fly",
+    "catalogKey": "incline-dumbbell-fly",
+    "name": "Incline Dumbbell Fly",
+    "equipment": [
+      "Dumbbell",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "horizontal_push"
+    ],
+    "primaryMuscles": [
+      "Chest"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:cable-fly",
+    "catalogKey": "cable-fly",
+    "name": "Cable Fly",
+    "equipment": [
+      "Cable"
+    ],
+    "movementPatterns": [
+      "horizontal_push"
+    ],
+    "primaryMuscles": [
+      "Chest"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:low-to-high-cable-fly",
+    "catalogKey": "low-to-high-cable-fly",
+    "name": "Low-to-High Cable Fly",
+    "equipment": [
+      "Cable"
+    ],
+    "movementPatterns": [
+      "horizontal_push"
+    ],
+    "primaryMuscles": [
+      "Chest"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:pec-deck-machine",
+    "catalogKey": "pec-deck-machine",
+    "name": "Pec Deck Machine",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "horizontal_push"
+    ],
+    "primaryMuscles": [
+      "Chest"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:push-up",
+    "catalogKey": "push-up",
+    "name": "Push-Up",
+    "equipment": [
+      "Bodyweight"
+    ],
+    "movementPatterns": [
+      "horizontal_push"
+    ],
+    "primaryMuscles": [
+      "Chest",
+      "Triceps"
+    ],
+    "secondaryMuscles": [
+      "Front Delts",
+      "Core"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:deficit-push-up",
+    "catalogKey": "deficit-push-up",
+    "name": "Deficit Push-Up",
+    "equipment": [
+      "Bodyweight"
+    ],
+    "movementPatterns": [
+      "horizontal_push"
+    ],
+    "primaryMuscles": [
+      "Chest"
+    ],
+    "secondaryMuscles": [
+      "Triceps",
+      "Front Delts",
+      "Core"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:dip-chest-emphasis",
+    "catalogKey": "dip-chest-emphasis",
+    "name": "Dip (Chest Emphasis)",
+    "equipment": [
+      "Bodyweight",
+      "Machine"
+    ],
+    "movementPatterns": [
+      "vertical_push"
+    ],
+    "primaryMuscles": [
+      "Chest",
+      "Triceps"
+    ],
+    "secondaryMuscles": [
+      "Front Delts"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:barbell-overhead-press",
+    "catalogKey": "barbell-overhead-press",
+    "name": "Barbell Overhead Press",
+    "equipment": [
+      "Barbell",
+      "Rack"
+    ],
+    "movementPatterns": [
+      "vertical_push"
+    ],
+    "primaryMuscles": [
+      "Side Delts",
+      "Triceps"
+    ],
+    "secondaryMuscles": [
+      "Front Delts",
+      "Upper Back",
+      "Core"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:seated-barbell-overhead-press",
+    "catalogKey": "seated-barbell-overhead-press",
+    "name": "Seated Barbell Overhead Press",
+    "equipment": [
+      "Barbell",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "vertical_push"
+    ],
+    "primaryMuscles": [
+      "Side Delts",
+      "Triceps"
+    ],
+    "secondaryMuscles": [
+      "Front Delts",
+      "Upper Back"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:dumbbell-overhead-press",
+    "catalogKey": "dumbbell-overhead-press",
+    "name": "Dumbbell Overhead Press",
+    "equipment": [
+      "Dumbbell",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "vertical_push"
+    ],
+    "primaryMuscles": [
+      "Side Delts",
+      "Triceps"
+    ],
+    "secondaryMuscles": [
+      "Front Delts",
+      "Core"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:arnold-press",
+    "catalogKey": "arnold-press",
+    "name": "Arnold Press",
+    "equipment": [
+      "Dumbbell",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "vertical_push"
+    ],
+    "primaryMuscles": [
+      "Side Delts"
+    ],
+    "secondaryMuscles": [
+      "Front Delts",
+      "Triceps"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:machine-shoulder-press",
+    "catalogKey": "machine-shoulder-press",
+    "name": "Machine Shoulder Press",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "vertical_push"
+    ],
+    "primaryMuscles": [
+      "Side Delts",
+      "Triceps"
+    ],
+    "secondaryMuscles": [
+      "Front Delts"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:landmine-press",
+    "catalogKey": "landmine-press",
+    "name": "Landmine Press",
+    "equipment": [
+      "Barbell"
+    ],
+    "movementPatterns": [
+      "vertical_push"
+    ],
+    "primaryMuscles": [
+      "Chest"
+    ],
+    "secondaryMuscles": [
+      "Front Delts",
+      "Triceps",
+      "Core"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:dumbbell-lateral-raise",
+    "catalogKey": "dumbbell-lateral-raise",
+    "name": "Dumbbell Lateral Raise",
+    "equipment": [
+      "Dumbbell"
+    ],
+    "movementPatterns": [
+      "abduction"
+    ],
+    "primaryMuscles": [
+      "Side Delts"
+    ],
+    "secondaryMuscles": [],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:cable-lateral-raise",
+    "catalogKey": "cable-lateral-raise",
+    "name": "Cable Lateral Raise",
+    "equipment": [
+      "Cable"
+    ],
+    "movementPatterns": [
+      "abduction"
+    ],
+    "primaryMuscles": [
+      "Side Delts"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:machine-lateral-raise",
+    "catalogKey": "machine-lateral-raise",
+    "name": "Machine Lateral Raise",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "abduction"
+    ],
+    "primaryMuscles": [
+      "Side Delts"
+    ],
+    "secondaryMuscles": [],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:dumbbell-front-raise",
+    "catalogKey": "dumbbell-front-raise",
+    "name": "Dumbbell Front Raise",
+    "equipment": [
+      "Dumbbell"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Front Delts"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:cable-front-raise",
+    "catalogKey": "cable-front-raise",
+    "name": "Cable Front Raise",
+    "equipment": [
+      "Cable"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Front Delts"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:dumbbell-rear-delt-fly",
+    "catalogKey": "dumbbell-rear-delt-fly",
+    "name": "Dumbbell Rear Delt Fly",
+    "equipment": [
+      "Dumbbell",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Rear Delts"
+    ],
+    "secondaryMuscles": [
+      "Upper Back"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:cable-rear-delt-fly",
+    "catalogKey": "cable-rear-delt-fly",
+    "name": "Cable Rear Delt Fly",
+    "equipment": [
+      "Cable"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Rear Delts"
+    ],
+    "secondaryMuscles": [
+      "Upper Back"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:reverse-pec-deck",
+    "catalogKey": "reverse-pec-deck",
+    "name": "Reverse Pec Deck",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Rear Delts"
+    ],
+    "secondaryMuscles": [
+      "Upper Back"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:face-pull",
+    "catalogKey": "face-pull",
+    "name": "Face Pull",
+    "equipment": [
+      "Cable"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Rear Delts",
+      "Upper Back"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:close-grip-bench-press",
+    "catalogKey": "close-grip-bench-press",
+    "name": "Close-Grip Bench Press",
+    "equipment": [
+      "Barbell",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "horizontal_push"
+    ],
+    "primaryMuscles": [
+      "Triceps"
+    ],
+    "secondaryMuscles": [
+      "Chest",
+      "Front Delts"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:dip-triceps-emphasis",
+    "catalogKey": "dip-triceps-emphasis",
+    "name": "Dip (Triceps Emphasis)",
+    "equipment": [
+      "Bodyweight",
+      "Machine"
+    ],
+    "movementPatterns": [
+      "vertical_push"
+    ],
+    "primaryMuscles": [
+      "Triceps"
+    ],
+    "secondaryMuscles": [
+      "Chest",
+      "Front Delts"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:seated-dip-machine",
+    "catalogKey": "seated-dip-machine",
+    "name": "Seated Dip Machine",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "vertical_push"
+    ],
+    "primaryMuscles": [
+      "Triceps"
+    ],
+    "secondaryMuscles": [
+      "Chest",
+      "Front Delts"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:overhead-cable-triceps-extension",
+    "catalogKey": "overhead-cable-triceps-extension",
+    "name": "Overhead Cable Triceps Extension",
+    "equipment": [
+      "Cable"
+    ],
+    "movementPatterns": [
+      "extension"
+    ],
+    "primaryMuscles": [
+      "Triceps"
+    ],
+    "secondaryMuscles": [],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:overhead-dumbbell-extension",
+    "catalogKey": "overhead-dumbbell-extension",
+    "name": "Overhead Dumbbell Extension",
+    "equipment": [
+      "Dumbbell"
+    ],
+    "movementPatterns": [
+      "extension"
+    ],
+    "primaryMuscles": [
+      "Triceps"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:lying-triceps-extension-skull-crusher",
+    "catalogKey": "lying-triceps-extension-skull-crusher",
+    "name": "Lying Triceps Extension (Skull Crusher)",
+    "equipment": [
+      "Barbell",
+      "EZ_Bar",
+      "Dumbbell",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "extension"
+    ],
+    "primaryMuscles": [
+      "Triceps"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:cable-triceps-pushdown",
+    "catalogKey": "cable-triceps-pushdown",
+    "name": "Cable Triceps Pushdown",
+    "equipment": [
+      "Cable"
+    ],
+    "movementPatterns": [
+      "extension"
+    ],
+    "primaryMuscles": [
+      "Triceps"
+    ],
+    "secondaryMuscles": [],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:rope-triceps-pushdown",
+    "catalogKey": "rope-triceps-pushdown",
+    "name": "Rope Triceps Pushdown",
+    "equipment": [
+      "Cable"
+    ],
+    "movementPatterns": [
+      "extension"
+    ],
+    "primaryMuscles": [
+      "Triceps"
+    ],
+    "secondaryMuscles": [],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:diamond-push-up",
+    "catalogKey": "diamond-push-up",
+    "name": "Diamond Push-Up",
+    "equipment": [
+      "Bodyweight"
+    ],
+    "movementPatterns": [
+      "horizontal_push"
+    ],
+    "primaryMuscles": [
+      "Triceps"
+    ],
+    "secondaryMuscles": [
+      "Chest",
+      "Front Delts",
+      "Core"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:pull-up",
+    "catalogKey": "pull-up",
+    "name": "Pull-Up",
+    "equipment": [
+      "Bodyweight"
+    ],
+    "movementPatterns": [
+      "vertical_pull"
+    ],
+    "primaryMuscles": [
+      "Lats",
+      "Biceps"
+    ],
+    "secondaryMuscles": [
+      "Upper Back",
+      "Forearms"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:chin-up",
+    "catalogKey": "chin-up",
+    "name": "Chin-Up",
+    "equipment": [
+      "Bodyweight"
+    ],
+    "movementPatterns": [
+      "vertical_pull"
+    ],
+    "primaryMuscles": [
+      "Lats",
+      "Biceps"
+    ],
+    "secondaryMuscles": [
+      "Upper Back",
+      "Forearms"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:weighted-pull-up",
+    "catalogKey": "weighted-pull-up",
+    "name": "Weighted Pull-Up",
+    "equipment": [
+      "Bodyweight",
+      "Dumbbell",
+      "Kettlebell"
+    ],
+    "movementPatterns": [
+      "vertical_pull"
+    ],
+    "primaryMuscles": [
+      "Lats",
+      "Biceps"
+    ],
+    "secondaryMuscles": [
+      "Upper Back",
+      "Forearms"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:machine-assisted-pull-up",
+    "catalogKey": "machine-assisted-pull-up",
+    "name": "Machine-Assisted Pull-Up",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "vertical_pull"
+    ],
+    "primaryMuscles": [
+      "Lats",
+      "Biceps"
+    ],
+    "secondaryMuscles": [
+      "Upper Back",
+      "Forearms"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:lat-pulldown",
+    "catalogKey": "lat-pulldown",
+    "name": "Lat Pulldown",
+    "equipment": [
+      "Cable",
+      "Machine"
+    ],
+    "movementPatterns": [
+      "vertical_pull"
+    ],
+    "primaryMuscles": [
+      "Lats"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Upper Back",
+      "Forearms"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:iso-lateral-front-lat-pulldown",
+    "catalogKey": "iso-lateral-front-lat-pulldown",
+    "name": "Iso-Lateral Front Lat Pulldown",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "vertical_pull"
+    ],
+    "primaryMuscles": [
+      "Lats"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Upper Back"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:close-grip-lat-pulldown",
+    "catalogKey": "close-grip-lat-pulldown",
+    "name": "Close-Grip Lat Pulldown",
+    "equipment": [
+      "Cable",
+      "Machine"
+    ],
+    "movementPatterns": [
+      "vertical_pull"
+    ],
+    "primaryMuscles": [
+      "Lats"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Upper Back"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:straight-arm-pulldown",
+    "catalogKey": "straight-arm-pulldown",
+    "name": "Straight-Arm Pulldown",
+    "equipment": [
+      "Cable"
+    ],
+    "movementPatterns": [
+      "vertical_pull"
+    ],
+    "primaryMuscles": [
+      "Lats"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:dumbbell-pullover",
+    "catalogKey": "dumbbell-pullover",
+    "name": "Dumbbell Pullover",
+    "equipment": [
+      "Dumbbell",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "vertical_pull"
+    ],
+    "primaryMuscles": [
+      "Lats"
+    ],
+    "secondaryMuscles": [
+      "Chest"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:cable-pullover",
+    "catalogKey": "cable-pullover",
+    "name": "Cable Pullover",
+    "equipment": [
+      "Cable"
+    ],
+    "movementPatterns": [
+      "vertical_pull"
+    ],
+    "primaryMuscles": [
+      "Lats"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:barbell-row",
+    "catalogKey": "barbell-row",
+    "name": "Barbell Row",
+    "equipment": [
+      "Barbell"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Lats",
+      "Upper Back"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Lower Back",
+      "Forearms"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:pendlay-row",
+    "catalogKey": "pendlay-row",
+    "name": "Pendlay Row",
+    "equipment": [
+      "Barbell"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Lats",
+      "Upper Back"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Lower Back",
+      "Forearms"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:t-bar-row",
+    "catalogKey": "t-bar-row",
+    "name": "T-Bar Row",
+    "equipment": [
+      "Barbell",
+      "Machine"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Lats",
+      "Upper Back"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Lower Back",
+      "Forearms"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:chest-supported-t-bar-row",
+    "catalogKey": "chest-supported-t-bar-row",
+    "name": "Chest-Supported T-Bar Row",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Lats",
+      "Upper Back"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Forearms"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:one-arm-dumbbell-row",
+    "catalogKey": "one-arm-dumbbell-row",
+    "name": "One-Arm Dumbbell Row",
+    "equipment": [
+      "Dumbbell",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Lats",
+      "Upper Back"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Forearms"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:dumbbell-row",
+    "catalogKey": "dumbbell-row",
+    "name": "Dumbbell Row",
+    "equipment": [
+      "Dumbbell",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Lats",
+      "Upper Back"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Lower Back",
+      "Forearms"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:chest-supported-dumbbell-row",
+    "catalogKey": "chest-supported-dumbbell-row",
+    "name": "Chest-Supported Dumbbell Row",
+    "equipment": [
+      "Dumbbell",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Lats",
+      "Upper Back"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Forearms"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:seated-cable-row",
+    "catalogKey": "seated-cable-row",
+    "name": "Seated Cable Row",
+    "equipment": [
+      "Cable"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Lats",
+      "Upper Back"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Forearms"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:close-grip-seated-cable-row",
+    "catalogKey": "close-grip-seated-cable-row",
+    "name": "Close-Grip Seated Cable Row",
+    "equipment": [
+      "Cable"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Lats",
+      "Upper Back"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Forearms"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:iso-lateral-high-row",
+    "catalogKey": "iso-lateral-high-row",
+    "name": "Iso-Lateral High Row",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Upper Back",
+      "Lats"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Rear Delts"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:iso-lateral-low-row",
+    "catalogKey": "iso-lateral-low-row",
+    "name": "Iso-Lateral Low Row",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Lats",
+      "Upper Back"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Rear Delts"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:meadows-row",
+    "catalogKey": "meadows-row",
+    "name": "Meadows Row",
+    "equipment": [
+      "Barbell"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Lats",
+      "Upper Back"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Forearms"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:inverted-row",
+    "catalogKey": "inverted-row",
+    "name": "Inverted Row",
+    "equipment": [
+      "Bodyweight"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Lats",
+      "Upper Back"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Core"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:barbell-shrug",
+    "catalogKey": "barbell-shrug",
+    "name": "Barbell Shrug",
+    "equipment": [
+      "Barbell"
+    ],
+    "movementPatterns": [
+      "isolation"
+    ],
+    "primaryMuscles": [
+      "Upper Back"
+    ],
+    "secondaryMuscles": [
+      "Forearms"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:dumbbell-shrug",
+    "catalogKey": "dumbbell-shrug",
+    "name": "Dumbbell Shrug",
+    "equipment": [
+      "Dumbbell"
+    ],
+    "movementPatterns": [
+      "isolation"
+    ],
+    "primaryMuscles": [
+      "Upper Back"
+    ],
+    "secondaryMuscles": [
+      "Forearms"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:seated-machine-shrug",
+    "catalogKey": "seated-machine-shrug",
+    "name": "Seated Machine Shrug",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "isolation"
+    ],
+    "primaryMuscles": [
+      "Upper Back"
+    ],
+    "secondaryMuscles": [
+      "Forearms"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:barbell-curl",
+    "catalogKey": "barbell-curl",
+    "name": "Barbell Curl",
+    "equipment": [
+      "Barbell",
+      "EZ_Bar"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Biceps"
+    ],
+    "secondaryMuscles": [
+      "Forearms"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:ez-bar-curl",
+    "catalogKey": "ez-bar-curl",
+    "name": "EZ-Bar Curl",
+    "equipment": [
+      "EZ_Bar"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Biceps"
+    ],
+    "secondaryMuscles": [
+      "Forearms"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:dumbbell-curl",
+    "catalogKey": "dumbbell-curl",
+    "name": "Dumbbell Curl",
+    "equipment": [
+      "Dumbbell"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Biceps"
+    ],
+    "secondaryMuscles": [
+      "Forearms"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:alternating-dumbbell-curl",
+    "catalogKey": "alternating-dumbbell-curl",
+    "name": "Alternating Dumbbell Curl",
+    "equipment": [
+      "Dumbbell"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Biceps"
+    ],
+    "secondaryMuscles": [
+      "Forearms"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:incline-dumbbell-curl",
+    "catalogKey": "incline-dumbbell-curl",
+    "name": "Incline Dumbbell Curl",
+    "equipment": [
+      "Dumbbell",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Biceps"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:hammer-curl",
+    "catalogKey": "hammer-curl",
+    "name": "Hammer Curl",
+    "equipment": [
+      "Dumbbell"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Biceps"
+    ],
+    "secondaryMuscles": [
+      "Forearms"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:cross-body-hammer-curl",
+    "catalogKey": "cross-body-hammer-curl",
+    "name": "Cross-Body Hammer Curl",
+    "equipment": [
+      "Dumbbell"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Biceps"
+    ],
+    "secondaryMuscles": [
+      "Forearms"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:cable-curl",
+    "catalogKey": "cable-curl",
+    "name": "Cable Curl",
+    "equipment": [
+      "Cable"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Biceps"
+    ],
+    "secondaryMuscles": [
+      "Forearms"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:bayesian-curl",
+    "catalogKey": "bayesian-curl",
+    "name": "Bayesian Curl",
+    "equipment": [
+      "Cable"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Biceps"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:preacher-curl",
+    "catalogKey": "preacher-curl",
+    "name": "Preacher Curl",
+    "equipment": [
+      "Barbell",
+      "EZ_Bar",
+      "Dumbbell",
+      "Machine"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Biceps"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:spider-curl",
+    "catalogKey": "spider-curl",
+    "name": "Spider Curl",
+    "equipment": [
+      "Barbell",
+      "EZ_Bar",
+      "Dumbbell",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Biceps"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:concentration-curl",
+    "catalogKey": "concentration-curl",
+    "name": "Concentration Curl",
+    "equipment": [
+      "Dumbbell"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Biceps"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:reverse-curl",
+    "catalogKey": "reverse-curl",
+    "name": "Reverse Curl",
+    "equipment": [
+      "Barbell",
+      "EZ_Bar"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Forearms",
+      "Biceps"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:wrist-curl",
+    "catalogKey": "wrist-curl",
+    "name": "Wrist Curl",
+    "equipment": [
+      "Barbell",
+      "Dumbbell"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Forearms"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:reverse-wrist-curl",
+    "catalogKey": "reverse-wrist-curl",
+    "name": "Reverse Wrist Curl",
+    "equipment": [
+      "Barbell",
+      "Dumbbell"
+    ],
+    "movementPatterns": [
+      "extension"
+    ],
+    "primaryMuscles": [
+      "Forearms"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:farmers-walk",
+    "catalogKey": "farmers-walk",
+    "name": "Farmer's Walk",
+    "equipment": [
+      "Dumbbell",
+      "Kettlebell"
+    ],
+    "movementPatterns": [
+      "carry"
+    ],
+    "primaryMuscles": [
+      "Forearms",
+      "Upper Back"
+    ],
+    "secondaryMuscles": [
+      "Core",
+      "Calves"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:dead-hang",
+    "catalogKey": "dead-hang",
+    "name": "Dead Hang",
+    "equipment": [
+      "Bodyweight"
+    ],
+    "movementPatterns": [
+      "carry"
+    ],
+    "primaryMuscles": [
+      "Forearms"
+    ],
+    "secondaryMuscles": [
+      "Lats",
+      "Upper Back"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:plank",
+    "catalogKey": "plank",
+    "name": "Plank",
+    "equipment": [
+      "Bodyweight"
+    ],
+    "movementPatterns": [
+      "anti_rotation"
+    ],
+    "primaryMuscles": [
+      "Core"
+    ],
+    "secondaryMuscles": [
+      "Front Delts"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:rkc-plank",
+    "catalogKey": "rkc-plank",
+    "name": "RKC Plank",
+    "equipment": [
+      "Bodyweight"
+    ],
+    "movementPatterns": [
+      "anti_rotation"
+    ],
+    "primaryMuscles": [
+      "Core"
+    ],
+    "secondaryMuscles": [
+      "Glutes",
+      "Front Delts"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:side-plank",
+    "catalogKey": "side-plank",
+    "name": "Side Plank",
+    "equipment": [
+      "Bodyweight"
+    ],
+    "movementPatterns": [
+      "anti_rotation"
+    ],
+    "primaryMuscles": [
+      "Core"
+    ],
+    "secondaryMuscles": [
+      "Abductors"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:ab-wheel-rollout",
+    "catalogKey": "ab-wheel-rollout",
+    "name": "Ab Wheel Rollout",
+    "equipment": [
+      "Bodyweight"
+    ],
+    "movementPatterns": [
+      "anti_extension"
+    ],
+    "primaryMuscles": [
+      "Abs",
+      "Core"
+    ],
+    "secondaryMuscles": [
+      "Lats"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:pallof-press",
+    "catalogKey": "pallof-press",
+    "name": "Pallof Press",
+    "equipment": [
+      "Cable",
+      "Band"
+    ],
+    "movementPatterns": [
+      "anti_rotation"
+    ],
+    "primaryMuscles": [
+      "Core"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:cable-pallof-press",
+    "catalogKey": "cable-pallof-press",
+    "name": "Cable Pallof Press",
+    "equipment": [
+      "Cable"
+    ],
+    "movementPatterns": [
+      "anti_rotation"
+    ],
+    "primaryMuscles": [
+      "Core"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:cable-crunch",
+    "catalogKey": "cable-crunch",
+    "name": "Cable Crunch",
+    "equipment": [
+      "Cable"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Abs"
+    ],
+    "secondaryMuscles": [],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:machine-crunch",
+    "catalogKey": "machine-crunch",
+    "name": "Machine Crunch",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Abs"
+    ],
+    "secondaryMuscles": [],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:oblique-crunch-machine",
+    "catalogKey": "oblique-crunch-machine",
+    "name": "Oblique Crunch Machine",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "flexion",
+      "rotation"
+    ],
+    "primaryMuscles": [
+      "Abs",
+      "Core"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:hanging-leg-raise",
+    "catalogKey": "hanging-leg-raise",
+    "name": "Hanging Leg Raise",
+    "equipment": [
+      "Bodyweight"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Abs"
+    ],
+    "secondaryMuscles": [
+      "Forearms"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:hanging-knee-raise",
+    "catalogKey": "hanging-knee-raise",
+    "name": "Hanging Knee Raise",
+    "equipment": [
+      "Bodyweight"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Abs"
+    ],
+    "secondaryMuscles": [
+      "Forearms"
+    ],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:dragon-flag",
+    "catalogKey": "dragon-flag",
+    "name": "Dragon Flag",
+    "equipment": [
+      "Bodyweight",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "anti_rotation"
+    ],
+    "primaryMuscles": [
+      "Abs",
+      "Core"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:decline-sit-up",
+    "catalogKey": "decline-sit-up",
+    "name": "Decline Sit-Up",
+    "equipment": [
+      "Bodyweight",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Abs"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:reverse-crunch",
+    "catalogKey": "reverse-crunch",
+    "name": "Reverse Crunch",
+    "equipment": [
+      "Bodyweight"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Abs"
+    ],
+    "secondaryMuscles": [],
+    "selectable": true,
+    "unavailableReason": null
+  },
+  {
+    "catalogId": "t2:bicycle-crunch",
+    "catalogKey": "bicycle-crunch",
+    "name": "Bicycle Crunch",
+    "equipment": [
+      "Bodyweight"
+    ],
+    "movementPatterns": [
+      "rotation"
+    ],
+    "primaryMuscles": [
+      "Abs"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:russian-twist",
+    "catalogKey": "russian-twist",
+    "name": "Russian Twist",
+    "equipment": [
+      "Bodyweight",
+      "Dumbbell"
+    ],
+    "movementPatterns": [
+      "rotation"
+    ],
+    "primaryMuscles": [
+      "Abs"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:torso-rotation-machine",
+    "catalogKey": "torso-rotation-machine",
+    "name": "Torso Rotation Machine",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "rotation"
+    ],
+    "primaryMuscles": [
+      "Core"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:wood-chop",
+    "catalogKey": "wood-chop",
+    "name": "Wood Chop",
+    "equipment": [
+      "Cable"
+    ],
+    "movementPatterns": [
+      "rotation"
+    ],
+    "primaryMuscles": [
+      "Abs",
+      "Core"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:landmine-rotation",
+    "catalogKey": "landmine-rotation",
+    "name": "Landmine Rotation",
+    "equipment": [
+      "Barbell"
+    ],
+    "movementPatterns": [
+      "rotation"
+    ],
+    "primaryMuscles": [
+      "Abs",
+      "Core"
+    ],
+    "secondaryMuscles": [
+      "Front Delts"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:suitcase-carry",
+    "catalogKey": "suitcase-carry",
+    "name": "Suitcase Carry",
+    "equipment": [
+      "Dumbbell",
+      "Kettlebell"
+    ],
+    "movementPatterns": [
+      "carry"
+    ],
+    "primaryMuscles": [
+      "Core",
+      "Forearms"
+    ],
+    "secondaryMuscles": [
+      "Upper Back"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:overhead-carry",
+    "catalogKey": "overhead-carry",
+    "name": "Overhead Carry",
+    "equipment": [
+      "Dumbbell",
+      "Kettlebell"
+    ],
+    "movementPatterns": [
+      "carry"
+    ],
+    "primaryMuscles": [
+      "Core",
+      "Front Delts"
+    ],
+    "secondaryMuscles": [
+      "Upper Back"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:sled-push",
+    "catalogKey": "sled-push",
+    "name": "Sled Push",
+    "equipment": [
+      "Sled"
+    ],
+    "movementPatterns": [
+      "horizontal_push"
+    ],
+    "primaryMuscles": [
+      "Quads",
+      "Glutes"
+    ],
+    "secondaryMuscles": [
+      "Calves",
+      "Core"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:sled-pull",
+    "catalogKey": "sled-pull",
+    "name": "Sled Pull",
+    "equipment": [
+      "Sled"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Hamstrings",
+      "Glutes"
+    ],
+    "secondaryMuscles": [
+      "Upper Back",
+      "Core"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:sled-drag",
+    "catalogKey": "sled-drag",
+    "name": "Sled Drag",
+    "equipment": [
+      "Sled"
+    ],
+    "movementPatterns": [
+      "carry"
+    ],
+    "primaryMuscles": [
+      "Hamstrings",
+      "Glutes"
+    ],
+    "secondaryMuscles": [
+      "Calves",
+      "Core"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:cable-crossover",
+    "catalogKey": "cable-crossover",
+    "name": "Cable Crossover",
+    "equipment": [
+      "Cable"
+    ],
+    "movementPatterns": [
+      "horizontal_push"
+    ],
+    "primaryMuscles": [
+      "Chest"
+    ],
+    "secondaryMuscles": [],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  },
+  {
+    "catalogId": "t2:neutral-grip-pull-up",
+    "catalogKey": "neutral-grip-pull-up",
+    "name": "Neutral Grip Pull-Up",
+    "equipment": [
+      "Bodyweight"
+    ],
+    "movementPatterns": [
+      "vertical_pull"
+    ],
+    "primaryMuscles": [
+      "Lats",
+      "Biceps"
+    ],
+    "secondaryMuscles": [
+      "Upper Back",
+      "Forearms"
+    ],
+    "selectable": false,
+    "unavailableReason": "Recording measurements are not yet supported."
+  }
+]

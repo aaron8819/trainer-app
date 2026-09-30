@@ -1374,11 +1374,28 @@ model Trainer2SetResultRevision {
   version Int
   actionId String @db.Uuid
   result Json
+  assignment Json?
   reason String?
   recordedAt DateTime @default(now()) @db.Timestamptz(3)
   @@id([executionId, targetId, version])
   @@unique([accountId, actionId])
   @@unique([performedSetId, version])
+}
+
+model Trainer2ExerciseSwap {
+  accountId String
+  executionId String @db.Uuid
+  positionId String @db.Uuid
+  version Int
+  actionId String @db.Uuid
+  previousActionId String? @db.Uuid
+  instructionEpoch Int
+  contentHash String
+  content Json
+  canonicalContent String
+  recordedAt DateTime @default(now()) @db.Timestamptz(3)
+  @@id([executionId, positionId, version])
+  @@unique([accountId, actionId])
 }
 
 // Immutable authoritative finish and mandatory closure provenance.

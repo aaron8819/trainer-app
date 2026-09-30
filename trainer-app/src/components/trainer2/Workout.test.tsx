@@ -101,7 +101,7 @@ function activeFixture() {
   workout.positions[1].exercise.name = workout.positions[0].exercise.name;
   workout.positions[1].role = 'Accessory';
   workout.positions[0].targets[1].rir = '0';
-  return { executionId: randomUUID(), lifecycle: 'Open', results: [], initial: { accountId, occurrence: workout,
+  return { contentHash: 'a'.repeat(64), executionId: randomUUID(), lifecycle: 'Open', results: [], initial: { accountId, occurrence: workout,
     positions: workout.positions.map(p => ({ id: randomUUID(), sourcePositionId: p.id, targets: p.targets.map(t => ({ id: randomUUID(), sourceTargetId: t.id })) })) } } as unknown as ExecutionRead;
 }
 function ActiveHarness({ value, read }: { value: ExecutionRead; read: () => Promise<SavedSetResult[]> }) {

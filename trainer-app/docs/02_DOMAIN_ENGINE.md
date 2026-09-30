@@ -744,3 +744,7 @@ Plan Health derives direct/effective sets, frequency, coverage, redundancy, equi
 ## Read-only plan specification compiler proof
 
 `src/lib/engine/plan-specification-preview-v0.ts` owns the strict, non-persisted `PlanSpecificationPreviewV0` parser and executable compiler proof. V0 contains only ordered `slotId -> exercises[{ exerciseId, role, setCount }]` input and delegates construction of that version-1 shape to the same pure projection core used by custom hypertrophy acceptance. `src/lib/api/plan-specification-preview-v0.ts` adds supplied catalog-ID validation and existing accepted-seed normalization without database access. Existing Plan Health is intentionally omitted because it requires broader draft-only authoring semantics that do not execute in seed version 1. The preview is not imported by acceptance, runtime replay, or workout materialization. Exact fields, removed concepts, hash boundaries, fixture evidence, and the `PROVEN WITH LIMITATIONS` decision are documented in `docs/architecture/PLAN_SPECIFICATION_PREVIEW_V0.md`.
+
+## Trainer2 exercise swapping
+
+Pure Trainer2 exercise-swap eligibility and target derivation live in `src/lib/engine/trainer2/exercise-swap.ts`. Every replacement derives from immutable START, preserving compatible rep ranges and slot meaning. See [exercise swapping](architecture/trainer2/EXERCISE_SWAP.md).

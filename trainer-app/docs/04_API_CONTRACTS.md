@@ -615,3 +615,7 @@ The server editor loader derives structured Plan Health for the exact persisted 
 - `POST /api/plans/[id]/copy`: creates a new draft from a source plan's current version 2, 3, or 4 accepted revision. V4 copies preserve weekly prescriptions, placement identity, and measurement semantics losslessly; V2/V3 copies preserve settings, slot names/focus, exercise intent, and bounded `requiredExerciseClass`. The contract never infers semantic intent from exercise identity, and legacy plans without preserved intent are not copyable.
 
 Ready and Active custom plans have no in-place edit API. Activation remains the existing separate `/api/plans/[id]/activate` operation and retains the in-progress-workout guard. An owned Draft V2 is classified `VERSION_NOT_EXECUTABLE` and returns `409 code=PLAN_VERSION_NOT_EXECUTABLE` before active-plan selection.
+
+## Trainer2 exercise swapping
+
+Trainer2 adds read-only POST `executions/swap-exercise-preview` and accepted POST `executions/swap-exercise`. Strict schemas live in `src/lib/trainer2-contracts/exercise-swap.ts`; log/skip and finish review bind effective exercise state. See [exercise swapping](architecture/trainer2/EXERCISE_SWAP.md).

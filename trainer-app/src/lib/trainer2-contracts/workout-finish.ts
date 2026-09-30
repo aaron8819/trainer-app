@@ -1,11 +1,13 @@
 import type { SetSkip } from './skip-set';
+import { assignmentBinding, type ExerciseSwap } from './exercise-swap';
+import { currentAssignment } from '../engine/trainer2/exercise-swap';
 import { z } from 'zod';
 import { createDraftCommand, id } from './draft';
 import { hash } from './activation';
 import type { InitialPrescription } from './execution';
 import type { SavedSetResult } from './set-results';
 
-export const finishBinding = z.object({ contentHash: hash, results: z.array(z.object({
+export const finishBinding = z.object({ contentHash: hash, assignments: z.array(assignmentBinding).optional(), results: z.array(z.object({
   targetId: id, resultVersion: z.int().min(0), performedSetId: id.nullable(), skipActionId: id.optional(),
 }).strict().refine(r => (r.resultVersion === 0) === (r.performedSetId === null))).max(10000) }).strict();
 export const finishExecutionCommand = createDraftCommand.pick({ schemaVersion: true, actionId: true,
@@ -14,8 +16,8 @@ export const finishExecutionCommand = createDraftCommand.pick({ schemaVersion: t
   expected: finishBinding, intent: z.object({ acknowledgeUnrecorded: z.boolean() }).strict(),
 }).strict();
 export type FinishExecutionCommand = z.infer<typeof finishExecutionCommand>;
-export function reviewedResults(execution: { initial: InitialPrescription; contentHash: string; results: SavedSetResult[]; skips?: SetSkip[] }) {
-  return { contentHash: execution.contentHash, results: execution.initial.positions.flatMap(p => p.targets.map(t => {
+export function reviewedResults(execution: { initial: InitialPrescription; contentHash: string; results: SavedSetResult[]; skips?: SetSkip[]; swaps?: ExerciseSwap[] }) {
+  return { contentHash: execution.contentHash, ...(execution.swaps?.length ? { assignments: execution.initial.positions.map(p => currentAssignment(execution, p.id)).sort((a,b) => a.positionId.localeCompare(b.positionId)) } : {}), results: execution.initial.positions.flatMap(p => p.targets.map(t => {
     const r = execution.results.find(r => r.targetId === t.id);
     const skip = execution.skips?.find(s => s.targetId === t.id);
     return { ...(skip ? { skipActionId: skip.actionId } : {}), targetId: t.id, resultVersion: r?.version ?? 0, performedSetId: r?.performedSetId ?? null };

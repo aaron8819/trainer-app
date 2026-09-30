@@ -876,3 +876,7 @@ and runtime receipt must all retain one exact bound hash.
 The read-only V0 compiler proof is covered by `src/lib/api/plan-specification-preview-v0.test.ts`. It verifies the exact minimal input boundary, equality with the existing custom executable projection, stable ordering and exact role/set mapping, identifier-only normalization, rejected deferred fields, current accepted-seed validation/hash behavior, explicit Plan Health omission, no persistence or lifecycle dependencies, and non-consumption by targeted acceptance/runtime owners. Run the developer preview with `npm run preview:plan-specification-v0`; it is credential-free and performs no database reads or writes.
 
 Migration verification must use the repository migration-integrity suite and disposable/local PostgreSQL only. Do not enable the feature in a shared Development, Preview, or Production environment for browser testing; local manual testing requires an explicitly disposable database and a process-local rollout variable.
+
+## Trainer2 exercise swapping
+
+Exercise-swap policy coverage lives in `src/lib/engine/trainer2/exercise-swap.test.ts`. The registered `node node_modules/tsx/dist/cli.mjs scripts/test-trainer2-exercise-swap.ts --confirm-disposable` requires authorization for task-owned synthetic local PostgreSQL/browser writes; it creates and removes only its own services. See [exercise swapping](architecture/trainer2/EXERCISE_SWAP.md).

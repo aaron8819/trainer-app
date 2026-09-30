@@ -1,5 +1,7 @@
 'use client';
 import { finishFormId } from './FinishWorkout';
+import { currentAssignment, effectiveOccurrence } from '@/lib/engine/trainer2/exercise-swap';
+import { SwapExercise } from './SwapExercise';
 import { startingPounds } from '@/lib/engine/trainer2/logging-prefill';
 import { useEffect, useRef, useState } from 'react';
 import type { ExecutionRead } from '@/lib/trainer2-contracts/execution';
@@ -18,15 +20,22 @@ function queueResultLabel(result: NonNullable<SavedSetResult['result']>) {
   return [load, reps, result.rir === null ? null : `${result.rir} RIR`].filter(Boolean).join(' · ');
 }
 
-export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState, inputStates, refresh, refreshExecution }: {
+export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState, inputStates, refresh, refreshExecution, onSwapLock }: {
+  onSwapLock?: (locked: boolean) => void;
   execution: ExecutionRead; ownershipEpoch: number; locked: boolean;
   inputStates: Record<string, boolean>;
   onInputState: (id: string, blocked: boolean) => void;
   refreshExecution: () => Promise<ExecutionRead>;
   refresh: () => Promise<SavedSetResult[]>;
 }) {
+  const [swapActive, setSwapActive] = useState(false);
+  const swapLocks = useRef<Record<string, boolean>>({});
+  const lockCallbacks = useRef<Record<string, (value: boolean) => void>>({});
+  for (const p of execution.initial.positions) if (!lockCallbacks.current[p.id]) lockCallbacks.current[p.id] = value => {
+    swapLocks.current[p.id] = value; const any = Object.values(swapLocks.current).some(Boolean); setSwapActive(any); onSwapLock?.(any);
+  };
   const sets = execution.initial.positions.flatMap(owned => {
-    const position = execution.initial.occurrence.positions.find(p => p.id === owned.sourcePositionId)!;
+    const position = effectiveOccurrence(execution).positions.find(p => p.id === owned.sourcePositionId)!;
     return owned.targets.map((target, index) => ({ id: target.id, positionId: owned.id, position,
       target: position.targets.find(t => t.id === target.sourceTargetId)!, number: index + 1 }));
   });
@@ -38,6 +47,7 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
   const key = `trainer2-active-set:${execution.initial.accountId}:${execution.executionId}`;
   const timerKey = restKey(execution.initial.accountId, execution.executionId);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [inputEpoch, setInputEpoch] = useState(0);
   const [rest, setRest] = useState<RestState | null>(null);
   const panel = useRef<HTMLElement>(null), heading = useRef<HTMLHeadingElement>(null), timer = useRef<HTMLDivElement>(null);
   const movement = useRef(false);
@@ -105,7 +115,9 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
     <section ref={panel} aria-label="Active set" style={{ overflowAnchor: 'none' }} className="scroll-mt-4 relative rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
       <div className="mb-3"><div className="flex justify-between text-xs text-slate-500"><span className="font-semibold tracking-wide">ACTIVE SET</span><span>{count + skippedCount}/{sets.length} resolved</span></div><div role="progressbar" aria-valuenow={count + skippedCount} aria-valuemin={0} aria-valuemax={sets.length} aria-label="Resolved set progress" className="mt-2 h-1 overflow-hidden rounded-full bg-slate-100"><div className="h-full bg-black" style={{ width: `${(count + skippedCount) / sets.length * 100}%` }} /></div></div>
       <div className="flex items-start justify-between gap-3"><div><h3 ref={heading} tabIndex={-1} className="text-lg font-semibold outline-none">{active?.position.exercise.name ?? (count + skippedCount === sets.length ? 'Ready to finish' : 'Choose your next set')}</h3>
-      {active && <p className="text-xs text-slate-500">{active.position.role ?? 'Exercise'} · Set {active.number} of {active.position.targets.length}</p>}</div>{active && <button type="button" aria-expanded={historyOpen} className="min-h-9 shrink-0 rounded-full border border-slate-200 px-3 text-xs font-semibold" onClick={() => setHistoryOpen(v => !v)}>History</button>}</div>
+      {active && <p className="text-xs text-slate-500">{active.position.role ?? 'Exercise'} · Set {active.number} of {active.position.targets.length}</p>}</div><div className="flex items-start gap-2">      {execution.initial.positions.map(p => <span key={p.id} hidden={active?.positionId !== p.id}><SwapExercise execution={execution} positionId={p.id} ownershipEpoch={ownershipEpoch} locked={locked}
+        refresh={refreshExecution} onLock={lockCallbacks.current[p.id]} onChanged={() => { setInputEpoch(e => e+1); setHistoryOpen(false); setTimeout(reveal, 0); }} /></span>)}
+{active && <button type="button" aria-expanded={historyOpen} className="min-h-9 shrink-0 rounded-full border border-slate-200 px-3 text-xs font-semibold" onClick={() => setHistoryOpen(v => !v)}>History</button>}</div></div>
       {!active && count + skippedCount === sets.length && <button type="submit" form={finishFormId(execution.executionId)}
         disabled={locked || sets.some(s => inputStates[s.id] !== false)}
         className="mt-3 min-h-11 rounded-xl bg-black px-5 py-3 font-semibold text-white disabled:opacity-40">Finish workout</button>}
@@ -124,12 +136,12 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
 
         </div>
       </>}
-      {sets.map(s => <SetResultRow key={s.id} active={selected === s.id} activePanel accountId={execution.initial.accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
+      {sets.map(s => <SetResultRow key={`${s.id}:${currentAssignment(execution, s.positionId).version}:${inputEpoch}`} assignment={currentAssignment(execution, s.positionId)} active={selected === s.id} activePanel accountId={execution.initial.accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
         targetId={s.id} number={s.number} saved={execution.results.find(r => r.targetId === s.id)} prescription={s.target} exercise={s.position.exercise}
         firstSetLoad={execution.firstSetLoads?.find(h => h.positionId === s.position.id)?.result}
         preceding={sets.filter(p => p.positionId === s.positionId && p.number < s.number).reverse().flatMap(p => execution.results.filter(r => r.targetId === p.id))}
         skipped={execution.skips?.find(k => k.targetId === s.id)} refreshExecution={refreshExecution} onReturn={() => select(firstUnrecorded(execution.results), true)}
-        locked={locked} onInputState={onInputState} refresh={refresh} onRecorded={recorded} onSubmission={() => onSubmission(s.id)} />)}
+        locked={locked || swapActive} onInputState={onInputState} refresh={refresh} onRecorded={recorded} onSubmission={() => onSubmission(s.id)} />)}
     </section>
     <section aria-label="Exercise queue" className="mt-4 space-y-3 border-t border-slate-100 pt-4"><div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"><h3 className="font-semibold">Exercise queue</h3><span className="text-xs tabular-nums text-slate-500">{count} logged · {skippedCount} skipped · {sets.length - count - skippedCount} remaining</span></div>
       {groups.map(group => <details key={group.id} open className="space-y-2"><summary className="min-h-10 cursor-pointer py-2 text-xs font-semibold uppercase tracking-wider text-slate-500">{group.role}</summary>

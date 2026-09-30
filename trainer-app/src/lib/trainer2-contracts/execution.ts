@@ -1,4 +1,5 @@
 import { setSkip } from './skip-set';
+import { exerciseSwap } from './exercise-swap';
 import { occurrenceResolutionRead, skipBinding } from './skip-occurrence';
 import { discardFact } from './discard-execution';
 import { finishFact, reviewedResults, unrecordedTargets } from './workout-finish';
@@ -39,6 +40,7 @@ export const initialPrescription = z.object({ schemaVersion: z.literal(1), kind:
 export type InitialPrescription = z.infer<typeof initialPrescription>;
 const previousPerformance = z.object({ positionId: id, sourcePositionId: id, executionId: id, workoutName: z.string(), finishedAt: z.iso.datetime(), results: z.array(savedSetResult).min(1) }).strict();
 export const executionRead = z.object({ executionId: id, lifecycle: z.enum(['Open', 'Finished', 'Discarded']), discard: discardFact.nullable().optional(), finish: finishFact.nullable(),
+  swaps: z.array(exerciseSwap).optional(),
   skips: z.array(setSkip).optional(),
   firstSetLoads: z.array(z.object({ positionId: id, executionId: id, result: savedSetResult }).strict()).optional(),
   previous: z.array(previousPerformance).optional(), contentHash: hash, initial: initialPrescription, results: z.array(savedSetResult), history: z.array(savedSetResult).optional() }).strict().refine(v =>
@@ -60,11 +62,35 @@ export async function validateExecutionRead(input: unknown, accountId: string, e
     value.skips?.some(s => s.executionId !== value.executionId || !value.initial.positions.some(p => p.targets.some(t => t.id === s.targetId))) ||
     (value.lifecycle === 'Discarded' && value.skips?.length)) throw new Error('Invalid skip history');
   const history = value.history ?? value.results;
+  for (const owned of value.initial.positions) {
+    const chain = (value.swaps ?? []).filter(s => s.positionId === owned.id).sort((a,b) => a.version - b.version);
+    for (const [i, swap] of chain.entries()) {
+      const original = value.initial.occurrence.positions.find(p => p.id === owned.sourcePositionId)!;
+      if (swap.executionId !== value.executionId || swap.version !== i + 1 || swap.previousActionId !== (chain[i-1]?.actionId ?? null) ||
+        (swap.content.restoreOriginal && canonicalJson(swap.content.exercise) !== canonicalJson(original.exercise)) ||
+        swap.content.positionId !== owned.id || swap.contentHash !== await digest(swap.content) ||
+        swap.content.targets.length !== owned.targets.length || swap.content.targets.some((t,j) => {
+          const start = original.targets[j];
+          return t.id !== owned.targets[j].id || t.classification !== start.classification || t.required !== start.required ||
+            t.rir !== start.rir || t.restSeconds !== start.restSeconds || (swap.content.restoreOriginal &&
+              (canonicalJson(t.reps) !== canonicalJson(start.reps) || canonicalJson(t.measurement) !== canonicalJson(start.measurement)));
+        })) throw new Error('Invalid exercise change history');
+    }
+    for (const result of history.filter(r => owned.targets.some(t => t.id === r.targetId))) {
+      const binding = result.assignment;
+      if (chain.length && (!binding || binding.version !== chain.length)) throw new Error('Invalid performed exercise');
+      if (binding && (binding.positionId !== owned.id || (binding.version === 0 ? binding.contentHash !== value.contentHash :
+        !chain.some(s => s.version === binding.version && s.actionId === binding.actionId && s.contentHash === binding.contentHash))))
+        throw new Error('Invalid performed exercise');
+    }
+  }
+  if (value.swaps?.some(s => !value.initial.positions.some(p => p.id === s.positionId)) ||
+    new Set(value.swaps?.map(s => s.actionId)).size !== (value.swaps?.length ?? 0)) throw new Error('Invalid exercise change history');
   if (value.history) {
     if (history.some(r => r.executionId !== value.executionId || !value.results.some(c => c.targetId === r.targetId))) throw new Error('Invalid result history');
     for (const current of value.results) {
       const chain = history.filter(r => r.targetId === current.targetId).sort((a, b) => a.version - b.version);
-      if (chain.length !== current.version || chain.some((r, i) => r.version !== i + 1 || r.performedSetId !== current.performedSetId) ||
+      if (chain.length !== current.version || chain.some((r, i) => r.version !== i + 1 || r.performedSetId !== current.performedSetId || canonicalJson(r.assignment ?? null) !== canonicalJson(current.assignment ?? null)) ||
         canonicalJson(chain.at(-1)) !== canonicalJson(current)) throw new Error('Invalid result history');
     }
   }

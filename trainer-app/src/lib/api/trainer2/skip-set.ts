@@ -1,4 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
+import { currentAssignment } from '../../engine/trainer2/exercise-swap';
+import { canonicalJson } from './integrity';
 import { setSkip, skipSetCommand } from '../../trainer2-contracts/skip-set';
 import { acceptCommand, CommandFailure } from './command';
 import { readExecution } from './execution';
@@ -20,6 +22,10 @@ export async function skipSet(db: PrismaClient, principal: ServerPrincipal, inpu
     if (!execution.initial.positions.some(p => p.targets.some(t => t.id === command.target.targetId)))
       throw new CommandFailure('SET_NOT_FOUND');
     if (execution.results.some(r => r.targetId === command.target.targetId)) throw new CommandFailure('SET_RESULT_EXISTS', true);
+    const position = execution.initial.positions.find(p => p.targets.some(t => t.id === command.target.targetId))!;
+    const assignment = currentAssignment(execution, position.id);
+    if (command.expected.assignment ? canonicalJson(command.expected.assignment) !== canonicalJson(assignment) : assignment.version !== 0)
+      throw new CommandFailure('STALE_EXERCISE', true);
     if (execution.skips?.some(s => s.targetId === command.target.targetId)) throw new CommandFailure('SET_ALREADY_SKIPPED', true);
     await tx.$executeRaw`INSERT INTO "Trainer2SetSkip" ("accountId", "executionId", "targetId", "actionId")
       VALUES (${principal.accountId}, ${command.target.executionId}::uuid, ${command.target.targetId}::uuid, ${command.actionId}::uuid)`;

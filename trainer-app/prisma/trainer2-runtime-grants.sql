@@ -94,3 +94,9 @@ GRANT SELECT ON "Trainer2SetSkip" TO trainer2_draft_reader, trainer2_draft_runti
 GRANT INSERT ON "Trainer2SetSkip" TO trainer2_draft_runtime;
 CREATE POLICY trainer2_read ON "Trainer2SetSkip" FOR SELECT TO trainer2_draft_reader USING (true);
 CREATE POLICY trainer2_write ON "Trainer2SetSkip" TO trainer2_draft_runtime USING (true) WITH CHECK (true);
+
+GRANT SELECT ON "Trainer2ExerciseSwap" TO trainer2_draft_reader, trainer2_draft_runtime;
+GRANT INSERT ON "Trainer2ExerciseSwap" TO trainer2_draft_runtime;
+CREATE POLICY trainer2_read ON "Trainer2ExerciseSwap" FOR SELECT TO trainer2_draft_reader USING (true);
+CREATE POLICY trainer2_write ON "Trainer2ExerciseSwap" TO trainer2_draft_runtime USING (true) WITH CHECK (true);
+GRANT EXECUTE ON FUNCTION trainer2_assignment(uuid,uuid),trainer2_assignments(uuid) TO trainer2_draft_reader,trainer2_draft_runtime;

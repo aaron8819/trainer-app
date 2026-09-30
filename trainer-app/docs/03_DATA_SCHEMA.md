@@ -420,3 +420,7 @@ The evidence fingerprint covers workout identity/status/revision, persisted sess
 No schema or enum is added. A versioned `sessionCapacityReductionManifest` may appear only inside compatibility `slotPlanSeedJson.acceptedPlannerIntent`; immutable revision `seedPayload` and executable row fields remain unchanged. The manifest binds revision 1, transform version, week/phase/slot, executable-row hash, exact planned/short counts, omission class/order, and protection proof.
 
 Created workouts persist only retained rows. The pre-reduction plan remains in `selectionMetadata.sessionAuditSnapshot.generated`; the original receipt remains unchanged; `selectionMetadata.runtimeEditReconciliation.reduce_session_capacity` stores exact deliberate omissions and conservative `ignore` directives. Omitted rows are absent from incomplete-work projection and are not represented as skipped logs.
+
+## Trainer2 exercise swapping
+
+Forward migration `20260930010000_trainer2_exercise_swap` adds append-only `Trainer2ExerciseSwap` and nullable performed-result assignment bindings. Existing evidence remains version zero; immutable START and accepted plans are untouched. See [exercise swapping](architecture/trainer2/EXERCISE_SWAP.md) and `prisma/schema.prisma`.

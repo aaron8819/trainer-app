@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { currentAssignment } from '../../engine/trainer2/exercise-swap';
+import { canonicalJson } from './integrity';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { setResultCommand, historicalCorrectionCommand, type SetResultCommand } from '../../trainer2-contracts/set-results';
 import { acceptCommand, CommandFailure } from './command';
@@ -25,6 +27,10 @@ async function appendResult(db: PrismaClient, principal: ServerPrincipal, input:
       execution.skips?.find(s => s.targetId === command.target.targetId)?.actionId !== command.expected.skipActionId)
       throw new CommandFailure('STALE_SET_SKIP', true);
     const current = execution.results.find(r => r.targetId === command.target.targetId);
+    const position = execution.initial.positions.find(p => p.targets.some(t => t.id === command.target.targetId))!;
+    const assignment = currentAssignment(execution, position.id);
+    if (command.commandType === 'RecordSetResult' && (command.expected.assignment ? canonicalJson(command.expected.assignment) !== canonicalJson(assignment) : assignment.version !== 0))
+      throw new CommandFailure('STALE_EXERCISE', true);
     if (historical && !current?.result) throw new CommandFailure('HISTORICAL_RESULT_REQUIRED', true);
     if ((current?.version ?? 0) !== command.expected.resultVersion ||
       (command.commandType !== 'RecordSetResult' && current?.performedSetId !== command.expected.performedSetId))
@@ -32,7 +38,7 @@ async function appendResult(db: PrismaClient, principal: ServerPrincipal, input:
     const performedSetId = current?.performedSetId ?? randomUUID(), version = (current?.version ?? 0) + 1;
     // Every semantic check precedes this append. Any later failure rolls back action, revision and sequence.
     await tx.trainer2SetResultRevision.create({ data: { ...command.target, accountId: principal.accountId,
-      performedSetId, version, actionId: command.actionId, result: command.intent.result ?? Prisma.JsonNull,
+      performedSetId, version, actionId: command.actionId, assignment: current ? current.assignment ?? Prisma.DbNull : assignment, result: command.intent.result ?? Prisma.JsonNull,
       reason: command.commandType !== 'RecordSetResult' ? command.intent.reason ?? null : null } });
     return { ...command.target, performedSetId, version };
   });

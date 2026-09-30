@@ -45,7 +45,7 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
   const generation = useRef(0), inFlight = useRef(false), latestNextSequence = useRef('0');
   const storageKey = `trainer2-start:${accountId}:${planId}`;
   const url = (id: string) => `/trainer2/dev/executions/${id}`;
-  async function load(token = ++generation.current, expectedSkip?: SkipOccurrenceCommand, skipCompleted?: boolean) {
+  async function load(token = ++generation.current, expectedSkip?: SkipOccurrenceCommand, skipCompleted?: boolean, publish = true) {
     setFailed(false);
     try {
       const response = await fetchWithRecovery(executionId ? `/api/trainer2/executions/${executionId}` : `/api/trainer2/plans/${planId}/next`, { cache: 'no-store' }, () => token === generation.current);
@@ -53,7 +53,7 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
       if (!response.ok) throw new Error(body.error === 'INVALID_START_SNAPSHOT' ? 'The saved workout prescription is unavailable. It cannot be rebuilt safely.' : 'Could not load this workout. Reload to try again.');
       if (executionId) {
         const value = await validateExecutionRead(body, accountId, executionId);
-        if (token === generation.current) setExecution(current => current && current.lifecycle !== 'Open' && value.lifecycle === 'Open' ? current : current ? { ...value, skips: [...(value.skips ?? []), ...(current.skips ?? []).filter(p => !value.skips?.some(s => s.targetId === p.targetId))], history: [...(value.history ?? []), ...(current.history ?? []).filter(p => !value.history?.some(r => r.targetId === p.targetId && r.version === p.version))], results: value.results.map(r => { const prior = current.results.find(p => p.targetId === r.targetId); return prior && prior.version > r.version ? prior : r; }).concat(current.results.filter(p => !value.results.some(r => r.targetId === p.targetId))) } : value);
+        if (publish && token === generation.current) setExecution(current => current && current.lifecycle !== 'Open' && value.lifecycle === 'Open' ? current : current ? { ...value, skips: [...(value.skips ?? []), ...(current.skips ?? []).filter(p => !value.skips?.some(s => s.targetId === p.targetId))], history: [...(value.history ?? []), ...(current.history ?? []).filter(p => !value.history?.some(r => r.targetId === p.targetId && r.version === p.version))], results: value.results.map(r => { const prior = current.results.find(p => p.targetId === r.targetId); return prior && prior.version > r.version ? prior : r; }).concat(current.results.filter(p => !value.results.some(r => r.targetId === p.targetId))) } : value);
         if (token === generation.current) setMessage('');
         return value;
       } else {
@@ -138,7 +138,7 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
         const owned = execution.initial.positions.find(p => p.sourcePositionId === positionId)!.targets.find(t => t.sourceTargetId === targetId)!;
         const refresh = async () => { const value = await load(); if (!value || !('results' in value)) throw new Error('Read failed'); return value.results; };
         const saved = execution.results.find(r => r.targetId === owned.id);
-        return <Fragment key={owned.id}>{execution.skips?.some(s => s.targetId === owned.id) && <p className="text-sm text-slate-600">{saved ? 'Previously skipped; subsequently recorded. See result history.' : 'Explicitly skipped · no performed result.'}</p>}<SetResultRow key="ongoing" accountId={accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
+        return <Fragment key={owned.id}>{execution.finish?.unknownTargetIds.includes(owned.id) && !saved?.result && !execution.skips?.some(s => s.targetId === owned.id) && <p className="text-sm text-slate-600">Skipped at finish · no performed result.</p>}{execution.skips?.some(s => s.targetId === owned.id) && <p className="text-sm text-slate-600">{saved ? 'Previously skipped; subsequently recorded. See result history.' : 'Explicitly skipped · no performed result.'}</p>}<SetResultRow key="ongoing" accountId={accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
           readOnly={execution.lifecycle !== 'Open'} retainedOnly={execution.lifecycle !== 'Open'} locked={finishLocked || discardLocked} onInputState={onInputState} targetId={owned.id} number={number} saved={saved} prescription={execution.initial.occurrence.positions.find(p => p.id === positionId)!.targets.find(t => t.id === targetId)} exercise={execution.initial.occurrence.positions.find(p => p.id === positionId)!.exercise} refresh={refresh} />
           {execution.lifecycle === 'Finished' && <SetResultRow key="historical" accountId={accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
             historical history={execution.history?.filter(r => r.targetId === owned.id)} finishVersion={execution.finish?.expected.results.find(r => r.targetId === owned.id)?.resultVersion}
@@ -146,7 +146,7 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
       }} />}
       <FinishWorkout key={execution.executionId} execution={execution} ownershipEpoch={ownershipEpoch}
         blocked={discardLocked || execution.initial.positions.some(p => p.targets.some(t => inputStates[t.id] !== false))}
-        onFinished={() => { try { localStorage.removeItem(restKey(accountId, execution.executionId)); sessionStorage.setItem('trainer2-finished:' + accountId + ':' + execution.initial.planId, execution.executionId); } catch { /* Completion is already confirmed; navigation remains safe. */ } window.location.assign(trainingUrl(execution.initial.planId)); }} onLock={setFinishLocked} checkResults={async () => { if (!await load()) throw new Error('Read failed'); }} refresh={async () => { const value = await load(); if (!value || value.lifecycle !== 'Finished') throw new Error('Completion read failed'); }} />
+        onFinished={() => { try { localStorage.removeItem(restKey(accountId, execution.executionId)); sessionStorage.setItem('trainer2-finished:' + accountId + ':' + execution.initial.planId, execution.executionId); } catch { /* Completion is already confirmed; navigation remains safe. */ } window.location.assign(trainingUrl(execution.initial.planId)); }} onLock={setFinishLocked} checkResults={async () => { if (!await load()) throw new Error('Read failed'); }} refresh={async () => { const value = await load(undefined, undefined, undefined, false); if (!value || value.lifecycle !== 'Finished') throw new Error('Completion read failed'); }} />
       <DiscardWorkout key={`discard:${execution.executionId}`} execution={execution} ownershipEpoch={ownershipEpoch}
         blocked={finishLocked || execution.initial.positions.some(p => p.targets.some(t => inputStates[t.id] !== false))}
         onLock={setDiscardLocked} checkResults={async () => { if (!await load()) throw new Error('Read failed'); }} refresh={async () => { const value = await load(); if (!value || value.lifecycle !== 'Discarded') throw new Error('Discard read failed'); }} />

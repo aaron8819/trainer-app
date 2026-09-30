@@ -6,6 +6,8 @@ import { canonicalJson } from '@/lib/trainer2-contracts/canonical-json';
 import { control } from './DraftEditor';
 import { fetchWithRecovery } from './request-recovery';
 
+export const finishFormId = (executionId: string) => `trainer2-finish-form-${executionId}`;
+
 export function FinishWorkout({ execution, ownershipEpoch, blocked, refresh, checkResults, onLock, onFinished }: {
   execution: ExecutionRead; ownershipEpoch: number; blocked: boolean;
   onFinished?: () => void; checkResults?: () => Promise<unknown>; refresh: () => Promise<unknown>; onLock: (locked: boolean) => void;
@@ -13,7 +15,7 @@ export function FinishWorkout({ execution, ownershipEpoch, blocked, refresh, che
   const [review, setReview] = useState<ExecutionRead | null>(null), [pending, setPending] = useState<FinishExecutionCommand | null>(null);
   const [needsCheck, setNeedsCheck] = useState(false);
   const [message, setMessage] = useState(''), [busy, setBusy] = useState(false), [ready, setReady] = useState(false);
-  const alive = useRef(false), flight = useRef(false);
+  const alive = useRef(false), flight = useRef(false), leaving = useRef(false);
   const confirmation = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!review) return;
@@ -52,40 +54,47 @@ export function FinishWorkout({ execution, ownershipEpoch, blocked, refresh, che
       if (outcome.status === 'Accepted') {
         // A replay is historical. Load authoritative completion before clearing delivery state.
         await refresh(); if (!alive.current) return;
-        sessionStorage.removeItem(key); setPending(null); setReview(null); onLock(false); setMessage('Workout finished.'); onFinished?.();
+        sessionStorage.removeItem(key);
+        if (onFinished) { leaving.current = true; onFinished(); return; }
+        setPending(null); setReview(null); onLock(false); setMessage('Workout finished.');
       } else {
         sessionStorage.removeItem(key); setPending(null); setReview(null); onLock(false);
         setNeedsCheck(true); setMessage('Finish was not accepted. Reload saved results, review them, then choose Finish workout again. Your input is retained.');
       }
     } catch { if (alive.current) setMessage('Finish could not be confirmed. Check finish again with the original request.'); }
-    finally { flight.current = false; if (alive.current) setBusy(false); }
+    finally { flight.current = false; if (alive.current && !leaving.current) setBusy(false); }
   }
   function begin() {
     if (blocked || !ready || pending || busy || execution.lifecycle !== 'Open') return;
     // Snapshot stays fixed through refresh, including same-value newer versions.
-    setReview(execution); onLock(true); setMessage('');
+    if (unrecordedTargets(execution).some(t => !t.skipped)) {
+      setReview(execution); onLock(true); setMessage('');
+    } else void finish(execution);
+  }
+  function finish(snapshot: ExecutionRead) {
+    void submit({ schemaVersion: 1, actionId: crypto.randomUUID(), deviceId: crypto.randomUUID(), originatingAccountId: accountId,
+      ownershipEpoch, dependsOn: [], commandType: 'FinishExecution', target: { executionId },
+      expected: reviewedResults(snapshot), intent: { acknowledgeUnrecorded: unrecordedTargets(snapshot).length > 0 } });
   }
   function confirm() {
     if (!review || blocked || busy) return;
-    void submit({ schemaVersion: 1, actionId: crypto.randomUUID(), deviceId: crypto.randomUUID(), originatingAccountId: accountId,
-      ownershipEpoch, dependsOn: [], commandType: 'FinishExecution', target: { executionId },
-      expected: reviewedResults(review), intent: { acknowledgeUnrecorded: unrecordedTargets(review).length > 0 } });
+    finish(review);
   }
-  const unknown = review ? unrecordedTargets(review) : [];
+  const unknown = review ? unrecordedTargets(review).filter(t => !t.skipped) : [];
   if (execution.lifecycle !== 'Open' && !pending && !message) return null;
-  return <section className="space-y-3 rounded-xl border border-slate-300 p-4" aria-label="Finish workout">
+  return <form id={finishFormId(executionId)} onSubmit={e => { e.preventDefault(); begin(); }} className="space-y-3 rounded-xl border border-slate-300 p-4" aria-label="Finish workout">
     {message && <p role="status">{message}</p>}
-    {needsCheck && checkResults && <button className={control} disabled={busy} onClick={async () => {
+    {needsCheck && checkResults && <button type="button" className={control} disabled={busy} onClick={async () => {
       setBusy(true); setMessage('Checking…');
       try { await checkResults(); setNeedsCheck(false); setMessage('Results are up to date. Review them before making a new decision.'); }
       catch { setMessage('Could not check saved results. Try again when connected.'); }
       finally { setBusy(false); }
     }}>Review latest values</button>}
-    {pending ? <button className={control} disabled={busy} onClick={() => void submit(pending)}>Check finish again</button> :
-      execution.lifecycle === 'Open' && (review ? <><p>{unknown.length ? `${unknown.filter(t => t.skipped).length} explicitly skipped; ${unknown.filter(t => !t.skipped && t.required).length} required and ${unknown.filter(t => !t.skipped && !t.required).length} optional sets untouched. None will be marked performed.` : 'All prescribed sets have saved results.'}</p>
-        <p>Finish this workout and resolve its planned occurrence? Recorded results can later be corrected without reopening. The next workout will not start automatically.</p>
-        <button ref={confirmation} className={control} disabled={blocked || busy} onClick={confirm}>{unknown.length ? 'Finish with unrecorded sets' : 'Confirm finish'}</button>
-        <button className={control} disabled={busy} onClick={() => { setReview(null); onLock(false); }}>Keep working</button></> :
-        <button className="rounded-xl bg-black px-5 py-3 font-semibold text-white" disabled={blocked || !ready} onClick={begin}>Finish workout</button>)}
-  </section>;
+    {pending ? <button type="button" className={control} disabled={busy} onClick={() => void submit(pending)}>{busy ? 'Finishing…' : 'Check finish again'}</button> :
+      execution.lifecycle === 'Open' && (review ? <><p>{unknown.length} {unknown.length === 1 ? 'set is' : 'sets are'} still unresolved.</p>
+        <p>Finish anyway to skip the remaining sets, or keep working. No performed results will be added.</p>
+        <button type="button" ref={confirmation} className={control} disabled={blocked || busy} onClick={confirm}>Finish anyway</button>
+        <button type="button" className={control} disabled={busy} onClick={() => { setReview(null); onLock(false); }}>Keep working</button></> :
+        <button type="submit" className="rounded-xl bg-black px-5 py-3 font-semibold text-white" disabled={blocked || !ready}>Finish workout</button>)}
+  </form>;
 }

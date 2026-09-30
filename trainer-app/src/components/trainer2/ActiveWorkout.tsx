@@ -1,4 +1,5 @@
 'use client';
+import { finishFormId } from './FinishWorkout';
 import { startingPounds } from '@/lib/engine/trainer2/logging-prefill';
 import { useEffect, useRef, useState } from 'react';
 import type { ExecutionRead } from '@/lib/trainer2-contracts/execution';
@@ -49,8 +50,7 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
   function reveal() {
     const element = panel.current; if (!element) return;
     const rect = element.getBoundingClientRect(), viewport = window.visualViewport;
-    const timerVisible = Boolean(document.querySelector('[aria-label="Rest timer"]'));
-    const top = (viewport?.offsetTop ?? 0) + (timerVisible ? 88 : 16), bottom = (viewport?.height ?? window.innerHeight) + (viewport?.offsetTop ?? 0) - 72;
+    const top = (viewport?.offsetTop ?? 0) + 16, bottom = (viewport?.height ?? window.innerHeight) + (viewport?.offsetTop ?? 0) - 72;
     // Focus the heading, never a numeric input: moving sets must not open the keyboard.
     heading.current?.focus({ preventScroll: true });
     if (rect.top < top || rect.top > bottom - 100 || (rect.bottom > bottom && rect.height < bottom - top)) {
@@ -100,10 +100,13 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
   }
   return <>
     <RestBar storageKey={timerKey} state={rest} onChange={setRest} />
-    <section ref={panel} aria-label="Active set" style={{ overflowAnchor: 'none' }} className="scroll-mt-24 relative rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
+    <section ref={panel} aria-label="Active set" style={{ overflowAnchor: 'none' }} className="scroll-mt-4 relative rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
       <div className="mb-3"><div className="flex justify-between text-xs text-slate-500"><span className="font-semibold tracking-wide">ACTIVE SET</span><span>{count + skippedCount}/{sets.length} resolved</span></div><div role="progressbar" aria-valuenow={count + skippedCount} aria-valuemin={0} aria-valuemax={sets.length} aria-label="Resolved set progress" className="mt-2 h-1 overflow-hidden rounded-full bg-slate-100"><div className="h-full bg-black" style={{ width: `${(count + skippedCount) / sets.length * 100}%` }} /></div></div>
       <div className="flex items-start justify-between gap-3"><div><h3 ref={heading} tabIndex={-1} className="text-lg font-semibold outline-none">{active?.position.exercise.name ?? (count + skippedCount === sets.length ? 'Ready to finish' : 'Choose your next set')}</h3>
       {active && <p className="text-xs text-slate-500">{active.position.role ?? 'Exercise'} · Set {active.number} of {active.position.targets.length}</p>}</div>{active && <button type="button" aria-expanded={historyOpen} className="min-h-9 shrink-0 rounded-full border border-slate-200 px-3 text-xs font-semibold" onClick={() => setHistoryOpen(v => !v)}>History</button>}</div>
+      {!active && count + skippedCount === sets.length && <button type="submit" form={finishFormId(execution.executionId)}
+        disabled={locked || sets.some(s => inputStates[s.id] !== false)}
+        className="mt-3 min-h-11 rounded-xl bg-black px-5 py-3 font-semibold text-white disabled:opacity-40">Finish workout</button>}
       {active && <>
         <p className="mt-1 h-4 text-xs font-semibold text-amber-800">{execution.results.some(r => r.targetId === active.id) ? `Editing recorded set ${active.number}` : ''}</p>
         <p className="mt-1 text-sm text-slate-600">Starting target · {targetLabel({ ...active.target, measurement: null })}{active.target.measurement && <> · {startingPounds(active.target.measurement) === null ? 'Bodyweight' : `${startingPounds(active.target.measurement)} lb suggested from prescription`}</>}{!active.target.measurement && active.number === 1 && execution.firstSetLoads?.some(h => h.positionId === active.position.id) && ' · Last time'}</p>
@@ -138,7 +141,7 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
               const skipped = execution.skips?.some(k => k.targetId === s.id) && !execution.results.some(r => r.targetId === s.id);
               const saved = execution.results.find(r => r.targetId === s.id);
               return <button key={s.id} aria-label={`${position.exercise.name}, set ${s.number}, ${saved?.result ? 'recorded' : skipped ? 'skipped' : 'unrecorded'}${inputStates[s.id] ? ', retained input' : ''}`} aria-pressed={selected === s.id}
-                className={`min-h-11 rounded-lg border px-3 py-2 text-left text-sm tabular-nums transition-colors ${selected === s.id ? 'border-black bg-black font-medium text-white' : saved?.result ? 'border-emerald-200 bg-emerald-50/40 text-emerald-900 hover:bg-emerald-50' : skipped ? 'border-dashed border-slate-400 text-slate-600 hover:bg-slate-50' : 'border-slate-300 text-slate-700 hover:bg-slate-50'}`} onClick={() => select(s.id, true)}><span className="font-semibold">{s.number}</span><span className="ml-1.5">· {saved?.result ? queueResultLabel(saved.result) : skipped ? 'Skipped' : 'To log'}</span>{inputStates[s.id] ? ' •' : ''}</button>;
+                className={`min-h-11 rounded-lg border px-3 py-2 text-left text-sm tabular-nums transition-colors ${selected === s.id ? 'border-black bg-black font-medium text-white' : saved?.result ? 'border-emerald-200 bg-emerald-50/40 text-emerald-900 hover:bg-emerald-50' : skipped ? 'border-dashed border-slate-400 text-slate-600 hover:bg-slate-50' : 'border-slate-300 text-slate-700 hover:bg-slate-50'}`} onClick={() => select(s.id, true)}><span className="font-semibold">{s.number}</span><span className="ml-1.5">{saved?.result ? '· ' + queueResultLabel(saved.result) : skipped ? '· Skipped' : <span aria-hidden="true" className="inline-block h-3 w-3 rounded-full border-2 border-current align-middle" />}</span>{inputStates[s.id] ? ' •' : ''}</button>;
             })}</div>
           </div>;
         })}

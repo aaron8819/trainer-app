@@ -281,3 +281,18 @@ it('keeps legacy sparse results compact in the exercise queue', () => {
   expect(screen.getByRole('button', { name: /, set 1, recorded/ })).toHaveTextContent(/1· 3 RIR/);
   expect(screen.getByRole('button', { name: /, set 1, recorded/ })).not.toHaveTextContent('unspecified');
 });
+
+it('offers Finish in the ready card for a mix of logged and explicitly skipped sets', async () => {
+  const value = activeFixture();
+  const targets = value.initial.positions.flatMap(p => p.targets);
+  value.results = targets.slice(0, -1).map(t => ({ executionId: value.executionId, targetId: t.id,
+    performedSetId: randomUUID(), version: 1, actionId: randomUUID(), recordedAt: new Date().toISOString(),
+    reason: null, result: { reps: { value: 8, basis: 'total' }, measurement: null, rir: '3' } }));
+  value.skips = [{ executionId: value.executionId, targetId: targets.at(-1)!.id, actionId: randomUUID(), skippedAt: new Date().toISOString() }];
+  render(<ActiveHarness value={value} read={vi.fn()} />);
+  const finish = await screen.findByRole('button', { name: 'Finish workout' });
+  await waitFor(() => expect(finish).toBeEnabled());
+  expect(screen.getByRole('heading', { name: 'Ready to finish' })).toBeVisible();
+  expect(finish).toHaveAttribute('form', `trainer2-finish-form-${value.executionId}`);
+  expect(screen.queryByText('To log')).toBeNull();
+});

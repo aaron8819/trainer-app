@@ -348,8 +348,15 @@ describe('Logger correction regressions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
     fireEvent.click(screen.getByRole('button', { name: 'Decrease load by 10 lb' }));
     expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('');
-    fireEvent.click(screen.getByRole('button', { name: '5 RIR' }));
-    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('5');
+    fireEvent.click(screen.getByRole('button', { name: '4 RIR' }));
+    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('4');
+    fireEvent.click(screen.getByRole('button', { name: 'Decrease RIR by 0.5' }));
+    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('3.5');
+    fireEvent.click(screen.getByRole('button', { name: 'Increase RIR by 0.5' }));
+    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('4');
+    fireEvent.click(screen.getByRole('button', { name: '0 RIR' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Decrease RIR by 0.5' }));
+    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('0');
   });
   it('does not skip an incompatible preceding result for an older compatible result', async () => {
     render(<SetResultRow {...ui} number={3} preceding={[{ ...prior, result: { ...prior.result, measurement: { ...m, convention: 'perImplement' } } }, prior]} />);

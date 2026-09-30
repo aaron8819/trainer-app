@@ -39,7 +39,7 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
   const timerKey = restKey(execution.initial.accountId, execution.executionId);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [rest, setRest] = useState<RestState | null>(null);
-  const panel = useRef<HTMLElement>(null), heading = useRef<HTMLHeadingElement>(null);
+  const panel = useRef<HTMLElement>(null), heading = useRef<HTMLHeadingElement>(null), timer = useRef<HTMLDivElement>(null);
   const movement = useRef(false);
   function select(id: string | null, move = false) {
     selection.current = { id, epoch: selection.current.epoch + 1 };
@@ -49,7 +49,9 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
   }
   function reveal() {
     const element = panel.current; if (!element) return;
-    const rect = element.getBoundingClientRect(), viewport = window.visualViewport;
+    // Include the visible, non-sticky timer in deliberate reveals. Expired or
+    // dismissed timers render no child, so the card remains the fallback.
+    const rect = (timer.current?.firstElementChild ?? element).getBoundingClientRect(), viewport = window.visualViewport;
     const top = (viewport?.offsetTop ?? 0) + 16, bottom = (viewport?.height ?? window.innerHeight) + (viewport?.offsetTop ?? 0) - 72;
     // Focus the heading, never a numeric input: moving sets must not open the keyboard.
     heading.current?.focus({ preventScroll: true });
@@ -99,7 +101,7 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
     else groups.push({ id: owned.id, role, positions: [owned] });
   }
   return <>
-    <RestBar storageKey={timerKey} state={rest} onChange={setRest} />
+    <div ref={timer}><RestBar storageKey={timerKey} state={rest} onChange={setRest} /></div>
     <section ref={panel} aria-label="Active set" style={{ overflowAnchor: 'none' }} className="scroll-mt-4 relative rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
       <div className="mb-3"><div className="flex justify-between text-xs text-slate-500"><span className="font-semibold tracking-wide">ACTIVE SET</span><span>{count + skippedCount}/{sets.length} resolved</span></div><div role="progressbar" aria-valuenow={count + skippedCount} aria-valuemin={0} aria-valuemax={sets.length} aria-label="Resolved set progress" className="mt-2 h-1 overflow-hidden rounded-full bg-slate-100"><div className="h-full bg-black" style={{ width: `${(count + skippedCount) / sets.length * 100}%` }} /></div></div>
       <div className="flex items-start justify-between gap-3"><div><h3 ref={heading} tabIndex={-1} className="text-lg font-semibold outline-none">{active?.position.exercise.name ?? (count + skippedCount === sets.length ? 'Ready to finish' : 'Choose your next set')}</h3>

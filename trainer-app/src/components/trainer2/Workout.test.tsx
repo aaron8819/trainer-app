@@ -296,3 +296,26 @@ it('offers Finish in the ready card for a mix of logged and explicitly skipped s
   expect(finish).toHaveAttribute('form', `trainer2-finish-form-${value.executionId}`);
   expect(screen.queryByText('To log')).toBeNull();
 });
+
+it('reveals the rest timer after confirmed logging and falls back to the card after dismissal', async () => {
+  const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    const top = this.getAttribute('aria-label') === 'Rest timer' ? -180 : -100;
+    return { top, bottom: top + 72, height: 72, left: 0, right: 390, width: 390, x: 0, y: top, toJSON: () => ({}) };
+  });
+  const scroll = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
+  try {
+    const value = activeFixture(), results: SavedSetResult[] = [];
+    vi.stubGlobal('fetch', activeTransport(results));
+    render(<ActiveHarness value={value} read={async () => [...results]} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeDisabled());
+    fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '8' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
+    await screen.findByLabelText('Set 2 Actual reps');
+    expect(screen.getByLabelText('Rest timer')).toBeVisible();
+    expect(scroll).toHaveBeenLastCalledWith(expect.objectContaining({ top: -196 }));
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss rest timer' }));
+    await waitFor(() => expect(screen.queryByLabelText('Rest timer')).toBeNull());
+    fireEvent.click(screen.getAllByRole('button', { name: /, set 1, unrecorded/ }).at(-1)!);
+    expect(scroll).toHaveBeenLastCalledWith(expect.objectContaining({ top: -116 }));
+  } finally { rect.mockRestore(); scroll.mockRestore(); }
+});

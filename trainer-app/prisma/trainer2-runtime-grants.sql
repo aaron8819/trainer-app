@@ -101,6 +101,18 @@ CREATE POLICY trainer2_read ON "Trainer2ExerciseSwap" FOR SELECT TO trainer2_dra
 CREATE POLICY trainer2_write ON "Trainer2ExerciseSwap" TO trainer2_draft_runtime USING (true) WITH CHECK (true);
 GRANT EXECUTE ON FUNCTION trainer2_assignment(uuid,uuid),trainer2_assignments(uuid) TO trainer2_draft_reader,trainer2_draft_runtime;
 -- Incremental Add set grants; apply only after its forward migration.
+-- Supabase default privileges also grant named API roles; RLS cannot protect
+-- against service_role's BYPASSRLS. Revoke object ACLs before admitting servers.
+REVOKE ALL ON TABLE "Trainer2SetAddition" FROM PUBLIC;
+REVOKE ALL ON FUNCTION trainer2_execution_positions(uuid),trainer2_effective_targets(uuid,uuid),trainer2_restored_addition_target(uuid,uuid),trainer2_addition_guard(),trainer2_addition_seal() FROM PUBLIC;
+DO $$
+DECLARE api_role text;
+BEGIN
+  FOR api_role IN SELECT rolname FROM pg_roles WHERE rolname IN ('anon', 'authenticated', 'service_role') LOOP
+    EXECUTE format('REVOKE ALL ON TABLE public."Trainer2SetAddition" FROM %I', api_role);
+    EXECUTE format('REVOKE ALL ON FUNCTION public.trainer2_execution_positions(uuid),public.trainer2_effective_targets(uuid,uuid),public.trainer2_restored_addition_target(uuid,uuid),public.trainer2_addition_guard(),public.trainer2_addition_seal() FROM %I', api_role);
+  END LOOP;
+END $$;
 GRANT SELECT ON "Trainer2SetAddition" TO trainer2_draft_reader, trainer2_draft_runtime;
 GRANT INSERT ON "Trainer2SetAddition" TO trainer2_draft_runtime;
 CREATE POLICY trainer2_addition_reader ON "Trainer2SetAddition" FOR SELECT TO trainer2_draft_reader USING (true);

@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { randomUUID, randomBytes, createHash } from 'node:crypto';
-import { spawnSync, spawn } from 'node:child_process';
-import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { spawnSync, spawn, type SpawnOptions } from 'node:child_process';
+import { readFileSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
+import { resolve, sep } from 'node:path';
 import { Pool } from 'pg';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -26,31 +27,50 @@ import { authWebPlatformEnvironment } from './trainer2/auth-web-environment';
 import { verificationSource } from './trainer2/verification-source';
 import { inspectFinisherSchemaDiff } from '../src/lib/operations/finisher-schema-drift';
 import { parseExactDisposableConfirmationArgs } from '../src/lib/operations/test-environment-preflight';
+import { cleanupSteps, ownedProcessTree, terminateOwnedProcesses, waitForWorker, type CleanupResult } from './trainer2/disposable-cleanup';
 
 
 async function main() {
   assert(parseExactDisposableConfirmationArgs(process.argv.slice(2)).valid, 'Expected exactly --confirm-disposable');
-  const suffix = randomUUID().replaceAll('-', '').slice(0,12), container = `trainer2-add-set-${suffix}`, database = `trainer2_disposable_add_set_${suffix}`;
+  assert(process.send && process.env.TRAINER2_ADD_SET_OWNER,'Disposable worker must be supervised');
+  const suffix=process.env.TRAINER2_ADD_SET_SUFFIX!;assert(/^[a-f0-9]{12}$/.test(suffix));
+  const container = `trainer2-add-set-${suffix}`, database = `trainer2_disposable_add_set_${suffix}`;
   const password = randomUUID(), rolePassword = randomUUID(), accountId = randomUUID(), sessionId = randomUUID(), secret = randomBytes(32).toString('base64url');
   const artifact = resolve('artifacts/trainer2/add-set-evidence'); mkdirSync(artifact, { recursive: true });
   const source = verificationSource(), checks: string[] = [];
+  let assertionError: string | undefined, cleanup: CleanupResult[] = [], details: Record<string, unknown> = {};
+  let containerCreated=false;
+  const redact = (value: string) => value.replaceAll(password,'[secret]').replaceAll(rolePassword,'[secret]');
+  // Written only during actual process exit, independently of assertion completion.
+  process.once('exit', exitCode => {
+    writeFileSync(resolve(artifact,'report.json'),JSON.stringify({runId:process.env.TRAINER2_ADD_SET_OWNER,source,...details,checks,
+      assertions:{status:assertionError?'failed':checks.length===20?'passed':'incomplete',error:assertionError},
+      cleanup,worker:{status:'completed',exitCode},runner:{status:'pending-controller'}},null,2));
+  });
   const command = (exe: string, args: string[], env?: NodeJS.ProcessEnv) => {
-    const out = spawnSync(exe,args,{ env, encoding:'utf8', windowsHide:true, maxBuffer:10_000_000 });
-    if (out.status !== 0) throw new Error(`Disposable command failed: ${exe} ${args.filter(a => !a.includes('postgresql:')).join(' ')}\n${out.stderr.replaceAll(password,'[secret]').replaceAll(rolePassword,'[secret]')}`);
+    const out = spawnSync(exe,args,{ env, encoding:'utf8', windowsHide:true, maxBuffer:10_000_000, timeout:120_000 });
+    if (out.status !== 0) throw new Error(redact(`Disposable command failed: ${exe} ${args.filter(a => !a.includes('postgresql:')).join(' ')}\n${out.error?.message??out.stderr}`));
     return out.stdout;
   };
   const pass = (name: string) => { checks.push(name); console.log(`PASS ${name}`); };
   let admin: Pool | undefined, runtime: PrismaClient | undefined, reader: PrismaClient | undefined, server: ReturnType<typeof spawn> | undefined;
   let serverLog='';
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
-  const stopWeb = async () => { if (server?.pid && server.exitCode === null) {
-    spawnSync('taskkill',['/PID',String(server.pid),'/T','/F'],{ windowsHide:true });
-    for(let i=0;server.exitCode===null && i<50;i++) await new Promise(r=>setTimeout(r,100));
-    assert(server.exitCode!==null,'Task server failed to stop');
-  } server=undefined; };
+  let browserProcess: ReturnType<typeof spawn> | undefined;
+  let browserPids: number[] = [];
+  const browserProfile=resolve(artifact,`browser-profile-${suffix}`);
+  assert(browserProfile.startsWith(artifact+sep),'Browser profile must stay inside task artifacts');
+  let browserLog='';
+  const ownedPids = new Set<number>();
+  const processIds = new Set<number>();
+  const track = (pid: number) => {ownedPids.add(pid);processIds.add(pid);};
+  const capture = (pid: number,marker?:string) => { const pids=ownedProcessTree(pid,marker);pids.forEach(track);return pids; };
+  const terminate = async (pids: number[]) => {await terminateOwnedProcesses(pids);pids.forEach(pid=>ownedPids.delete(pid));};
+  const stopWeb = async () => { if (server?.pid) {await terminate(capture(server.pid));ownedPids.delete(server.pid);}server=undefined; };
   try {
-    command('docker',['run','--pull=never','--rm','-d','--name',container,'-e',`POSTGRES_PASSWORD=${password}`,'-e',`POSTGRES_DB=${database}`,'-p','127.0.0.1::5432','postgres:17-alpine']);
-    for(let i=0;i<60;i++){ if(spawnSync('docker',['exec',container,'pg_isready','-U','postgres'],{ windowsHide:true }).status===0) break; await new Promise(r=>setTimeout(r,500)); }
+    command('docker',['run','--pull=never','--rm','-d','--name',container,'--label',`trainer2.add-set.owner=${process.env.TRAINER2_ADD_SET_OWNER}`,'-e',`POSTGRES_PASSWORD=${password}`,'-e',`POSTGRES_DB=${database}`,'-p','127.0.0.1::5432','postgres:17-alpine']);
+    containerCreated=true;
+    for(let i=0;i<60;i++){ if(spawnSync('docker',['exec',container,'pg_isready','-U','postgres'],{ windowsHide:true,timeout:5_000 }).status===0) break; await new Promise(r=>setTimeout(r,500)); }
     const port = command('docker',['port',container,'5432/tcp']).trim().split(':').at(-1)!;
     const url = (role: string) => `postgresql://${role}:${role==='postgres'?password:rolePassword}@127.0.0.1:${port}/${database}`;
     command(process.execPath,[resolve('node_modules/prisma/build/index.js'),'migrate','deploy'],{ ...authWebPlatformEnvironment(process.env), NODE_ENV:'test', DATABASE_URL:url('postgres'), DIRECT_URL:url('postgres') });
@@ -206,20 +226,81 @@ async function main() {
       assert.deepEqual(candidateDrift.intentionalDatabaseOnlyExtensions,baselineDrift.intentionalDatabaseOnlyExtensions);
       pass('Schema drift equals baseline plus declared addition account foreign keys; protected finisher extensions unchanged');
       const before=(await upgradeAdmin.query('SELECT to_jsonb(r) AS row FROM "Trainer2SetResultRevision" r')).rows;
-      await upgradeAdmin.query(readFileSync('prisma/migrations/20261001010000_trainer2_add_set/migration.sql','utf8'));await upgradeAdmin.query(grants.slice(boundary));
+      // Model existing Supabase projects: named API defaults survive PUBLIC
+      // revocation, and service_role bypasses RLS. Defaults apply in this DB only.
+      for(const role of ['anon','authenticated','service_role'])await upgradeAdmin.query(`CREATE ROLE ${role} NOLOGIN ${role==='service_role'?'BYPASSRLS':'NOBYPASSRLS'}`);
+      await upgradeAdmin.query('GRANT USAGE ON SCHEMA public TO anon,authenticated,service_role');
+      await upgradeAdmin.query('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon,authenticated,service_role,PUBLIC');
+      await upgradeAdmin.query('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon,authenticated,service_role,PUBLIC');
+      await upgradeAdmin.query(readFileSync('prisma/migrations/20261001010000_trainer2_add_set/migration.sql','utf8'));
+      const helpers=['trainer2_execution_positions(uuid)','trainer2_effective_targets(uuid,uuid)','trainer2_restored_addition_target(uuid,uuid)','trainer2_addition_guard()','trainer2_addition_seal()'];
+      assert.equal((await upgradeAdmin.query("SELECT rolbypassrls FROM pg_roles WHERE rolname='service_role'")).rows[0].rolbypassrls,true);
+      for(const role of ['anon','authenticated','service_role']) {
+        assert.equal((await upgradeAdmin.query(`SELECT has_table_privilege($1,'"Trainer2SetAddition"','SELECT') AS allowed`,[role])).rows[0].allowed,true);
+        for(const helper of helpers)assert.equal((await upgradeAdmin.query("SELECT has_function_privilege($1,$2,'EXECUTE') AS allowed",[role,helper])).rows[0].allowed,true);
+      }
+      await upgradeAdmin.query('SET ROLE service_role');
+      try {assert.equal((await upgradeAdmin.query('SELECT count(*)::int AS n FROM "Trainer2SetAddition"')).rows[0].n,0);}finally{await upgradeAdmin.query('RESET ROLE');}
+      await upgradeAdmin.query(grants.slice(boundary));
+      for(const role of ['anon','authenticated','service_role']) {
+        for(const privilege of ['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'])assert.equal((await upgradeAdmin.query(`SELECT has_table_privilege($1,'"Trainer2SetAddition"',$2) AS allowed`,[role,privilege])).rows[0].allowed,false);
+        for(const helper of helpers)assert.equal((await upgradeAdmin.query("SELECT has_function_privilege($1,$2,'EXECUTE') AS allowed",[role,helper])).rows[0].allowed,false);
+        const roleClient=await upgradeAdmin.connect();await roleClient.query(`SET ROLE ${role}`);
+        try {
+          await assert.rejects(()=>roleClient.query('SELECT * FROM "Trainer2SetAddition"'),/permission denied/);
+          await assert.rejects(()=>roleClient.query('INSERT INTO "Trainer2SetAddition" DEFAULT VALUES'),/permission denied/);
+          for(const helper of helpers)await assert.rejects(()=>roleClient.query(`SELECT public.${helper.replace(/uuid/g,"NULL::uuid")}`),/permission denied/);
+        } finally {try{await roleClient.query('RESET ROLE');}finally{roleClient.release();}}
+      }
+      // PUBLIC is a pseudo-role: inspect effective ACL entries rather than
+      // querying has_*_privilege with a nonexistent login named "PUBLIC".
+      assert.equal((await upgradeAdmin.query(`SELECT count(*)::int AS n FROM pg_class c CROSS JOIN LATERAL aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) a WHERE c.oid='"Trainer2SetAddition"'::regclass AND a.grantee=0`)).rows[0].n,0);
+      for(const helper of helpers)assert.equal((await upgradeAdmin.query("SELECT count(*)::int AS n FROM pg_proc p CROSS JOIN LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a WHERE p.oid=$1::regprocedure AND a.grantee=0",[helper])).rows[0].n,0);
+      for(const role of ['trainer2_draft_reader','trainer2_draft_runtime','trainer2_identity_runtime']) {
+        assert.equal((await upgradeAdmin.query(`SELECT has_table_privilege($1,'"Trainer2SetAddition"','SELECT') AS allowed`,[role])).rows[0].allowed,role!=='trainer2_identity_runtime');
+        assert.equal((await upgradeAdmin.query(`SELECT has_table_privilege($1,'"Trainer2SetAddition"','INSERT') AS allowed`,[role])).rows[0].allowed,role==='trainer2_draft_runtime');
+        for(const privilege of ['UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'])assert.equal((await upgradeAdmin.query(`SELECT has_table_privilege($1,'"Trainer2SetAddition"',$2) AS allowed`,[role,privilege])).rows[0].allowed,false);
+        for(const [index,helper] of helpers.entries())assert.equal((await upgradeAdmin.query("SELECT has_function_privilege($1,$2,'EXECUTE') AS allowed",[role,helper])).rows[0].allowed,index<3 && role!=='trainer2_identity_runtime');
+      }
       assert.deepEqual((await upgradeAdmin.query('SELECT to_jsonb(r) AS row FROM "Trainer2SetResultRevision" r')).rows,before);
       assert.deepEqual((await upgradeAdmin.query('SELECT * FROM "Trainer2Execution" WHERE "id"=$1',[upgradeId])).rows[0],startRow);
       const upgraded=await validateExecutionRead(await readExecution(upgradeDb,principal,upgradeId),accountId,upgradeId);
       assert.equal(upgraded.additions!.length,0);assert.equal((await addSet(upgradeDb,principal,addition(upgraded))).outcome.status,'Accepted');
+      for(const role of ['trainer2_draft_reader','trainer2_draft_runtime']) {
+        await upgradeAdmin.query(`SET ROLE ${role}`);
+        try {
+          assert.equal((await upgradeAdmin.query('SELECT count(*)::int AS n FROM "Trainer2SetAddition"')).rows[0].n,1);
+          await upgradeAdmin.query('SELECT trainer2_execution_positions($1::uuid),trainer2_effective_targets($1::uuid,$2::uuid),trainer2_restored_addition_target($1::uuid,$2::uuid)',[upgradeId,upgraded.initial.positions[0].id]);
+        }finally{await upgradeAdmin.query('RESET ROLE');}
+      }
       assert.deepEqual((await upgradeAdmin.query('SELECT to_jsonb(r) AS row FROM "Trainer2SetResultRevision" r')).rows,before);
-      pass('Populated baseline upgrade preserves START and existing evidence; addition works after incremental grants');
-    } finally {await upgradeDb.$disconnect();await upgradeAdmin.end();}
+      pass('Populated baseline upgrade: Supabase default ACLs revoked including BYPASSRLS role/all helpers/PUBLIC; restricted operations preserve START and saved evidence');
+    } finally {
+      const results=await cleanupSteps([{name:'upgrade runtime',run:()=>upgradeDb.$disconnect()},{name:'upgrade pool',run:()=>upgradeAdmin.end()}]);
+      cleanup.push(...results);assert(results.every(r=>r.status==='passed'),'Upgrade cleanup failed');
+    }
     const webPort=42000+Math.floor(Math.random()*10000),base=`http://127.0.0.1:${webPort}`;
     const webEnv:NodeJS.ProcessEnv={...authWebPlatformEnvironment(process.env),NODE_ENV:'development',TRAINER2_LOCAL_DRAFTS:'enabled',TRAINER2_OWNER_USER_ID:accountId,TRAINER2_APP_ORIGIN:base,
       TRAINER2_IDENTITY_CONNECTION_STRING:url('trainer2_identity_runtime'),TRAINER2_READ_CONNECTION_STRING:url('trainer2_draft_reader'),TRAINER2_WRITE_CONNECTION_STRING:url('trainer2_draft_runtime')};
-    const launch=()=>{server=spawn(process.execPath,[resolve('node_modules/next/dist/bin/next'),'dev','--hostname','127.0.0.1','--port',String(webPort)],{env:webEnv,windowsHide:true,stdio:'pipe'});server.stdout?.on('data',v=>serverLog+=v);server.stderr?.on('data',v=>serverLog+=v);};
-    const waitWeb=async()=>{for(let i=0;i<120;i++){try{if((await fetch(base+'/trainer2/auth')).ok)return;}catch{}assert(server?.exitCode===null);await new Promise(r=>setTimeout(r,500));}throw new Error('Task web did not start');};
-    launch();await waitWeb();browser=await chromium.launch({channel:'msedge',headless:true});const context=await browser.newContext({viewport:{width:1360,height:1000},reducedMotion:'reduce'});
+    const launch=()=>{server=spawn(process.execPath,[resolve('node_modules/next/dist/bin/next'),'dev','--hostname','127.0.0.1','--port',String(webPort)],{env:webEnv,windowsHide:true,stdio:'pipe'});if(server.pid)track(server.pid);server.stdout?.on('data',v=>serverLog+=v);server.stderr?.on('data',v=>serverLog+=v);};
+    const waitWeb=async()=>{for(let i=0;i<120;i++){try{if((await fetch(base+'/trainer2/auth',{signal:AbortSignal.timeout(2_000)})).ok)return;}catch{}assert(server?.exitCode===null);await new Promise(r=>setTimeout(r,500));}throw new Error('Task web did not start');};
+    launch();await waitWeb();
+    const systemDrive=process.env.SYSTEMDRIVE??'C:';
+    const edge=[process.env.PROGRAMFILES,process.env['PROGRAMFILES(X86)'],process.env.LOCALAPPDATA,`${systemDrive}/Program Files`,`${systemDrive}/Program Files (x86)`]
+      .filter((root):root is string=>Boolean(root)).map(root=>resolve(root,'Microsoft/Edge/Application/msedge.exe')).find(existsSync);
+    assert(edge,'Installed Edge is required; no browser download or existing profile is used');
+    browserProcess=spawn(edge,['--headless=new','--disable-gpu','--disable-breakpad','--disable-crash-reporter','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0',`--user-data-dir=${browserProfile}`,'--no-first-run','--no-default-browser-check','--disable-background-networking','about:blank'],{windowsHide:true,stdio:'pipe'});
+    if(browserProcess.pid)track(browserProcess.pid);
+    browserProcess.stdout?.on('data',v=>browserLog+=v);browserProcess.stderr?.on('data',v=>browserLog+=v);
+    const endpoint=await new Promise<string>((resolveEndpoint,reject)=>{
+      const child=browserProcess!;
+      const timer=setTimeout(()=>finish(new Error('Task browser did not expose CDP within 30 seconds')),30_000);
+      const inspect=()=>{const match=browserLog.match(/DevTools listening on (ws:\/\/127\.0\.0\.1:\d+\/devtools\/browser\/[^\s]+)/);if(match)finish(undefined,match[1]);};
+      const exited=()=>finish(new Error('Task browser exited before CDP was ready'));
+      const finish=(error?:Error,value?:string)=>{clearTimeout(timer);child.stderr?.off('data',inspect);child.off('exit',exited);child.off('error',finish);if(error)reject(error);else resolveEndpoint(value!);};
+      child.stderr?.on('data',inspect);child.once('exit',exited);child.once('error',finish);inspect();
+    });
+    browser=await chromium.connectOverCDP(endpoint,{timeout:30_000});const context=await browser.newContext({viewport:{width:1360,height:1000},reducedMotion:'reduce'});
     await context.addCookies([{name:'__Host-trainer2-session',value:`${sessionId}.${secret}`,domain:'127.0.0.1',path:'/',secure:true,httpOnly:true,sameSite:'Strict'}]);
     const page=await context.newPage();const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
     await page.goto(base+`/trainer2/dev/executions/${x.executionId}`);const card=page.getByRole('region',{name:'Active set',exact:true}),queue=page.getByRole('region',{name:'Exercise queue'});
@@ -250,16 +331,99 @@ async function main() {
     pass('Browser swap and restore after untouched addition include every set and preserve timer');
     await card.getByLabel('Set 4 Actual reps').fill('9');await card.getByRole('button',{name:'Log set',exact:true}).click();
     await card.getByLabel('Set 1 Actual reps').waitFor();
-    await stopWeb();launch();await waitWeb();await page.goto(base+`/trainer2/dev/executions/${x.executionId}`,{waitUntil:'domcontentloaded'});assert.equal((await read(x.executionId)).results.filter(r=>r.result).length,2);
-    await close(x);await page.reload();await page.getByRole('heading',{name:'Workout finished',exact:true}).waitFor();assert.equal(await page.getByText('Added during workout',{exact:true}).count(),3);
-    assert.equal(await page.getByRole('button',{name:'+ Add set',exact:true}).count(),0);assert.deepEqual(errors,[]);
-    await page.screenshot({path:resolve(artifact,'mobile-completed.png')});pass('Application restart, completed addition readback/history and closed-workout controls');
+    await stopWeb();launch();await waitWeb();
+    const restartedPage=await context.newPage();restartedPage.on('pageerror',e=>errors.push(e.message));await restartedPage.setViewportSize({width:390,height:844});
+    await restartedPage.goto(base+`/trainer2/dev/executions/${x.executionId}`,{waitUntil:'domcontentloaded'});assert.equal((await read(x.executionId)).results.filter(r=>r.result).length,2);
+    await close(x);await restartedPage.reload();await restartedPage.getByRole('heading',{name:'Workout finished',exact:true}).waitFor();assert.equal(await restartedPage.getByText('Added during workout',{exact:true}).count(),3);
+    assert.equal(await restartedPage.getByRole('button',{name:'+ Add set',exact:true}).count(),0);assert.deepEqual(errors,[]);
+    await restartedPage.screenshot({path:resolve(artifact,'mobile-completed.png')});pass('Application restart, completed addition readback/history and closed-workout controls');
     const sourceAfter=verificationSource();assert.equal(sourceAfter.manifestHash,source.manifestHash);
-    writeFileSync(resolve(artifact,'report.json'),JSON.stringify({source,sourceAfter,checks,candidateDrift,postgres:(await admin.query('SELECT version()')).rows[0]},null,2));
+    details={sourceAfter,candidateDrift,postgres:(await admin.query('SELECT version()')).rows[0]};
+    assert.equal(checks.length,20,'Expected all 20 assertion groups');
+  } catch (error) {
+    assertionError=redact(error instanceof Error?error.message:String(error));
+    console.error(`ASSERTIONS FAILED: ${assertionError}`);
   } finally {
-    writeFileSync(resolve(artifact,'server.log'),serverLog.replaceAll(password,'[secret]').replaceAll(rolePassword,'[secret]'));
-    await browser?.close();await stopWeb();await runtime?.$disconnect();await reader?.$disconnect();await admin?.end();
-    spawnSync('docker',['rm','-f',container],{windowsHide:true});
+    cleanup.push(...await cleanupSteps([
+      {name:'server log',run:()=>writeFileSync(resolve(artifact,'server.log'),redact(serverLog))},
+      {name:'browser shutdown',run:async()=>{
+        if(browserProcess?.pid)browserPids=capture(browserProcess.pid,browserProfile);
+        if(browser?.isConnected())await (await browser.newBrowserCDPSession()).send('Browser.close');
+      }},
+      // A stalled graceful close cannot prevent explicit process termination or
+      // any subsequent resource cleanup. Capture children before graceful exit.
+      {name:'browser process tree',timeoutMs:60_000,run:async()=>{
+        if(!browserProcess)return;
+        const child=browserProcess;
+        await terminate([...new Set([...browserPids,...capture(child.pid!,browserProfile)])]);ownedPids.delete(child.pid!);
+        // Close our pipe endpoints after the captured process tree is gone.
+        for(const stream of child.stdio)stream?.destroy();
+      }},
+      {name:'browser connection',run:()=>browser?.isConnected()?browser.close():undefined},
+      {name:'browser log',run:()=>writeFileSync(resolve(artifact,'browser.log'),redact(browserLog))},
+      {name:'Next process tree',timeoutMs:60_000,run:stopWeb},
+      {name:'runtime client',run:()=>runtime?.$disconnect()},
+      {name:'reader client',run:()=>reader?.$disconnect()},
+      {name:'administrative pool',run:()=>admin?.end()},
+      {name:'PostgreSQL container',timeoutMs:20_000,run:()=>{
+        if(!containerCreated)return;
+        const out=spawnSync('docker',['rm','-f',container],{windowsHide:true,encoding:'utf8',timeout:10_000});
+        if(out.status!==0 && !out.stderr.includes('No such container'))throw new Error(out.error?.message??out.stderr);
+        const inspect=spawnSync('docker',['container','inspect',container],{windowsHide:true,encoding:'utf8',timeout:5_000});
+        assert(inspect.status!==0 && inspect.stderr.includes('No such container'),'Task PostgreSQL container survived or absence could not be verified');
+      }},
+      {name:'owned process survivor check',timeoutMs:60_000,run:()=>terminateOwnedProcesses([...ownedPids])},
+    ]));
+    cleanup=cleanup.map(r=>({...r,...(r.error?{error:redact(r.error)}:{})}));
+    for(const result of cleanup)console.log(`CLEANUP ${result.status}: ${result.name}${result.error?`: ${result.error}`:''}`);
   }
+  const exitCode=assertionError||cleanup.some(r=>r.status!=='passed')?1:0;
+  details={...details,services:{container,browserPid:browserProcess?.pid,ownedProcessIds:[...processIds]}};
+  console.log(`WORKER COMPLETE exitCode=${exitCode}`);
+  // Teardown outcomes and verified process/container absence are recorded above.
+  // Timed-out library promises must not retain this disposable runner indefinitely.
+  process.exit(exitCode);
 }
-void main().catch(e=>{console.error(e instanceof Error?e.message:'Add set verification failed');process.exitCode=1;});
+
+async function supervise() {
+  assert(parseExactDisposableConfirmationArgs(process.argv.slice(2)).valid,'Expected exactly --confirm-disposable');
+  const owner=randomUUID(),suffix=randomUUID().replaceAll('-','').slice(0,12);
+  const artifact=resolve('artifacts/trainer2/add-set-evidence');mkdirSync(artifact,{recursive:true});
+  const reportFile=resolve(artifact,'report.json'),profile=resolve(artifact,`browser-profile-${suffix}`),container=`trainer2-add-set-${suffix}`;
+  assert(profile.startsWith(artifact+sep));
+  const source=verificationSource();
+  const workerOptions: SpawnOptions={
+    env:{...authWebPlatformEnvironment(process.env),NODE_ENV:'test',TRAINER2_ADD_SET_CHILD:'1',TRAINER2_ADD_SET_OWNER:owner,TRAINER2_ADD_SET_SUFFIX:suffix},
+    windowsHide:true,stdio:['inherit','inherit','inherit','ipc'],
+  };
+  const worker=spawn(process.execPath,[...process.execArgv,...process.argv.slice(1)],workerOptions);
+  const completion=await waitForWorker(worker,20*60_000);
+  let report: Record<string,unknown>={source,checks:[],assertions:{status:'incomplete'}};
+  if(existsSync(reportFile)){
+    const candidate=JSON.parse(readFileSync(reportFile,'utf8'));
+    if(candidate.runId===owner&&candidate.source?.commit===source.commit&&candidate.source?.tree===source.tree&&candidate.source?.manifestHash===source.manifestHash)report=candidate;
+  }
+  // A Windows browser driver can retain mapped profile handles until its Node
+  // worker exits. Cleanup belongs to this controller after observed close.
+  const cleanup=await cleanupSteps([
+    {name:'worker process tree',timeoutMs:60_000,run:async()=>{if(completion.timedOut&&worker.pid)await terminateOwnedProcesses(ownedProcessTree(worker.pid));}},
+    {name:'orphan browser processes',timeoutMs:60_000,run:async()=>{
+      const browserPid=(report.services as {browserPid?:number}|undefined)?.browserPid;
+      if(browserPid)await terminateOwnedProcesses(ownedProcessTree(browserPid,profile));
+    }},
+    {name:'task PostgreSQL absence',timeoutMs:20_000,run:()=>{
+      const inspect=spawnSync('docker',['container','inspect','--format','{{ index .Config.Labels "trainer2.add-set.owner" }}',container],{encoding:'utf8',windowsHide:true,timeout:5_000});
+      if(inspect.status!==0){assert(inspect.stderr.includes('No such container'),'Cannot verify task container absence');return;}
+      assert.equal(inspect.stdout.trim(),owner,'Refusing to remove an unowned container');
+      const removed=spawnSync('docker',['rm','-f',container],{encoding:'utf8',windowsHide:true,timeout:10_000});assert.equal(removed.status,0,'Task container removal failed');
+      const after=spawnSync('docker',['container','inspect',container],{encoding:'utf8',windowsHide:true,timeout:5_000});assert(after.status!==0&&after.stderr.includes('No such container'),'Task container survived');
+    }},
+    {name:'browser profile after worker exit',timeoutMs:30_000,run:()=>rm(profile,{recursive:true,force:true,maxRetries:8,retryDelay:500})},
+  ]);
+  report.worker={status:completion.timedOut?'timed-out':'completed',...completion};report.cleanup=[...(report.cleanup as CleanupResult[]??[]),...cleanup];
+  const failed=completion.timedOut||completion.exitCode!==0||cleanup.some(r=>r.status!=='passed')||(report.assertions as {status:string}).status!=='passed';
+  for(const result of cleanup)console.log(`CONTROLLER CLEANUP ${result.status}: ${result.name}${result.error?`: ${result.error}`:''}`);
+  process.once('exit',exitCode=>writeFileSync(reportFile,JSON.stringify({...report,runner:{status:'completed',exitCode}},null,2)));
+  console.log(`RUNNER COMPLETE exitCode=${failed?1:0}`);process.exit(failed?1:0);
+}
+void (process.env.TRAINER2_ADD_SET_CHILD==='1'?main():supervise()).catch(e=>{console.error(e instanceof Error?e.message:'Add set verification failed');process.exitCode=1;});

@@ -411,23 +411,37 @@ export function readCommittedGitBlob(
   relativePath: string,
   revision = "HEAD"
 ): Buffer {
-  const normalizedPath = normalizeRepositoryPath(relativePath);
-  const objectName = `${revision}:${normalizedPath}`;
-  const objectType = runGitBuffer(
-    repositoryRoot,
-    ["cat-file", "-t", objectName],
-    `resolve ${normalizedPath}`
-  )
-    .toString("utf8")
-    .trim();
-  if (objectType !== "blob") {
-    throw new Error(`Required committed path is not a Git blob: ${normalizedPath}.`);
-  }
-  return runGitBuffer(
-    repositoryRoot,
-    ["cat-file", "blob", objectName],
-    `read ${normalizedPath}`
-  );
+  return readCommittedGitBlobs(repositoryRoot, [relativePath], revision)[0];
+}
+
+// One process per batch, without caching HEAD or reading checkout bytes. Parse
+// byte lengths rather than splitting content: committed blobs may be binary.
+function readCommittedGitBlobs(repositoryRoot: string, paths: string[], revision = "HEAD"): Buffer[] {
+  const names = paths.map(value => `${revision}:${normalizeRepositoryPath(value)}`);
+  if (names.some(value => /[\r\n\0]/.test(value))) throw new Error("Unsafe committed Git object name.");
+  const result = spawnSync("git", ["cat-file", "--batch"], {
+    cwd: repositoryRoot, input: Buffer.from(names.join("\n") + "\n"),
+    windowsHide: true, maxBuffer: 32 * 1024 * 1024,
+  });
+  if (result.status !== 0 || !Buffer.isBuffer(result.stdout)) throw new Error("Unable to read committed Git state.");
+  const output = result.stdout;
+  let offset = 0;
+  const blobs = names.map(name => {
+    const end = output.indexOf(10, offset);
+    const header = output.subarray(offset, end).toString("utf8");
+    const match = /^[a-f0-9]{40,64} blob (\d+)$/.exec(header);
+    if (end < offset || !match) throw new Error(`Required path is not a Git blob in committed Git state: ${name}.`);
+    const size = Number(match[1]);
+    offset = end + 1;
+    if (!Number.isSafeInteger(size) || offset + size >= output.length || output[offset + size] !== 10) {
+      throw new Error("Invalid committed Git blob framing.");
+    }
+    const blob = output.subarray(offset, offset + size);
+    offset += size + 1;
+    return blob;
+  });
+  if (offset !== output.length) throw new Error("Unexpected committed Git batch output.");
+  return blobs;
 }
 
 export function hashCommittedGitPath(
@@ -696,14 +710,12 @@ export function computeVerificationDefinition(input: {
   if (new Set(definitionPaths).size !== definitionPaths.length) {
     throw new Error("Credential-free verification definition contains duplicate input paths.");
   }
-  const inputs = definitionPaths.map((relativePath) => ({
+  const definitionBlobs = readCommittedGitBlobs(repositoryRoot, [...definitionPaths, "trainer-app/package-lock.json"]);
+  const inputs = definitionPaths.map((relativePath, index) => ({
     path: relativePath,
-    sha256: hashCommittedGitPath(repositoryRoot, relativePath),
+    sha256: sha256(definitionBlobs[index]),
   }));
-  const lockfileHash = hashCommittedGitPath(
-    repositoryRoot,
-    "trainer-app/package-lock.json"
-  );
+  const lockfileHash = sha256(definitionBlobs[definitionPaths.length]);
   const relevantCommandIds = new Set([
     ...(checkPolicy.definition?.registryCommandIds ?? []),
     ...committedClassificationManifest.suites

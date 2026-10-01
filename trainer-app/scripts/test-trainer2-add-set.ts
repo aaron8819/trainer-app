@@ -4,6 +4,7 @@ import { spawnSync, spawn, type SpawnOptions } from 'node:child_process';
 import { readFileSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
+import { createServer } from 'node:net';
 import { Pool } from 'pg';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -55,9 +56,14 @@ async function main() {
   const pass = (name: string) => { checks.push(name); console.log(`PASS ${name}`); };
   let admin: Pool | undefined, runtime: PrismaClient | undefined, reader: PrismaClient | undefined, server: ReturnType<typeof spawn> | undefined;
   let serverLog='';
+  let serverCompletion: ReturnType<typeof waitForWorker> | undefined;
+  const nextClosures: Awaited<ReturnType<typeof waitForWorker>>[] = [];
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
   let browserProcess: ReturnType<typeof spawn> | undefined;
+  let browserCompletion: ReturnType<typeof waitForWorker> | undefined;
+  let browserContext: Awaited<ReturnType<NonNullable<typeof browser>['newContext']>> | undefined;
   let browserPids: number[] = [];
+  let webOrigin: string | undefined, browserEndpoint: string | undefined;
   const browserProfile=resolve(artifact,`browser-profile-${suffix}`);
   assert(browserProfile.startsWith(artifact+sep),'Browser profile must stay inside task artifacts');
   let browserLog='';
@@ -66,7 +72,19 @@ async function main() {
   const track = (pid: number) => {ownedPids.add(pid);processIds.add(pid);};
   const capture = (pid: number,marker?:string) => { const pids=ownedProcessTree(pid,marker);pids.forEach(track);return pids; };
   const terminate = async (pids: number[]) => {await terminateOwnedProcesses(pids);pids.forEach(pid=>ownedPids.delete(pid));};
-  const stopWeb = async () => { if (server?.pid) {await terminate(capture(server.pid));ownedPids.delete(server.pid);}server=undefined; };
+  const stopWeb = async () => {
+    const child=server;
+    if(child?.pid){
+      await terminate(capture(child.pid));
+      for(const stream of child.stdio)stream?.destroy();
+      const closed=await cleanupSteps([{name:'Next child close',timeoutMs:5_000,run:async()=>{
+        const result=await serverCompletion;assert(result&&!result.timedOut&&!result.error,'Next child close was not observed');nextClosures.push(result);
+      }}]);
+      assert(closed.every(result=>result.status==='passed'),'Next child close deadline exceeded');
+      ownedPids.delete(child.pid);
+    }
+    server=undefined;
+  };
   try {
     command('docker',['run','--pull=never','--rm','-d','--name',container,'--label',`trainer2.add-set.owner=${process.env.TRAINER2_ADD_SET_OWNER}`,'-e',`POSTGRES_PASSWORD=${password}`,'-e',`POSTGRES_DB=${database}`,'-p','127.0.0.1::5432','postgres:17-alpine']);
     containerCreated=true;
@@ -279,10 +297,17 @@ async function main() {
       const results=await cleanupSteps([{name:'upgrade runtime',run:()=>upgradeDb.$disconnect()},{name:'upgrade pool',run:()=>upgradeAdmin.end()}]);
       cleanup.push(...results);assert(results.every(r=>r.status==='passed'),'Upgrade cleanup failed');
     }
-    const webPort=42000+Math.floor(Math.random()*10000),base=`http://127.0.0.1:${webPort}`;
+    // Windows can reserve otherwise-unused ports (EACCES). Ask the OS for an
+    // available loopback port instead of sampling its excluded ranges.
+    const webPort=await new Promise<number>((resolvePort,reject)=>{
+      const probe=createServer();probe.once('error',reject);
+      probe.listen(0,'127.0.0.1',()=>{const address=probe.address();assert(address&&typeof address!=='string');
+        probe.close(error=>error?reject(error):resolvePort(address.port));});
+    });
+    const base=`http://127.0.0.1:${webPort}`;webOrigin=base;
     const webEnv:NodeJS.ProcessEnv={...authWebPlatformEnvironment(process.env),NODE_ENV:'development',TRAINER2_LOCAL_DRAFTS:'enabled',TRAINER2_OWNER_USER_ID:accountId,TRAINER2_APP_ORIGIN:base,
       TRAINER2_IDENTITY_CONNECTION_STRING:url('trainer2_identity_runtime'),TRAINER2_READ_CONNECTION_STRING:url('trainer2_draft_reader'),TRAINER2_WRITE_CONNECTION_STRING:url('trainer2_draft_runtime')};
-    const launch=()=>{server=spawn(process.execPath,[resolve('node_modules/next/dist/bin/next'),'dev','--hostname','127.0.0.1','--port',String(webPort)],{env:webEnv,windowsHide:true,stdio:'pipe'});if(server.pid)track(server.pid);server.stdout?.on('data',v=>serverLog+=v);server.stderr?.on('data',v=>serverLog+=v);};
+    const launch=()=>{server=spawn(process.execPath,[resolve('node_modules/next/dist/bin/next'),'dev','--hostname','127.0.0.1','--port',String(webPort)],{env:webEnv,windowsHide:true,stdio:'pipe'});serverCompletion=waitForWorker(server,20*60_000);if(server.pid)track(server.pid);server.stdout?.on('data',v=>serverLog+=v);server.stderr?.on('data',v=>serverLog+=v);};
     const waitWeb=async()=>{for(let i=0;i<120;i++){try{if((await fetch(base+'/trainer2/auth',{signal:AbortSignal.timeout(2_000)})).ok)return;}catch{}assert(server?.exitCode===null);await new Promise(r=>setTimeout(r,500));}throw new Error('Task web did not start');};
     launch();await waitWeb();
     const systemDrive=process.env.SYSTEMDRIVE??'C:';
@@ -291,6 +316,8 @@ async function main() {
     assert(edge,'Installed Edge is required; no browser download or existing profile is used');
     browserProcess=spawn(edge,['--headless=new','--disable-gpu','--disable-breakpad','--disable-crash-reporter','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0',`--user-data-dir=${browserProfile}`,'--no-first-run','--no-default-browser-check','--disable-background-networking','about:blank'],{windowsHide:true,stdio:'pipe'});
     if(browserProcess.pid)track(browserProcess.pid);
+    // Register before shutdown; an already-emitted close event cannot be observed later.
+    browserCompletion=waitForWorker(browserProcess,20*60_000);
     browserProcess.stdout?.on('data',v=>browserLog+=v);browserProcess.stderr?.on('data',v=>browserLog+=v);
     const endpoint=await new Promise<string>((resolveEndpoint,reject)=>{
       const child=browserProcess!;
@@ -300,7 +327,8 @@ async function main() {
       const finish=(error?:Error,value?:string)=>{clearTimeout(timer);child.stderr?.off('data',inspect);child.off('exit',exited);child.off('error',finish);if(error)reject(error);else resolveEndpoint(value!);};
       child.stderr?.on('data',inspect);child.once('exit',exited);child.once('error',finish);inspect();
     });
-    browser=await chromium.connectOverCDP(endpoint,{timeout:30_000});const context=await browser.newContext({viewport:{width:1360,height:1000},reducedMotion:'reduce'});
+    browserEndpoint=endpoint;
+    browser=await chromium.connectOverCDP(endpoint,{timeout:30_000});const context=await browser.newContext({viewport:{width:1360,height:1000},reducedMotion:'reduce'});browserContext=context;
     await context.addCookies([{name:'__Host-trainer2-session',value:`${sessionId}.${secret}`,domain:'127.0.0.1',path:'/',secure:true,httpOnly:true,sameSite:'Strict'}]);
     const page=await context.newPage();const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
     await page.goto(base+`/trainer2/dev/executions/${x.executionId}`);const card=page.getByRole('region',{name:'Active set',exact:true}),queue=page.getByRole('region',{name:'Exercise queue'});
@@ -348,6 +376,7 @@ async function main() {
       {name:'server log',run:()=>writeFileSync(resolve(artifact,'server.log'),redact(serverLog))},
       {name:'browser shutdown',run:async()=>{
         if(browserProcess?.pid)browserPids=capture(browserProcess.pid,browserProfile);
+        await browserContext?.close();
         if(browser?.isConnected())await (await browser.newBrowserCDPSession()).send('Browser.close');
       }},
       // A stalled graceful close cannot prevent explicit process termination or
@@ -355,6 +384,11 @@ async function main() {
       {name:'browser process tree',timeoutMs:60_000,run:async()=>{
         if(!browserProcess)return;
         const child=browserProcess;
+        // Allow profile/database writers to finish before the force fallback.
+        let graceTimer: ReturnType<typeof setTimeout> | undefined;
+        const graceful=await Promise.race([browserCompletion,new Promise<undefined>(resolveGrace=>{graceTimer=setTimeout(()=>resolveGrace(undefined),5_000);})]);
+        clearTimeout(graceTimer);
+        details={...details,browserShutdown:{gracefulClose:graceful??null,capturedPids:browserPids}};
         await terminate([...new Set([...browserPids,...capture(child.pid!,browserProfile)])]);ownedPids.delete(child.pid!);
         // Close our pipe endpoints after the captured process tree is gone.
         for(const stream of child.stdio)stream?.destroy();
@@ -378,7 +412,7 @@ async function main() {
     for(const result of cleanup)console.log(`CLEANUP ${result.status}: ${result.name}${result.error?`: ${result.error}`:''}`);
   }
   const exitCode=assertionError||cleanup.some(r=>r.status!=='passed')?1:0;
-  details={...details,services:{container,browserPid:browserProcess?.pid,ownedProcessIds:[...processIds]}};
+  details={...details,services:{container,browserPid:browserProcess?.pid,ownedProcessIds:[...processIds],webOrigin,browserEndpoint,browserProfile,nextClosures}};
   console.log(`WORKER COMPLETE exitCode=${exitCode}`);
   // Teardown outcomes and verified process/container absence are recorded above.
   // Timed-out library promises must not retain this disposable runner indefinitely.
@@ -421,6 +455,7 @@ async function supervise() {
     {name:'browser profile after worker exit',timeoutMs:30_000,run:()=>rm(profile,{recursive:true,force:true,maxRetries:8,retryDelay:500})},
   ]);
   report.worker={status:completion.timedOut?'timed-out':'completed',...completion};report.cleanup=[...(report.cleanup as CleanupResult[]??[]),...cleanup];
+  report.retainedArtifacts={browserProfile:existsSync(profile)?profile:null};
   const failed=completion.timedOut||completion.exitCode!==0||cleanup.some(r=>r.status!=='passed')||(report.assertions as {status:string}).status!=='passed';
   for(const result of cleanup)console.log(`CONTROLLER CLEANUP ${result.status}: ${result.name}${result.error?`: ${result.error}`:''}`);
   process.once('exit',exitCode=>writeFileSync(reportFile,JSON.stringify({...report,runner:{status:'completed',exitCode}},null,2)));

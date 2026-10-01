@@ -35,6 +35,7 @@ import {
   CREDENTIAL_FREE_EVIDENCE_RELATIVE_PATH,
   credentialFreeEvidenceArtifactName,
   hashCommittedGitPath,
+  readCommittedGitBlob,
   hashCanonicalValue,
   parseCredentialFreeVerificationEvidenceJson,
   publishCredentialFreeVerificationEvidence,
@@ -551,6 +552,18 @@ beforeAll(() => {
 }, 30_000);
 
 describe("exact-tree verification evidence", () => {
+  it("reads binary committed blobs and rejects batch injection, missing paths and trees", () => {
+    const { repositoryRoot } = createDefinitionRepository();
+    const bytes = Buffer.from([0, 10, 13, 255, 65, 10, 0]);
+    writeFileSync(path.join(repositoryRoot, "definition", "binary.dat"), bytes);
+    git(repositoryRoot, ["add", "."]);
+    git(repositoryRoot, ["commit", "--quiet", "-m", "binary fixture"]);
+    writeFileSync(path.join(repositoryRoot, "definition", "binary.dat"), "checkout differs");
+    expect(readCommittedGitBlob(repositoryRoot, "definition/binary.dat")).toEqual(bytes);
+    expect(() => readCommittedGitBlob(repositoryRoot, "definition")).toThrow(/not a Git blob/);
+    expect(() => readCommittedGitBlob(repositoryRoot, "missing.dat")).toThrow(/not a Git blob/);
+    expect(() => readCommittedGitBlob(repositoryRoot, "definition/a.txt\nHEAD:definition/b.txt")).toThrow(/Unsafe/);
+  }, 20_000);
   it("hashes equivalent classification semantics independently of suite ordering", () => {
     const reversed = { ...manifest, suites: [...manifest.suites].reverse() };
     expect(computeClassificationHash(reversed)).toBe(

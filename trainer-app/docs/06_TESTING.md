@@ -281,6 +281,8 @@ ruleset requires that exact status check for pull requests targeting `master`.
 `src/lib/operations/exact-tree-verification-evidence.ts` implements the evidence schema, deterministic
 hashes, job summary, repository-state inspection, untrusted-artifact validation, and reuse decision.
 Repository-owned definition inputs, `package-lock.json`, and the classification source are read from `HEAD:<path>` Git blobs;
+definition inputs and the lockfile use one `git cat-file --batch` process with blob-type and byte-length validation. No HEAD-dependent data is cached; binary bytes and committed-source checks remain authoritative.
+The full `test:environment-classification` command runs all five files with one worker, retaining fork isolation and every assertion/deadline while avoiding contention between subprocess-heavy fixtures.
 checkout line-ending conversion never changes their hashes, and missing Git metadata or required
 blobs fails closed. Definition input paths are normalized, sorted, and unique. Classification hashing canonicalizes the semantic
 contents of `scripts/test-suite-environments.json`; incidental suite ordering does not change it.

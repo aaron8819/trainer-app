@@ -1,3 +1,4 @@
+import { executionPositions } from '../../engine/trainer2/execution-targets';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { currentAssignment } from '../../engine/trainer2/exercise-swap';
 import { canonicalJson } from './integrity';
@@ -19,10 +20,10 @@ export async function skipSet(db: PrismaClient, principal: ServerPrincipal, inpu
     const execution = await readExecution(tx, principal, command.target.executionId);
     if (!execution) throw new CommandFailure('NOT_FOUND');
     if (execution.lifecycle !== 'Open') throw new CommandFailure('EXECUTION_NOT_OPEN', true);
-    if (!execution.initial.positions.some(p => p.targets.some(t => t.id === command.target.targetId)))
+    if (!executionPositions(execution).some(p => p.targets.some(t => t.id === command.target.targetId)))
       throw new CommandFailure('SET_NOT_FOUND');
     if (execution.results.some(r => r.targetId === command.target.targetId)) throw new CommandFailure('SET_RESULT_EXISTS', true);
-    const position = execution.initial.positions.find(p => p.targets.some(t => t.id === command.target.targetId))!;
+    const position = executionPositions(execution).find(p => p.targets.some(t => t.id === command.target.targetId))!;
     const assignment = currentAssignment(execution, position.id);
     if (command.expected.assignment ? canonicalJson(command.expected.assignment) !== canonicalJson(assignment) : assignment.version !== 0)
       throw new CommandFailure('STALE_EXERCISE', true);

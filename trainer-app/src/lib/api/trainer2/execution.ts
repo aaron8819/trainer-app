@@ -1,3 +1,4 @@
+import { readSetAdditions } from './set-additions-read';
 import { readExerciseSwaps } from './exercise-swap';
 import { readSetSkips } from './skip-set';
 import { unresolvedOccurrences } from '../../engine/trainer2/occurrence-resolution';
@@ -45,12 +46,13 @@ export async function readExecution(tx: DB, principal: ServerPrincipal, executio
   const results = revisions.filter(r => { if (seen.has(r.targetId)) return false; seen.add(r.targetId); return true; })
     .map(r => savedSetResult.parse({ executionId: r.executionId, targetId: r.targetId, performedSetId: r.performedSetId, version: r.version, result: r.result, reason: r.reason, actionId: r.actionId, recordedAt: r.recordedAt.toISOString(), ...(r.assignment ? { assignment: r.assignment } : {}) }));
   const skips = await readSetSkips(tx, principal.accountId, row.id);
+  const additions = await readSetAdditions(tx, principal.accountId, row.id);
   const swaps = await readExerciseSwaps(tx, principal.accountId, row.id);
   const finish = await tx.trainer2ExecutionFinish.findUnique({ where: { executionId: row.id } });
   if ((row.lifecycle === 'Finished') !== !!finish) throw new InvalidStartSnapshot();
   const discard = await tx.trainer2ExecutionDiscard.findUnique({ where: { executionId: row.id } });
-  if ((row.lifecycle === 'Discarded') !== !!discard || (discard && (revisions.length || skips.length))) throw new InvalidStartSnapshot();
-  return { swaps, skips, discard: discard ? { actionId: discard.actionId, actorAccountId: discard.accountId, discardedAt: discard.discardedAt.toISOString() } : null, executionId: row.id, lifecycle: row.lifecycle as 'Open' | 'Finished' | 'Discarded', contentHash: row.contentHash, initial, results, history,
+  if ((row.lifecycle === 'Discarded') !== !!discard || (discard && (revisions.length || skips.length || additions.length))) throw new InvalidStartSnapshot();
+  return { additions, swaps, skips, discard: discard ? { actionId: discard.actionId, actorAccountId: discard.accountId, discardedAt: discard.discardedAt.toISOString() } : null, executionId: row.id, lifecycle: row.lifecycle as 'Open' | 'Finished' | 'Discarded', contentHash: row.contentHash, initial, results, history,
     finish: finish ? { actionId: finish.actionId, finishedAt: finish.finishedAt.toISOString(), expected: finishBinding.parse(finish.expected),
       unknownTargetIds: finish.unknownTargetIds as string[], planCompleted: finish.planCompleted } : null };
 }

@@ -1,5 +1,7 @@
 # 07 Operations
 
+Trainer2 session-added working sets: [execution ownership, immutable addition facts, command/swap/finish contracts, logger and local verification](architecture/trainer2/ADD_SET.md).
+
 Trainer2 catalog coverage: [canonical adapter, frozen snapshots, qualification, inventory and verification](architecture/trainer2/CATALOG_COVERAGE.md).
 
 Trainer2 shared-database preparation and the exact operator migration sequence are recorded in [SHARED_DATABASE_MIGRATION_PROCEDURE](architecture/trainer2/SHARED_DATABASE_MIGRATION_PROCEDURE.md). Production migration, grants and owner binding require separate authorization. The owner has chosen no fresh backup or restore rehearsal; recovery from a database-level mistake is limited.

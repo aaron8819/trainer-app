@@ -1,4 +1,7 @@
 'use client';
+import { canonicalJson } from '@/lib/trainer2-contracts/canonical-json';
+import { AddSet } from './AddSet';
+import { executionPositions } from '@/lib/engine/trainer2/execution-targets';
 import { finishFormId } from './FinishWorkout';
 import { currentAssignment, effectiveOccurrence } from '@/lib/engine/trainer2/exercise-swap';
 import { SwapExercise } from './SwapExercise';
@@ -28,16 +31,16 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
   refreshExecution: () => Promise<ExecutionRead>;
   refresh: () => Promise<SavedSetResult[]>;
 }) {
-  const [swapActive, setSwapActive] = useState(false);
+  const [swapActive, setSwapActive] = useState(false), [additionActive, setAdditionActive] = useState(false);
   const swapLocks = useRef<Record<string, boolean>>({});
   const lockCallbacks = useRef<Record<string, (value: boolean) => void>>({});
-  for (const p of execution.initial.positions) if (!lockCallbacks.current[p.id]) lockCallbacks.current[p.id] = value => {
-    swapLocks.current[p.id] = value; const any = Object.values(swapLocks.current).some(Boolean); setSwapActive(any); onSwapLock?.(any);
+  for (const key of execution.initial.positions.flatMap(p => [p.id, `add:${p.id}`])) if (!lockCallbacks.current[key]) lockCallbacks.current[key] = value => {
+    swapLocks.current[key] = value; const any = Object.values(swapLocks.current).some(Boolean); setSwapActive(any); setAdditionActive(Object.entries(swapLocks.current).some(([key,value]) => key.startsWith('add:') && value)); onSwapLock?.(any);
   };
-  const sets = execution.initial.positions.flatMap(owned => {
+  const sets = executionPositions(execution).flatMap(owned => {
     const position = effectiveOccurrence(execution).positions.find(p => p.id === owned.sourcePositionId)!;
     return owned.targets.map((target, index) => ({ id: target.id, positionId: owned.id, position,
-      target: position.targets.find(t => t.id === target.sourceTargetId)!, number: index + 1 }));
+      target: position.targets.find(t => t.id === target.displayTargetId)!, number: index + 1 }));
   });
   const firstUnrecorded = (results: SavedSetResult[]) => sets.find(s => !results.some(r => r.targetId === s.id && r.result) && (!execution.skips?.some(k => k.targetId === s.id) || results.some(r => r.targetId === s.id)))?.id ?? null;
   const [selected, setSelected] = useState<string | null>(() => firstUnrecorded(execution.results));
@@ -104,8 +107,8 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
     };
   }
   // Group consecutive saved roles only. No sorting or inferred exercise identity.
-  const groups: { id: string; role: string; positions: typeof execution.initial.positions }[] = [];
-  for (const owned of execution.initial.positions) {
+  const groups: { id: string; role: string; positions: ReturnType<typeof executionPositions> }[] = [];
+  for (const owned of executionPositions(execution)) {
     const role = sets.find(s => s.positionId === owned.id)?.position.role ?? 'Exercises';
     if (groups.at(-1)?.role === role) groups.at(-1)!.positions.push(owned);
     else groups.push({ id: owned.id, role, positions: [owned] });
@@ -115,7 +118,7 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
     <section ref={panel} aria-label="Active set" style={{ overflowAnchor: 'none' }} className="scroll-mt-4 relative rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
       <div className="mb-3"><div className="flex justify-between text-xs text-slate-500"><span className="font-semibold tracking-wide">ACTIVE SET</span><span>{count + skippedCount}/{sets.length} resolved</span></div><div role="progressbar" aria-valuenow={count + skippedCount} aria-valuemin={0} aria-valuemax={sets.length} aria-label="Resolved set progress" className="mt-2 h-1 overflow-hidden rounded-full bg-slate-100"><div className="h-full bg-black" style={{ width: `${(count + skippedCount) / sets.length * 100}%` }} /></div></div>
       <div className="flex items-start justify-between gap-3"><div><h3 ref={heading} tabIndex={-1} className="text-lg font-semibold outline-none">{active?.position.exercise.name ?? (count + skippedCount === sets.length ? 'Ready to finish' : 'Choose your next set')}</h3>
-      {active && <p className="text-xs text-slate-500">{active.position.role ?? 'Exercise'} · Set {active.number} of {active.position.targets.length}</p>}</div><div className="flex items-start gap-2">      {execution.initial.positions.map(p => <span key={p.id} hidden={active?.positionId !== p.id}><SwapExercise execution={execution} positionId={p.id} ownershipEpoch={ownershipEpoch} locked={locked}
+      {active && <p className="text-xs text-slate-500">{active.position.role ?? 'Exercise'} · Set {active.number} of {active.position.targets.length}</p>}</div><div className="flex items-start gap-2">      {execution.initial.positions.map(p => <span key={p.id} hidden={active?.positionId !== p.id}><SwapExercise execution={execution} positionId={p.id} ownershipEpoch={ownershipEpoch} locked={locked || additionActive}
         refresh={refreshExecution} onLock={lockCallbacks.current[p.id]} onChanged={() => { setInputEpoch(e => e+1); setHistoryOpen(false); setTimeout(reveal, 0); }} /></span>)}
 {active && <button type="button" aria-expanded={historyOpen} className="min-h-11 min-w-20 shrink-0 rounded-full border border-slate-200 px-3 text-xs font-semibold" onClick={() => setHistoryOpen(v => !v)}>History</button>}</div></div>
       {!active && count + skippedCount === sets.length && <button type="submit" form={finishFormId(execution.executionId)}
@@ -123,7 +126,7 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
         className="mt-3 min-h-11 rounded-xl bg-black px-5 py-3 font-semibold text-white disabled:opacity-40">Finish workout</button>}
       {active && <>
         <p className="mt-1 h-4 text-xs font-semibold text-amber-800">{execution.results.some(r => r.targetId === active.id) ? `Editing recorded set ${active.number}` : ''}</p>
-        <p className="mt-1 text-sm text-slate-600">Starting target · {targetLabel({ ...active.target, measurement: null })}{active.target.measurement && <> · {startingPounds(active.target.measurement) === null ? 'Bodyweight' : `${startingPounds(active.target.measurement)} lb suggested from prescription`}</>}{!active.target.measurement && active.number === 1 && execution.firstSetLoads?.some(h => h.positionId === active.position.id) && ' · Last time'}</p>
+        <p className="mt-1 text-sm text-slate-600">{execution.additions?.some(a => a.content.target.id === active.id) ? 'Session target' : 'Starting target'} · {targetLabel({ ...active.target, measurement: null })}{active.target.measurement && <> · {startingPounds(active.target.measurement) === null ? 'Bodyweight' : `${startingPounds(active.target.measurement)} lb suggested from prescription`}</>}{!active.target.measurement && active.number === 1 && execution.firstSetLoads?.some(h => h.positionId === active.position.id) && ' · Last time'}</p>
         <div key={active.positionId} hidden={!historyOpen} className="mt-2 rounded-lg border border-slate-200 p-3 text-sm">
           {prior ? <><p className="mb-2 text-xs text-slate-600">Previous · {prior.workoutName} · {new Date(prior.finishedAt).toLocaleDateString()}</p>
             {historyMeanings.length > 0 && <p className="mb-1 text-xs text-slate-500">{historyMeanings.join(' · ')}</p>}
@@ -136,10 +139,10 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
 
         </div>
       </>}
-      {sets.map(s => <SetResultRow key={`${s.id}:${currentAssignment(execution, s.positionId).version}:${inputEpoch}`} assignment={currentAssignment(execution, s.positionId)} active={selected === s.id} activePanel accountId={execution.initial.accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
+      {sets.map(s => <SetResultRow sessionAdded={execution.additions?.some(a => a.content.target.id === s.id)} key={`${s.id}:${currentAssignment(execution, s.positionId).version}:${inputEpoch}`} assignment={currentAssignment(execution, s.positionId)} active={selected === s.id} activePanel accountId={execution.initial.accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
         targetId={s.id} number={s.number} saved={execution.results.find(r => r.targetId === s.id)} prescription={s.target} exercise={s.position.exercise}
         firstSetLoad={execution.firstSetLoads?.find(h => h.positionId === s.position.id)?.result}
-        preceding={sets.filter(p => p.positionId === s.positionId && p.number < s.number).reverse().flatMap(p => execution.results.filter(r => r.targetId === p.id))}
+        preceding={sets.filter(p => p.positionId === s.positionId && p.number < s.number).reverse().flatMap(p => execution.results.filter(r => r.targetId === p.id && (!r.assignment || canonicalJson(r.assignment) === canonicalJson(currentAssignment(execution, s.positionId)))))}
         skipped={execution.skips?.find(k => k.targetId === s.id)} refreshExecution={refreshExecution} onReturn={() => select(firstUnrecorded(execution.results), true)}
         locked={locked || swapActive} onInputState={onInputState} refresh={refresh} onRecorded={recorded} onSubmission={() => onSubmission(s.id)} />)}
     </section>
@@ -160,7 +163,8 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
               const saved = execution.results.find(r => r.targetId === s.id);
               return <button key={s.id} aria-label={`${position.exercise.name}, set ${s.number}, ${saved?.result ? 'recorded' : skipped ? 'skipped' : 'unrecorded'}${inputStates[s.id] ? ', retained input' : ''}`} aria-pressed={selected === s.id}
                 className={`min-h-11 rounded-lg border px-3 py-2 text-left text-sm tabular-nums transition-colors ${selected === s.id ? 'border-black bg-black font-medium text-white' : saved?.result ? 'border-emerald-200 bg-emerald-50/40 text-emerald-900 hover:bg-emerald-50' : skipped ? 'border-dashed border-slate-400 text-slate-600 hover:bg-slate-50' : 'border-slate-300 text-slate-700 hover:bg-slate-50'}`} onClick={() => select(s.id, true)}><span className="font-semibold">{s.number}</span><span className="ml-1.5">{saved?.result ? '· ' + queueResultLabel(saved.result) : skipped ? '· Skipped' : <span aria-hidden="true" className="inline-block h-3 w-3 rounded-full border-2 border-current align-middle" />}</span>{inputStates[s.id] ? ' •' : ''}</button>;
-            })}</div>
+            })}<AddSet execution={execution} positionId={owned.id} ownershipEpoch={ownershipEpoch} locked={locked || swapActive}
+              refresh={refreshExecution} onLock={lockCallbacks.current[`add:${owned.id}`]} onAdded={id => select(id, true)} /></div>
           </div>;
         })}
       </details>)}

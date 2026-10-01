@@ -100,3 +100,9 @@ GRANT INSERT ON "Trainer2ExerciseSwap" TO trainer2_draft_runtime;
 CREATE POLICY trainer2_read ON "Trainer2ExerciseSwap" FOR SELECT TO trainer2_draft_reader USING (true);
 CREATE POLICY trainer2_write ON "Trainer2ExerciseSwap" TO trainer2_draft_runtime USING (true) WITH CHECK (true);
 GRANT EXECUTE ON FUNCTION trainer2_assignment(uuid,uuid),trainer2_assignments(uuid) TO trainer2_draft_reader,trainer2_draft_runtime;
+-- Incremental Add set grants; apply only after its forward migration.
+GRANT SELECT ON "Trainer2SetAddition" TO trainer2_draft_reader, trainer2_draft_runtime;
+GRANT INSERT ON "Trainer2SetAddition" TO trainer2_draft_runtime;
+CREATE POLICY trainer2_addition_reader ON "Trainer2SetAddition" FOR SELECT TO trainer2_draft_reader USING (true);
+CREATE POLICY trainer2_addition_runtime ON "Trainer2SetAddition" FOR ALL TO trainer2_draft_runtime USING (true) WITH CHECK (true);
+GRANT EXECUTE ON FUNCTION trainer2_execution_positions(uuid),trainer2_effective_targets(uuid,uuid),trainer2_restored_addition_target(uuid,uuid) TO trainer2_draft_reader,trainer2_draft_runtime;

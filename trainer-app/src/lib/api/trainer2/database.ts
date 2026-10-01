@@ -9,7 +9,7 @@ export const connectionRoles = { identity: "trainer2_identity_runtime", read: "t
 export type ConnectionPurpose = keyof typeof connectionRoles;
 const variables = { identity: "TRAINER2_IDENTITY_CONNECTION_STRING", read: "TRAINER2_READ_CONNECTION_STRING", write: "TRAINER2_WRITE_CONNECTION_STRING" } as const;
 const identityTables = ["Trainer2Owner", "Trainer2DeviceSession"];
-const trainingTables = ["Trainer2AccountTrainingState", "Trainer2Plan", "Trainer2PlanRevision", "Trainer2Identity", "Trainer2DurableAction", "Trainer2ActionOutcome", "Trainer2InstructionRevision", "Trainer2PlanDecision", "Trainer2Execution", "Trainer2SetResultRevision", "Trainer2ExecutionFinish", "Trainer2ExecutionDiscard", "Trainer2OccurrenceSkip", "Trainer2SetSkip", "Trainer2ExerciseSwap"];
+const trainingTables = ["Trainer2AccountTrainingState", "Trainer2Plan", "Trainer2PlanRevision", "Trainer2Identity", "Trainer2DurableAction", "Trainer2ActionOutcome", "Trainer2InstructionRevision", "Trainer2PlanDecision", "Trainer2Execution", "Trainer2SetResultRevision", "Trainer2ExecutionFinish", "Trainer2ExecutionDiscard", "Trainer2OccurrenceSkip", "Trainer2SetSkip", "Trainer2ExerciseSwap", "Trainer2SetAddition"];
 const tables = [...identityTables, ...trainingTables];
 
 export function connectionString(purpose: ConnectionPurpose, local: boolean, env: Record<string, string | undefined> = process.env) {

@@ -111,6 +111,19 @@ it('reads latest corrected exercise summaries in finished-date order with exact 
   expect(candidates).toHaveBeenCalledTimes(2);
 });
 
+it('includes performed session additions in comparable history and historical load fallback', async () => {
+  const p=createHypertrophyPlan().occurrences[0].positions[0],positionId=randomUUID(),targetId=randomUUID();
+  const current={executionId:randomUUID(),lifecycle:'Open',results:[],initial:{positions:[],startedAt:'2026-10-01T12:00:00.000Z',occurrence:{positions:[p]}}} as unknown as ExecutionRead;
+  const result={targetId,version:1,result:{reps:{value:8,basis:'total'},measurement:{kind:'externalLoad',value:'12.50',unit:'lb',convention:'barbellTotal',zeroMeaning:'validZero'},rir:'2'}};
+  const prior={executionId:randomUUID(),lifecycle:'Finished',finish:{finishedAt:'2026-09-30T12:00:00.000Z'},
+    initial:{occurrence:{name:'Previous workout',positions:[p]},positions:[{id:positionId,sourcePositionId:p.id,targets:p.targets.map(t=>({id:randomUUID(),sourceTargetId:t.id}))}]},results:[result],
+    additions:[{content:{positionId,ordinal:p.targets.length+1,target:{...p.targets[0],id:targetId}}}]} as unknown as ExecutionRead;
+  mocks.read.mockResolvedValueOnce(current).mockResolvedValueOnce(prior);
+  const tx={trainer2ExecutionFinish:{findMany:vi.fn().mockResolvedValue([{executionId:prior.executionId}])}} as unknown as Prisma.TransactionClient;
+  const read=await readExecutionWithPrevious(tx,{accountId:'trusted',sessionId:'fixture-session'},current.executionId);
+  expect(read?.previous?.[0].results).toEqual([result]);expect(read?.firstSetLoads?.[0].result).toEqual(result);
+});
+
 it('selects the latest eligible workout and first corrected working mass in saved order without requiring reps', async () => {
   const p = createHypertrophyPlan().occurrences[0].positions[0];
   p.targets = [p.targets[0], { ...p.targets[0], id: randomUUID() }, { ...p.targets[0], id: randomUUID() }];

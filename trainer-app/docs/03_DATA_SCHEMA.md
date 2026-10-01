@@ -1,5 +1,7 @@
 # 03 Data Schema
 
+Trainer2 session-added working sets: [execution ownership, immutable addition facts, command/swap/finish contracts, logger and local verification](architecture/trainer2/ADD_SET.md).
+
 Trainer2 set skipping: [durable command, lifecycle, finish/discard evidence, logger and local verification](architecture/trainer2/SKIP_SET.md).
 
 Trainer2 Skip Workout: [eligibility, audited resolution, endpoint, exact retry, UI and verification](architecture/trainer2/SKIP_WORKOUT.md).

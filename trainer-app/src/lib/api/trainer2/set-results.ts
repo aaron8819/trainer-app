@@ -1,3 +1,4 @@
+import { executionPositions } from '../../engine/trainer2/execution-targets';
 import { randomUUID } from 'node:crypto';
 import { currentAssignment, effectiveOccurrence } from '../../engine/trainer2/exercise-swap';
 import { compatibleCatalogResult } from '../../engine/trainer2/logging-prefill';
@@ -22,13 +23,13 @@ async function appendResult(db: PrismaClient, principal: ServerPrincipal, input:
     const historical = command.commandType === 'CorrectHistoricalSetResult';
     if (historical && execution.lifecycle !== 'Finished') throw new CommandFailure('EXECUTION_NOT_FINISHED', true);
     if (!historical && execution.lifecycle !== 'Open') throw new CommandFailure('EXECUTION_NOT_OPEN', true);
-    if (!execution.initial.positions.some(p => p.targets.some(t => t.id === command.target.targetId)))
+    if (!executionPositions(execution).some(p => p.targets.some(t => t.id === command.target.targetId)))
       throw new CommandFailure('SET_NOT_FOUND');
     if (command.commandType === 'RecordSetResult' &&
       execution.skips?.find(s => s.targetId === command.target.targetId)?.actionId !== command.expected.skipActionId)
       throw new CommandFailure('STALE_SET_SKIP', true);
     const current = execution.results.find(r => r.targetId === command.target.targetId);
-    const position = execution.initial.positions.find(p => p.targets.some(t => t.id === command.target.targetId))!;
+    const position = executionPositions(execution).find(p => p.targets.some(t => t.id === command.target.targetId))!;
     const assignment = currentAssignment(execution, position.id);
     const exercise = effectiveOccurrence(execution).positions.find(p => p.id === position.sourcePositionId)!.exercise;
     if (!compatibleCatalogResult(command.intent.result, exercise)) throw new CommandFailure('INVALID_DOCUMENT');

@@ -45,10 +45,10 @@ async function preview(tx: Prisma.TransactionClient, principal: ServerPrincipal,
     const measurement = content.targets[0]?.measurement ?? enriched?.firstSetLoads?.find(p => p.positionId === owned.sourcePositionId)?.result.result?.measurement;
     if (measurement) suggestedLoad = startingPounds(measurement);
   }
-  const original = execution.initial.occurrence.positions.find(p => p.id === owned.sourcePositionId)!;
+  const original = effectiveOccurrence(execution).positions.find(p => p.id === owned.sourcePositionId)!;
   return { executionId: execution.executionId, contentHash: execution.contentHash, assignment: currentAssignment(execution, request.positionId),
     instructionEpoch: instructions.epoch, effectiveHash, content, suggestedLoad,
-    targetsChanged: content.targets.some((t,i) => canonicalJson(t.reps) !== canonicalJson(original.targets[i].reps)) };
+    targetsChanged: content.targets.some((t,i) => canonicalJson(t.reps) !== canonicalJson(original.targets[i]?.reps ?? null)) };
 }
 export async function previewExerciseSwap(tx: Prisma.TransactionClient, principal: ServerPrincipal, input: unknown) {
   return preview(tx, principal, input, true);

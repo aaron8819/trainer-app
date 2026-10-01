@@ -47,3 +47,5 @@ One credential-free Vitest file is added: `DiscardWorkout.test.tsx`. Inventory i
 [Skip Workout](SKIP_WORKOUT.md) can subsequently resolve the same occurrence through a separate explicit decision. Discard itself still never resolves or skips it.
 
 Persisted [set skip](SKIP_SET.md) history also prevents empty discard, enforced in the application, SQL guard and deferred seal. An unperformed skip is authored history rather than an untouched attempt.
+
+An accepted [session addition](ADD_SET.md) is retained execution history and makes empty discard ineligible, even before logging or skipping.

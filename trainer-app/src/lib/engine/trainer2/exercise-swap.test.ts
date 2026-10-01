@@ -6,6 +6,8 @@ import { currentAssignment, effectiveOccurrence, replacementContent, swapEligibl
 import { startingPounds } from './logging-prefill';
 import type { ExecutionRead } from '../../trainer2-contracts/execution';
 import { library } from './catalog';
+import { ADD_SET_POLICY } from '../../trainer2-contracts/add-set';
+import { reviewedResults, unrecordedTargets } from '../../trainer2-contracts/workout-finish';
 
 function fixture() {
   const document = createHypertrophyPlan();
@@ -15,6 +17,27 @@ function fixture() {
     initial: { occurrence, positions: occurrence.positions.map(p => ({ id: randomUUID(), sourcePositionId: p.id, targets: p.targets.map(t => ({ id: randomUUID(), sourceTargetId: t.id })) })) } } as unknown as ExecutionRead;
 }
 describe('execution-owned swaps', () => {
+  it('retains addition identities through swap/restore and includes them in finish without resolving them', () => {
+    const x = fixture(), owned = x.initial.positions[0], original = x.initial.occurrence.positions[0];
+    const added = { ...original.targets[0], id: randomUUID(), classification: 'working' as const, required: true as const };
+    x.additions = [{ executionId:x.executionId, actionId:randomUUID(), contentHash:'d'.repeat(64), recordedAt:new Date().toISOString(),
+      content:{ policyVersion:ADD_SET_POLICY, positionId:owned.id, ordinal:owned.targets.length+1, target:added, exercise:original.exercise, assignment:currentAssignment(x,owned.id) } }];
+    const before = structuredClone(x);
+    expect(swapEligible(x,owned.id)).toBe(true);
+    expect(reviewedResults(x).results.some(r => r.targetId === added.id && r.resultVersion === 0)).toBe(true);
+    expect(unrecordedTargets(x).find(t => t.targetId === added.id)).toEqual({targetId:added.id,skipped:false,required:true});
+    const content = replacementContent(x,owned.id,catalog.find(e=>e.id==='t2:leg-press')!);
+    expect(content.targets.at(-1)!.id).toBe(added.id);
+    x.swaps = [{ executionId:x.executionId, positionId:owned.id, version:1, actionId:randomUUID(), previousActionId:null,
+      instructionEpoch:0, content, contentHash:'b'.repeat(64), recordedAt:new Date().toISOString() }];
+    expect(effectiveOccurrence(x).positions[0].targets.at(-1)!.id).toBe(added.id);
+    expect(replacementContent(x,owned.id,null).targets.at(-1)).toEqual(added);
+    expect(x.initial).toEqual(before.initial);expect(x.additions).toEqual(before.additions);
+    x.skips = [{ executionId:x.executionId, targetId:added.id, actionId:randomUUID(), skippedAt:new Date().toISOString() }];
+    expect(swapEligible(x,owned.id)).toBe(false);
+    x.skips=[];x.history=[{targetId:added.id,result:null} as ExecutionRead['results'][number]];
+    expect(swapEligible(x,owned.id)).toBe(false);
+  });
   it('derives every replacement from START and restores original load without drift', () => {
     const x = fixture(), positionId = x.initial.positions[0].id;
     const before = structuredClone(x.initial);

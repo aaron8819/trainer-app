@@ -1,8 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID, webcrypto } from 'node:crypto';
-import { Workout, WorkoutPrescription } from './Workout';
+import { mergeExecutionRead, Workout, WorkoutPrescription } from './Workout';
 import { ExerciseSwapHistory } from './ExerciseSwapHistory';
+import { AddSet } from './AddSet';
 import { replacementContent } from '@/lib/engine/trainer2/exercise-swap';
 import { catalog } from '@/lib/engine/trainer2/catalog';
 import { createHypertrophyPlan } from '@/lib/engine/trainer2/plan-builder';
@@ -14,6 +15,35 @@ const next = { acceptedSequence: '2', occurrences: [{ occurrenceId: occurrence.i
 const response = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
 beforeEach(() => { vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true }))); vi.stubGlobal('scrollBy', vi.fn()); localStorage.clear(); sessionStorage.clear(); vi.stubGlobal('crypto', webcrypto); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+describe('Add set recovery', () => {
+  it('retains an uncertain exact addition across reload and recovers after closure', async () => {
+    const x = activeFixture(), positionId = x.initial.positions[0].id;
+    const refresh = vi.fn(), onAdded = vi.fn();
+    const fetch = vi.fn().mockResolvedValue(response({ malformed: true })); vi.stubGlobal('fetch',fetch);
+    const view = render(<AddSet execution={x} positionId={positionId} ownershipEpoch={0} locked={false} refresh={refresh} onAdded={onAdded} />);
+    await waitFor(() => expect(screen.getByRole('button',{name:'+ Add set'})).toBeEnabled());
+    fireEvent.click(screen.getByRole('button',{name:'+ Add set'}));
+    await waitFor(() => expect(screen.getByRole('button',{name:'Check addition again'})).toBeEnabled());
+    const body = fetch.mock.calls[0][1].body, command = JSON.parse(body), targetId = randomUUID();
+    view.unmount();
+    fetch.mockResolvedValue(response({replayed:true,outcomeCursor:'1',outcome:{status:'Accepted',actionId:command.actionId,commandType:'AddSet',acceptedSequence:'1',result:{executionId:x.executionId,positionId,targetId,ordinal:3,contentHash:'b'.repeat(64)}}}));
+    const closed = {...x,lifecycle:'Finished' as const,additions:[{actionId:command.actionId,contentHash:'b'.repeat(64),content:{target:{id:targetId},ordinal:3}}]} as ExecutionRead;
+    refresh.mockResolvedValue(closed);
+    render(<AddSet execution={closed} positionId={positionId} ownershipEpoch={0} locked refresh={refresh} onAdded={onAdded} />);
+    fireEvent.click(await screen.findByRole('button',{name:'Check addition again'}));
+    await waitFor(() => expect(screen.queryByRole('button',{name:'Check addition again'})).toBeNull());
+    expect(fetch.mock.calls[1][1].body).toBe(body);expect(onAdded).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(`trainer2-add-set:${accountId}:${x.executionId}:${positionId}`)).toBeNull();
+  });
+  it('does not announce or select an addition until authoritative readback confirms it', async () => {
+    const x=activeFixture(),positionId=x.initial.positions[0].id,onAdded=vi.fn();
+    const fetch=vi.fn().mockImplementation((_url,init)=>{const c=JSON.parse(init.body);return Promise.resolve(response({replayed:false,outcomeCursor:'1',outcome:{status:'Accepted',actionId:c.actionId,commandType:'AddSet',acceptedSequence:'1',result:{executionId:x.executionId,positionId,targetId:randomUUID(),ordinal:3,contentHash:'b'.repeat(64)}}}));});
+    vi.stubGlobal('fetch',fetch);
+    render(<AddSet execution={x} positionId={positionId} ownershipEpoch={0} locked={false} refresh={async()=>x} onAdded={onAdded} />);
+    await waitFor(()=>expect(screen.getByRole('button',{name:'+ Add set'})).toBeEnabled());fireEvent.click(screen.getByRole('button',{name:'+ Add set'}));
+    await waitFor(()=>expect(screen.getByRole('button',{name:'Check addition again'})).toBeEnabled());expect(onAdded).not.toHaveBeenCalled();
+  });
+});
 describe('Workout start consumer', () => {
   it('only reads on mount and previews without starting', async () => {
     const fetch = vi.fn().mockResolvedValue(response(next)); vi.stubGlobal('fetch', fetch);
@@ -374,4 +404,12 @@ it.each([-180, 200])('aligns the rest timer from top %i after confirmed logging 
     fireEvent.click(screen.getAllByRole('button', { name: /, set 1, unrecorded/ }).at(-1)!);
     expect(scroll).toHaveBeenLastCalledWith(expect.objectContaining({ top: -116 }));
   } finally { rect.mockRestore(); scroll.mockRestore(); }
+});
+
+it('older execution reads cannot drop accepted additions or restore an obsolete assignment', () => {
+  const old=activeFixture(),current=structuredClone(old);
+  current.additions=[{actionId:randomUUID()}] as ExecutionRead['additions'];
+  expect(mergeExecutionRead(current,old)).toBe(current);
+  const swapped=swappedFixture(),unswapped={...swapped,swaps:[]};
+  expect(mergeExecutionRead(swapped,unswapped)).toBe(swapped);
 });

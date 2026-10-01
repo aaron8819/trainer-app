@@ -193,17 +193,17 @@ describe("migration integrity", () => {
     );
   });
 
-  it("accepts the conventional chain with exercise swapping pending", () => {
+  it("accepts the conventional chain with session set additions pending", () => {
     const result = report();
 
     expect(EXPECTED_MIGRATION_CHAIN.at(-1)).toBe(
-      "20260930010000_trainer2_exercise_swap",
+      "20261001010000_trainer2_add_set",
     );
     expect(result.chain).toMatchObject({
       checkedIn: EXPECTED_MIGRATION_CHAIN.length,
       applied: EXPECTED_MIGRATION_CHAIN.length - 1,
       pending: 1,
-      pendingNames: ["20260930010000_trainer2_exercise_swap"],
+      pendingNames: ["20261001010000_trainer2_add_set"],
       exactExpectedChain: true,
     });
     expect(result.migrationIntegrityValid).toBe(true);

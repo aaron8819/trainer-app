@@ -12,15 +12,16 @@ import { assertSessionMutationOrigin } from './authentication';
 import { DraftAccessError } from './principal';
 import { ActionCollision, CommandFailure } from './command';
 import { InvalidStartSnapshot, readNextWorkout, startOccurrence } from './execution';
+import { addSet } from './add-set';
 
-export async function executionHttp(request: Request, operation: 'SwapExercise' | 'PreviewExerciseSwap' | 'SkipSet' | 'SkipOccurrence' | 'DiscardEmptyExecution' | 'CorrectHistoricalSetResult' | 'FinishExecution' | 'StartOccurrence' | 'SaveSetResult' | 'ReadExecution' | 'ReadNext', target?: string) {
+export async function executionHttp(request: Request, operation: 'AddSet' | 'SwapExercise' | 'PreviewExerciseSwap' | 'SkipSet' | 'SkipOccurrence' | 'DiscardEmptyExecution' | 'CorrectHistoricalSetResult' | 'FinishExecution' | 'StartOccurrence' | 'SaveSetResult' | 'ReadExecution' | 'ReadNext', target?: string) {
   const started = Date.now();
   let stage = 'admission';
   const json = (body: unknown, status: number) => Response.json(body, { status,
     headers: { 'Cache-Control': 'private, no-store', Vary: 'Cookie, Authorization' } });
   try {
     if (operation === 'PreviewExerciseSwap') assertSessionMutationOrigin(request);
-    const purpose = operation === 'SwapExercise' || operation === 'SkipSet' || operation === 'SkipOccurrence' || operation === 'DiscardEmptyExecution' || operation === 'CorrectHistoricalSetResult' || operation === 'StartOccurrence' || operation === 'SaveSetResult' || operation === 'FinishExecution' ? 'write' : 'read';
+    const purpose = operation === 'AddSet' || operation === 'SwapExercise' || operation === 'SkipSet' || operation === 'SkipOccurrence' || operation === 'DiscardEmptyExecution' || operation === 'CorrectHistoricalSetResult' || operation === 'StartOccurrence' || operation === 'SaveSetResult' || operation === 'FinishExecution' ? 'write' : 'read';
     const { db, principal } = operation === 'PreviewExerciseSwap' ? await requestContext(request, purpose, false) : await requestContext(request, purpose);
     stage = 'transaction';
     if (operation === 'ReadExecution' || operation === 'ReadNext') {
@@ -40,7 +41,7 @@ export async function executionHttp(request: Request, operation: 'SwapExercise' 
       });
       return json(value, 200);
     }
-    const result = await (operation === 'SwapExercise' ? swapExercise : operation === 'SkipSet' ? skipSet : operation === 'SkipOccurrence' ? skipOccurrence : operation === 'DiscardEmptyExecution' ? discardEmptyExecution : operation === 'CorrectHistoricalSetResult' ? correctHistoricalSetResult : operation === 'FinishExecution' ? finishExecution : operation === 'SaveSetResult' ? saveSetResult : startOccurrence)(db, principal, JSON.parse(text));
+    const result = await (operation === 'AddSet' ? addSet : operation === 'SwapExercise' ? swapExercise : operation === 'SkipSet' ? skipSet : operation === 'SkipOccurrence' ? skipOccurrence : operation === 'DiscardEmptyExecution' ? discardEmptyExecution : operation === 'CorrectHistoricalSetResult' ? correctHistoricalSetResult : operation === 'FinishExecution' ? finishExecution : operation === 'SaveSetResult' ? saveSetResult : startOccurrence)(db, principal, JSON.parse(text));
     return json(result, result.outcome.status === 'Accepted' ? 200 : result.outcome.status === 'Conflict' ? 409 : 422);
   } catch (error) {
     if (error instanceof DraftAccessError) return json({ error: error.message }, 403);

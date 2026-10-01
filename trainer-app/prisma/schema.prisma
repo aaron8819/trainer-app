@@ -1454,3 +1454,19 @@ model Trainer2SetSkip {
   @@id([executionId, targetId])
   @@unique([accountId, actionId])
 }
+
+model Trainer2SetAddition {
+  accountId String
+  executionId String @db.Uuid
+  positionId String @db.Uuid
+  targetId String @unique @db.Uuid
+  ordinal Int
+  actionId String @db.Uuid
+  content Json
+  canonicalContent String
+  contentHash String
+  recordedAt DateTime @default(now()) @db.Timestamptz(3)
+  @@id([executionId, targetId])
+  @@unique([executionId, positionId, ordinal])
+  @@unique([accountId, actionId])
+}

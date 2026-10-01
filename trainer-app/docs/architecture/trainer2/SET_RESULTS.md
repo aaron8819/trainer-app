@@ -4,7 +4,7 @@ This bounded local slice implements recording and correcting existing prescribed
 
 ## Commands and versions
 
-`POST /api/trainer2/executions/results` accepts the established schemaVersion/actionId/deviceId/originatingAccountId/ownershipEpoch/dependsOn envelope. The submitted account is checked against the trusted server principal; it does not authorize the request. Both commands name `target.executionId` and the exact execution-owned `target.targetId` from the immutable initial identity map, not an index, label, source target or position ID. The owned execution must be Open. No result command needs the current plan to remain active or reapplies exercise exclusions to honest performance.
+`POST /api/trainer2/executions/results` accepts the established schemaVersion/actionId/deviceId/originatingAccountId/ownershipEpoch/dependsOn envelope. The submitted account is checked against the trusted server principal; it does not authorize the request. Both commands name `target.executionId` and the exact execution-owned `target.targetId` from the original identity map or an accepted [session addition](ADD_SET.md), not an index, label, source target or position ID. The owned execution must be Open. No result command needs the current plan to remain active or reapplies exercise exclusions to honest performance.
 
 | Command | Expected state | Intent | Effect |
 | --- | --- | --- | --- |
@@ -21,7 +21,7 @@ A result contains nullable `reps: { value, basis }`, nullable `measurement`, and
 
 Actual values, units and counting/loading basis may differ from targets. The logging UI may suggest explicit prescription or compatible preceding-set values, but only an explicit Log set records them as performed evidence; suggestions alone write nothing. Editing starts from the saved result. The actual exercise and classification remain linked to the exact immutable prescribed set in this slice; no exercise substitution or classification correction is introduced. Entry/correction timestamps are server recording times, not inferred performed times or actual performance order.
 
-Workout start currently admits rep targets only. Duration, distance, unequal sided counts, unsupported-measurement notes, exercise/set additions, removal of prescribed work are outside result entry; explicit completion is owned by WORKOUT_FINISH.md. Contextual validation retains these sided/duration limitations. Unsupported start captures continue to fail explicitly rather than being coerced into reps.
+Workout start currently admits rep targets only. Duration, distance, unequal sided counts, unsupported-measurement notes, exercise additions and removal of prescribed work are outside result entry; explicit completion is owned by WORKOUT_FINISH.md. Contextual validation retains these sided/duration limitations. Unsupported start captures continue to fail explicitly rather than being coerced into reps.
 
 ## Persistence and access
 
@@ -29,7 +29,7 @@ Migration `20260914020000_trainer2_set_results` adds append-only `Trainer2SetRes
 
 Result append, accepted sequence, durable action and outcome commit together. A failure after append rolls everything back. Initial prescriptions, activated revisions and target IDs are never updated. Historical migrations are unchanged; fresh and populated accepted-base upgrades create no invented results. `trainer2-runtime-grants.sql` adds SELECT for reader/runtime and INSERT only for runtime on the new table. Runtime connection validation includes that table. RLS is enabled, PUBLIC/browser receives no new table grants, new trigger functions have PUBLIC execution revoked, and no SECURITY DEFINER function is introduced. Existing hosted admission and local Host/Origin protections remain in effect.
 
-Execution GET and next-workout reads include `results`, containing the latest revision per target (including cleared null results), stable identity, version, action, reason and recordedAt. They remain account-scoped, read-only, private/no-store transactions. Initial target values are still read exclusively from the immutable START document.
+Execution GET and next-workout reads include `results`, containing the latest revision per target (including cleared null results), stable identity, version, action, reason and recordedAt. They remain account-scoped, read-only, private/no-store transactions. Original target values are read from immutable START; session-added targets use immutable addition facts and effective substitution snapshots.
 
 ## UI and recovery
 

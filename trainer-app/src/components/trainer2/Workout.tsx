@@ -1,4 +1,6 @@
 'use client';
+import { AddSet } from './AddSet';
+import { executionPositions } from '@/lib/engine/trainer2/execution-targets';
 import { ExerciseSwapHistory } from './ExerciseSwapHistory';
 import { effectiveOccurrence, currentAssignment } from '@/lib/engine/trainer2/exercise-swap';
 import { useCallback, useEffect, useRef, useState, Fragment, type ReactNode } from 'react';
@@ -18,6 +20,22 @@ import { control } from './DraftEditor';
 import { TrainingOverview, PlannedWorkout } from './TrainingOverview';
 import { effortSummary, targetLabel, trainingUrl } from './training-summary';
 import { fetchWithRecovery } from './request-recovery';
+
+// Both reads are validated; retain accepted identities and newer evidence against delayed snapshots.
+export function mergeExecutionRead(current: ExecutionRead | null, value: ExecutionRead): ExecutionRead {
+  if (!current) return value;
+  if (current.additions?.some(a => !value.additions?.some(v => v.actionId === a.actionId)) ||
+    current.initial.positions.some(p => currentAssignment(current, p.id).version > currentAssignment(value, p.id).version) ||
+    (current.lifecycle !== 'Open' && value.lifecycle === 'Open')) return current;
+  return { ...value,
+    skips: [...(value.skips ?? []), ...(current.skips ?? []).filter(p => !value.skips?.some(s => s.targetId === p.targetId))],
+    history: [...(value.history ?? []), ...(current.history ?? []).filter(p => !value.history?.some(r => r.targetId === p.targetId && r.version === p.version))],
+    results: value.results.map(r => {
+      const prior = current.results.find(p => p.targetId === r.targetId);
+      return prior && prior.version > r.version ? prior : r;
+    }).concat(current.results.filter(p => !value.results.some(r => r.targetId === p.targetId))),
+  };
+}
 
 export function WorkoutPrescription({ workout, resultRow, previous }: { workout: DraftDocument['occurrences'][number]; resultRow?: (positionId: string, targetId: string, number: number) => ReactNode; previous?: (positionId: string) => ReactNode }) {
   if (!resultRow) return <PlannedWorkout workout={workout} />;
@@ -56,7 +74,7 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
       if (!response.ok) throw new Error(body.error === 'INVALID_START_SNAPSHOT' ? 'The saved workout prescription is unavailable. It cannot be rebuilt safely.' : 'Could not load this workout. Reload to try again.');
       if (executionId) {
         const value = await validateExecutionRead(body, accountId, executionId);
-        if (publish && token === generation.current) setExecution(current => current && current.initial.positions.some(p => currentAssignment(current, p.id).version > currentAssignment(value, p.id).version) ? current : current && current.lifecycle !== 'Open' && value.lifecycle === 'Open' ? current : current ? { ...value, skips: [...(value.skips ?? []), ...(current.skips ?? []).filter(p => !value.skips?.some(s => s.targetId === p.targetId))], history: [...(value.history ?? []), ...(current.history ?? []).filter(p => !value.history?.some(r => r.targetId === p.targetId && r.version === p.version))], results: value.results.map(r => { const prior = current.results.find(p => p.targetId === r.targetId); return prior && prior.version > r.version ? prior : r; }).concat(current.results.filter(p => !value.results.some(r => r.targetId === p.targetId))) } : value);
+        if (publish && token === generation.current) setExecution(current => mergeExecutionRead(current, value));
         if (token === generation.current) setMessage('');
         return value;
       } else {
@@ -131,7 +149,7 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
       {execution.discard && <p>Started {execution.initial.startedAt}. Discarded {execution.discard.discardedAt}.</p>}
       {execution.finish && <p className="text-sm text-slate-600">Started {execution.initial.startedAt}. Finished {execution.finish.finishedAt}. Later correction times appear in result history.</p>}
       {execution.lifecycle === 'Finished' && <ExerciseSwapHistory execution={execution} />}
-      {execution.lifecycle === 'Finished' && execution.initial.occurrence.positions.map(p => { const changed = effectiveOccurrence(execution).positions.find(e => e.id === p.id)!; return execution.swaps?.some(s => s.positionId === execution.initial.positions.find(o => o.sourcePositionId === p.id)?.id) ? <p key={p.id}>{changed.exercise.name} · originally {p.exercise.name}</p> : null; })}<p className="font-medium text-teal-800">{execution.initial.stage.name} · {effortSummary(execution.initial.occurrence)}</p><a className="inline-block min-h-11 py-2 text-sm text-teal-800 underline" href={trainingUrl(execution.initial.planId)}>Back to training</a>
+      {execution.lifecycle === 'Finished' && execution.initial.occurrence.positions.map(p => { const changed = effectiveOccurrence(execution).positions.find(e => e.id === p.id)!; return execution.swaps?.some(s => s.positionId === execution.initial.positions.find(o => o.sourcePositionId === p.id)?.id) ? <p key={p.id}>{changed.exercise.name} · originally {p.exercise.name}</p> : null; })}<p className="font-medium text-teal-800">{execution.initial.stage.name} · {effortSummary(effectiveOccurrence(execution))}</p><a className="inline-block min-h-11 py-2 text-sm text-teal-800 underline" href={trainingUrl(execution.initial.planId)}>Back to training</a>
 
       {execution.lifecycle === 'Open' ? <ActiveWorkout key={`active:${execution.executionId}`} execution={execution} ownershipEpoch={ownershipEpoch} locked={finishLocked || discardLocked} inputStates={inputStates} onInputState={onInputState} onSwapLock={setSwapLocked}
         refreshExecution={async () => { const value = await load(); if (!value || !('results' in value)) throw new Error('Read failed'); return value; }}
@@ -139,20 +157,21 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
         const prior = execution.previous?.find(p => p.positionId === positionId);
         return prior ? <aside className="mt-2 rounded-lg bg-teal-50 p-3 text-xs text-teal-950"><a className="font-semibold underline" href={url(prior.executionId)}>Previous · {prior.workoutName} · {new Date(prior.finishedAt).toLocaleDateString()}</a><p className="mt-1">Previous exercise results · latest corrections</p><ul>{prior.results.map(r => <li key={r.targetId}>{resultLabel(r.result)}</li>)}</ul></aside> : <p className="mt-2 text-xs text-slate-500">No comparable previous performance.</p>;
       }} resultRow={(positionId, targetId, number) => {
-        const owned = execution.initial.positions.find(p => p.sourcePositionId === positionId)!.targets.find(t => t.sourceTargetId === targetId)!;
+        const owned = executionPositions(execution).find(p => p.sourcePositionId === positionId)!.targets.find(t => t.displayTargetId === targetId)!;
         const refresh = async () => { const value = await load(); if (!value || !('results' in value)) throw new Error('Read failed'); return value.results; };
         const saved = execution.results.find(r => r.targetId === owned.id);
-        return <Fragment key={owned.id}>{execution.finish?.unknownTargetIds.includes(owned.id) && !saved?.result && !execution.skips?.some(s => s.targetId === owned.id) && <p className="text-sm text-slate-600">Skipped at finish · no performed result.</p>}{execution.skips?.some(s => s.targetId === owned.id) && <p className="text-sm text-slate-600">{saved ? 'Previously skipped; subsequently recorded. See result history.' : 'Explicitly skipped · no performed result.'}</p>}<SetResultRow key="ongoing" accountId={accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
-          readOnly={execution.lifecycle !== 'Open'} retainedOnly={execution.lifecycle !== 'Open'} locked={finishLocked || discardLocked} onInputState={onInputState} targetId={owned.id} number={number} saved={saved} prescription={execution.initial.occurrence.positions.find(p => p.id === positionId)!.targets.find(t => t.id === targetId)} exercise={execution.initial.occurrence.positions.find(p => p.id === positionId)!.exercise} refresh={refresh} />
+        return <Fragment key={owned.id}>{execution.additions?.some(a => a.content.target.id === owned.id) && <p className="text-xs text-slate-500">Added during workout</p>}{execution.finish?.unknownTargetIds.includes(owned.id) && !saved?.result && !execution.skips?.some(s => s.targetId === owned.id) && <p className="text-sm text-slate-600">Skipped at finish · no performed result.</p>}{execution.skips?.some(s => s.targetId === owned.id) && <p className="text-sm text-slate-600">{saved ? 'Previously skipped; subsequently recorded. See result history.' : 'Explicitly skipped · no performed result.'}</p>}<SetResultRow key="ongoing" accountId={accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
+          readOnly={execution.lifecycle !== 'Open'} retainedOnly={execution.lifecycle !== 'Open'} locked={finishLocked || discardLocked} onInputState={onInputState} targetId={owned.id} number={number} saved={saved} prescription={effectiveOccurrence(execution).positions.find(p => p.id === positionId)!.targets.find(t => t.id === targetId)} exercise={effectiveOccurrence(execution).positions.find(p => p.id === positionId)!.exercise} refresh={refresh} />
           {execution.lifecycle === 'Finished' && <SetResultRow key="historical" accountId={accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
             historical history={execution.history?.filter(r => r.targetId === owned.id)} finishVersion={execution.finish?.expected.results.find(r => r.targetId === owned.id)?.resultVersion}
             targetId={owned.id} number={number} saved={saved} refresh={refresh} />}</Fragment>;
       }} />}
+      {execution.lifecycle !== 'Open' && execution.initial.positions.map(p => <AddSet key={p.id} execution={execution} positionId={p.id} ownershipEpoch={ownershipEpoch} locked refresh={async () => { const value = await load(); if (!value || !('results' in value)) throw new Error('Read failed'); return value; }} />)}
       <FinishWorkout key={execution.executionId} execution={execution} ownershipEpoch={ownershipEpoch}
-        blocked={swapLocked || discardLocked || execution.initial.positions.some(p => p.targets.some(t => inputStates[t.id] !== false))}
+        blocked={swapLocked || discardLocked || executionPositions(execution).some(p => p.targets.some(t => inputStates[t.id] !== false))}
         onFinished={() => { try { localStorage.removeItem(restKey(accountId, execution.executionId)); sessionStorage.setItem('trainer2-finished:' + accountId + ':' + execution.initial.planId, execution.executionId); } catch { /* Completion is already confirmed; navigation remains safe. */ } window.location.assign(trainingUrl(execution.initial.planId)); }} onLock={setFinishLocked} checkResults={async () => { if (!await load()) throw new Error('Read failed'); }} refresh={async () => { const value = await load(undefined, undefined, undefined, false); if (!value || value.lifecycle !== 'Finished') throw new Error('Completion read failed'); }} />
       <DiscardWorkout key={`discard:${execution.executionId}`} execution={execution} ownershipEpoch={ownershipEpoch}
-        blocked={swapLocked || finishLocked || execution.initial.positions.some(p => p.targets.some(t => inputStates[t.id] !== false))}
+        blocked={swapLocked || finishLocked || executionPositions(execution).some(p => p.targets.some(t => inputStates[t.id] !== false))}
         onLock={setDiscardLocked} checkResults={async () => { if (!await load()) throw new Error('Read failed'); }} refresh={async () => { const value = await load(); if (!value || value.lifecycle !== 'Discarded') throw new Error('Discard read failed'); }} />
       </section>}
     {next && !execution && !pending && !program && <section className="space-y-3">

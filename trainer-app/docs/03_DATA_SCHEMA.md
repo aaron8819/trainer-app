@@ -426,3 +426,6 @@ Created workouts persist only retained rows. The pre-reduction plan remains in `
 ## Trainer2 exercise swapping
 
 Forward migration `20260930010000_trainer2_exercise_swap` adds append-only `Trainer2ExerciseSwap` and nullable performed-result assignment bindings. Existing evidence remains version zero; immutable START and accepted plans are untouched. See [exercise swapping](architecture/trainer2/EXERCISE_SWAP.md) and `prisma/schema.prisma`.
+
+
+Trainer2 execution-local Add exercise ownership, identity, command, UI and migration/recovery requirements are documented in [ADD_EXERCISE.md](architecture/trainer2/ADD_EXERCISE.md).

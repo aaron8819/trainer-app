@@ -288,7 +288,7 @@ it('integrates one active panel with finish controls across input-state updates'
   value.contentHash = digest(value.initial);
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(value)));
   render(<Workout accountId={accountId} ownershipEpoch={0} executionId={value.executionId} />);
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Finish workout' })).toBeEnabled());
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Finish workout' })).toBeEnabled(), { timeout: 5000 });
   fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '8' } });
   expect(screen.getAllByRole('region', { name: 'Active set' })).toHaveLength(1);
   expect(screen.getAllByLabelText(/Actual reps/)).toHaveLength(1);

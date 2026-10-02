@@ -1,5 +1,5 @@
 'use client';
-import { executionPositions } from '@/lib/engine/trainer2/execution-targets';
+import { executionPositions, originalPositions } from '@/lib/engine/trainer2/execution-targets';
 import { useEffect, useRef, useState } from 'react';
 import type { ExecutionRead } from '@/lib/trainer2-contracts/execution';
 import { swapExerciseCommand, swapPreview, swapResponse, type SwapExerciseCommand } from '@/lib/trainer2-contracts/exercise-swap';
@@ -22,7 +22,7 @@ export function SwapExercise({ execution, positionId, ownershipEpoch, locked, re
   const discardKey = `${key}:discard`;
   const [unreadablePending, setUnreadablePending] = useState(false);
   const owned = executionPositions(execution).find(p => p.id === positionId)!;
-  const original = execution.initial.occurrence.positions.find(p => p.id === owned.sourcePositionId)!;
+  const original = originalPositions(execution).find(p => p.id === owned.displayPositionId)!;
   const effective = effectiveOccurrence(execution).positions.find(p => p.id === original.id)!;
   const metadata = library.find(e => effective.exercise.kind === 'catalogSnapshot' && e.catalogId === effective.exercise.catalogId);
   const equipmentOptions = [...new Set(library.flatMap(e => e.equipment))].sort();

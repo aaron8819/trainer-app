@@ -1,3 +1,4 @@
+import { executionPositions } from '../src/lib/engine/trainer2/execution-targets';
 import assert from 'node:assert/strict';
 import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { spawnSync, spawn, type SpawnOptions } from 'node:child_process';
@@ -14,6 +15,7 @@ import { activatePlan } from '../src/lib/api/trainer2/activation';
 import { startOccurrence, readExecution } from '../src/lib/api/trainer2/execution';
 import { previewExerciseSwap, swapExercise } from '../src/lib/api/trainer2/exercise-swap';
 import { addSet } from '../src/lib/api/trainer2/add-set';
+import { addExercise } from '../src/lib/api/trainer2/add-exercise';
 import { correctHistoricalSetResult, saveSetResult } from '../src/lib/api/trainer2/set-results';
 import { skipSet } from '../src/lib/api/trainer2/skip-set';
 import { acceptCommand } from '../src/lib/api/trainer2/command';
@@ -33,19 +35,19 @@ import { cleanupSteps, ownedProcessTree, terminateOwnedProcesses, waitForWorker,
 
 async function main() {
   assert(parseExactDisposableConfirmationArgs(process.argv.slice(2)).valid, 'Expected exactly --confirm-disposable');
-  assert(process.send && process.env.TRAINER2_ADD_SET_OWNER,'Disposable worker must be supervised');
-  const suffix=process.env.TRAINER2_ADD_SET_SUFFIX!;assert(/^[a-f0-9]{12}$/.test(suffix));
-  const container = `trainer2-add-set-${suffix}`, database = `trainer2_disposable_add_set_${suffix}`;
+  assert(process.send && process.env.TRAINER2_ADD_EXERCISE_OWNER,'Disposable worker must be supervised');
+  const suffix=process.env.TRAINER2_ADD_EXERCISE_SUFFIX!;assert(/^[a-f0-9]{12}$/.test(suffix));
+  const container = `trainer2-add-exercise-${suffix}`, database = `trainer2_disposable_add_exercise_${suffix}`;
   const password = randomUUID(), rolePassword = randomUUID(), accountId = randomUUID(), sessionId = randomUUID(), secret = randomBytes(32).toString('base64url');
-  const artifact = resolve('artifacts/trainer2/add-set-evidence'); mkdirSync(artifact, { recursive: true });
+  const artifact = resolve('artifacts/trainer2/add-exercise-evidence'); mkdirSync(artifact, { recursive: true });
   const source = verificationSource(), checks: string[] = [];
   let assertionError: string | undefined, cleanup: CleanupResult[] = [], details: Record<string, unknown> = {};
   let containerCreated=false;
   const redact = (value: string) => value.replaceAll(password,'[secret]').replaceAll(rolePassword,'[secret]');
   // Written only during actual process exit, independently of assertion completion.
   process.once('exit', exitCode => {
-    writeFileSync(resolve(artifact,'report.json'),JSON.stringify({runId:process.env.TRAINER2_ADD_SET_OWNER,source,...details,checks,
-      assertions:{status:assertionError?'failed':checks.length===20?'passed':'incomplete',error:assertionError},
+    writeFileSync(resolve(artifact,'report.json'),JSON.stringify({runId:process.env.TRAINER2_ADD_EXERCISE_OWNER,source,...details,checks,
+      assertions:{status:assertionError?'failed':checks.length===24?'passed':'incomplete',error:assertionError},
       cleanup,worker:{status:'completed',exitCode},runner:{status:'pending-controller'}},null,2));
   });
   const command = (exe: string, args: string[], env?: NodeJS.ProcessEnv) => {
@@ -86,7 +88,7 @@ async function main() {
     server=undefined;
   };
   try {
-    command('docker',['run','--pull=never','--rm','-d','--name',container,'--label',`trainer2.add-set.owner=${process.env.TRAINER2_ADD_SET_OWNER}`,'-e',`POSTGRES_PASSWORD=${password}`,'-e',`POSTGRES_DB=${database}`,'-p','127.0.0.1::5432','postgres:17-alpine']);
+    command('docker',['run','--pull=never','--rm','-d','--name',container,'--label',`trainer2.add-exercise.owner=${process.env.TRAINER2_ADD_EXERCISE_OWNER}`,'-e',`POSTGRES_PASSWORD=${password}`,'-e',`POSTGRES_DB=${database}`,'-p','127.0.0.1::5432','postgres:17-alpine']);
     containerCreated=true;
     for(let i=0;i<60;i++){ if(spawnSync('docker',['exec',container,'pg_isready','-U','postgres'],{ windowsHide:true,timeout:5_000 }).status===0) break; await new Promise(r=>setTimeout(r,500)); }
     const port = command('docker',['port',container,'5432/tcp']).trim().split(':').at(-1)!;
@@ -138,6 +140,45 @@ async function main() {
     const addition=(x:ExecutionRead,position=0)=>({...envelope(),commandType:'AddSet',target:{executionId:x.executionId,positionId:x.initial.positions[position].id},expected:{contentHash:x.contentHash,assignment:currentAssignment(x,x.initial.positions[position].id)},intent:{}});
     const add=async(x:ExecutionRead,position=0)=>{const c=addition(x,position),r=await addSet(db,principal,c);assert(r.outcome.status==='Accepted');return {command:c,fact:(await read(x.executionId)).additions!.find(a=>a.actionId===c.actionId)!};};
     const record=(x:ExecutionRead,id:string,position=0,measurement:unknown=null)=>({...log(x,position),target:{executionId:x.executionId,targetId:id},intent:{result:{reps:{value:8,basis:'total'},measurement,rir:'2'}}});
+    let exerciseTrial=await start(); const frozen=canonicalJson(exerciseTrial.initial);
+    const exerciseCommand=(x:ExecutionRead)=>({...envelope(),commandType:'AddExercise',target:{executionId:x.executionId},expected:{contentHash:x.contentHash},
+      intent:{catalogId:'t2:leg-press',sets:2,reps:{min:8,max:12,basis:'total'},rir:'2',startingLoad:{kind:'externalLoad',value:'0.00',unit:'lb',convention:'machineDisplayed',zeroMeaning:'validZero'}}});
+    const ec=exerciseCommand(exerciseTrial),er=await addExercise(db,principal,ec);assert(er.outcome.status==='Accepted');
+    assert.equal((await addExercise(db,principal,{...exerciseCommand(exerciseTrial),intent:{...ec.intent,catalogId:'t2:unqualified-entry'}})).outcome.status,'Rejected');
+    assert.equal((await addExercise(db,principal,{...exerciseCommand(exerciseTrial),intent:{...ec.intent,startingLoad:{kind:'bodyweight',convention:'bodyweightOnly'}}})).outcome.status,'Rejected');
+    assert.equal((await addExercise(db,principal,ec)).replayed,true);
+    await assert.rejects(()=>addExercise(db,principal,{...ec,intent:{...ec.intent,sets:3}}),/ACTION_ID_COLLISION/);
+    const pair=await Promise.all([addExercise(db,principal,exerciseCommand(exerciseTrial)),addExercise(db,principal,exerciseCommand(exerciseTrial))]);assert(pair.every(r=>r.outcome.status==='Accepted'));
+    exerciseTrial=await read(exerciseTrial.executionId);assert.equal(exerciseTrial.exerciseAdditions!.length,3);
+    assert.deepEqual(exerciseTrial.exerciseAdditions!.map(a=>a.content.ordinal),[4,5,6]);
+    assert.equal(canonicalJson(exerciseTrial.initial),frozen);assert.equal(new Set(executionPositions(exerciseTrial).flatMap(p=>[p.id,...p.targets.map(t=>t.id)])).size,18);
+    const ep=exerciseTrial.exerciseAdditions![0].content.position;
+    assert.equal((await finishExecution(db,principal,finish({...exerciseTrial,exerciseAdditions:[]}))).outcome.status,'Conflict');
+    assert.equal((await addSet(db,principal,{...envelope(),commandType:'AddSet',target:{executionId:exerciseTrial.executionId,positionId:ep.id},expected:{contentHash:exerciseTrial.contentHash,assignment:currentAssignment(exerciseTrial,ep.id)},intent:{}})).outcome.status,'Accepted');
+    const previewAdded=await previewExerciseSwap(readDb,principal,{executionId:exerciseTrial.executionId,positionId:ep.id,intent:{restoreOriginal:false,catalogId:'t2:push-up'}});
+    assert.equal((await swapExercise(db,principal,{...envelope(),commandType:'SwapExercise',target:{executionId:exerciseTrial.executionId,positionId:ep.id},expected:{contentHash:previewAdded.contentHash,assignment:previewAdded.assignment,instructionEpoch:previewAdded.instructionEpoch,effectiveHash:previewAdded.effectiveHash},intent:{restoreOriginal:false,catalogId:'t2:push-up'}})).outcome.status,'Accepted');
+    const restoreAdded=await previewExerciseSwap(readDb,principal,{executionId:exerciseTrial.executionId,positionId:ep.id,intent:{restoreOriginal:true}});
+    assert.equal((await swapExercise(db,principal,{...envelope(),commandType:'SwapExercise',target:{executionId:exerciseTrial.executionId,positionId:ep.id},expected:{contentHash:restoreAdded.contentHash,assignment:restoreAdded.assignment,instructionEpoch:restoreAdded.instructionEpoch,effectiveHash:restoreAdded.effectiveHash},intent:{restoreOriginal:true}})).outcome.status,'Accepted');
+    exerciseTrial=await read(exerciseTrial.executionId);assert.deepEqual(effectiveOccurrence(exerciseTrial).positions[3].targets[0],ep.targets[0]);
+    const perform={...envelope(),commandType:'RecordSetResult',target:{executionId:exerciseTrial.executionId,targetId:ep.targets[0].id},expected:{resultVersion:0,assignment:currentAssignment(exerciseTrial,ep.id)},intent:{result:{reps:{value:8,basis:'total'},measurement:ec.intent.startingLoad,rir:'2'}}};
+    assert.equal((await saveSetResult(db,principal,perform)).outcome.status,'Accepted');
+    await assert.rejects(()=>previewExerciseSwap(readDb,principal,{executionId:exerciseTrial.executionId,positionId:ep.id,intent:{restoreOriginal:true}}),/EXERCISE_ALREADY_TOUCHED/);
+    let savedAdded=(await read(exerciseTrial.executionId)).results.find(r=>r.targetId===ep.targets[0].id)!;
+    const correction=(result:unknown,reason:string)=>({...envelope(),commandType:'CorrectSetResult',target:perform.target,expected:{resultVersion:savedAdded.version,performedSetId:savedAdded.performedSetId},intent:{result,reason}});
+    assert.equal((await saveSetResult(db,principal,correction({...perform.intent.result,rir:'1'},'Synthetic correction'))).outcome.status,'Accepted');
+    savedAdded=(await read(exerciseTrial.executionId)).results.find(r=>r.targetId===ep.targets[0].id)!;
+    assert.equal((await saveSetResult(db,principal,correction(null,'Synthetic clear'))).outcome.status,'Accepted');
+    savedAdded=(await read(exerciseTrial.executionId)).results.find(r=>r.targetId===ep.targets[0].id)!;
+    await assert.rejects(()=>previewExerciseSwap(readDb,principal,{executionId:exerciseTrial.executionId,positionId:ep.id,intent:{restoreOriginal:true}}),/EXERCISE_ALREADY_TOUCHED/);
+    assert.equal((await saveSetResult(db,principal,correction(perform.intent.result,'Synthetic re-record'))).outcome.status,'Accepted');
+    const addedSkip={...envelope(),commandType:'SkipSet',target:{executionId:exerciseTrial.executionId,targetId:ep.targets[1].id},expected:{resultVersion:0,skipActionId:null,assignment:currentAssignment(exerciseTrial,ep.id)},intent:{}};
+    assert.equal((await skipSet(db,principal,addedSkip)).outcome.status,'Accepted');
+    assert.equal((await saveSetResult(db,principal,{...perform,...envelope(),target:addedSkip.target,expected:{...perform.expected,skipActionId:addedSkip.actionId}})).outcome.status,'Accepted');
+    await close(exerciseTrial);assert.equal((await addExercise(db,principal,ec)).replayed,true);assert.equal((await addExercise(db,principal,exerciseCommand(exerciseTrial))).outcome.status,'Conflict');
+    savedAdded=(await read(exerciseTrial.executionId)).results.find(r=>r.targetId===ep.targets[0].id)!;
+    assert.equal((await correctHistoricalSetResult(db,principal,{...correction({...perform.intent.result,rir:'0'},'Synthetic historical correction'),commandType:'CorrectHistoricalSetResult'})).outcome.status,'Accepted');
+    assert.equal(canonicalJson((await readDraft(readDb,principal,planId))!.intent),originalPlan);
+    pass('Exercise addition duplicate/replay/concurrency/finish/Add set/swap/restore/performed-lock/closure and immutable plan');
     let x=await start(); const initial=canonicalJson(x.initial), c=addition(x);
     const first=await addSet(db,principal,c); assert(first.outcome.status==='Accepted');
     assert.equal((await addSet(db,principal,c)).replayed,true);
@@ -192,6 +233,13 @@ async function main() {
       const latest=await read(x.executionId);if(kind==='add'){assert.deepEqual(latest.additions!.map(a=>a.content.ordinal),[3,4]);assert.equal(new Set(latest.additions!.map(a=>a.content.target.id)).size,2);}
       if(latest.lifecycle==='Open')await close(latest);pass(`Observed account-lock ${kind} race ${reverse?'other first':'addition first'}`);
     }
+    for (const reverse of [false,true]) {
+      x=await start();const ac=exerciseCommand(x),fc=finish(x);
+      const outcomes=await race(reverse?()=>finishExecution(db,principal,fc):()=>addExercise(db,principal,ac),reverse?()=>addExercise(db,principal,ac):()=>finishExecution(db,principal,fc));
+      assert.equal(outcomes[0].outcome.status,'Accepted');assert.equal(outcomes[1].outcome.status,'Conflict');
+      const latest=await read(x.executionId);if(latest.lifecycle==='Open')await close(latest);
+      pass(`Observed account-lock Add exercise/finish race ${reverse?'finish first':'addition first'}`);
+    }
     assert.equal(canonicalJson((await readDraft(readDb,principal,planId))!.intent),originalPlan);pass('Accepted plan, original targets and future workouts preserved');
     await assert.rejects(()=>readDb.$executeRaw`INSERT INTO "Trainer2SetAddition" DEFAULT VALUES`);
     await assert.rejects(()=>db.$executeRaw`UPDATE "Trainer2SetAddition" SET "ordinal"=99`);
@@ -214,7 +262,7 @@ async function main() {
     }),/TRAINER2_ADDITION_OUTCOME/);
     assert.equal((await read(x.executionId)).additions!.length,0);
     pass('Restricted roles, immutable additions, wrong-account and invalid direct insertion/target membership rejection');
-    const upgradeName=`${database}_upgrade`;assert(/^trainer2_disposable_add_set_[a-f0-9]+_upgrade$/.test(upgradeName));
+    const upgradeName=`${database}_upgrade`;assert(/^trainer2_disposable_add_exercise_[a-f0-9]+_upgrade$/.test(upgradeName));
     await admin.query(`CREATE DATABASE "${upgradeName}"`);
     const upgradeUrl=(role:string)=>url(role).replace(`/${database}`,`/${upgradeName}`);
     const upgradeAdmin=new Pool({connectionString:upgradeUrl('postgres')}),upgradeDb=new PrismaClient({adapter:new PrismaPg({connectionString:upgradeUrl('trainer2_draft_runtime')})});
@@ -261,6 +309,11 @@ async function main() {
       try {assert.equal((await upgradeAdmin.query('SELECT count(*)::int AS n FROM "Trainer2SetAddition"')).rows[0].n,0);}finally{await upgradeAdmin.query('RESET ROLE');}
       await upgradeAdmin.query(readFileSync('prisma/migrations/20261002010000_trainer2_add_exercise/migration.sql','utf8'));
       await upgradeAdmin.query(grants.slice(boundary));
+      for (const role of ['anon','authenticated','service_role']) {
+        for (const privilege of ['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) assert.equal((await upgradeAdmin.query(`SELECT has_table_privilege($1,'"Trainer2ExerciseAddition"',$2) AS allowed`,[role,privilege])).rows[0].allowed,false);
+        for (const helper of ['trainer2_original_positions(uuid)','trainer2_base_positions(uuid)','trainer2_exercise_addition_guard()','trainer2_exercise_addition_seal()']) assert.equal((await upgradeAdmin.query(`SELECT has_function_privilege($1,$2,'EXECUTE') AS allowed`,[role,helper])).rows[0].allowed,false);
+      }
+
       for(const role of ['anon','authenticated','service_role']) {
         for(const privilege of ['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'])assert.equal((await upgradeAdmin.query(`SELECT has_table_privilege($1,'"Trainer2SetAddition"',$2) AS allowed`,[role,privilege])).rows[0].allowed,false);
         for(const helper of helpers)assert.equal((await upgradeAdmin.query("SELECT has_function_privilege($1,$2,'EXECUTE') AS allowed",[role,helper])).rows[0].allowed,false);
@@ -336,6 +389,44 @@ async function main() {
     await card.getByLabel('Set 1 Actual reps').fill('8');await card.getByRole('button',{name:'Log set',exact:true}).click();await card.getByLabel('Set 2 Actual reps').waitFor();
     const timerKey=`trainer2-rest:${accountId}:${x.executionId}`,deadline=await page.evaluate(k=>localStorage.getItem(k),timerKey);assert(deadline);
     await card.getByLabel('Set 2 Actual reps').fill('13');
+    await queue.getByRole('button',{name:'+ Add exercise',exact:true}).click();
+    const picker=page.getByRole('dialog',{name:'Add exercise',exact:true});
+    await picker.getByLabel('Search exercises').fill('leg press');
+    await picker.getByRole('button',{name:/^Leg Press/}).click();
+    const config=page.getByRole('dialog',{name:'Configure added exercise'});
+    assert.equal(await config.getByLabel('Working sets').inputValue(),'2');
+    await config.getByRole('button',{name:'Cancel',exact:true}).click();
+    assert.equal(await card.getByLabel('Set 2 Actual reps').inputValue(),'13');
+    await queue.getByRole('button',{name:'+ Add exercise',exact:true}).click();
+    await picker.getByLabel('Search exercises').fill('leg press');await picker.getByRole('button',{name:/^Leg Press/}).click();
+    await config.getByLabel('Optional starting weight (lbs)').fill('42.5');
+    await config.getByRole('button',{name:'Add exercise',exact:true}).click();
+    await card.getByRole('heading',{name:'Leg Press',exact:true}).waitFor();
+    assert.equal(await page.evaluate(k=>localStorage.getItem(k),timerKey),deadline);
+    assert.equal((await read(x.executionId)).exerciseAdditions!.length,1);
+    assert.equal(await card.getByLabel('Set 1 Actual load',{exact:true}).inputValue(),'42.5');
+    await page.screenshot({path:resolve(artifact,'desktop-add-exercise.png')});
+    await queue.getByRole('button',{name:/set 2, unrecorded/}).first().click();
+    assert.equal(await card.getByLabel('Set 2 Actual reps').inputValue(),'13');
+    await page.setViewportSize({width:390,height:844});
+    await queue.getByRole('button',{name:'+ Add exercise',exact:true}).click();
+    await picker.getByLabel('Search exercises').fill('leg press');await picker.getByRole('button',{name:/^Leg Press/}).click();
+    await page.screenshot({path:resolve(artifact,'mobile-add-exercise-form.png')});
+    const lostExercise:unknown[]=[];
+    await page.route('**/api/trainer2/executions/add-exercise',async route=>{lostExercise.push(route.request().postDataJSON());try{await route.fetch();await route.abort('failed');}catch{}});
+
+    await config.getByRole('button',{name:'Add exercise',exact:true}).click();
+    await queue.getByRole('button',{name:'Check addition again',exact:true}).waitFor();
+    await page.reload();await page.unroute('**/api/trainer2/executions/add-exercise');
+    await queue.getByRole('button',{name:'Check addition again',exact:true}).click();
+    await queue.getByRole('button',{name:'Check addition again',exact:true}).waitFor({state:'hidden'});
+    assert(lostExercise.length>0&&lostExercise.every(v=>canonicalJson(v)===canonicalJson(lostExercise[0])));
+    await queue.getByRole('button',{name:/Leg Press.*occurrence 2/}).waitFor();
+    assert.equal((await read(x.executionId)).exerciseAdditions!.length,2);
+    await queue.getByRole('button',{name:/set 2, unrecorded/}).first().click();
+    await card.getByLabel('Set 2 Actual reps').fill('13');
+    pass('Desktop/mobile qualified picker, defaults, cancel/retained input, authored load, duplicate queue, selection and unchanged timer');
+
     await queue.getByRole('button',{name:'+ Add set',exact:true}).first().click();await card.getByLabel('Set 3 Actual reps').waitFor();
     assert.equal(await card.getByLabel('Set 3 Actual reps').inputValue(),'8');
     assert.equal(await page.evaluate(k=>localStorage.getItem(k),timerKey),deadline);
@@ -348,7 +439,7 @@ async function main() {
     assert.equal(await page.evaluate(k=>localStorage.getItem(k),timerKey),deadline);
     await page.screenshot({path:resolve(artifact,'desktop-add-set.png')});await page.setViewportSize({width:390,height:844});await page.screenshot({path:resolve(artifact,'mobile-add-set.png')});await queue.screenshot({path:resolve(artifact,'mobile-queue.png')});
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-    assert.equal(await queue.getByRole('button',{name:'+ Add set',exact:true}).count(),3);
+    assert.equal(await queue.getByRole('button',{name:'+ Add set',exact:true}).count(),5);
     pass('Lost response, exact retry across reload, duplicate positions, desktop/mobile chip layout without overflow');
     await queue.getByRole('button',{name:'+ Add set',exact:true}).nth(1).click();await card.getByLabel('Set 3 Actual reps').waitFor();
     await card.getByRole('button',{name:'Swap',exact:true}).click();const dialog=page.getByRole('dialog');
@@ -363,12 +454,12 @@ async function main() {
     await stopWeb();launch();await waitWeb();
     const restartedPage=await context.newPage();restartedPage.on('pageerror',e=>errors.push(e.message));await restartedPage.setViewportSize({width:390,height:844});
     await restartedPage.goto(base+`/trainer2/dev/executions/${x.executionId}`,{waitUntil:'domcontentloaded'});assert.equal((await read(x.executionId)).results.filter(r=>r.result).length,2);
-    await close(x);await restartedPage.reload();await restartedPage.getByRole('heading',{name:'Workout finished',exact:true}).waitFor();assert.equal(await restartedPage.getByText('Added during workout',{exact:true}).count(),3);
+    await close(x);await restartedPage.reload();await restartedPage.getByRole('heading',{name:'Workout finished',exact:true}).waitFor();assert.equal(await restartedPage.getByText('Added during workout',{exact:true}).count(),7);
     assert.equal(await restartedPage.getByRole('button',{name:'+ Add set',exact:true}).count(),0);assert.deepEqual(errors,[]);
     await restartedPage.screenshot({path:resolve(artifact,'mobile-completed.png')});pass('Application restart, completed addition readback/history and closed-workout controls');
     const sourceAfter=verificationSource();assert.equal(sourceAfter.manifestHash,source.manifestHash);
     details={sourceAfter,candidateDrift,postgres:(await admin.query('SELECT version()')).rows[0]};
-    assert.equal(checks.length,20,'Expected all 20 assertion groups');
+    assert.equal(checks.length,24,'Expected all 24 assertion groups');
   } catch (error) {
     assertionError=redact(error instanceof Error?error.message:String(error));
     console.error(`ASSERTIONS FAILED: ${assertionError}`);
@@ -423,12 +514,12 @@ async function main() {
 async function supervise() {
   assert(parseExactDisposableConfirmationArgs(process.argv.slice(2)).valid,'Expected exactly --confirm-disposable');
   const owner=randomUUID(),suffix=randomUUID().replaceAll('-','').slice(0,12);
-  const artifact=resolve('artifacts/trainer2/add-set-evidence');mkdirSync(artifact,{recursive:true});
-  const reportFile=resolve(artifact,'report.json'),profile=resolve(artifact,`browser-profile-${suffix}`),container=`trainer2-add-set-${suffix}`;
+  const artifact=resolve('artifacts/trainer2/add-exercise-evidence');mkdirSync(artifact,{recursive:true});
+  const reportFile=resolve(artifact,'report.json'),profile=resolve(artifact,`browser-profile-${suffix}`),container=`trainer2-add-exercise-${suffix}`;
   assert(profile.startsWith(artifact+sep));
   const source=verificationSource();
   const workerOptions: SpawnOptions={
-    env:{...authWebPlatformEnvironment(process.env),NODE_ENV:'test',TRAINER2_ADD_SET_CHILD:'1',TRAINER2_ADD_SET_OWNER:owner,TRAINER2_ADD_SET_SUFFIX:suffix},
+    env:{...authWebPlatformEnvironment(process.env),NODE_ENV:'test',TRAINER2_ADD_EXERCISE_CHILD:'1',TRAINER2_ADD_EXERCISE_OWNER:owner,TRAINER2_ADD_EXERCISE_SUFFIX:suffix},
     windowsHide:true,stdio:['inherit','inherit','inherit','ipc'],
   };
   const worker=spawn(process.execPath,[...process.execArgv,...process.argv.slice(1)],workerOptions);
@@ -447,13 +538,13 @@ async function supervise() {
       if(browserPid)await terminateOwnedProcesses(ownedProcessTree(browserPid,profile));
     }},
     {name:'task PostgreSQL absence',timeoutMs:20_000,run:()=>{
-      const inspect=spawnSync('docker',['container','inspect','--format','{{ index .Config.Labels "trainer2.add-set.owner" }}',container],{encoding:'utf8',windowsHide:true,timeout:5_000});
+      const inspect=spawnSync('docker',['container','inspect','--format','{{ index .Config.Labels "trainer2.add-exercise.owner" }}',container],{encoding:'utf8',windowsHide:true,timeout:5_000});
       if(inspect.status!==0){assert(inspect.stderr.includes('No such container'),'Cannot verify task container absence');return;}
       assert.equal(inspect.stdout.trim(),owner,'Refusing to remove an unowned container');
       const removed=spawnSync('docker',['rm','-f',container],{encoding:'utf8',windowsHide:true,timeout:10_000});assert.equal(removed.status,0,'Task container removal failed');
       const after=spawnSync('docker',['container','inspect',container],{encoding:'utf8',windowsHide:true,timeout:5_000});assert(after.status!==0&&after.stderr.includes('No such container'),'Task container survived');
     }},
-    {name:'browser profile after worker exit',timeoutMs:30_000,run:()=>rm(profile,{recursive:true,force:true,maxRetries:8,retryDelay:500})},
+    {name:'browser profile after worker exit',timeoutMs:60_000,run:()=>rm(profile,{recursive:true,force:true,maxRetries:8,retryDelay:500})},
   ]);
   report.worker={status:completion.timedOut?'timed-out':'completed',...completion};report.cleanup=[...(report.cleanup as CleanupResult[]??[]),...cleanup];
   report.retainedArtifacts={browserProfile:existsSync(profile)?profile:null};
@@ -462,4 +553,4 @@ async function supervise() {
   process.once('exit',exitCode=>writeFileSync(reportFile,JSON.stringify({...report,runner:{status:'completed',exitCode}},null,2)));
   console.log(`RUNNER COMPLETE exitCode=${failed?1:0}`);process.exit(failed?1:0);
 }
-void (process.env.TRAINER2_ADD_SET_CHILD==='1'?main():supervise()).catch(e=>{console.error(e instanceof Error?e.message:'Add set verification failed');process.exitCode=1;});
+void (process.env.TRAINER2_ADD_EXERCISE_CHILD==='1'?main():supervise()).catch(e=>{console.error(e instanceof Error?e.message:'Add set verification failed');process.exitCode=1;});

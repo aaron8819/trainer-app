@@ -886,3 +886,6 @@ Migration verification must use the repository migration-integrity suite and dis
 ## Trainer2 exercise swapping
 
 Exercise-swap policy coverage lives in `src/lib/engine/trainer2/exercise-swap.test.ts`. The registered `node node_modules/tsx/dist/cli.mjs scripts/test-trainer2-exercise-swap.ts --confirm-disposable` requires authorization for task-owned synthetic local PostgreSQL/browser writes; it creates and removes only its own services. See [exercise swapping](architecture/trainer2/EXERCISE_SWAP.md).
+
+
+Trainer2 execution-local Add exercise ownership, identity, command, UI and migration/recovery requirements are documented in [ADD_EXERCISE.md](architecture/trainer2/ADD_EXERCISE.md).

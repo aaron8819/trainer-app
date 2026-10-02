@@ -44,12 +44,13 @@ export function resultLabel(r: PerformedResult | null, original = false) {
   if (!r) return 'Cleared as erroneous · no current performed result';
   return `${loadLabel(r.measurement, original)} × ${r.reps ? `${r.reps.value}${r.reps.basis === 'perSide' ? ' per side' : r.reps.basis === 'alternating' ? ' alternating' : ''}` : 'reps unspecified'} · ${r.rir === null ? 'RIR unspecified' : `${r.rir} RIR`}`;
 }
-export function SetResultRow({ sessionAdded = false, assignment, accountId, ownershipEpoch, executionId, targetId, number, saved, refresh, readOnly = false, locked = false, onInputState, historical = false, history = [], finishVersion, retainedOnly = false, prescription, exercise, active = true, activePanel = false, onSubmission, preceding, onRecorded, firstSetLoad, skipped, refreshExecution, onReturn }: {
+export function SetResultRow({ authoredLoad = false, sessionAdded = false, assignment, accountId, ownershipEpoch, executionId, targetId, number, saved, refresh, readOnly = false, locked = false, onInputState, historical = false, history = [], finishVersion, retainedOnly = false, prescription, exercise, active = true, activePanel = false, onSubmission, preceding, onRecorded, firstSetLoad, skipped, refreshExecution, onReturn }: {
   sessionAdded?: boolean;
   assignment?: AssignmentBinding;
   skipped?: SetSkip; refreshExecution?: () => Promise<ExecutionRead>; onReturn?: () => void;
   active?: boolean; activePanel?: boolean;
   preceding?: SavedSetResult[];
+  authoredLoad?: boolean;
   firstSetLoad?: SavedSetResult;
   onRecorded?: (record: SavedSetResult) => void;
   onSubmission?: () => (results: SavedSetResult[], skips?: SetSkip[]) => void;
@@ -112,7 +113,7 @@ export function SetResultRow({ sessionAdded = false, assignment, accountId, owne
     if (saved?.result?.measurement) return f;
     if (!saved) f.basis = prescription?.reps.basis ?? 'total';
     const m = prescription?.measurement;
-    if (m) { f.kind = m.kind; if ('value' in m && (number === 1 || sessionAdded) && !saved) f.load = startingPounds(m) ?? ''; if (m.kind === 'externalLoad') { f.convention = m.convention; f.zeroMeaning = m.zeroMeaning; } }
+    if (m) { f.kind = m.kind; if ('value' in m && (number === 1 || sessionAdded) && !saved) f.load = authoredLoad ? String(Number(m.value) / (m.unit === 'kg' ? 0.45359237 : 1)) : startingPounds(m) ?? ''; if (m.kind === 'externalLoad') { f.convention = m.convention; f.zeroMeaning = m.zeroMeaning; } }
     else if (exercise?.kind === 'catalogSnapshot') {
       f.kind = exercise.loadKind;
       f.zeroMeaning = exercise.catalogFacts?.externalZeroMeaning ?? 'validZero';

@@ -52,7 +52,7 @@ export async function readExecutionWithPrevious(tx: Prisma.TransactionClient, pr
       // Weight suggestions need no performed reps and use working sets only.
       const target = position.targets[0];
       if (target && !firstSetLoads.some(h => h.positionId === position.id)) {
-        const owned = executionPositions(source).find(p => p.sourcePositionId === match.id);
+        const owned = executionPositions(source).find(p => p.displayPositionId === match.id);
         const result = owned?.targets.flatMap(t => {
           if (match.targets.find(s => s.id === t.displayTargetId)?.classification !== 'working') return [];
           const saved = source.results.find(r => r.targetId === t.id);
@@ -62,9 +62,9 @@ export async function readExecutionWithPrevious(tx: Prisma.TransactionClient, pr
         if (result) firstSetLoads.push({ positionId: position.id, executionId: source.executionId, result });
       }
       if (previous.some(h => h.positionId === position.id)) continue;
-      const owned = executionPositions(source).find(p => p.sourcePositionId === match.id);
+      const owned = executionPositions(source).find(p => p.displayPositionId === match.id);
       if (!owned) continue;
-      const currentOwned = executionPositions(current).find(p => p.sourcePositionId === position.id);
+      const currentOwned = executionPositions(current).find(p => p.displayPositionId === position.id);
       const currentResults = current.results.flatMap(r => r.result && currentOwned?.targets.some(t => t.id === r.targetId) ? [r.result] : []);
       const results = owned.targets.flatMap(t => {
         const saved = source.results.find(r => r.targetId === t.id);

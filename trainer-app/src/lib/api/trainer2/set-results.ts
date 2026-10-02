@@ -31,7 +31,7 @@ async function appendResult(db: PrismaClient, principal: ServerPrincipal, input:
     const current = execution.results.find(r => r.targetId === command.target.targetId);
     const position = executionPositions(execution).find(p => p.targets.some(t => t.id === command.target.targetId))!;
     const assignment = currentAssignment(execution, position.id);
-    const exercise = effectiveOccurrence(execution).positions.find(p => p.id === position.sourcePositionId)!.exercise;
+    const exercise = effectiveOccurrence(execution).positions.find(p => p.id === position.displayPositionId)!.exercise;
     if (!compatibleCatalogResult(command.intent.result, exercise)) throw new CommandFailure('INVALID_DOCUMENT');
     if (command.commandType === 'RecordSetResult' && (command.expected.assignment ? canonicalJson(command.expected.assignment) !== canonicalJson(assignment) : assignment.version !== 0))
       throw new CommandFailure('STALE_EXERCISE', true);

@@ -623,3 +623,6 @@ Ready and Active custom plans have no in-place edit API. Activation remains the 
 ## Trainer2 exercise swapping
 
 Trainer2 adds read-only POST `executions/swap-exercise-preview` and accepted POST `executions/swap-exercise`. Strict schemas live in `src/lib/trainer2-contracts/exercise-swap.ts`; log/skip and finish review bind effective exercise state. See [exercise swapping](architecture/trainer2/EXERCISE_SWAP.md).
+
+
+Trainer2 execution-local Add exercise ownership, identity, command, UI and migration/recovery requirements are documented in [ADD_EXERCISE.md](architecture/trainer2/ADD_EXERCISE.md).

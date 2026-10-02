@@ -415,3 +415,6 @@ Trainer2 in-progress logging uses one active-set editor above an exercise queue.
 Trainer2 active exercises offer Swap beside History, full-library search/equipment filter, reviewed target preview and Return to original while every set remains untouched. Retained input and exact pending requests survive cancellation/reload; advisory rest is unchanged. See [exercise swapping](architecture/trainer2/EXERCISE_SWAP.md).
 
 Swap and History share the same button dimensions. Swap disappears once any set for that exercise has a result revision or an explicit skip. The exercise queue identifies the original and replacement for session-only swaps, or notes Return to original. Completed-workout review exposes an ordered Exercise swap history, including intermediate replacements and restores, from the existing immutable swap records.
+
+
+Trainer2 execution-local Add exercise ownership, identity, command, UI and migration/recovery requirements are documented in [ADD_EXERCISE.md](architecture/trainer2/ADD_EXERCISE.md).

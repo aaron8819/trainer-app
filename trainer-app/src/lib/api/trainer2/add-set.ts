@@ -1,3 +1,4 @@
+import { executionPositions } from '../../engine/trainer2/execution-targets';
 import { randomUUID } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import { ADD_SET_POLICY, addSetCommand, setAdditionContent } from '../../trainer2-contracts/add-set';
@@ -13,12 +14,12 @@ export async function addSet(db: PrismaClient, principal: ServerPrincipal, input
     const execution = await readExecution(tx, principal, command.target.executionId);
     if (!execution) throw new CommandFailure('NOT_FOUND');
     if (execution.lifecycle !== 'Open') throw new CommandFailure('EXECUTION_NOT_OPEN', true);
-    const owned = execution.initial.positions.find(p => p.id === command.target.positionId);
+    const owned = executionPositions(execution).find(p => p.id === command.target.positionId);
     if (!owned) throw new CommandFailure('POSITION_NOT_FOUND');
     const assignment = currentAssignment(execution, owned.id);
     if (command.expected.contentHash !== execution.contentHash || canonicalJson(command.expected.assignment) !== canonicalJson(assignment))
       throw new CommandFailure('STALE_EXERCISE', true);
-    const position = effectiveOccurrence(execution).positions.find(p => p.id === owned.sourcePositionId)!;
+    const position = effectiveOccurrence(execution).positions.find(p => p.id === owned.displayPositionId)!;
     if (position.targets.length >= 100) throw new CommandFailure('SET_LIMIT');
     const previous = [...position.targets].reverse().find(t => t.classification === 'working');
     if (!previous) throw new CommandFailure('WORKING_TARGET_REQUIRED');

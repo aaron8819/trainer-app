@@ -69,7 +69,7 @@ export function DiscardWorkout({ execution, ownershipEpoch, blocked, refresh, ch
       ownershipEpoch, dependsOn: [], commandType: 'DiscardEmptyExecution', target: { executionId, occurrenceId: review.initial.occurrence.id },
       expected: reviewedResults(review), intent: {} });
   }
-  const empty = !execution.additions?.length && !execution.skips?.length && execution.history?.length === 0 && execution.results.length === 0;
+  const empty = !execution.exerciseAdditions?.length && !execution.additions?.length && !execution.skips?.length && execution.history?.length === 0 && execution.results.length === 0;
   if ((execution.lifecycle !== 'Open' || !empty) && !pending && !message) return null;
   return <details open={pending || review || message ? true : undefined}><summary className="min-h-11 cursor-pointer py-3 text-sm">Workout menu</summary><section className="space-y-3 rounded-xl border border-slate-300 p-4" aria-label="Discard empty workout">
     {message && <p role="status">{message}</p>}

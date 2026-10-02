@@ -736,3 +736,6 @@ Rollback before enablement is application-only: leave the variable absent. After
 The local [Add set verification runner](architecture/trainer2/ADD_SET.md) requires all 20 assertion groups, bounded cleanup and actual runner exit to pass separately. Temporary profile retention after failed cleanup must remain explicit failing evidence; it does not authorize manual removal or release.
 
 The local exercise-swap candidate adds `20260930010000_trainer2_exercise_swap` and extends `prisma/trainer2-runtime-grants.sql` with reader/runtime SELECT and runtime INSERT on `Trainer2ExerciseSwap`, plus restricted helper execution. Hosted migration/grant application requires separate reviewed environment/action authorization. Do not deploy runtime changes before schema/grants exist. See [exercise swapping](architecture/trainer2/EXERCISE_SWAP.md).
+
+
+Trainer2 execution-local Add exercise ownership, identity, command, UI and migration/recovery requirements are documented in [ADD_EXERCISE.md](architecture/trainer2/ADD_EXERCISE.md).

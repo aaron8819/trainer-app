@@ -6,6 +6,7 @@ import { browseCatalog, catalogExercise, equipmentOptions, library, matchesCatal
 import { control } from './DraftEditor';
 type Exercise = DraftDocument['occurrences'][number]['positions'][number]['exercise'];
 export function ExercisePicker({
+  qualifiedOnly = false,
   current,
   trigger,
   fallback,
@@ -13,6 +14,7 @@ export function ExercisePicker({
   choose,
   close
 }: {
+  qualifiedOnly?: boolean;
   current?: Exercise;
   trigger: HTMLElement;
   fallback: () => HTMLElement | null;
@@ -65,11 +67,11 @@ export function ExercisePicker({
       {unavailable.map(e => <div key={e.catalogId} className="rounded-xl border p-3 text-sm text-slate-500">
         <span className="font-medium">{e.name}</span><span className="block">{e.unavailableReason}</span>
       </div>)}
-      <details className="border-t pt-4"><summary className="cursor-pointer text-sm">Create custom exercise</summary><p className="my-2 text-sm text-slate-600">Saved as your description, with no catalog match. Review its rep and measurement details.</p><input aria-label="Custom exercise name" className={`${control} w-full`} value={custom} maxLength={200} onChange={e => setCustom(e.target.value)} /><button type="button" className={`${control} mt-2`} disabled={!custom.trim()} onClick={() => choose({
+      {!qualifiedOnly && <details className="border-t pt-4"><summary className="cursor-pointer text-sm">Create custom exercise</summary><p className="my-2 text-sm text-slate-600">Saved as your description, with no catalog match. Review its rep and measurement details.</p><input aria-label="Custom exercise name" className={`${control} w-full`} value={custom} maxLength={200} onChange={e => setCustom(e.target.value)} /><button type="button" className={`${control} mt-2`} disabled={!custom.trim()} onClick={() => choose({
           kind: 'authoredDescription',
           name: custom.trim(),
           variation: ''
-        })}>Use custom exercise</button></details>
+        })}>Use custom exercise</button></details>}
     </div>
   </dialog>;
 }

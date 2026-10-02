@@ -1,5 +1,6 @@
+import { exerciseAddition } from './add-exercise';
 import { setAddition } from './add-set';
-import { executionPositions } from '../engine/trainer2/execution-targets';
+import { executionPositions, baseExecutionPositions, originalPositions } from '../engine/trainer2/execution-targets';
 import { setSkip } from './skip-set';
 import { exerciseSwap } from './exercise-swap';
 import { occurrenceResolutionRead, skipBinding } from './skip-occurrence';
@@ -42,6 +43,7 @@ export const initialPrescription = z.object({ schemaVersion: z.literal(1), kind:
 export type InitialPrescription = z.infer<typeof initialPrescription>;
 const previousPerformance = z.object({ positionId: id, sourcePositionId: id, executionId: id, workoutName: z.string(), finishedAt: z.iso.datetime(), results: z.array(savedSetResult).min(1) }).strict();
 export const executionRead = z.object({ executionId: id, lifecycle: z.enum(['Open', 'Finished', 'Discarded']), discard: discardFact.nullable().optional(), finish: finishFact.nullable(),
+  exerciseAdditions: z.array(exerciseAddition).optional(),
   additions: z.array(setAddition).optional(),
   swaps: z.array(exerciseSwap).optional(),
   skips: z.array(setSkip).optional(),
@@ -56,40 +58,57 @@ export async function validateExecutionRead(input: unknown, accountId: string, e
   if (value.initial.accountId !== accountId || (executionId && value.executionId !== executionId) ||
     value.contentHash !== await digest(value.initial) || value.initial.instructions.contentHash !== await digest(value.initial.instructions.document))
     throw new Error('Invalid saved workout response');
-  if (value.previous?.some(p => p.executionId === value.executionId || !value.initial.occurrence.positions.some(o => o.id === p.positionId) || p.results.some(r => r.executionId !== p.executionId || !r.result) || p.finishedAt > value.initial.startedAt) || new Set(value.previous?.map(p => p.positionId)).size !== (value.previous?.length ?? 0)) throw new Error('Invalid previous performance');
+  if (value.previous?.some(p => p.executionId === value.executionId || !originalPositions(value).some(o => o.id === p.positionId) || p.results.some(r => r.executionId !== p.executionId || !r.result) || p.finishedAt > value.initial.startedAt) || new Set(value.previous?.map(p => p.positionId)).size !== (value.previous?.length ?? 0)) throw new Error('Invalid previous performance');
   if (value.firstSetLoads?.some(p => p.executionId === value.executionId || p.result.executionId !== p.executionId ||
     !p.result.result?.measurement || !('value' in p.result.result.measurement) ||
-    !value.initial.occurrence.positions.some(o => o.id === p.positionId)) ||
+    !originalPositions(value).some(o => o.id === p.positionId)) ||
     new Set(value.firstSetLoads?.map(p => p.positionId)).size !== (value.firstSetLoads?.length ?? 0)) throw new Error('Invalid first-set load');
   if (new Set(value.skips?.map(s => s.targetId)).size !== (value.skips?.length ?? 0) ||
     value.skips?.some(s => s.executionId !== value.executionId || !executionPositions(value).some(p => p.targets.some(t => t.id === s.targetId))) ||
     (value.lifecycle === 'Discarded' && value.skips?.length)) throw new Error('Invalid skip history');
+  const addedIdentities = new Set<string>();
+  const reserved = new Set([value.executionId, value.initial.planId, value.initial.revisionId, value.initial.stage.id, value.initial.occurrence.id,
+    ...value.initial.positions.flatMap(p => [p.id, p.sourcePositionId, ...p.targets.flatMap(t => [t.id, t.sourceTargetId])])]);
+  const exerciseActions = new Set<string>();
+  for (const [i, a] of (value.exerciseAdditions ?? []).slice().sort((a,b) => a.content.ordinal-b.content.ordinal).entries()) {
+    const p = a.content.position;
+    if (a.executionId !== value.executionId || a.content.ordinal !== value.initial.positions.length+i+1 ||
+      a.contentHash !== await digest(a.content) || exerciseActions.has(a.actionId) ||
+      p.targets.some(t => t.classification !== 'working' || !t.required || t.reps.basis !== p.exercise.repBasis ||
+        (t.measurement && (t.measurement.kind !== p.exercise.loadKind || t.measurement.convention !== p.exercise.convention)))) throw new Error('Invalid exercise addition');
+    for (const id of [p.id, ...p.targets.map(t => t.id)]) {
+      if (reserved.has(id) || addedIdentities.has(id)) throw new Error('Invalid exercise addition identity');
+      addedIdentities.add(id);
+    }
+    exerciseActions.add(a.actionId);
+  }
+  if (value.lifecycle === 'Discarded' && value.exerciseAdditions?.length) throw new Error('Invalid exercise addition');
   const additionIds = new Set<string>(), additionActions = new Set<string>();
   const sourceIds = [value.initial.planId,value.initial.revisionId,value.initial.stage.id,value.initial.occurrence.id,
     ...value.initial.occurrence.positions.flatMap(p => [p.id,...p.targets.map(t => t.id)])];
-  for (const owned of value.initial.positions) {
+  for (const owned of baseExecutionPositions(value)) {
     const additions = (value.additions ?? []).filter(a => a.content.positionId === owned.id).sort((a,b) => a.content.ordinal - b.content.ordinal);
     for (const [i,a] of additions.entries()) {
       const binding = a.content.assignment;
       const swap = value.swaps?.find(s => s.positionId === owned.id && s.version === binding.version);
-      const exercise = swap?.content.exercise ?? value.initial.occurrence.positions.find(p => p.id === owned.sourcePositionId)!.exercise;
+      const exercise = swap?.content.exercise ?? originalPositions(value).find(p => p.id === owned.displayPositionId)!.exercise;
       if (a.executionId !== value.executionId || a.content.ordinal !== owned.targets.length + i + 1 ||
         binding.positionId !== owned.id || (binding.version === 0 ? binding.contentHash !== value.contentHash : !swap || swap.actionId !== binding.actionId || swap.contentHash !== binding.contentHash) ||
-        canonicalJson(exercise) !== canonicalJson(a.content.exercise) || a.contentHash !== await digest(a.content) || additionIds.has(a.content.target.id) || additionActions.has(a.actionId) || sourceIds.includes(a.content.target.id) || a.content.target.id === value.executionId ||
+        canonicalJson(exercise) !== canonicalJson(a.content.exercise) || a.contentHash !== await digest(a.content) || additionIds.has(a.content.target.id) || additionActions.has(a.actionId) || sourceIds.includes(a.content.target.id) || addedIdentities.has(a.content.target.id) || exerciseActions.has(a.actionId) || a.content.target.id === value.executionId ||
         value.initial.positions.some(p => p.id === a.content.target.id || p.targets.some(t => t.id === a.content.target.id))) throw new Error('Invalid session addition');
       additionIds.add(a.content.target.id);additionActions.add(a.actionId);
     }
   }
-  if (value.additions?.some(a => !value.initial.positions.some(p => p.id === a.content.positionId)) || (value.lifecycle === 'Discarded' && value.additions?.length)) throw new Error('Invalid session addition');
+  if (value.additions?.some(a => !baseExecutionPositions(value).some(p => p.id === a.content.positionId)) || (value.lifecycle === 'Discarded' && value.additions?.length)) throw new Error('Invalid session addition');
   const history = value.history ?? value.results;
   for (const owned of executionPositions(value)) {
     const chain = (value.swaps ?? []).filter(s => s.positionId === owned.id).sort((a,b) => a.version - b.version);
     for (const [i, swap] of chain.entries()) {
-      const original = value.initial.occurrence.positions.find(p => p.id === owned.sourcePositionId)!;
+      const original = originalPositions(value).find(p => p.id === owned.displayPositionId)!;
       if (swap.executionId !== value.executionId || swap.version !== i + 1 || swap.previousActionId !== (chain[i-1]?.actionId ?? null) ||
         (swap.content.restoreOriginal && canonicalJson(swap.content.exercise) !== canonicalJson(original.exercise)) ||
         swap.content.positionId !== owned.id || swap.contentHash !== await digest(swap.content) ||
-        swap.content.targets.length !== value.initial.positions.find(p => p.id === owned.id)!.targets.length + (value.additions ?? []).filter(a => a.content.positionId === owned.id && a.content.assignment.version < swap.version).length || swap.content.targets.some((t,j) => {
+        swap.content.targets.length !== baseExecutionPositions(value).find(p => p.id === owned.id)!.targets.length + (value.additions ?? []).filter(a => a.content.positionId === owned.id && a.content.assignment.version < swap.version).length || swap.content.targets.some((t,j) => {
           const addition = value.additions?.find(a => a.content.target.id === t.id);
           const start = original.targets[j] ?? addition?.content.target;
           if (!start) return true;
@@ -106,7 +125,7 @@ export async function validateExecutionRead(input: unknown, accountId: string, e
         throw new Error('Invalid performed exercise');
     }
   }
-  if (value.swaps?.some(s => !value.initial.positions.some(p => p.id === s.positionId)) ||
+  if (value.swaps?.some(s => !baseExecutionPositions(value).some(p => p.id === s.positionId)) ||
     new Set(value.swaps?.map(s => s.actionId)).size !== (value.swaps?.length ?? 0)) throw new Error('Invalid exercise change history');
   if (value.history) {
     if (history.some(r => r.executionId !== value.executionId || !value.results.some(c => c.targetId === r.targetId))) throw new Error('Invalid result history');

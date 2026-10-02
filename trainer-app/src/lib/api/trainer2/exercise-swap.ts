@@ -1,3 +1,4 @@
+import { executionPositions } from '../../engine/trainer2/execution-targets';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { swapExerciseCommand, swapPreviewRequest, swapContent, exerciseSwap } from '../../trainer2-contracts/exercise-swap';
 import { currentAssignment, replacementContent, swapEligible, effectiveOccurrence } from '../../engine/trainer2/exercise-swap';
@@ -28,13 +29,13 @@ async function preview(tx: Prisma.TransactionClient, principal: ServerPrincipal,
   if (!request.intent.restoreOriginal && !entry) throw new CommandFailure('EXERCISE_UNAVAILABLE');
   const content = swapContent.parse(replacementContent(execution, request.positionId, entry ?? null));
   const instructions = await readInstructions(tx, principal.accountId);
-  const owned = execution.initial.positions.find(p => p.id === request.positionId)!;
+  const owned = executionPositions(execution).find(p => p.id === request.positionId)!;
   const occurrence = effectiveOccurrence(execution);
   const plan = { schemaVersion: 1 as const, name: '', endpoint: 'endOfOrderedOccurrences' as const,
     stages: [execution.initial.stage], occurrences: [{ ...occurrence, positions: occurrence.positions.map(p =>
-      p.id === owned.sourcePositionId ? { ...p, exercise: content.exercise } : p) }] };
+      p.id === owned.displayPositionId ? { ...p, exercise: content.exercise } : p) }] };
   if (restrictionIssues(instructions.document, execution.initial.planId, plan, new Date().toISOString(), execution.initial.revisionId)
-    .some(i => i.positionId === owned.sourcePositionId)) throw new CommandFailure('UNRESOLVED_EXCLUSION');
+    .some(i => i.positionId === owned.displayPositionId)) throw new CommandFailure('UNRESOLVED_EXCLUSION');
   const effectiveHash = integrityHash(canonicalJson(content));
   let suggestedLoad: string | null = null;
   if (history) {
@@ -42,10 +43,10 @@ async function preview(tx: Prisma.TransactionClient, principal: ServerPrincipal,
       previousActionId: currentAssignment(execution, request.positionId).actionId, actionId: '00000000-0000-4000-8000-000000000000', instructionEpoch: instructions.epoch,
       contentHash: effectiveHash, content, recordedAt: new Date().toISOString() };
     const enriched = await readExecutionWithPrevious(tx, principal, request.executionId, { ...execution, swaps: [...(execution.swaps ?? []), candidate] });
-    const measurement = content.targets[0]?.measurement ?? enriched?.firstSetLoads?.find(p => p.positionId === owned.sourcePositionId)?.result.result?.measurement;
+    const measurement = content.targets[0]?.measurement ?? enriched?.firstSetLoads?.find(p => p.positionId === owned.displayPositionId)?.result.result?.measurement;
     if (measurement) suggestedLoad = startingPounds(measurement);
   }
-  const original = effectiveOccurrence(execution).positions.find(p => p.id === owned.sourcePositionId)!;
+  const original = effectiveOccurrence(execution).positions.find(p => p.id === owned.displayPositionId)!;
   return { executionId: execution.executionId, contentHash: execution.contentHash, assignment: currentAssignment(execution, request.positionId),
     instructionEpoch: instructions.epoch, effectiveHash, content, suggestedLoad,
     targetsChanged: content.targets.some((t,i) => canonicalJson(t.reps) !== canonicalJson(original.targets[i]?.reps ?? null)) };

@@ -1,4 +1,4 @@
-import { executionPositions } from './execution-targets';
+import { executionPositions, baseExecutionPositions, originalPositions } from './execution-targets';
 import { canonicalJson } from '../../trainer2-contracts/canonical-json';
 import type { ExecutionRead } from '../../trainer2-contracts/execution';
 import { SWAP_POLICY, type AssignmentBinding, type ExerciseSwap } from '../../trainer2-contracts/exercise-swap';
@@ -8,10 +8,10 @@ export function currentAssignment(execution: Pick<ExecutionRead, 'swaps' | 'cont
   const latest = execution.swaps?.filter(s => s.positionId === positionId).sort((a, b) => b.version - a.version)[0];
   return { positionId, version: latest?.version ?? 0, actionId: latest?.actionId ?? null, contentHash: latest?.contentHash ?? execution.contentHash };
 }
-export function effectiveOccurrence(execution: Pick<ExecutionRead, 'initial' | 'swaps' | 'contentHash' | 'additions'>) {
-  if (!execution.swaps?.length && !execution.additions?.length) return execution.initial.occurrence;
-  return { ...execution.initial.occurrence, positions: execution.initial.occurrence.positions.map(original => {
-    const owned = execution.initial.positions.find(p => p.sourcePositionId === original.id)!;
+export function effectiveOccurrence(execution: Pick<ExecutionRead, 'initial' | 'swaps' | 'contentHash' | 'additions' | 'exerciseAdditions'>) {
+  if (!execution.swaps?.length && !execution.additions?.length && !execution.exerciseAdditions?.length) return execution.initial.occurrence;
+  return { ...execution.initial.occurrence, positions: originalPositions(execution).map(original => {
+    const owned = baseExecutionPositions(execution).find(p => p.displayPositionId === original.id)!;
     const binding = currentAssignment(execution, owned.id);
     const latest = execution.swaps?.find(s => s.positionId === owned.id && s.version === binding.version);
     const additions = (execution.additions ?? []).filter(a => a.content.positionId === owned.id).sort((a,b) => a.content.ordinal - b.content.ordinal);
@@ -22,16 +22,16 @@ export function effectiveOccurrence(execution: Pick<ExecutionRead, 'initial' | '
     return { ...original, exercise: latest?.content.exercise ?? original.exercise, targets };
   }) };
 }
-export function swapEligible(execution: Pick<ExecutionRead, 'initial' | 'lifecycle' | 'results' | 'history' | 'skips' | 'additions'>, positionId: string) {
+export function swapEligible(execution: Pick<ExecutionRead, 'initial' | 'lifecycle' | 'results' | 'history' | 'skips' | 'additions' | 'exerciseAdditions'>, positionId: string) {
   const position = executionPositions(execution).find(p => p.id === positionId);
   return execution.lifecycle === 'Open' && !!position && !position.targets.some(t =>
     (execution.history ?? execution.results).some(r => r.targetId === t.id) || execution.skips?.some(s => s.targetId === t.id));
 }
 // Always derive from START, even when restoring after multiple replacements.
-export function replacementContent(execution: Pick<ExecutionRead, 'initial' | 'additions'>, positionId: string, entry: CatalogExercise | null): ExerciseSwap['content'] {
-  const owned = execution.initial.positions.find(p => p.id === positionId);
+export function replacementContent(execution: Pick<ExecutionRead, 'initial' | 'additions' | 'exerciseAdditions'>, positionId: string, entry: CatalogExercise | null): ExerciseSwap['content'] {
+  const owned = baseExecutionPositions(execution).find(p => p.id === positionId);
   if (!owned) throw new Error('POSITION_NOT_FOUND');
-  const original = execution.initial.occurrence.positions.find(p => p.id === owned.sourcePositionId)!;
+  const original = originalPositions(execution).find(p => p.id === owned.displayPositionId)!;
   const exercise = entry ? catalogExercise(entry) : original.exercise;
   const compatible = exercise.kind === 'catalogSnapshot' && original.exercise.kind === 'catalogSnapshot' &&
     exercise.purpose === original.exercise.purpose && exercise.repBasis === original.exercise.repBasis;

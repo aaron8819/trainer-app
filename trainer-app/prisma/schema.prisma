@@ -1470,3 +1470,18 @@ model Trainer2SetAddition {
   @@unique([executionId, positionId, ordinal])
   @@unique([accountId, actionId])
 }
+
+model Trainer2ExerciseAddition {
+  accountId String
+  executionId String @db.Uuid
+  positionId String @unique @db.Uuid
+  ordinal Int
+  actionId String @db.Uuid
+  content Json
+  canonicalContent String
+  contentHash String
+  recordedAt DateTime @default(now()) @db.Timestamptz(3)
+  @@id([executionId, positionId])
+  @@unique([executionId, ordinal])
+  @@unique([accountId, actionId])
+}

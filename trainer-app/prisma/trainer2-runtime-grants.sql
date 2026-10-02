@@ -118,3 +118,19 @@ GRANT INSERT ON "Trainer2SetAddition" TO trainer2_draft_runtime;
 CREATE POLICY trainer2_addition_reader ON "Trainer2SetAddition" FOR SELECT TO trainer2_draft_reader USING (true);
 CREATE POLICY trainer2_addition_runtime ON "Trainer2SetAddition" FOR ALL TO trainer2_draft_runtime USING (true) WITH CHECK (true);
 GRANT EXECUTE ON FUNCTION trainer2_execution_positions(uuid),trainer2_effective_targets(uuid,uuid),trainer2_restored_addition_target(uuid,uuid) TO trainer2_draft_reader,trainer2_draft_runtime;
+
+-- Incremental Add exercise grants (after 20261002010000).
+REVOKE ALL ON TABLE "Trainer2ExerciseAddition" FROM PUBLIC;
+REVOKE ALL ON FUNCTION trainer2_original_positions(uuid),trainer2_base_positions(uuid),trainer2_exercise_addition_guard(),trainer2_exercise_addition_seal() FROM PUBLIC;
+DO $$ DECLARE api_role text; BEGIN
+ FOREACH api_role IN ARRAY ARRAY['anon','authenticated','service_role'] LOOP
+ IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname=api_role) THEN
+ EXECUTE format('REVOKE ALL ON TABLE "Trainer2ExerciseAddition" FROM %I',api_role);
+ EXECUTE format('REVOKE ALL ON FUNCTION trainer2_original_positions(uuid),trainer2_base_positions(uuid),trainer2_exercise_addition_guard(),trainer2_exercise_addition_seal() FROM %I',api_role);
+ END IF; END LOOP;
+END $$;
+GRANT SELECT ON "Trainer2ExerciseAddition" TO trainer2_draft_reader,trainer2_draft_runtime;
+GRANT INSERT ON "Trainer2ExerciseAddition" TO trainer2_draft_runtime;
+CREATE POLICY trainer2_exercise_addition_reader ON "Trainer2ExerciseAddition" FOR SELECT TO trainer2_draft_reader USING (true);
+CREATE POLICY trainer2_exercise_addition_runtime ON "Trainer2ExerciseAddition" FOR ALL TO trainer2_draft_runtime USING (true) WITH CHECK (true);
+GRANT EXECUTE ON FUNCTION trainer2_original_positions(uuid),trainer2_base_positions(uuid) TO trainer2_draft_reader,trainer2_draft_runtime;

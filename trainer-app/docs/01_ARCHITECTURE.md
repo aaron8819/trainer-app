@@ -299,3 +299,6 @@ The canonical order is immutable seed replay, prescriptions, readiness intensity
 ## Trainer2 exercise swapping
 
 Execution & Evidence owns today-only exercise substitutions through the existing command acceptance owner. See [exercise swapping](architecture/trainer2/EXERCISE_SWAP.md) for immutable snapshots, performed assignments, and concurrency boundaries.
+
+
+Trainer2 execution-local Add exercise ownership, identity, command, UI and migration/recovery requirements are documented in [ADD_EXERCISE.md](architecture/trainer2/ADD_EXERCISE.md).

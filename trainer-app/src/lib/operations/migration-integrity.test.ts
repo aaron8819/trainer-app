@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { mkdtempSync, readFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   APPLIED_SCHEMA_EXPECTATIONS,
   BASELINE_UNIQUENESS_EXPECTATIONS,
@@ -239,6 +242,68 @@ describe("migration integrity", () => {
         checksumMigrationSql(Buffer.from("SELECT 2;\n")),
       ),
     ).toBe(false);
+  });
+
+  it("accepts only the evidenced swap bytes for unchanged canonical SQL", () => {
+    const name = "20260930010000_trainer2_exercise_swap";
+    const canonical = readFileSync(
+      join(process.cwd(), "prisma", "migrations", name, "migration.sql"),
+      "utf8",
+    ).replaceAll("\r\n", "\n");
+    const appliedHash = "7eb597895c8c9655a353fbac25ac252288589b4c3a6da4fb79fcaec1f72219b9";
+    // CRLF ranges captured from the retained 25,551-byte release file.
+    const crlfRanges = [[72, 78], [87, 115], [121, 122], [124, 128],
+      [137, 152], [154, 171], [173, 187], [189, 197], [199, 212],
+      [214, 260], [263, 288]];
+    const applied = canonical.split("\n").map((line, index, lines) =>
+      index === lines.length - 1 ? line : line +
+        (crlfRanges.some(([start, end]) => index + 1 >= start && index + 1 <= end)
+          ? "\r\n" : "\n"),
+    ).join("");
+    expect(Buffer.byteLength(applied)).toBe(25551);
+    expect(checksumMigrationSql(Buffer.from(applied))).toBe(appliedHash);
+
+    const root = mkdtempSync(join(tmpdir(), "trainer-swap-checksum-"));
+    function load(sql: string, migrationName = name) {
+      const folder = join(root, migrationName);
+      mkdirSync(folder, { recursive: true });
+      writeFileSync(join(folder, "migration.sql"), sql);
+      return loadCheckedInMigrations(root).find((m) => m.name === migrationName)!;
+    }
+    try {
+      for (const sql of [canonical, canonical.replaceAll("\n", "\r\n"), applied]) {
+        const migration = load(sql);
+        expect(migrationChecksumMatches(migration, appliedHash)).toBe(true);
+        // Another mixed ending layout is not an approved ledger variant.
+        expect(migrationChecksumMatches(migration,
+          checksumMigrationSql(Buffer.from(canonical.replace("\n", "\r\n"))),
+        )).toBe(false);
+      }
+      expect(migrationChecksumMatches(load(canonical, "other_migration"), appliedHash)).toBe(false);
+      expect(migrationChecksumMatches(load(canonical + "-- changed source\n"), appliedHash)).toBe(false);
+      expect(migrationChecksumMatches(load(canonical.replace('"version">0', '"version">=0')), appliedHash)).toBe(false);
+      expect(migrationChecksumMatches(load("\uFEFF" + canonical), appliedHash)).toBe(false);
+      expect(migrationChecksumMatches(load(canonical), null)).toBe(false);
+
+      const migrations = checkedIn();
+      const index = migrations.findIndex((m) => m.name === name);
+      migrations[index] = load(canonical);
+      const ledger = migrations.map(successfulRow);
+      ledger[index].checksum = appliedHash;
+      const input = { checkedIn: migrations, ledgerRows: ledger,
+        catalog: cleanCatalog(EXPECTED_MIGRATION_CHAIN.length) };
+      const accepted = report(input);
+      expect(accepted.migrationChecksumsValid).toBe(true);
+      expect(accepted.checksums.lineEndingCompatibilityUsed).toContain(name);
+      expect(accepted.warnings).toContain(`line_ending_compatible_checksum:${name}`);
+      ledger[index].finishedAt = null;
+      expect(report(input).migrationIntegrityValid).toBe(false);
+      ledger[index].finishedAt = "2026-09-30 15:14:09+00";
+      ledger[index].checksum = "0".repeat(64);
+      expect(report(input).migrationChecksumsValid).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("blocks checksum, ledger, order, and unknown-migration drift", () => {

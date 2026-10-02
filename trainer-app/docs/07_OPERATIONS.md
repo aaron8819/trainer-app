@@ -2,6 +2,8 @@
 
 Trainer2 session-added working sets: [execution ownership, immutable addition facts, command/swap/finish contracts, logger and local verification](architecture/trainer2/ADD_SET.md).
 
+The exact evidenced mixed-line-ending checksum for the already-applied Trainer2 swap migration is documented in [swap checksum provenance](operations/TRAINER2_SWAP_CHECKSUM_PROVENANCE.md). Local validation accepts that hash only with the unchanged reviewed canonical SQL; it never authorizes ledger normalization or migration replay.
+
 Trainer2 catalog coverage: [canonical adapter, frozen snapshots, qualification, inventory and verification](architecture/trainer2/CATALOG_COVERAGE.md).
 
 Trainer2 shared-database preparation and the exact operator migration sequence are recorded in [SHARED_DATABASE_MIGRATION_PROCEDURE](architecture/trainer2/SHARED_DATABASE_MIGRATION_PROCEDURE.md). Production migration, grants and owner binding require separate authorization. The owner has chosen no fresh backup or restore rehearsal; recovery from a database-level mistake is limited.

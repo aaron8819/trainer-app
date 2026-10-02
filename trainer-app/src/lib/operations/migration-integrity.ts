@@ -643,6 +643,19 @@ export function loadCheckedInMigrations(root = join(process.cwd(), "prisma", "mi
       const sqlPath = join(root, entry.name, "migration.sql");
       const bytes = readFileSync(sqlPath);
       const compatibleChecksums = prismaCompatibleMigrationSqlChecksums(bytes);
+      // Retained release bytes and ledger corroborate this one mixed LF/CRLF
+      // variant. Never accept it for another name or changed canonical SQL.
+      // Evidence: docs/operations/TRAINER2_SWAP_CHECKSUM_PROVENANCE.md.
+      if (
+        entry.name === "20260930010000_trainer2_exercise_swap" &&
+        checksumMigrationSql(
+          Buffer.from(bytes.toString("utf8").replaceAll("\r\n", "\n")),
+        ) === "07dd467143b8b2b09aba088f11a6e9505c7b55dcb4824b9b1634c247b2329af9"
+      ) {
+        compatibleChecksums.push(
+          "7eb597895c8c9655a353fbac25ac252288589b4c3a6da4fb79fcaec1f72219b9",
+        );
+      }
       return {
         name: entry.name,
         checksum: compatibleChecksums[0],

@@ -113,7 +113,7 @@ export function SetResultRow({ authoredLoad = false, sessionAdded = false, assig
     if (saved?.result?.measurement) return f;
     if (!saved) f.basis = prescription?.reps.basis ?? 'total';
     const m = prescription?.measurement;
-    if (m) { f.kind = m.kind; if ('value' in m && (number === 1 || sessionAdded) && !saved) f.load = authoredLoad ? String(Number(m.value) / (m.unit === 'kg' ? 0.45359237 : 1)) : startingPounds(m) ?? ''; if (m.kind === 'externalLoad') { f.convention = m.convention; f.zeroMeaning = m.zeroMeaning; } }
+    if (m) { f.kind = m.kind; if ('value' in m && (number === 1 || sessionAdded) && !saved) f.load = authoredLoad ? pounds(m.value, m.unit) : startingPounds(m) ?? ''; if (m.kind === 'externalLoad') { f.convention = m.convention; f.zeroMeaning = m.zeroMeaning; } }
     else if (exercise?.kind === 'catalogSnapshot') {
       f.kind = exercise.loadKind;
       f.zeroMeaning = exercise.catalogFacts?.externalZeroMeaning ?? 'validZero';
@@ -137,9 +137,12 @@ export function SetResultRow({ authoredLoad = false, sessionAdded = false, assig
   }
   function initialDraft(): Draft {
     const form = initialForm(), prior = preceding?.find(r => r.result)?.result;
+    // An explicit addition load is exact intent, not a rounded history suggestion.
+    // Reuse unchanged-measurement preservation after converting its display to lb.
     const carriedMeasurement = !saved && prior?.measurement && prescription && exercise &&
       (!prior.reps || prior.reps.basis === form.basis) && compatibleLoggingLoad(prior.measurement, prescription, exercise)
-      ? prior.measurement : undefined;
+      ? prior.measurement : !saved && authoredLoad && (number === 1 || sessionAdded)
+        ? prescription?.measurement ?? undefined : undefined;
     return { ...(assignment ? { assignment } : {}), form, ...(skipped ? { skipActionId: skipped.actionId } : {}), base: saved ?? null, pending: null, conflict: false, ...(carriedMeasurement ? { carriedMeasurement } : {}) };
   }
   function begin() { store(initialDraft()); setMessage(''); }

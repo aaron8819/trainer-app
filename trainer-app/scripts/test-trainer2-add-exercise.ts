@@ -368,7 +368,9 @@ async function main() {
     const edge=[process.env.PROGRAMFILES,process.env['PROGRAMFILES(X86)'],process.env.LOCALAPPDATA,`${systemDrive}/Program Files`,`${systemDrive}/Program Files (x86)`]
       .filter((root):root is string=>Boolean(root)).map(root=>resolve(root,'Microsoft/Edge/Application/msedge.exe')).find(existsSync);
     assert(edge,'Installed Edge is required; no browser download or existing profile is used');
-    browserProcess=spawn(edge,['--headless=new','--disable-gpu','--disable-breakpad','--disable-crash-reporter','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0',`--user-data-dir=${browserProfile}`,'--no-first-run','--no-default-browser-check','--disable-background-networking','about:blank'],{windowsHide:true,stdio:'pipe'});
+    // Task browser must exit when its pages close; Edge's background mode can
+    // otherwise retain profile writers after the CDP Browser.close response.
+    browserProcess=spawn(edge,['--headless=new','--disable-gpu','--disable-breakpad','--disable-crash-reporter','--disable-background-mode','--disable-extensions','--disable-component-extensions-with-background-pages','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0',`--user-data-dir=${browserProfile}`,'--no-first-run','--no-default-browser-check','--disable-background-networking','about:blank'],{windowsHide:true,stdio:'pipe'});
     if(browserProcess.pid)track(browserProcess.pid);
     // Register before shutdown; an already-emitted close event cannot be observed later.
     browserCompletion=waitForWorker(browserProcess,20*60_000);
@@ -384,6 +386,29 @@ async function main() {
     browserEndpoint=endpoint;
     browser=await chromium.connectOverCDP(endpoint,{timeout:30_000});const context=await browser.newContext({viewport:{width:1360,height:1000},reducedMotion:'reduce'});browserContext=context;
     await context.addCookies([{name:'__Host-trainer2-session',value:`${sessionId}.${secret}`,domain:'127.0.0.1',path:'/',secure:true,httpOnly:true,sameSite:'Strict'}]);
+    // Accept original kg bytes through the real command owner, then log the
+    // untouched pounds prefill through the browser and independently read DB.
+    await close(x);
+    const kgTrial=await start(),kgCommand=exerciseCommand(kgTrial);
+    kgCommand.intent.reps={min:8,max:8,basis:'total'};
+    kgCommand.intent.startingLoad={...kgCommand.intent.startingLoad,value:'10',unit:'kg'};
+    assert.equal((await addExercise(db,principal,kgCommand)).outcome.status,'Accepted');
+    const kgAccepted=await read(kgTrial.executionId),kgFact=kgAccepted.exerciseAdditions!.find(a=>a.actionId===kgCommand.actionId)!;
+    const kgPage=await context.newPage();await kgPage.goto(base+`/trainer2/dev/executions/${kgTrial.executionId}`);
+    await kgPage.getByRole('region',{name:'Exercise queue'}).getByRole('button',{name:/Leg Press.*set 1, unrecorded/}).click();
+    const kgCard=kgPage.getByRole('region',{name:'Active set',exact:true});
+    assert.equal(await kgCard.getByLabel('Set 1 Actual load',{exact:true}).inputValue(),'22.05');
+    await kgCard.getByRole('button',{name:'Log set',exact:true}).click();
+    await kgCard.getByLabel('Set 2 Actual reps').waitFor();
+    assert.equal(await kgCard.getByLabel('Set 2 Actual load',{exact:true}).inputValue(),'22.05');
+    const kgLogged=await read(kgTrial.executionId);
+    assert.deepEqual(kgLogged.results.find(r=>r.targetId===kgFact.content.position.targets[0].id)!.result!.measurement,kgCommand.intent.startingLoad);
+    assert.deepEqual(kgLogged.exerciseAdditions!.find(a=>a.actionId===kgCommand.actionId),kgFact);
+    assert.equal(kgLogged.contentHash,kgAccepted.contentHash);
+    const kgStored=await admin.query('SELECT "result" FROM "Trainer2SetResultRevision" WHERE "executionId"=$1',[kgTrial.executionId]);
+    assert.deepEqual(kgStored.rows[0].result.measurement,kgCommand.intent.startingLoad);
+    await kgPage.close();
+    await close(kgLogged);x=await start();
     const page=await context.newPage();const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
     await page.goto(base+`/trainer2/dev/executions/${x.executionId}`);const card=page.getByRole('region',{name:'Active set',exact:true}),queue=page.getByRole('region',{name:'Exercise queue'});
     await card.getByLabel('Set 1 Actual reps').fill('8');await card.getByRole('button',{name:'Log set',exact:true}).click();await card.getByLabel('Set 2 Actual reps').waitFor();
@@ -458,7 +483,10 @@ async function main() {
     assert.equal(await restartedPage.getByRole('button',{name:'+ Add set',exact:true}).count(),0);assert.deepEqual(errors,[]);
     await restartedPage.screenshot({path:resolve(artifact,'mobile-completed.png')});pass('Application restart, completed addition readback/history and closed-workout controls');
     const sourceAfter=verificationSource();assert.equal(sourceAfter.manifestHash,source.manifestHash);
-    details={sourceAfter,candidateDrift,postgres:(await admin.query('SELECT version()')).rows[0]};
+    details={sourceAfter,candidateDrift,kgLogging:{acceptedMeasurement:kgCommand.intent.startingLoad,
+      prefillPounds:'22.05',persistedMeasurement:kgStored.rows[0].result.measurement,
+      acceptedAdditionHash:kgFact.contentHash,acceptedStartHash:kgAccepted.contentHash},
+      postgres:(await admin.query('SELECT version()')).rows[0]};
     assert.equal(checks.length,24,'Expected all 24 assertion groups');
   } catch (error) {
     assertionError=redact(error instanceof Error?error.message:String(error));
@@ -469,8 +497,15 @@ async function main() {
       {name:'browser shutdown',run:async()=>{
         if(browserProcess?.pid)browserPids=capture(browserProcess.pid,browserProfile);
         await browserContext?.close();
+        // connectOverCDP also exposes Edge's persistent default context. Its
+        // launch page survives closing our incognito context and can keep Edge
+        // (and mapped profile files) alive after Browser.close on Windows.
+        for(const context of browser?.contexts()??[])for(const page of context.pages())await page.close({runBeforeUnload:false});
         if(browser?.isConnected())await (await browser.newBrowserCDPSession()).send('Browser.close');
       }},
+      // Release the CDP transport before waiting on the native child. For a
+      // connected browser close() disconnects; Browser.close above requests exit.
+      {name:'browser connection',run:()=>browser?.close()},
       // A stalled graceful close cannot prevent explicit process termination or
       // any subsequent resource cleanup. Capture children before graceful exit.
       {name:'browser process tree',timeoutMs:60_000,run:async()=>{
@@ -484,8 +519,12 @@ async function main() {
         await terminate([...new Set([...browserPids,...capture(child.pid!,browserProfile)])]);ownedPids.delete(child.pid!);
         // Close our pipe endpoints after the captured process tree is gone.
         for(const stream of child.stdio)stream?.destroy();
+        const closed=await cleanupSteps([{name:'browser child close',timeoutMs:5_000,run:async()=>{
+          const result=await browserCompletion;assert(result&&!result.timedOut&&!result.error,'Browser child close was not observed');
+          details={...details,browserShutdown:{gracefulClose:graceful??null,capturedPids:browserPids,observedClose:result}};
+        }}]);
+        assert(closed.every(result=>result.status==='passed'),'Browser child close deadline exceeded');
       }},
-      {name:'browser connection',run:()=>browser?.isConnected()?browser.close():undefined},
       {name:'browser log',run:()=>writeFileSync(resolve(artifact,'browser.log'),redact(browserLog))},
       {name:'Next process tree',timeoutMs:60_000,run:stopWeb},
       {name:'runtime client',run:()=>runtime?.$disconnect()},
@@ -544,7 +583,10 @@ async function supervise() {
       const removed=spawnSync('docker',['rm','-f',container],{encoding:'utf8',windowsHide:true,timeout:10_000});assert.equal(removed.status,0,'Task container removal failed');
       const after=spawnSync('docker',['container','inspect',container],{encoding:'utf8',windowsHide:true,timeout:5_000});assert(after.status!==0&&after.stderr.includes('No such container'),'Task container survived');
     }},
-    {name:'browser profile after worker exit',timeoutMs:60_000,run:()=>rm(profile,{recursive:true,force:true,maxRetries:8,retryDelay:500})},
+    {name:'browser profile after worker exit',timeoutMs:30_000,run:async()=>{
+      await rm(profile,{recursive:true,force:true,maxRetries:8,retryDelay:500});
+      assert(!existsSync(profile),'Task browser profile survived cleanup');
+    }},
   ]);
   report.worker={status:completion.timedOut?'timed-out':'completed',...completion};report.cleanup=[...(report.cleanup as CleanupResult[]??[]),...cleanup];
   report.retainedArtifacts={browserProfile:existsSync(profile)?profile:null};

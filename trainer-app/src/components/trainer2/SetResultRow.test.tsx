@@ -16,6 +16,84 @@ const accepted = (body: string, version = 1) => { const c = resultMutationComman
 beforeEach(() => { sessionStorage.clear(); vi.stubGlobal('crypto', webcrypto); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
+describe('Accepted addition load prefill', () => {
+  const external = { kind: 'externalLoad' as const, convention: 'machineDisplayed' as const, zeroMeaning: 'validZero' as const, value: '10', unit: 'kg' as const };
+  const assistance = { kind: 'assistance' as const, convention: 'displayedAssistance' as const, zeroMeaning: 'noAssistance' as const, value: '10', unit: 'kg' as const };
+  const added = { kind: 'addedLoad' as const, convention: 'addedExternal' as const, zeroMeaning: 'noAddedLoad' as const, value: '10', unit: 'kg' as const };
+  const dumbbell = { ...external, convention: 'perImplement' as const, zeroMeaning: 'notAllowed' as const };
+  const cases = [
+    { id: 't2:leg-press', measurement: external, display: '22.05' },
+    { id: 't2:leg-press', measurement: { ...external, value: '0.00' }, display: '0' },
+    { id: 't2:leg-press', measurement: { ...external, value: '42.5', unit: 'lb' as const }, display: '42.5' },
+    { id: 't2:machine-assisted-pull-up', measurement: assistance, display: '22.05' },
+    { id: 't2:machine-assisted-pull-up', measurement: { ...assistance, value: '0.00' }, display: '0' },
+    { id: 't2:weighted-pull-up', measurement: added, display: '22.05' },
+    { id: 't2:weighted-pull-up', measurement: { ...added, value: '0.00' }, display: '0' },
+    { id: 't2:concentration-curl', measurement: dumbbell, display: '22.05' },
+  ];
+  it.each(cases)('logs untouched $id $measurement.value $measurement.unit through bounded display conversion', async ({ id, measurement, display }) => {
+    const exercise = catalogExercise(catalog.find(e => e.id === id)!);
+    if (exercise.kind !== 'catalogSnapshot') throw new Error('Expected catalog snapshot');
+    const prescription = { id: props.targetId, classification: 'working' as const, required: true,
+      reps: { min: 8, max: 8, basis: exercise.repBasis }, measurement, rir: '2', restSeconds: '120' };
+    const before = JSON.stringify(prescription);
+    let submitted = '';
+    vi.stubGlobal('fetch', vi.fn((_url, init) => { submitted = init.body; return response(accepted(submitted)); }));
+    render(<SetResultRow {...props} activePanel sessionAdded authoredLoad exercise={exercise} prescription={prescription}
+      refresh={async () => [{ ...saved, actionId: JSON.parse(submitted).actionId, result: JSON.parse(submitted).intent.result }]} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeEnabled());
+    expect(screen.getByLabelText('Set 1 Actual load', { exact: true })).toHaveValue(display);
+    fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
+    await screen.findByText('Saved');
+    expect(recordSetResultCommand.parse(JSON.parse(submitted)).intent.result.measurement).toEqual(measurement);
+    expect(JSON.stringify(prescription)).toBe(before);
+  });
+  it('records an edited explicit load in pounds instead of restoring its original kg value', async () => {
+    const exercise = catalogExercise(catalog.find(e => e.id === 't2:leg-press')!);
+    const prescription = { id: props.targetId, classification: 'working' as const, required: true,
+      reps: { min: 8, max: 8, basis: 'total' as const }, measurement: external, rir: '2', restSeconds: '120' };
+    let submitted = '';
+    vi.stubGlobal('fetch', vi.fn((_url, init) => { submitted = init.body; return response(accepted(submitted)); }));
+    render(<SetResultRow {...props} activePanel sessionAdded authoredLoad exercise={exercise} prescription={prescription}
+      refresh={async () => [{ ...saved, actionId: JSON.parse(submitted).actionId, result: JSON.parse(submitted).intent.result }]} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeEnabled());
+    fireEvent.change(screen.getByLabelText('Set 1 Actual load', { exact: true }), { target: { value: '25' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Log set' })); await screen.findByText('Saved');
+    expect(JSON.parse(submitted).intent.result.measurement).toEqual({ ...external, value: '25', unit: 'lb' });
+  });
+  it.each(cases.filter(c => c.measurement.unit === 'kg'))('keeps the existing nearest-five history suggestion for $id $measurement.value', async ({ id, measurement }) => {
+    const exercise = catalogExercise(catalog.find(e => e.id === id)!);
+    if (exercise.kind !== 'catalogSnapshot') throw new Error('Expected catalog snapshot');
+    const prescription = { id: props.targetId, classification: 'working' as const, required: true,
+      reps: { min: 8, max: 8, basis: exercise.repBasis }, measurement: null, rir: '2', restSeconds: '120' };
+    const historical = { ...saved, result: { reps: { value: 8, basis: exercise.repBasis }, measurement, rir: '2' } };
+    let submitted = '';
+    vi.stubGlobal('fetch', vi.fn((_url, init) => { submitted = init.body; return response(accepted(submitted)); }));
+    render(<SetResultRow {...props} activePanel sessionAdded exercise={exercise} prescription={prescription} firstSetLoad={historical}
+      refresh={async () => [{ ...saved, actionId: JSON.parse(submitted).actionId, result: JSON.parse(submitted).intent.result }]} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeEnabled());
+    const value = measurement.value === '0.00' ? '0' : '20';
+    expect(screen.getByLabelText('Set 1 Actual load', { exact: true })).toHaveValue(value);
+    fireEvent.click(screen.getByRole('button', { name: 'Log set' })); await screen.findByText('Saved');
+    expect(JSON.parse(submitted).intent.result.measurement).toEqual({ ...measurement, value, unit: 'lb' });
+  });
+  it('logs an explicit bodyweight target without inventing a numeric load', async () => {
+    const exercise = catalogExercise(catalog.find(e => e.loadKind === 'bodyweight')!);
+    if (exercise.kind !== 'catalogSnapshot') throw new Error('Expected catalog snapshot');
+    const measurement = { kind: 'bodyweight' as const, convention: 'bodyweightOnly' as const };
+    const prescription = { id: props.targetId, classification: 'working' as const, required: true,
+      reps: { min: 8, max: 8, basis: exercise.repBasis }, measurement, rir: '2', restSeconds: '120' };
+    let submitted = '';
+    vi.stubGlobal('fetch', vi.fn((_url, init) => { submitted = init.body; return response(accepted(submitted)); }));
+    render(<SetResultRow {...props} activePanel sessionAdded authoredLoad exercise={exercise} prescription={prescription}
+      refresh={async () => [{ ...saved, actionId: JSON.parse(submitted).actionId, result: JSON.parse(submitted).intent.result }]} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeEnabled());
+    expect(screen.queryByLabelText('Set 1 Actual load', { exact: true })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Log set' })); await screen.findByText('Saved');
+    expect(JSON.parse(submitted).intent.result.measurement).toEqual(measurement);
+  });
+});
+
 it('records newly qualified per-side dumbbell work with its captured policy and fixed options', async () => {
   const exercise = catalogExercise(catalog.find(e => e.id === 't2:concentration-curl')!);
   const prescription = { id: props.targetId, classification: 'working' as const, required: true,

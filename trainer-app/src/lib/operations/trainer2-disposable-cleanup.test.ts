@@ -1,8 +1,19 @@
 import { spawn } from 'node:child_process';
-import { describe, expect, it } from 'vitest';
-import { cleanupSteps, ownedProcessTree, processAlive, terminateOwnedProcesses, waitForWorker } from '../../../scripts/trainer2/disposable-cleanup';
+import { describe, expect, it, vi } from 'vitest';
+import { browserProcessesForProfile, cleanupSteps, ownedProcessTree, processAlive, terminateOwnedProcesses, waitForWorker } from '../../../scripts/trainer2/disposable-cleanup';
 
 describe('Trainer2 disposable cleanup', () => {
+  it('selects profile-owned orphans without admitting a reused PID or adjacent profile', () => {
+    const profile = 'C:\\task with spaces\\browser-profile-123';
+    expect(browserProcessesForProfile([
+      { pid: 10, name: 'node.exe', command: 'node unrelated.js' },
+      { pid: 11, name: 'msedge.exe', command: `msedge --user-data-dir="${profile}\\playwright_chromiumdev_profile-new" --type=renderer` },
+      { pid: 12, name: 'msedge.exe', command: `msedge --user-data-dir="${profile}-other"` },
+      { pid: 13, name: 'powershell.exe', command: `echo --user-data-dir="${profile}"` },
+      { pid: 14, name: 'msedge.exe' },
+    ], profile)).toEqual([11]);
+    expect(() => browserProcessesForProfile([], 'relative-profile')).toThrow('absolute');
+  });
   it.skipIf(process.platform!=='win32')('discovers an orphan after its task root exits', async () => {
     const child=spawn(process.execPath,['-e',`const {spawn}=require('node:child_process'); const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',detached:true,windowsHide:true});child.unref();process.stdout.write(String(child.pid)+'\\n',()=>process.exit(0));`],{windowsHide:true,stdio:['ignore','pipe','pipe']});
     const completion=waitForWorker(child,5_000);
@@ -48,6 +59,14 @@ describe('Trainer2 disposable cleanup', () => {
     const pids = [child.pid!, descendant];
     try {
       expect(ownedProcessTree(child.pid!)).toEqual(expect.arrayContaining(pids));
+      const nativeKill = process.kill.bind(process);
+      const probe = vi.spyOn(process, 'kill').mockImplementation((pid, signal) => {
+        if (pid === child.pid && signal === 0) throw Object.assign(new Error('Native probe misses root'), { code: 'ESRCH' });
+        return nativeKill(pid, signal);
+      });
+      try {
+        expect(ownedProcessTree(child.pid!)).toEqual(expect.arrayContaining(pids));
+      } finally { probe.mockRestore(); }
       expect((await waitForWorker(child,20)).timedOut).toBe(true);
       const results = await cleanupSteps([
         { name: 'stalled graceful close', timeoutMs: 20, run: () => new Promise(() => {}) },

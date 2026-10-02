@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { spawnSync } from "node:child_process";
 import {
   existsSync,
@@ -1186,6 +1187,7 @@ describe("credential-free and mutation subprocess boundaries", () => {
     writeFileSync(
       testFile,
       [
+        '// @vitest-environment node',
         'import { expect, it } from "vitest";',
         'it("stays credential free", () => {',
         'expect(process.env.DATABASE_URL).toBeUndefined();',
@@ -1202,6 +1204,10 @@ describe("credential-free and mutation subprocess boundaries", () => {
         testFile,
         "--root",
         fixture,
+        "--environment",
+        "node",
+        "--maxWorkers",
+        "1",
         "--config",
         resolve("vitest.config.ts"),
       ],
@@ -1215,7 +1221,7 @@ describe("credential-free and mutation subprocess boundaries", () => {
         timeout: 30_000,
       }
     );
-    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.status, `${result.error?.message ?? "Child completed"}; signal=${result.signal}\n${result.stdout}\n${result.stderr}`).toBe(0);
   }, 30_000);
 
   it("classifies workout mutation collection with no target before importing Prisma", () => {

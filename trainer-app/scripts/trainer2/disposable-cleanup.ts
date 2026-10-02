@@ -1,4 +1,24 @@
 import { spawnSync, type ChildProcess } from 'node:child_process';
+import { win32 } from 'node:path';
+
+export function browserProcessesForProfile(rows: { pid: number; name: string; command?: string }[], profile: string): number[] {
+  if (!win32.isAbsolute(profile)) throw new Error('Browser profile must be absolute');
+  const expected = win32.normalize(profile).toLowerCase();
+  return rows.filter(row => {
+    if (row.name.toLowerCase() !== 'msedge.exe') return false;
+    const argument = row.command?.match(/--user-data-dir=(?:"([^"]+)"|([^\s]+))/i);
+    if (!argument) return false;
+    const actual = win32.normalize(argument[1] ?? argument[2]).toLowerCase();
+    return actual === expected || actual.startsWith(expected + win32.sep);
+  }).map(row => row.pid);
+}
+
+export function ownedBrowserProcesses(profile: string): number[] {
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Get-CimInstance Win32_Process | Select-Object ProcessId,Name,CommandLine | ConvertTo-Json -Compress'], { encoding: 'utf8', windowsHide: true, timeout: 10_000 });
+  if (result.status !== 0) throw new Error('Unable to inventory task browser processes');
+  const rows = JSON.parse(result.stdout) as { ProcessId: number; Name: string; CommandLine?: string }[];
+  return browserProcessesForProfile(rows.map(row => ({ pid: row.ProcessId, name: row.Name, command: row.CommandLine })), profile);
+}
 
 export async function waitForWorker(child: ChildProcess, timeoutMs: number) {
   return new Promise<{ exitCode: number | null; signal: NodeJS.Signals | null; timedOut: boolean; error?: string }>(resolve => {
@@ -74,7 +94,10 @@ export function ownedProcessTree(pid: number, rootMarker?: string): number[] {
   if (owned.has(process.pid)) throw new Error('Refusing to terminate runner ancestors');
   // Windows keeps the creator PID on an orphan. Even when the root has already
   // exited, late browser/crash-handler children must still be discovered.
-  return [...owned].filter(value=>value!==pid||processAlive(pid));
+  // Node's Windows kill(pid, 0) can report ESRCH for an Edge process that CIM
+  // still inventories and whose ChildProcess has not emitted exit. Keep the
+  // inventoried root: dropping it leaves the browser and profile writers alive.
+  return rows.filter(row => owned.has(row.pid)).map(row => row.pid);
 }
 
 export async function terminateOwnedProcesses(pids: number[]): Promise<void> {

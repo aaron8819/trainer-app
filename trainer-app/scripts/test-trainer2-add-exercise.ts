@@ -30,7 +30,7 @@ import { authWebPlatformEnvironment } from './trainer2/auth-web-environment';
 import { verificationSource } from './trainer2/verification-source';
 import { inspectFinisherSchemaDiff } from '../src/lib/operations/finisher-schema-drift';
 import { parseExactDisposableConfirmationArgs } from '../src/lib/operations/test-environment-preflight';
-import { cleanupSteps, ownedProcessTree, terminateOwnedProcesses, waitForWorker, type CleanupResult } from './trainer2/disposable-cleanup';
+import { cleanupSteps, ownedBrowserProcesses, ownedProcessTree, terminateOwnedProcesses, waitForWorker, type CleanupResult } from './trainer2/disposable-cleanup';
 
 
 async function main() {
@@ -62,6 +62,7 @@ async function main() {
   const nextClosures: Awaited<ReturnType<typeof waitForWorker>>[] = [];
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
   let browserProcess: ReturnType<typeof spawn> | undefined;
+  let browserServer: Awaited<ReturnType<typeof chromium.launchServer>> | undefined;
   let browserCompletion: ReturnType<typeof waitForWorker> | undefined;
   let browserContext: Awaited<ReturnType<NonNullable<typeof browser>['newContext']>> | undefined;
   let browserPids: number[] = [];
@@ -69,6 +70,8 @@ async function main() {
   const browserProfile=resolve(artifact,`browser-profile-${suffix}`);
   assert(browserProfile.startsWith(artifact+sep),'Browser profile must stay inside task artifacts');
   let browserLog='';
+  const browserLifecycle: Record<string,unknown>[] = [];
+  const pendingBrowserRequests = new Map<unknown,{method:string;path:string}>();
   const ownedPids = new Set<number>();
   const processIds = new Set<number>();
   const track = (pid: number) => {ownedPids.add(pid);processIds.add(pid);};
@@ -368,23 +371,32 @@ async function main() {
     const edge=[process.env.PROGRAMFILES,process.env['PROGRAMFILES(X86)'],process.env.LOCALAPPDATA,`${systemDrive}/Program Files`,`${systemDrive}/Program Files (x86)`]
       .filter((root):root is string=>Boolean(root)).map(root=>resolve(root,'Microsoft/Edge/Application/msedge.exe')).find(existsSync);
     assert(edge,'Installed Edge is required; no browser download or existing profile is used');
-    // Task browser must exit when its pages close; Edge's background mode can
-    // otherwise retain profile writers after the CDP Browser.close response.
-    browserProcess=spawn(edge,['--headless=new','--disable-gpu','--disable-breakpad','--disable-crash-reporter','--disable-background-mode','--disable-extensions','--disable-component-extensions-with-background-pages','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0',`--user-data-dir=${browserProfile}`,'--no-first-run','--no-default-browser-check','--disable-background-networking','about:blank'],{windowsHide:true,stdio:'pipe'});
+    // Keep Playwright's profile and artifact directories under this new task
+    // resource. Its standard Edge launcher owns the debugging pipes and exit.
+    mkdirSync(browserProfile);
+    const priorTemp=process.env.TEMP,priorTmp=process.env.TMP;
+    try {
+      process.env.TEMP=browserProfile;process.env.TMP=browserProfile;
+      browserServer=await chromium.launchServer({executablePath:edge,headless:true,timeout:30_000,
+        args:['--disable-gpu','--disable-background-mode','--disable-crash-reporter'],
+        env:authWebPlatformEnvironment(process.env)});
+    } finally {
+      if(priorTemp===undefined)delete process.env.TEMP;else process.env.TEMP=priorTemp;
+      if(priorTmp===undefined)delete process.env.TMP;else process.env.TMP=priorTmp;
+    }
+    browserProcess=browserServer.process();
     if(browserProcess.pid)track(browserProcess.pid);
-    // Register before shutdown; an already-emitted close event cannot be observed later.
+    browserLifecycle.push({event:'launched',at:new Date().toISOString(),pid:browserProcess.pid});
+    browserProcess.on('exit',(exitCode,signal)=>browserLifecycle.push({event:'exit',at:new Date().toISOString(),exitCode,signal}));
+    browserProcess.on('close',(exitCode,signal)=>browserLifecycle.push({event:'close',at:new Date().toISOString(),exitCode,signal}));
+    browserProcess.on('error',error=>browserLifecycle.push({event:'error',at:new Date().toISOString(),error:error.message}));
     browserCompletion=waitForWorker(browserProcess,20*60_000);
     browserProcess.stdout?.on('data',v=>browserLog+=v);browserProcess.stderr?.on('data',v=>browserLog+=v);
-    const endpoint=await new Promise<string>((resolveEndpoint,reject)=>{
-      const child=browserProcess!;
-      const timer=setTimeout(()=>finish(new Error('Task browser did not expose CDP within 30 seconds')),30_000);
-      const inspect=()=>{const match=browserLog.match(/DevTools listening on (ws:\/\/127\.0\.0\.1:\d+\/devtools\/browser\/[^\s]+)/);if(match)finish(undefined,match[1]);};
-      const exited=()=>finish(new Error('Task browser exited before CDP was ready'));
-      const finish=(error?:Error,value?:string)=>{clearTimeout(timer);child.stderr?.off('data',inspect);child.off('exit',exited);child.off('error',finish);if(error)reject(error);else resolveEndpoint(value!);};
-      child.stderr?.on('data',inspect);child.once('exit',exited);child.once('error',finish);inspect();
-    });
-    browserEndpoint=endpoint;
-    browser=await chromium.connectOverCDP(endpoint,{timeout:30_000});const context=await browser.newContext({viewport:{width:1360,height:1000},reducedMotion:'reduce'});browserContext=context;
+    browserEndpoint=browserServer.wsEndpoint();
+    browser=await chromium.connect(browserEndpoint,{timeout:30_000});const context=await browser.newContext({viewport:{width:1360,height:1000},reducedMotion:'reduce'});browserContext=context;
+    context.on('request',request=>pendingBrowserRequests.set(request,{method:request.method(),path:new URL(request.url()).pathname}));
+    context.on('requestfinished',request=>pendingBrowserRequests.delete(request));
+    context.on('requestfailed',request=>pendingBrowserRequests.delete(request));
     await context.addCookies([{name:'__Host-trainer2-session',value:`${sessionId}.${secret}`,domain:'127.0.0.1',path:'/',secure:true,httpOnly:true,sameSite:'Strict'}]);
     // Accept original kg bytes through the real command owner, then log the
     // untouched pounds prefill through the browser and independently read DB.
@@ -490,21 +502,19 @@ async function main() {
     assert.equal(checks.length,24,'Expected all 24 assertion groups');
   } catch (error) {
     assertionError=redact(error instanceof Error?error.message:String(error));
+    details={...details,firstFailure:{at:new Date().toISOString(),completedGroups:checks.length,pendingBrowserRequests:[...pendingBrowserRequests.values()],stack:redact(error instanceof Error?error.stack??error.message:String(error))}};
     console.error(`ASSERTIONS FAILED: ${assertionError}`);
   } finally {
     cleanup.push(...await cleanupSteps([
       {name:'server log',run:()=>writeFileSync(resolve(artifact,'server.log'),redact(serverLog))},
       {name:'browser shutdown',run:async()=>{
-        if(browserProcess?.pid)browserPids=capture(browserProcess.pid,browserProfile);
+        if(browserProcess?.pid)browserPids=ownedBrowserProcesses(browserProfile);
         await browserContext?.close();
-        // connectOverCDP also exposes Edge's persistent default context. Its
-        // launch page survives closing our incognito context and can keep Edge
-        // (and mapped profile files) alive after Browser.close on Windows.
-        for(const context of browser?.contexts()??[])for(const page of context.pages())await page.close({runBeforeUnload:false});
-        if(browser?.isConnected())await (await browser.newBrowserCDPSession()).send('Browser.close');
+        // The installed Playwright launcher closes its native browser child
+        // and internal profile; the controller removes our outer resource.
+        await browserServer?.close();
       }},
-      // Release the CDP transport before waiting on the native child. For a
-      // connected browser close() disconnects; Browser.close above requests exit.
+      // Release the client transport independently of native server shutdown.
       {name:'browser connection',run:()=>browser?.close()},
       // A stalled graceful close cannot prevent explicit process termination or
       // any subsequent resource cleanup. Capture children before graceful exit.
@@ -516,14 +526,17 @@ async function main() {
         const graceful=await Promise.race([browserCompletion,new Promise<undefined>(resolveGrace=>{graceTimer=setTimeout(()=>resolveGrace(undefined),5_000);})]);
         clearTimeout(graceTimer);
         details={...details,browserShutdown:{gracefulClose:graceful??null,capturedPids:browserPids}};
-        await terminate([...new Set([...browserPids,...capture(child.pid!,browserProfile)])]);ownedPids.delete(child.pid!);
-        // Close our pipe endpoints after the captured process tree is gone.
-        for(const stream of child.stdio)stream?.destroy();
-        const closed=await cleanupSteps([{name:'browser child close',timeoutMs:5_000,run:async()=>{
-          const result=await browserCompletion;assert(result&&!result.timedOut&&!result.error,'Browser child close was not observed');
-          details={...details,browserShutdown:{gracefulClose:graceful??null,capturedPids:browserPids,observedClose:result}};
-        }}]);
-        assert(closed.every(result=>result.status==='passed'),'Browser child close deadline exceeded');
+        // A closed child's PID can already belong to another process. Only
+        // current Edge processes using this task profile may be terminated.
+        await terminate(ownedBrowserProcesses(browserProfile));
+        browserPids.forEach(pid=>ownedPids.delete(pid));ownedPids.delete(child.pid!);
+      }},
+      // Keep release and close observation independent of termination failure.
+      {name:'browser pipes',run:()=>{for(const stream of browserProcess?.stdio??[])stream?.destroy();}},
+      {name:'browser child close',timeoutMs:5_000,run:async()=>{
+        if(!browserProcess)return;
+        const result=await browserCompletion;assert(result&&!result.timedOut&&!result.error,'Browser child close was not observed');
+        details={...details,browserShutdown:{...(details.browserShutdown as object??{}),observedClose:result}};
       }},
       {name:'browser log',run:()=>writeFileSync(resolve(artifact,'browser.log'),redact(browserLog))},
       {name:'Next process tree',timeoutMs:60_000,run:stopWeb},
@@ -537,13 +550,13 @@ async function main() {
         const inspect=spawnSync('docker',['container','inspect',container],{windowsHide:true,encoding:'utf8',timeout:5_000});
         assert(inspect.status!==0 && inspect.stderr.includes('No such container'),'Task PostgreSQL container survived or absence could not be verified');
       }},
-      {name:'owned process survivor check',timeoutMs:60_000,run:()=>terminateOwnedProcesses([...ownedPids])},
+      {name:'owned process survivor check',run:()=>assert.equal(ownedPids.size,0,'Task processes did not complete cleanup')},
     ]));
     cleanup=cleanup.map(r=>({...r,...(r.error?{error:redact(r.error)}:{})}));
     for(const result of cleanup)console.log(`CLEANUP ${result.status}: ${result.name}${result.error?`: ${result.error}`:''}`);
   }
   const exitCode=assertionError||cleanup.some(r=>r.status!=='passed')?1:0;
-  details={...details,services:{container,browserPid:browserProcess?.pid,ownedProcessIds:[...processIds],webOrigin,browserEndpoint,browserProfile,nextClosures}};
+  details={...details,runtime:{node:process.version,arch:process.arch,platform:process.platform},browserLifecycle,browserNativeState:{exitCode:browserProcess?.exitCode,signalCode:browserProcess?.signalCode,killed:browserProcess?.killed,stdio:browserProcess?.stdio.map(s=>s?{destroyed:s.destroyed}:null)},services:{container,browserPid:browserProcess?.pid,ownedProcessIds:[...processIds],webOrigin,browserEndpoint,browserProfile,nextClosures}};
   console.log(`WORKER COMPLETE exitCode=${exitCode}`);
   // Teardown outcomes and verified process/container absence are recorded above.
   // Timed-out library promises must not retain this disposable runner indefinitely.
@@ -573,8 +586,8 @@ async function supervise() {
   const cleanup=await cleanupSteps([
     {name:'worker process tree',timeoutMs:60_000,run:async()=>{if(completion.timedOut&&worker.pid)await terminateOwnedProcesses(ownedProcessTree(worker.pid));}},
     {name:'orphan browser processes',timeoutMs:60_000,run:async()=>{
-      const browserPid=(report.services as {browserPid?:number}|undefined)?.browserPid;
-      if(browserPid)await terminateOwnedProcesses(ownedProcessTree(browserPid,profile));
+      await terminateOwnedProcesses(ownedBrowserProcesses(profile));
+      assert.equal(ownedBrowserProcesses(profile).length,0,'Task browser processes survived cleanup');
     }},
     {name:'task PostgreSQL absence',timeoutMs:20_000,run:()=>{
       const inspect=spawnSync('docker',['container','inspect','--format','{{ index .Config.Labels "trainer2.add-exercise.owner" }}',container],{encoding:'utf8',windowsHide:true,timeout:5_000});

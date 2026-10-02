@@ -110,8 +110,9 @@ Sources of truth:
   `npm run test:inventory:aggregate`. These are CI topology commands; local agents run focused contract
   tests and do not launch all four shards.
 - `npm run test:environment-classification`: focused manifest, sanitizer, placeholder-guard,
-  subprocess-boundary, exact-lock integrity, summary-count, and branch/base-delta coverage. The
-  recursive database-target source inventory test alone has a
+  subprocess-boundary, exact-lock integrity, summary-count, and branch/base-delta coverage.
+  The filesystem/launcher suite uses Vitest's Node environment; shared setup installs the scroll mock only when a browser window exists. Run the package script so npm supplies its executable path to the package-command boundary fixtures. Launcher assertions retain the default five-second deadline.
+  The recursive database-target source inventory test alone has a
   60-second timeout because the demonstrated Windows filesystem traversal exceeded Vitest's
   inherited default; the global Vitest timeout is unchanged.
 - When adding, removing, or renaming a Vitest file, reconcile the file delta and environment

@@ -1,11 +1,12 @@
 import { spawnSync, type ChildProcess } from 'node:child_process';
 import { win32 } from 'node:path';
 
-export function browserProcessesForProfile(rows: { pid: number; name: string; command?: string }[], profile: string): number[] {
+export function browserProcessesForProfile(rows: { pid: number; name: string; command?: string }[], profile: string, executableName = 'msedge.exe'): number[] {
   if (!win32.isAbsolute(profile)) throw new Error('Browser profile must be absolute');
+  if (!['msedge.exe', 'chrome.exe', 'chrome-headless-shell.exe'].includes(executableName.toLowerCase())) throw new Error('Unsupported owned browser executable');
   const expected = win32.normalize(profile).toLowerCase();
   return rows.filter(row => {
-    if (row.name.toLowerCase() !== 'msedge.exe') return false;
+    if (row.name.toLowerCase() !== executableName.toLowerCase()) return false;
     const argument = row.command?.match(/--user-data-dir=(?:"([^"]+)"|([^\s]+))/i);
     if (!argument) return false;
     const actual = win32.normalize(argument[1] ?? argument[2]).toLowerCase();
@@ -13,11 +14,15 @@ export function browserProcessesForProfile(rows: { pid: number; name: string; co
   }).map(row => row.pid);
 }
 
-export function ownedBrowserProcesses(profile: string): number[] {
-  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Get-CimInstance Win32_Process | Select-Object ProcessId,Name,CommandLine | ConvertTo-Json -Compress'], { encoding: 'utf8', windowsHide: true, timeout: 10_000 });
+export function ownedBrowserProcesses(profile: string, options: { executableName?: string; timeoutMs?: number } = {}): number[] {
+  const executableName = options.executableName ?? 'msedge.exe';
+  const timeoutMs = options.timeoutMs ?? 10_000;
+  browserProcessesForProfile([], profile, executableName);
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error('Invalid browser inventory deadline');
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Get-CimInstance Win32_Process | Select-Object ProcessId,Name,CommandLine | ConvertTo-Json -Compress'], { encoding: 'utf8', windowsHide: true, timeout: Math.min(10_000,timeoutMs) });
   if (result.status !== 0) throw new Error('Unable to inventory task browser processes');
   const rows = JSON.parse(result.stdout) as { ProcessId: number; Name: string; CommandLine?: string }[];
-  return browserProcessesForProfile(rows.map(row => ({ pid: row.ProcessId, name: row.Name, command: row.CommandLine })), profile);
+  return browserProcessesForProfile(rows.map(row => ({ pid: row.ProcessId, name: row.Name, command: row.CommandLine })), profile,executableName);
 }
 
 export async function waitForWorker(child: ChildProcess, timeoutMs: number) {
@@ -61,6 +66,7 @@ export async function cleanupSteps(steps: CleanupStep[]): Promise<CleanupResult[
       if (Date.now() > deadline) { timedOut = true; throw new Error('Cleanup deadline exceeded'); }
       results.push({ name: step.name, status: 'passed' });
     } catch (error) {
+      timedOut ||= Date.now() > deadline;
       results.push({ name: step.name, status: timedOut ? 'timed-out' : 'failed', error: error instanceof Error ? error.message : String(error) });
     } finally {
       clearTimeout(timer);
@@ -121,19 +127,20 @@ export async function terminateOwnedProcesses(pids: number[], record?: (result: 
     // Do not use kill(pid, 0) here: on Windows it can miss a still-inventoried
     // Edge child. Query the OS inventory independently and fail closed.
     const absenceDeadline=Math.min(terminationDeadline,Date.now()+5_000);
-    let survivors: {ProcessId:number}[] = [];
-    do {
-      const remaining=absenceDeadline-Date.now();
-      if(remaining<=0)throw new Error(`Task process absence deadline exceeded: ${pids.join(',')}`);
-      const inventory=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-Command','Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CreationDate | ConvertTo-Json -Compress'],{encoding:'utf8',windowsHide:true,timeout:remaining});
-      if(inventory.status!==0)throw new Error(`Task process absence inventory failed: ${inventory.error?.message??inventory.stderr}`);
-      const rows=JSON.parse(inventory.stdout) as {ProcessId:number}[];
-      survivors=rows.filter(row=>pids.includes(row.ProcessId));
-      record?.({pids,survivors});
-      if(!survivors.length)return;
-      await new Promise(resolve=>setTimeout(resolve,Math.min(50,Math.max(0,absenceDeadline-Date.now()))));
-    } while(Date.now()<absenceDeadline);
-    throw new Error(`Task-owned processes survived OS termination: ${survivors.map(row=>row.ProcessId).join(',')}`);
+    const remaining=absenceDeadline-Date.now();
+    if(remaining<=0)throw new Error(`Task process absence deadline exceeded: ${pids.join(',')}`);
+    // One observer retains the original five-second poll. Repeated PowerShell
+    // startup can consume the last poll's remaining time before it inventories.
+    const observer=`$ErrorActionPreference='Stop'; $owned=@(${pids.join(',')}); $deadline=[DateTimeOffset]::FromUnixTimeMilliseconds(${absenceDeadline}).UtcDateTime;
+do { $survivors=@(Get-CimInstance Win32_Process | Where-Object { $owned -contains $_.ProcessId } | Select-Object ProcessId,ParentProcessId,Name,CreationDate); @{at=[DateTime]::UtcNow.ToString('o');survivors=$survivors} | ConvertTo-Json -Compress -Depth 5; if(!$survivors.Count){break}; if([DateTime]::UtcNow -lt $deadline){Start-Sleep -Milliseconds 50} } while([DateTime]::UtcNow -lt $deadline)`;
+    const inventory=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',observer],{encoding:'utf8',windowsHide:true,timeout:remaining});
+    const observations=inventory.stdout.trim().split(/\r?\n/).filter(Boolean).map(line=>JSON.parse(line) as {at:string;survivors:{ProcessId:number}[]});
+    for(const observation of observations)record?.({pids,...observation});
+    if(inventory.status!==0)throw new Error(`Task process absence inventory failed: ${inventory.error?.message??inventory.stderr}`);
+    const last=observations.at(-1);
+    if(!last)throw new Error('Task process absence inventory returned no observations');
+    if(last.survivors.length)throw new Error(`Task-owned processes survived OS termination: ${last.survivors.map(row=>row.ProcessId).join(',')}`);
+    return;
   } else for (const pid of pids) {
     if (!processAlive(pid)) continue;
     try { process.kill(pid, 'SIGKILL'); } catch (error) {

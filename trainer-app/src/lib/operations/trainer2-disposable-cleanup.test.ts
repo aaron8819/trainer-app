@@ -37,7 +37,7 @@ describe('Trainer2 disposable cleanup', () => {
     }
   }, 30_000);
   it.skipIf(process.platform !== 'win32')('waits for actual OS absence when a terminating child remains in the first inventory', async () => {
-    const child = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { windowsHide: true, stdio: 'ignore' });
+    const child = spawn(process.execPath, ['-e', 'setTimeout(()=>process.exit(0),3000)'], { windowsHide: true, stdio: 'ignore' });
     const completion = waitForWorker(child, 10_000);
     const nativeSpawn = childProcesses.spawnSync;
     const probe = vi.spyOn(childProcesses, 'spawnSync').mockImplementation(((file: string, ...args: unknown[]) => {
@@ -45,14 +45,13 @@ describe('Trainer2 disposable cleanup', () => {
       return Reflect.apply(nativeSpawn, childProcesses, [file, ...args]);
     }) as typeof childProcesses.spawnSync);
     const receipts: Record<string, unknown>[] = [];
-    const timer = setTimeout(() => child.kill('SIGKILL'), 200);
     try {
       await terminateOwnedProcesses([child.pid!], result => receipts.push(result));
       expect(receipts.some(result => (result.survivors as {ProcessId:number}[] | undefined)?.some(row => row.ProcessId === child.pid))).toBe(true);
       expect(receipts.at(-1)).toMatchObject({ survivors: [] });
       expect((await completion).timedOut).toBe(false);
     } finally {
-      clearTimeout(timer); probe.mockRestore();
+      probe.mockRestore();
       await terminateOwnedProcesses([child.pid!]);
     }
   }, 30_000);
@@ -65,6 +64,9 @@ describe('Trainer2 disposable cleanup', () => {
       { pid: 13, name: 'powershell.exe', command: `echo --user-data-dir="${profile}"` },
       { pid: 14, name: 'msedge.exe' },
     ], profile)).toEqual([11]);
+    expect(browserProcessesForProfile([{pid:15,name:'chrome-headless-shell.exe',command:`browser --user-data-dir="${profile}\\inner"`}],profile,'chrome-headless-shell.exe')).toEqual([15]);
+    expect(browserProcessesForProfile([{pid:15,name:'chrome-headless-shell.exe',command:`browser --user-data-dir="${profile}\\inner"`}],profile)).toEqual([]);
+    expect(() => browserProcessesForProfile([],profile,'unrelated.exe')).toThrow('Unsupported');
     expect(() => browserProcessesForProfile([], 'relative-profile')).toThrow('absolute');
   });
   it.skipIf(process.platform!=='win32')('discovers an orphan after its task root exits', async () => {

@@ -887,16 +887,31 @@ export function createCredentialFreeVerificationEvidence(
   input: CredentialFreeEvidenceRunInput
 ): CredentialFreeVerificationEvidence {
   const environment = input.environment ?? process.env;
+  const eventName = environment.GITHUB_EVENT_NAME ?? null;
+  const repository = environment.GITHUB_REPOSITORY ?? null;
+  const runId = environment.GITHUB_RUN_ID ?? null;
+  const serverUrl = environment.GITHUB_SERVER_URL ?? null;
+  const runAttempt = environment.GITHUB_RUN_ATTEMPT ?? null;
+  const workflow = environment.GITHUB_WORKFLOW ?? null;
+  const job = environment.GITHUB_JOB ?? null;
+  const runUrl = githubRunUrl({ repository, runId, serverUrl });
+  if (runAttempt !== null && !GITHUB_RUN_NUMBER_PATTERN.test(runAttempt)) {
+    throw new Error("GitHub run attempt is invalid.");
+  }
+  if (workflow !== null && !validGitHubText(workflow)) {
+    throw new Error("GitHub workflow identity is invalid.");
+  }
+  if (job !== null && !GITHUB_JOB_PATTERN.test(job)) {
+    throw new Error("GitHub job identity is invalid.");
+  }
+  if (eventName !== null && !GITHUB_EVENT_NAME_PATTERN.test(eventName)) {
+    throw new Error("GitHub event name is invalid.");
+  }
   const repositoryRoot = path.resolve(input.projectRoot, "..");
   const repositoryState = readCurrentRepositoryState(repositoryRoot);
-  const definition = computeVerificationDefinition({
-    projectRoot: input.projectRoot,
-    classificationManifest: input.manifest,
-  });
   const checkedOutCommitSha = repositoryState.commitSha;
   const treeSha = repositoryState.treeSha;
   const githubActions = environment.GITHUB_ACTIONS === "true";
-  const eventName = environment.GITHUB_EVENT_NAME ?? null;
   const githubRef = environment.GITHUB_REF ?? null;
   const isMergeRef = /^refs\/pull\/\d+\/merge$/.test(githubRef ?? "");
   const isPullRequest = eventName === "pull_request" || isMergeRef;
@@ -943,25 +958,6 @@ export function createCredentialFreeVerificationEvidence(
       ? "qualified_pass"
       : "pass"
     : "fail";
-  const repository = environment.GITHUB_REPOSITORY ?? null;
-  const runId = environment.GITHUB_RUN_ID ?? null;
-  const serverUrl = environment.GITHUB_SERVER_URL ?? null;
-  const runAttempt = environment.GITHUB_RUN_ATTEMPT ?? null;
-  const workflow = environment.GITHUB_WORKFLOW ?? null;
-  const job = environment.GITHUB_JOB ?? null;
-  const runUrl = githubRunUrl({ repository, runId, serverUrl });
-  if (runAttempt !== null && !GITHUB_RUN_NUMBER_PATTERN.test(runAttempt)) {
-    throw new Error("GitHub run attempt is invalid.");
-  }
-  if (workflow !== null && !validGitHubText(workflow)) {
-    throw new Error("GitHub workflow identity is invalid.");
-  }
-  if (job !== null && !GITHUB_JOB_PATTERN.test(job)) {
-    throw new Error("GitHub job identity is invalid.");
-  }
-  if (eventName !== null && !GITHUB_EVENT_NAME_PATTERN.test(eventName)) {
-    throw new Error("GitHub event name is invalid.");
-  }
   if (githubActions) {
     if (
       !eventName ||
@@ -992,6 +988,10 @@ export function createCredentialFreeVerificationEvidence(
       }
     }
   }
+  const definition = computeVerificationDefinition({
+    projectRoot: input.projectRoot,
+    classificationManifest: input.manifest,
+  });
   let vitestVersion = "unknown";
   try {
     vitestVersion = readJson<{ version: string }>(

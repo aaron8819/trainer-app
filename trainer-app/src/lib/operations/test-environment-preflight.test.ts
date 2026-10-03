@@ -1076,7 +1076,6 @@ describe("dependency-free launcher", () => {
 
 describe("credential-free and mutation subprocess boundaries", () => {
   const vitestCli = resolve("node_modules/vitest/vitest.mjs");
-  const tsxCli = resolve("node_modules/tsx/dist/cli.mjs");
   const npmCli = process.env.npm_execpath;
 
   function runMutationPackageCommand(
@@ -1309,7 +1308,7 @@ describe("credential-free and mutation subprocess boundaries", () => {
       ["--confirm-disposable=1"],
       ["prefix--confirm-disposable"],
     ]) {
-      const result = spawnSync(process.execPath, [tsxCli, script, ...args], {
+      const result = spawnSync(process.execPath, ["--import", "tsx", script, ...args], {
         cwd: process.cwd(),
         env: sanitizeDatabaseTargetEnvironment(process.env),
         encoding: "utf8",

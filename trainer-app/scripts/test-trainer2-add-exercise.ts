@@ -67,6 +67,7 @@ async function main() {
   let browserContext: Awaited<ReturnType<NonNullable<typeof browser>['newContext']>> | undefined;
   let browserPids: number[] = [];
   let webOrigin: string | undefined, browserEndpoint: string | undefined;
+  const browserExecutableName='chrome-headless-shell.exe';
   const browserProfile=resolve(artifact,`browser-profile-${suffix}`);
   assert(browserProfile.startsWith(artifact+sep),'Browser profile must stay inside task artifacts');
   let browserLog='';
@@ -368,17 +369,13 @@ async function main() {
     const launch=()=>{server=spawn(process.execPath,[resolve('node_modules/next/dist/bin/next'),'dev','--hostname','127.0.0.1','--port',String(webPort)],{env:webEnv,windowsHide:true,stdio:'pipe'});serverCompletion=waitForWorker(server,20*60_000);if(server.pid)track(server.pid);server.stdout?.on('data',v=>serverLog+=v);server.stderr?.on('data',v=>serverLog+=v);};
     const waitWeb=async()=>{for(let i=0;i<120;i++){try{if((await fetch(base+'/trainer2/auth',{signal:AbortSignal.timeout(2_000)})).ok)return;}catch{}assert(server?.exitCode===null);await new Promise(r=>setTimeout(r,500));}throw new Error('Task web did not start');};
     launch();await waitWeb();
-    const systemDrive=process.env.SYSTEMDRIVE??'C:';
-    const edge=[process.env.PROGRAMFILES,process.env['PROGRAMFILES(X86)'],process.env.LOCALAPPDATA,`${systemDrive}/Program Files`,`${systemDrive}/Program Files (x86)`]
-      .filter((root):root is string=>Boolean(root)).map(root=>resolve(root,'Microsoft/Edge/Application/msedge.exe')).find(existsSync);
-    assert(edge,'Installed Edge is required; no browser download or existing profile is used');
-    // Keep Playwright's profile and artifact directories under this new task
-    // resource. Its standard Edge launcher owns the debugging pipes and exit.
+    // Use Playwright's locally installed, revision-pinned headless browser.
+    // Its launcher owns the debugging pipes and internal disposable profile.
     mkdirSync(browserProfile);
     const priorTemp=process.env.TEMP,priorTmp=process.env.TMP;
     try {
       process.env.TEMP=browserProfile;process.env.TMP=browserProfile;
-      browserServer=await chromium.launchServer({executablePath:edge,headless:true,timeout:30_000,
+      browserServer=await chromium.launchServer({headless:true,timeout:30_000,
         args:['--disable-gpu','--disable-background-mode','--disable-crash-reporter'],
         env:authWebPlatformEnvironment(process.env)});
     } finally {
@@ -386,6 +383,8 @@ async function main() {
       if(priorTmp===undefined)delete process.env.TMP;else process.env.TMP=priorTmp;
     }
     browserProcess=browserServer.process();
+    assert.equal(browserProcess.spawnfile.split(/[\\/]/).at(-1),browserExecutableName,'Expected the pinned headless browser');
+    details={...details,browserExecutable:browserProcess.spawnfile,browserExecutableName};
     if(browserProcess.pid)track(browserProcess.pid);
     browserLifecycle.push({event:'launched',at:new Date().toISOString(),pid:browserProcess.pid});
     browserProcess.on('exit',(exitCode,signal)=>browserLifecycle.push({event:'exit',at:new Date().toISOString(),exitCode,signal}));
@@ -515,7 +514,6 @@ async function main() {
       {name:'browser shutdown',run:async()=>{
         const deadline=Date.now()+10_000;
         browserLifecycle.push({event:'shutdown-requested',at:new Date().toISOString()});
-        if(browserProcess?.pid)browserPids=ownedBrowserProcesses(browserProfile);
         // The installed Playwright launcher closes its native browser child
         // and internal profile; the controller removes our outer resource.
         const close=browserServer?.close();
@@ -526,7 +524,8 @@ async function main() {
         details={...details,browserShutdown:{gracefulServerClose:graceful,forceFallback:!graceful}};
         if(!graceful){
           browserLifecycle.push({event:'force-fallback-started',at:new Date().toISOString()});
-          await terminate(ownedBrowserProcesses(browserProfile),deadline-Date.now());
+          browserPids=ownedBrowserProcesses(browserProfile,{executableName:browserExecutableName,timeoutMs:deadline-Date.now()});
+          await terminate(browserPids,deadline-Date.now());
           browserLifecycle.push({event:'force-fallback-completed',at:new Date().toISOString()});
         }
         await close;
@@ -543,8 +542,8 @@ async function main() {
         clearTimeout(graceTimer);
         details={...details,browserShutdown:{...(details.browserShutdown as object??{}),childCompletion:graceful??null,capturedPids:browserPids}};
         // A closed child's PID can already belong to another process. Only
-        // current Edge processes using this task profile may be terminated.
-        await terminate(ownedBrowserProcesses(browserProfile));
+        // current pinned browser processes using this task profile may be terminated.
+        await terminate(ownedBrowserProcesses(browserProfile,{executableName:browserExecutableName}));
         browserPids.forEach(pid=>ownedPids.delete(pid));ownedPids.delete(child.pid!);
       }},
       // Keep release and close observation independent of termination failure.
@@ -605,8 +604,8 @@ async function supervise() {
   const cleanup=await cleanupSteps([
     {name:'worker process tree',timeoutMs:60_000,run:async()=>{if(completion.timedOut&&worker.pid)await terminateOwnedProcesses(ownedProcessTree(worker.pid),recordTermination);}},
     {name:'orphan browser processes',timeoutMs:60_000,run:async()=>{
-      await terminateOwnedProcesses(ownedBrowserProcesses(profile),recordTermination);
-      assert.equal(ownedBrowserProcesses(profile).length,0,'Task browser processes survived cleanup');
+      await terminateOwnedProcesses(ownedBrowserProcesses(profile,{executableName:'chrome-headless-shell.exe'}),recordTermination);
+      assert.equal(ownedBrowserProcesses(profile,{executableName:'chrome-headless-shell.exe'}).length,0,'Task browser processes survived cleanup');
     }},
     {name:'task PostgreSQL absence',timeoutMs:20_000,run:()=>{
       const inspect=spawnSync('docker',['container','inspect','--format','{{ index .Config.Labels "trainer2.add-exercise.owner" }}',container],{encoding:'utf8',windowsHide:true,timeout:5_000});

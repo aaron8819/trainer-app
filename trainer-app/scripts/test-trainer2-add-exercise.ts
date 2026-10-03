@@ -30,7 +30,7 @@ import { authWebPlatformEnvironment } from './trainer2/auth-web-environment';
 import { verificationSource } from './trainer2/verification-source';
 import { inspectFinisherSchemaDiff } from '../src/lib/operations/finisher-schema-drift';
 import { parseExactDisposableConfirmationArgs } from '../src/lib/operations/test-environment-preflight';
-import { cleanupSteps, ownedBrowserProcesses, ownedProcessTree, terminateOwnedProcesses, waitForWorker, type CleanupResult } from './trainer2/disposable-cleanup';
+import { captureBrowserOwnership, cleanupSteps, ownedProcessTree, settleBrowserTree, shutdownOwnedBrowser, terminateOwnedProcesses, waitForWorker, type BrowserOwnership, type CleanupResult } from './trainer2/disposable-cleanup';
 
 
 async function main() {
@@ -65,7 +65,7 @@ async function main() {
   let browserServer: Awaited<ReturnType<typeof chromium.launchServer>> | undefined;
   let browserCompletion: ReturnType<typeof waitForWorker> | undefined;
   let browserContext: Awaited<ReturnType<NonNullable<typeof browser>['newContext']>> | undefined;
-  let browserPids: number[] = [];
+  let browserOwnership: BrowserOwnership | undefined;
   let webOrigin: string | undefined, browserEndpoint: string | undefined;
   const browserExecutableName='chrome-headless-shell.exe';
   const browserProfile=resolve(artifact,`browser-profile-${suffix}`);
@@ -78,6 +78,13 @@ async function main() {
   const track = (pid: number) => {ownedPids.add(pid);processIds.add(pid);};
   const capture = (pid: number,marker?:string) => { const pids=ownedProcessTree(pid,marker);pids.forEach(track);return pids; };
   const terminations: Record<string,unknown>[] = [];
+  const recordBrowserTree = (result: Record<string,unknown>) => {
+    terminations.push({at:new Date().toISOString(),...result});
+    if(result.ownership){
+      browserOwnership=result.ownership as BrowserOwnership;
+      if(process.connected)process.send?.({kind:'browser-ownership',runId:process.env.TRAINER2_ADD_EXERCISE_OWNER,ownership:browserOwnership},()=>{});
+    }
+  };
   const terminate = async (pids: number[],timeoutMs?:number) => {await terminateOwnedProcesses(pids,result=>terminations.push({at:new Date().toISOString(),...result}),timeoutMs);pids.forEach(pid=>ownedPids.delete(pid));};
   const stopWeb = async () => {
     const child=server;
@@ -392,6 +399,7 @@ async function main() {
     browserProcess.on('error',error=>browserLifecycle.push({event:'error',at:new Date().toISOString(),error:error.message}));
     browserCompletion=waitForWorker(browserProcess,20*60_000);
     browserProcess.stdout?.on('data',v=>browserLog+=v);browserProcess.stderr?.on('data',v=>browserLog+=v);
+    browserOwnership=await captureBrowserOwnership(browserProcess,browserProfile,recordBrowserTree);
     browserEndpoint=browserServer.wsEndpoint();
     browser=await chromium.connect(browserEndpoint,{timeout:30_000});const context=await browser.newContext({viewport:{width:1360,height:1000},reducedMotion:'reduce'});browserContext=context;
     context.on('request',request=>pendingBrowserRequests.set(request,{method:request.method(),path:new URL(request.url()).pathname}));
@@ -512,23 +520,14 @@ async function main() {
       // independent so a failed context cannot skip the server close.
       {name:'browser connection',run:()=>browser?.close()},
       {name:'browser shutdown',run:async()=>{
-        const deadline=Date.now()+10_000;
+        if(!browserServer)return;
         browserLifecycle.push({event:'shutdown-requested',at:new Date().toISOString()});
-        // The installed Playwright launcher closes its native browser child
-        // and internal profile; the controller removes our outer resource.
-        const close=browserServer?.close();
-        let graceTimer: ReturnType<typeof setTimeout> | undefined;
-        let graceful: boolean;
-        try {graceful=await Promise.race([Promise.resolve(close).then(()=>true),new Promise<boolean>(resolveGrace=>{graceTimer=setTimeout(()=>resolveGrace(false),Math.max(0,Math.min(5_000,deadline-Date.now())));})]);}
-        finally {clearTimeout(graceTimer);}
-        details={...details,browserShutdown:{gracefulServerClose:graceful,forceFallback:!graceful}};
-        if(!graceful){
-          browserLifecycle.push({event:'force-fallback-started',at:new Date().toISOString()});
-          browserPids=await ownedBrowserProcesses(browserProfile,{executableName:browserExecutableName,timeoutMs:deadline-Date.now()});
-          await terminate(browserPids,deadline-Date.now());
-          browserLifecycle.push({event:'force-fallback-completed',at:new Date().toISOString()});
+        if(!browserOwnership){
+          await browserServer.close();
+          throw new Error('Browser ownership capture failed; tree absence is unqualified');
         }
-        await close;
+        const shutdown=await shutdownOwnedBrowser(browserServer,browserOwnership,recordBrowserTree);
+        details={...details,browserShutdown:shutdown};
         browserLifecycle.push({event:'shutdown-completed',at:new Date().toISOString()});
       }},
       // A stalled graceful close cannot prevent explicit process termination or
@@ -540,11 +539,10 @@ async function main() {
         let graceTimer: ReturnType<typeof setTimeout> | undefined;
         const graceful=await Promise.race([browserCompletion,new Promise<undefined>(resolveGrace=>{graceTimer=setTimeout(()=>resolveGrace(undefined),5_000);})]);
         clearTimeout(graceTimer);
-        details={...details,browserShutdown:{...(details.browserShutdown as object??{}),childCompletion:graceful??null,capturedPids:browserPids}};
-        // A closed child's PID can already belong to another process. Only
-        // current pinned browser processes using this task profile may be terminated.
-        await terminate(await ownedBrowserProcesses(browserProfile,{executableName:browserExecutableName}));
-        browserPids.forEach(pid=>ownedPids.delete(pid));ownedPids.delete(child.pid!);
+        assert(browserOwnership,'Missing qualified browser ownership');
+        details={...details,browserShutdown:{...(details.browserShutdown as object??{}),childCompletion:graceful??null,capturedPids:browserOwnership.processes.map(p=>p.pid)}};
+        await settleBrowserTree(browserOwnership,'terminate',recordBrowserTree);
+        ownedPids.delete(child.pid!);
       }},
       // Keep release and close observation independent of termination failure.
       {name:'browser pipes',run:()=>{for(const stream of browserProcess?.stdio??[])stream?.destroy();}},
@@ -571,7 +569,7 @@ async function main() {
     for(const result of cleanup)console.log(`CLEANUP ${result.status}: ${result.name}${result.error?`: ${result.error}`:''}`);
   }
   const exitCode=assertionError||cleanup.some(r=>r.status!=='passed')?1:0;
-  details={...details,terminations};
+  details={...details,terminations,browserOwnership};
   details={...details,runtime:{node:process.version,arch:process.arch,platform:process.platform},browserLifecycle,browserNativeState:{exitCode:browserProcess?.exitCode,signalCode:browserProcess?.signalCode,killed:browserProcess?.killed,stdio:browserProcess?.stdio.map(s=>s?{destroyed:s.destroyed}:null)},services:{container,browserPid:browserProcess?.pid,ownedProcessIds:[...processIds],webOrigin,browserEndpoint,browserProfile,nextClosures}};
   console.log(`WORKER COMPLETE exitCode=${exitCode}`);
   // Teardown outcomes and verified process/container absence are recorded above.
@@ -591,12 +589,18 @@ async function supervise() {
     windowsHide:true,stdio:['inherit','inherit','inherit','ipc'],
   };
   const worker=spawn(process.execPath,[...process.execArgv,...process.argv.slice(1)],workerOptions);
+  let browserOwnership: BrowserOwnership | undefined;
+  worker.on('message',(message: {kind?:string;runId?:string;ownership?:BrowserOwnership})=>{
+    const captured=message.ownership;
+    if(message.kind==='browser-ownership'&&message.runId===owner&&captured?.profile===profile&&captured.runnerPid===worker.pid){browserOwnership=captured;}
+  });
   const completion=await waitForWorker(worker,20*60_000);
   let report: Record<string,unknown>={source,checks:[],assertions:{status:'incomplete'}};
   if(existsSync(reportFile)){
     const candidate=JSON.parse(readFileSync(reportFile,'utf8'));
     if(candidate.runId===owner&&candidate.source?.commit===source.commit&&candidate.source?.tree===source.tree&&candidate.source?.manifestHash===source.manifestHash)report=candidate;
   }
+  browserOwnership??=report.browserOwnership as BrowserOwnership|undefined;
   // A Windows browser driver can retain mapped profile handles until its Node
   // worker exits. Cleanup belongs to this controller after observed close.
   const controllerTerminations: Record<string,unknown>[] = [];
@@ -604,8 +608,9 @@ async function supervise() {
   const cleanup=await cleanupSteps([
     {name:'worker process tree',timeoutMs:60_000,run:async()=>{if(completion.timedOut&&worker.pid)await terminateOwnedProcesses(ownedProcessTree(worker.pid),recordTermination);}},
     {name:'orphan browser processes',timeoutMs:60_000,run:async()=>{
-      await terminateOwnedProcesses(await ownedBrowserProcesses(profile,{executableName:'chrome-headless-shell.exe'}),recordTermination);
-      assert.equal((await ownedBrowserProcesses(profile,{executableName:'chrome-headless-shell.exe'})).length,0,'Task browser processes survived cleanup');
+      if(!browserOwnership){assert(!existsSync(profile),'Missing browser ownership receipt; refusing unqualified orphan cleanup');return;}
+      await settleBrowserTree(browserOwnership,'terminate',recordTermination);
+      await settleBrowserTree(browserOwnership,'observe',recordTermination);
     }},
     {name:'task PostgreSQL absence',timeoutMs:20_000,run:()=>{
       const inspect=spawnSync('docker',['container','inspect','--format','{{ index .Config.Labels "trainer2.add-exercise.owner" }}',container],{encoding:'utf8',windowsHide:true,timeout:5_000});

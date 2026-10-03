@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { win32 } from 'node:path';
+import { resolve, win32 } from 'node:path';
 
 type CleanupCommandResult = {
   pid?: number; status: number | null; signal: NodeJS.Signals | null;
@@ -59,6 +59,91 @@ export async function ownedBrowserProcesses(profile: string, options: { executab
   if (result.status !== 0 || result.error) throw new Error(`Unable to inventory task browser processes: ${result.error ?? result.stderr}`);
   const rows = JSON.parse(result.stdout) as { ProcessId: number; Name: string; CommandLine?: string }[];
   return browserProcessesForProfile(rows.map(row => ({ pid: row.ProcessId, name: row.Name, command: row.CommandLine })), profile,executableName);
+}
+
+export type BrowserProcessIdentity = {
+  pid: number; parentPid: number; created: string; executable: string; lastSeen: string;
+};
+export type BrowserOwnership = {
+  rootPid: number; runnerPid: number; executable: string; profile: string;
+  processes: BrowserProcessIdentity[];
+};
+type BrowserTreeObservation = {
+  ownership: BrowserOwnership; survivors: BrowserProcessIdentity[];
+  terminated: BrowserProcessIdentity[]; at: string;
+};
+type CleanupRecorder = (result: Record<string, unknown>) => void;
+
+// The native observer keeps validated process handles through termination and
+// discovers descendants by parent identity, not by a child's profile argument.
+async function browserTreeCommand(ownership: BrowserOwnership, mode: 'capture' | 'observe' | 'terminate', timeoutMs: number, record?: CleanupRecorder) {
+  if (process.platform !== 'win32') throw new Error('Qualified browser teardown requires Windows');
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 100) throw new Error('Browser tree deadline exceeded');
+  const seed = Buffer.from(JSON.stringify(ownership)).toString('base64');
+  const command = await runCleanupCommand('powershell.exe', ['-NoProfile', '-NonInteractive', '-File',
+    resolve('scripts/trainer2/browser-tree.ps1'), '-Mode', mode, '-OwnershipBase64', seed,
+    '-DeadlineUnixMs', String(Date.now() + timeoutMs - 100)], timeoutMs);
+  let last: BrowserTreeObservation | undefined;
+  for (const line of command.stdout.trim().split(/\r?\n/).filter(Boolean)) {
+    last = JSON.parse(line) as BrowserTreeObservation;
+    ownership.processes = last.ownership.processes;
+    record?.({ mode, ...last, commandPid: command.pid, commandStartedAt: command.startedAt,
+      commandClosedAt: command.closedAt, commandStatus: command.status, commandError: command.error });
+  }
+  if (command.error || command.status !== 0) {
+    record?.({ mode, command });
+    throw new Error(`Qualified browser tree ${mode} failed: ${command.error ?? command.stderr}`);
+  }
+  if (!last) throw new Error('Browser tree returned no authoritative observation');
+  if (mode !== 'capture' && last.survivors.length) throw new Error('Qualified browser tree survived shutdown');
+  return last;
+}
+
+export async function captureBrowserOwnership(child: ChildProcess, profile: string, record?: CleanupRecorder): Promise<BrowserOwnership> {
+  browserProcessesForProfile([], profile, win32.basename(child.spawnfile));
+  if (!child.pid || child.exitCode !== null || !win32.isAbsolute(child.spawnfile)) throw new Error('Launched browser root is unavailable');
+  const ownership: BrowserOwnership = { rootPid: child.pid, runnerPid: process.pid,
+    executable: child.spawnfile, profile, processes: [] };
+  await browserTreeCommand(ownership, 'capture', 10_000, record);
+  return ownership;
+}
+
+export async function settleBrowserTree(ownership: BrowserOwnership, mode: 'observe' | 'terminate', record?: CleanupRecorder, timeoutMs = 10_000) {
+  return browserTreeCommand(ownership, mode, timeoutMs, record);
+}
+
+// Shared by the real disposable runner and the short fallback fixture. Capture
+// before requesting server close, keep the original grace/total bounds, and
+// await both authoritative tree absence and the actual server-close operation.
+export async function shutdownOwnedBrowser(server: { close: () => Promise<void> }, ownership: BrowserOwnership,
+  record?: CleanupRecorder, options: { timeoutMs?: number; graceMs?: number } = {}) {
+  const deadline = Date.now() + (options.timeoutMs ?? 10_000);
+  let captureError: unknown;
+  try { await browserTreeCommand(ownership, 'capture', deadline - Date.now(), record); }
+  catch (error) { captureError = error; record?.({ event: 'ownership-refresh-failed', error: String(error) }); }
+  let closeError: unknown;
+  const closing = server.close().then(() => true, error => { closeError = error; return false; });
+  record?.({ event: 'server-close-initiated' });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let graceful: boolean;
+  try {
+    graceful = await Promise.race([closing, new Promise<boolean>(resolveGrace => {
+      timer = setTimeout(() => resolveGrace(false), Math.max(0, Math.min(options.graceMs ?? 5_000, deadline - Date.now())));
+    })]);
+  } finally { clearTimeout(timer); }
+  record?.({ event: 'grace-completed', graceful });
+  // Observation after graceful close also checks captured, unmarked orphans.
+  try { await settleBrowserTree(ownership, graceful ? 'observe' : 'terminate', record, Math.min(5_000, deadline - Date.now())); }
+  catch (error) { throw captureError ?? error; }
+  try {
+    await Promise.race([closing, new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('Browser server close did not settle')), Math.max(0, deadline - Date.now()));
+    })]);
+  } finally { clearTimeout(timer); }
+  if (captureError) throw captureError;
+  if (closeError) throw closeError;
+  if (Date.now() > deadline) throw new Error('Browser shutdown deadline exceeded');
+  return { gracefulServerClose: graceful, forceFallback: !graceful };
 }
 
 export async function waitForWorker(child: ChildProcess, timeoutMs: number) {

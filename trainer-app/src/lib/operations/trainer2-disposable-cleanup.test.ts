@@ -16,12 +16,12 @@ describe('Trainer2 disposable cleanup', () => {
   });
   it.skipIf(process.platform !== 'win32')('rejects surviving OS processes even when taskkill and the Node probe claim success', async () => {
     const child = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { windowsHide: true, stdio: 'ignore' });
-    const nativeSpawn = childProcesses.spawnSync;
+    const nativeSpawn = childProcesses.spawn;
     const nativeKill = process.kill.bind(process);
-    const spawnProbe = vi.spyOn(childProcesses, 'spawnSync').mockImplementation(((file: string, ...args: unknown[]) => {
-      if (file === 'taskkill.exe') return { status: 0, signal: null, stdout: 'pretend success', stderr: '', pid: 0, output: [] };
+    const spawnProbe = vi.spyOn(childProcesses, 'spawn').mockImplementation(((file: string, ...args: unknown[]) => {
+      if (file === 'taskkill.exe') return nativeSpawn(process.execPath, ['-e', "process.stdout.write('pretend success')"], {windowsHide:true,stdio:['ignore','pipe','pipe']});
       return Reflect.apply(nativeSpawn, childProcesses, [file, ...args]);
-    }) as typeof childProcesses.spawnSync);
+    }) as typeof childProcesses.spawn);
     const killProbe = vi.spyOn(process, 'kill').mockImplementation((pid, signal) => {
       if (pid === child.pid && signal === 0) throw Object.assign(new Error('Missed by native probe'), { code: 'ESRCH' });
       return nativeKill(pid, signal);
@@ -39,19 +39,22 @@ describe('Trainer2 disposable cleanup', () => {
   it.skipIf(process.platform !== 'win32')('waits for actual OS absence when a terminating child remains in the first inventory', async () => {
     const child = spawn(process.execPath, ['-e', 'setTimeout(()=>process.exit(0),3000)'], { windowsHide: true, stdio: 'ignore' });
     const completion = waitForWorker(child, 10_000);
-    const nativeSpawn = childProcesses.spawnSync;
-    const probe = vi.spyOn(childProcesses, 'spawnSync').mockImplementation(((file: string, ...args: unknown[]) => {
-      if (file === 'taskkill.exe') return { status: 0, signal: null, stdout: '', stderr: '', pid: 0, output: [] };
+    const nativeSpawn = childProcesses.spawn;
+    const probe = vi.spyOn(childProcesses, 'spawn').mockImplementation(((file: string, ...args: unknown[]) => {
+      if (file === 'taskkill.exe') return nativeSpawn(process.execPath, ['-e', 'process.exit(0)'], {windowsHide:true,stdio:['ignore','pipe','pipe']});
       return Reflect.apply(nativeSpawn, childProcesses, [file, ...args]);
-    }) as typeof childProcesses.spawnSync);
+    }) as typeof childProcesses.spawn);
     const receipts: Record<string, unknown>[] = [];
+    let heartbeat = false;
+    const timer = setTimeout(() => { heartbeat = true; }, 100);
     try {
       await terminateOwnedProcesses([child.pid!], result => receipts.push(result));
+      expect(heartbeat).toBe(true);
       expect(receipts.some(result => (result.survivors as {ProcessId:number}[] | undefined)?.some(row => row.ProcessId === child.pid))).toBe(true);
       expect(receipts.at(-1)).toMatchObject({ survivors: [] });
       expect((await completion).timedOut).toBe(false);
     } finally {
-      probe.mockRestore();
+      clearTimeout(timer); probe.mockRestore();
       await terminateOwnedProcesses([child.pid!]);
     }
   }, 30_000);

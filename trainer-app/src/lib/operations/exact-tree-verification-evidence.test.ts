@@ -852,7 +852,8 @@ describe("exact-tree verification evidence", () => {
     expect(() => createCredentialFreeVerificationEvidence({
       projectRoot: path.join(tmpdir(), "trainer-evidence-missing-repository"),
       manifest: minimalManifest, filesDiscovered: 0, credentialFreeSelected: 0,
-      importOnlySelected: 0, databaseRequiredExcluded: 0, placeholderConnectionAttempted: false,
+      importOnlySelected: 0, databaseRequiredExcluded: 0, credentialFreeResult: null,
+      importOnlyResult: null, placeholderConnectionAttempted: false,
       exitCode: 1, totalDurationMs: 0,
       environment: { NODE_ENV: "test", GITHUB_REPOSITORY: "owner/repository/extra", GITHUB_RUN_ID: "123", GITHUB_SERVER_URL: "https://github.com" },
     })).toThrow(/repository identity is invalid/i);

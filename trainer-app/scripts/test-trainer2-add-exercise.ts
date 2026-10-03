@@ -495,7 +495,7 @@ async function main() {
     assert.equal(await restartedPage.getByRole('button',{name:'+ Add set',exact:true}).count(),0);assert.deepEqual(errors,[]);
     await restartedPage.screenshot({path:resolve(artifact,'mobile-completed.png')});pass('Application restart, completed addition readback/history and closed-workout controls');
     const sourceAfter=verificationSource();assert.equal(sourceAfter.manifestHash,source.manifestHash);
-    details={sourceAfter,candidateDrift,kgLogging:{acceptedMeasurement:kgCommand.intent.startingLoad,
+    details={...details,sourceAfter,candidateDrift,kgLogging:{acceptedMeasurement:kgCommand.intent.startingLoad,
       prefillPounds:'22.05',persistedMeasurement:kgStored.rows[0].result.measurement,
       acceptedAdditionHash:kgFact.contentHash,acceptedStartHash:kgAccepted.contentHash},
       postgres:(await admin.query('SELECT version()')).rows[0]};
@@ -524,7 +524,7 @@ async function main() {
         details={...details,browserShutdown:{gracefulServerClose:graceful,forceFallback:!graceful}};
         if(!graceful){
           browserLifecycle.push({event:'force-fallback-started',at:new Date().toISOString()});
-          browserPids=ownedBrowserProcesses(browserProfile,{executableName:browserExecutableName,timeoutMs:deadline-Date.now()});
+          browserPids=await ownedBrowserProcesses(browserProfile,{executableName:browserExecutableName,timeoutMs:deadline-Date.now()});
           await terminate(browserPids,deadline-Date.now());
           browserLifecycle.push({event:'force-fallback-completed',at:new Date().toISOString()});
         }
@@ -543,7 +543,7 @@ async function main() {
         details={...details,browserShutdown:{...(details.browserShutdown as object??{}),childCompletion:graceful??null,capturedPids:browserPids}};
         // A closed child's PID can already belong to another process. Only
         // current pinned browser processes using this task profile may be terminated.
-        await terminate(ownedBrowserProcesses(browserProfile,{executableName:browserExecutableName}));
+        await terminate(await ownedBrowserProcesses(browserProfile,{executableName:browserExecutableName}));
         browserPids.forEach(pid=>ownedPids.delete(pid));ownedPids.delete(child.pid!);
       }},
       // Keep release and close observation independent of termination failure.
@@ -604,8 +604,8 @@ async function supervise() {
   const cleanup=await cleanupSteps([
     {name:'worker process tree',timeoutMs:60_000,run:async()=>{if(completion.timedOut&&worker.pid)await terminateOwnedProcesses(ownedProcessTree(worker.pid),recordTermination);}},
     {name:'orphan browser processes',timeoutMs:60_000,run:async()=>{
-      await terminateOwnedProcesses(ownedBrowserProcesses(profile,{executableName:'chrome-headless-shell.exe'}),recordTermination);
-      assert.equal(ownedBrowserProcesses(profile,{executableName:'chrome-headless-shell.exe'}).length,0,'Task browser processes survived cleanup');
+      await terminateOwnedProcesses(await ownedBrowserProcesses(profile,{executableName:'chrome-headless-shell.exe'}),recordTermination);
+      assert.equal((await ownedBrowserProcesses(profile,{executableName:'chrome-headless-shell.exe'})).length,0,'Task browser processes survived cleanup');
     }},
     {name:'task PostgreSQL absence',timeoutMs:20_000,run:()=>{
       const inspect=spawnSync('docker',['container','inspect','--format','{{ index .Config.Labels "trainer2.add-exercise.owner" }}',container],{encoding:'utf8',windowsHide:true,timeout:5_000});

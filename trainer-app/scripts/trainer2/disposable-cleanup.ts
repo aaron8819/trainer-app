@@ -1,5 +1,41 @@
-import { spawnSync, type ChildProcess } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { win32 } from 'node:path';
+
+type CleanupCommandResult = {
+  pid?: number; status: number | null; signal: NodeJS.Signals | null;
+  stdout: string; stderr: string; startedAt: string; closedAt?: string; error?: string;
+};
+
+// Keep the event loop available for the browser's exit/close and pipe handlers.
+// A synchronous OS poll prevents the parent observing child completion promptly.
+async function runCleanupCommand(file: string, args: string[], timeoutMs: number): Promise<CleanupCommandResult> {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error('Invalid cleanup command deadline');
+  const startedAt = new Date().toISOString();
+  const deadline = Date.now() + timeoutMs;
+  const child = spawn(file, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  let stdout = '', stderr = '';
+  child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
+  child.stdout.on('data', value => { stdout += value; });
+  child.stderr.on('data', value => { stderr += value; });
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = (status: number | null, signal: NodeJS.Signals | null, error?: string, closedAt?: string) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ pid: child.pid, status, signal, stdout, stderr, startedAt, closedAt,
+        error: error ?? (Date.now() > deadline ? 'Cleanup command deadline exceeded' : undefined) });
+    };
+    const timer = setTimeout(() => {
+      try { child.kill('SIGKILL'); } catch (error) { stderr += String(error); }
+      child.stdout.destroy(); child.stderr.destroy(); child.unref();
+      finish(null, null, 'Cleanup command deadline exceeded');
+    }, Math.max(0, deadline - Date.now()));
+    // Retain an error listener to consume a late termination error after timeout.
+    child.on('error', error => finish(null, null, error.message));
+    child.once('close', (status, signal) => finish(status, signal, undefined, new Date().toISOString()));
+  });
+}
 
 export function browserProcessesForProfile(rows: { pid: number; name: string; command?: string }[], profile: string, executableName = 'msedge.exe'): number[] {
   if (!win32.isAbsolute(profile)) throw new Error('Browser profile must be absolute');
@@ -14,13 +50,13 @@ export function browserProcessesForProfile(rows: { pid: number; name: string; co
   }).map(row => row.pid);
 }
 
-export function ownedBrowserProcesses(profile: string, options: { executableName?: string; timeoutMs?: number } = {}): number[] {
+export async function ownedBrowserProcesses(profile: string, options: { executableName?: string; timeoutMs?: number } = {}): Promise<number[]> {
   const executableName = options.executableName ?? 'msedge.exe';
   const timeoutMs = options.timeoutMs ?? 10_000;
   browserProcessesForProfile([], profile, executableName);
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error('Invalid browser inventory deadline');
-  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Get-CimInstance Win32_Process | Select-Object ProcessId,Name,CommandLine | ConvertTo-Json -Compress'], { encoding: 'utf8', windowsHide: true, timeout: Math.min(10_000,timeoutMs) });
-  if (result.status !== 0) throw new Error('Unable to inventory task browser processes');
+  const result = await runCleanupCommand('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Get-CimInstance Win32_Process | Select-Object ProcessId,Name,CommandLine | ConvertTo-Json -Compress'], Math.min(10_000, timeoutMs));
+  if (result.status !== 0 || result.error) throw new Error(`Unable to inventory task browser processes: ${result.error ?? result.stderr}`);
   const rows = JSON.parse(result.stdout) as { ProcessId: number; Name: string; CommandLine?: string }[];
   return browserProcessesForProfile(rows.map(row => ({ pid: row.ProcessId, name: row.Name, command: row.CommandLine })), profile,executableName);
 }
@@ -120,9 +156,9 @@ export async function terminateOwnedProcesses(pids: number[], record?: (result: 
   if (process.platform === 'win32' && pids.length) {
     // Native Node SIGKILL can block on an exiting browser process on Windows.
     // Discard inherited output handles and bound the OS termination command.
-    const killed=spawnSync('taskkill.exe',[...pids.flatMap(pid=>['/PID',String(pid)]),'/F'],{encoding:'utf8',windowsHide:true,timeout:Math.min(15_000,timeoutMs)});
-    record?.({pids,status:killed.status,signal:killed.signal,stdout:killed.stdout,stderr:killed.stderr,error:killed.error?.message});
-    if(killed.error)throw new Error(`Task process termination failed: ${killed.error.message}`);
+    const killed = await runCleanupCommand('taskkill.exe', [...pids.flatMap(pid => ['/PID', String(pid)]), '/F'], Math.min(15_000, timeoutMs));
+    record?.({ pids, ...killed });
+    if (killed.error) throw new Error(`Task process termination failed: ${killed.error}`);
     // taskkill may return nonzero for an already-exited member; verify absence.
     // Do not use kill(pid, 0) here: on Windows it can miss a still-inventoried
     // Edge child. Query the OS inventory independently and fail closed.
@@ -133,13 +169,23 @@ export async function terminateOwnedProcesses(pids: number[], record?: (result: 
     // startup can consume the last poll's remaining time before it inventories.
     const observer=`$ErrorActionPreference='Stop'; $owned=@(${pids.join(',')}); $deadline=[DateTimeOffset]::FromUnixTimeMilliseconds(${absenceDeadline}).UtcDateTime;
 do { $survivors=@(Get-CimInstance Win32_Process | Where-Object { $owned -contains $_.ProcessId } | Select-Object ProcessId,ParentProcessId,Name,CreationDate); @{at=[DateTime]::UtcNow.ToString('o');survivors=$survivors} | ConvertTo-Json -Compress -Depth 5; if(!$survivors.Count){break}; if([DateTime]::UtcNow -lt $deadline){Start-Sleep -Milliseconds 50} } while([DateTime]::UtcNow -lt $deadline)`;
-    const inventory=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',observer],{encoding:'utf8',windowsHide:true,timeout:remaining});
-    const observations=inventory.stdout.trim().split(/\r?\n/).filter(Boolean).map(line=>JSON.parse(line) as {at:string;survivors:{ProcessId:number}[]});
-    for(const observation of observations)record?.({pids,...observation});
-    if(inventory.status!==0)throw new Error(`Task process absence inventory failed: ${inventory.error?.message??inventory.stderr}`);
-    const last=observations.at(-1);
-    if(!last)throw new Error('Task process absence inventory returned no observations');
-    if(last.survivors.length)throw new Error(`Task-owned processes survived OS termination: ${last.survivors.map(row=>row.ProcessId).join(',')}`);
+    const inventory = await runCleanupCommand('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', observer], remaining);
+    let last: { at: string; survivors: { ProcessId: number }[] } | undefined;
+    for (const line of inventory.stdout.trim().split(/\r?\n/).filter(Boolean)) {
+      try { last = JSON.parse(line) as typeof last; }
+      catch (error) {
+        record?.({ pids, observer: inventory });
+        throw new Error(`Task process absence inventory was malformed: ${String(error)}`);
+      }
+      record?.({ pids, ...last, observerPid: inventory.pid, observerStartedAt: inventory.startedAt,
+        observerClosedAt: inventory.closedAt, observerStatus: inventory.status, observerError: inventory.error });
+    }
+    if (inventory.status !== 0 || inventory.error) {
+      record?.({ pids, observer: inventory });
+      throw new Error(`Task process absence inventory failed: ${inventory.error ?? inventory.stderr}`);
+    }
+    if (!last) throw new Error('Task process absence inventory returned no observations');
+    if (last.survivors.length) throw new Error(`Task-owned processes survived OS termination: ${last.survivors.map(row => row.ProcessId).join(',')}`);
     return;
   } else for (const pid of pids) {
     if (!processAlive(pid)) continue;

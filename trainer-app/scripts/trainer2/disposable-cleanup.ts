@@ -46,6 +46,7 @@ export type CleanupResult = { name: string; status: 'passed' | 'failed' | 'timed
 export async function cleanupSteps(steps: CleanupStep[]): Promise<CleanupResult[]> {
   const results: CleanupResult[] = [];
   for (const step of steps) {
+    const deadline = Date.now() + (step.timeoutMs ?? 10_000);
     let timer: ReturnType<typeof setTimeout> | undefined;
     let timedOut = false;
     try {
@@ -55,6 +56,9 @@ export async function cleanupSteps(steps: CleanupStep[]): Promise<CleanupResult[
           timer = setTimeout(() => { timedOut = true; reject(new Error('Cleanup deadline exceeded')); }, step.timeoutMs ?? 10_000);
         }),
       ]);
+      // Synchronous OS commands can delay the timer callback. They must not
+      // win the race after the actual deadline and falsely report success.
+      if (Date.now() > deadline) { timedOut = true; throw new Error('Cleanup deadline exceeded'); }
       results.push({ name: step.name, status: 'passed' });
     } catch (error) {
       results.push({ name: step.name, status: timedOut ? 'timed-out' : 'failed', error: error instanceof Error ? error.message : String(error) });
@@ -100,7 +104,9 @@ export function ownedProcessTree(pid: number, rootMarker?: string): number[] {
   return rows.filter(row => owned.has(row.pid)).map(row => row.pid);
 }
 
-export async function terminateOwnedProcesses(pids: number[], record?: (result: Record<string, unknown>) => void): Promise<void> {
+export async function terminateOwnedProcesses(pids: number[], record?: (result: Record<string, unknown>) => void, timeoutMs = 20_000): Promise<void> {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error('Invalid termination deadline');
+  const terminationDeadline = Date.now() + timeoutMs;
   // Validate the whole captured tree before terminating anything.
   for (const pid of pids) {
     if (pid === process.pid || !Number.isSafeInteger(pid) || pid <= 0) throw new Error('Invalid task-owned process');
@@ -108,19 +114,26 @@ export async function terminateOwnedProcesses(pids: number[], record?: (result: 
   if (process.platform === 'win32' && pids.length) {
     // Native Node SIGKILL can block on an exiting browser process on Windows.
     // Discard inherited output handles and bound the OS termination command.
-    const killed=spawnSync('taskkill.exe',[...pids.flatMap(pid=>['/PID',String(pid)]),'/F'],{encoding:'utf8',windowsHide:true,timeout:15_000});
+    const killed=spawnSync('taskkill.exe',[...pids.flatMap(pid=>['/PID',String(pid)]),'/F'],{encoding:'utf8',windowsHide:true,timeout:Math.min(15_000,timeoutMs)});
     record?.({pids,status:killed.status,signal:killed.signal,stdout:killed.stdout,stderr:killed.stderr,error:killed.error?.message});
     if(killed.error)throw new Error(`Task process termination failed: ${killed.error.message}`);
     // taskkill may return nonzero for an already-exited member; verify absence.
     // Do not use kill(pid, 0) here: on Windows it can miss a still-inventoried
     // Edge child. Query the OS inventory independently and fail closed.
-    const inventory=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-Command','Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CreationDate | ConvertTo-Json -Compress'],{encoding:'utf8',windowsHide:true,timeout:10_000});
-    if(inventory.status!==0)throw new Error(`Task process absence inventory failed: ${inventory.error?.message??inventory.stderr}`);
-    const rows=JSON.parse(inventory.stdout) as {ProcessId:number}[];
-    const survivors=rows.filter(row=>pids.includes(row.ProcessId));
-    record?.({pids,survivors});
-    if(survivors.length)throw new Error(`Task-owned processes survived OS termination: ${survivors.map(row=>row.ProcessId).join(',')}`);
-    return;
+    const absenceDeadline=Math.min(terminationDeadline,Date.now()+5_000);
+    let survivors: {ProcessId:number}[] = [];
+    do {
+      const remaining=absenceDeadline-Date.now();
+      if(remaining<=0)throw new Error(`Task process absence deadline exceeded: ${pids.join(',')}`);
+      const inventory=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-Command','Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CreationDate | ConvertTo-Json -Compress'],{encoding:'utf8',windowsHide:true,timeout:remaining});
+      if(inventory.status!==0)throw new Error(`Task process absence inventory failed: ${inventory.error?.message??inventory.stderr}`);
+      const rows=JSON.parse(inventory.stdout) as {ProcessId:number}[];
+      survivors=rows.filter(row=>pids.includes(row.ProcessId));
+      record?.({pids,survivors});
+      if(!survivors.length)return;
+      await new Promise(resolve=>setTimeout(resolve,Math.min(50,Math.max(0,absenceDeadline-Date.now()))));
+    } while(Date.now()<absenceDeadline);
+    throw new Error(`Task-owned processes survived OS termination: ${survivors.map(row=>row.ProcessId).join(',')}`);
   } else for (const pid of pids) {
     if (!processAlive(pid)) continue;
     try { process.kill(pid, 'SIGKILL'); } catch (error) {

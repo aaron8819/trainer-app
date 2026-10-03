@@ -7,6 +7,13 @@ import { browserProcessesForProfile, cleanupSteps, ownedProcessTree, processAliv
 vi.mock('node:child_process', async importOriginal => ({ ...await importOriginal<typeof childProcesses>() }));
 
 describe('Trainer2 disposable cleanup', () => {
+  it('does not let a blocking OS operation report success after its deadline', async () => {
+    const results = await cleanupSteps([
+      { name: 'blocking operation', timeoutMs: 20, run: () => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 40) },
+      { name: 'remaining cleanup', run: () => undefined },
+    ]);
+    expect(results.map(result => result.status)).toEqual(['timed-out', 'passed']);
+  });
   it.skipIf(process.platform !== 'win32')('rejects surviving OS processes even when taskkill and the Node probe claim success', async () => {
     const child = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { windowsHide: true, stdio: 'ignore' });
     const nativeSpawn = childProcesses.spawnSync;
@@ -21,11 +28,31 @@ describe('Trainer2 disposable cleanup', () => {
     });
     const receipts: Record<string, unknown>[] = [];
     try {
-      await expect(terminateOwnedProcesses([child.pid!], result => receipts.push(result))).rejects.toThrow('survived OS termination');
+      await expect(terminateOwnedProcesses([child.pid!], result => receipts.push(result))).rejects.toThrow(/Task.*(?:survived OS termination|absence)/);
       expect(receipts[0]).toMatchObject({ status: 0, stdout: 'pretend success' });
       expect(receipts[1]).toMatchObject({ survivors: [expect.objectContaining({ ProcessId: child.pid })] });
     } finally {
       spawnProbe.mockRestore(); killProbe.mockRestore();
+      await terminateOwnedProcesses([child.pid!]);
+    }
+  }, 30_000);
+  it.skipIf(process.platform !== 'win32')('waits for actual OS absence when a terminating child remains in the first inventory', async () => {
+    const child = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { windowsHide: true, stdio: 'ignore' });
+    const completion = waitForWorker(child, 10_000);
+    const nativeSpawn = childProcesses.spawnSync;
+    const probe = vi.spyOn(childProcesses, 'spawnSync').mockImplementation(((file: string, ...args: unknown[]) => {
+      if (file === 'taskkill.exe') return { status: 0, signal: null, stdout: '', stderr: '', pid: 0, output: [] };
+      return Reflect.apply(nativeSpawn, childProcesses, [file, ...args]);
+    }) as typeof childProcesses.spawnSync);
+    const receipts: Record<string, unknown>[] = [];
+    const timer = setTimeout(() => child.kill('SIGKILL'), 200);
+    try {
+      await terminateOwnedProcesses([child.pid!], result => receipts.push(result));
+      expect(receipts.some(result => (result.survivors as {ProcessId:number}[] | undefined)?.some(row => row.ProcessId === child.pid))).toBe(true);
+      expect(receipts.at(-1)).toMatchObject({ survivors: [] });
+      expect((await completion).timedOut).toBe(false);
+    } finally {
+      clearTimeout(timer); probe.mockRestore();
       await terminateOwnedProcesses([child.pid!]);
     }
   }, 30_000);

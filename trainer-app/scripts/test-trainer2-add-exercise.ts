@@ -77,7 +77,7 @@ async function main() {
   const track = (pid: number) => {ownedPids.add(pid);processIds.add(pid);};
   const capture = (pid: number,marker?:string) => { const pids=ownedProcessTree(pid,marker);pids.forEach(track);return pids; };
   const terminations: Record<string,unknown>[] = [];
-  const terminate = async (pids: number[]) => {await terminateOwnedProcesses(pids,result=>terminations.push({at:new Date().toISOString(),...result}));pids.forEach(pid=>ownedPids.delete(pid));};
+  const terminate = async (pids: number[],timeoutMs?:number) => {await terminateOwnedProcesses(pids,result=>terminations.push({at:new Date().toISOString(),...result}),timeoutMs);pids.forEach(pid=>ownedPids.delete(pid));};
   const stopWeb = async () => {
     const child=server;
     if(child?.pid){
@@ -379,7 +379,7 @@ async function main() {
     try {
       process.env.TEMP=browserProfile;process.env.TMP=browserProfile;
       browserServer=await chromium.launchServer({executablePath:edge,headless:true,timeout:30_000,
-        args:['--disable-gpu','--disable-crash-reporter'],
+        args:['--disable-gpu','--disable-background-mode','--disable-crash-reporter'],
         env:authWebPlatformEnvironment(process.env)});
     } finally {
       if(priorTemp===undefined)delete process.env.TEMP;else process.env.TEMP=priorTemp;
@@ -513,10 +513,24 @@ async function main() {
       // independent so a failed context cannot skip the server close.
       {name:'browser connection',run:()=>browser?.close()},
       {name:'browser shutdown',run:async()=>{
+        const deadline=Date.now()+10_000;
+        browserLifecycle.push({event:'shutdown-requested',at:new Date().toISOString()});
         if(browserProcess?.pid)browserPids=ownedBrowserProcesses(browserProfile);
         // The installed Playwright launcher closes its native browser child
         // and internal profile; the controller removes our outer resource.
-        await browserServer?.close();
+        const close=browserServer?.close();
+        let graceTimer: ReturnType<typeof setTimeout> | undefined;
+        let graceful: boolean;
+        try {graceful=await Promise.race([Promise.resolve(close).then(()=>true),new Promise<boolean>(resolveGrace=>{graceTimer=setTimeout(()=>resolveGrace(false),Math.max(0,Math.min(5_000,deadline-Date.now())));})]);}
+        finally {clearTimeout(graceTimer);}
+        details={...details,browserShutdown:{gracefulServerClose:graceful,forceFallback:!graceful}};
+        if(!graceful){
+          browserLifecycle.push({event:'force-fallback-started',at:new Date().toISOString()});
+          await terminate(ownedBrowserProcesses(browserProfile),deadline-Date.now());
+          browserLifecycle.push({event:'force-fallback-completed',at:new Date().toISOString()});
+        }
+        await close;
+        browserLifecycle.push({event:'shutdown-completed',at:new Date().toISOString()});
       }},
       // A stalled graceful close cannot prevent explicit process termination or
       // any subsequent resource cleanup. Capture children before graceful exit.
@@ -527,7 +541,7 @@ async function main() {
         let graceTimer: ReturnType<typeof setTimeout> | undefined;
         const graceful=await Promise.race([browserCompletion,new Promise<undefined>(resolveGrace=>{graceTimer=setTimeout(()=>resolveGrace(undefined),5_000);})]);
         clearTimeout(graceTimer);
-        details={...details,browserShutdown:{gracefulClose:graceful??null,capturedPids:browserPids}};
+        details={...details,browserShutdown:{...(details.browserShutdown as object??{}),childCompletion:graceful??null,capturedPids:browserPids}};
         // A closed child's PID can already belong to another process. Only
         // current Edge processes using this task profile may be terminated.
         await terminate(ownedBrowserProcesses(browserProfile));
@@ -606,7 +620,8 @@ async function supervise() {
       assert(!existsSync(profile),'Task browser profile survived cleanup');
     }},
   ]);
-  report.worker={status:completion.timedOut?'timed-out':'completed',...completion};report.cleanup=[...(report.cleanup as CleanupResult[]??[]),...cleanup];
+  report.worker={pid:worker.pid,status:completion.timedOut?'timed-out':'completed',...completion};report.cleanup=[...(report.cleanup as CleanupResult[]??[]),...cleanup];
+  report.controllerPid=process.pid;
   report.controllerTerminations=controllerTerminations;
   report.retainedArtifacts={browserProfile:existsSync(profile)?profile:null};
   const failed=completion.timedOut||completion.exitCode!==0||cleanup.some(r=>r.status!=='passed')||(report.assertions as {status:string}).status!=='passed';

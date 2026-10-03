@@ -1158,7 +1158,9 @@ describe("credential-free and mutation subprocess boundaries", () => {
     testFile: string,
     additions: Record<string, string | undefined> = {}
   ) {
-    return spawnSync(process.execPath, [vitestCli, "run", testFile], {
+    // These fixtures exercise pre-import database guards, without DOM APIs.
+    // Keep their bootstrap deterministic instead of inheriting JSDOM/fanout.
+    return spawnSync(process.execPath, [vitestCli, "run", testFile, "--environment", "node", "--maxWorkers", "1"], {
       cwd: process.cwd(),
       env: {
         ...sanitizeDatabaseTargetEnvironment(process.env),
@@ -1228,7 +1230,7 @@ describe("credential-free and mutation subprocess boundaries", () => {
     const result = runVitestCollection(
       "src/lib/api/workout-mutation.db.test.ts"
     );
-    expect(result.status).toBe(1);
+    expect(result.status, `${result.error?.message ?? "Child completed"}; signal=${result.signal}\n${result.stdout}\n${result.stderr}`).toBe(1);
     expect(`${result.stdout}\n${result.stderr}`).toContain(
       "DATABASE_TEST_TARGET_NOT_CONFIGURED"
     );

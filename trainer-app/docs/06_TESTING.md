@@ -112,6 +112,7 @@ Sources of truth:
 - `npm run test:environment-classification`: focused manifest, sanitizer, placeholder-guard,
   subprocess-boundary, exact-lock integrity, summary-count, and branch/base-delta coverage.
   The filesystem/launcher suite uses Vitest's Node environment; shared setup installs the scroll mock only when a browser window exists. Run the package script so npm supplies its executable path to the package-command boundary fixtures. Launcher assertions retain the default five-second deadline.
+  Nested pre-import database-guard collections also use Node and one worker. They retain every missing-target, blocked-target, credential-redaction and no-Prisma-import assertion and the existing 30-second subprocess deadline.
   The recursive database-target source inventory test alone has a
   60-second timeout because the demonstrated Windows filesystem traversal exceeded Vitest's
   inherited default; the global Vitest timeout is unchanged.

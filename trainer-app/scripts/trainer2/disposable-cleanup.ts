@@ -100,7 +100,7 @@ export function ownedProcessTree(pid: number, rootMarker?: string): number[] {
   return rows.filter(row => owned.has(row.pid)).map(row => row.pid);
 }
 
-export async function terminateOwnedProcesses(pids: number[]): Promise<void> {
+export async function terminateOwnedProcesses(pids: number[], record?: (result: Record<string, unknown>) => void): Promise<void> {
   // Validate the whole captured tree before terminating anything.
   for (const pid of pids) {
     if (pid === process.pid || !Number.isSafeInteger(pid) || pid <= 0) throw new Error('Invalid task-owned process');
@@ -108,9 +108,19 @@ export async function terminateOwnedProcesses(pids: number[]): Promise<void> {
   if (process.platform === 'win32' && pids.length) {
     // Native Node SIGKILL can block on an exiting browser process on Windows.
     // Discard inherited output handles and bound the OS termination command.
-    const killed=spawnSync('taskkill.exe',[...pids.flatMap(pid=>['/PID',String(pid)]),'/F'],{stdio:'ignore',windowsHide:true,timeout:15_000});
+    const killed=spawnSync('taskkill.exe',[...pids.flatMap(pid=>['/PID',String(pid)]),'/F'],{encoding:'utf8',windowsHide:true,timeout:15_000});
+    record?.({pids,status:killed.status,signal:killed.signal,stdout:killed.stdout,stderr:killed.stderr,error:killed.error?.message});
     if(killed.error)throw new Error(`Task process termination failed: ${killed.error.message}`);
     // taskkill may return nonzero for an already-exited member; verify absence.
+    // Do not use kill(pid, 0) here: on Windows it can miss a still-inventoried
+    // Edge child. Query the OS inventory independently and fail closed.
+    const inventory=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-Command','Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CreationDate | ConvertTo-Json -Compress'],{encoding:'utf8',windowsHide:true,timeout:10_000});
+    if(inventory.status!==0)throw new Error(`Task process absence inventory failed: ${inventory.error?.message??inventory.stderr}`);
+    const rows=JSON.parse(inventory.stdout) as {ProcessId:number}[];
+    const survivors=rows.filter(row=>pids.includes(row.ProcessId));
+    record?.({pids,survivors});
+    if(survivors.length)throw new Error(`Task-owned processes survived OS termination: ${survivors.map(row=>row.ProcessId).join(',')}`);
+    return;
   } else for (const pid of pids) {
     if (!processAlive(pid)) continue;
     try { process.kill(pid, 'SIGKILL'); } catch (error) {

@@ -76,7 +76,8 @@ async function main() {
   const processIds = new Set<number>();
   const track = (pid: number) => {ownedPids.add(pid);processIds.add(pid);};
   const capture = (pid: number,marker?:string) => { const pids=ownedProcessTree(pid,marker);pids.forEach(track);return pids; };
-  const terminate = async (pids: number[]) => {await terminateOwnedProcesses(pids);pids.forEach(pid=>ownedPids.delete(pid));};
+  const terminations: Record<string,unknown>[] = [];
+  const terminate = async (pids: number[]) => {await terminateOwnedProcesses(pids,result=>terminations.push({at:new Date().toISOString(),...result}));pids.forEach(pid=>ownedPids.delete(pid));};
   const stopWeb = async () => {
     const child=server;
     if(child?.pid){
@@ -378,7 +379,7 @@ async function main() {
     try {
       process.env.TEMP=browserProfile;process.env.TMP=browserProfile;
       browserServer=await chromium.launchServer({executablePath:edge,headless:true,timeout:30_000,
-        args:['--disable-gpu','--disable-background-mode','--disable-crash-reporter'],
+        args:['--disable-gpu','--disable-crash-reporter'],
         env:authWebPlatformEnvironment(process.env)});
     } finally {
       if(priorTemp===undefined)delete process.env.TEMP;else process.env.TEMP=priorTemp;
@@ -507,15 +508,16 @@ async function main() {
   } finally {
     cleanup.push(...await cleanupSteps([
       {name:'server log',run:()=>writeFileSync(resolve(artifact,'server.log'),redact(serverLog))},
+      {name:'browser context',run:()=>browserContext?.close()},
+      // Disconnect the client before native shutdown. Each close remains
+      // independent so a failed context cannot skip the server close.
+      {name:'browser connection',run:()=>browser?.close()},
       {name:'browser shutdown',run:async()=>{
         if(browserProcess?.pid)browserPids=ownedBrowserProcesses(browserProfile);
-        await browserContext?.close();
         // The installed Playwright launcher closes its native browser child
         // and internal profile; the controller removes our outer resource.
         await browserServer?.close();
       }},
-      // Release the client transport independently of native server shutdown.
-      {name:'browser connection',run:()=>browser?.close()},
       // A stalled graceful close cannot prevent explicit process termination or
       // any subsequent resource cleanup. Capture children before graceful exit.
       {name:'browser process tree',timeoutMs:60_000,run:async()=>{
@@ -556,6 +558,7 @@ async function main() {
     for(const result of cleanup)console.log(`CLEANUP ${result.status}: ${result.name}${result.error?`: ${result.error}`:''}`);
   }
   const exitCode=assertionError||cleanup.some(r=>r.status!=='passed')?1:0;
+  details={...details,terminations};
   details={...details,runtime:{node:process.version,arch:process.arch,platform:process.platform},browserLifecycle,browserNativeState:{exitCode:browserProcess?.exitCode,signalCode:browserProcess?.signalCode,killed:browserProcess?.killed,stdio:browserProcess?.stdio.map(s=>s?{destroyed:s.destroyed}:null)},services:{container,browserPid:browserProcess?.pid,ownedProcessIds:[...processIds],webOrigin,browserEndpoint,browserProfile,nextClosures}};
   console.log(`WORKER COMPLETE exitCode=${exitCode}`);
   // Teardown outcomes and verified process/container absence are recorded above.
@@ -583,10 +586,12 @@ async function supervise() {
   }
   // A Windows browser driver can retain mapped profile handles until its Node
   // worker exits. Cleanup belongs to this controller after observed close.
+  const controllerTerminations: Record<string,unknown>[] = [];
+  const recordTermination=(result:Record<string,unknown>)=>controllerTerminations.push({at:new Date().toISOString(),...result});
   const cleanup=await cleanupSteps([
-    {name:'worker process tree',timeoutMs:60_000,run:async()=>{if(completion.timedOut&&worker.pid)await terminateOwnedProcesses(ownedProcessTree(worker.pid));}},
+    {name:'worker process tree',timeoutMs:60_000,run:async()=>{if(completion.timedOut&&worker.pid)await terminateOwnedProcesses(ownedProcessTree(worker.pid),recordTermination);}},
     {name:'orphan browser processes',timeoutMs:60_000,run:async()=>{
-      await terminateOwnedProcesses(ownedBrowserProcesses(profile));
+      await terminateOwnedProcesses(ownedBrowserProcesses(profile),recordTermination);
       assert.equal(ownedBrowserProcesses(profile).length,0,'Task browser processes survived cleanup');
     }},
     {name:'task PostgreSQL absence',timeoutMs:20_000,run:()=>{
@@ -602,6 +607,7 @@ async function supervise() {
     }},
   ]);
   report.worker={status:completion.timedOut?'timed-out':'completed',...completion};report.cleanup=[...(report.cleanup as CleanupResult[]??[]),...cleanup];
+  report.controllerTerminations=controllerTerminations;
   report.retainedArtifacts={browserProfile:existsSync(profile)?profile:null};
   const failed=completion.timedOut||completion.exitCode!==0||cleanup.some(r=>r.status!=='passed')||(report.assertions as {status:string}).status!=='passed';
   for(const result of cleanup)console.log(`CONTROLLER CLEANUP ${result.status}: ${result.name}${result.error?`: ${result.error}`:''}`);

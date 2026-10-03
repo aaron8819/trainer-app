@@ -1,8 +1,34 @@
+// @vitest-environment node
 import { spawn } from 'node:child_process';
+import * as childProcesses from 'node:child_process';
 import { describe, expect, it, vi } from 'vitest';
 import { browserProcessesForProfile, cleanupSteps, ownedProcessTree, processAlive, terminateOwnedProcesses, waitForWorker } from '../../../scripts/trainer2/disposable-cleanup';
 
+vi.mock('node:child_process', async importOriginal => ({ ...await importOriginal<typeof childProcesses>() }));
+
 describe('Trainer2 disposable cleanup', () => {
+  it.skipIf(process.platform !== 'win32')('rejects surviving OS processes even when taskkill and the Node probe claim success', async () => {
+    const child = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { windowsHide: true, stdio: 'ignore' });
+    const nativeSpawn = childProcesses.spawnSync;
+    const nativeKill = process.kill.bind(process);
+    const spawnProbe = vi.spyOn(childProcesses, 'spawnSync').mockImplementation(((file: string, ...args: unknown[]) => {
+      if (file === 'taskkill.exe') return { status: 0, signal: null, stdout: 'pretend success', stderr: '', pid: 0, output: [] };
+      return Reflect.apply(nativeSpawn, childProcesses, [file, ...args]);
+    }) as typeof childProcesses.spawnSync);
+    const killProbe = vi.spyOn(process, 'kill').mockImplementation((pid, signal) => {
+      if (pid === child.pid && signal === 0) throw Object.assign(new Error('Missed by native probe'), { code: 'ESRCH' });
+      return nativeKill(pid, signal);
+    });
+    const receipts: Record<string, unknown>[] = [];
+    try {
+      await expect(terminateOwnedProcesses([child.pid!], result => receipts.push(result))).rejects.toThrow('survived OS termination');
+      expect(receipts[0]).toMatchObject({ status: 0, stdout: 'pretend success' });
+      expect(receipts[1]).toMatchObject({ survivors: [expect.objectContaining({ ProcessId: child.pid })] });
+    } finally {
+      spawnProbe.mockRestore(); killProbe.mockRestore();
+      await terminateOwnedProcesses([child.pid!]);
+    }
+  }, 30_000);
   it('selects profile-owned orphans without admitting a reused PID or adjacent profile', () => {
     const profile = 'C:\\task with spaces\\browser-profile-123';
     expect(browserProcessesForProfile([

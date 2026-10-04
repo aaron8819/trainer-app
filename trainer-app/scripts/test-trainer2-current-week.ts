@@ -161,6 +161,14 @@ async function main() {
     browserOwnership=await captureBrowserOwnership(browserProcess,browserProfile,recordBrowserTree);
     browserEndpoint=browserServer.wsEndpoint();
     browser=await chromium.connect(browserEndpoint,{timeout:30_000});const context=await browser.newContext({viewport:{width:1360,height:1000},hasTouch:true,reducedMotion:'reduce'});browserContext=context;
+    await context.addInitScript(()=>{
+      const observation={tick:Date.now(),events:[] as {name:string;at:number}[]};
+      (window as unknown as {trainer2Observation:typeof observation}).trainer2Observation=observation;
+      setInterval(()=>{observation.tick=Date.now();},1000);
+      for(const name of ['pointerdown','pointerup','click','submit'])document.addEventListener(name,()=>{
+        observation.events.push({name,at:Date.now()});if(observation.events.length>12)observation.events.shift();
+      },true);
+    });
     context.on('request',request=>pendingBrowserRequests.set(request,{method:request.method(),path:new URL(request.url()).pathname}));
     context.on('requestfinished',request=>pendingBrowserRequests.delete(request));
     context.on('requestfailed',request=>pendingBrowserRequests.delete(request));
@@ -198,6 +206,16 @@ async function main() {
     assertionError=redact(error instanceof Error?error.message:String(error));
     details={...details,firstFailure:{at:new Date().toISOString(),completedGroups:checks.length,pendingBrowserRequests:[...pendingBrowserRequests.values()],stack:redact(error instanceof Error?error.stack??error.message:String(error))}};
     console.error(`ASSERTIONS FAILED: ${assertionError}`);
+    // Read-only, bounded evidence before teardown; failure remains the first
+    // assertion, even if a renderer cannot answer this independent observation.
+    details.browserFailureObservations=await Promise.all((browserContext?.pages()??[]).map(async page=>{
+      let timer:ReturnType<typeof setTimeout>|undefined;
+      try{return await Promise.race([page.evaluate(()=>({path:location.pathname,visible:document.visibilityState,
+        focused:document.hasFocus(),ready:document.readyState,observation:(window as unknown as {trainer2Observation:unknown}).trainer2Observation,
+        buttons:Array.from(document.querySelectorAll('button')).map(button=>({text:button.textContent?.slice(0,80),disabled:button.disabled}))})),
+        new Promise(resolveObservation=>{timer=setTimeout(()=>resolveObservation({status:'observer-deadline'}),3000);})]);}
+      catch{return {status:'observer-error'};}finally{clearTimeout(timer);}
+    }));
   } finally {
     cleanup.push(...await cleanupSteps([
       {name:'server log',run:()=>writeFileSync(resolve(artifact,'server.log'),redact(serverLog))},

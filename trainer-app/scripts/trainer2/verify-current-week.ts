@@ -95,7 +95,7 @@ export async function verifyCurrentWeek({ db, reader, admin, principal, openBrow
   const {context,base}=await openBrowser();
   if(diagnoseRecovery) {
     const { diagnoseStartRecovery } = await import('./diagnose-start-recovery');
-    return diagnoseStartRecovery(context, `${base}/trainer2/dev/drafts?planId=${planId}`, artifact);
+    return diagnoseStartRecovery(context, `${base}/trainer2/dev/drafts?planId=${planId}`, artifact, restart);
   }
   if(diagnoseAdmission) {
     const page=await context.newPage(),responses: {path:string;status:number}[]=[];

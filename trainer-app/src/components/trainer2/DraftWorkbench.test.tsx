@@ -37,7 +37,7 @@ describe('builder save recovery', () => {
     render(<DraftWorkbench accountId="account-a" ownershipEpoch={0} initialPlanId={s.planId} />);
     await screen.findByText('Program complete');
     expect(screen.queryByRole('heading', { name: 'Active plan' })).toBeNull();
-    await screen.findByText('No next workout.');
+    await screen.findByText('Program complete. Saved workouts remain available for review.');
     expect(screen.queryByRole('button', { name: 'Activate plan' })).toBeNull();
   });
   it.each(['non-OK', 'network'])('retains accepted bookmark after %s refresh failure; retries only GET', async failure => {
@@ -208,4 +208,11 @@ describe('exact reviewed activation', () => {
     expect(screen.queryByRole('heading', { name: 'Active plan' })).toBeNull();
     expect(sessionStorage.getItem(`trainer2-activation:account-a:${state().planId}`)).toBe(submitted);
   }, 20000);
+});
+
+it('shows saved paused state without requesting an unsupported ReadNext or displaying activation', async () => {
+  const s=state();vi.stubGlobal('fetch',vi.fn().mockResolvedValue(json({...s,state:{lifecycle:'Paused',initialApprovedRevisionId:s.revisionId}})));
+  render(<DraftWorkbench accountId="account-a" ownershipEpoch={0} initialPlanId={s.planId} />);
+  await screen.findByText(/Program paused/);expect(screen.queryByRole('button',{name:'Start workout'})).toBeNull();
+  expect(screen.queryByRole('button',{name:'Activate plan'})).toBeNull();expect(fetch).toHaveBeenCalledTimes(1);
 });

@@ -112,7 +112,7 @@ describe('Workout start consumer', () => {
     expect(screen.getByText(/0.00 lb added/)).toBeInTheDocument(); expect(screen.getByText(/per side/)).toBeInTheDocument(); expect(screen.getByText(/Optional/)).toBeInTheDocument(); expect(screen.queryByText(/Rest unspecified/)).not.toBeInTheDocument();
   });
 });
-import { TrainingOverview } from './TrainingOverview';
+import { TrainingOverview, PlannedWorkout } from './TrainingOverview';
 import { effortSummary, targetGroups } from './training-summary';
 
 it('shows program position and mixed effort without treating skipped work as performed', () => {
@@ -121,9 +121,9 @@ it('shows program position and mixed effort without treating skipped work as per
   selected.positions[0].targets[0].rir = '0';
   const read = { ...next, occurrence: selected, occurrences: document.occurrences.map((o, i) => ({ occurrenceId: o.id, name: o.name, stageName: document.stages.find(s => s.id === o.stageId)!.name, status: i < 3 ? 'Finished' as const : i === 3 ? 'Skipped' as const : 'Pending' as const, skip: null })) };
   render(<TrainingOverview document={document} next={read} />);
-  expect(screen.getByText('Week 2 of 5 · Accumulation')).toBeVisible();
+  expect(screen.getByRole('heading', { name: 'Week 2 of 5' })).toBeVisible();
   expect(screen.getByText(/Target 0–3 RIR/)).toBeVisible();
-  expect(screen.getByRole('heading', { name: /0 of 4 workouts completed · 0 skipped/ })).toBeVisible();
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
   expect(screen.getAllByRole('article')).toHaveLength(4);
   expect(screen.getByRole('link', { name: 'View Program' })).toHaveAttribute('href', expect.stringContaining('view=program'));
 });
@@ -139,12 +139,14 @@ it('supports independent workouts and truthful final completion with skipped wor
   document.stages = document.stages.slice(0, 2); document.occurrences = [document.occurrences[0], document.occurrences[4]];
   const read = { ...next, lifecycle: 'Completed' as const, occurrence: null, occurrences: document.occurrences.map((o, i) => ({ occurrenceId: o.id, name: 'Same name', stageName: 'Same stage', status: i ? 'Skipped' as const : 'Finished' as const, skip: null })) };
   render(<TrainingOverview document={document} next={read} program />);
-  expect(screen.getAllByText(/1 workouts completed · 1 skipped/).length).toBeGreaterThan(0);
-  expect(screen.getAllByRole('article')).toHaveLength(1);
-  fireEvent.click(screen.getByRole('button', { name: 'Week 1' }));
-  expect(screen.getByText(/Workout 1 · Completed/)).toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: 'Week 2' }));
-  expect(screen.getByText(/Workout 1 · Skipped/)).toBeVisible();
+  expect(screen.getByText(/Saved.*Completed.*read-only/)).toBeVisible();
+  expect(screen.getByRole('heading', { name: 'Week 2 workouts' })).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: /^Week 1/ }));
+  fireEvent.click(screen.getByText(document.occurrences[0].name, { selector: 'summary' }));
+  expect(screen.getByText('Finished')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: /^Week 2/ }));
+  fireEvent.click(screen.getByText(document.occurrences[1].name, { selector: 'summary' }));
+  expect(screen.getByText('Skipped')).toBeVisible();
   expect(screen.queryByRole('button', { name: 'Start workout' })).toBeNull();
 });
 
@@ -437,4 +439,30 @@ it('older execution reads cannot drop accepted additions or restore an obsolete 
   expect(mergeExecutionRead(current,old)).toBe(current);
   const swapped=swappedFixture(),unswapped={...swapped,swaps:[]};
   expect(mergeExecutionRead(swapped,unswapped)).toBe(swapped);
+});
+
+it('keeps finished and skipped current-week selection read-only and never offers Start for them', async () => {
+  const document = createHypertrophyPlan(), finishedId = randomUUID();
+  const rows = document.occurrences.map((o, i) => ({ occurrenceId: o.id, name: o.name, stageName: 'Week', status: i === 0 ? 'Finished' : i === 1 ? 'Skipped' : 'Pending', skip: i === 1 ? {actionId:randomUUID(),actorAccountId:accountId,revisionId,skippedAt:'2026-10-04T12:00:00.000Z',planCompleted:false} : null, ...(i === 0 ? {executionId: finishedId} : {}) }));
+  const value = {...next, occurrence: document.occurrences[2], occurrences: rows, eligibleOccurrenceIds: document.occurrences.slice(2,4).map(o=>o.id),
+    week: {index:0, firstOccurrenceId:document.occurrences[0].id, occurrenceIds:document.occurrences.slice(0,4).map(o=>o.id),ready:false,final:false}};
+  const fetch = vi.fn().mockResolvedValue(response(value)); vi.stubGlobal('fetch',fetch);
+  render(<Workout accountId={accountId} ownershipEpoch={0} planId={planId} document={document} />);
+  await waitFor(()=>expect(screen.getByRole('button',{name:'Start workout'})).toBeEnabled());
+  fireEvent.click(screen.getByRole('button',{name:/Select Lower A, workout 1/}));
+  expect(screen.getByRole('link',{name:'View results'})).toHaveAttribute('href',`/trainer2/dev/executions/${finishedId}`);
+  expect(screen.queryByRole('button',{name:'Start workout'})).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:/Select Upper A, workout 2/}));
+  expect(screen.getByText(/Explicitly skipped. The saved prescription/)).toBeVisible();
+  expect(screen.getByRole('region',{name:'Planned workout'})).toHaveTextContent(document.occurrences[1].positions[0].exercise.name);
+  expect(screen.queryByRole('button',{name:'Start workout'})).toBeNull();expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it('renders long names, zero RIR and assistance semantics from exact targets in designed prescriptions', () => {
+  const workout=structuredClone(occurrence), name='Rear foot elevated split squat with an unusually long authored exercise name';
+  workout.positions=[workout.positions[0]];workout.positions[0].exercise.name=name;
+  workout.positions[0].targets=[{...workout.positions[0].targets[0],rir:'0',reps:{min:8,max:12,basis:'perSide'},measurement:{kind:'assistance',value:'40',unit:'lb',convention:'displayedAssistance',zeroMeaning:'noAssistance'}}];
+  render(<PlannedWorkout workout={workout} design />);
+  expect(screen.getByRole('heading',{name})).toBeVisible();expect(screen.getByText(/8.*12 reps per side.*0 RIR.*40 lb assistance/)).toBeVisible();
+  expect(screen.getByText(/more weight means easier/)).toBeVisible();
 });

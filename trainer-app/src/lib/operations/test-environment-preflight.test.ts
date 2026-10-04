@@ -1495,6 +1495,16 @@ describe("buildTestEnvironmentPreflight", () => {
 });
 
 describe("command coverage honesty", () => {
+  it("guards Home and Program fixture entrypoints before importing database work", () => {
+    for (const name of ["test-trainer2-home-program", "test-trainer2-home-program-surfaces", "demo-trainer2-home-program"]) {
+      const source=readFileSync(resolve(`scripts/${name}.ts`),"utf8");
+      expect(source).toMatch(/parseExactDisposableConfirmationArgs\s*\(\s*process\.argv\.slice\(2\)/);
+      expect(source.indexOf("validateDisposableDatabaseTargets")).toBeLessThan(source.indexOf("await import("));
+      expect(source.indexOf("throw new Error")).toBeLessThan(source.indexOf("await import("));
+      expect(source).not.toMatch(/(?:includes|indexOf|find|some)\s*\(\s*["'`]--confirm-disposable/);
+    }
+  });
+
   it("keeps operator confirmation out of package and registry command strings", () => {
     const packageJson = JSON.parse(readFileSync(resolve("package.json"), "utf8")) as {
       scripts: Record<string, string>;
@@ -1565,6 +1575,9 @@ describe("command coverage honesty", () => {
       "trainer-app/scripts/test-trainer2-discard-execution.ts",
       "trainer-app/scripts/test-trainer2-skip-workout.ts",
       "trainer-app/scripts/demo-trainer2-drafts.ts",
+      "trainer-app/scripts/test-trainer2-home-program.ts",
+      "trainer-app/scripts/test-trainer2-home-program-surfaces.ts",
+      "trainer-app/scripts/demo-trainer2-home-program.ts",
       "trainer-app/scripts/test-trainer2-principal-postgres.ts",
       "trainer-app/scripts/test-trainer2-legacy-postgres.ts",
       "trainer-app/scripts/verify-seed-revision-concurrency.ts",

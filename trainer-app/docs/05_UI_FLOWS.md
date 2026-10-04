@@ -1,5 +1,7 @@
 # 05 UI Flows
 
+Trainer2 approved Home and Program presentation: [UI ownership, read-only inspection, prototype adaptations and local preview](architecture/trainer2/HOME_PROGRAM_DESIGN.md).
+
 Trainer2 explicit current-week advancement: [command, cursor, final-week completion, migration/grants and coordinated reader recovery](architecture/trainer2/CURRENT_WEEK_SELECTION.md).
 
 

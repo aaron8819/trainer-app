@@ -1554,6 +1554,7 @@ describe("command coverage honesty", () => {
       "trainer-app/scripts/test-trainer2-exercise-swap.ts",
       "trainer-app/scripts/test-trainer2-add-set.ts",
       "trainer-app/scripts/test-trainer2-add-exercise.ts",
+      "trainer-app/scripts/test-trainer2-current-week.ts",
       "trainer-app/scripts/test-trainer2-draft-editor.ts",
       "trainer-app/scripts/test-trainer2-progression-review.ts",
       "trainer-app/scripts/test-trainer2-activation.ts",

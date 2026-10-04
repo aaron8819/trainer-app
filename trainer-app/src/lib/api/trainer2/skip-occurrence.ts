@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import { skipOccurrenceCommand } from '../../trainer2-contracts/skip-occurrence';
-import { unresolvedOccurrences } from '../../engine/trainer2/occurrence-resolution';
+import { unresolvedOccurrences, eligibleCurrentWeekOccurrences } from '../../engine/trainer2/occurrence-resolution';
 import { acceptCommand, CommandFailure } from './command';
 import { activeSource } from './execution';
 import { readOccurrenceResolution } from './occurrence-resolution';
@@ -19,7 +19,9 @@ export async function skipOccurrence(db: PrismaClient, principal: ServerPrincipa
     const { resolvedIds } = await readOccurrenceResolution(tx, principal.accountId, plan.id);
     if (resolvedIds.has(occurrence.id)) throw new CommandFailure('OCCURRENCE_RESOLVED', true);
     const pending = unresolvedOccurrences(intent.occurrences, resolvedIds);
-    if (pending[0]?.id !== occurrence.id) throw new CommandFailure('OCCURRENCE_NOT_NEXT', true);
+    if (!eligibleCurrentWeekOccurrences(intent.occurrences, resolvedIds).some(o => o.id === occurrence.id)) throw new CommandFailure('OCCURRENCE_NOT_CURRENT_WEEK', true);
+    if (await tx.trainer2Execution.findFirst({ where: { accountId: principal.accountId, lifecycle: 'Open' } }))
+      throw new CommandFailure('OPEN_EXECUTION_CONFLICT', true);
     if (await tx.trainer2Execution.findFirst({ where: { accountId: principal.accountId, occurrenceId: occurrence.id, lifecycle: { not: 'Discarded' } } }))
       throw new CommandFailure('ALREADY_STARTED', true);
     const planCompleted = pending.length === 1;

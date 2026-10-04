@@ -1,5 +1,7 @@
 # 02 Domain Engine
 
+Trainer2 current-week selection: [eligibility, responsive Program, immutable start, migration/recovery and disposable verification](architecture/trainer2/CURRENT_WEEK_SELECTION.md).
+
 Trainer2 catalog coverage: [canonical adapter, frozen snapshots, qualification, inventory and verification](architecture/trainer2/CATALOG_COVERAGE.md).
 
 Trainer2 Skip Workout: [eligibility, audited resolution, endpoint, exact retry, UI and verification](architecture/trainer2/SKIP_WORKOUT.md).

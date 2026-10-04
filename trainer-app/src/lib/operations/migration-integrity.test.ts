@@ -190,23 +190,33 @@ function report(
 }
 
 describe("migration integrity", () => {
+  it.each(['missing', 'changed'])('rejects a %s current-week helper in a fully applied ledger', variant => {
+    const catalog = cleanCatalog(EXPECTED_MIGRATION_CHAIN.length);
+    if (variant === 'missing') catalog.functions = catalog.functions.filter(f => f.name !== 'trainer2_current_week_eligible');
+    else catalog.functions.find(f => f.name === 'trainer2_current_week_eligible')!.definition = 'SELECT true';
+    const result = report({ ledgerRows: appliedPrefix(EXPECTED_MIGRATION_CHAIN.length), catalog });
+    expect(result.migrationIntegrityValid).toBe(false);
+    expect(result.blockingReasons).toContain('schema_drift_detected');
+    expect(variant === 'missing' ? result.definitions.appliedManifestMissing : result.definitions.appliedManifestIncompatible)
+      .toEqual([expect.stringContaining('trainer2_current_week_eligible')]);
+  });
   it("keeps the canonical chain aligned with checked-in migration directories", () => {
     expect(loadCheckedInMigrations().map((migration) => migration.name)).toEqual(
       EXPECTED_MIGRATION_CHAIN,
     );
   });
 
-  it("accepts the conventional chain with session exercise additions pending", () => {
+  it("accepts the conventional chain with current-week selection pending", () => {
     const result = report();
 
     expect(EXPECTED_MIGRATION_CHAIN.at(-1)).toBe(
-      "20261002010000_trainer2_add_exercise",
+      "20261004010000_trainer2_current_week_selection",
     );
     expect(result.chain).toMatchObject({
       checkedIn: EXPECTED_MIGRATION_CHAIN.length,
       applied: EXPECTED_MIGRATION_CHAIN.length - 1,
       pending: 1,
-      pendingNames: ["20261002010000_trainer2_add_exercise"],
+      pendingNames: ["20261004010000_trainer2_current_week_selection"],
       exactExpectedChain: true,
     });
     expect(result.migrationIntegrityValid).toBe(true);

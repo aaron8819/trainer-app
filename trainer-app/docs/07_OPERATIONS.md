@@ -1,5 +1,7 @@
 # 07 Operations
 
+Trainer2 current-week selection: [eligibility, responsive Program, immutable start, migration/recovery and disposable verification](architecture/trainer2/CURRENT_WEEK_SELECTION.md).
+
 Trainer2 session-added working sets: [execution ownership, immutable addition facts, command/swap/finish contracts, logger and local verification](architecture/trainer2/ADD_SET.md).
 
 The exact evidenced mixed-line-ending checksum for the already-applied Trainer2 swap migration is documented in [swap checksum provenance](operations/TRAINER2_SWAP_CHECKSUM_PROVENANCE.md). Local validation accepts that hash only with the unchanged reviewed canonical SQL; it never authorizes ledger normalization or migration replay.

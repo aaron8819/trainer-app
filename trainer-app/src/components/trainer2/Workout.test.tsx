@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID, webcrypto } from 'node:crypto';
 import { mergeExecutionRead, Workout, WorkoutPrescription } from './Workout';
@@ -45,6 +45,27 @@ describe('Add set recovery', () => {
   });
 });
 describe('Workout start consumer', () => {
+  it.each(['foreign', 'duplicate', 'missing recommendation'])('fails closed on %s eligibility in the read response', async variant => {
+    const eligibleOccurrenceIds = variant === 'foreign' ? [occurrence.id, randomUUID()] : variant === 'duplicate' ? [occurrence.id, occurrence.id] : [];
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({ ...next, eligibleOccurrenceIds })));
+    render(<Workout accountId={accountId} ownershipEpoch={0} planId={planId} />);
+    await screen.findByRole('button', { name: 'Reload workout' });
+    expect(screen.queryByRole('button', { name: 'Start workout' })).not.toBeInTheDocument();
+  });
+  it('selects a later same-name workout without writing and starts its exact UUID', async () => {
+    const document = createHypertrophyPlan(); document.occurrences[1].name = document.occurrences[0].name;
+    const value = { ...next, occurrence: document.occurrences[0], eligibleOccurrenceIds: document.occurrences.slice(0, 4).map(o => o.id),
+      occurrences: document.occurrences.map(o => ({ occurrenceId: o.id, name: o.name, stageName: 'Week', status: 'Pending', skip: null })) };
+    const fetch = vi.fn().mockResolvedValueOnce(response(value)).mockResolvedValueOnce(response({ invalid: true })); vi.stubGlobal('fetch', fetch);
+    const { container } = render(<Workout accountId={accountId} ownershipEpoch={0} planId={planId} document={document} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Start workout' })).toBeEnabled());
+    const card = container.querySelector(`[data-occurrence-id="${document.occurrences[1].id}"]`)!;
+    fireEvent.click(within(card as HTMLElement).getByRole('button'));
+    expect(within(card as HTMLElement).getByRole('button')).toHaveAttribute('aria-pressed', 'true'); expect(fetch).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Start workout' }));
+    await screen.findByRole('button', { name: 'Check again' });
+    expect(JSON.parse(fetch.mock.calls[1][1].body).target).toEqual({ planId, occurrenceId: document.occurrences[1].id });
+  });
   it('only reads on mount and previews without starting', async () => {
     const fetch = vi.fn().mockResolvedValue(response(next)); vi.stubGlobal('fetch', fetch);
     render(<Workout accountId={accountId} ownershipEpoch={0} planId={planId} />);
@@ -66,10 +87,10 @@ describe('Workout start consumer', () => {
     const command = fetch.mock.calls[1][1].body;
     finish(response({ invalid: 'response' })); await waitFor(() => expect(check).not.toBeDisabled());
     expect(sessionStorage.getItem(`trainer2-start:${accountId}:${planId}`)).toBe(command);
-    first.unmount(); fetch.mockResolvedValueOnce(response({ error: 'temporary' }, 503));
+    first.unmount(); fetch.mockResolvedValueOnce(response(next)).mockResolvedValueOnce(response({ error: 'temporary' }, 503));
     render(<Workout accountId={accountId} ownershipEpoch={0} planId={planId} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Check again' }));
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(3)); expect(fetch.mock.calls[2][1].body).toBe(command);
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(4)); expect(fetch.mock.calls[2][1]).toEqual({ cache: 'no-store' }); expect(fetch.mock.calls[3][1].body).toBe(command);
     expect(screen.queryByText('Workout in progress')).not.toBeInTheDocument();
   });
   it('ignores delayed response after switching plans', async () => {
@@ -114,12 +135,16 @@ it('does not collapse unlike targets, units, roles, zero or per-side counts', ()
   expect(effortSummary({ ...occurrence, positions: [{ ...occurrence.positions[0], targets: [{ ...target, rir: null }] }] })).toBe('Effort not prescribed');
 });
 it('supports independent workouts and truthful final completion with skipped work', () => {
-  const document = createHypertrophyPlan(); delete document.builder;
+  const document = createHypertrophyPlan(); delete document.builder; document.occurrences.forEach(o => { delete o.workoutKey; delete o.weekOverride; delete o.overrides; o.positions.forEach(p => { delete p.sourceKey; }); });
   document.stages = document.stages.slice(0, 2); document.occurrences = [document.occurrences[0], document.occurrences[4]];
   const read = { ...next, lifecycle: 'Completed' as const, occurrence: null, occurrences: document.occurrences.map((o, i) => ({ occurrenceId: o.id, name: 'Same name', stageName: 'Same stage', status: i ? 'Skipped' as const : 'Finished' as const, skip: null })) };
   render(<TrainingOverview document={document} next={read} program />);
   expect(screen.getAllByText(/1 workouts completed · 1 skipped/).length).toBeGreaterThan(0);
-  expect(screen.getAllByRole('article')).toHaveLength(2);
+  expect(screen.getAllByRole('article')).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Week 1' }));
+  expect(screen.getByText(/Workout 1 · Completed/)).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Week 2' }));
+  expect(screen.getByText(/Workout 1 · Skipped/)).toBeVisible();
   expect(screen.queryByRole('button', { name: 'Start workout' })).toBeNull();
 });
 

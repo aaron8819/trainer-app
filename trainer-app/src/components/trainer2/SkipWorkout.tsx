@@ -5,8 +5,9 @@ import { skipOccurrenceCommand, skipResponse, type SkipOccurrenceCommand } from 
 import { canonicalJson } from '@/lib/trainer2-contracts/canonical-json';
 import { control } from './DraftEditor';
 
-export function SkipWorkout({ next, ownershipEpoch, blocked, refresh, onLock }: {
+export function SkipWorkout({ next, selectedOccurrence, ownershipEpoch, blocked, refresh, onLock }: {
   next: NextWorkoutRead; ownershipEpoch: number; blocked: boolean;
+  selectedOccurrence?: NonNullable<NextWorkoutRead['occurrence']>;
   refresh: (command?: SkipOccurrenceCommand, planCompleted?: boolean) => Promise<void>; onLock: (locked: boolean) => void;
 }) {
   const [review, setReview] = useState<NextWorkoutRead | null>(null);
@@ -16,8 +17,9 @@ export function SkipWorkout({ next, ownershipEpoch, blocked, refresh, onLock }: 
   const trigger = useRef<HTMLButtonElement>(null), cancel = useRef<HTMLButtonElement>(null), wasReview = useRef(false);
   const alive = useRef(false), flight = useRef(false);
   const key = `trainer2-skip:${next.accountId}:${next.planId}`;
+  const occurrence = selectedOccurrence ?? next.occurrence;
   const stale = !!review && (review.acceptedSequence !== next.acceptedSequence || review.revisionId !== next.revisionId ||
-    review.occurrence?.id !== next.occurrence?.id || next.lifecycle !== 'Active' || !!next.execution);
+    review.occurrence?.id !== occurrence?.id || next.lifecycle !== 'Active' || !!next.execution);
   useEffect(() => { if (review) cancel.current?.focus(); else if (wasReview.current) trigger.current?.focus(); wasReview.current = !!review; }, [review]);
   useEffect(() => {
     alive.current = true;
@@ -65,21 +67,21 @@ export function SkipWorkout({ next, ownershipEpoch, blocked, refresh, onLock }: 
       originatingAccountId: review.accountId, ownershipEpoch, dependsOn: [], target: { planId: review.planId, occurrenceId: review.occurrence.id },
       expected: { planRevisionId: review.revisionId, acceptedSequence: review.acceptedSequence }, intent: {} });
   }
-  const eligible = next.lifecycle === 'Active' && !!next.occurrence && !next.execution;
+  const eligible = next.lifecycle === 'Active' && !!occurrence && !next.execution && (next.eligibleOccurrenceIds ?? [next.occurrence?.id]).includes(occurrence.id);
   const reviewedOccurrence = review?.occurrences.find(o => o.occurrenceId === review.occurrence?.id);
   return <section aria-label="Skip workout" className="space-y-3">
     {message && <p role="status">{message}</p>}
     {pending ? <button className={`${control} min-h-11`} disabled={busy} onClick={() => void submit(pending)}>Check skip again</button> : review ?
       <div role="group" aria-label="Confirm skip" className="space-y-3 rounded-xl border border-slate-300 p-4">
         <p>Skip {reviewedOccurrence?.name}, {reviewedOccurrence?.stageName} · Workout {review.occurrences.findIndex(o => o.occurrenceId === reviewedOccurrence?.occurrenceId) + 1} of {review.occurrences.length}?</p>
-        <p>It will be marked skipped and the plan will move on.{review.occurrences.filter(o => o.status === 'Pending').length === 1 ? ' This is the final workout. Skipping it will finish the plan.' : ''}</p>
+        <p>It will be marked skipped. The week advances when all its workouts are completed or skipped.{review.occurrences.filter(o => o.status === 'Pending').length === 1 ? ' This is the final workout. Skipping it will finish the plan.' : ''}</p>
         {stale && <p role="status">The next workout changed. Cancel and review the current workout.</p>}
         <button className={`${control} min-h-11`} disabled={blocked || busy || stale} onClick={confirm}>Confirm skip</button>
         <button ref={cancel} className={`${control} min-h-11`} disabled={busy} onClick={() => { setReview(null); onLock(false); }}>Cancel</button>
       </div> : needsRefresh ? <button className={`${control} min-h-11`} onClick={async () => {
         try { await refresh(); if (alive.current) { setNeedsRefresh(false); setMessage(''); } } catch { /* keep recovery visible */ }
       }}>Refresh workout</button> : eligible && <button ref={trigger} className={`${control} min-h-11`} disabled={!ready || blocked || busy} onClick={() => {
-        setReview(next); onLock(true); setMessage('');
+        setReview({ ...next, occurrence }); onLock(true); setMessage('');
       }}>Skip workout</button>}
   </section>;
 }

@@ -81,7 +81,7 @@ export function DiscardWorkout({ execution, ownershipEpoch, blocked, refresh, ch
     }}>Review latest values</button>}
     {pending ? <button className={`${control} min-h-11`} disabled={busy} onClick={() => void submit(pending)}>Check discard again</button> :
       execution.lifecycle === 'Open' && (review ? <div role="group" aria-label="Confirm discard">
-        <p>This removes this workout attempt. The workout will still be next in your plan.</p>
+        <p>This removes this workout attempt. The workout remains pending in the current week.</p>
         <p>The attempted start and audit history stay saved.</p>
         <button className={`${control} min-h-11`} disabled={blocked || busy} onClick={confirm}>Confirm discard</button>
         <button ref={cancel} className={`${control} min-h-11`} disabled={busy} onClick={() => { setReview(null); onLock(false); }}>Cancel</button>

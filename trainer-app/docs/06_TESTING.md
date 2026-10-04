@@ -1,5 +1,7 @@
 # 06 Testing
 
+Trainer2 current-week selection: [eligibility, responsive Program, immutable start, migration/recovery and disposable verification](architecture/trainer2/CURRENT_WEEK_SELECTION.md).
+
 Trainer2 session-added working sets: [execution ownership, immutable addition facts, command/swap/finish contracts, logger and local verification](architecture/trainer2/ADD_SET.md).
 
 Trainer2 catalog coverage: [canonical adapter, frozen snapshots, qualification, inventory and verification](architecture/trainer2/CATALOG_COVERAGE.md).

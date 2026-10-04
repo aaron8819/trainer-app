@@ -1,5 +1,7 @@
 # 03 Data Schema
 
+Trainer2 current-week selection: [eligibility, responsive Program, immutable start, migration/recovery and disposable verification](architecture/trainer2/CURRENT_WEEK_SELECTION.md).
+
 Trainer2 session-added working sets: [execution ownership, immutable addition facts, command/swap/finish contracts, logger and local verification](architecture/trainer2/ADD_SET.md).
 
 Trainer2 set skipping: [durable command, lifecycle, finish/discard evidence, logger and local verification](architecture/trainer2/SKIP_SET.md).

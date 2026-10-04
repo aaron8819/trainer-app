@@ -41,6 +41,7 @@ export const EXPECTED_MIGRATION_CHAIN = [
   "20260930010000_trainer2_exercise_swap",
   "20261001010000_trainer2_add_set",
   "20261002010000_trainer2_add_exercise",
+  "20261004010000_trainer2_current_week_selection",
 ] as const;
 
 export type LedgerRow = {
@@ -501,6 +502,12 @@ export const PENDING_ARCHITECTURE_MANIFEST: readonly PendingMigrationExpectation
     objects: [
       { kind: "table", name: "Trainer2ExerciseAddition" },
       ...["trainer2_exercise_addition_immutable", "trainer2_exercise_addition_guard", "trainer2_exercise_addition_seal"].map(name => ({ kind: "trigger" as const, table: "Trainer2ExerciseAddition", name, definitionIncludes: [name] })),
+    ],
+  },
+  {
+    migration: "20261004010000_trainer2_current_week_selection", effect: "objects",
+    objects: [
+      { kind: "function", name: "trainer2_current_week_eligible", definitionIncludes: ["trainer2_occurrence_resolved", "lag", "sum"] },
     ],
   },
 ] as const;

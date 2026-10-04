@@ -18,7 +18,7 @@ Exact envelope replay returns its durable receipt, even after final closure or l
 
 ## Next selection and UI
 
-ReadNext and the existing StartOccurrence command select the earliest unresolved UUID in immutable activated occurrence order. Names, stages and exercise labels cannot substitute for identity. Finished and explicitly skipped occurrences are ineligible; no wraparound occurs. An account-owned Open execution takes display precedence, including when viewing an older completed plan. Existing source, account and exclusion checks still govern Start.
+ReadNext recommends the earliest unresolved UUID in immutable activated occurrence order. StartOccurrence permits any unresolved occurrence in that current week; [current-week selection](CURRENT_WEEK_SELECTION.md) defines contiguous stage runs and the shared eligibility owner. Names, stages and exercise labels cannot substitute for identity. Finished and explicitly skipped occurrences are ineligible; no wraparound occurs. An account-owned Open execution takes display precedence, including when viewing an older completed plan. Existing source, account and exclusion checks still govern Start.
 
 The accepted schema has optional sets, not optional occurrences. Every saved occurrence is retained intent, including an optional-only workout. Optional unrecorded sets never block finish or resulting plan closure after acknowledgement. Resolving the last occurrence completes the plan even when partial. Completed returns null next occurrence and cannot start another workout. An activated template retains its supported fixed schedule; arbitrary template-plus-added-workout authoring is unsupported. Independent plans can mix copied prescriptions and manual workouts in saved order.
 

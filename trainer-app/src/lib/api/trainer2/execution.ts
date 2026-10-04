@@ -2,7 +2,7 @@ import { readExerciseAdditions } from './exercise-additions-read';
 import { readSetAdditions } from './set-additions-read';
 import { readExerciseSwaps } from './exercise-swap';
 import { readSetSkips } from './skip-set';
-import { unresolvedOccurrences } from '../../engine/trainer2/occurrence-resolution';
+import { unresolvedOccurrences, eligibleCurrentWeekOccurrences } from '../../engine/trainer2/occurrence-resolution';
 import { readOccurrenceResolution } from './occurrence-resolution';
 import { finishBinding } from '../../trainer2-contracts/workout-finish';
 import { savedSetResult } from '../../trainer2-contracts/set-results';
@@ -65,6 +65,7 @@ export async function readNextWorkout(tx: DB, principal: ServerPrincipal, planId
   const resolution = await readOccurrenceResolution(tx, principal.accountId, planId);
   const state = await tx.trainer2AccountTrainingState.findUniqueOrThrow({ where: { accountId: principal.accountId } });
   return { accountId: principal.accountId, planId, revisionId: revision.id, acceptedSequence: state.acceptedSequence.toString(),
+    eligibleOccurrenceIds: plan.lifecycle === 'Completed' ? [] : eligibleCurrentWeekOccurrences(intent.occurrences, resolution.resolvedIds).map(o => o.id),
     occurrences: intent.occurrences.map(o => {
       const skip = resolution.skips.find(s => s.occurrenceId === o.id);
       return { executionId: resolution.finished.find(e => e.occurrenceId === o.id)?.id ?? null, occurrenceId: o.id, name: o.name, stageName: intent.stages.find(s => s.id === o.stageId)!.name,
@@ -84,7 +85,8 @@ export async function startOccurrence(db: PrismaClient, principal: ServerPrincip
 
     const existing = await tx.trainer2Execution.findFirst({ where: { accountId: principal.accountId, occurrenceId: occurrence.id, lifecycle: { not: 'Discarded' } } });
     if (existing) throw new CommandFailure('ALREADY_STARTED', true);
-    if (occurrence.id !== (await nextOccurrence(tx, principal.accountId, command.target.planId, intent.occurrences))?.id) throw new CommandFailure('OCCURRENCE_NOT_NEXT', true);
+    const { resolvedIds } = await readOccurrenceResolution(tx, principal.accountId, command.target.planId);
+    if (!eligibleCurrentWeekOccurrences(intent.occurrences, resolvedIds).some(o => o.id === occurrence.id)) throw new CommandFailure('OCCURRENCE_NOT_CURRENT_WEEK', true);
     if (await tx.trainer2Execution.findFirst({ where: { accountId: principal.accountId, lifecycle: 'Open' } }))
       throw new CommandFailure('OPEN_EXECUTION_CONFLICT', true);
     const instructions = await readInstructions(tx, principal.accountId);
@@ -105,9 +107,4 @@ export async function startOccurrence(db: PrismaClient, principal: ServerPrincip
       initialPrescription: initial, canonicalContent, contentHash } });
     return { executionId, planId: command.target.planId, revisionId: revision.id, occurrenceId: occurrence.id, contentHash };
   });
-}
-
-async function nextOccurrence(tx: DB, accountId: string, planId: string, occurrences: ExecutionRead['initial']['occurrence'][]) {
-  const { resolvedIds } = await readOccurrenceResolution(tx, accountId, planId);
-  return unresolvedOccurrences(occurrences, resolvedIds)[0] ?? null;
 }

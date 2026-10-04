@@ -1,4 +1,5 @@
 'use client';
+import { AdvanceWeek } from './AdvanceWeek';
 import { AddExercise } from './AddExercise';
 import { AddSet } from './AddSet';
 import { executionPositions } from '@/lib/engine/trainer2/execution-targets';
@@ -55,6 +56,7 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
   const [pending, setPending] = useState<StartOccurrenceCommand | null>(null);
   const [busy, setBusy] = useState(false), [skipLocked, setSkipLocked] = useState(true);
   const [message, setMessage] = useState('Loading workout…');
+  const [advanceLocked, setAdvanceLocked] = useState(true);
   const [swapLocked, setSwapLocked] = useState(false);
   const [finishedMessage, setFinishedMessage] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -120,11 +122,11 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
   useEffect(() => {
     // Refresh authoritative state on return from another tab. A pending command
     // remains exact and recoverable; reads never replace or resubmit its intent.
-    const refresh = () => { if (!inFlight.current && !pending && (program || !skipLocked) && document !== undefined) void load(); };
+    const refresh = () => { if (!inFlight.current && !pending && (program || (!skipLocked && !advanceLocked)) && document !== undefined) void load(); };
     window.addEventListener('focus', refresh);
     return () => window.removeEventListener('focus', refresh);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pending, skipLocked, document, program]);
+  }, [pending, skipLocked, advanceLocked, document, program]);
   async function submit(command: StartOccurrenceCommand) {
     if (inFlight.current) return;
     inFlight.current = true; setBusy(true);
@@ -145,7 +147,7 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
     finally { inFlight.current = false; if (token === generation.current) setBusy(false); }
   }
   function start() {
-    if (!next || !selectedWorkout || next.execution || !(next.eligibleOccurrenceIds ?? [next.occurrence?.id]).includes(selectedWorkout.id) || busy || pending || failed || skipLocked) return;
+    if (!next || !selectedWorkout || next.execution || !(next.eligibleOccurrenceIds ?? [next.occurrence?.id]).includes(selectedWorkout.id) || busy || pending || failed || skipLocked || advanceLocked) return;
     const command: StartOccurrenceCommand = { schemaVersion: 1, commandType: 'StartOccurrence', actionId: crypto.randomUUID(),
       deviceId: crypto.randomUUID(), originatingAccountId: accountId, ownershipEpoch, dependsOn: [],
       target: { planId: next.planId, occurrenceId: selectedWorkout.id }, expected: { planRevisionId: next.revisionId, instructionEpoch: next.instructionEpoch }, intent: {} };
@@ -191,17 +193,21 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
       </section>}
     {next && !execution && !pending && !program && <section className="space-y-3">
       {next.execution ? <><h2 className="text-xl font-semibold">Workout in progress</h2><p>{next.execution.initial.occurrence.name}</p><a className={control} href={url(next.execution.executionId)}>Resume workout</a><p className="text-sm text-slate-600">Finish or discard this workout before starting another.</p></> :
-        !next.occurrence ? <><h2 className="text-xl font-semibold">Plan complete</h2><p>No next workout.</p></> :
+        !next.occurrence ? <><h2 className="text-xl font-semibold">{next.lifecycle === 'Completed' ? 'Plan complete' : 'Week complete'}</h2><p>No unresolved workout in this week.</p></> :
           <><p className="text-sm font-medium text-slate-500">Selected workout · preview</p><h2 className="break-words text-xl font-semibold">{selectedWorkout?.name}</h2><p className="text-sm text-slate-600">Selecting and reviewing a workout does not start it. Start when you are ready.</p></>}
       <div className="flex flex-wrap items-start gap-3">
-        {next.occurrence && !next.execution && <button className="rounded-xl bg-teal-700 px-5 py-3 font-semibold text-white disabled:opacity-40" disabled={busy || failed || skipLocked} onClick={start}>Start workout</button>}
+        {next.occurrence && !next.execution && <button className="rounded-xl bg-teal-700 px-5 py-3 font-semibold text-white disabled:opacity-40" disabled={busy || failed || skipLocked || advanceLocked} onClick={start}>Start workout</button>}
         <SkipWorkout key={`skip:${accountId}:${next.planId}`} next={next} selectedOccurrence={selectedWorkout ?? undefined} ownershipEpoch={ownershipEpoch}
-          blocked={busy || failed} onLock={setSkipLocked} refresh={async (command, planCompleted) => {
+          blocked={busy || failed || advanceLocked} onLock={setSkipLocked} refresh={async (command, planCompleted) => {
             const value = await load(undefined, command, planCompleted); if (!value || !('occurrences' in value)) throw new Error('Plan read failed');
           }} />
       </div>
       {(next.execution?.initial.occurrence ?? selectedWorkout) && <PlannedWorkout workout={(next.execution?.initial.occurrence ?? selectedWorkout)!} />}
     </section>}
+    {next && !execution && <AdvanceWeek key={`advance:${accountId}:${next.planId}`} next={next} ownershipEpoch={ownershipEpoch}
+      blocked={busy || failed || !!pending || (!program && skipLocked)} onLock={setAdvanceLocked} refresh={async () => {
+        const value = await load(); if (!value || !('occurrences' in value)) throw new Error('Plan read failed'); return value;
+      }} />}
     {lastSkipped && !program && !execution && <p>Skipped: {lastSkipped.name}, {lastSkipped.stageName}.</p>}
 
   </div>;

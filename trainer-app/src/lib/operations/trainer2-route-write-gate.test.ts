@@ -1,3 +1,4 @@
+import { POST as advance } from '@/app/api/trainer2/weeks/advance/route';
 import { POST as addExercise } from '@/app/api/trainer2/executions/add-exercise/route';
 import { POST as swap } from '@/app/api/trainer2/executions/swap-exercise/route';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -16,6 +17,7 @@ import { POST as corrections } from '@/app/api/trainer2/executions/corrections/r
 import { POST as skip } from '@/app/api/trainer2/occurrences/skip/route';
 
 const routes = [
+  ['weeks/advance', advance, calls.execution, 'AdvanceWeek'],
   ['executions/add-exercise', addExercise, calls.execution, 'AddExercise'],
   ['executions/swap-exercise', swap, calls.execution, 'SwapExercise'],
   ['drafts/activate', activate, calls.draft, 'ActivatePlan'],

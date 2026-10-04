@@ -96,10 +96,10 @@ function addManifestObject(
     });
   }
   if (object.kind === "function") {
-    catalog.functions.push({
-      name: object.name,
-      definition: object.definitionIncludes?.join(" ") ?? "",
-    });
+    const definition=object.definitionIncludes?.join(" ") ?? "";
+    const existing=catalog.functions.find(f=>f.name===object.name);
+    if(existing)existing.definition=definition;
+    else catalog.functions.push({name:object.name,definition});
   }
 }
 
@@ -198,7 +198,7 @@ describe("migration integrity", () => {
     expect(result.migrationIntegrityValid).toBe(false);
     expect(result.blockingReasons).toContain('schema_drift_detected');
     expect(variant === 'missing' ? result.definitions.appliedManifestMissing : result.definitions.appliedManifestIncompatible)
-      .toEqual([expect.stringContaining('trainer2_current_week_eligible')]);
+      .toEqual([expect.stringContaining('20261004010000_trainer2_current_week_selection:function:trainer2_current_week_eligible'),expect.stringContaining('20261004020000_trainer2_explicit_week_advance:function:trainer2_current_week_eligible')]);
   });
   it("keeps the canonical chain aligned with checked-in migration directories", () => {
     expect(loadCheckedInMigrations().map((migration) => migration.name)).toEqual(
@@ -206,17 +206,17 @@ describe("migration integrity", () => {
     );
   });
 
-  it("accepts the conventional chain with current-week selection pending", () => {
+  it("accepts the conventional chain with explicit-week advancement pending", () => {
     const result = report();
 
     expect(EXPECTED_MIGRATION_CHAIN.at(-1)).toBe(
-      "20261004010000_trainer2_current_week_selection",
+      "20261004020000_trainer2_explicit_week_advance",
     );
     expect(result.chain).toMatchObject({
       checkedIn: EXPECTED_MIGRATION_CHAIN.length,
       applied: EXPECTED_MIGRATION_CHAIN.length - 1,
       pending: 1,
-      pendingNames: ["20261004010000_trainer2_current_week_selection"],
+      pendingNames: ["20261004020000_trainer2_explicit_week_advance"],
       exactExpectedChain: true,
     });
     expect(result.migrationIntegrityValid).toBe(true);

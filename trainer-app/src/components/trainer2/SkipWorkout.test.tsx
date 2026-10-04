@@ -30,9 +30,9 @@ describe('exact skip confirmation and delivery', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' })); expect(screen.getByRole('button', { name: 'Skip workout' })).toHaveFocus();
     expect(fetch).not.toHaveBeenCalled(); expect(sessionStorage.length).toBe(0);
   });
-  it('explains final completion', async () => {
+  it('explains explicit final completion', async () => {
     render(<SkipWorkout {...props} next={{ ...next, occurrences: next.occurrences.slice(0, 1) }} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Skip workout' })); expect(screen.getByText(/Skipping it will finish the plan/)).toBeVisible();
+    fireEvent.click(await screen.findByRole('button', { name: 'Skip workout' })); expect(screen.getByText(/On the final week, choose Complete program/)).toBeVisible();
   });
   it.each(['occurrence', 'revision', 'sequence'])('a refreshed %s invalidates, never replaces, the confirmation', async field => {
     const fetch = vi.fn(); vi.stubGlobal('fetch', fetch); const view = render(<SkipWorkout {...props} />);

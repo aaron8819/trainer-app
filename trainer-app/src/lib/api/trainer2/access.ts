@@ -1,3 +1,4 @@
+import { AdmissionInfrastructureError } from "./admission-diagnostics";
 import { assertLocalRequest, developmentEnabled } from "./development";
 import { databaseFor } from "./database";
 import { DraftAccessError, resolveAccount } from "./principal";
@@ -13,8 +14,17 @@ export async function requestContext(request: Request, purpose: "read" | "write"
   if (!local && !hostedTestEnabled()) throw new DraftAccessError("HOSTED_ADMISSION_DISABLED");
   if (local) assertLocalRequest(request);
   if (purpose === "write") assertSessionMutationOrigin(request);
+  let phase = 'identity-database';
+  try {
   const identity = await databaseFor("identity", local);
+  phase = 'session-resolution';
   const principal = await resolveAccount(identity, request);
+  phase = 'session-renewal';
   if (renew && productionWriteStatus() !== "PAUSED") await renewSession(identity, request);
+  phase = purpose + '-database';
   return { db: await databaseFor(purpose, local), principal };
+  } catch (error) {
+    if (error instanceof DraftAccessError || error instanceof AdmissionInfrastructureError) throw error;
+    throw new AdmissionInfrastructureError(phase, error);
+  }
 }

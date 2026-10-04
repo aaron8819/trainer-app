@@ -19,7 +19,7 @@ export function TrainingOverview({ document, next, program = false, selectedId, 
 }) {
   const groups = orderedWorkoutGroups(document);
   const current = next.execution?.initial.planId === next.planId ? next.execution.initial.occurrence : next.occurrence;
-  const currentIndex = current ? groups.findIndex(g => g.workouts.some(w => w.occurrence.id === current.id)) : groups.length - 1;
+  const currentIndex = next.week?.index ?? (current ? groups.findIndex(g => g.workouts.some(w => w.occurrence.id === current.id)) : groups.length - 1);
   const [browsedWeek, setBrowsedWeek] = useState<number | null>(null);
   const weekIndex = program ? Math.min(browsedWeek ?? currentIndex, groups.length - 1) : currentIndex;
   const group = groups[weekIndex];

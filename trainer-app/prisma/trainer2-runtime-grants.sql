@@ -135,3 +135,10 @@ CREATE POLICY trainer2_exercise_addition_reader ON "Trainer2ExerciseAddition" FO
 CREATE POLICY trainer2_exercise_addition_runtime ON "Trainer2ExerciseAddition" FOR ALL TO trainer2_draft_runtime USING (true) WITH CHECK (true);
 GRANT EXECUTE ON FUNCTION trainer2_original_positions(uuid),trainer2_base_positions(uuid) TO trainer2_draft_reader,trainer2_draft_runtime;
 GRANT EXECUTE ON FUNCTION trainer2_current_week_eligible(text,uuid,jsonb,text) TO trainer2_draft_runtime;
+
+-- Apply once after 20261004020000. Fresh installations use the full grants file.
+GRANT SELECT ON "Trainer2WeekAdvance" TO trainer2_draft_reader,trainer2_draft_runtime;
+GRANT INSERT ON "Trainer2WeekAdvance" TO trainer2_draft_runtime;
+CREATE POLICY trainer2_week_reader ON "Trainer2WeekAdvance" FOR SELECT TO trainer2_draft_reader USING (true);
+CREATE POLICY trainer2_week_runtime ON "Trainer2WeekAdvance" TO trainer2_draft_runtime USING (true) WITH CHECK (true);
+GRANT EXECUTE ON FUNCTION trainer2_authored_weeks(jsonb) TO trainer2_draft_runtime;

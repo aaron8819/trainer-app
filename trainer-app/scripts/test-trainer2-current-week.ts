@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
+import { pathToFileURL } from 'node:url';
 import { randomUUID, randomBytes, createHash } from 'node:crypto';
-import { spawnSync, spawn, type SpawnOptions } from 'node:child_process';
+import { spawn, type SpawnOptions } from 'node:child_process';
 import { readFileSync, mkdirSync, writeFileSync, existsSync, cpSync, readdirSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
@@ -9,18 +10,23 @@ import { Pool } from 'pg';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { chromium } from '@playwright/test';
+import { prepareCurrentWeekRelease } from './trainer2/prepare-current-week-release';
 import { authWebPlatformEnvironment } from './trainer2/auth-web-environment';
 import { verificationSource } from './trainer2/verification-source';
 import { inspectFinisherSchemaDiff } from '../src/lib/operations/finisher-schema-drift';
 import { parseExactDisposableConfirmationArgs } from '../src/lib/operations/test-environment-preflight';
-import { captureBrowserOwnership, cleanupSteps, ownedProcessTree, settleBrowserTree, shutdownOwnedBrowser, terminateOwnedProcesses, waitForWorker, type BrowserOwnership, type CleanupResult } from './trainer2/disposable-cleanup';
+import { runCleanupCommand, captureBrowserOwnership, cleanupSteps, ownedProcessTree, settleBrowserTree, shutdownOwnedBrowser, terminateOwnedProcesses, waitForWorker, type BrowserOwnership, type CleanupResult } from './trainer2/disposable-cleanup';
+const diagnoseAdmission=process.argv.includes('--diagnose-admission');
+const diagnoseAdvancement=process.argv.includes('--diagnose-advancement');
+const confirmationArgs=process.argv.slice(2).filter(a=>a!=='--diagnose-admission'&&a!=='--diagnose-advancement');
+const evidenceDirectory=diagnoseAdmission?'admission-diagnosis':diagnoseAdvancement?'advancement-diagnosis':'current-week-evidence';
 async function main() {
-  assert(parseExactDisposableConfirmationArgs(process.argv.slice(2)).valid, 'Expected exactly --confirm-disposable');
+  assert(parseExactDisposableConfirmationArgs(confirmationArgs).valid, 'Expected exactly --confirm-disposable');
   assert(process.send && process.env.TRAINER2_CURRENT_WEEK_OWNER,'Disposable worker must be supervised');
   const suffix=process.env.TRAINER2_CURRENT_WEEK_SUFFIX!;assert(/^[a-f0-9]{12}$/.test(suffix));
   const container = `trainer2-current-week-${suffix}`, database = `trainer2_disposable_current_week_${suffix}`;
   const password = randomUUID(), rolePassword = randomUUID(), accountId = randomUUID(), sessionId = randomUUID(), secret = randomBytes(32).toString('base64url');
-  const artifact = resolve('artifacts/trainer2/current-week-evidence'); mkdirSync(artifact, { recursive: true });
+  const artifact = resolve('artifacts/trainer2/'+evidenceDirectory); mkdirSync(artifact, { recursive: true });
   const source = verificationSource(), checks: string[] = [];
   let assertionsPassed=false;
   let assertionError: string | undefined, cleanup: CleanupResult[] = [], details: Record<string, unknown> = {};
@@ -32,9 +38,9 @@ async function main() {
       assertions:{status:assertionError?'failed':assertionsPassed?'passed':'incomplete',error:assertionError},
       cleanup,worker:{status:'completed',exitCode},runner:{status:'pending-controller'}},null,2));
   });
-  const command = (exe: string, args: string[], env?: NodeJS.ProcessEnv) => {
-    const out = spawnSync(exe,args,{ env, encoding:'utf8', windowsHide:true, maxBuffer:10_000_000, timeout:120_000 });
-    if (out.status !== 0) throw new Error(redact(`Disposable command failed: ${exe} ${args.filter(a => !a.includes('postgresql:')).join(' ')}\n${out.error?.message??out.stderr}`));
+  const command = async (exe: string, args: string[], env?: NodeJS.ProcessEnv) => {
+    const out = await runCleanupCommand(exe,args,120_000,env);
+    if (out.status !== 0) throw new Error(redact(`Disposable command failed: ${exe} ${args.filter(a => !a.includes('postgresql:')).join(' ')}\n${out.error??out.stderr}`));
     return out.stdout;
   };
   const pass = (name: string) => { checks.push(name); console.log(`PASS ${name}`); };
@@ -82,32 +88,35 @@ async function main() {
     server=undefined;
   };
   try {
-    command('docker',['run','--pull=never','--rm','-d','--name',container,'--label',`trainer2.current-week.owner=${process.env.TRAINER2_CURRENT_WEEK_OWNER}`,'-e',`POSTGRES_PASSWORD=${password}`,'-e',`POSTGRES_DB=${database}`,'-p','127.0.0.1::5432','postgres:17-alpine']);
+    await command('docker',['run','--pull=never','--rm','-d','--name',container,'--label',`trainer2.current-week.owner=${process.env.TRAINER2_CURRENT_WEEK_OWNER}`,'-e',`POSTGRES_PASSWORD=${password}`,'-e',`POSTGRES_DB=${database}`,'-p','127.0.0.1::5432','postgres:17-alpine']);
     containerCreated=true;
-    for(let i=0;i<60;i++){ if(spawnSync('docker',['exec',container,'pg_isready','-U','postgres'],{ windowsHide:true,timeout:5_000 }).status===0) break; await new Promise(r=>setTimeout(r,500)); }
-    const port = command('docker',['port',container,'5432/tcp']).trim().split(':').at(-1)!;
+    for(let i=0;i<60;i++){ if((await runCleanupCommand('docker',['exec',container,'pg_isready','-U','postgres'],5_000)).status===0) break; await new Promise(r=>setTimeout(r,500)); }
+    const port = (await command('docker',['port',container,'5432/tcp'])).trim().split(':').at(-1)!;
     const url = (role: string) => `postgresql://${role}:${role==='postgres'?password:rolePassword}@127.0.0.1:${port}/${database}`;
     const migrationEnvironment:NodeJS.ProcessEnv={ ...authWebPlatformEnvironment(process.env), NODE_ENV:'test', DATABASE_URL:url('postgres'), DIRECT_URL:url('postgres') };
     const prior=resolve(artifact,'released-base'); mkdirSync(resolve(prior,'prisma/migrations'),{recursive:true});
-    cpSync('prisma.config.ts',resolve(prior,'prisma.config.ts')); cpSync('prisma/schema.prisma',resolve(prior,'prisma/schema.prisma'));
+    cpSync('prisma.config.ts',resolve(prior,'prisma.config.ts')); writeFileSync(resolve(prior,'prisma/schema.prisma'),await command('git',['show','d9dcfad5ce87769635469929c2f60241db23163a:trainer-app/prisma/schema.prisma']));
     for(const name of readdirSync('prisma/migrations').filter(n=>n<'20261004010000_trainer2_current_week_selection'||n==='migration_lock.toml'))
       cpSync(resolve('prisma/migrations',name),resolve(prior,'prisma/migrations',name),{recursive:true});
-    command(process.execPath,[resolve('node_modules/prisma/build/index.js'),'migrate','deploy','--config',resolve(prior,'prisma.config.ts')],migrationEnvironment);
-    const schemaDiff=(connection:string,schema:string)=>inspectFinisherSchemaDiff(command(process.execPath,[resolve('node_modules/prisma/build/index.js'),'migrate','diff','--from-config-datasource','--to-schema',schema,'--script'],{...authWebPlatformEnvironment(process.env),NODE_ENV:'test',DATABASE_URL:connection,DIRECT_URL:connection}));
-    const candidateDrift=schemaDiff(url('postgres'),'prisma/schema.prisma');
+    await command(process.execPath,[resolve('node_modules/prisma/build/index.js'),'migrate','deploy','--config',resolve(prior,'prisma.config.ts')],migrationEnvironment);
+    const schemaDiff=async(connection:string,schema:string)=>inspectFinisherSchemaDiff(await command(process.execPath,[resolve('node_modules/prisma/build/index.js'),'migrate','diff','--from-config-datasource','--to-schema',schema,'--script'],{...authWebPlatformEnvironment(process.env),NODE_ENV:'test',DATABASE_URL:connection,DIRECT_URL:connection}));
+    const candidateDrift=await schemaDiff(url('postgres'),resolve(prior,'prisma/schema.prisma'));
     details.schemaDrift=candidateDrift;
     pass('Released-base forward migration chain in disposable PostgreSQL');
     admin=new Pool({ connectionString:url('postgres') });
-    await admin.query(`BEGIN; ${readFileSync('prisma/trainer2-runtime-grants.sql','utf8').split('\n').filter(l=>!l.includes('trainer2_current_week_eligible')).join('\n')} COMMIT;`);
+    await admin.query('BEGIN;'+await command('git',['show','d9dcfad5ce87769635469929c2f60241db23163a:trainer-app/prisma/trainer2-runtime-grants.sql'])+'COMMIT;');
     for(const role of ['trainer2_draft_runtime','trainer2_draft_reader','trainer2_identity_runtime']) await admin.query(`ALTER ROLE ${role} LOGIN PASSWORD '${rolePassword}'`);
     await admin.query('INSERT INTO "User" ("id","email") VALUES ($1,$2)',[accountId,`${suffix}@trainer2.invalid`]);
     await admin.query('INSERT INTO "Trainer2Owner" ("id","accountId","passcodeVerifier") VALUES (1,$1,$2)',[accountId,'synthetic-disabled']);
     await admin.query('INSERT INTO "Trainer2DeviceSession" ("id","ownerId","tokenHash","createdAt","renewedAt","expiresAt","absoluteExpiresAt","epoch") VALUES ($1,1,$2,now(),now(),now()+interval \'1 day\',now()+interval \'2 days\',0)',[sessionId,createHash('sha256').update(secret).digest('hex')]);
     process.env.TRAINER2_OWNER_USER_ID=accountId;
-    runtime=new PrismaClient({ adapter:new PrismaPg({ connectionString:url('trainer2_draft_runtime') }) });
-    reader=new PrismaClient({ adapter:new PrismaPg({ connectionString:url('trainer2_draft_reader') }) });
-    const db=runtime, readDb=reader, principal={ accountId,sessionId };
+    const { PrismaClient: ReleasedClient } = await import(pathToFileURL(resolve('../.verification/released-client/index.js')).href);
+    runtime=new ReleasedClient({ adapter:new PrismaPg({ connectionString:url('trainer2_draft_runtime') }) });
+    reader=new ReleasedClient({ adapter:new PrismaPg({ connectionString:url('trainer2_draft_reader') }) });
+    const db=runtime!, readDb=reader!, principal={ accountId,sessionId };
 
+    let restartWeb: (()=>Promise<void>) | undefined;
+    const openBrowser=async()=>{
     // Windows can reserve otherwise-unused ports (EACCES). Ask the OS for an
     // available loopback port instead of sampling its excluded ranges.
     const webPort=await new Promise<number>((resolvePort,reject)=>{
@@ -120,6 +129,7 @@ async function main() {
       TRAINER2_IDENTITY_CONNECTION_STRING:url('trainer2_identity_runtime'),TRAINER2_READ_CONNECTION_STRING:url('trainer2_draft_reader'),TRAINER2_WRITE_CONNECTION_STRING:url('trainer2_draft_runtime')};
     const launch=()=>{server=spawn(process.execPath,[resolve('node_modules/next/dist/bin/next'),'dev','--webpack','--hostname','127.0.0.1','--port',String(webPort)],{env:webEnv,windowsHide:true,stdio:'pipe'});serverCompletion=waitForWorker(server,20*60_000);if(server.pid)track(server.pid);server.stdout?.on('data',v=>serverLog+=v);server.stderr?.on('data',v=>serverLog+=v);};
     const waitWeb=async()=>{for(let i=0;i<120;i++){try{if((await fetch(base+'/trainer2/auth',{signal:AbortSignal.timeout(2_000)})).ok)return;}catch{}assert(server?.exitCode===null);await new Promise(r=>setTimeout(r,500));}throw new Error('Task web did not start');};
+    restartWeb=async()=>{await stopWeb();launch();await waitWeb();};
     launch();await waitWeb();
     // Use Playwright's locally installed, revision-pinned headless browser.
     // Its launcher owns the debugging pipes and internal disposable profile.
@@ -151,17 +161,31 @@ async function main() {
     context.on('requestfinished',request=>pendingBrowserRequests.delete(request));
     context.on('requestfailed',request=>pendingBrowserRequests.delete(request));
     await context.addCookies([{name:'__Host-trainer2-session',value:`${sessionId}.${secret}`,domain:'127.0.0.1',path:'/',secure:true,httpOnly:true,sameSite:'Strict'}]);
+    return {context,base};
+    };
     const { verifyCurrentWeek } = await import('./trainer2/verify-current-week');
-    details.currentWeek = await verifyCurrentWeek({ db, reader: readDb, admin, principal, context, base, artifact, pass,
+    details.currentWeek = await verifyCurrentWeek({ db, reader: readDb, admin, principal, openBrowser, artifact, pass, diagnoseAdmission, diagnoseAdvancement,
       upgrade: async()=>{
-        command(process.execPath,[resolve('node_modules/prisma/build/index.js'),'migrate','deploy'],migrationEnvironment);
-        command(process.execPath,[resolve('node_modules/prisma/build/index.js'),'migrate','deploy'],migrationEnvironment);
-        const upgradedDrift=schemaDiff(url('postgres'),'prisma/schema.prisma');
-        assert.deepEqual(upgradedDrift,candidateDrift,'Current-week migration changed model/schema drift');
+        try { await command(process.execPath,[resolve('node_modules/prisma/build/index.js'),'migrate','deploy'],migrationEnvironment); }
+        catch(error) {
+          const logs=await runCleanupCommand('docker',['logs',container],5_000);
+          details.migrationErrors=redact((logs.stdout+'\n'+logs.stderr).split(/\r?\n/).filter(line=>line.includes('ERROR:')).join('\n'));
+          throw error;
+        }
+        await command(process.execPath,[resolve('node_modules/prisma/build/index.js'),'migrate','deploy'],migrationEnvironment);
+        const upgradedDrift=await schemaDiff(url('postgres'),'prisma/schema.prisma');
         details.upgradedSchemaDrift=upgradedDrift;
+        const databaseOnlyWeekRelations=['Trainer2WeekAdvance_accountId_actionId_fkey','Trainer2WeekAdvance_accountId_planId_revisionId_fkey'];
+        const expectedDrift={...candidateDrift,issues:[...candidateDrift.issues,...databaseOnlyWeekRelations.map(name=>'unexpected-statement:ALTER TABLE "Trainer2WeekAdvance" DROP CONSTRAINT "'+name+'"')].sort()};
+        assert.deepEqual({...upgradedDrift,issues:[...upgradedDrift.issues].sort()},expectedDrift,'Explicit-week migration changed unexpected model/schema drift');
         await admin!.query('GRANT EXECUTE ON FUNCTION trainer2_current_week_eligible(text,uuid,jsonb,text) TO trainer2_draft_runtime');
+        await admin!.query(readFileSync('prisma/trainer2-week-advance-grants.sql','utf8'));
+        await runtime!.$disconnect(); await reader!.$disconnect();
+        runtime=new PrismaClient({adapter:new PrismaPg({connectionString:url('trainer2_draft_runtime')})});
+        reader=new PrismaClient({adapter:new PrismaPg({connectionString:url('trainer2_draft_reader')})});
+        return {db:runtime,reader};
       },
-      restart: async () => { await stopWeb(); launch(); await waitWeb(); } });
+      restart: async () => { assert(restartWeb); await restartWeb(); } });
     const sourceAfter = verificationSource();
     assert.equal(sourceAfter.manifestHash, source.manifestHash, 'Source changed during qualification');
     details.sourceAfter = sourceAfter;
@@ -214,12 +238,12 @@ async function main() {
       {name:'runtime client',run:()=>runtime?.$disconnect()},
       {name:'reader client',run:()=>reader?.$disconnect()},
       {name:'administrative pool',run:()=>admin?.end()},
-      {name:'PostgreSQL container',timeoutMs:20_000,run:()=>{
+      {name:'PostgreSQL container',timeoutMs:20_000,run:async()=>{
         if(!containerCreated)return;
-        const out=spawnSync('docker',['rm','-f',container],{windowsHide:true,encoding:'utf8',timeout:10_000});
-        if(out.status!==0 && !out.stderr.includes('No such container'))throw new Error(out.error?.message??out.stderr);
-        const inspect=spawnSync('docker',['container','inspect',container],{windowsHide:true,encoding:'utf8',timeout:5_000});
-        assert(inspect.status!==0 && inspect.stderr.includes('No such container'),'Task PostgreSQL container survived or absence could not be verified');
+        const out=await runCleanupCommand('docker',['rm','-f',container],10_000);
+        if(out.status!==0 && !/no such (?:container|object)/i.test(out.stderr))throw new Error(out.error??out.stderr);
+        const inspect=await runCleanupCommand('docker',['container','inspect',container],5_000);
+        assert(inspect.status!==0 && /no such (?:container|object)/i.test(inspect.stderr),'Task PostgreSQL container survived or absence could not be verified');
       }},
       {name:'owned process survivor check',run:()=>assert.equal(ownedPids.size,0,'Task processes did not complete cleanup')},
     ]));
@@ -236,9 +260,10 @@ async function main() {
 }
 
 async function supervise() {
-  assert(parseExactDisposableConfirmationArgs(process.argv.slice(2)).valid,'Expected exactly --confirm-disposable');
+  assert(parseExactDisposableConfirmationArgs(confirmationArgs).valid,'Expected exactly --confirm-disposable');
+  await prepareCurrentWeekRelease();
   const owner=randomUUID(),suffix=randomUUID().replaceAll('-','').slice(0,12);
-  const artifact=resolve('artifacts/trainer2/current-week-evidence');mkdirSync(artifact,{recursive:true});
+  const artifact=resolve('artifacts/trainer2/'+evidenceDirectory);mkdirSync(artifact,{recursive:true});
   const reportFile=resolve(artifact,'report.json'),profile=resolve(artifact,`browser-profile-${suffix}`),container=`trainer2-current-week-${suffix}`;
   assert(profile.startsWith(artifact+sep));
   const source=verificationSource();
@@ -270,12 +295,12 @@ async function supervise() {
       await settleBrowserTree(browserOwnership,'terminate',recordTermination);
       await settleBrowserTree(browserOwnership,'observe',recordTermination);
     }},
-    {name:'task PostgreSQL absence',timeoutMs:20_000,run:()=>{
-      const inspect=spawnSync('docker',['container','inspect','--format','{{ index .Config.Labels "trainer2.current-week.owner" }}',container],{encoding:'utf8',windowsHide:true,timeout:5_000});
-      if(inspect.status!==0){assert(inspect.stderr.includes('No such container'),'Cannot verify task container absence');return;}
+    {name:'task PostgreSQL absence',timeoutMs:20_000,run:async()=>{
+      const inspect=await runCleanupCommand('docker',['container','inspect','--format','{{ index .Config.Labels "trainer2.current-week.owner" }}',container],5_000);
+      if(inspect.status!==0){assert(/no such (?:container|object)/i.test(inspect.stderr),'Cannot verify task container absence');return;}
       assert.equal(inspect.stdout.trim(),owner,'Refusing to remove an unowned container');
-      const removed=spawnSync('docker',['rm','-f',container],{encoding:'utf8',windowsHide:true,timeout:10_000});assert.equal(removed.status,0,'Task container removal failed');
-      const after=spawnSync('docker',['container','inspect',container],{encoding:'utf8',windowsHide:true,timeout:5_000});assert(after.status!==0&&after.stderr.includes('No such container'),'Task container survived');
+      const removed=await runCleanupCommand('docker',['rm','-f',container],10_000);assert.equal(removed.status,0,'Task container removal failed');
+      const after=await runCleanupCommand('docker',['container','inspect',container],5_000);assert(after.status!==0&&/no such (?:container|object)/i.test(after.stderr),'Task container survived');
     }},
     {name:'browser profile after worker exit',timeoutMs:30_000,run:async()=>{
       await rm(profile,{recursive:true,force:true,maxRetries:8,retryDelay:500});

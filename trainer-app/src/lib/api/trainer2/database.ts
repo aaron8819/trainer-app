@@ -1,4 +1,5 @@
 import "next/headers";
+import { AdmissionInfrastructureError } from "./admission-diagnostics";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool, type PoolClient } from "pg";
@@ -9,7 +10,7 @@ export const connectionRoles = { identity: "trainer2_identity_runtime", read: "t
 export type ConnectionPurpose = keyof typeof connectionRoles;
 const variables = { identity: "TRAINER2_IDENTITY_CONNECTION_STRING", read: "TRAINER2_READ_CONNECTION_STRING", write: "TRAINER2_WRITE_CONNECTION_STRING" } as const;
 const identityTables = ["Trainer2Owner", "Trainer2DeviceSession"];
-const trainingTables = ["Trainer2AccountTrainingState", "Trainer2Plan", "Trainer2PlanRevision", "Trainer2Identity", "Trainer2DurableAction", "Trainer2ActionOutcome", "Trainer2InstructionRevision", "Trainer2PlanDecision", "Trainer2Execution", "Trainer2SetResultRevision", "Trainer2ExecutionFinish", "Trainer2ExecutionDiscard", "Trainer2OccurrenceSkip", "Trainer2SetSkip", "Trainer2ExerciseSwap", "Trainer2SetAddition", "Trainer2ExerciseAddition"];
+const trainingTables = ["Trainer2WeekAdvance", "Trainer2AccountTrainingState", "Trainer2Plan", "Trainer2PlanRevision", "Trainer2Identity", "Trainer2DurableAction", "Trainer2ActionOutcome", "Trainer2InstructionRevision", "Trainer2PlanDecision", "Trainer2Execution", "Trainer2SetResultRevision", "Trainer2ExecutionFinish", "Trainer2ExecutionDiscard", "Trainer2OccurrenceSkip", "Trainer2SetSkip", "Trainer2ExerciseSwap", "Trainer2SetAddition", "Trainer2ExerciseAddition"];
 const tables = [...identityTables, ...trainingTables];
 
 export function connectionString(purpose: ConnectionPurpose, local: boolean, env: Record<string, string | undefined> = process.env) {
@@ -117,9 +118,11 @@ export async function databaseFor(purpose: ConnectionPurpose, local: boolean): P
     connection = { url, local, pool, db: new PrismaClient({ adapter: new PrismaPg(pool) }) };
     connections.set(purpose, connection);
   }
-  const client = await connection.pool.connect();
+  let client: PoolClient;
+  try { client = await connection.pool.connect(); }
+  catch (error) { throw new AdmissionInfrastructureError(purpose + '-pool-acquire', error); }
   try { await assertConnectionPrivileges(client, purpose); }
-  catch (error) { client.release(true); throw error; }
+  catch (error) { client.release(true); if (error instanceof DraftAccessError) throw error; throw new AdmissionInfrastructureError(purpose + '-privilege-inspection', error); }
   client.release();
   return connection.db;
 }

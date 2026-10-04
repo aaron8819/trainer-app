@@ -8,11 +8,11 @@ type CleanupCommandResult = {
 
 // Keep the event loop available for the browser's exit/close and pipe handlers.
 // A synchronous OS poll prevents the parent observing child completion promptly.
-async function runCleanupCommand(file: string, args: string[], timeoutMs: number): Promise<CleanupCommandResult> {
+export async function runCleanupCommand(file: string, args: string[], timeoutMs: number, env?: NodeJS.ProcessEnv): Promise<CleanupCommandResult> {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error('Invalid cleanup command deadline');
   const startedAt = new Date().toISOString();
   const deadline = Date.now() + timeoutMs;
-  const child = spawn(file, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(file, args, { env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   let stdout = '', stderr = '';
   child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
   child.stdout.on('data', value => { stdout += value; });

@@ -2,7 +2,7 @@ import { readExerciseAdditions } from './exercise-additions-read';
 import { readSetAdditions } from './set-additions-read';
 import { readExerciseSwaps } from './exercise-swap';
 import { readSetSkips } from './skip-set';
-import { unresolvedOccurrences, eligibleCurrentWeekOccurrences } from '../../engine/trainer2/occurrence-resolution';
+import { authoredWeeks, eligibleCurrentWeekOccurrences } from '../../engine/trainer2/occurrence-resolution';
 import { readOccurrenceResolution } from './occurrence-resolution';
 import { finishBinding } from '../../trainer2-contracts/workout-finish';
 import { savedSetResult } from '../../trainer2-contracts/set-results';
@@ -64,8 +64,14 @@ export async function readNextWorkout(tx: DB, principal: ServerPrincipal, planId
   const open = await tx.trainer2Execution.findFirst({ where: { accountId: principal.accountId, lifecycle: 'Open' } });
   const resolution = await readOccurrenceResolution(tx, principal.accountId, planId);
   const state = await tx.trainer2AccountTrainingState.findUniqueOrThrow({ where: { accountId: principal.accountId } });
+  const weeks = authoredWeeks(intent.occurrences), week = weeks[plan.currentWeekIndex];
+  if (!week) throw new InvalidStartSnapshot();
+  const eligible = eligibleCurrentWeekOccurrences(intent.occurrences, resolution.resolvedIds, plan.currentWeekIndex);
   return { accountId: principal.accountId, planId, revisionId: revision.id, acceptedSequence: state.acceptedSequence.toString(),
-    eligibleOccurrenceIds: plan.lifecycle === 'Completed' ? [] : eligibleCurrentWeekOccurrences(intent.occurrences, resolution.resolvedIds).map(o => o.id),
+    week: { index: plan.currentWeekIndex, firstOccurrenceId: week[0].id, occurrenceIds: week.map(o => o.id),
+      ready: week.every(o => resolution.resolvedIds.has(o.id)),
+      final: plan.currentWeekIndex === weeks.length - 1 },
+    eligibleOccurrenceIds: plan.lifecycle === 'Completed' ? [] : eligible.map(o => o.id),
     occurrences: intent.occurrences.map(o => {
       const skip = resolution.skips.find(s => s.occurrenceId === o.id);
       return { executionId: resolution.finished.find(e => e.occurrenceId === o.id)?.id ?? null, occurrenceId: o.id, name: o.name, stageName: intent.stages.find(s => s.id === o.stageId)!.name,
@@ -73,12 +79,12 @@ export async function readNextWorkout(tx: DB, principal: ServerPrincipal, planId
         skip: skip ? { actionId: skip.actionId, actorAccountId: skip.accountId, revisionId: skip.revisionId, skippedAt: skip.skippedAt.toISOString(), planCompleted: skip.planCompleted } : null };
     }),
     instructionEpoch: (await readInstructions(tx, principal.accountId)).epoch,
-    lifecycle: plan.lifecycle, occurrence: plan.lifecycle === 'Completed' ? null : unresolvedOccurrences(intent.occurrences, resolution.resolvedIds)[0] ?? null, execution: open ? await readExecution(tx, principal, open.id) : null };
+    lifecycle: plan.lifecycle, occurrence: plan.lifecycle === 'Completed' ? null : eligible[0] ?? null, execution: open ? await readExecution(tx, principal, open.id) : null };
 }
 export async function startOccurrence(db: PrismaClient, principal: ServerPrincipal, input: unknown) {
   const command = startOccurrenceCommand.parse(input);
   return acceptCommand(db, principal, input, command, async tx => {
-    const { revision, intent } = await activeSource(tx, principal.accountId, command.target.planId);
+    const { plan, revision, intent } = await activeSource(tx, principal.accountId, command.target.planId);
     if (revision.id !== command.expected.planRevisionId) throw new CommandFailure('STALE_REVISION', true);
     const occurrence = intent.occurrences.find(o => o.id === command.target.occurrenceId);
     if (!occurrence) throw new CommandFailure('OCCURRENCE_NOT_FOUND');
@@ -86,7 +92,7 @@ export async function startOccurrence(db: PrismaClient, principal: ServerPrincip
     const existing = await tx.trainer2Execution.findFirst({ where: { accountId: principal.accountId, occurrenceId: occurrence.id, lifecycle: { not: 'Discarded' } } });
     if (existing) throw new CommandFailure('ALREADY_STARTED', true);
     const { resolvedIds } = await readOccurrenceResolution(tx, principal.accountId, command.target.planId);
-    if (!eligibleCurrentWeekOccurrences(intent.occurrences, resolvedIds).some(o => o.id === occurrence.id)) throw new CommandFailure('OCCURRENCE_NOT_CURRENT_WEEK', true);
+    if (!eligibleCurrentWeekOccurrences(intent.occurrences, resolvedIds, plan.currentWeekIndex).some(o => o.id === occurrence.id)) throw new CommandFailure('OCCURRENCE_NOT_CURRENT_WEEK', true);
     if (await tx.trainer2Execution.findFirst({ where: { accountId: principal.accountId, lifecycle: 'Open' } }))
       throw new CommandFailure('OPEN_EXECUTION_CONFLICT', true);
     const instructions = await readInstructions(tx, principal.accountId);

@@ -1,5 +1,7 @@
 # 07 Operations
 
+Trainer2 current-week preparation and recovery require coordinated reader/server deployment after the additive cursor/advancement migration and incremental grants. See [exact release ordering and pending-data preservation](architecture/trainer2/CURRENT_WEEK_SELECTION.md#coordinated-release-and-recovery). No hosted or production action is authorized by this local slice.
+
 Trainer2 current-week selection: [eligibility, responsive Program, immutable start, migration/recovery and disposable verification](architecture/trainer2/CURRENT_WEEK_SELECTION.md).
 
 Trainer2 session-added working sets: [execution ownership, immutable addition facts, command/swap/finish contracts, logger and local verification](architecture/trainer2/ADD_SET.md).

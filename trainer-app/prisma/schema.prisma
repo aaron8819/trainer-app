@@ -77,6 +77,7 @@ model Trainer2Plan {
   accountId         String
   currentRevisionId String @db.Uuid
   lifecycle         String @default("Draft")
+  currentWeekIndex  Int @default(0)
   initialApprovedRevisionId String? @db.Uuid
   tombstonedAt      DateTime? @db.Timestamptz(6)
   @@unique([accountId, id])
@@ -1484,4 +1485,18 @@ model Trainer2ExerciseAddition {
   @@id([executionId, positionId])
   @@unique([executionId, ordinal])
   @@unique([accountId, actionId])
+}
+
+model Trainer2WeekAdvance {
+  accountId String
+  planId String @db.Uuid
+  revisionId String @db.Uuid
+  actionId String @db.Uuid
+  fromWeek Int
+  toWeek Int
+  planCompleted Boolean
+  expected Json
+  createdTx BigInt @default(dbgenerated("txid_current()"))
+  @@id([accountId, actionId])
+  @@unique([planId, fromWeek])
 }

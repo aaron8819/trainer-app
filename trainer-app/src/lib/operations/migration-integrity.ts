@@ -42,6 +42,7 @@ export const EXPECTED_MIGRATION_CHAIN = [
   "20261001010000_trainer2_add_set",
   "20261002010000_trainer2_add_exercise",
   "20261004010000_trainer2_current_week_selection",
+  "20261004020000_trainer2_explicit_week_advance",
 ] as const;
 
 export type LedgerRow = {
@@ -152,6 +153,7 @@ type ObjectExpectation = {
   index?: Pick<IndexFact, "unique" | "columns" | "predicate">;
   constraint?: Pick<ConstraintFact, "type" | "definition">;
   definitionIncludes?: string[];
+  replacesExisting?: boolean;
 };
 
 export type PendingMigrationExpectation = {
@@ -507,7 +509,17 @@ export const PENDING_ARCHITECTURE_MANIFEST: readonly PendingMigrationExpectation
   {
     migration: "20261004010000_trainer2_current_week_selection", effect: "objects",
     objects: [
-      { kind: "function", name: "trainer2_current_week_eligible", definitionIncludes: ["trainer2_occurrence_resolved", "lag", "sum"] },
+      { kind: "function", name: "trainer2_current_week_eligible", definitionIncludes: ["trainer2_occurrence_resolved"] },
+    ],
+  },
+  {
+    migration: "20261004020000_trainer2_explicit_week_advance", effect: "objects",
+    objects: [
+      { kind: "table", name: "Trainer2WeekAdvance" },
+      { kind: "column", table: "Trainer2Plan", name: "currentWeekIndex", column: {type: "integer", nullable: false, default: "0"} },
+      { kind: "function", name: "trainer2_authored_weeks", definitionIncludes: ["lag", "sum"] },
+      { kind: "function", name: "trainer2_current_week_eligible", replacesExisting: true, definitionIncludes: ["trainer2_authored_weeks", "currentWeekIndex", "trainer2_occurrence_resolved"] },
+      ...["trainer2_week_immutable","trainer2_week_guard","trainer2_week_seal"].map(name=>({kind:"trigger" as const,table:"Trainer2WeekAdvance",name,definitionIncludes:[name]})),
     ],
   },
 ] as const;
@@ -1004,11 +1016,14 @@ export function buildMigrationIntegrityReport(input: {
       commentsOnly.push(`${migration.migration}:retains:${migration.retainedObjects?.join(",") ?? "none"}`);
       continue;
     }
-    const present = migration.objects.filter((object) => objectExists(input.catalog, object));
+    // Replacement helpers already exist before this migration; only new objects
+    // establish an unledgered partial application. Applied definitions remain checked.
+    const newObjects = migration.objects.filter((object) => !object.replacesExisting);
+    const present = newObjects.filter((object) => objectExists(input.catalog, object));
     const incompatiblePresent = present.filter((object) => !pendingObjectCompatible(input.catalog, object));
     if (incompatiblePresent.length > 0) {
       incompatible.push(...incompatiblePresent.map((object) => `${migration.migration}:${objectKey(object)}:incompatible`));
-    } else if (present.length === migration.objects.length && present.length > 0) {
+    } else if (present.length === newObjects.length && present.length > 0) {
       unexpectedPresent.push(`${migration.migration}:fully_present_without_ledger`);
     } else if (present.length > 0) {
       partiallyPresent.push(...present.map((object) => `${migration.migration}:${objectKey(object)}`));

@@ -4,14 +4,16 @@ import { unresolvedOccurrences, currentWeekOccurrences, eligibleCurrentWeekOccur
 import { skipOccurrenceCommand } from '../../trainer2-contracts/skip-occurrence';
 
 describe('Planning occurrence resolution', () => {
-  it('allows every unresolved workout in the current contiguous week and advances only at its endpoint', () => {
+  it('allows every unresolved workout in the current contiguous week and retains the completed week until the persisted cursor advances', () => {
     const occurrences = [{ id: 'a', stageId: 'week-z' }, { id: 'b', stageId: 'week-z' }, { id: 'c', stageId: 'week-a' }, { id: 'd', stageId: 'week-z' }];
     expect(eligibleCurrentWeekOccurrences(occurrences, new Set()).map(o => o.id)).toEqual(['a', 'b']);
     expect(currentWeekOccurrences(occurrences, new Set(['b'])).map(o => o.id)).toEqual(['a', 'b']);
     expect(eligibleCurrentWeekOccurrences(occurrences, new Set(['b'])).map(o => o.id)).toEqual(['a']);
-    expect(eligibleCurrentWeekOccurrences(occurrences, new Set(['a', 'b'])).map(o => o.id)).toEqual(['c']);
-    expect(eligibleCurrentWeekOccurrences(occurrences, new Set(['a', 'b', 'c'])).map(o => o.id)).toEqual(['d']);
-    expect(currentWeekOccurrences(occurrences, new Set(['a', 'b', 'c', 'd']))).toEqual([]);
+    expect(eligibleCurrentWeekOccurrences(occurrences, new Set(['a', 'b'])).map(o => o.id)).toEqual([]);
+    expect(currentWeekOccurrences(occurrences, new Set(['a', 'b'])).map(o => o.id)).toEqual(['a', 'b']);
+    expect(eligibleCurrentWeekOccurrences(occurrences, new Set(['a', 'b']), 1).map(o => o.id)).toEqual(['c']);
+    expect(eligibleCurrentWeekOccurrences(occurrences, new Set(['a', 'b', 'c']), 2).map(o => o.id)).toEqual(['d']);
+    expect(currentWeekOccurrences(occurrences, new Set(['a', 'b', 'c', 'd']), 2).map(o => o.id)).toEqual(['d']);
   });
   const ordered = [{ id: 'z', name: 'Same', stage: 2 }, { id: 'a', name: 'Same', stage: 1 }, { id: 'q', name: 'Same', stage: 2 }];
   it.each([[[], ['z', 'a', 'q']], [['z'], ['a', 'q']], [['a'], ['z', 'q']], [['z', 'a'], ['q']], [['z', 'a', 'q'], []]])('retains authored order with terminal IDs %j', (resolved, expected) => {

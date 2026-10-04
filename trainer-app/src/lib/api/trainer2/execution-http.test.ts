@@ -2,7 +2,8 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { executionHttp } from './execution-http';
 import { InvalidStartSnapshot } from './execution';
-const mocks = vi.hoisted(() => ({ context: vi.fn(), read: vi.fn(), next: vi.fn(), start: vi.fn(), save: vi.fn(), finish: vi.fn(), historical: vi.fn(), discard: vi.fn(), skip: vi.fn(), skipSet: vi.fn() }));
+const mocks = vi.hoisted(() => ({ context: vi.fn(), read: vi.fn(), next: vi.fn(), start: vi.fn(), save: vi.fn(), finish: vi.fn(), historical: vi.fn(), discard: vi.fn(), skip: vi.fn(), skipSet: vi.fn(), advance: vi.fn() }));
+vi.mock('./advance-week',()=>({advanceWeek:mocks.advance}));
 vi.mock('./access', () => ({ requestContext: mocks.context }));
 vi.mock('./skip-set', () => ({ skipSet: mocks.skipSet }));
 vi.mock('./skip-occurrence', () => ({ skipOccurrence: mocks.skip }));
@@ -208,4 +209,10 @@ it('delegates admitted SkipSet requests through the registered route', async () 
     expect(response.status).toBe(200);
     expect(mocks.skipSet).toHaveBeenCalledOnce();
   } finally { vi.unstubAllEnvs(); }
+});
+
+it.each([['Accepted',200],['Conflict',409],['Rejected',422]])('routes AdvanceWeek %s through the trusted writer',async(status,http)=>{
+  const db={},principal={accountId:'trusted'},input={commandType:'AdvanceWeek'};mocks.context.mockResolvedValue({db,principal});mocks.advance.mockResolvedValue({outcome:{status}});
+  const request=new Request('http://localhost/advance',{method:'POST',body:JSON.stringify(input)});
+  expect((await executionHttp(request,'AdvanceWeek')).status).toBe(http);expect(mocks.context).toHaveBeenCalledWith(request,'write');expect(mocks.advance).toHaveBeenCalledWith(db,principal,input);
 });

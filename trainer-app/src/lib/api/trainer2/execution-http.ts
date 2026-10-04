@@ -1,3 +1,4 @@
+import { AdmissionInfrastructureError, infrastructureReason } from './admission-diagnostics';
 import { previewExerciseSwap, swapExercise } from './exercise-swap';
 import { skipSet } from './skip-set';
 import { readExecutionWithPrevious } from './previous-performance';
@@ -14,15 +15,16 @@ import { ActionCollision, CommandFailure } from './command';
 import { InvalidStartSnapshot, readNextWorkout, startOccurrence } from './execution';
 import { addSet } from './add-set';
 import { addExercise } from './add-exercise';
+import { advanceWeek } from './advance-week';
 
-export async function executionHttp(request: Request, operation: 'AddExercise' | 'AddSet' | 'SwapExercise' | 'PreviewExerciseSwap' | 'SkipSet' | 'SkipOccurrence' | 'DiscardEmptyExecution' | 'CorrectHistoricalSetResult' | 'FinishExecution' | 'StartOccurrence' | 'SaveSetResult' | 'ReadExecution' | 'ReadNext', target?: string) {
+export async function executionHttp(request: Request, operation: 'AdvanceWeek' | 'AddExercise' | 'AddSet' | 'SwapExercise' | 'PreviewExerciseSwap' | 'SkipSet' | 'SkipOccurrence' | 'DiscardEmptyExecution' | 'CorrectHistoricalSetResult' | 'FinishExecution' | 'StartOccurrence' | 'SaveSetResult' | 'ReadExecution' | 'ReadNext', target?: string) {
   const started = Date.now();
   let stage = 'admission';
   const json = (body: unknown, status: number) => Response.json(body, { status,
     headers: { 'Cache-Control': 'private, no-store', Vary: 'Cookie, Authorization' } });
   try {
     if (operation === 'PreviewExerciseSwap') assertSessionMutationOrigin(request);
-    const purpose = operation === 'AddExercise' || operation === 'AddSet' || operation === 'SwapExercise' || operation === 'SkipSet' || operation === 'SkipOccurrence' || operation === 'DiscardEmptyExecution' || operation === 'CorrectHistoricalSetResult' || operation === 'StartOccurrence' || operation === 'SaveSetResult' || operation === 'FinishExecution' ? 'write' : 'read';
+    const purpose = operation === 'AdvanceWeek' || operation === 'AddExercise' || operation === 'AddSet' || operation === 'SwapExercise' || operation === 'SkipSet' || operation === 'SkipOccurrence' || operation === 'DiscardEmptyExecution' || operation === 'CorrectHistoricalSetResult' || operation === 'StartOccurrence' || operation === 'SaveSetResult' || operation === 'FinishExecution' ? 'write' : 'read';
     const { db, principal } = operation === 'PreviewExerciseSwap' ? await requestContext(request, purpose, false) : await requestContext(request, purpose);
     stage = 'transaction';
     if (operation === 'ReadExecution' || operation === 'ReadNext') {
@@ -42,7 +44,7 @@ export async function executionHttp(request: Request, operation: 'AddExercise' |
       });
       return json(value, 200);
     }
-    const result = await (operation === 'AddExercise' ? addExercise : operation === 'AddSet' ? addSet : operation === 'SwapExercise' ? swapExercise : operation === 'SkipSet' ? skipSet : operation === 'SkipOccurrence' ? skipOccurrence : operation === 'DiscardEmptyExecution' ? discardEmptyExecution : operation === 'CorrectHistoricalSetResult' ? correctHistoricalSetResult : operation === 'FinishExecution' ? finishExecution : operation === 'SaveSetResult' ? saveSetResult : startOccurrence)(db, principal, JSON.parse(text));
+    const result = await (operation === 'AdvanceWeek' ? advanceWeek : operation === 'AddExercise' ? addExercise : operation === 'AddSet' ? addSet : operation === 'SwapExercise' ? swapExercise : operation === 'SkipSet' ? skipSet : operation === 'SkipOccurrence' ? skipOccurrence : operation === 'DiscardEmptyExecution' ? discardEmptyExecution : operation === 'CorrectHistoricalSetResult' ? correctHistoricalSetResult : operation === 'FinishExecution' ? finishExecution : operation === 'SaveSetResult' ? saveSetResult : startOccurrence)(db, principal, JSON.parse(text));
     return json(result, result.outcome.status === 'Accepted' ? 200 : result.outcome.status === 'Conflict' ? 409 : 422);
   } catch (error) {
     if (error instanceof DraftAccessError) return json({ error: error.message }, 403);
@@ -55,6 +57,7 @@ export async function executionHttp(request: Request, operation: 'AddExercise' |
     const safeCode = (value: unknown) => typeof value === 'string' && /^[A-Z0-9_]{1,40}$/.test(value) ? value : undefined;
     console.error('trainer2_execution_failed', { operation, stage, elapsedMs: Date.now() - started,
       code: safeCode(failure?.code), causeCode: safeCode(failure?.cause?.code),
+      ...(error instanceof AdmissionInfrastructureError ? { admissionPhase: error.phase, infrastructureReason: infrastructureReason(error.cause) } : {}),
       errorType: typeof failure?.name === 'string' && /^[A-Za-z]{1,60}$/.test(failure.name) ? failure.name : 'Unknown' });
     return json({ error: 'EXECUTION_TRANSACTION_FAILED', retry: 'Retry the same action envelope' }, 503);
   }

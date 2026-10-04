@@ -7,6 +7,7 @@ import { occurrenceResolutionRead, skipBinding } from './skip-occurrence';
 import { discardFact } from './discard-execution';
 import { finishFact, reviewedResults, unrecordedTargets } from './workout-finish';
 import { z } from 'zod';
+import { weekRead } from './advance-week';
 import { createDraftCommand, id, occurrence, stage, progressionIntent } from './draft';
 import { hash, instructionSnapshot } from './activation';
 import { canonicalJson } from './canonical-json';
@@ -158,12 +159,16 @@ export const startResponse = z.object({ replayed: z.boolean(), outcomeCursor: cu
   ]),
 }).strict();
 export const nextWorkoutRead = z.object({ acceptedSequence: skipBinding.shape.acceptedSequence, occurrences: z.array(occurrenceResolutionRead).min(1), accountId: z.string().min(1), planId: id, revisionId: id,
-  eligibleOccurrenceIds: z.array(id).optional(),
-  instructionEpoch: z.int().min(0), lifecycle: z.enum(['Active', 'Completed']), occurrence: occurrence.nullable(), execution: executionRead.nullable() }).strict().refine(v => (v.lifecycle === 'Completed') === (v.occurrence === null) && (!v.execution || v.execution.lifecycle === 'Open') &&
+  week: weekRead.optional(), eligibleOccurrenceIds: z.array(id).optional(),
+  instructionEpoch: z.int().min(0), lifecycle: z.enum(['Active', 'Completed']), occurrence: occurrence.nullable(), execution: executionRead.nullable() }).strict().refine(v => (v.week ? (v.lifecycle !== 'Completed' || v.occurrence === null) && (v.week.ready === (v.occurrence === null)) : (v.lifecycle === 'Completed') === (v.occurrence === null)) && (!v.execution || v.execution.lifecycle === 'Open') &&
   new Set(v.occurrences.map(o => o.occurrenceId)).size === v.occurrences.length &&
+  (!v.week || (v.week.firstOccurrenceId === v.week.occurrenceIds[0] && v.week.occurrenceIds.every(id => v.occurrences.some(o => o.occurrenceId === id)) &&
+    v.week.ready === v.week.occurrenceIds.every(id => v.occurrences.find(o => o.occurrenceId === id)?.status !== 'Pending') &&
+    (!v.occurrence || v.week.occurrenceIds.includes(v.occurrence.id)) &&
+    (!v.eligibleOccurrenceIds || v.eligibleOccurrenceIds.length === v.week.occurrenceIds.filter(id => v.occurrences.find(o => o.occurrenceId === id)?.status === 'Pending').length && v.eligibleOccurrenceIds.every(id => v.week!.occurrenceIds.includes(id))))) &&
   (!v.eligibleOccurrenceIds || (new Set(v.eligibleOccurrenceIds).size === v.eligibleOccurrenceIds.length &&
     v.eligibleOccurrenceIds.every(id => v.occurrences.some(o => o.occurrenceId === id && o.status === 'Pending')) &&
     (v.occurrence ? v.eligibleOccurrenceIds.includes(v.occurrence.id) : v.eligibleOccurrenceIds.length === 0))) &&
-  (v.occurrences.find(o => o.status === 'Pending')?.occurrenceId ?? null) === (v.occurrence?.id ?? null) &&
+  (v.week ? !v.occurrence || v.occurrences.some(o => o.status === 'Pending' && o.occurrenceId === v.occurrence?.id) : (v.occurrences.find(o => o.status === 'Pending')?.occurrenceId ?? null) === (v.occurrence?.id ?? null)) &&
   v.occurrences.every(o => !o.skip || (o.skip.actorAccountId === v.accountId && o.skip.revisionId === v.revisionId && (!o.skip.planCompleted || v.lifecycle === 'Completed'))));
 export type NextWorkoutRead = z.infer<typeof nextWorkoutRead>;

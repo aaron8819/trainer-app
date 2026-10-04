@@ -11,6 +11,7 @@ export const APPLICATION_MUTATION_ROUTES = new Map<string, string>([
   ["trainer2/executions/results/route.ts#POST", "set_logging"],
   ["trainer2/executions/corrections/route.ts#POST", "set_logging"],
   ["trainer2/occurrences/skip/route.ts#POST", "mesocycle_lifecycle"],
+  ["trainer2/weeks/advance/route.ts#POST", "mesocycle_lifecycle"],
   ["trainer2/executions/skip-set/route.ts#POST", "set_logging"],
   ["trainer2/executions/add-set/route.ts#POST", "set_logging"],
   ["trainer2/executions/add-exercise/route.ts#POST", "set_logging"],

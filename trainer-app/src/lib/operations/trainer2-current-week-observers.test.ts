@@ -20,39 +20,112 @@ describe('current-week container cleanup',()=>{
   });
 });
 import { createServer } from 'node:http';
-import { EventEmitter } from 'node:events';
+import { EventEmitter, once } from 'node:events';
+import { createHmac, randomBytes } from 'node:crypto';
 import type { ChildProcess } from 'node:child_process';
 import { observeWebReadiness } from '../../../scripts/trainer2/web-readiness';
 
 const child=()=>Object.assign(new EventEmitter(),{pid:123,exitCode:null,signalCode:null}) as ChildProcess;
+const key=randomBytes(32).toString('hex');
+const html='<!doctype html><html><head><title>Trainer</title></head><body><main><h1>Trainer2 sign in</h1><p>Signed out.</p><form action="/trainer2/auth/sign-in" method="post"><label>Passcode<input name="passcode" type="password" required minlength="12" maxlength="128" autocomplete="current-password"></label><button type="submit">Sign in</button></form></main></body></html>';
+function signed(request: import('node:http').IncomingMessage, response: import('node:http').ServerResponse, signingKey=key) {
+  const challenge=new URL(request.url!,'http://localhost').searchParams.get('readiness');
+  response.setHeader('content-type','text/html; charset=utf-8');
+  response.setHeader('x-trainer2-readiness-pid',String(process.pid));
+  response.setHeader('x-trainer2-readiness-proof',createHmac('sha256',signingKey).update(challenge+'\n123\n'+process.pid).digest('hex'));
+}
 describe('current-week readiness observation',()=>{
   it('lets cold rendering finish within the original total bound and consumes the auth body',async()=>{
-    const server=createServer((_req,res)=>setTimeout(()=>res.end('<h1>Trainer2 sign in</h1>'),80));
+    const server=createServer((req,res)=>{signed(req,res);setTimeout(()=>res.end(html),80);});
     await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
     const address=server.address() as {port:number}, base='http://127.0.0.1:'+address.port;
     const rows:Record<string,unknown>[]=[];
     try {
       await expect(fetch(base,{signal:AbortSignal.timeout(20)})).rejects.toThrow();
-      await observeWebReadiness(base,child(),r=>rows.push(r),1000);
-      expect(rows.at(-1)).toMatchObject({status:200,authHeading:true,pid:123,origin:base});
+      await observeWebReadiness(base,child(),r=>rows.push(r),{key,budgetMs:2000});
+      expect(rows.at(-1)).toMatchObject({status:200,authPageMatched:true,instanceMatched:true,launcherPid:123,responderPid:process.pid,origin:base});
       expect(rows.at(-1)?.bytes).toBeGreaterThan(0);
     } finally {server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
   });
-  it.each([302,200])('rejects a redirect or wrong body at status %s without retrying',async status=>{
+  it.each([302,404,500])('rejects an unsuccessful response at status %s without retrying',async status=>{
     let requests=0;
     const server=createServer((_req,res)=>{requests++;res.writeHead(status,{location:'/elsewhere'});res.end('other page');});
     await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
     try {
-      await expect(observeWebReadiness('http://127.0.0.1:'+(server.address() as {port:number}).port,child(),()=>{},1000)).rejects.toThrow('did not match');
+      await expect(observeWebReadiness('http://127.0.0.1:'+(server.address() as {port:number}).port,child(),()=>{},{key,budgetMs:1000})).rejects.toThrow('unsuccessful');
       expect(requests).toBe(1);
     } finally {server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
   });
   it('aborts an in-flight observation when its exact child exits',async()=>{
     const task=child(),server=createServer(()=>setTimeout(()=>task.emit('exit',1),20));
     await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
-    try {await expect(observeWebReadiness('http://127.0.0.1:'+(server.address() as {port:number}).port,task,()=>{},1000)).rejects.toThrow('exited');}
+    try {await expect(observeWebReadiness('http://127.0.0.1:'+(server.address() as {port:number}).port,task,()=>{},{key,budgetMs:1000})).rejects.toThrow('exited');}
     finally {server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
   });
+  it.each([
+    ['heading only','<!doctype html><html><body><main><h1>Trainer2 sign in</h1></main></body></html>'],
+    ['script string','<!doctype html><html><body><script>'+JSON.stringify(html)+'</script></body></html>'],
+    ['error marker',html.replace('<main>','<main data-next-error-message="render failed">')],
+    ['wrong form',html.replace('/trainer2/auth/sign-in','/other')],
+    ['hidden form',html.replace('<form ','<form hidden ')],
+    ['truncated',html.replace('</body></html>','')],
+  ])('rejects misleading HTML: %s',async(_name,body)=>{
+    const server=createServer((req,res)=>{signed(req,res);res.end(body);});
+    await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
+    try {await expect(observeWebReadiness('http://127.0.0.1:'+(server.address() as {port:number}).port,child(),()=>{},{key,budgetMs:2000})).rejects.toThrow('auth page mismatch');}
+    finally {server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
+  });
+  it('rejects the exact unrelated-process 40-byte text-error counterexample without attributing its PID',async()=>{
+    const task=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{windowsHide:true,stdio:'ignore'});
+    const completion=waitForWorker(task,10000), rows:Record<string,unknown>[]=[];
+    const server=createServer((_req,res)=>{res.setHeader('content-type','text/plain');res.end('Trainer2 sign in: upstream render failed');});
+    await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
+    try {
+      await expect(observeWebReadiness('http://127.0.0.1:'+(server.address() as {port:number}).port,task,r=>rows.push(r),{key,budgetMs:2000})).rejects.toThrow('instance mismatch');
+      expect(rows.at(-1)).toMatchObject({launcherPid:task.pid,responderPid:null,htmlContentType:false,instanceMatched:false});
+      expect(JSON.stringify(rows)).not.toContain(key);
+    }finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));task.kill();await completion;}
+  });
+  it.each(['other key','missing proof','text content type','200 redirect','replayed proof','forged PID'])('rejects a misleading response with %s',async variant=>{
+    const server=createServer((req,res)=>{
+      signed(req,res,variant==='other key'?'b'.repeat(64):key);
+      if(variant==='missing proof')res.removeHeader('x-trainer2-readiness-proof');
+      if(variant==='text content type')res.setHeader('content-type','text/plain');
+      if(variant==='200 redirect')res.setHeader('location','/secret?token=do-not-record');
+      if(variant==='replayed proof')res.setHeader('x-trainer2-readiness-proof',createHmac('sha256',key).update('previous-challenge\n123\n'+process.pid).digest('hex'));
+      if(variant==='forged PID')res.setHeader('x-trainer2-readiness-pid','42');
+      res.end(html);
+    });
+    await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
+    const rows:Record<string,unknown>[]=[];
+    try {
+      await expect(observeWebReadiness('http://127.0.0.1:'+(server.address() as {port:number}).port,child(),r=>rows.push(r),{key,budgetMs:2000})).rejects.toThrow();
+      expect(JSON.stringify(rows)).not.toContain('do-not-record');expect(JSON.stringify(rows)).not.toContain(key);
+    }finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
+  });
+  it('rejects an already-dead launched instance before probing',async()=>{
+    const task=child();Object.assign(task,{exitCode:1});
+    await expect(observeWebReadiness('http://127.0.0.1:1',task,()=>{},{key,budgetMs:1000})).rejects.toThrow('exited');
+  });
+  it('bounds a connected request that never completes',async()=>{
+    const server=createServer(()=>{});
+    await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
+    try {await expect(observeWebReadiness('http://127.0.0.1:'+(server.address() as {port:number}).port,child(),()=>{},{key,budgetMs:80})).rejects.toThrow('deadline');}
+    finally {server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
+  });
+  it('qualifies a real launched instance and distinguishes its inherited HTTP child PID',async()=>{
+    const task=spawn(process.execPath,['--require',resolve('scripts/trainer2/web-readiness-preload.cjs'),resolve('scripts/fixtures/trainer2-ready-server.cjs')],{
+      env:{...process.env,TRAINER2_READINESS_KEY:key},windowsHide:true,stdio:['ignore','ignore','ignore','ipc']});
+    const completion=waitForWorker(task,15000);
+    try {
+      const [message]=await once(task,'message',{signal:AbortSignal.timeout(5000)});const {port,pid}=message as {port:number;pid:number};
+      const rows:Record<string,unknown>[]=[];
+      await observeWebReadiness('http://127.0.0.1:'+port,task,r=>rows.push(r),{key,budgetMs:2000});
+      expect(pid).not.toBe(task.pid);expect(rows.at(-1)).toMatchObject({launcherPid:task.pid,responderPid:pid,instanceMatched:true,authPageMatched:true});
+      const mismatched=child();
+      await expect(observeWebReadiness('http://127.0.0.1:'+port,mismatched,()=>{},{key,budgetMs:2000})).rejects.toThrow('instance mismatch');
+    }finally{task.send('stop');expect(await completion).toMatchObject({exitCode:0,timedOut:false});}
+  },20000);
 });
 
 import { spawn } from 'node:child_process';
@@ -78,9 +151,9 @@ it.skipIf(process.platform !== 'win32')('does not count a stale CIM row after na
 },20000);
 
 it('rejects late readiness even when blocked scheduling delays the abort callback',async()=>{
-  const server=createServer((_req,res)=>res.end('Trainer2 sign in'));
+  const server=createServer((req,res)=>{signed(req,res);res.end(html);});
   await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
   try {
-    await expect(observeWebReadiness('http://127.0.0.1:'+(server.address() as {port:number}).port,child(),()=>Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,100),80)).rejects.toThrow('deadline exceeded');
+    await expect(observeWebReadiness('http://127.0.0.1:'+(server.address() as {port:number}).port,child(),()=>Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,100),{key,budgetMs:80})).rejects.toThrow('deadline exceeded');
   } finally {server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
 });

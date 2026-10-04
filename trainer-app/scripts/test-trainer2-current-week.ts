@@ -131,8 +131,14 @@ async function main() {
     const base=`http://127.0.0.1:${webPort}`;webOrigin=base;
     const webEnv:NodeJS.ProcessEnv={...authWebPlatformEnvironment(process.env),NODE_ENV:'development',TRAINER2_LOCAL_DRAFTS:'enabled',TRAINER2_OWNER_USER_ID:accountId,TRAINER2_APP_ORIGIN:base,
       TRAINER2_IDENTITY_CONNECTION_STRING:url('trainer2_identity_runtime'),TRAINER2_READ_CONNECTION_STRING:url('trainer2_draft_reader'),TRAINER2_WRITE_CONNECTION_STRING:url('trainer2_draft_runtime')};
-    const launch=()=>{server=spawn(process.execPath,[resolve('node_modules/next/dist/bin/next'),'dev','--webpack','--hostname','127.0.0.1','--port',String(webPort)],{env:webEnv,windowsHide:true,stdio:'pipe'});serverCompletion=waitForWorker(server,20*60_000);if(server.pid)track(server.pid);server.stdout?.on('data',v=>serverLog+=v);server.stderr?.on('data',v=>serverLog+=v);};
-    const waitWeb=async()=>{assert(server);await observeWebReadiness(base,server,row=>{writeFileSync(resolve(artifact,'readiness.jsonl'),JSON.stringify(row)+'\n',{flag:'a'});});};
+    let readinessKey: string;
+    const launch=()=>{
+      readinessKey=randomBytes(32).toString('hex');
+      server=spawn(process.execPath,[resolve('node_modules/next/dist/bin/next'),'dev','--webpack','--hostname','127.0.0.1','--port',String(webPort)],{
+        env:{...webEnv,TRAINER2_READINESS_KEY:readinessKey,NODE_OPTIONS:`--require="${resolve('scripts/trainer2/web-readiness-preload.cjs')}"`},windowsHide:true,stdio:'pipe'});
+      serverCompletion=waitForWorker(server,20*60_000);if(server.pid)track(server.pid);server.stdout?.on('data',v=>serverLog+=v);server.stderr?.on('data',v=>serverLog+=v);
+    };
+    const waitWeb=async()=>{assert(server);await observeWebReadiness(base,server,row=>{writeFileSync(resolve(artifact,'readiness.jsonl'),JSON.stringify(row)+'\n',{flag:'a'});},{key:readinessKey});};
     restartWeb=async()=>{await stopWeb();launch();await waitWeb();};
     launch();await waitWeb();
     // Use Playwright's locally installed, revision-pinned headless browser.

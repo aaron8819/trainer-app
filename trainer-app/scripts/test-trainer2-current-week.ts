@@ -12,6 +12,8 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { chromium } from '@playwright/test';
 import { prepareCurrentWeekRelease } from './trainer2/prepare-current-week-release';
 import { authWebPlatformEnvironment } from './trainer2/auth-web-environment';
+import { removeOwnedContainer, observeContainerAbsence } from './trainer2/container-cleanup';
+import { observeWebReadiness } from './trainer2/web-readiness';
 import { verificationSource } from './trainer2/verification-source';
 import { inspectFinisherSchemaDiff } from '../src/lib/operations/finisher-schema-drift';
 import { parseExactDisposableConfirmationArgs } from '../src/lib/operations/test-environment-preflight';
@@ -128,7 +130,7 @@ async function main() {
     const webEnv:NodeJS.ProcessEnv={...authWebPlatformEnvironment(process.env),NODE_ENV:'development',TRAINER2_LOCAL_DRAFTS:'enabled',TRAINER2_OWNER_USER_ID:accountId,TRAINER2_APP_ORIGIN:base,
       TRAINER2_IDENTITY_CONNECTION_STRING:url('trainer2_identity_runtime'),TRAINER2_READ_CONNECTION_STRING:url('trainer2_draft_reader'),TRAINER2_WRITE_CONNECTION_STRING:url('trainer2_draft_runtime')};
     const launch=()=>{server=spawn(process.execPath,[resolve('node_modules/next/dist/bin/next'),'dev','--webpack','--hostname','127.0.0.1','--port',String(webPort)],{env:webEnv,windowsHide:true,stdio:'pipe'});serverCompletion=waitForWorker(server,20*60_000);if(server.pid)track(server.pid);server.stdout?.on('data',v=>serverLog+=v);server.stderr?.on('data',v=>serverLog+=v);};
-    const waitWeb=async()=>{for(let i=0;i<120;i++){try{if((await fetch(base+'/trainer2/auth',{signal:AbortSignal.timeout(2_000)})).ok)return;}catch{}assert(server?.exitCode===null);await new Promise(r=>setTimeout(r,500));}throw new Error('Task web did not start');};
+    const waitWeb=async()=>{assert(server);await observeWebReadiness(base,server,row=>{writeFileSync(resolve(artifact,'readiness.jsonl'),JSON.stringify(row)+'\n',{flag:'a'});});};
     restartWeb=async()=>{await stopWeb();launch();await waitWeb();};
     launch();await waitWeb();
     // Use Playwright's locally installed, revision-pinned headless browser.
@@ -201,14 +203,14 @@ async function main() {
       // Disconnect the client before native shutdown. Each close remains
       // independent so a failed context cannot skip the server close.
       {name:'browser connection',run:()=>browser?.close()},
-      {name:'browser shutdown',run:async()=>{
+      {name:'browser shutdown',timeoutMs:25_000,run:async()=>{
         if(!browserServer)return;
         browserLifecycle.push({event:'shutdown-requested',at:new Date().toISOString()});
         if(!browserOwnership){
           await browserServer.close();
           throw new Error('Browser ownership capture failed; tree absence is unqualified');
         }
-        const shutdown=await shutdownOwnedBrowser(browserServer,browserOwnership,recordBrowserTree);
+        const shutdown=await shutdownOwnedBrowser(browserServer,browserOwnership,recordBrowserTree,{timeoutMs:20_000});
         details={...details,browserShutdown:shutdown};
         browserLifecycle.push({event:'shutdown-completed',at:new Date().toISOString()});
       }},
@@ -238,12 +240,9 @@ async function main() {
       {name:'runtime client',run:()=>runtime?.$disconnect()},
       {name:'reader client',run:()=>reader?.$disconnect()},
       {name:'administrative pool',run:()=>admin?.end()},
-      {name:'PostgreSQL container',timeoutMs:20_000,run:async()=>{
+      {name:'PostgreSQL container',timeoutMs:25_000,run:async()=>{
         if(!containerCreated)return;
-        const out=await runCleanupCommand('docker',['rm','-f',container],10_000);
-        if(out.status!==0 && !/no such (?:container|object)/i.test(out.stderr))throw new Error(out.error??out.stderr);
-        const inspect=await runCleanupCommand('docker',['container','inspect',container],5_000);
-        assert(inspect.status!==0 && /no such (?:container|object)/i.test(inspect.stderr),'Task PostgreSQL container survived or absence could not be verified');
+        await removeOwnedContainer(container,process.env.TRAINER2_CURRENT_WEEK_OWNER!,row=>writeFileSync(resolve(artifact,'container-cleanup.jsonl'),JSON.stringify(row)+'\n',{flag:'a'}));
       }},
       {name:'owned process survivor check',run:()=>assert.equal(ownedPids.size,0,'Task processes did not complete cleanup')},
     ]));
@@ -296,11 +295,7 @@ async function supervise() {
       await settleBrowserTree(browserOwnership,'observe',recordTermination);
     }},
     {name:'task PostgreSQL absence',timeoutMs:20_000,run:async()=>{
-      const inspect=await runCleanupCommand('docker',['container','inspect','--format','{{ index .Config.Labels "trainer2.current-week.owner" }}',container],5_000);
-      if(inspect.status!==0){assert(/no such (?:container|object)/i.test(inspect.stderr),'Cannot verify task container absence');return;}
-      assert.equal(inspect.stdout.trim(),owner,'Refusing to remove an unowned container');
-      const removed=await runCleanupCommand('docker',['rm','-f',container],10_000);assert.equal(removed.status,0,'Task container removal failed');
-      const after=await runCleanupCommand('docker',['container','inspect',container],5_000);assert(after.status!==0&&/no such (?:container|object)/i.test(after.stderr),'Task container survived');
+      await observeContainerAbsence(container,row=>writeFileSync(resolve(artifact,'container-cleanup.jsonl'),JSON.stringify({controller:true,...row})+'\n',{flag:'a'}));
     }},
     {name:'browser profile after worker exit',timeoutMs:30_000,run:async()=>{
       await rm(profile,{recursive:true,force:true,maxRetries:8,retryDelay:500});

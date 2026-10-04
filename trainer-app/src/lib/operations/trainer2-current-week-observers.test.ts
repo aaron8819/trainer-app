@@ -114,8 +114,8 @@ describe('current-week readiness observation',()=>{
     finally {server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
   });
   it('qualifies a real launched instance and distinguishes its inherited HTTP child PID',async()=>{
-    const task=spawn(process.execPath,['--require',resolve('scripts/trainer2/web-readiness-preload.cjs'),resolve('scripts/fixtures/trainer2-ready-server.cjs')],{
-      env:{...process.env,TRAINER2_READINESS_KEY:key},windowsHide:true,stdio:['ignore','ignore','ignore','ipc']});
+    const task=spawn(process.execPath,[resolve('scripts/fixtures/trainer2-ready-server.cjs')],{
+      env:{...process.env,TRAINER2_READINESS_KEY:key,NODE_OPTIONS:`--require="${resolve('scripts/trainer2/web-readiness-preload.cjs').replaceAll('\\','/')}"`},windowsHide:true,stdio:['ignore','ignore','ignore','ipc']});
     const completion=waitForWorker(task,15000);
     try {
       const [message]=await once(task,'message',{signal:AbortSignal.timeout(5000)});const {port,pid}=message as {port:number;pid:number};

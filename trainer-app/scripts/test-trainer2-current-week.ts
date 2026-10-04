@@ -135,7 +135,7 @@ async function main() {
     const launch=()=>{
       readinessKey=randomBytes(32).toString('hex');
       server=spawn(process.execPath,[resolve('node_modules/next/dist/bin/next'),'dev','--webpack','--hostname','127.0.0.1','--port',String(webPort)],{
-        env:{...webEnv,TRAINER2_READINESS_KEY:readinessKey,NODE_OPTIONS:`--require="${resolve('scripts/trainer2/web-readiness-preload.cjs')}"`},windowsHide:true,stdio:'pipe'});
+        env:{...webEnv,TRAINER2_READINESS_KEY:readinessKey,NODE_OPTIONS:`--require="${resolve('scripts/trainer2/web-readiness-preload.cjs').replaceAll('\\','/')}"`},windowsHide:true,stdio:'pipe'});
       serverCompletion=waitForWorker(server,20*60_000);if(server.pid)track(server.pid);server.stdout?.on('data',v=>serverLog+=v);server.stderr?.on('data',v=>serverLog+=v);
     };
     const waitWeb=async()=>{assert(server);await observeWebReadiness(base,server,row=>{writeFileSync(resolve(artifact,'readiness.jsonl'),JSON.stringify(row)+'\n',{flag:'a'});},{key:readinessKey});};

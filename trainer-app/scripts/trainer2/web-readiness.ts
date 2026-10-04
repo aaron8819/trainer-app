@@ -6,6 +6,7 @@ import type { ChildProcess } from 'node:child_process';
 // abort interrupted cold compilation/rendering. Keep that total bound while
 // allowing one connected request to finish; retry only connection refusal.
 export async function observeWebReadiness(base: string, child: ChildProcess, record: (row: Record<string, unknown>) => void, budgetMs = 300_000) {
+  if (!Number.isFinite(budgetMs) || budgetMs <= 0) throw new Error('Invalid readiness budget');
   const start = performance.now(), deadline = start + budgetMs;
   const abort = new AbortController();
   const exited = () => abort.abort(new Error('Task web exited during readiness'));
@@ -24,6 +25,7 @@ export async function observeWebReadiness(base: string, child: ChildProcess, rec
         Object.assign(row, { elapsedMs: performance.now() - started, bytes: Buffer.byteLength(body), bodyHash: createHash('sha256').update(body).digest('hex'), authHeading: body.includes('Trainer2 sign in'), exitCode: child.exitCode, signalCode: child.signalCode });
         record(row);
         if (response.status !== 200 || !body.includes('Trainer2 sign in')) throw new Error('Task web readiness response did not match auth page');
+        if (performance.now() > deadline) throw new Error('Task web readiness deadline exceeded');
         if (abort.signal.aborted) throw abort.signal.reason;
         return;
       } catch (error) {

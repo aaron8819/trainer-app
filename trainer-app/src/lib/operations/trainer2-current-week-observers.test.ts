@@ -54,3 +54,33 @@ describe('current-week readiness observation',()=>{
     finally {server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
   });
 });
+
+import { spawn } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { waitForWorker } from '../../../scripts/trainer2/disposable-cleanup';
+it.skipIf(process.platform !== 'win32')('does not count a stale CIM row after native absence is established for the captured identity',async()=>{
+  const task=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{windowsHide:true,stdio:'ignore'});
+  const completion=waitForWorker(task,15000), artifact=resolve('artifacts/trainer2/verification-correction');
+  mkdirSync(artifact,{recursive:true});
+  const metadata=await runCleanupCommand('powershell.exe',['-NoProfile','-NonInteractive','-Command',`Get-CimInstance Win32_Process -Filter 'ProcessId=${task.pid}' | Select-Object ProcessId,ParentProcessId,@{n='created';e={$_.CreationDate.ToUniversalTime().Ticks.ToString()}},ExecutablePath | ConvertTo-Json -Compress`],5000);
+  expect(metadata.status).toBe(0);
+  const row=JSON.parse(metadata.stdout), created=String(row.created);
+  task.kill();expect((await completion).timedOut).toBe(false);
+  const ownership={rootPid:task.pid,runnerPid:process.pid,executable:row.ExecutablePath,profile:'C:\\unused-fixture',processes:[{pid:task.pid,parentPid:row.ParentProcessId,created,executable:row.ExecutablePath,lastSeen:created}]};
+  const fixture=resolve(artifact,'stale-cim-fixture.ps1');
+  const quote=(x:string)=>"'"+x.replaceAll("'","''")+"'";
+  writeFileSync(fixture,`function Get-CimInstance { [pscustomobject]@{ProcessId=${task.pid};ParentProcessId=${row.ParentProcessId};CreationDate=[datetime]::new(${created},[DateTimeKind]::Utc);ExecutablePath=${quote(row.ExecutablePath)};Name='node.exe';CommandLine='fixture'} }\n& ${quote(resolve('scripts/trainer2/browser-tree.ps1'))} -Mode observe -OwnershipBase64 ${quote(Buffer.from(JSON.stringify(ownership)).toString('base64'))} -DeadlineUnixMs ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()+2500)\n`);
+  const result=await runCleanupCommand('powershell.exe',['-NoProfile','-NonInteractive','-File',fixture],5000);
+  writeFileSync(resolve(artifact,'stale-cim-result.json'),JSON.stringify(result,null,2));
+  expect(result.status,result.stderr||result.error).toBe(0);
+  expect(JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1)!)).toMatchObject({survivors:[]});
+},20000);
+
+it('rejects late readiness even when blocked scheduling delays the abort callback',async()=>{
+  const server=createServer((_req,res)=>res.end('Trainer2 sign in'));
+  await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
+  try {
+    await expect(observeWebReadiness('http://127.0.0.1:'+(server.address() as {port:number}).port,child(),()=>Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,100),80)).rejects.toThrow('deadline exceeded');
+  } finally {server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
+});

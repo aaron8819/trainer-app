@@ -18,10 +18,12 @@ import { verificationSource } from './trainer2/verification-source';
 import { inspectFinisherSchemaDiff } from '../src/lib/operations/finisher-schema-drift';
 import { parseExactDisposableConfirmationArgs } from '../src/lib/operations/test-environment-preflight';
 import { runCleanupCommand, captureBrowserOwnership, cleanupSteps, ownedProcessTree, settleBrowserTree, shutdownOwnedBrowser, terminateOwnedProcesses, waitForWorker, type BrowserOwnership, type CleanupResult } from './trainer2/disposable-cleanup';
+const diagnoseRecovery=process.argv.includes('--diagnose-recovery');
+const runSuffix=process.env.TRAINER2_CURRENT_WEEK_SUFFIX??randomUUID().replaceAll('-','').slice(0,12);
 const diagnoseAdmission=process.argv.includes('--diagnose-admission');
 const diagnoseAdvancement=process.argv.includes('--diagnose-advancement');
-const confirmationArgs=process.argv.slice(2).filter(a=>a!=='--diagnose-admission'&&a!=='--diagnose-advancement');
-const evidenceDirectory=diagnoseAdmission?'admission-diagnosis':diagnoseAdvancement?'advancement-diagnosis':'current-week-evidence';
+const confirmationArgs=process.argv.slice(2).filter(a=>a!=='--diagnose-admission'&&a!=='--diagnose-advancement'&&a!=='--diagnose-recovery');
+const evidenceDirectory=(diagnoseRecovery?'recovery-diagnosis':diagnoseAdmission?'admission-diagnosis':diagnoseAdvancement?'advancement-diagnosis':'current-week-evidence')+'-'+runSuffix;
 async function main() {
   assert(parseExactDisposableConfirmationArgs(confirmationArgs).valid, 'Expected exactly --confirm-disposable');
   assert(process.send && process.env.TRAINER2_CURRENT_WEEK_OWNER,'Disposable worker must be supervised');
@@ -166,7 +168,7 @@ async function main() {
     return {context,base};
     };
     const { verifyCurrentWeek } = await import('./trainer2/verify-current-week');
-    details.currentWeek = await verifyCurrentWeek({ db, reader: readDb, admin, principal, openBrowser, artifact, pass, diagnoseAdmission, diagnoseAdvancement,
+    details.currentWeek = await verifyCurrentWeek({ db, reader: readDb, admin, principal, openBrowser, artifact, pass, diagnoseAdmission, diagnoseAdvancement, diagnoseRecovery,
       upgrade: async()=>{
         try { await command(process.execPath,[resolve('node_modules/prisma/build/index.js'),'migrate','deploy'],migrationEnvironment); }
         catch(error) {
@@ -261,7 +263,7 @@ async function main() {
 async function supervise() {
   assert(parseExactDisposableConfirmationArgs(confirmationArgs).valid,'Expected exactly --confirm-disposable');
   await prepareCurrentWeekRelease();
-  const owner=randomUUID(),suffix=randomUUID().replaceAll('-','').slice(0,12);
+  const owner=randomUUID(),suffix=runSuffix;
   const artifact=resolve('artifacts/trainer2/'+evidenceDirectory);mkdirSync(artifact,{recursive:true});
   const reportFile=resolve(artifact,'report.json'),profile=resolve(artifact,`browser-profile-${suffix}`),container=`trainer2-current-week-${suffix}`;
   assert(profile.startsWith(artifact+sep));

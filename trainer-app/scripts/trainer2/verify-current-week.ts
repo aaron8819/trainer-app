@@ -20,9 +20,9 @@ import type { ServerPrincipal } from '../../src/lib/api/trainer2/principal';
 import type { DraftDocument } from '../../src/lib/trainer2-contracts/draft';
 const expect = playwrightExpect.configure({ timeout: 30_000 });
 
-export async function verifyCurrentWeek({ db, reader, admin, principal, openBrowser, artifact, pass, restart, upgrade, diagnoseAdmission = false, diagnoseAdvancement = false }: {
+export async function verifyCurrentWeek({ db, reader, admin, principal, openBrowser, artifact, pass, restart, upgrade, diagnoseAdmission = false, diagnoseAdvancement = false, diagnoseRecovery = false }: {
   db: PrismaClient; reader: PrismaClient; admin: Pool; principal: ServerPrincipal; openBrowser: () => Promise<{context: BrowserContext; base: string}>; artifact: string;
-  diagnoseAdmission?: boolean; diagnoseAdvancement?: boolean; pass: (name: string) => void; restart: () => Promise<void>; upgrade: () => Promise<{db: PrismaClient; reader: PrismaClient}>;
+  diagnoseAdmission?: boolean; diagnoseAdvancement?: boolean; diagnoseRecovery?: boolean; pass: (name: string) => void; restart: () => Promise<void>; upgrade: () => Promise<{db: PrismaClient; reader: PrismaClient}>;
 }) {
   const envelope = () => ({ schemaVersion: 1, actionId: randomUUID(), deviceId: randomUUID(), originatingAccountId: principal.accountId, ownershipEpoch: 0, dependsOn: [] });
   const stage = randomUUID(), later = randomUUID(), planId = randomUUID();
@@ -93,6 +93,10 @@ export async function verifyCurrentWeek({ db, reader, admin, principal, openBrow
   } finally {await guardProbe.query('ROLLBACK');guardProbe.release();}
   pass('Populated released-base upgrade twice preserves every business row, finished result, open START and device session; historical start stays discarded');
   const {context,base}=await openBrowser();
+  if(diagnoseRecovery) {
+    const { diagnoseStartRecovery } = await import('./diagnose-start-recovery');
+    return diagnoseStartRecovery(context, `${base}/trainer2/dev/drafts?planId=${planId}`, artifact);
+  }
   if(diagnoseAdmission) {
     const page=await context.newPage(),responses: {path:string;status:number}[]=[];
     page.on('response',response=>{const path=new URL(response.url()).pathname;if(path.startsWith('/api/trainer2/'))responses.push({path,status:response.status()});});

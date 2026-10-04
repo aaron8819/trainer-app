@@ -10,6 +10,7 @@ $deadline = [DateTimeOffset]::FromUnixTimeMilliseconds($DeadlineUnixMs).UtcDateT
 $known = @{}
 $handles = @{}
 $terminated = @{}
+$nativeAbsent = @{}
 
 # CIM reports microseconds; compare the native handle's creation time at that
 # precision. Never kill by a PID fetched earlier from a different process.
@@ -30,16 +31,26 @@ function Inventory {
 }
 function Pin-Handle($Row) {
     $key = Identity-Key $Row
-    if ($handles.ContainsKey($key)) { return }
+    if ($handles.ContainsKey($key)) {
+        if ($handles[$key].HasExited) { $nativeAbsent[$key] = $true }
+        return
+    }
     $process = $null
     try {
         $process = [Diagnostics.Process]::GetProcessById($Row.pid)
         # Materialize/cache the handle before checking StartTime. A StartTime
         # read alone may use a temporary handle; Kill must use this pinned one.
         $null = $process.Handle
+        if ($process.HasExited) { $nativeAbsent[$key] = $true; $process.Dispose(); return }
         if ((Creation-Key $process.StartTime) -ne $Row.created) { $process.Dispose(); return }
         $handles[$key] = $process
-    } catch [ArgumentException] { if ($process) { $process.Dispose() } }
+    } catch [ArgumentException] {
+        # CIM can retain an exited row while native process handles are held.
+        # GetProcessById's no-process result qualifies that captured identity's
+        # absence; a stale CIM row must not become an unkillable survivor.
+        $nativeAbsent[$key] = $true
+        if ($process) { $process.Dispose() }
+    }
     catch [InvalidOperationException] { if ($process) { $process.Dispose() } }
 }
 function Remember($Row, [long]$Seen) {
@@ -90,7 +101,7 @@ function Refresh-Tree {
     } while ($changed)
     return @($rows | Where-Object {
         $key = Identity-Key $_
-        $known.ContainsKey($key) -and (Same-Identity $known[$key] $_)
+        $known.ContainsKey($key) -and (Same-Identity $known[$key] $_) -and !$nativeAbsent.ContainsKey($key)
     })
 }
 
@@ -123,7 +134,7 @@ try {
         if ([DateTime]::UtcNow -ge $deadline) { throw 'Browser tree deadline exceeded' }
         $survivors = @(Refresh-Tree)
         $ownership.processes = @($known.Values | Sort-Object pid, created)
-        @{ ownership=$ownership; survivors=$survivors; terminated=@($terminated.Values);
+        @{ ownership=$ownership; survivors=$survivors; terminated=@($terminated.Values); nativeAbsent=@($nativeAbsent.Keys);
             at=[DateTime]::UtcNow.ToString('o') } | ConvertTo-Json -Compress -Depth 8
         if ($Mode -eq 'capture' -or !$survivors.Count) { break }
         if ($Mode -eq 'terminate') {

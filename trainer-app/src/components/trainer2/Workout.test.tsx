@@ -378,7 +378,7 @@ it('returns from a recorded-set edit without discarding input for either target'
   await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeEnabled());
   fireEvent.change(screen.getByLabelText('Set 2 Actual reps'), { target: { value: '11' } });
   fireEvent.click(screen.getByRole('button', { name: /, set 1, recorded/ }));
-  expect(screen.getByText('Editing recorded set 1')).toBeVisible();
+  expect(screen.getByText('EDIT SAVED SET')).toBeVisible();
   fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '9' } });
   fireEvent.click(screen.getByRole('button', { name: 'Return to active set' }));
   expect(screen.getByLabelText('Set 2 Actual reps')).toHaveValue('11');
@@ -410,7 +410,7 @@ it('offers Finish in the ready card for a mix of logged and explicitly skipped s
   expect(screen.queryByText('To log')).toBeNull();
 });
 
-it.each([-180, 200])('aligns the rest timer from top %i after confirmed logging and falls back to the card after dismissal', async (timerTop) => {
+it.each([-180, 200])('aligns the active card beneath the sticky timer regardless of its top %i and falls back after dismissal', async (timerTop) => {
   const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
     const top = this.getAttribute('aria-label') === 'Rest timer' ? timerTop : -100;
     return { top, bottom: top + 72, height: 72, left: 0, right: 390, width: 390, x: 0, y: top, toJSON: () => ({}) };
@@ -425,7 +425,7 @@ it.each([-180, 200])('aligns the rest timer from top %i after confirmed logging 
     fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
     await screen.findByLabelText('Set 2 Actual reps');
     expect(screen.getByLabelText('Rest timer')).toBeVisible();
-    expect(scroll).toHaveBeenLastCalledWith(expect.objectContaining({ top: timerTop - 16 }));
+    expect(scroll).toHaveBeenLastCalledWith(expect.objectContaining({ top: -192 }));
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss rest timer' }));
     await waitFor(() => expect(screen.queryByLabelText('Rest timer')).toBeNull());
     fireEvent.click(screen.getAllByRole('button', { name: /, set 1, unrecorded/ }).at(-1)!);

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ExecutionRead } from '@/lib/trainer2-contracts/execution';
 import { finishExecutionCommand, finishResponse, reviewedResults, unrecordedTargets, type FinishExecutionCommand } from '@/lib/trainer2-contracts/workout-finish';
 import { canonicalJson } from '@/lib/trainer2-contracts/canonical-json';
+import styles from './Logger.module.css';
 import { control } from './DraftEditor';
 import { fetchWithRecovery } from './request-recovery';
 
@@ -67,9 +68,7 @@ export function FinishWorkout({ execution, ownershipEpoch, blocked, refresh, che
   function begin() {
     if (blocked || !ready || pending || busy || execution.lifecycle !== 'Open') return;
     // Snapshot stays fixed through refresh, including same-value newer versions.
-    if (unrecordedTargets(execution).some(t => !t.skipped)) {
-      setReview(execution); onLock(true); setMessage('');
-    } else void finish(execution);
+    setReview(execution); onLock(true); setMessage('');
   }
   function finish(snapshot: ExecutionRead) {
     void submit({ schemaVersion: 1, actionId: crypto.randomUUID(), deviceId: crypto.randomUUID(), originatingAccountId: accountId,
@@ -92,8 +91,8 @@ export function FinishWorkout({ execution, ownershipEpoch, blocked, refresh, che
     }}>Review latest values</button>}
     {pending ? <button type="button" className={control} disabled={busy} onClick={() => void submit(pending)}>{busy ? 'Finishing…' : 'Check finish again'}</button> :
       execution.lifecycle === 'Open' && (review ? <><p>{unknown.length} {unknown.length === 1 ? 'set is' : 'sets are'} still unresolved.</p>
-        <p>Finish anyway to skip the remaining sets, or keep working. No performed results will be added.</p>
-        <button type="button" ref={confirmation} className={control} disabled={blocked || busy} onClick={confirm}>Finish anyway</button>
+        <p>{unknown.length ? 'Finish anyway to skip the remaining sets, or keep working. No performed results will be added.' : 'Your resolved sets are saved. Finish to return to Home.'}</p>
+        <button type="button" ref={confirmation} className={`${control} ${styles.primary}`} disabled={blocked || busy} onClick={confirm}>{unknown.length ? 'Finish anyway' : 'Finish & go home'}</button>
         <button type="button" className={control} disabled={busy} onClick={() => { setReview(null); onLock(false); }}>Keep working</button></> :
         <button type="submit" className="rounded-xl bg-black px-5 py-3 font-semibold text-white" disabled={blocked || !ready}>Finish workout</button>)}
   </form>;

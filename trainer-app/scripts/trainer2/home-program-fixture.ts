@@ -16,6 +16,9 @@ import { finishExecution } from '../../src/lib/api/trainer2/workout-finish';
 import { advanceWeek } from '../../src/lib/api/trainer2/advance-week';
 import { reviewedResults } from '../../src/lib/trainer2-contracts/workout-finish';
 import { createHypertrophyPlan } from '../../src/lib/engine/trainer2/plan-builder';
+import { saveSetResult } from '../../src/lib/api/trainer2/set-results';
+import { executionPositions } from '../../src/lib/engine/trainer2/execution-targets';
+import { expandWorkoutDefaults } from '../../src/lib/engine/trainer2/plan-builder';
 import { makeVerifier } from '../../src/lib/api/trainer2/sessions';
 import { authWebPlatformEnvironment } from './auth-web-environment';
 import { verificationSource } from './verification-source';
@@ -26,9 +29,9 @@ import { randomBytes } from 'node:crypto';
 const expect=baseExpect.configure({timeout:30_000});
 
 // Separate disposable fixture per invocation. Uses released owners, never configured targets.
-export async function runHomeProgramFixture(preview: boolean, surfacesOnly = false) {
+export async function runHomeProgramFixture(preview: boolean, surfacesOnly = false, loggerJourney?: (context: { page: import('@playwright/test').Page; base: string; home: string; artifact: string; accountId: string; planId: string; executionId: string; pass: (value: string) => void }) => Promise<void>) {
   const suffix=randomUUID().slice(0,8), container=`trainer2-home-program-${suffix}`, database=`trainer2_disposable_${suffix}`;
-  const artifact=resolve(`artifacts/trainer2/home-program-${preview?'preview':surfacesOnly?'surfaces':'verify'}-${suffix}`); mkdirSync(artifact,{recursive:true});
+  const artifact=resolve(`artifacts/trainer2/${loggerJourney?'logger':'home-program'}-${preview?'preview':surfacesOnly?'surfaces':'verify'}-${suffix}`); mkdirSync(artifact,{recursive:true});
   const password=randomUUID(), accountId=randomUUID(), sessionId=randomUUID(), secret=randomBytes(32).toString('base64url'), principal={accountId,sessionId};
   const ownerLabel=randomUUID(), source=verificationSource(), checks:string[]=[], cleanup:unknown[]=[];
   let server:ChildProcess|undefined, browser:Awaited<ReturnType<typeof chromium.launch>>|undefined, admin:Pool|undefined, db:PrismaClient|undefined, reader:PrismaClient|undefined, created=false;
@@ -70,7 +73,13 @@ export async function runHomeProgramFixture(preview: boolean, surfacesOnly = fal
     process.env.TRAINER2_OWNER_USER_ID=accountId;
     db=new PrismaClient({adapter:new PrismaPg({connectionString:url('trainer2_draft_runtime')})});
     reader=new PrismaClient({adapter:new PrismaPg({connectionString:url('trainer2_draft_reader')})});
-    const intent=createHypertrophyPlan(); intent.name='Five-week hypertrophy · synthetic review';
+    let intent=createHypertrophyPlan(); intent.name='Five-week hypertrophy · synthetic review';
+    if (loggerJourney) {
+      const row = intent.builder!.workouts[3].rows[0];
+      row.prescription.measurement = { kind: 'externalLoad', value: '60', unit: 'kg', convention: 'perImplement', zeroMeaning: 'validZero' };
+      intent.builder!.workouts[1].rows[0].exercise = row.exercise;
+      intent = expandWorkoutDefaults(intent);
+    }
     // Keep template identity/inheritance valid; a separate authored plan exercises long names.
     const planId=randomUUID();accepted(await createDraft(db,principal,{...envelope(),commandType:'CreateDraft',target:{planId},expected:{},intent}));
     const head=(await readDraft(reader,principal,planId))!;accepted(await activatePlan(db,principal,{...envelope(),commandType:'ActivatePlan',target:{planId},expected:{planRevisionId:head.revisionId},intent:{reviewed:head.activation}}));
@@ -78,8 +87,13 @@ export async function runHomeProgramFixture(preview: boolean, surfacesOnly = fal
     const finish=async(id:string)=>accepted(await finishExecution(db!,principal,{...envelope(),commandType:'FinishExecution',target:{executionId:id},expected:reviewedResults((await readExecution(reader!,principal,id))!),intent:{acknowledgeUnrecorded:true}}));
     const skip=async(index:number)=>accepted(await skipOccurrence(db!,principal,{...envelope(),commandType:'SkipOccurrence',target:{planId,occurrenceId:intent.occurrences[index].id},expected:{planRevisionId:head.revisionId,acceptedSequence:(await readNextWorkout(reader!,principal,planId)).acceptedSequence},intent:{}}));
     const advance=async()=>{const next=await readNextWorkout(reader!,principal,planId);return accepted(await advanceWeek(db!,principal,{...envelope(),commandType:'AdvanceWeek',target:{planId},expected:{planRevisionId:head.revisionId,acceptedSequence:next.acceptedSequence,weekIndex:next.week.index,firstOccurrenceId:next.week.firstOccurrenceId},intent:{}}));};
-    const first=await start(0);await finish(first.executionId);await skip(1);
-    if(preview)await start(3);
+    const first=await start(0);await finish(first.executionId);
+    if (loggerJourney) {
+      const prior = await start(1), read = (await readExecution(reader!, principal, prior.executionId))!;
+      for (const target of executionPositions(read)[0].targets) accepted(await saveSetResult(db!, principal, { ...envelope(), commandType: 'RecordSetResult', target: { executionId: prior.executionId, targetId: target.id }, expected: { resultVersion: 0 }, intent: { result: { reps: { value: 10, basis: 'total' }, measurement: { kind: 'externalLoad', value: '60.123456', unit: 'kg', convention: 'perImplement', zeroMeaning: 'validZero' }, rir: '3' } } }));
+      await finish(prior.executionId);
+    } else await skip(1);
+    const open = preview || loggerJourney ? await start(3) : null;
     const webPort=await new Promise<number>((res,rej)=>{const probe=createServer();probe.once('error',rej);probe.listen(0,'127.0.0.1',()=>{const a=probe.address();assert(a&&typeof a!=='string');probe.close(e=>e?rej(e):res(a.port));});});
     base=`http://127.0.0.1:${webPort}`;home=`${base}/trainer2/dev/drafts?planId=${planId}`;
     const readinessKey=randomBytes(32).toString('hex');
@@ -102,6 +116,15 @@ export async function runHomeProgramFixture(preview: boolean, surfacesOnly = fal
     const context=await browser.newContext({viewport:{width:1280,height:900},reducedMotion:'reduce'});
     await context.addCookies([{name:'__Host-trainer2-session',value:`${sessionId}.${secret}`,domain:'127.0.0.1',path:'/',httpOnly:true,secure:true,sameSite:'Strict'}]);
     const page=await context.newPage(), errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(30_000);
+    if (loggerJourney) {
+      try { await loggerJourney({ page, base, home, artifact, accountId, planId, executionId: open!.executionId, pass }); }
+      catch (error) { await page.screenshot({ path: resolve(artifact, 'failed-page.png'), fullPage: true }).catch(() => {}); writeFileSync(resolve(artifact, 'failed-dom.txt'), await page.locator('body').innerText().catch(() => 'Unavailable')); throw error; }
+      assert.deepEqual(errors, []);
+      assert.equal(verificationSource().manifestHash, source.manifestHash, 'Source changed during verification');
+      writeFileSync(resolve(artifact, 'report.json'), JSON.stringify({ source, checks, errors, home }, null, 2));
+      console.log('EVIDENCE ' + artifact);
+      return;
+    }
     if(!surfacesOnly){
     await page.goto(home); await expect(page.getByRole('button',{name:'Start workout',exact:true})).toBeEnabled();
     let posts=0;page.on('request',r=>{if(r.method()==='POST')posts++;});

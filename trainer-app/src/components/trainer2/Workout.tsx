@@ -1,6 +1,7 @@
 'use client';
 import { AdvanceWeek } from './AdvanceWeek';
 import styles from './TrainingOverview.module.css';
+import logger from './Logger.module.css';
 import { orderedWorkoutGroups } from '@/lib/engine/trainer2/ordered-workouts';
 import { AddExercise } from './AddExercise';
 import { AddSet } from './AddSet';
@@ -161,7 +162,7 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
   return <div className="space-y-4">{finishedMessage && <p role="status" className="rounded-xl bg-teal-100 p-4 text-teal-950">Workout finished. <a className="underline" href={url(finishedMessage)}>View saved results</a></p>}{message && (!document || !next || executionId || program) && <p role="status">{message}</p>}
     {pending && (!document || !next || executionId || program) && <button className={control} disabled={busy} onClick={() => void submit(pending)}>Check again</button>}
     {failed && !pending && (!document || !next || executionId || program) && <button className={control} onClick={() => void load()}>Reload workout</button>}
-    {execution && <section className="space-y-2"><h2 className="text-xl font-semibold">{execution.lifecycle === 'Discarded' ? 'Workout attempt discarded' : execution.lifecycle === 'Finished' ? 'Workout finished' : execution.initial.occurrence.name}</h2>
+    {execution && <section className={logger.screen}><h2 className="text-xl font-semibold">{execution.lifecycle === 'Discarded' ? 'Workout attempt discarded' : execution.lifecycle === 'Finished' ? 'Workout finished' : execution.initial.occurrence.name}</h2>
       <p className="text-slate-600">{execution.lifecycle === 'Discarded' ? 'This attempt was discarded. Its original start and prescription are retained. Discarding this attempt did not complete or skip the scheduled workout.' : execution.lifecycle === 'Finished' ? 'Latest saved results appear below. Corrections preserve completion and the original targets. Result history shows what was acknowledged at finish.' : ''}</p>
       {execution.discard && <p>Started {execution.initial.startedAt}. Discarded {execution.discard.discardedAt}.</p>}
       {execution.finish && <p className="text-sm text-slate-600">Started {execution.initial.startedAt}. Finished {execution.finish.finishedAt}. Later correction times appear in result history.</p>}

@@ -1,0 +1,83 @@
+.screen {
+  --ink: #171a18;
+  --muted: #596159;
+  --line: #dcded5;
+  max-width: 600px;
+  margin: auto;
+  padding-bottom: calc(40px + env(safe-area-inset-bottom));
+  color: var(--ink);
+  font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  overflow-wrap: anywhere;
+}
+.screen::before { content: ''; position: fixed; inset: 0; background: #f6f5f1; z-index: -1; }
+.screen h2 { font-size: 26px; letter-spacing: -.7px; }
+.screen h3 { font-size: 23px; line-height: 1.2; letter-spacing: -.4px; }
+.screen button, .screen input, .screen select { font-family: inherit; }
+.screen button { min-height: 46px; border-color: var(--line); font-size: 15px; }
+.screen button:disabled { opacity: .45; }
+.screen :is(button, a, input, select, summary):focus-visible { outline: 3px solid #658b3d; outline-offset: 3px; }
+.screen input, .screen select { font-size: 16px; }
+.screen :global(.text-xs) { font-size: 14px; }
+.screen :global(.text-sm) { font-size: 15px; }
+.card { padding: 20px; border: 1px solid var(--line); border-radius: 20px; background: white; scroll-margin-top: 92px; }
+.card h3 { margin-top: 8px; }
+.context { margin: 8px 0 4px; color: var(--muted); font-size: 14px; }
+.target { font-size: 16px; margin-top: 8px; }
+.secondary { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 12px; }
+.secondary button { background: transparent; padding: 8px 4px; border: 0; text-decoration: underline; text-underline-offset: 4px; }
+.timerSlot { position: sticky; top: 8px; z-index: 25; }
+.timer { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 70px; margin-bottom: 12px; padding: 10px 12px; border: 1px solid #bac9a9; border-radius: 16px; background: #dce7ca; color: var(--ink); box-shadow: 0 3px 12px #f6f5f180; }
+.timerLabel { font-size: 14px; color: var(--muted); margin-right: 10px; }
+.time { font-size: 27px; font-weight: 700; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
+.timer button { width: 46px; min-width: 46px; height: 46px; padding: 0; border: 1px solid #a5b596; border-radius: 50%; background: transparent; }
+.timer .dismiss { width: 32px; min-width: 32px; border: 0; font-size: 20px; }
+.fieldLabel { display: block; font-size: 15px; font-weight: 650; margin: 12px 0 8px; }
+.screen .numeric { width: 100%; min-width: 0; min-height: 54px; text-align: center; font-size: 27px; font-weight: 650; line-height: 1.2; padding: 8px; border: 1px solid #aeb5a9; border-radius: 12px; background: #fafbf7; font-variant-numeric: tabular-nums; scroll-margin: 100px 0 24px; }
+.screen .step { width: 46px; height: 46px; padding: 0; flex-shrink: 0; border: 1px solid var(--line); border-radius: 50%; background: white; }
+.increments { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 8px 0; }
+.increments button { padding: 8px 4px; border: 1px solid var(--line); border-radius: 12px; background: #f3f4ee; }
+.rir { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-bottom: 8px; }
+.rir button { padding: 8px 0; min-width: 0; border-radius: 12px; }
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; }
+.actions button { border-radius: 28px; }
+.actions > :first-child { order: 2; }
+.feedback { min-height: 26px; margin: 4px 0; font-size: 14px; color: #365a39; }
+.queue { margin-top: 24px; }
+.queue h3 { font-size: 21px; }
+.queueRow { border-top: 1px solid var(--line); padding: 18px 0; }
+.queueRow > button { font-size: 17px; }
+.queueRow :global(.text-xs) { font-size: 14px; }
+.queueRow :global(.bg-emerald-50\/40) { background: #e7efdc; border-color: #bacda4; }
+.screen dialog { margin: auto; padding: 20px; width: calc(100% - 28px); max-width: 540px; max-height: calc(100dvh - 32px); border: 1px solid var(--line); border-radius: 24px; background: white; color: var(--ink); }
+.screen dialog::backdrop { background: #17201770; backdrop-filter: blur(3px); }
+.screen dialog input { min-height: 48px; }
+.history { border-collapse: collapse; width: 100%; font-size: 15px; font-variant-numeric: tabular-nums; }
+.history th, .history td { padding: 12px 7px; border-bottom: 1px solid var(--line); text-align: right; }
+.history th:first-child, .history td:first-child { text-align: left; }
+.history th { font-size: 13px; color: var(--muted); font-weight: 500; }
+.sheetHead { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 20px 12px; background: white; }
+.sheetHead h2 { font-size: 22px; }
+.sheetBody { padding: 0 20px max(24px, env(safe-area-inset-bottom)); }
+@media (max-width: 600px) {
+  .card { padding: 16px; }
+  .timerSlot { top: 6px; }
+  .timer { padding: 8px 10px; }
+  .time { font-size: 25px; }
+  .screen dialog { max-height: calc(100dvh - 24px); }
+}
+@media (max-width: 350px) {
+  .card h3 { font-size: 22px; }
+  .rir { grid-template-columns: repeat(3, 1fr); }
+  .timerLabel { font-size: 12px; margin-right: 6px; }
+  .timer { gap: 6px; }
+  .time { font-size: 23px; }
+}
+
+.screen .historyDialog { padding: 0; }
+.screen form[aria-label="Finish workout"] { margin-top: 24px; border: 0; padding: 0; }
+.screen form[aria-label="Finish workout"] button[type="submit"] { width: 100%; border-radius: 28px; }
+
+.screen .increments .step { width: 100%; border-radius: 12px; background: #f3f4ee; }
+
+.screen .primary { background: #171a18; color: white; border-color: #171a18; }
+.queueRow [aria-label^="Primary muscle"], .queueRow [aria-label^="Secondary muscle"] { font-size: 13px; color: #4f6045; background: transparent; border: 0; padding: 0 4px 0 0; }

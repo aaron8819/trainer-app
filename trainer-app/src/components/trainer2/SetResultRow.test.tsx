@@ -286,17 +286,17 @@ it('keeps compact catalog suggestions unrecorded and uses pounds without a picke
   expect(blocked).toHaveBeenLastCalledWith(props.targetId, true);
   expect(JSON.parse(sessionStorage.getItem(`trainer2-result:${props.accountId}:${props.executionId}:${props.targetId}`)!).form.reps).toBe('0');
 });
-it('adds exact 2.5 lb steps only for machine-displayed loads', async () => {
+it('uses compact load steps while allowing exact decimal entry', async () => {
   const position = createHypertrophyPlan().occurrences[0].positions[0];
   const prescription = { ...position.targets[0], measurement: { kind: 'externalLoad' as const, value: '40', unit: 'lb' as const,
     convention: 'machineDisplayed' as const, zeroMeaning: 'validZero' as const } };
   render(<SetResultRow {...props} activePanel prescription={prescription} exercise={position.exercise} refresh={vi.fn()} />);
   const load = await screen.findByLabelText('Set 1 Actual load');
   expect(load).toHaveValue('40');
-  fireEvent.click(screen.getByRole('button', { name: 'Increase load by 2.5 lb' }));
+  fireEvent.change(load, { target: { value: '42.5' } });
   expect(load).toHaveValue('42.5');
-  fireEvent.click(screen.getByRole('button', { name: 'Decrease load by 2.5 lb' }));
-  expect(load).toHaveValue('40');
+  fireEvent.click(screen.getByRole('button', { name: 'Decrease load by 5 lb' }));
+  expect(load).toHaveValue('37.5');
 });
 it('defaults a saved sparse machine result to machine-displayed controls without inventing a weight', async () => {
   const position = createHypertrophyPlan().occurrences.flatMap(o => o.positions).find(p => p.exercise.name === 'Machine Crunch')!;
@@ -306,7 +306,7 @@ it('defaults a saved sparse machine result to machine-displayed controls without
   expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('');
   expect(screen.getByLabelText('Set 1 actual load type')).toHaveValue('externalLoad');
   expect(screen.getByLabelText('Set 1 load basis')).toHaveValue('machineDisplayed');
-  expect(screen.getByRole('button', { name: 'Increase load by 2.5 lb' })).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Increase load by 5 lb' })).toBeVisible();
 });
 it('updates an untouched retained sparse correction to the catalog machine controls', async () => {
   const position = createHypertrophyPlan().occurrences.flatMap(o => o.positions).find(p => p.exercise.name === 'Machine Crunch')!;
@@ -453,12 +453,11 @@ describe('Logger correction regressions', () => {
     expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('');
     fireEvent.click(screen.getByRole('button', { name: '4 RIR' }));
     expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('4');
-    fireEvent.click(screen.getByRole('button', { name: 'Decrease RIR by 0.5' }));
+    fireEvent.click(screen.getByRole('button', { name: '5 RIR' }));
+    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('5');
+    fireEvent.change(screen.getByLabelText('Set 1 Actual RIR (optional)'), { target: { value: '3.5' } });
     expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('3.5');
-    fireEvent.click(screen.getByRole('button', { name: 'Increase RIR by 0.5' }));
-    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('4');
     fireEvent.click(screen.getByRole('button', { name: '0 RIR' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Decrease RIR by 0.5' }));
     expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('0');
   });
   it('does not skip an incompatible preceding result for an older compatible result', async () => {

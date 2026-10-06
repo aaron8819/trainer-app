@@ -37,7 +37,9 @@ Trainer2 progression intent and revision-bound read-only review: [contract, owne
 
 ## Trainer2 sign-in
 
-`/trainer2/auth` shows one-time setup, passcode sign-in, local session status, Sign out this device and Sign out every device. The passcode form uses POST; a Secure, HttpOnly, SameSite cookie keeps each device signed in through browser and app restarts until expiry or revocation. The page cannot provision a User or owner binding, and hosted training remains disabled. [Flow and protections](architecture/trainer2/PRINCIPAL_BOUNDARY.md).
+`/trainer2/auth` shows one-time setup, passcode sign-in, device session status, Sign out this device and Sign out every device. The passcode form uses POST; a Secure, HttpOnly, SameSite cookie keeps each device signed in through browser and app restarts until expiry or revocation. The page cannot provision a User or owner binding. The implementation supports local development and bounded hosted admission for the exact configured singleton owner with a valid device session. Hosted admission requires matching `hosted-test` build/runtime modes in Vercel Preview, the exact protected origin, matching owner configuration/binding, restricted connections, strict TLS and no legacy credentials; server authorization and same-origin POST checks remain mandatory. [Flow and protections](architecture/trainer2/PRINCIPAL_BOUNDARY.md).
+
+Real-owner hosted access requires the separately authorized [execution and compatible recovery procedure](architecture/trainer2/REAL_OWNER_EXECUTION.md), including the operator binding transition and verified Preview configuration. Current operational state: no real-owner hosted transition has occurred. After setup/sign-in, `/trainer2` shows the account-scoped Training home; an empty account has an optional Create plan link and opening home creates no training state. This supported flow does not authorize a hosted transition or plan creation.
 
 ## Trainer2 developer draft loop
 

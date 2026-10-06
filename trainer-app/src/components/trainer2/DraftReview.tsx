@@ -1,6 +1,6 @@
 import type { DraftDocument } from '@/lib/trainer2-contracts/draft';
 import { orderedWorkoutGroups } from '@/lib/engine/trainer2/ordered-workouts';
-const readable: Record<string, string> = { barbellTotal: 'barbell total', perImplement: 'per implement', machineDisplayed: 'machine display', addedExternal: 'added weight', displayedAssistance: 'assistance', rampUp: 'ramp-up', optionalFinisher: 'optional finisher', preparation: 'preparation' };
+const readable: Record<string, string> = { barbellTotal: 'barbell total', perImplement: 'per implement', machinePlatesPerArm: 'plates added per arm', smithPlatesTotal: 'total Smith plates added', machineDisplayed: 'machine display', addedExternal: 'added weight', displayedAssistance: 'assistance', rampUp: 'ramp-up', optionalFinisher: 'optional finisher', preparation: 'preparation' };
 export function DraftReview({ intent }: { intent: DraftDocument }) {
   let groups: ReturnType<typeof orderedWorkoutGroups>;
   try { groups = orderedWorkoutGroups(intent); }

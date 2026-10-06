@@ -21,7 +21,7 @@ const checkedNavigation = new WeakSet<Event>();
 
 const formSchema = z.object({ reps: z.string(), basis: z.enum(['total', 'perSide', 'alternating']),
   load: z.string(), kind: z.enum(['unspecified', 'bodyweight', 'externalLoad', 'addedLoad', 'assistance']),
-  unit: z.enum(['', 'kg', 'lb']), zeroMeaning: z.enum(['validZero', 'notAllowed']).optional(), convention: z.enum(['barbellTotal', 'perImplement', 'machineDisplayed']),
+  unit: z.enum(['', 'kg', 'lb']), zeroMeaning: z.enum(['validZero', 'notAllowed']).optional(), convention: z.enum(['barbellTotal', 'perImplement', 'machineDisplayed', 'machinePlatesPerArm', 'smithPlatesTotal']),
   rir: z.string(), reason: z.string() }).strict();
 type Form = z.infer<typeof formSchema>;
 const draftSchema = z.object({ assignment: assignmentBinding.optional(), form: formSchema, base: savedSetResult.nullable(), pending: z.union([resultMutationCommand, skipSetCommand]).nullable(), skipActionId: z.string().uuid().optional(), conflict: z.boolean(), carriedMeasurement: performedResult.shape.measurement.optional() }).strict();
@@ -33,9 +33,9 @@ function formFor(r?: PerformedResult | null): Form {
     unit: 'lb', zeroMeaning: m?.kind === 'externalLoad' ? m.zeroMeaning : 'validZero', convention: m?.kind === 'externalLoad' ? m.convention : 'barbellTotal',
     rir: r?.rir ?? '', reason: '' };
 }
-function parseForm(f: Form) {
+function parseForm(f: Form, retainedMeasurement?: PerformedResult['measurement']) {
   if (f.reps !== '' && !/^(0|[1-9][0-9]*)$/.test(f.reps)) throw new Error('Use a whole number of reps, including zero.');
-  const measurement = f.kind === 'unspecified' || (f.kind !== 'bodyweight' && f.load === '') ? null : f.kind === 'bodyweight' ? { kind: f.kind, convention: 'bodyweightOnly' } :
+  const measurement = retainedMeasurement !== undefined ? retainedMeasurement : f.kind === 'unspecified' || (f.kind !== 'bodyweight' && f.load === '') ? null : f.kind === 'bodyweight' ? { kind: f.kind, convention: 'bodyweightOnly' } :
     { kind: f.kind, value: f.load, unit: f.unit,
       convention: f.kind === 'externalLoad' ? f.convention : f.kind === 'addedLoad' ? 'addedExternal' : 'displayedAssistance',
       zeroMeaning: f.kind === 'externalLoad' ? (f.zeroMeaning ?? 'validZero') : f.kind === 'addedLoad' ? 'noAddedLoad' : 'noAssistance' };
@@ -45,13 +45,12 @@ export function resultLabel(r: PerformedResult | null, original = false) {
   if (!r) return 'Cleared as erroneous · no current performed result';
   return `${loadLabel(r.measurement, original)} × ${r.reps ? `${r.reps.value}${r.reps.basis === 'perSide' ? ' per side' : r.reps.basis === 'alternating' ? ' alternating' : ''}` : 'reps unspecified'} · ${r.rir === null ? 'RIR unspecified' : `${r.rir} RIR`}`;
 }
-export function SetResultRow({ authoredLoad = false, sessionAdded = false, assignment, accountId, ownershipEpoch, executionId, targetId, number, saved, refresh, readOnly = false, locked = false, onInputState, historical = false, history = [], finishVersion, retainedOnly = false, prescription, exercise, active = true, activePanel = false, onSubmission, preceding, onRecorded, firstSetLoad, skipped, refreshExecution, onReturn }: {
+export function SetResultRow({ sessionAdded = false, assignment, accountId, ownershipEpoch, executionId, targetId, number, saved, refresh, readOnly = false, locked = false, onInputState, historical = false, history = [], finishVersion, retainedOnly = false, prescription, exercise, active = true, activePanel = false, onSubmission, preceding, onRecorded, firstSetLoad, skipped, refreshExecution, onReturn }: {
   sessionAdded?: boolean;
   assignment?: AssignmentBinding;
   skipped?: SetSkip; refreshExecution?: () => Promise<ExecutionRead>; onReturn?: () => void;
   active?: boolean; activePanel?: boolean;
   preceding?: SavedSetResult[];
-  authoredLoad?: boolean;
   firstSetLoad?: SavedSetResult;
   onRecorded?: (record: SavedSetResult) => void;
   onSubmission?: () => (results: SavedSetResult[], skips?: SetSkip[]) => void;
@@ -114,11 +113,11 @@ export function SetResultRow({ authoredLoad = false, sessionAdded = false, assig
     if (saved?.result?.measurement) return f;
     if (!saved) f.basis = prescription?.reps.basis ?? 'total';
     const m = prescription?.measurement;
-    if (m) { f.kind = m.kind; if ('value' in m && (number === 1 || sessionAdded) && !saved) f.load = authoredLoad ? pounds(m.value, m.unit) : startingPounds(m) ?? ''; if (m.kind === 'externalLoad') { f.convention = m.convention; f.zeroMeaning = m.zeroMeaning; } }
+    if (m) { f.kind = m.kind; if ('value' in m && (number === 1 || sessionAdded) && !saved) f.load = pounds(m.value, m.unit); if (m.kind === 'externalLoad') { f.convention = m.convention; f.zeroMeaning = m.zeroMeaning; } }
     else if (exercise?.kind === 'catalogSnapshot') {
       f.kind = exercise.loadKind;
       f.zeroMeaning = exercise.catalogFacts?.externalZeroMeaning ?? 'validZero';
-      if (['barbellTotal', 'perImplement', 'machineDisplayed'].includes(exercise.convention)) f.convention = exercise.convention as Form['convention'];
+      if (['barbellTotal', 'perImplement', 'machineDisplayed', 'machinePlatesPerArm', 'smithPlatesTotal'].includes(exercise.convention)) f.convention = exercise.convention as Form['convention'];
     }
     if (saved) return f;
     f.reps = prescription && prescription.reps.min === prescription.reps.max ? String(prescription.reps.min) : '';
@@ -138,11 +137,11 @@ export function SetResultRow({ authoredLoad = false, sessionAdded = false, assig
   }
   function initialDraft(): Draft {
     const form = initialForm(), prior = preceding?.find(r => r.result)?.result;
-    // An explicit addition load is exact intent, not a rounded history suggestion.
+    // An explicit prescription is exact intent, not a rounded history suggestion.
     // Reuse unchanged-measurement preservation after converting its display to lb.
     const carriedMeasurement = !saved && prior?.measurement && prescription && exercise &&
       (!prior.reps || prior.reps.basis === form.basis) && compatibleLoggingLoad(prior.measurement, prescription, exercise)
-      ? prior.measurement : !saved && authoredLoad && (number === 1 || sessionAdded)
+      ? prior.measurement : !saved && (number === 1 || sessionAdded)
         ? prescription?.measurement ?? undefined : undefined;
     return { ...(assignment ? { assignment } : {}), form, ...(skipped ? { skipActionId: skipped.actionId } : {}), base: saved ?? null, pending: null, conflict: false, ...(carriedMeasurement ? { carriedMeasurement } : {}) };
   }
@@ -220,17 +219,15 @@ export function SetResultRow({ authoredLoad = false, sessionAdded = false, assig
     try {
       const envelope = { schemaVersion: 1, actionId: crypto.randomUUID(), deviceId: crypto.randomUUID(), originatingAccountId: accountId,
         ownershipEpoch, dependsOn: [], target: { executionId, targetId } };
-      const result = clear ? null : parseForm(d.form);
+      // Validate the intended original measurement, not its lossy lb display.
+      // This also handles valid kg values whose converted display exceeds lb's input range.
+      const retained = d.base?.result ? d.base.result.measurement : d.carriedMeasurement;
+      const original = retained !== undefined ? formFor({ reps: null, measurement: retained, rir: null }) : undefined;
+      const untouched = original && ['load', 'kind', 'unit', 'convention', 'zeroMeaning'].every(k => d.form[k as keyof Form] === original[k as keyof Form]);
+      const result = clear ? null : parseForm(d.form, untouched ? retained : undefined);
       if (!d.base && !result?.reps) { setMessage('Enter reps to log a set. Load may be left blank.'); return; }
-      if (result && !d.base && d.carriedMeasurement) {
-        const original = formFor({ reps: null, measurement: d.carriedMeasurement, rir: null });
-        if (['load', 'kind', 'unit', 'convention', 'zeroMeaning'].every(k => d.form[k as keyof Form] === original[k as keyof Form])) result.measurement = d.carriedMeasurement;
-      }
-      // Preserve the original measurement if only its display changed to pounds.
-      if (result && d.base?.result) {
-        const original = formFor(d.base.result);
-        if (['load', 'kind', 'unit', 'convention', 'zeroMeaning'].every(k => d.form[k as keyof Form] === original[k as keyof Form])) result.measurement = d.base.result.measurement;
-        if (canonicalJson(result) === canonicalJson(d.base.result)) { store(null); setMessage('Results are up to date. No values changed.'); return; }
+      if (result && d.base?.result && canonicalJson(result) === canonicalJson(d.base.result)) {
+        store(null); setMessage('Results are up to date. No values changed.'); return;
       }
       if (exercise && !compatibleCatalogResult(result, exercise)) throw new Error('Use this exercise’s reviewed rep and load basis.');
       const command = resultMutationCommand.parse(d.base ? { ...envelope, commandType: historical ? 'CorrectHistoricalSetResult' : 'CorrectSetResult',
@@ -277,7 +274,7 @@ export function SetResultRow({ authoredLoad = false, sessionAdded = false, assig
           <button type="button" className={stepControl} aria-label="Increase reps" onClick={() => adjust('reps', 1)}>+1</button>
         </div></div>
         {!['unspecified', 'bodyweight'].includes(f.kind) ? <div>
-          <p className={fieldLabel}>{f.kind === 'externalLoad' ? f.convention === 'barbellTotal' ? 'Barbell total (lb)' : f.convention === 'perImplement' ? exercise?.kind === 'catalogSnapshot' && exercise.equipment.some(e => /dumbbell/i.test(e)) ? 'Per dumbbell (lb)' : 'Per implement (lb)' : 'Machine weight (lb)' : f.kind === 'addedLoad' ? 'Added load (lb)' : 'Assistance (lb) · more lbs = easier'}</p><input className={fieldControl} aria-label={`Set ${number} Actual load`} inputMode="decimal" value={f.load} onFocus={e => e.currentTarget.select()} onChange={e => change('load', e.target.value)} />
+          <p className={fieldLabel}>{f.kind === 'externalLoad' ? f.convention === 'machinePlatesPerArm' ? 'Plates added per arm (lb)' : f.convention === 'smithPlatesTotal' ? 'Total plates added (lb) · excludes Smith bar' : f.convention === 'barbellTotal' ? 'Barbell total (lb)' : f.convention === 'perImplement' ? exercise?.kind === 'catalogSnapshot' && exercise.equipment.some(e => /dumbbell/i.test(e)) ? 'Per dumbbell (lb)' : 'Per implement (lb)' : 'Machine weight (lb)' : f.kind === 'addedLoad' ? 'Added load (lb)' : 'Assistance (lb) · more lbs = easier'}</p><input className={fieldControl} aria-label={`Set ${number} Actual load`} inputMode="decimal" value={f.load} onFocus={e => e.currentTarget.select()} onChange={e => change('load', e.target.value)} />
 <div className={styles.increments}>{[-10, -5, 5, 10].map(delta => <button type="button" key={delta} className={stepControl} aria-label={(delta < 0 ? 'Decrease' : 'Increase') + ' load by ' + Math.abs(delta) + ' lb'} onClick={() => adjust('load', delta)}>{delta < 0 ? '−' : '+'}{Math.abs(delta)}</button>)}</div><button className="min-h-11 px-1 text-sm underline" type="button" onClick={() => change('load', '')}>Clear</button>
 
 
@@ -297,7 +294,7 @@ export function SetResultRow({ authoredLoad = false, sessionAdded = false, assig
         <div className="grid grid-cols-2 gap-2">
           <label>Rep basis<select className={control + ' w-full'} disabled={exercise?.kind === 'catalogSnapshot' && !!exercise.catalogFacts} aria-label={`Set ${number} rep basis`} value={f.basis} onChange={e => change('basis', e.target.value)}><option value="total">Total</option><option value="perSide">Per side</option><option value="alternating">Alternating</option></select></label>
           <label>Actual load type<select className={control + ' w-full'} disabled={exercise?.kind === 'catalogSnapshot' && !!exercise.catalogFacts} aria-label={`Set ${number} actual load type`} value={f.kind} onChange={e => change('kind', e.target.value)}><option value="unspecified">Unspecified</option><option value="bodyweight">Bodyweight</option><option value="externalLoad">External load</option><option value="addedLoad">Added load</option><option value="assistance">Assistance</option></select></label>
-          {f.kind === 'externalLoad' && <label>Load basis<select className={control + ' w-full'} disabled={exercise?.kind === 'catalogSnapshot' && !!exercise.catalogFacts} aria-label={`Set ${number} load basis`} value={f.convention} onChange={e => change('convention', e.target.value)}><option value="barbellTotal">Barbell total</option><option value="perImplement">Per implement</option><option value="machineDisplayed">Machine displayed</option></select></label>}
+          {f.kind === 'externalLoad' && <label>Load basis<select className={control + ' w-full'} disabled={exercise?.kind === 'catalogSnapshot' && !!exercise.catalogFacts} aria-label={`Set ${number} load basis`} value={f.convention} onChange={e => change('convention', e.target.value)}><option value="barbellTotal">Barbell total</option><option value="perImplement">Per implement</option><option value="machineDisplayed">Machine displayed</option><option value="machinePlatesPerArm">Plates added per arm</option><option value="smithPlatesTotal">Total Smith plates added</option></select></label>}
           {f.kind === 'externalLoad' && <label>Zero load<select className={control + ' w-full'} disabled={exercise?.kind === 'catalogSnapshot' && !!exercise.catalogFacts} aria-label={`Set ${number} zero load meaning`} value={f.zeroMeaning ?? 'validZero'} onChange={e => change('zeroMeaning', e.target.value)}><option value="validZero">Valid zero</option><option value="notAllowed">Zero not allowed</option></select></label>}
         </div>
         {activePanel && saved?.result && !draft?.conflict && <button className={control + ' mt-2'} onClick={() => { if (!currentDraft.current) begin(); if (clearing) save(true); else setClearing(true); }}>{clearing ? 'Confirm clear erroneous result' : 'Clear erroneous result'}</button>}

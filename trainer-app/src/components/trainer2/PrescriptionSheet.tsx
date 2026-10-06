@@ -29,7 +29,7 @@ export function PrescriptionSheet({ exercise, target, sets, scope, trigger, clos
     change(t => {
       if (!value) { t.measurement = null; return; }
       if (!fixed || fixed.loadKind === 'bodyweight') return;
-      if (fixed.loadKind === 'externalLoad') t.measurement = { kind: 'externalLoad', value, unit: 'lb', convention: fixed.convention as 'barbellTotal' | 'perImplement' | 'machineDisplayed', zeroMeaning: fixed.catalogFacts?.externalZeroMeaning ?? (t.measurement?.kind === 'externalLoad' ? t.measurement.zeroMeaning : 'notAllowed') };
+      if (fixed.loadKind === 'externalLoad') t.measurement = { kind: 'externalLoad', value, unit: 'lb', convention: fixed.convention as 'barbellTotal' | 'perImplement' | 'machineDisplayed' | 'machinePlatesPerArm' | 'smithPlatesTotal', zeroMeaning: fixed.catalogFacts?.externalZeroMeaning ?? (t.measurement?.kind === 'externalLoad' ? t.measurement.zeroMeaning : 'notAllowed') };
       else if (fixed.loadKind === 'addedLoad') t.measurement = { kind: 'addedLoad', value, unit: 'lb', convention: 'addedExternal', zeroMeaning: 'noAddedLoad' };
       else t.measurement = { kind: 'assistance', value, unit: 'lb', convention: 'displayedAssistance', zeroMeaning: 'noAssistance' };
     }, 'measurement');

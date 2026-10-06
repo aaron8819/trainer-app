@@ -7,7 +7,6 @@ import { executionPositions, originalPositions } from '@/lib/engine/trainer2/exe
 import { finishFormId } from './FinishWorkout';
 import { currentAssignment, effectiveOccurrence } from '@/lib/engine/trainer2/exercise-swap';
 import { SwapExercise } from './SwapExercise';
-import { startingPounds } from '@/lib/engine/trainer2/logging-prefill';
 import { useEffect, useRef, useState } from 'react';
 import type { ExecutionRead } from '@/lib/trainer2-contracts/execution';
 import type { SavedSetResult } from '@/lib/trainer2-contracts/set-results';
@@ -132,7 +131,7 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
         disabled={locked || sets.some(s => inputStates[s.id] !== false)}
         className="mt-3 min-h-11 rounded-xl bg-black px-5 py-3 font-semibold text-white disabled:opacity-40">Finish workout</button>}
       {active && <>
-        <p className={styles.target}>{execution.additions?.some(a => a.content.target.id === active.id) ? 'Session target' : 'Starting target'} · {targetLabel({ ...active.target, measurement: null })}{active.target.measurement && <> · {startingPounds(active.target.measurement) === null ? 'Bodyweight' : `${'value' in active.target.measurement && execution.exerciseAdditions?.some(a => a.content.position.id === active.positionId) ? pounds(active.target.measurement.value, active.target.measurement.unit) : startingPounds(active.target.measurement)} lb suggested from prescription`}</>}{!active.target.measurement && active.number === 1 && execution.firstSetLoads?.some(h => h.positionId === active.position.id) && ' · Last time'}</p>
+        <p className={styles.target}>{execution.additions?.some(a => a.content.target.id === active.id) ? 'Session target' : 'Starting target'} · {targetLabel({ ...active.target, measurement: null })}{active.target.measurement && <> · {!('value' in active.target.measurement) ? 'Bodyweight' : `${'value' in active.target.measurement ? pounds(active.target.measurement.value, active.target.measurement.unit) : ''} lb prescribed`}</>}{!active.target.measurement && active.number === 1 && execution.firstSetLoads?.some(h => h.positionId === active.position.id) && ' · Last time'}</p>
         <dialog ref={historyDialog} onCancel={() => setHistoryOpen(false)} aria-label="Exercise history" className={styles.historyDialog}>
           <div className={styles.sheetHead}><h2>History</h2><button type="button" onClick={() => setHistoryOpen(false)}>Close history</button></div>
           <div className={styles.sheetBody}>
@@ -147,7 +146,7 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
 
           </div></dialog>
       </>}
-      {sets.map(s => <SetResultRow sessionAdded={execution.additions?.some(a => a.content.target.id === s.id) || execution.exerciseAdditions?.some(a => a.content.position.targets.some(t => t.id === s.id))} authoredLoad={execution.exerciseAdditions?.some(a => a.content.position.targets.some(t => t.id === s.id && !!t.measurement))} key={`${s.id}:${currentAssignment(execution, s.positionId).version}:${inputEpoch}`} assignment={currentAssignment(execution, s.positionId)} active={selected === s.id} activePanel accountId={execution.initial.accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
+      {sets.map(s => <SetResultRow sessionAdded={execution.additions?.some(a => a.content.target.id === s.id) || execution.exerciseAdditions?.some(a => a.content.position.targets.some(t => t.id === s.id))} key={`${s.id}:${currentAssignment(execution, s.positionId).version}:${inputEpoch}`} assignment={currentAssignment(execution, s.positionId)} active={selected === s.id} activePanel accountId={execution.initial.accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
         targetId={s.id} number={s.number} saved={execution.results.find(r => r.targetId === s.id)} prescription={s.target} exercise={s.position.exercise}
         firstSetLoad={execution.firstSetLoads?.find(h => h.positionId === s.position.id)?.result}
         preceding={sets.filter(p => p.positionId === s.positionId && p.number < s.number).reverse().flatMap(p => execution.results.filter(r => r.targetId === p.id && (!r.assignment || canonicalJson(r.assignment) === canonicalJson(currentAssignment(execution, s.positionId)))))}

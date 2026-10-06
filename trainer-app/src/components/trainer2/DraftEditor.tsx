@@ -6,7 +6,7 @@ const labels: Record<string, string> = {
   missing: "Unspecified", externalLoad: "External load", addedLoad: "Added load", assistance: "Assistance", bodyweight: "Bodyweight only",
   preparation: "Preparation", rampUp: "Ramp-up", working: "Working", optionalFinisher: "Optional finisher",
   total: "Total", perSide: "Per side", alternating: "Alternating", barbellTotal: "Barbell total", perImplement: "Per implement",
-  machineDisplayed: "Machine displayed", notAllowed: "Zero not allowed", validZero: "Zero is valid",
+  machinePlatesPerArm: 'plates added per arm', smithPlatesTotal: 'total Smith plates added', machineDisplayed: "Machine displayed", notAllowed: "Zero not allowed", validZero: "Zero is valid",
 };
 export const control = "rounded border border-slate-400 bg-white px-3 py-2 text-slate-900 disabled:opacity-40";
 export function TextField({ label, value, onChange, numeric = false }: { label: string; value: string; onChange: (value: string) => void; numeric?: boolean }) {
@@ -40,13 +40,13 @@ export function TargetFields({ target: t, change, exercise }: { exercise?: Draft
     <TextField label="Minimum reps" numeric value={String(t.reps.min || "")} onChange={v => change(t => { t.reps.min = Number(v); }, 'reps')} />
     <TextField label="Maximum reps" numeric value={String(t.reps.max || "")} onChange={v => change(t => { t.reps.max = Number(v); }, 'reps')} />
     <Choice label="Rep basis" value={t.reps.basis} options={fixed ? [fixed.repBasis] : ["total", "perSide", "alternating"]} onChange={v => change(t => { t.reps.basis = v; }, 'reps')} />
-    <Choice label="Measurement kind" value={m?.kind ?? "missing"} options={fixed ? ["missing", fixed.loadKind] : ["missing", "externalLoad", "addedLoad", "assistance", "bodyweight"]} onChange={v => change(t => { t.measurement = initialMeasurement(v); if (fixed && t.measurement?.kind === "externalLoad") t.measurement.convention = fixed.convention as "barbellTotal" | "perImplement" | "machineDisplayed"; }, 'measurement')} />
+    <Choice label="Measurement kind" value={m?.kind ?? "missing"} options={fixed ? ["missing", fixed.loadKind] : ["missing", "externalLoad", "addedLoad", "assistance", "bodyweight"]} onChange={v => change(t => { t.measurement = initialMeasurement(v); if (fixed && t.measurement?.kind === "externalLoad") t.measurement.convention = fixed.convention as "barbellTotal" | "perImplement" | "machineDisplayed" | "machinePlatesPerArm" | "smithPlatesTotal"; }, 'measurement')} />
     {m && m.kind !== "bodyweight" && <>
       <TextField label="Load or assistance" numeric value={m.value} onChange={v => change(t => { if (t.measurement && t.measurement.kind !== "bodyweight") t.measurement.value = v; }, 'measurement')} />
       <Choice label="Unit" value={m.unit} options={["kg", "lb"]} onChange={v => change(t => { if (t.measurement && t.measurement.kind !== "bodyweight") t.measurement.unit = v; }, 'measurement')} />
     </>}
     {m?.kind === "externalLoad" ? <>
-      <Choice label="Convention" value={m.convention} options={fixed ? [m.convention] : ["barbellTotal", "perImplement", "machineDisplayed"]} onChange={v => change(t => { if (t.measurement?.kind === "externalLoad") t.measurement.convention = v; }, 'measurement')} />
+      <Choice label="Convention" value={m.convention} options={fixed ? [m.convention] : ["barbellTotal", "perImplement", "machineDisplayed", "machinePlatesPerArm", "smithPlatesTotal"]} onChange={v => change(t => { if (t.measurement?.kind === "externalLoad") t.measurement.convention = v; }, 'measurement')} />
       <Choice label="Zero meaning" value={m.zeroMeaning} options={fixed?.catalogFacts?.externalZeroMeaning ? [fixed.catalogFacts.externalZeroMeaning] : ["notAllowed", "validZero"]} onChange={v => change(t => { if (t.measurement?.kind === "externalLoad") t.measurement.zeroMeaning = v; }, 'measurement')} />
     </> : <p>{!m ? "Weight is optional. You can choose it later." : m.kind === "bodyweight" ? "Bodyweight only; no numeric load." : m.kind === "addedLoad" ? "Added external load; zero means no added load." : "Displayed assistance; zero means no assistance."}</p>}
     <TextField label="RIR (blank = unspecified)" numeric value={t.rir ?? ""} onChange={v => change(t => { t.rir = v === "" ? null : v; }, 'rir')} />

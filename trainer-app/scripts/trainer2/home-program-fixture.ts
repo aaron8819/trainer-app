@@ -29,7 +29,7 @@ import { randomBytes } from 'node:crypto';
 const expect=baseExpect.configure({timeout:30_000});
 
 // Separate disposable fixture per invocation. Uses released owners, never configured targets.
-export async function runHomeProgramFixture(preview: boolean, surfacesOnly = false, loggerJourney?: (context: { page: import('@playwright/test').Page; base: string; home: string; artifact: string; accountId: string; planId: string; executionId: string; pass: (value: string) => void }) => Promise<void>) {
+export async function runHomeProgramFixture(preview: boolean, surfacesOnly = false, loggerJourney?: (context: { page: import('@playwright/test').Page; base: string; home: string; artifact: string; accountId: string; planId: string; executionId: string; pass: (value: string) => void; db: PrismaClient; reader: PrismaClient; principal: { accountId: string; sessionId: string } }) => Promise<void>) {
   const suffix=randomUUID().slice(0,8), container=`trainer2-home-program-${suffix}`, database=`trainer2_disposable_${suffix}`;
   const artifact=resolve(`artifacts/trainer2/${loggerJourney?'logger':'home-program'}-${preview?'preview':surfacesOnly?'surfaces':'verify'}-${suffix}`); mkdirSync(artifact,{recursive:true});
   const password=randomUUID(), accountId=randomUUID(), sessionId=randomUUID(), secret=randomBytes(32).toString('base64url'), principal={accountId,sessionId};
@@ -117,7 +117,7 @@ export async function runHomeProgramFixture(preview: boolean, surfacesOnly = fal
     await context.addCookies([{name:'__Host-trainer2-session',value:`${sessionId}.${secret}`,domain:'127.0.0.1',path:'/',httpOnly:true,secure:true,sameSite:'Strict'}]);
     const page=await context.newPage(), errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(30_000);
     if (loggerJourney) {
-      try { await loggerJourney({ page, base, home, artifact, accountId, planId, executionId: open!.executionId, pass }); }
+      try { await loggerJourney({ page, base, home, artifact, accountId, planId, executionId: open!.executionId, pass, db: db!, reader: reader!, principal }); }
       catch (error) { await page.screenshot({ path: resolve(artifact, 'failed-page.png'), fullPage: true }).catch(() => {}); writeFileSync(resolve(artifact, 'failed-dom.txt'), await page.locator('body').innerText().catch(() => 'Unavailable')); throw error; }
       assert.deepEqual(errors, []);
       assert.equal(verificationSource().manifestHash, source.manifestHash, 'Source changed during verification');

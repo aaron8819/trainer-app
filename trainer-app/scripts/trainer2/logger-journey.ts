@@ -14,7 +14,7 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   const read = async () => page.evaluate(async path => { const response = await fetch(path); if (!response.ok) throw new Error('Execution read failed'); return response.json(); }, `/api/trainer2/executions/${executionId}`);
   const draft = async () => page.evaluate(({ accountId, executionId }) => Object.fromEntries(Object.entries(sessionStorage).filter(([key]) => key.startsWith(`trainer2-result:${accountId}:${executionId}:`))), { accountId, executionId });
   await page.goto(url);
-  await expect(active.getByLabel('Set 1 Actual load', { exact: true })).toHaveValue('130');
+  await expect(active.getByLabel('Set 1 Actual load', { exact: true })).toHaveValue('132.28');
   await expect(active.getByLabel('Set 1 Actual reps', { exact: true })).toHaveValue('');
   for (const width of [1280, 390, 320]) {
     await page.setViewportSize({ width, height: 844 });
@@ -39,11 +39,11 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
 
   await active.getByRole('button', { name: 'Log set', exact: true }).click();
   await expect(active.getByLabel('Set 2 Actual reps', { exact: true })).toHaveValue('8');
-  await expect(active.getByLabel('Set 2 Actual load', { exact: true })).toHaveValue('130');
+  await expect(active.getByLabel('Set 2 Actual load', { exact: true })).toHaveValue('132.28');
   const initial = await read();
-  assert.equal(initial.results[0].result.measurement.unit, 'lb');
+  assert.equal(initial.results[0].result.measurement.unit, 'kg');
   assert.equal(initial.initial.occurrence.positions[0].targets[0].measurement.unit, 'kg');
-  assert.equal(initial.results[0].result.measurement.value, '130');
+  assert.equal(initial.results[0].result.measurement.value, '60');
   const timer = page.getByLabel('Rest timer', { exact: true });
   await expect(timer).toBeVisible();
   const timerStorage = `trainer2-rest:${accountId}:${executionId}`;
@@ -56,7 +56,7 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   assert(timerBefore);
   await page.reload();
   await expect(timer).toBeVisible();
-  pass('Prescribed kg load rounds to the released lbs suggestion without changing its target; confirmed log carries values forward; skip advances; timer adjustments and reload persist');
+  pass('Prescribed kg load displays in pounds and logs its untouched original kg value; confirmed log carries values forward; skip advances; timer adjustments and reload persist');
 
   // Abort every delivery response after the server accepts the exact request.
   const bodies: string[] = [];
@@ -83,7 +83,7 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   await expect(active.getByLabel('Set 1 Actual reps', { exact: true })).toBeVisible();
   assert.equal(retry, bodies[0]);
   const afterRetry = await read();
-  assert.equal(afterRetry.results.find((r: { targetId: string }) => r.targetId === JSON.parse(bodies[0]).target.targetId).result.measurement.unit, 'lb');
+  assert.equal(afterRetry.results.find((r: { targetId: string }) => r.targetId === JSON.parse(bodies[0]).target.targetId).result.measurement.unit, 'kg');
   pass('Accepted lost response preserves exact pending envelope and typed draft across reload; replay confirms edited lbs without duplicate work');
 
   const firstName = initial.initial.occurrence.positions[0].exercise.name;

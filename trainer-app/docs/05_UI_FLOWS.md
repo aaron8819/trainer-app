@@ -1,3 +1,5 @@
+Trainer2 bounded program variants and exact prescribed-load prefill: [definition provenance, recording conventions and recovery](architecture/trainer2/PROGRAM_SUPPORT.md).
+
 # 05 UI Flows
 
 Trainer2 approved Builder: [template-first authoring, focused sheets, overrides, recovery, review/activation and mobile verification](architecture/trainer2/BUILDER_DESIGN.md).

@@ -1,0 +1,232 @@
+[
+  {
+    "catalogKey": "neutral-grip-lat-pulldown",
+    "name": "Neutral-Grip Lat Pulldown",
+    "equipment": [
+      "Cable",
+      "Machine"
+    ],
+    "movementPatterns": [
+      "vertical_pull"
+    ],
+    "primaryMuscles": [
+      "Lats"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Upper Back",
+      "Forearms"
+    ],
+    "repRangeRecommendation": {
+      "min": 6,
+      "max": 12
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "MACHINE_DISPLAYED",
+    "repBasis": "TOTAL",
+    "variation": "Neutral grip; both arms together. Record the displayed stack setting, not inferred handle resistance."
+  },
+  {
+    "catalogKey": "ez-bar-preacher-curl",
+    "name": "EZ-Bar Preacher Curl",
+    "equipment": [
+      "EZ_Bar",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Biceps"
+    ],
+    "secondaryMuscles": [],
+    "repRangeRecommendation": {
+      "min": 8,
+      "max": 15
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "BARBELL_TOTAL",
+    "repBasis": "TOTAL",
+    "variation": "Both arms together; total EZ-bar weight including the bar."
+  },
+  {
+    "catalogKey": "rope-hammer-curl",
+    "name": "Rope Hammer Curl",
+    "equipment": [
+      "Cable"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Biceps"
+    ],
+    "secondaryMuscles": [
+      "Forearms"
+    ],
+    "repRangeRecommendation": {
+      "min": 8,
+      "max": 15
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "MACHINE_DISPLAYED",
+    "repBasis": "TOTAL",
+    "variation": "Rope attachment, neutral grip, both arms together. Record the displayed stack setting."
+  },
+  {
+    "catalogKey": "single-arm-cable-lateral-raise",
+    "name": "Single-Arm Cable Lateral Raise",
+    "equipment": [
+      "Cable"
+    ],
+    "movementPatterns": [
+      "abduction"
+    ],
+    "primaryMuscles": [
+      "Side Delts"
+    ],
+    "secondaryMuscles": [],
+    "repRangeRecommendation": {
+      "min": 10,
+      "max": 20
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "MACHINE_DISPLAYED",
+    "repBasis": "PER_SIDE",
+    "variation": "One arm at a time; reps per side. Record the displayed cable stack setting."
+  },
+  {
+    "catalogKey": "chest-supported-machine-row-stack",
+    "name": "Chest-Supported Machine Row (Stack)",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Lats",
+      "Upper Back"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Forearms"
+    ],
+    "repRangeRecommendation": {
+      "min": 6,
+      "max": 12
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "MACHINE_DISPLAYED",
+    "repBasis": "TOTAL",
+    "variation": "Chest supported; both arms together. Record the single displayed stack setting."
+  },
+  {
+    "catalogKey": "chest-supported-machine-row-plates-per-arm",
+    "name": "Chest-Supported Machine Row (Plates per Arm)",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Lats",
+      "Upper Back"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Forearms"
+    ],
+    "repRangeRecommendation": {
+      "min": 6,
+      "max": 12
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "MACHINE_PLATES_PER_ARM",
+    "repBasis": "TOTAL",
+    "variation": "Chest supported; both arms together, equal plates per arm. Record plates added per arm; exclude machine starting resistance.",
+    "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD"
+  },
+  {
+    "catalogKey": "chest-supported-machine-high-row-stack",
+    "name": "Chest-Supported Machine High Row (Stack)",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Upper Back",
+      "Lats"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Rear Delts"
+    ],
+    "repRangeRecommendation": {
+      "min": 6,
+      "max": 12
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "MACHINE_DISPLAYED",
+    "repBasis": "TOTAL",
+    "variation": "Chest supported; both arms together. Record the single displayed stack setting."
+  },
+  {
+    "catalogKey": "chest-supported-machine-high-row-plates-per-arm",
+    "name": "Chest-Supported Machine High Row (Plates per Arm)",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Upper Back",
+      "Lats"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Rear Delts"
+    ],
+    "repRangeRecommendation": {
+      "min": 6,
+      "max": 12
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "MACHINE_PLATES_PER_ARM",
+    "repBasis": "TOTAL",
+    "variation": "Chest supported; both arms together, equal plates per arm. Record plates added per arm; exclude machine starting resistance.",
+    "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD"
+  },
+  {
+    "catalogKey": "smith-machine-bulgarian-split-squat-plates-added",
+    "name": "Smith-Machine Bulgarian Split Squat (Plates Added)",
+    "equipment": [
+      "Smith_Machine",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "lunge"
+    ],
+    "primaryMuscles": [
+      "Quads",
+      "Glutes"
+    ],
+    "secondaryMuscles": [
+      "Hamstrings",
+      "Adductors"
+    ],
+    "repRangeRecommendation": {
+      "min": 6,
+      "max": 12
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "SMITH_PLATES_TOTAL",
+    "repBasis": "PER_SIDE",
+    "variation": "Reps per leg. Record total plates added across both sides; exclude Smith bar resistance.",
+    "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD"
+  }
+]

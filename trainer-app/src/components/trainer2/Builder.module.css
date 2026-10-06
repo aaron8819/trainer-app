@@ -19,7 +19,7 @@
 .card { padding:20px; border:1px solid #dbded5; background:white; border-radius:22px; margin-bottom:12px; min-width:0; }
 .card h3 { font-size:18px; font-weight:650; line-height:1.4; overflow-wrap:anywhere; margin:4px 0; }
 .tools { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
-.tools button { background:white; border:1px solid #dbded5; padding:8px 12px; }
+.tools button { min-width:44px; flex-shrink:0; background:white; border:1px solid #dbded5; padding:8px 12px; }
 .tools button:disabled { opacity:.35; }
 .primary { background:#171a18!important; color:white!important; border:1px solid #171a18!important; padding:12px 18px; font-weight:600; }
 .primary:disabled { opacity:.4; }

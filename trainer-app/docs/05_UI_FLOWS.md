@@ -1,5 +1,7 @@
 # 05 UI Flows
 
+Trainer2 approved Builder: [template-first authoring, focused sheets, overrides, recovery, review/activation and mobile verification](architecture/trainer2/BUILDER_DESIGN.md).
+
 Trainer2 approved Logger presentation: [entry, timer, queue, history, recovery, finish and disposable preview](architecture/trainer2/LOGGER_DESIGN.md).
 
 Trainer2 approved Home and Program presentation: [UI ownership, read-only inspection, prototype adaptations and local preview](architecture/trainer2/HOME_PROGRAM_DESIGN.md).

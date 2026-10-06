@@ -13,7 +13,7 @@ const rawState = (name = plan.name, revisionNumber = 1) => ({ planId: '00000000-
 const json = (body: unknown, ok = true) => ({ ok, json: async () => body });
 const acceptance = () => json({ outcome: { status: 'Accepted', result: { planId: state().planId } } });
 const click = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
-const mount = () => render(<DraftWorkbench accountId="account-a" ownershipEpoch={0} />);
+const mount = () => { const result = render(<DraftWorkbench accountId="account-a" ownershipEpoch={0} />); const customize = screen.queryByRole('button', { name: 'Customize this template' }); if (customize) fireEvent.click(customize); return result; };
 const saved = () => waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/^Saved$/));
 const reviewed = (name = plan.name, revisionNumber = 1) => {
   const s = rawState(name, revisionNumber);
@@ -29,6 +29,45 @@ const reviewed = (name = plan.name, revisionNumber = 1) => {
 const state = reviewed;
 afterEach(() => { cleanup(); sessionStorage.clear(); vi.unstubAllGlobals(); window.history.replaceState(null, '', '/'); });
 describe('builder save recovery', () => {
+  it('recovers an unsaved template draft after a remount', async () => {
+    const view = mount();
+    fireEvent.change(screen.getByLabelText('Plan name'), { target: { value: 'Retained local draft' } });
+    view.unmount();
+    mount();
+    expect(screen.getByLabelText('Plan name')).toHaveValue('Retained local draft');
+    expect(screen.getByRole('status')).toHaveTextContent('Local draft recovered');
+  });
+  it('keeps draft inputs and sends no save when its retry checkpoint cannot be stored', async () => {
+    const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher); mount();
+    const storage = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('storage unavailable'); });
+    click('Save plan');
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Could not retain a safe save retry'));
+    expect(screen.getByLabelText('Plan name')).toBeEnabled(); expect(fetcher).not.toHaveBeenCalled();
+    storage.mockRestore();
+  });
+  it('recovers the identical pending save after reload before its outcome is known', async () => {
+    const fetcher = vi.fn().mockRejectedValue(new Error('lost response'));
+    vi.stubGlobal('fetch', fetcher);
+    const view = mount(); click('Save plan');
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('could not be confirmed'));
+    const original = fetcher.mock.calls[0][1].body;
+    const target = JSON.parse(original).target.planId;
+    view.unmount();
+    render(<DraftWorkbench accountId="account-a" ownershipEpoch={0} initialPlanId={target} />);
+    expect(screen.getByRole('status')).toHaveTextContent('recover the original request');
+    click('Check again');
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    expect(fetcher.mock.calls[1][1].body).toBe(original);
+  });
+  it('shows the existing current-plan admission conflict before activation', async () => {
+    const current = { planId: '00000000-0000-4000-8000-000000000099', lifecycle: 'Active' };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(acceptance()).mockResolvedValue(json({ ...state(), currentPlan: current })));
+    mount(); click('Save plan'); await saved(); click('Review plan');
+    await screen.findByRole('heading', { name: 'Saved plan checks passed' });
+    expect(screen.getByRole('button', { name: 'Activate plan' })).toBeDisabled();
+    expect(screen.getByRole('note')).toHaveTextContent('Another plan is active');
+    expect(screen.getByRole('link', { name: 'View current plan' })).toHaveAttribute('href', `/trainer2/dev/drafts?planId=${current.planId}`);
+  });
   it('shows current completed lifecycle when reopening an activated plan', async () => {
     const s = state();
     const fetcher = vi.fn().mockResolvedValueOnce(json({ ...s, state: { lifecycle: 'Completed', initialApprovedRevisionId: s.revisionId } }))

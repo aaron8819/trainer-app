@@ -1,5 +1,7 @@
 # 04 API Contracts
 
+Trainer2 saved-draft review includes optional read-only `currentPlan` admission context (owned Active/Paused plan ID/lifecycle, or null); authoritative activation rules and reviewed binding are unchanged. See [Builder integration](architecture/trainer2/BUILDER_DESIGN.md) and `src/lib/engine/trainer2/review-response.ts`.
+
 Trainer2 explicit current-week advancement: [command, cursor, final-week completion, migration/grants and coordinated reader recovery](architecture/trainer2/CURRENT_WEEK_SELECTION.md).
 
 

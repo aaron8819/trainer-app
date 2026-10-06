@@ -17,6 +17,7 @@ const savedReview = z.object({
   status: z.enum(['issues', 'validDraft']), intent: savedDraftDocument,
 }).strict();
 const responseSchema = z.object({ planId: id, revisionId: id, revisionNumber: z.int().positive(),
+  currentPlan: z.object({ planId: id, lifecycle: z.enum(['Active', 'Paused']) }).strict().nullable().optional(),
   contentHash: hash, intent: savedDraftDocument, review: savedReview,
   activationBlockers: z.array(z.string().min(1)),
   state: planState, activation: activationReview,

@@ -24,8 +24,11 @@ export async function readDraft(db: PrismaClient | Prisma.TransactionClient, pri
   const review: SavedPlanReview = { ...binding, digest: integrityHash(canonicalJson(binding)), issues,
     status: issues.length ? 'issues' : 'validDraft', intent };
   const activation = reviewActivation(review, await readInstructions(db, principal.accountId));
+  // Read-only admission context. Acceptance rechecks the same existing rule under the account lock.
+  const current = await db.trainer2Plan.findFirst({ where: { accountId: principal.accountId, lifecycle: { in: ['Active', 'Paused'] } } });
+  const currentPlan = current ? { planId: current.id, lifecycle: current.lifecycle } : null;
   return validateReviewResponse({ planId, revisionId: revision.id, revisionNumber: revision.revisionNumber, contentHash: revision.contentHash,
-    intent, review, state: { lifecycle: plan.lifecycle, initialApprovedRevisionId: plan.initialApprovedRevisionId }, activation,
+    intent, review, currentPlan, state: { lifecycle: plan.lifecycle, initialApprovedRevisionId: plan.initialApprovedRevisionId }, activation,
     activationBlockers: [...issues.map(i => i.code), ...(activation.binding.restrictionIssues.length ? ['UNRESOLVED_EXCLUSION'] : [])] },
   { accountId: principal.accountId, planId, snapshot: { revisionId: revision.id, contentHash: revision.contentHash, intent } });
 }

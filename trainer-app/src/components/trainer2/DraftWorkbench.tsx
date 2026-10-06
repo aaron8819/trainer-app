@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useRef, useState } from 'react';
-import { draftDocument, editDraftCommand, type DraftDocument, type DraftCommand } from '@/lib/trainer2-contracts/draft';
+import { draftDocument, createDraftCommand, editDraftCommand, type DraftDocument, type DraftCommand } from '@/lib/trainer2-contracts/draft';
 import { createHypertrophyPlan, repairBuilderMetadata } from '@/lib/engine/trainer2/plan-builder';
 import { readSavedDocument } from '@/lib/engine/trainer2/planning';
 import { control } from './DraftEditor';
+import styles from './Builder.module.css';
 import { PlanBuilder } from './PlanBuilder';
 import { DraftReview } from './DraftReview';
 import { draftEdits } from './draft-edits';
@@ -20,6 +21,9 @@ type Props = { accountId: string; ownershipEpoch: number; initialPlanId?: string
 export function DraftWorkbench(props: Props) { return <Workbench key={`${props.accountId}:${props.initialPlanId ?? ''}`} {...props} />; }
 type Loaded = SavedPlanResponse;
 function Workbench({ accountId, ownershipEpoch, initialPlanId = '', view, hostedTrial = false }: Props) {
+  const recoveryKey = `trainer2-builder:${accountId}:${initialPlanId || 'new'}`;
+  const [templateOpen, setTemplateOpen] = useState(!initialPlanId);
+  const [recoveryReady, setRecoveryReady] = useState(false);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [form, setForm] = useState<DraftDocument | null>(null);
   const [planId, setPlanId] = useState(initialPlanId);
@@ -38,6 +42,13 @@ function Workbench({ accountId, ownershipEpoch, initialPlanId = '', view, hosted
   const reviewRequest = useRef(0);
   useEffect(() => () => { ++reviewRequest.current; }, [accountId, initialPlanId]);
   const [editLocation, setEditLocation] = useState<{ occurrenceId?: string; key: number }>({ key: 0 });
+  function clearDraftRecovery(id: string) {
+    try { sessionStorage.removeItem(recoveryKey); sessionStorage.removeItem(`trainer2-builder:${accountId}:${id}`); } catch { /* Accepted server state remains authoritative if browser cache cleanup fails. */ }
+  }
+  function deviceIdentity() {
+    try { const retained = sessionStorage.getItem('trainer2-device'); if (retained) return retained; const id = crypto.randomUUID(); sessionStorage.setItem('trainer2-device', id); return id; }
+    catch { return crypto.randomUUID(); } // Draft checkpoint still must succeed before sending a save.
+  }
   function bookmark(id: string) { const url = new URL(window.location.href); url.searchParams.set('planId', id); window.history.replaceState(null, '', url); }
   function beginRequest() { if (inFlight.current) return false; ++reviewRequest.current; setReviewBusy(false); inFlight.current = true; setBusy(true); setStale(true); return true; }
   function endRequest() { inFlight.current = false; setBusy(false); }
@@ -49,13 +60,32 @@ function Workbench({ accountId, ownershipEpoch, initialPlanId = '', view, hosted
       const validated = await validateReviewResponse(result, { accountId, planId: id });
       if (request !== reviewRequest.current) return;
       const intent = readSavedDocument(validated.intent);
-      setLoaded(validated); setForm(structuredClone(intent)); setPlanId(id); setStale(false); bookmark(id);
+      setLoaded(validated); setForm(structuredClone(intent)); setPlanId(id); setStale(false); bookmark(id); if (validated.state.lifecycle !== 'Draft') { clearDraftRecovery(id); }
       setMessage(validated.state.lifecycle === 'Completed' ? 'Plan complete' : validated.state.lifecycle === 'Active' ? 'Plan active' : 'Saved');
     } catch { if (request !== reviewRequest.current) return; setMessage(accepted === 'activate' ? 'Activation was accepted, but current state could not be loaded. Reload the latest version.' : accepted ? 'Your plan was saved, but could not be reloaded. Reload the latest version.' : 'Could not load this plan. Check your connection and reload.'); }
   }
   async function reload() { if (!planId || uncertain || !beginRequest()) return; try { await refresh(planId); } finally { endRequest(); } }
   useEffect(() => {
     if (mounted.current) return; mounted.current = true;
+    try {
+      const raw = initialPlanId && sessionStorage.getItem(`trainer2-activation:${accountId}:${initialPlanId}`) ? null : sessionStorage.getItem(recoveryKey) ?? sessionStorage.getItem(`trainer2-builder:${accountId}:new`);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        const parsed = draftDocument.safeParse(saved.form);
+        const command = saved.command?.commandType === 'CreateDraft' ? createDraftCommand.safeParse(saved.command) : saved.command?.commandType === 'EditDraft' ? editDraftCommand.safeParse(saved.command) : null;
+        const bound = (!initialPlanId && !saved.planId) || saved.planId === initialPlanId || (!initialPlanId && command?.success);
+        if (saved.schemaVersion === 1 && parsed.success && saved.accountId === accountId && saved.ownershipEpoch === ownershipEpoch && bound) {
+          setForm(parsed.data); setTemplateOpen(false); setPlanId(saved.planId || initialPlanId);
+          if (command?.success && command.data.originatingAccountId === accountId && command.data.ownershipEpoch === ownershipEpoch && (!initialPlanId || command.data.target.planId === initialPlanId)) {
+            setLastCommand(command.data); setUncertain(true); setStale(true); setMessage('Your save could not be confirmed. Check again to recover the original request.');
+          } else if (saved.hasSavedHead || saved.planId) {
+            setConflict(parsed.data); setStale(true); setMessage('Local draft recovered. Reload the saved plan, then compare your retained edits.');
+          } else { setStale(false); setMessage('Local draft recovered · unsaved changes'); }
+          setRecoveryReady(true); return;
+        }
+      }
+    } catch { setMessage('Browser recovery could not be read.'); }
+    setRecoveryReady(true);
     if (initialPlanId) {
       const stored = sessionStorage.getItem(`trainer2-activation:${accountId}:${initialPlanId}`);
       const pending = stored && (() => { try { return activatePlanCommand.safeParse(JSON.parse(stored)); } catch { return null; } })();
@@ -65,17 +95,30 @@ function Workbench({ accountId, ownershipEpoch, initialPlanId = '', view, hosted
     // Bookmark is a mount input. Initial identities are allocated only in the browser.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  useEffect(() => {
+    if (!recoveryReady || !form || uncertain || busy || templateOpen || (loaded && loaded.state.lifecycle !== 'Draft')) return;
+    if (loaded && !conflict && !stale && JSON.stringify(form) === JSON.stringify(loaded.intent)) {
+      try { sessionStorage.removeItem(recoveryKey); sessionStorage.removeItem(`trainer2-builder:${accountId}:${planId}`); } catch { /* Saved state does not depend on clearing local cache. */ }
+      return;
+    }
+    try { const recovery = JSON.stringify({ schemaVersion: 1, accountId, ownershipEpoch, form: conflict ?? form, planId, hasSavedHead: !!loaded, command: null }); sessionStorage.setItem(planId ? `trainer2-builder:${accountId}:${planId}` : recoveryKey, recovery); }
+    catch { setMessage('Browser storage is unavailable. Keep this tab open until your draft is saved.'); }
+  }, [recoveryReady, form, conflict, loaded, planId, uncertain, busy, stale, templateOpen, recoveryKey, accountId, ownershipEpoch]);
   async function submit(command: WriteCommand) {
     if (!beginRequest()) return;
     const request = reviewRequest.current;
     const activating = command.commandType === 'ActivatePlan';
+    if (command.commandType === 'CreateDraft' || command.commandType === 'EditDraft') {
+      try { const recovery = JSON.stringify({ schemaVersion: 1, accountId, ownershipEpoch, form, planId: command.target.planId, hasSavedHead: !!loaded, command }); sessionStorage.setItem(recoveryKey, recovery); sessionStorage.setItem(`trainer2-builder:${accountId}:${command.target.planId}`, recovery); }
+      catch { setMessage('Could not retain a safe save retry. Enable browser storage and try again.'); setStale(false); endRequest(); return; }
+    }
     setCurrentPlanConflict(null);
     setLastCommand(command); setMessage(activating ? 'Activating...' : 'Saving...');
     if (activating) {
       try { sessionStorage.setItem(`trainer2-activation:${accountId}:${command.target.planId}`, JSON.stringify(command)); }
       catch { setMessage('Could not retain a safe activation retry. Enable browser storage and try again.'); setLastCommand(null); setStale(false); endRequest(); return; }
     }
-    const clearPending = () => { if (activating) sessionStorage.removeItem(`trainer2-activation:${accountId}:${command.target.planId}`); };
+    const clearPending = () => { if (!activating) clearDraftRecovery(targetPlan); if (activating) sessionStorage.removeItem(`trainer2-activation:${accountId}:${command.target.planId}`); };
     const targetPlan = command.commandType === 'ChangeInstructions' ? loaded!.planId : command.target.planId;
     try {
       const response = await fetch(`/api/trainer2/drafts/${command.commandType === 'CreateDraft' ? 'create' : command.commandType === 'EditDraft' ? 'edit' : activating ? 'activate' : 'instructions'}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(command) });
@@ -92,7 +135,7 @@ function Workbench({ accountId, ownershipEpoch, initialPlanId = '', view, hosted
         setPlanId(acceptedPlan); bookmark(acceptedPlan);
         await refresh(acceptedPlan, activating ? 'activate' : 'save', request);
       } else if (result.outcome?.code === 'STALE_REVISION') {
-        setUncertain(false); setConflict(structuredClone(form)); setLastCommand(null);
+        setUncertain(false); setConflict(structuredClone(form)); setLastCommand(null); clearPending();
         setMessage('This plan changed in another tab. Reload the latest version before saving.');
       } else if (result.outcome?.status === 'Rejected' || result.outcome?.status === 'Conflict') {
         setUncertain(false); setLastCommand(null);
@@ -110,7 +153,7 @@ function Workbench({ accountId, ownershipEpoch, initialPlanId = '', view, hosted
   }
   function envelope() {
     return { schemaVersion: 1 as const, actionId: crypto.randomUUID(), originatingAccountId: accountId,
-      deviceId: sessionStorage.getItem('trainer2-device') ?? (() => { const id = crypto.randomUUID(); sessionStorage.setItem('trainer2-device', id); return id; })(), ownershipEpoch, dependsOn: [] };
+      deviceId: deviceIdentity(), ownershipEpoch, dependsOn: [] };
   }
   function save() {
     if (inFlight.current || stale || conflict || uncertain || !form) return;
@@ -147,7 +190,7 @@ function Workbench({ accountId, ownershipEpoch, initialPlanId = '', view, hosted
     finally { if (request === reviewRequest.current) setReviewBusy(false); }
   }
   function activate() {
-    if (!loaded || !reviewCurrent || reviewError || reviewBusy || loaded.activationBlockers.length) return;
+    if (!loaded || !reviewCurrent || reviewError || reviewBusy || loaded.activationBlockers.length || loaded.currentPlan) return;
     void submit({ ...envelope(), commandType: 'ActivatePlan', target: { planId: loaded.planId }, expected: { planRevisionId: loaded.revisionId }, intent: { reviewed: loaded.activation } });
   }
   function editIssue(issue: PlanIssue) {
@@ -166,21 +209,29 @@ function Workbench({ accountId, ownershipEpoch, initialPlanId = '', view, hosted
     <h1 className="text-3xl font-semibold">Your training</h1><p role="status" className="min-h-12 rounded-2xl bg-[#dce7ca] p-5">{message}</p>
     {!busy && <button className={control} onClick={() => void reload()}>Reload latest version</button>}
   </div></main>;
-  return <main className="min-h-screen bg-white text-slate-900"><div className="mx-auto max-w-5xl space-y-5 px-4 py-4 pb-28 sm:px-8 sm:pt-10">
-    <header className="space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-semibold uppercase tracking-widest text-teal-700">Trainer / Plan builder</p><p className="rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-900">{hostedTrial ? 'Protected synthetic trial: plans are saved in durable database storage.' : 'Demo: plans are deleted when the demo stops.'}</p></div>
-      <h1 className="sr-only">Build your training plan</h1>
+  if (templateOpen && form) return <main className={styles.shell}><div className={styles.content}>
+    <header className={styles.header}><p className="text-2xl font-bold">Trainer²</p><h1>Build a plan</h1><p className={styles.muted}>Start with a complete template. Customize what you need.</p></header>
+    <section className={styles.template}><p className={styles.muted}>STRENGTH & HYPERTROPHY</p><h2>Five-week hypertrophy</h2><p>Four workouts per week. Four accumulation weeks, then a deload.</p>
+      <div className={styles.art} aria-hidden="true">{[60,72,86,100,40].map((height,i) => <span key={i} style={{ height: height + '%', background: i === 4 ? '#83946c' : undefined }} />)}</div>
+      <p>Lower A · Upper A · Lower B · Upper B</p><p className={styles.muted}>Weekly RIR 3 / 3 / 2 / 1 / 4. Deload working sets are halved, rounded up. Starting loads are unspecified.</p>
+      <button className={styles.primary} onClick={() => setTemplateOpen(false)}>Customize this template</button>
+    </section><p className="mt-5 text-sm">Synthetic local workspace. Saving keeps a draft; activation is a separate reviewed command.</p>
+  </div></main>;
+  return <main className={styles.shell}><div className={`${styles.content} space-y-5`}>
+    <header className={`${styles.header} space-y-3`}><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-semibold uppercase tracking-widest text-teal-700">Trainer / Plan builder</p><p className="rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-900">{hostedTrial ? 'Protected synthetic trial: plans are saved in durable database storage.' : 'Demo: plans are deleted when the demo stops.'}</p></div>
+      <h1 className="sr-only">Plan builder</h1><p className={styles.muted}>Customize → Save draft → Review → Activate</p>
       {form && <label className="block"><span className="sr-only">Plan name</span><input aria-label="Plan name" className="w-full rounded border border-transparent bg-transparent py-2 text-2xl font-semibold tracking-tight hover:border-slate-200 focus:border-teal-600 sm:text-3xl" disabled={locked} value={form.name} onChange={e => changed({ ...form, name: e.target.value })} /></label>}
-      {form?.builder && <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm"><span className="rounded-full bg-teal-50 px-3 py-1 font-medium text-teal-800">Hypertrophy</span><span className="py-1">5 weeks · 4 workouts per week</span><span className="py-1 text-slate-500">4 training weeks + 1 deload week</span></div>}
-      <p className="text-sm text-slate-500">Build, save, review and activate your plan, then start your next workout.</p>
+      {form?.builder && <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm"><span className="py-1">5 weeks · 4 workouts · lbs</span><span className="py-1 text-slate-500">4 accumulation + 1 deload</span></div>}
+
     </header>
     {stale && !busy && planId && !uncertain && <button className={control} onClick={() => void reload()}>Reload latest version</button>}
     {currentPlanConflict && <a className="text-teal-800 underline" href={`/trainer2/dev/drafts?planId=${encodeURIComponent(currentPlanConflict)}`}>View active plan</a>}
     {uncertain && <button className={control} disabled={busy || !lastCommand} onClick={() => lastCommand && void submit(lastCommand)}>Check again</button>}
-    {conflict && <section className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-4"><p>Your submitted changes are retained below for comparison. Reload, then choose to continue from the latest plan.</p><details><summary>Your submitted plan</summary><DraftReview intent={conflict} /></details><button className={control} disabled={busy || stale} onClick={() => { setConflict(null); setMessage('Saved'); }}>Continue from latest plan</button></section>}
+    {conflict && <section className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-4"><p>Your submitted changes are retained below for comparison. Reload, then choose to continue from the latest plan.</p><details><summary>Your submitted plan</summary><DraftReview intent={conflict} /></details><button className={control} disabled={busy || stale || !loaded || loaded.state.lifecycle !== 'Draft'} onClick={() => { setForm(structuredClone(conflict)); setConflict(null); setMessage('Recovered edits · compare and save against the latest revision'); }}>Use retained edits on latest draft</button><button className={control} disabled={busy || stale} onClick={() => { setConflict(null); setMessage('Saved'); }}>Continue from latest plan</button></section>}
     {needsRepair && <section id="repair" tabIndex={-1} className="space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-4"><p>This saved plan contains obsolete override labels from an older builder. Remove those labels to continue editing. Exercise prescriptions and saved history stay intact.</p><button className={control} disabled={locked} onClick={() => { changed(repairBuilderMetadata(form!)); }}>Remove obsolete override labels</button></section>}
-    {form && !active && <Progression document={form} disabled={locked || needsRepair} onChange={changed} />}
     {form && !active && <div id="editor" tabIndex={-1} className="scroll-mt-4"><PlanBuilder key={editLocation.key} initialOccurrenceId={editLocation.occurrenceId} document={form} disabled={locked || needsRepair} onChange={changed} /></div>}
-    {!active && <section className="space-y-3 rounded-xl border border-slate-200 p-4" aria-label="Plan review">
+    {form && !active && <Progression document={form} disabled={locked || needsRepair} onChange={changed} />}
+    {!active && <section id="builder-review" className="space-y-3 rounded-2xl border border-[#dbded5] bg-white p-5" aria-label="Plan review">
       <button className={control} disabled={!loaded || unsaved || locked} onClick={() => void reviewSaved()}>{reviewBusy ? 'Reviewing…' : 'Review plan'}</button>
       {unsaved && <p className="text-sm text-slate-600">Save your changes before reviewing.</p>}
       {reviewError && <p role="alert" className="text-sm text-amber-800">{INVALID_REVIEW_MESSAGE}{review ? ' Previous review retained; refresh failed.' : ''}</p>}
@@ -194,8 +245,8 @@ function Workbench({ accountId, ownershipEpoch, initialPlanId = '', view, hosted
         <details><summary className="cursor-pointer font-medium">Workouts, weekly changes and deload</summary><DraftReview intent={review.intent} /></details>
       </div>}
       {loaded && <Instructions snapshot={loaded.activation.instructions} issues={loaded.activation.binding.restrictionIssues} document={loaded.intent} planId={loaded.planId} revisionId={loaded.revisionId} disabled={locked || unsaved || reviewBusy} onCommand={intent => { setReview(null); void submit({ ...envelope(), commandType: 'ChangeInstructions', target: {}, expected: { instructionEpoch: loaded.activation.instructions.epoch }, intent }); }} />}
-      {reviewCurrent && !reviewError && loaded && <><button className="rounded-xl bg-teal-700 px-5 py-3 font-semibold text-white disabled:opacity-40" disabled={reviewBusy || loaded.activationBlockers.length > 0} onClick={activate}>Activate plan</button>{loaded.activationBlockers.length > 0 && <p>Resolve the issues above, then review again.</p>}</>}
+      {reviewCurrent && !reviewError && loaded && <><button className={styles.primary} disabled={reviewBusy || loaded.activationBlockers.length > 0 || !!loaded.currentPlan} onClick={activate}>Activate plan</button>{loaded.currentPlan && <p role="note">Another plan is {loaded.currentPlan.lifecycle.toLowerCase()}. It must be concluded before this draft can activate; conclusion is unavailable here. <a className="underline" href={`/trainer2/dev/drafts?planId=${loaded.currentPlan.planId}`}>View current plan</a>. Your draft remains saved.</p>}{loaded.currentPlan === undefined && <p>Activation eligibility for another Active or Paused plan will be checked when submitted.</p>}<p className={styles.muted}>Activation does not start, finish or replace an open workout. The server checks the current plan again at submission.</p>{loaded.activationBlockers.length > 0 && <p>Resolve the issues above, then review again.</p>}</>}
     </section>}
-    <div className="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur"><div className="mx-auto flex max-w-5xl items-center justify-between gap-4"><p role="status" className="text-sm text-slate-600">{message}</p><button className="shrink-0 rounded-xl bg-teal-700 px-6 py-3 font-semibold text-white disabled:opacity-40" disabled={locked || !unsaved} onClick={save}>Save plan</button></div></div>
+    <div className={styles.bottom}><p role="status">{message}</p><button className={styles.primary} disabled={locked || !unsaved} onClick={save}>Save plan</button><button className="border px-3" onClick={() => { document.getElementById('builder-review')?.scrollIntoView({ block: 'start' }); }}>Review ↓</button></div>
   </div></main>;
 }

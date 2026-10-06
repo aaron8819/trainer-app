@@ -6,6 +6,8 @@ import { resolve } from 'node:path';
 import { Pool } from 'pg';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { cleanupSteps } from './trainer2/disposable-cleanup';
+import { finishQualification } from './trainer2/qualification-report';
 import { EXPECTED_MIGRATION_CHAIN } from '../src/lib/operations/migration-integrity';
 import { transitionSyntheticOwner } from '../src/lib/api/trainer2/owner-transition';
 import { makeVerifier, enterPasscode, sessionForRequest, renewSession, revokeSession, SESSION_COOKIE } from '../src/lib/api/trainer2/sessions';
@@ -24,6 +26,10 @@ function deferred() { let release!: () => void; const promise = new Promise<void
 const container = 'trainer2-real-fixes-' + randomUUID().slice(0, 8), password = randomUUID();
 const clients: PrismaClient[] = [], pools: Pool[] = [];
 const synthetic = randomUUID(), target = randomUUID(), other = randomUUID();
+const syntheticPasscode = randomBytes(32).toString('base64url');
+let primaryError: unknown;
+let finalCleanup: Awaited<ReturnType<typeof cleanupSteps>> = [];
+process.once('exit', exitCode => writeFileSync(resolve(artifact, 'worker-exit.json'), JSON.stringify({ exitCode, primaryError: primaryError ? String(primaryError) : null, cleanup: finalCleanup })));
 const setupCode = randomBytes(32).toString('base64url'), passcode = randomBytes(32).toString('base64url');
 const request = (token: string) => new Request('http://localhost/trainer2/auth', { headers: { cookie: `${SESSION_COOKIE}=${token}` } });
 let oldTokens: string[] = [];
@@ -47,7 +53,7 @@ async function main() {
   for (const [index, purpose] of [[1, 'identity'], [2, 'read'], [3, 'write']] as const) { const connection = await pools[index].connect(); try { await assertConnectionPrivileges(connection, purpose); } finally { connection.release(); } }
   await admin.user.createMany({ data: [{ id: synthetic, email: `trainer2-hosted-synthetic-${synthetic}@example.invalid` }, { id: target, email: 'target@synthetic.invalid' }, { id: other, email: 'other@synthetic.invalid' }] });
   await pool.query('INSERT INTO "Trainer2AccountTrainingState" ("accountId") VALUES ($1),($2)', [synthetic, other]);
-  const oldVerifier = await makeVerifier(passcode);
+  const oldVerifier = await makeVerifier(syntheticPasscode);
   async function reset() {
     process.env.TRAINER2_OWNER_USER_ID = synthetic;
     await admin.trainer2DeviceSession.deleteMany();
@@ -57,6 +63,7 @@ async function main() {
   }
   const input = { expectedSyntheticAccountId: synthetic, verifiedRealAccountId: target, setupCode, preserveArchive: async () => {} };
   const snapshot = async () => ({ owner: await admin.trainer2Owner.findUniqueOrThrow({ where: { id: 1 } }), sessions: await admin.trainer2DeviceSession.findMany({ orderBy: { id: 'asc' } }) });
+  if (process.env.REVIEW_BROWSER_ONLY !== '1') {
   await reset(); const before = await snapshot();
   await assert.rejects(transitionSyntheticOwner(admin, { ...input, preserveArchive: async () => { throw new Error('ARCHIVE_FAILURE'); } }), /ARCHIVE_FAILURE/);
   assert.deepEqual(await snapshot(), before); record('archive-failure-rollback');
@@ -70,7 +77,7 @@ async function main() {
   const locked = deferred(), release = deferred();
   const transition = transitionSyntheticOwner(admin, { ...input, preserveArchive: async () => { locked.release(); await release.promise; } });
   await locked.promise;
-  const auth = enterPasscode(identity, { passcode }).then(() => 'admitted', () => 'denied');
+  const auth = enterPasscode(identity, { passcode: syntheticPasscode }).then(() => 'admitted', () => 'denied');
   const renewal = renewSession(identity, request(oldTokens[0])).then(() => 'resolved', () => 'denied');
   release.release(); await transition;
   assert.equal(await auth, 'denied'); await renewal;
@@ -148,19 +155,43 @@ async function main() {
     publishAttribution(process.env.TRAINER2_TEST_MANIFEST_DIRECTORY, archive, spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim());
     assert.equal(archive.sessions.length, 24);
   } }); record('private-attribution-no-credentials-durable-separate-process-readback');
+  } else { await reset(); await transitionSyntheticOwner(admin, input); }
   process.env.TRAINER2_OWNER_USER_ID = target;
+  const initialOwner = await admin.trainer2Owner.findUniqueOrThrow({ where: { id: 1 } });
+  const oldRows = await admin.trainer2DeviceSession.findMany({ orderBy: { id: 'asc' } });
   if (process.env.REVIEW_BROWSER === '1') {
     const { browserReview } = await import('./test-trainer2-real-access-browser');
-    await browserReview({ accountId: target, passcode, setupCode, staleCookie: oldTokens[0], identityUrl: url('trainer2_identity_runtime'), readUrl: url('trainer2_draft_reader'), writeUrl: url('trainer2_draft_runtime'), record });
+    await browserReview({ accountId: target, passcode, setupCode, staleCookie: oldTokens[0], syntheticPasscode, verify: async (cookies, stage) => {
+      const owner = await admin.trainer2Owner.findUniqueOrThrow({ where: { id: 1 } });
+      assert.equal(owner.accountId, target);
+      assert.equal(owner.setupVerifier, null); assert(owner.passcodeVerifier);
+      assert.equal(owner.sessionEpoch, initialOwner.sessionEpoch + (stage === 'global-revocation' ? 2 : 1));
+      const expectedSessions = ['phone-sign-in-again', 'global-revocation'].includes(stage) ? 27 : 26;
+      assert.equal(await admin.trainer2DeviceSession.count(), expectedSessions);
+      assert.deepEqual(await admin.trainer2DeviceSession.findMany({ where: { id: { in: oldRows.map(row => row.id) } }, orderBy: { id: 'asc' } }), oldRows);
+      for (const [index, cookie] of cookies.entries()) {
+        const denied = stage === 'synthetic-denied' || stage === 'global-revocation' || (stage === 'device-sign-out' && index === 1);
+        if (denied) await assert.rejects(sessionForRequest(identity, request(cookie)), /UNAUTHENTICATED/);
+        else { const principal = await sessionForRequest(identity, request(cookie)); assert.equal(principal.accountId, target); await authorizeAccount(reader, principal); assert.deepEqual(await readTrainingHome(reader, principal), { plans: [] }); }
+        const row = await admin.trainer2DeviceSession.findUniqueOrThrow({ where: { id: cookie.split('.')[0] } });
+        if (stage === 'device-sign-out') assert.equal(Boolean(row.revokedAt), index === 1);
+        if (stage === 'global-revocation') assert.equal(row.epoch, owner.sessionEpoch - 1);
+      }
+      assert.equal(await admin.trainer2AccountTrainingState.count({ where: { accountId: target } }), 0);
+      for (const table of ['Trainer2Plan', 'Trainer2Execution', 'Trainer2DurableAction']) assert.equal(Number((await pool.query(`SELECT count(*) AS count FROM "${table}"`)).rows[0].count), 0);
+      record('server-authorization-database-' + stage);
+    }, identityUrl: url('trainer2_identity_runtime'), readUrl: url('trainer2_draft_reader'), writeUrl: url('trainer2_draft_runtime'), record });
   } else await enterPasscode(identity, { setupCode, passcode });
   assert.equal(await admin.trainer2Plan.count(), 0); assert.equal(await admin.trainer2Execution.count(), 0);
   record('no-plans-or-executions-created');
 }
-main().catch(error => { record('harness-error', { name: error?.name, code: error?.code, message: String(error?.message).replace(/postgresql:\/\/\S+/g, '[redacted]') }); process.exitCode = 1; }).finally(async () => {
-  writeFileSync(resolve(artifact, 'qualification.json'), JSON.stringify({ at: new Date().toISOString(), results }, null, 2));
-  for (const client of clients) await client.$disconnect().catch(() => {});
-  for (const pool of pools) await pool.end().catch(() => {});
-  const cleanup = spawnSync('docker', ['stop', container], { encoding: 'utf8', windowsHide: true });
-  writeFileSync(resolve(artifact, 'completion.json'), JSON.stringify({ cleanup: { container, stoppedAndRemoved: cleanup.status === 0 }, runnerComplete: true, exitCode: process.exitCode ?? 0 }));
-  if (cleanup.status !== 0) process.exitCode = 1;
+main().catch(error => { primaryError = error; record('harness-error', { message: String(error?.message).replace(/postgresql:\/\/\S+/g, '[redacted]'), cause: error?.cause ? String(error.cause) : null }); process.exitCode = 1; }).finally(async () => {
+  finalCleanup = await cleanupSteps([
+    ...clients.map((client, index) => ({ name: `client ${index}`, run: () => client.$disconnect() })),
+    ...pools.map((pool, index) => ({ name: `pool ${index}`, run: () => pool.end() })),
+    { name: 'disposable container stop', timeoutMs: 20_000, run: () => { const result = spawnSync('docker', ['stop', container], { encoding: 'utf8', windowsHide: true, timeout: 15_000 }); assert.equal(result.status, 0); } },
+    { name: 'container absence', run: () => { const result = spawnSync('docker', ['container', 'inspect', container], { encoding: 'utf8', windowsHide: true, timeout: 5000 }); assert(result.status !== 0 && result.stderr.includes('No such container')); } },
+  ]);
+  try { finishQualification(primaryError, finalCleanup); } catch { process.exitCode = 1; }
+  writeFileSync(resolve(artifact, 'qualification.json'), JSON.stringify({ at: new Date().toISOString(), results, assertions: { completedGroups: results.filter(result => result.detail === 'PASS').map(result => result.test), primaryBrowserFailure: results.find(result => result.test === 'browser-primary-error') ?? null }, harnessError: primaryError ? String(primaryError) : null, cleanup: finalCleanup, container }, null, 2));
 });

@@ -4,7 +4,8 @@ import { parse } from 'dotenv';
 import { Pool } from 'pg';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { EXPECTED_MIGRATION_CHAIN } from '../../src/lib/operations/migration-integrity';
+import { EXPECTED_MIGRATION_CHAIN, loadCheckedInMigrations, buildMigrationIntegrityReport } from '../../src/lib/operations/migration-integrity';
+import { inspectMigrationDatabase } from '../../src/lib/operations/migration-integrity-postgres';
 import { transitionSyntheticOwner } from '../../src/lib/api/trainer2/owner-transition';
 import { publishAttribution } from './private-attribution';
 import { assertConnectionPrivileges } from '../../src/lib/api/trainer2/database';
@@ -32,6 +33,17 @@ async function main() {
   const pool = new Pool({ connectionString: url.toString(), ssl: { ca: config.TRAINER2_OPERATOR_CA_CERT_PEM, rejectUnauthorized: true }, max: 1 });
   const db = new PrismaClient({ adapter: new PrismaPg(pool) });
   try {
+    // Complement the narrow binding inspect with canonical live checksum/schema
+    // attestation. The loader owns reviewed swap-checksum compatibility.
+    const connection = await pool.connect();
+    try {
+      const integrity = buildMigrationIntegrityReport({
+        target: { classification: 'remote', fingerprint: 'pinned-trainer2-operator' },
+        checkedIn: loadCheckedInMigrations(), ...(await inspectMigrationDatabase(connection)),
+      });
+      if (!integrity.migrationIntegrityValid || integrity.chain.pending !== 0)
+        throw new Error('OPERATOR_LIVE_MIGRATION_SCHEMA_INTEGRITY_FAILED');
+    } finally { connection.release(); }
     for (const [purpose, key, role] of [
       ['identity', 'TRAINER2_IDENTITY_CONNECTION_STRING', 'trainer2_identity_runtime'],
       ['read', 'TRAINER2_READ_CONNECTION_STRING', 'trainer2_draft_reader'],

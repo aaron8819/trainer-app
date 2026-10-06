@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { resolve, win32 } from 'node:path';
+import { join, resolve, win32 } from 'node:path';
 
 type CleanupCommandResult = {
   pid?: number; status: number | null; signal: NodeJS.Signals | null;
@@ -12,7 +12,12 @@ export async function runCleanupCommand(file: string, args: string[], timeoutMs:
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error('Invalid cleanup command deadline');
   const startedAt = new Date().toISOString();
   const deadline = Date.now() + timeoutMs;
-  const child = spawn(file, args, { env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  // A PowerShell 7 caller can supply its incompatible module search path to
+  // Windows PowerShell. Pin native modules for the native process observer.
+  const commandEnv = process.platform === 'win32' && win32.basename(file).toLowerCase() === 'powershell.exe'
+    ? { ...(env ?? process.env), PSModulePath: join(process.env.SystemRoot ?? 'C:\\Windows', 'System32/WindowsPowerShell/v1.0/Modules') }
+    : env;
+  const child = spawn(file, args, { env: commandEnv, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   let stdout = '', stderr = '';
   child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
   child.stdout.on('data', value => { stdout += value; });
@@ -104,6 +109,15 @@ export async function captureBrowserOwnership(child: ChildProcess, profile: stri
   if (!child.pid || child.exitCode !== null || !win32.isAbsolute(child.spawnfile)) throw new Error('Launched browser root is unavailable');
   const ownership: BrowserOwnership = { rootPid: child.pid, runnerPid: process.pid,
     executable: child.spawnfile, profile, processes: [] };
+  await browserTreeCommand(ownership, 'capture', 10_000, record);
+  return ownership;
+}
+
+// A native launcher can observe Windows browser exit independently of Node's
+// direct browser child handle. Its creation receipt supplies the exact parent.
+export async function captureNativeBrowserOwnership(input: Pick<BrowserOwnership, 'rootPid' | 'runnerPid' | 'executable' | 'profile'>, record?: CleanupRecorder): Promise<BrowserOwnership> {
+  browserProcessesForProfile([], input.profile, win32.basename(input.executable));
+  const ownership: BrowserOwnership = { ...input, processes: [] };
   await browserTreeCommand(ownership, 'capture', 10_000, record);
   return ownership;
 }

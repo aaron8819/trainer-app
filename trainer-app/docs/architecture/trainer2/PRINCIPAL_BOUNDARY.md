@@ -1,3 +1,5 @@
+Current real-owner access and recovery contract: [REAL_OWNER_EXECUTION.md](REAL_OWNER_EXECUTION.md). Its minimal attribution and serialized revocation replace earlier full-credential archive/drain proposals. Hosted execution remains separately authorized.
+
 # Trainer2 single-user access and database boundary
 
 Trainer2 is for one person. Supabase Auth, signup, email links and issuer/subject mapping are not part of the access design. The separate hosted-test mode is limited to the explicitly configured synthetic owner; it does not admit the real V1 owner or authorize a training cutover.

@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { developmentEnabled } from "@/lib/api/trainer2/development";
 import { hostedTestEnabled } from "@/lib/api/trainer2/access";
 import { requestContext } from "@/lib/api/trainer2/access";
@@ -11,5 +11,6 @@ export default async function DraftPage({ searchParams }: { searchParams: Promis
   const { db, principal } = await requestContext(new Request("http://localhost/trainer2/dev/drafts", { headers: await headers() }), "read");
   const state = await db.trainer2AccountTrainingState.findUnique({ where: { accountId: principal.accountId } });
   const { planId, view } = await searchParams;
+  if (!planId && view !== "builder") redirect("/trainer2");
   return <DraftWorkbench hostedTrial={hostedTestEnabled()} view={view === "program" ? "program" : undefined} key={planId ?? "scratch"} initialPlanId={typeof planId === "string" ? planId : ""} accountId={principal.accountId} ownershipEpoch={state?.ownershipEpoch ?? 0} />;
 }

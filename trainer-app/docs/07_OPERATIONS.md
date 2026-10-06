@@ -1,3 +1,5 @@
+Trainer2 real-owner access: [supported transition, empty Training home, epoch/session guarantees, disposable qualification and hosted execution/recovery procedure](architecture/trainer2/REAL_OWNER_EXECUTION.md).
+
 # 07 Operations
 
 Trainer2 current-week preparation and recovery require coordinated reader/server deployment after the additive cursor/advancement migration and incremental grants. See [exact release ordering and pending-data preservation](architecture/trainer2/CURRENT_WEEK_SELECTION.md#coordinated-release-and-recovery). No hosted or production action is authorized by this local slice.

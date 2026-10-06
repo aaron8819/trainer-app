@@ -99,7 +99,7 @@ export function TrainingOverview({ document, next, program = false, selectedId, 
     <nav aria-label="Trainer2 navigation" className={styles.navigation}>
       <a href={trainingUrl(next.planId)} aria-current={!program ? 'page' : undefined}>Training</a>
       <a href={`${trainingUrl(next.planId)}&view=program`} aria-current={program ? 'page' : undefined}>Program</a>
-      <a href="/trainer2/dev/drafts">Build a plan</a>
+      <a href="/trainer2/dev/drafts?view=builder">Build a plan</a>
     </nav>
   </div>;
 }

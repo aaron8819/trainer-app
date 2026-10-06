@@ -1,3 +1,5 @@
+Current real-owner access and recovery contract: [REAL_OWNER_EXECUTION.md](REAL_OWNER_EXECUTION.md). Its minimal attribution and serialized revocation replace earlier full-credential archive/drain proposals. Hosted execution remains separately authorized.
+
 # Real-account access preparation — review handoff
 
 Prepared 2026-10-06. Status: **local proposal; real admission remains disabled**.

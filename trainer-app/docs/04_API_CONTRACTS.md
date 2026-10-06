@@ -1,3 +1,5 @@
+Trainer2 real-owner access: [supported transition, empty Training home, epoch/session guarantees, disposable qualification and hosted execution/recovery procedure](architecture/trainer2/REAL_OWNER_EXECUTION.md).
+
 # 04 API Contracts
 
 Trainer2 saved-draft review includes optional read-only `currentPlan` admission context (owned Active/Paused plan ID/lifecycle, or null); authoritative activation rules and reviewed binding are unchanged. See [Builder integration](architecture/trainer2/BUILDER_DESIGN.md) and `src/lib/engine/trainer2/review-response.ts`.

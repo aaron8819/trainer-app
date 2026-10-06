@@ -41,7 +41,7 @@ export async function authHttp(request: NextRequest, operation: "sign-in" | "set
     const token = await enterPasscode(db, operation === "setup"
       ? { setupCode: form.get("setupCode") ?? "", passcode }
       : { passcode });
-    const response = NextResponse.redirect(origin + AUTH_HOME, 303);
+    const response = NextResponse.redirect(origin + "/trainer2", 303);
     response.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
     return privateAuthResponse(response);
   } catch {

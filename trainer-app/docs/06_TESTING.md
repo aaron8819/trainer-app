@@ -1,3 +1,5 @@
+Trainer2 real-owner access: [supported transition, empty Training home, epoch/session guarantees, disposable qualification and hosted execution/recovery procedure](architecture/trainer2/REAL_OWNER_EXECUTION.md).
+
 # 06 Testing
 
 Trainer2 Home/Program visual integration: [focused disposable journey, screenshots and separate retained preview](architecture/trainer2/HOME_PROGRAM_DESIGN.md#verification-and-local-preview).

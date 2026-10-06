@@ -2,6 +2,7 @@ import "next/headers";
 import { createHash, randomBytes, randomUUID, scrypt, timingSafeEqual } from "node:crypto";
 import type { PrismaClient, Prisma } from "@prisma/client";
 import { DraftAccessError } from "./principal";
+import { assertEpochCapacity } from "./session-epoch";
 
 function derive(secret: string, salt: Buffer) {
   return new Promise<Buffer>((resolve, reject) => scrypt(secret, salt, 32,
@@ -87,6 +88,7 @@ export async function enterPasscode(db: PrismaClient, input: { setupCode?: strin
     }
     let epoch = owner.sessionEpoch;
     if (setup) {
+      assertEpochCapacity(epoch);
       epoch++;
       await tx.trainer2Owner.update({ where: { id: 1 }, data: {
         passcodeVerifier: await makeVerifier(input.passcode), setupVerifier: null,
@@ -140,8 +142,18 @@ export async function renewSession(db: PrismaClient, request: Request) {
 
 export async function revokeSession(db: PrismaClient, request: Request, all: boolean) {
   const principal = await sessionForRequest(db, request);
-  if (all) await db.trainer2Owner.update({ where: { id: 1 }, data: { sessionEpoch: { increment: 1 } } });
-  else await db.trainer2DeviceSession.updateMany({ where: { id: principal.sessionId, revokedAt: null }, data: { revokedAt: new Date() } });
+  await db.$transaction(async tx => {
+    await tx.$queryRaw`SELECT id FROM "Trainer2Owner" WHERE id = 1 FOR UPDATE`;
+    // An ingress-authorized request may have waited across rebinding or revocation.
+    const current = await sessionForRequest(tx, request);
+    if (current.accountId !== principal.accountId || current.sessionId !== principal.sessionId)
+      throw new DraftAccessError("UNAUTHENTICATED");
+    if (all) {
+      const owner = await soleOwner(tx);
+      assertEpochCapacity(owner.sessionEpoch);
+      await tx.trainer2Owner.update({ where: { id: 1 }, data: { sessionEpoch: { increment: 1 } } });
+    } else await tx.trainer2DeviceSession.updateMany({ where: { id: principal.sessionId, revokedAt: null }, data: { revokedAt: new Date() } });
+  });
 }
 
 export function sessionCookieOptions() {

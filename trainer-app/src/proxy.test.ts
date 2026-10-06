@@ -131,6 +131,11 @@ describe("protected hosted-test route boundary", () => {
     for (const key of ["DATABASE_URL", "DIRECT_URL", "OWNER_EMAIL", "DATABASE_SSL_NO_VERIFY"]) vi.stubEnv(key, "");
     const request = (host: string, path: string) => proxy(new NextRequest(`https://${host}${path}`, { headers: { host } }));
     expect(request("synthetic.example.test", "/api/trainer2/drafts").headers.get("x-middleware-next")).toBe("1");
+    const home = request("synthetic.example.test", "/trainer2");
+    expect(home.headers.get("x-middleware-next")).toBe("1");
+    expect(home.headers.get("cache-control")).toBe("private, no-store");
+    expect(request("other.example.test", "/trainer2").status).toBe(404);
+    expect(request("synthetic.example.test", "/trainer2-unreviewed").status).toBe(404);
     expect(request("synthetic.example.test", "/api/workouts").status).toBe(404);
     expect(request("synthetic.example.test", "/plans").status).toBe(404);
     expect(request("other.example.test", "/api/trainer2/drafts").status).toBe(404);

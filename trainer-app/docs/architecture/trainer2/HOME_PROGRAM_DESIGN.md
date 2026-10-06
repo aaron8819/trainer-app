@@ -8,7 +8,7 @@
 
 Prescriptions use the existing exact-consecutive-target grouping and load display owners. Unlike reps, RIR, classifications, optionality, measurement conventions or rest values never collapse together. Unspecified loads stay unspecified; assistance states that more weight means easier. Finished is a neutral terminal label because ReadNext does not expose full-versus-partial performance. View results retains the existing execution review and correction capabilities.
 
-Paused and other unsupported lifecycle states show their saved state and prescriptions. They do not call unsupported ReadNext or fabricate Pause/Resume commands. There is no released empty active program: draft validation requires occurrences. An empty workspace remains the existing unsaved plan builder. Saved-plan loading/read failure has a dedicated status and retry surface.
+Paused and other unsupported lifecycle states show their saved state and prescriptions. They do not call unsupported ReadNext or fabricate Pause/Resume commands. There is no released empty active program: draft validation requires occurrences. An empty account lands on the read-only Training home at `/trainer2` with an explicit Create plan action. Builder entry is `/trainer2/dev/drafts?view=builder`; home never allocates a draft. Saved-plan loading/read failure has a dedicated status and retry surface.
 
 ## Prototype adaptations
 

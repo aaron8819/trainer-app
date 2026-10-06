@@ -199,7 +199,7 @@ function Workbench({ accountId, ownershipEpoch, initialPlanId = '', view, hosted
   }
   if (active && loaded && form && loaded.state.lifecycle !== 'Active' && loaded.state.lifecycle !== 'Completed') return <main className="min-h-screen bg-[#f6f5f1] px-4 py-8 text-slate-900"><div className="mx-auto max-w-4xl space-y-5">
     <h1 className="text-3xl font-semibold">{form.name}</h1><p role="status" className="rounded-2xl bg-[#dce7ca] p-5">Program {loaded.state.lifecycle.toLowerCase()}. Starting workouts and advancing weeks are unavailable in this state. Saved prescriptions remain inspectable. Pause/resume controls are not supported by the released application.</p>
-    <DraftReview intent={form} /><a className={control} href="/trainer2/dev/drafts">Create a new draft</a>
+    <DraftReview intent={form} /><a className={control} href="/trainer2/dev/drafts?view=builder">Create a new draft</a>
   </div></main>;
   if (active && loaded && form) return <main className="min-h-screen bg-[#f6f5f1] text-[#171a18]"><div className="mx-auto max-w-[1064px] space-y-5 px-[14px] py-5 min-[350px]:px-5 sm:px-7">
     <p className="text-2xl font-bold tracking-tight">Trainer<span className="ml-1 align-top text-sm font-normal">2</span></p>

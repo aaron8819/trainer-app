@@ -1,3 +1,5 @@
+Trainer2 real-owner access: [supported transition, empty Training home, epoch/session guarantees, disposable qualification and hosted execution/recovery procedure](architecture/trainer2/REAL_OWNER_EXECUTION.md).
+
 # 05 UI Flows
 
 Trainer2 approved Builder: [template-first authoring, focused sheets, overrides, recovery, review/activation and mobile verification](architecture/trainer2/BUILDER_DESIGN.md).

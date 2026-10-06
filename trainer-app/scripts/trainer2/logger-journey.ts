@@ -176,7 +176,7 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   pass('Reduced viewport, numeric keyboard attributes, keyboard navigation, finish cancel/confirm to Home, completed review and historical correction');
   await page.goto(home + '&view=program');
   await expect(page.getByText('Your saved prescriptions, week by week.', { exact: true })).toBeVisible();
-  await page.locator('[data-occurrence-id] summary').last().click();
+  await page.locator('[data-occurrence-id] > summary').last().click();
   for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 }); await assertPoundSurface(page);
     await expect(page.getByText(/132.28 lb per implement/).first()).toBeVisible();

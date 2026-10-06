@@ -1,4 +1,5 @@
 import type { DraftDocument } from "@/lib/trainer2-contracts/draft";
+import { pounds } from './pound-display';
 
 type Target = DraftDocument["occurrences"][number]["positions"][number]["targets"][number];
 type Measurement = NonNullable<Target["measurement"]>;
@@ -26,9 +27,9 @@ function initialMeasurement(kind: Measurement["kind"] | "missing"): Target["meas
   switch (kind) {
     case "missing": return null;
     case "bodyweight": return { kind, convention: "bodyweightOnly" };
-    case "addedLoad": return { kind, value: "0", unit: "kg", convention: "addedExternal", zeroMeaning: "noAddedLoad" };
-    case "assistance": return { kind, value: "0", unit: "kg", convention: "displayedAssistance", zeroMeaning: "noAssistance" };
-    case "externalLoad": return { kind, value: "", unit: "kg", convention: "barbellTotal", zeroMeaning: "notAllowed" };
+    case "addedLoad": return { kind, value: "0", unit: "lb", convention: "addedExternal", zeroMeaning: "noAddedLoad" };
+    case "assistance": return { kind, value: "0", unit: "lb", convention: "displayedAssistance", zeroMeaning: "noAssistance" };
+    case "externalLoad": return { kind, value: "", unit: "lb", convention: "barbellTotal", zeroMeaning: "notAllowed" };
   }
 }
 export function TargetFields({ target: t, change, exercise }: { exercise?: DraftDocument["occurrences"][number]["positions"][number]["exercise"]; target: Target; change: (fn: (target: Target) => void, field: "classification" | "required" | "reps" | "measurement" | "rir" | "restSeconds") => void }) {
@@ -42,8 +43,7 @@ export function TargetFields({ target: t, change, exercise }: { exercise?: Draft
     <Choice label="Rep basis" value={t.reps.basis} options={fixed ? [fixed.repBasis] : ["total", "perSide", "alternating"]} onChange={v => change(t => { t.reps.basis = v; }, 'reps')} />
     <Choice label="Measurement kind" value={m?.kind ?? "missing"} options={fixed ? ["missing", fixed.loadKind] : ["missing", "externalLoad", "addedLoad", "assistance", "bodyweight"]} onChange={v => change(t => { t.measurement = initialMeasurement(v); if (fixed && t.measurement?.kind === "externalLoad") t.measurement.convention = fixed.convention as "barbellTotal" | "perImplement" | "machineDisplayed" | "machinePlatesPerArm" | "smithPlatesTotal"; }, 'measurement')} />
     {m && m.kind !== "bodyweight" && <>
-      <TextField label="Load or assistance" numeric value={m.value} onChange={v => change(t => { if (t.measurement && t.measurement.kind !== "bodyweight") t.measurement.value = v; }, 'measurement')} />
-      <Choice label="Unit" value={m.unit} options={["kg", "lb"]} onChange={v => change(t => { if (t.measurement && t.measurement.kind !== "bodyweight") t.measurement.unit = v; }, 'measurement')} />
+      <TextField label="Load or assistance · lb" numeric value={pounds(m.value, m.unit)} onChange={v => change(t => { if (t.measurement && t.measurement.kind !== "bodyweight") { t.measurement.value = v; t.measurement.unit = 'lb'; } }, 'measurement')} />
     </>}
     {m?.kind === "externalLoad" ? <>
       <Choice label="Convention" value={m.convention} options={fixed ? [m.convention] : ["barbellTotal", "perImplement", "machineDisplayed", "machinePlatesPerArm", "smithPlatesTotal"]} onChange={v => change(t => { if (t.measurement?.kind === "externalLoad") t.measurement.convention = v; }, 'measurement')} />

@@ -41,9 +41,9 @@ function parseForm(f: Form, retainedMeasurement?: PerformedResult['measurement']
       zeroMeaning: f.kind === 'externalLoad' ? (f.zeroMeaning ?? 'validZero') : f.kind === 'addedLoad' ? 'noAddedLoad' : 'noAssistance' };
   return performedResult.parse({ reps: f.reps === '' ? null : { value: Number(f.reps), basis: f.basis }, measurement, rir: f.rir || null });
 }
-export function resultLabel(r: PerformedResult | null, original = false) {
+export function resultLabel(r: PerformedResult | null) {
   if (!r) return 'Cleared as erroneous · no current performed result';
-  return `${loadLabel(r.measurement, original)} × ${r.reps ? `${r.reps.value}${r.reps.basis === 'perSide' ? ' per side' : r.reps.basis === 'alternating' ? ' alternating' : ''}` : 'reps unspecified'} · ${r.rir === null ? 'RIR unspecified' : `${r.rir} RIR`}`;
+  return `${loadLabel(r.measurement)} × ${r.reps ? `${r.reps.value}${r.reps.basis === 'perSide' ? ' per side' : r.reps.basis === 'alternating' ? ' alternating' : ''}` : 'reps unspecified'} · ${r.rir === null ? 'RIR unspecified' : `${r.rir} RIR`}`;
 }
 export function SetResultRow({ sessionAdded = false, assignment, accountId, ownershipEpoch, executionId, targetId, number, saved, refresh, readOnly = false, locked = false, onInputState, historical = false, history = [], finishVersion, retainedOnly = false, prescription, exercise, active = true, activePanel = false, onSubmission, preceding, onRecorded, firstSetLoad, skipped, refreshExecution, onReturn }: {
   sessionAdded?: boolean;

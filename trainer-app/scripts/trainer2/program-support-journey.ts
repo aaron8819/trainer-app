@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { expect as baseExpect } from '@playwright/test';
 import type { PrismaClient } from '@prisma/client';
 import type { Page } from '@playwright/test';
-import { readDraft, createDraft } from '../../src/lib/api/trainer2/planning';
+import { readDraft, createDraft, editDraft } from '../../src/lib/api/trainer2/planning';
 import { activatePlan } from '../../src/lib/api/trainer2/activation';
 import { readNextWorkout, startOccurrence, readExecution } from '../../src/lib/api/trainer2/execution';
 import { finishExecution } from '../../src/lib/api/trainer2/workout-finish';
@@ -60,8 +60,8 @@ export async function programSupportJourney({ page, base, artifact, planId: fixt
   await sheet.getByLabel(/Optional starting/).fill(entry.convention === 'smithPlatesTotal' ? '0' : '42.5');
   if (entry.convention !== 'machinePlatesPerArm' && entry.convention !== 'smithPlatesTotal') {
    await sheet.getByText('Advanced prescription details', { exact: true }).click();
-   await sheet.getByLabel('Unit', { exact: true }).selectOption('kg');
-   await sheet.getByLabel('Load or assistance', { exact: true }).fill('10.125000');
+   await expect(sheet.getByLabel('Unit', { exact: true })).toHaveCount(0);
+   await sheet.getByLabel('Load or assistance · lb', { exact: true }).fill('10.125000');
   }
   await sheet.getByRole('button', { name: 'Apply changes', exact: true }).click();
  }
@@ -69,18 +69,28 @@ export async function programSupportJourney({ page, base, artifact, planId: fixt
  await page.getByRole('button', { name: 'Save plan', exact: true }).click();
  await expect(page.getByRole('status').filter({ hasText: /^Saved$/ })).toBeVisible();
  const planId = new URL(page.url()).searchParams.get('planId')!;
- const head = (await readDraft(reader, principal, planId))!;
- const authored = head.intent.occurrences[0].positions;
+ let head = (await readDraft(reader, principal, planId))!;
+ let authored = head.intent.occurrences[0].positions;
  assert.deepEqual(authored.map(p => p.exercise.kind === 'catalogSnapshot' ? p.exercise.catalogId : null), entries.map(e => e.id));
  for (const [i, p] of authored.entries()) {
   assert.equal(p.targets[0].reps.basis, entries[i].repBasis);
   assert.equal(p.targets[0].measurement?.convention, entries[i].convention);
+  assert.equal(p.targets[0].measurement && 'unit' in p.targets[0].measurement ? p.targets[0].measurement.unit : null, 'lb');
  }
  const bytes = canonicalJson(head.intent);
  await page.reload(); await expect(row(0)).toContainText(entries[0].name);
  assert.equal(canonicalJson((await readDraft(reader, principal, planId))!.intent), bytes);
  await page.screenshot({ path: resolve(artifact, 'program-builder.png'), fullPage: true });
  pass('All nine qualified variants plus assistance and frozen dumbbell snapshot selected, prescribed through Builder, saved and reloaded with exact identities/units/bases');
+ // Compatibility kg values come from a synthetic fixture, never a user kg workflow.
+ const builder = structuredClone(head.intent.builder!);
+ for (const row of builder.workouts[0].rows) {
+  const m = row.prescription.measurement;
+  if (m && m.kind !== 'bodyweight' && m.convention !== 'machinePlatesPerArm' && m.convention !== 'smithPlatesTotal') m.unit = 'kg';
+ }
+ accepted(await editDraft(db, principal, { ...envelope(), commandType: 'EditDraft', target: { planId },
+  expected: { planRevisionId: head.revisionId }, intent: { operations: [{ op: 'editWorkoutDefaults', builder }] } }));
+ head = (await readDraft(reader, principal, planId))!; authored = head.intent.occurrences[0].positions;
  accepted(await activatePlan(db, principal, { ...envelope(), commandType: 'ActivatePlan', target: { planId }, expected: { planRevisionId: head.revisionId }, intent: { reviewed: head.activation } }));
  const started = await startOccurrence(db, principal, { ...envelope(), commandType: 'StartOccurrence', target: { planId, occurrenceId: head.intent.occurrences[0].id }, expected: { planRevisionId: head.revisionId, instructionEpoch: head.activation.instructions.epoch }, intent: {} });
  accepted(started); if (started.outcome.status !== 'Accepted') throw new Error('Start failed');

@@ -2,10 +2,13 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { expect as baseExpect, type Page } from '@playwright/test';
+import type { PrismaClient } from '@prisma/client';
+import { assertPoundSurface, lbOnlyBuilderJourney } from './lb-only-journey';
 
 const expect = baseExpect.configure({ timeout: 30_000 });
-export async function loggerJourney({ page, base, home, artifact, accountId, executionId, pass }: {
+export async function loggerJourney({ page, base, home, artifact, accountId, executionId, db, reader, principal, pass }: {
   page: Page; base: string; home: string; artifact: string; accountId: string; planId: string; executionId: string; pass: (value: string) => void;
+  db: PrismaClient; reader: PrismaClient; principal: { accountId: string; sessionId: string };
 }) {
   const url = `${base}/trainer2/dev/executions/${executionId}`;
   const active = page.getByRole('region', { name: 'Active set' });
@@ -23,6 +26,7 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
     await active.getByLabel('Set 1 Actual reps', { exact: true }).fill('8');
     assert(Math.abs((await active.boundingBox())!.height - before!.height) < 1, 'Numeric entry changed card height');
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await assertPoundSurface(page);
     assert.equal(await active.getByLabel('Set 1 Actual reps', { exact: true }).evaluate(e => getComputedStyle(e).fontSize), '27px');
     await shot(`logger-${width}`);
   }
@@ -30,6 +34,11 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   const history = page.getByRole('dialog', { name: 'Exercise history' });
   await expect(history.getByRole('table')).toBeVisible();
   await expect(history).toContainText('10');
+  await expect(history).toContainText('132.55 lb');
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 }); await assertPoundSurface(page);
+    await shot(`lb-history-${width}`);
+  }
   await shot('history-320');
   await history.press('Escape');
   await expect(history).not.toBeVisible();
@@ -83,7 +92,8 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   await expect(active.getByLabel('Set 1 Actual reps', { exact: true })).toBeVisible();
   assert.equal(retry, bodies[0]);
   const afterRetry = await read();
-  assert.equal(afterRetry.results.find((r: { targetId: string }) => r.targetId === JSON.parse(bodies[0]).target.targetId).result.measurement.unit, 'kg');
+  assert.deepEqual(afterRetry.results.find((r: { targetId: string }) => r.targetId === JSON.parse(bodies[0]).target.targetId).result.measurement,
+    { kind: 'externalLoad', value: '132.5', unit: 'lb', convention: 'perImplement', zeroMeaning: 'validZero' });
   pass('Accepted lost response preserves exact pending envelope and typed draft across reload; replay confirms edited lbs without duplicate work');
 
   const firstName = initial.initial.occurrence.positions[0].exercise.name;
@@ -164,4 +174,14 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   await expect(page.getByText('Saved', { exact: true })).toBeVisible();
   await shot('completed-review-320');
   pass('Reduced viewport, numeric keyboard attributes, keyboard navigation, finish cancel/confirm to Home, completed review and historical correction');
+  await page.goto(home + '&view=program');
+  await expect(page.getByText('Your saved prescriptions, week by week.', { exact: true })).toBeVisible();
+  await page.locator('[data-occurrence-id] summary').last().click();
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 }); await assertPoundSurface(page);
+    await expect(page.getByText(/132.28 lb per implement/).first()).toBeVisible();
+    await shot(`lb-program-${width}`);
+  }
+  pass('Untouched legacy kg Program and History show pounds only at 390px and 320px');
+  await lbOnlyBuilderJourney({ page, base, artifact, db, reader, principal, pass });
 }

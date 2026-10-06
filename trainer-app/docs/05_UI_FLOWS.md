@@ -2,6 +2,8 @@ Trainer2 bounded program variants and exact prescribed-load prefill: [definition
 
 # 05 UI Flows
 
+Trainer2 load display and user load authoring use pounds only in Builder (including advanced fields), saved review, Program, Logger and History. No kg selector is exposed. Untouched legacy kg values and frozen snapshots remain internally intact; explicit load edits save lb with the same measurement meaning. See [program support and pounds-only presentation](architecture/trainer2/PROGRAM_SUPPORT.md).
+
 Trainer2 approved Builder: [template-first authoring, focused sheets, overrides, recovery, review/activation and mobile verification](architecture/trainer2/BUILDER_DESIGN.md).
 
 Trainer2 approved Logger presentation: [entry, timer, queue, history, recovery, finish and disposable preview](architecture/trainer2/LOGGER_DESIGN.md).

@@ -343,7 +343,7 @@ describe('Pounds and stable logging suggestions', () => {
     expect(pounds('140.125', 'lb')).toBe('140.125');
     expect(loadLabel(null)).toBe('load unspecified');
     expect(loadLabel({ kind: 'bodyweight', convention: 'bodyweightOnly' })).toBe('bodyweight');
-    expect(loadLabel({ kind: 'assistance', convention: 'displayedAssistance', zeroMeaning: 'noAssistance', value: '20', unit: 'kg' }, true)).toBe('44.09 lb assistance (recorded 20 kg)');
+    expect(loadLabel({ kind: 'assistance', convention: 'displayedAssistance', zeroMeaning: 'noAssistance', value: '20', unit: 'kg' })).toBe('44.09 lb assistance');
   });
   it('refreshes untouched suggestions when preceding saves arrive, including remount', async () => {
     const blocked = vi.fn(), fetch = vi.fn(); vi.stubGlobal('fetch', fetch);

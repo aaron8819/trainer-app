@@ -5,6 +5,14 @@ import { orderedWorkoutGroups } from '@/lib/engine/trainer2/ordered-workouts';
 import { DraftReview } from './DraftReview';
 
 afterEach(cleanup);
+it('saved review converts legacy loads to pounds without mutating the document', () => {
+  const intent = createHypertrophyPlan();
+  intent.occurrences[0].positions[0].targets[0].measurement = { kind: 'externalLoad', value: '60.123456', unit: 'kg', convention: 'barbellTotal', zeroMeaning: 'notAllowed' };
+  const before = structuredClone(intent); const { container } = render(<DraftReview intent={intent} />);
+  expect(container.textContent).toContain('132.55 lb barbell total');
+  expect(container.textContent).not.toMatch(/\bkg\b/);
+  expect(intent).toEqual(before);
+});
 describe('saved occurrence ordering', () => {
   it.each(['template', 'independent', 'reordered', 'duplicates'])('renders %s in authoritative array order without mutating prescriptions', kind => {
     const intent = createHypertrophyPlan();

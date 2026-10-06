@@ -9,10 +9,10 @@ export function pounds(value: string, unit: 'kg' | 'lb') {
   // A positive supported kg decimal must never display as zero.
   return String(rounded || (converted > 0 ? Math.round(converted * 1e6) / 1e6 : 0));
 }
-export function loadLabel(m: PerformedResult['measurement'], original = false): string {
+export function loadLabel(m: PerformedResult['measurement']): string {
   if (!m) return 'load unspecified';
   if (m.kind === 'bodyweight') return 'bodyweight';
   const meaning = m.kind === 'assistance' ? 'assistance' : m.kind === 'addedLoad' ? 'added' :
     m.convention === 'machinePlatesPerArm' ? 'plates added per arm' : m.convention === 'smithPlatesTotal' ? 'total Smith plates added' : m.convention === 'perImplement' ? 'per implement' : m.convention === 'machineDisplayed' ? 'machine displayed' : 'barbell total';
-  return `${pounds(m.value, m.unit)} lb ${meaning}${original && m.unit === 'kg' ? ` (recorded ${m.value} kg)` : ''}`;
+  return `${pounds(m.value, m.unit)} lb ${meaning}`;
 }

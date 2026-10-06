@@ -36,6 +36,8 @@ With no explicit prescribed measurement, compatible history still supplies a nea
 
 ## Compatibility and recovery
 
+Builder advanced measurement initialization (`TargetFields` in `DraftEditor.tsx`, also used by `PrescriptionSheet`) copies both the convention and external zero policy from the frozen catalog snapshot. The retained editor passes that snapshot into its controls. Plate-only zero therefore records no added plates with `validZero`; it does not assert zero equipment resistance. Snapshots without catalog facts retain the existing initialization fallback, and reopening or editing unrelated fields preserves existing measurements. `PlatePrescription.test.tsx` covers all three plate variants, both load-entry paths, retained editor initialization and strict `notAllowed` rejection.
+
 No SQL schema/grant change is needed: measurements and captured definitions are existing JSON content. The two new convention enum values extend the Trainer2 wire contract. Old strict application readers reject those values, and older catalog writers cannot qualify the new IDs. After plans/results use the new definitions, recovery must use an application version that understands them; rollback to the baseline is not qualified for those records. No existing snapshot/result is rewritten.
 
 Pending sessionStorage commands/drafts retain their exact saved envelopes and entered forms. A pre-existing rounded lb draft is user/recovery state and is not silently converted back to prescribed kg. Reload alone does not rewrite it. Existing account authorization, assignment binding, optimistic version checks, lost-response replay and reviewed finish remain unchanged.

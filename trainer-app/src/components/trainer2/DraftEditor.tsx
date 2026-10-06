@@ -41,7 +41,13 @@ export function TargetFields({ target: t, change, exercise }: { exercise?: Draft
     <TextField label="Minimum reps" numeric value={String(t.reps.min || "")} onChange={v => change(t => { t.reps.min = Number(v); }, 'reps')} />
     <TextField label="Maximum reps" numeric value={String(t.reps.max || "")} onChange={v => change(t => { t.reps.max = Number(v); }, 'reps')} />
     <Choice label="Rep basis" value={t.reps.basis} options={fixed ? [fixed.repBasis] : ["total", "perSide", "alternating"]} onChange={v => change(t => { t.reps.basis = v; }, 'reps')} />
-    <Choice label="Measurement kind" value={m?.kind ?? "missing"} options={fixed ? ["missing", fixed.loadKind] : ["missing", "externalLoad", "addedLoad", "assistance", "bodyweight"]} onChange={v => change(t => { t.measurement = initialMeasurement(v); if (fixed && t.measurement?.kind === "externalLoad") t.measurement.convention = fixed.convention as "barbellTotal" | "perImplement" | "machineDisplayed" | "machinePlatesPerArm" | "smithPlatesTotal"; }, 'measurement')} />
+    <Choice label="Measurement kind" value={m?.kind ?? "missing"} options={fixed ? ["missing", fixed.loadKind] : ["missing", "externalLoad", "addedLoad", "assistance", "bodyweight"]} onChange={v => change(t => {
+      t.measurement = initialMeasurement(v);
+      if (fixed && t.measurement?.kind === "externalLoad") {
+        t.measurement.convention = fixed.convention as "barbellTotal" | "perImplement" | "machineDisplayed" | "machinePlatesPerArm" | "smithPlatesTotal";
+        t.measurement.zeroMeaning = fixed.catalogFacts?.externalZeroMeaning ?? t.measurement.zeroMeaning;
+      }
+    }, 'measurement')} />
     {m && m.kind !== "bodyweight" && <>
       <TextField label="Load or assistance · lb" numeric value={pounds(m.value, m.unit)} onChange={v => change(t => { if (t.measurement && t.measurement.kind !== "bodyweight") { t.measurement.value = v; t.measurement.unit = 'lb'; } }, 'measurement')} />
     </>}
@@ -80,7 +86,7 @@ export function DraftEditor({ document: doc, disabled, onChange }: { document: D
         <Order index={j} length={o.positions.length} move={v => update(d => move(d.occurrences[i].positions, j, v))} />
         <button type="button" className={control} onClick={() => update(d => { d.occurrences[i].positions.splice(j, 1); })}>Remove position</button>
         {p.targets.map((t, k) => <fieldset key={t.id} className="space-y-3 rounded border p-3"><legend>Target {k + 1}</legend>
-          <TargetFields target={t} change={fn => update(d => fn(d.occurrences[i].positions[j].targets[k]))} />
+          <TargetFields exercise={p.exercise} target={t} change={fn => update(d => fn(d.occurrences[i].positions[j].targets[k]))} />
           <Order index={k} length={p.targets.length} move={v => update(d => move(d.occurrences[i].positions[j].targets, k, v))} />
           <button type="button" className={control} onClick={() => update(d => { d.occurrences[i].positions[j].targets.splice(k, 1); })}>Remove target</button>
         </fieldset>)}

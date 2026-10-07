@@ -48,4 +48,27 @@ Integration owner: combine this branch with the separately reviewed access candi
 
 Focused definitions cover all 48 legacy snapshots, exact complete-snapshot qualification, new IDs, distinct plate-versus-stack histories, per-side and assistance loads, untouched kg versus edited lb, zero versus blank, tiny positive kg display, carry-forward and ambiguous histories. `scripts/test-trainer2-program-support.ts --confirm-disposable` uses the existing task-owned home/program fixture and `program-support-journey.ts` for Builder selection/prescription/save/reload, logging, swaps/restoration, additions and history. It uses synthetic local training only. Assertions, cleanup results and supervisor completion must be reported separately. Final source identity and exact outcomes are in the local handoff receipt.
 
-All seven requested exercise positions have concrete qualified variants under the user's supplied recording conventions. No remaining definition question is required. Specific machine starting resistance is deliberately excluded; unequal plate loading or a different execution should use explicit custom authoring or a separately reviewed variant.
+The original seven requested exercise positions have concrete qualified variants under the user's supplied recording conventions. No remaining definition question is required. The original slice did not capture starting resistance; the equipment-recording extension below adds separately authored facts. Unequal plate loading or a different execution should use explicit custom authoring or a separately reviewed variant.
+
+## Equipment-recording extension
+
+`program-catalog.json` adds four identities without changing existing definitions or the shared V1 catalog:
+
+| Trainer2 key | Recording meaning | Metadata provenance |
+| --- | --- | --- |
+| hack-squat-plates-added | Total added plates across both sides; total reps; zero valid | Hack squat movement, muscles and rep defaults |
+| seated-calf-raise-plates-added | Total added plates; total reps; zero valid | Seated calf raise movement, muscles and rep defaults |
+| smith-machine-standing-calf-raise-plates-added | Total added plates across both sides, excluding Smith bar resistance; total reps; zero valid | Selectorized standing calf movement/muscles/defaults, with explicitly Smith equipment |
+| iso-lateral-low-row-plates-per-arm | Both arms together, equal added plates per arm, excluding starting resistance; total bilateral reps | Iso-lateral low row movement, muscles and defaults |
+
+The new `machineAddedPlatesTotal` convention is distinct from `machineDisplayed`, `machinePlatesPerArm` and `smithPlatesTotal`. Forty-five pounds on each low-row arm records as 45, not 90. Stack chest-supported row, selectorized standing calf and the existing high-row per-arm variant remain selectable and unchanged.
+
+`trainer2-contracts/draft.ts` owns optional `equipmentSetup` on catalog snapshots: an equipment identifier and exact decimal starting resistance with its unit. This is authored equipment metadata, permitted only for added-plate definitions, separate from immutable catalog facts and target/performed measurements. Builder's Equipment starting resistance details can record the identified hack machine's 105 lb; no machine receives 105 by default. `setEquipmentSetup` preserves explicit per-set loads and normal week inheritance. Complete reviewed catalog qualification still applies to the remaining snapshot fields. Reads neither enrich old snapshots nor consult current defaults.
+
+The existing plan revision JSON and immutable START occurrence preserve these equipment facts, including through reload, completed history and restore-original swaps. Builder, saved review, Program/planned workout, active Logger and completed/history views show resistance separately from plates. No calculation adds it to the editable or recorded load. Legacy V1 hack totals remain untouched; there is no V1 import or prefill conversion.
+
+`sameLoggingExercise` requires equal equipment setups in addition to identity/version, variation, equipment, rep basis and load convention. `compatiblePrevious` retains complete snapshot equality. Unknown setup, another equipment identifier or a different resistance cannot supply suggestions to a known machine. Stack, total-plate and per-arm exercise variants cannot transfer values. Builder and session swaps clear unrelated measurements and equipment setup; Return to original restores its captured facts and targets. Blank load is unspecified; explicit zero records no added plates.
+
+No Prisma schema, migration, grant or database catalog write is required. Existing JSON persistence carries the fields. The new strict wire convention and optional snapshot member require compatible application readers/writers; older recovery artifacts cannot read newly authored equipment content. Integration/deployment remains a separate reviewed task.
+
+Focused checks are in `equipment-recording.test.ts`, `EquipmentSetup.test.tsx`, `PlatePrescription.test.tsx` and `SetResultRow.test.tsx`, alongside existing qualification, legacy snapshot and swap suites. `scripts/test-trainer2-equipment-recording.ts --confirm-disposable` guards inherited targets and uses only task-owned loopback PostgreSQL, existing migrations, real handlers and ordinary Builder/Logger clicks. It verifies identified 105 lb separate from zero plates, exact saves, all four recording tuples, completed history and compatible next-rotation blank-load prefill. Assertions and cleanup results must both pass.

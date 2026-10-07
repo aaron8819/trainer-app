@@ -22,6 +22,10 @@ describe('Explicit prescription load prefill', () => {
   const added = { kind: 'addedLoad' as const, convention: 'addedExternal' as const, zeroMeaning: 'noAddedLoad' as const, value: '10', unit: 'kg' as const };
   const dumbbell = { ...external, convention: 'perImplement' as const, zeroMeaning: 'notAllowed' as const };
   const cases = [
+    { id: 't2:hack-squat-plates-added', measurement: { ...external, convention: 'machineAddedPlatesTotal' as const, value: '0.000000', unit: 'lb' as const }, display: '0.000000' },
+    { id: 't2:seated-calf-raise-plates-added', measurement: { ...external, convention: 'machineAddedPlatesTotal' as const, value: '50.125000', unit: 'lb' as const }, display: '50.125000' },
+    { id: 't2:smith-machine-standing-calf-raise-plates-added', measurement: { ...external, convention: 'smithPlatesTotal' as const, value: '0', unit: 'lb' as const }, display: '0' },
+    { id: 't2:iso-lateral-low-row-plates-per-arm', measurement: { ...external, convention: 'machinePlatesPerArm' as const, value: '45', unit: 'lb' as const }, display: '45' },
     { id: 't2:leg-press', measurement: external, display: '22.05' },
     { id: 't2:leg-press', measurement: { ...external, value: '0.00' }, display: '0' },
     { id: 't2:leg-press', measurement: { ...external, value: '42.5', unit: 'lb' as const }, display: '42.5' },

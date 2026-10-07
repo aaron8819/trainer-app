@@ -21,7 +21,7 @@ type Source = {
 const legacy = new Map(qualifiedV1.map(e => [e.id, e]));
 const conventions = {
   BARBELL_TOTAL: 'barbellTotal', IMPLEMENT_WEIGHT: 'perImplement', MACHINE_DISPLAYED: 'machineDisplayed',
-  MACHINE_PLATES_PER_ARM: 'machinePlatesPerArm', SMITH_PLATES_TOTAL: 'smithPlatesTotal',
+  MACHINE_PLATES_PER_ARM: 'machinePlatesPerArm', MACHINE_ADDED_PLATES_TOTAL: 'machineAddedPlatesTotal', SMITH_PLATES_TOTAL: 'smithPlatesTotal',
   ADDED_EXTERNAL_LOAD: 'addedExternal', DISPLAYED_ASSISTANCE: 'displayedAssistance',
 } as const;
 const kinds = {
@@ -45,11 +45,11 @@ export function normalizeCatalogEntry(source: Source, trainer2Variant = false) {
   try {
     // These reviewed plate-only tuples belong to Trainer2; do not reinterpret
     // them as displayed machine weight or add them to shared V1 semantics.
-    const plateOnly = trainer2Variant && ['MACHINE_PLATES_PER_ARM', 'SMITH_PLATES_TOTAL'].includes(source.loadConvention ?? '');
+    const plateOnly = trainer2Variant && ['MACHINE_ADDED_PLATES_TOTAL', 'MACHINE_PLATES_PER_ARM', 'SMITH_PLATES_TOTAL'].includes(source.loadConvention ?? '');
     if (plateOnly) {
       if (source.measurementProfile !== 'REPS_EXTERNAL_LOAD' || source.zeroLoadMeaning !== 'MACHINE_DEFAULT_NO_ADDED_LOAD' || !['TOTAL', 'PER_SIDE'].includes(source.repBasis ?? '')) throw new Error('Invalid plate-only tuple');
       definition = { repBasis: source.repBasis === 'PER_SIDE' ? 'perSide' : 'total', loadKind: 'externalLoad',
-        convention: source.loadConvention === 'SMITH_PLATES_TOTAL' ? 'smithPlatesTotal' : 'machinePlatesPerArm' };
+        convention: conventions[source.loadConvention as 'MACHINE_ADDED_PLATES_TOTAL' | 'MACHINE_PLATES_PER_ARM' | 'SMITH_PLATES_TOTAL'] };
       externalZeroMeaning = 'validZero';
     } else {
       const snapshot = assertFrozenMeasurementSnapshotInvariant(frozenMeasurementSnapshot(source));

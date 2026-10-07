@@ -12,7 +12,7 @@ import { canonicalJson } from '../../trainer2-contracts/canonical-json';
 import { replacementContent } from './exercise-swap';
 import type { ExecutionRead } from '../../trainer2-contracts/execution';
 
-const conventions = { BARBELL_TOTAL: 'barbellTotal', IMPLEMENT_WEIGHT: 'perImplement', MACHINE_DISPLAYED: 'machineDisplayed', MACHINE_PLATES_PER_ARM: 'machinePlatesPerArm', SMITH_PLATES_TOTAL: 'smithPlatesTotal',
+const conventions = { BARBELL_TOTAL: 'barbellTotal', IMPLEMENT_WEIGHT: 'perImplement', MACHINE_DISPLAYED: 'machineDisplayed', MACHINE_ADDED_PLATES_TOTAL: 'machineAddedPlatesTotal', MACHINE_PLATES_PER_ARM: 'machinePlatesPerArm', SMITH_PLATES_TOTAL: 'smithPlatesTotal',
   ADDED_EXTERNAL_LOAD: 'addedExternal', DISPLAYED_ASSISTANCE: 'displayedAssistance' };
 const kinds = { REPS_EXTERNAL_LOAD: 'externalLoad', REPS_BODYWEIGHT: 'bodyweight', REPS_BODYWEIGHT_PLUS_LOAD: 'addedLoad', REPS_ASSISTED: 'assistance' };
 
@@ -20,9 +20,9 @@ describe('complete canonical catalog integration', () => {
   it('qualifies every reviewed tuple without a second membership list', () => {
     expect(shared.exercises).toHaveLength(150);
     expect(baseline).toHaveLength(48);
-    expect(catalog).toHaveLength(100);
+    expect(catalog).toHaveLength(104);
     expect(library.filter(e => !e.selectable)).toHaveLength(59);
-    expect(new Set(library.map(e => e.catalogId)).size).toBe(159);
+    expect(new Set(library.map(e => e.catalogId)).size).toBe(163);
     const compatible = catalogSources.filter(e => 'measurementProfile' in e);
     expect(catalog.map(e => e.id).sort()).toEqual(compatible.map(e => 't2:' + e.catalogKey).sort());
     const future = { ...compatible[0], catalogKey: 'future-reviewed-exercise', name: 'Renamed arbitrary display' };

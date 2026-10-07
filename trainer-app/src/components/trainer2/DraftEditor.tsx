@@ -1,3 +1,4 @@
+import { EquipmentResistance, EquipmentSetupEditor } from './EquipmentSetup';
 import type { DraftDocument } from "@/lib/trainer2-contracts/draft";
 import { pounds } from './pound-display';
 
@@ -7,7 +8,7 @@ const labels: Record<string, string> = {
   missing: "Unspecified", externalLoad: "External load", addedLoad: "Added load", assistance: "Assistance", bodyweight: "Bodyweight only",
   preparation: "Preparation", rampUp: "Ramp-up", working: "Working", optionalFinisher: "Optional finisher",
   total: "Total", perSide: "Per side", alternating: "Alternating", barbellTotal: "Barbell total", perImplement: "Per implement",
-  machinePlatesPerArm: 'plates added per arm', smithPlatesTotal: 'total Smith plates added', machineDisplayed: "Machine displayed", notAllowed: "Zero not allowed", validZero: "Zero is valid",
+  machineAddedPlatesTotal: 'total machine plates added', machinePlatesPerArm: 'plates added per arm', smithPlatesTotal: 'total Smith plates added', machineDisplayed: "Machine displayed", notAllowed: "Zero not allowed", validZero: "Zero is valid",
 };
 export const control = "rounded border border-slate-400 bg-white px-3 py-2 text-slate-900 disabled:opacity-40";
 export function TextField({ label, value, onChange, numeric = false }: { label: string; value: string; onChange: (value: string) => void; numeric?: boolean }) {
@@ -44,7 +45,7 @@ export function TargetFields({ target: t, change, exercise }: { exercise?: Draft
     <Choice label="Measurement kind" value={m?.kind ?? "missing"} options={fixed ? ["missing", fixed.loadKind] : ["missing", "externalLoad", "addedLoad", "assistance", "bodyweight"]} onChange={v => change(t => {
       t.measurement = initialMeasurement(v);
       if (fixed && t.measurement?.kind === "externalLoad") {
-        t.measurement.convention = fixed.convention as "barbellTotal" | "perImplement" | "machineDisplayed" | "machinePlatesPerArm" | "smithPlatesTotal";
+        t.measurement.convention = fixed.convention as "barbellTotal" | "perImplement" | "machineDisplayed" | "machinePlatesPerArm" | "machineAddedPlatesTotal" | "smithPlatesTotal";
         t.measurement.zeroMeaning = fixed.catalogFacts?.externalZeroMeaning ?? t.measurement.zeroMeaning;
       }
     }, 'measurement')} />
@@ -52,7 +53,7 @@ export function TargetFields({ target: t, change, exercise }: { exercise?: Draft
       <TextField label="Load or assistance · lb" numeric value={pounds(m.value, m.unit)} onChange={v => change(t => { if (t.measurement && t.measurement.kind !== "bodyweight") { t.measurement.value = v; t.measurement.unit = 'lb'; } }, 'measurement')} />
     </>}
     {m?.kind === "externalLoad" ? <>
-      <Choice label="Convention" value={m.convention} options={fixed ? [m.convention] : ["barbellTotal", "perImplement", "machineDisplayed", "machinePlatesPerArm", "smithPlatesTotal"]} onChange={v => change(t => { if (t.measurement?.kind === "externalLoad") t.measurement.convention = v; }, 'measurement')} />
+      <Choice label="Convention" value={m.convention} options={fixed ? [m.convention] : ["barbellTotal", "perImplement", "machineDisplayed", "machinePlatesPerArm", "machineAddedPlatesTotal", "smithPlatesTotal"]} onChange={v => change(t => { if (t.measurement?.kind === "externalLoad") t.measurement.convention = v; }, 'measurement')} />
       <Choice label="Zero meaning" value={m.zeroMeaning} options={fixed?.catalogFacts?.externalZeroMeaning ? [fixed.catalogFacts.externalZeroMeaning] : ["notAllowed", "validZero"]} onChange={v => change(t => { if (t.measurement?.kind === "externalLoad") t.measurement.zeroMeaning = v; }, 'measurement')} />
     </> : <p>{!m ? "Weight is optional. You can choose it later." : m.kind === "bodyweight" ? "Bodyweight only; no numeric load." : m.kind === "addedLoad" ? "Added external load; zero means no added load." : "Displayed assistance; zero means no assistance."}</p>}
     <TextField label="RIR (blank = unspecified)" numeric value={t.rir ?? ""} onChange={v => change(t => { t.rir = v === "" ? null : v; }, 'rir')} />
@@ -83,6 +84,7 @@ export function DraftEditor({ document: doc, disabled, onChange }: { document: D
       {o.positions.map((p, j) => <fieldset key={p.id} className="space-y-3 rounded border p-3"><legend>Position {j + 1}</legend>
         <TextField label="Exercise name" value={p.exercise.name} onChange={v => update(d => { d.occurrences[i].positions[j].exercise.name = v; })} />
         <TextField label="Variation" value={p.exercise.variation} onChange={v => update(d => { d.occurrences[i].positions[j].exercise.variation = v; })} />
+        <EquipmentResistance exercise={p.exercise} /><EquipmentSetupEditor key={JSON.stringify(p.exercise)} exercise={p.exercise} apply={setup => update(d => { const e = d.occurrences[i].positions[j].exercise; if (e.kind === 'catalogSnapshot') { if (setup) e.equipmentSetup = setup; else delete e.equipmentSetup; } })} />
         <Order index={j} length={o.positions.length} move={v => update(d => move(d.occurrences[i].positions, j, v))} />
         <button type="button" className={control} onClick={() => update(d => { d.occurrences[i].positions.splice(j, 1); })}>Remove position</button>
         {p.targets.map((t, k) => <fieldset key={t.id} className="space-y-3 rounded border p-3"><legend>Target {k + 1}</legend>

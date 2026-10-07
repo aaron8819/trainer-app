@@ -1,4 +1,4 @@
-import type { DraftDocument } from '../../trainer2-contracts/draft';
+import { exercise as exerciseSchema, type DraftDocument } from '../../trainer2-contracts/draft';
 import { catalog, catalogExercise, swapPrescription } from './catalog';
 
 export type Builder = NonNullable<DraftDocument['builder']>;
@@ -30,6 +30,25 @@ const starter: [string, number, number, number, NonNullable<Row['role']>][][] = 
 export function newRow(name: string, id: IdFactory = () => crypto.randomUUID()): Row {
   return { key: id(), exercise: { kind: 'authoredDescription', name, variation: '' }, sets: 3,
     prescription: { classification: 'working', required: true, reps: { min: 8, max: 12, basis: 'total' }, measurement: null, rir: null, restSeconds: null } };
+}
+export function setEquipmentSetup(document: DraftDocument, address: { key: string; workoutKey: string; occurrenceId?: string }, setup: Extract<Position['exercise'], { kind: 'catalogSnapshot' }>['equipmentSetup']) {
+  const doc = structuredClone(document);
+  const o = address.occurrenceId ? doc.occurrences.find(o => o.id === address.occurrenceId) : undefined;
+  const p = o?.positions.find(p => p.id === address.key);
+  const row = doc.builder?.workouts.find(w => w.key === address.workoutKey)?.rows.find(r => r.key === address.key);
+  const e = address.occurrenceId ? p?.exercise : row?.exercise;
+  if (!e || e.kind !== 'catalogSnapshot') throw new Error('Unsupported equipment setup');
+  if (setup) e.equipmentSetup = structuredClone(setup); else delete e.equipmentSetup;
+  exerciseSchema.parse(e);
+  if (o && p) {
+    markOverride(o, p.id, ['exercise']);
+    // Equipment facts do not rewrite explicitly authored per-set loads.
+    if (!o.weekOverride && p.sourceKey) {
+      o.overrides!.targets ??= {};
+      for (const t of p.targets) o.overrides!.targets[t.id] = [...new Set([...(o.overrides!.targets[t.id] ?? []), 'measurement' as const])];
+    }
+  }
+  return expandWorkoutDefaults(doc);
 }
 // Explicit source keys establish correspondence; names and array indices never do.
 export function expandWorkoutDefaults(document: DraftDocument, id: IdFactory = () => crypto.randomUUID()): DraftDocument {
@@ -155,7 +174,7 @@ function discardedPrescription(t: Position['targets'][number]): string {
   if (t.restSeconds !== null) details.push(`${t.restSeconds} seconds rest`);
   if (m?.kind === 'bodyweight') details.push('bodyweight only');
   else if (m) {
-    const convention = { barbellTotal: 'barbell total', perImplement: 'per implement', machinePlatesPerArm: 'plates added per arm', smithPlatesTotal: 'total Smith plates added', machineDisplayed: 'machine displayed', addedExternal: 'added load', displayedAssistance: 'displayed assistance' }[m.convention];
+    const convention = { barbellTotal: 'barbell total', perImplement: 'per implement', machineAddedPlatesTotal: 'total machine plates added', machinePlatesPerArm: 'plates added per arm', smithPlatesTotal: 'total Smith plates added', machineDisplayed: 'machine displayed', addedExternal: 'added load', displayedAssistance: 'displayed assistance' }[m.convention];
     const zero = { validZero: 'zero is valid', notAllowed: 'zero not allowed', noAddedLoad: 'zero means no added load', noAssistance: 'zero means no assistance' }[m.zeroMeaning];
     details.push(`${m.value} ${m.unit} ${convention} (${zero})`);
   }

@@ -1,4 +1,5 @@
 'use client';
+import { EquipmentResistance } from './EquipmentSetup';
 import styles from './Logger.module.css';
 import { canonicalJson } from '@/lib/trainer2-contracts/canonical-json';
 import { AddExercise } from './AddExercise';
@@ -124,6 +125,7 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
   return <>
     <div ref={timer} className={styles.timerSlot}><RestBar storageKey={timerKey} state={rest} onChange={setRest} /></div>
     <section ref={panel} aria-label="Active set" style={{ overflowAnchor: 'none' }} className={styles.card}>
+      {active && <EquipmentResistance exercise={active.position.exercise} />}
       <div className="mb-3"><div className="flex justify-between text-xs text-slate-500"><span className="font-semibold tracking-wide">{active && execution.results.some(r => r.targetId === active.id) ? 'EDIT SAVED SET' : 'CURRENT EXERCISE'}</span><span>{count + skippedCount}/{sets.length} resolved</span></div><div role="progressbar" aria-valuenow={count + skippedCount} aria-valuemin={0} aria-valuemax={sets.length} aria-label="Resolved set progress" className="mt-2 h-1 overflow-hidden rounded-full bg-slate-100"><div className="h-full bg-black" style={{ width: `${(count + skippedCount) / sets.length * 100}%` }} /></div></div>
       <div className="flex items-start justify-between gap-3"><div><h3 ref={heading} tabIndex={-1} className="text-lg font-semibold outline-none">{active?.position.exercise.name ?? (count + skippedCount === sets.length ? 'Ready to finish' : 'Choose your next set')}</h3>
       {active && <p className={styles.context}>{active.position.role ?? 'Exercise'} · Set {active.number} of {active.position.targets.length}</p>}</div></div>
@@ -136,7 +138,7 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
           <div className={styles.sheetHead}><h2>History</h2><button type="button" onClick={() => setHistoryOpen(false)}>Close history</button></div>
           <div className={styles.sheetBody}>
           {prior ? <><p className="mb-2 text-xs text-slate-600">Previous · {prior.workoutName} · {new Date(prior.finishedAt).toLocaleDateString()}</p>
-            {historyMeanings.length > 0 && <p className="mb-1 text-xs text-slate-500">{historyMeanings.join(' · ')}</p>}
+            {active && <EquipmentResistance exercise={active.position.exercise} />}{historyMeanings.length > 0 && <p className="mb-1 text-xs text-slate-500">{historyMeanings.join(' · ')}</p>}
             <table className={styles.history}><caption className="sr-only">Previous exercise results</caption><thead className="border-b text-xs text-slate-500"><tr>{['Set', 'Weight', 'Reps', 'RIR'].map(label => <th key={label} scope="col" className="py-1 pr-2 font-medium">{label}</th>)}</tr></thead>
               <tbody>{prior.results.map((r, index) => {
                 const m = r.result?.measurement, reps = r.result?.reps;

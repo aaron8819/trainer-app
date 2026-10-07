@@ -6,7 +6,7 @@ import { createDraftCommand, draftDocument } from '@/lib/trainer2-contracts/draf
 import { PrescriptionSheet } from './PrescriptionSheet';
 import { DraftEditor } from './DraftEditor';
 
-const variants = ['t2:chest-supported-machine-row-plates-per-arm', 't2:chest-supported-machine-high-row-plates-per-arm', 't2:smith-machine-bulgarian-split-squat-plates-added'];
+const variants = ['t2:hack-squat-plates-added', 't2:seated-calf-raise-plates-added', 't2:smith-machine-standing-calf-raise-plates-added', 't2:iso-lateral-low-row-plates-per-arm', 't2:chest-supported-machine-row-plates-per-arm', 't2:chest-supported-machine-high-row-plates-per-arm', 't2:smith-machine-bulgarian-split-squat-plates-added'];
 beforeEach(() => {
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function (this: HTMLDialogElement) { this.setAttribute('open', ''); } });
   Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: function (this: HTMLDialogElement) { this.removeAttribute('open'); } });

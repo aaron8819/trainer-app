@@ -1,4 +1,5 @@
 'use client';
+import { EquipmentResistance } from './EquipmentSetup';
 import { AdvanceWeek } from './AdvanceWeek';
 import styles from './TrainingOverview.module.css';
 import logger from './Logger.module.css';
@@ -46,7 +47,7 @@ export function WorkoutPrescription({ workout, resultRow, previous }: { workout:
   if (!resultRow) return <PlannedWorkout workout={workout} />;
   return <div className="space-y-4"><h3 className="text-xl font-semibold">{workout.name}</h3>{workout.positions.map(p =>
     <section key={p.id} className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4"><div className="flex flex-wrap justify-between gap-1"><h4 className="font-semibold">{p.exercise.name}{p.exercise.variation ? ' · ' + p.exercise.variation : ''}</h4><span className="text-xs text-slate-500">{p.role}</span></div>
-      {previous?.(p.id)}
+      <EquipmentResistance exercise={p.exercise} />{previous?.(p.id)}
       <ol className="mt-3 divide-y divide-slate-100">{p.targets.map((t, i) => <li key={t.id} className="py-2 text-sm">
         <p className="text-xs text-slate-500">Set {i + 1} · {targetLabel(t)}</p>{resultRow(p.id, t.id, i + 1)}
       </li>)}</ol></section>)}</div>;
@@ -181,7 +182,7 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
         return <Fragment key={owned.id}>{(execution.additions?.some(a => a.content.target.id === owned.id) || execution.exerciseAdditions?.some(a => a.content.position.targets.some(t => t.id === owned.id))) && <p className="text-xs text-slate-500">Added during workout</p>}{execution.finish?.unknownTargetIds.includes(owned.id) && !saved?.result && !execution.skips?.some(s => s.targetId === owned.id) && <p className="text-sm text-slate-600">Skipped at finish · no performed result.</p>}{execution.skips?.some(s => s.targetId === owned.id) && <p className="text-sm text-slate-600">{saved ? 'Previously skipped; subsequently recorded. See result history.' : 'Explicitly skipped · no performed result.'}</p>}<SetResultRow key="ongoing" accountId={accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
           readOnly={execution.lifecycle !== 'Open'} retainedOnly={execution.lifecycle !== 'Open'} locked={finishLocked || discardLocked} onInputState={onInputState} targetId={owned.id} number={number} saved={saved} prescription={effectiveOccurrence(execution).positions.find(p => p.id === positionId)!.targets.find(t => t.id === targetId)} exercise={effectiveOccurrence(execution).positions.find(p => p.id === positionId)!.exercise} refresh={refresh} />
           {execution.lifecycle === 'Finished' && <SetResultRow key="historical" accountId={accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
-            historical history={execution.history?.filter(r => r.targetId === owned.id)} finishVersion={execution.finish?.expected.results.find(r => r.targetId === owned.id)?.resultVersion}
+            historical exercise={effectiveOccurrence(execution).positions.find(p => p.id === positionId)!.exercise} history={execution.history?.filter(r => r.targetId === owned.id)} finishVersion={execution.finish?.expected.results.find(r => r.targetId === owned.id)?.resultVersion}
             targetId={owned.id} number={number} saved={saved} refresh={refresh} />}</Fragment>;
       }} />}
       {execution.lifecycle !== 'Open' && <AddExercise execution={execution} ownershipEpoch={ownershipEpoch} locked refresh={async () => { const value = await load(); if (!value || !('results' in value)) throw new Error('Read failed'); return value; }} />}

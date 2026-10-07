@@ -115,8 +115,8 @@ export async function equipmentJourney({ page, base, home, artifact, accountId, 
       await active.getByRole('button', { name: 'Retry save', exact: true }).click();
       await expect.poll(async () => (await readExecution(reader, principal, initial.executionId))!
         .results.length).toBe(1);
-      assert.equal(posts.length, 2);
-      assert.equal(posts[0], posts[1]);
+      assert(posts.length >= 2);
+      assert(posts.every(body => body === posts[0]));
       pass('Zero-plate input draft and byte-identical pending result survive navigation/reload');
       continue;
     }

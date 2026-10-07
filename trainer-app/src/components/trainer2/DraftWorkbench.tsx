@@ -15,6 +15,7 @@ import { validateReviewResponse, INVALID_REVIEW_MESSAGE, type SavedPlanResponse 
 import { activationResponse, activatePlanCommand, type ActivatePlanCommand, type InstructionCommand } from '@/lib/trainer2-contracts/activation';
 import { Workout } from './Workout';
 import { Instructions } from './Instructions';
+import { useTrainer2Destination } from './Trainer2Shell';
 
 type WriteCommand = DraftCommand | ActivatePlanCommand | InstructionCommand;
 type Props = { accountId: string; ownershipEpoch: number; initialPlanId?: string; view?: 'program'; hostedTrial?: boolean };
@@ -40,7 +41,13 @@ function Workbench({ accountId, ownershipEpoch, initialPlanId = '', view, hosted
   const [currentPlanConflict, setCurrentPlanConflict] = useState<string | null>(null);
   const [reviewError, setReviewError] = useState(false);
   const reviewRequest = useRef(0);
-  useEffect(() => () => { ++reviewRequest.current; }, [accountId, initialPlanId]);
+  const present = useRef(false);
+  useEffect(() => {
+    present.current = true;
+    // This is a request counter, not a DOM ref; invalidate the latest read on cleanup.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => { present.current = false; ++reviewRequest.current; };
+  }, [accountId, initialPlanId]);
   const [editLocation, setEditLocation] = useState<{ occurrenceId?: string; key: number }>({ key: 0 });
   function clearDraftRecovery(id: string) {
     try { sessionStorage.removeItem(recoveryKey); sessionStorage.removeItem(`trainer2-builder:${accountId}:${id}`); } catch { /* Accepted server state remains authoritative if browser cache cleanup fails. */ }
@@ -90,7 +97,8 @@ function Workbench({ accountId, ownershipEpoch, initialPlanId = '', view, hosted
       const stored = sessionStorage.getItem(`trainer2-activation:${accountId}:${initialPlanId}`);
       const pending = stored && (() => { try { return activatePlanCommand.safeParse(JSON.parse(stored)); } catch { return null; } })();
       if (pending && pending.success) { setLastCommand(pending.data); setUncertain(true); setMessage('Activation could not be confirmed. Check again to recover the original request.'); }
-      else void reload();
+      // Arm the read after mount replay; initialization/identity allocation stays once-only.
+      else queueMicrotask(() => { if (present.current) void reload(); });
     } else setForm(createHypertrophyPlan());
     // Bookmark is a mount input. Initial identities are allocated only in the browser.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -169,6 +177,7 @@ function Workbench({ accountId, ownershipEpoch, initialPlanId = '', view, hosted
   const unsaved = !!form && (!loaded || JSON.stringify(form) !== JSON.stringify(loaded.intent));
   const needsRepair = !!form && JSON.stringify(repairBuilderMetadata(form)) !== JSON.stringify(form);
   const active = loaded?.state.lifecycle !== undefined && loaded.state.lifecycle !== 'Draft';
+  useTrainer2Destination(planId || undefined, loaded ? !active : !initialPlanId || !!form);
   const locked = busy || stale || !!conflict || uncertain || active;
   const reviewCurrent = !!review && review.accountId === accountId && review.planId === loaded?.planId && review.revisionId === loaded?.revisionId && !unsaved && !locked;
   function changed(d: DraftDocument) { if (!inFlight.current) { ++reviewRequest.current; setReviewBusy(false); setForm(d); setMessage('Unsaved changes'); } }

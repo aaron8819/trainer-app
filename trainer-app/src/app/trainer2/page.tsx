@@ -4,9 +4,11 @@ import { requestContext, hostedTestEnabled } from "@/lib/api/trainer2/access";
 import { developmentEnabled } from "@/lib/api/trainer2/development";
 import { DraftAccessError } from "@/lib/api/trainer2/principal";
 import { readTrainingHome } from "@/lib/api/trainer2/training-home";
+import Link from 'next/link';
+import styles from '@/components/trainer2/Trainer2Shell.module.css';
 
 export const dynamic = "force-dynamic";
-export default async function TrainingPage() {
+export default async function TrainingPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
   if (!developmentEnabled() && !hostedTestEnabled()) notFound();
   const request = new Request("http://localhost/trainer2", { headers: await headers() });
   let home;
@@ -17,13 +19,16 @@ export default async function TrainingPage() {
     if (error instanceof DraftAccessError) redirect("/trainer2/auth");
     throw error;
   }
-  return <main className="mx-auto max-w-3xl space-y-6 p-6">
-    <h1 className="text-3xl font-semibold">Training</h1>
-    {home.plans.length === 0 ? <p>You have no plan yet.</p> :
-      <ul className="space-y-3">{home.plans.map(plan => <li key={plan.id}>
-        <a className="inline-flex min-h-11 items-center underline" href={`/trainer2/dev/drafts?planId=${encodeURIComponent(plan.id)}`}>Open {plan.lifecycle.toLowerCase()} plan</a>
+  const program = (await searchParams).view === 'program';
+  return <main className={styles.home}>
+    <header className={styles.title}><h1>{program ? 'Program' : 'Training'}</h1>
+      <p className={styles.subtitle}>{program ? 'Your saved plans and prescriptions.' : 'Your training, one workout at a time.'}</p></header>
+    <section className={styles.card} aria-label={program ? 'Saved programs' : 'Training plans'}>
+    {home.plans.length === 0 ? <><h2>{program ? 'No program yet' : 'Ready when you are'}</h2><p>You have no plan yet. Create a plan to build your training program.</p></> :
+      <ul>{home.plans.map(plan => <li key={plan.id}>
+        <Link className={styles.planLink} href={`/trainer2/dev/drafts?planId=${encodeURIComponent(plan.id)}${program && plan.lifecycle !== 'Draft' ? '&view=program' : ''}`}>Open {plan.lifecycle.toLowerCase()} plan</Link>
       </li>)}</ul>}
-    <a className="inline-flex min-h-11 items-center rounded-lg bg-teal-800 px-5 py-3 text-white" href="/trainer2/dev/drafts?view=builder">Create plan</a>
-    <a className="block underline" href="/trainer2/auth">Device access</a>
+    <Link className={styles.primary} href="/trainer2/dev/drafts?view=builder">Create plan</Link>
+    </section>
   </main>;
 }

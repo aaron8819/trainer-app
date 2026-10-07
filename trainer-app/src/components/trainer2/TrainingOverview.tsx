@@ -5,6 +5,7 @@ import type { NextWorkoutRead } from '@/lib/trainer2-contracts/execution';
 import { orderedWorkoutGroups } from '@/lib/engine/trainer2/ordered-workouts';
 import { effortSummary, trainingUrl, targetGroups, type WorkoutIntent } from './training-summary';
 import styles from './TrainingOverview.module.css';
+import Link from 'next/link';
 
 export function PlannedWorkout({ workout, design = false }: { workout: WorkoutIntent; design?: boolean }) {
   if (!design) return <section aria-label="Planned workout" className="space-y-3"><h3 className="text-lg font-semibold">Planned workout</h3>
@@ -44,7 +45,7 @@ export function TrainingOverview({ document, next, program = false, selectedId, 
     <header className={styles.title}><p className={styles.eyebrow}>{program ? 'Program' : 'Your training'}</p>
       <h1>{program ? document.name : next.lifecycle === 'Completed' ? 'Program complete' : 'Ready when you are.'}</h1>
       <p className={styles.subtitle}>{program ? 'Your saved prescriptions, week by week.' : document.name}</p>
-      <a className={styles.textLink} href={program ? trainingUrl(next.planId) : `${trainingUrl(next.planId)}&view=program`}>{program ? 'Back to training' : 'View Program'}</a>
+      <Link className={styles.textLink} href={program ? trainingUrl(next.planId) : `${trainingUrl(next.planId)}&view=program`}>{program ? 'Back to training' : 'View Program'}</Link>
     </header>
     <div className={program ? styles.program : styles.layout}>
       <section className={styles.stack}>
@@ -96,10 +97,5 @@ export function TrainingOverview({ document, next, program = false, selectedId, 
         {advancement}
       </section> : <section className={`${styles.card} ${styles.preview}`} aria-label="Workout preview">{preview}</section>}
     </div>
-    <nav aria-label="Trainer2 navigation" className={styles.navigation}>
-      <a href={trainingUrl(next.planId)} aria-current={!program ? 'page' : undefined}>Training</a>
-      <a href={`${trainingUrl(next.planId)}&view=program`} aria-current={program ? 'page' : undefined}>Program</a>
-      <a href="/trainer2/dev/drafts?view=builder">Build a plan</a>
-    </nav>
   </div>;
 }

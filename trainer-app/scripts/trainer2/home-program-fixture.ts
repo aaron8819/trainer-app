@@ -29,7 +29,7 @@ import { randomBytes } from 'node:crypto';
 const expect=baseExpect.configure({timeout:30_000});
 
 // Separate disposable fixture per invocation. Uses released owners, never configured targets.
-export async function runHomeProgramFixture(preview: boolean, surfacesOnly = false, loggerJourney?: (context: { page: import('@playwright/test').Page; base: string; home: string; artifact: string; accountId: string; planId: string; executionId: string; pass: (value: string) => void; db: PrismaClient; reader: PrismaClient; principal: { accountId: string; sessionId: string } }) => Promise<void>) {
+export async function runHomeProgramFixture(preview: boolean, surfacesOnly = false, loggerJourney?: (context: { page: import('@playwright/test').Page; base: string; home: string; artifact: string; accountId: string; planId: string; executionId: string; pass: (value: string) => void; db: PrismaClient; reader: PrismaClient; principal: { accountId: string; sessionId: string } }) => Promise<void>, emptyAccount = false) {
   const suffix=randomUUID().slice(0,8), container=`trainer2-home-program-${suffix}`, database=`trainer2_disposable_${suffix}`;
   const artifact=resolve(`artifacts/trainer2/${loggerJourney?'logger':'home-program'}-${preview?'preview':surfacesOnly?'surfaces':'verify'}-${suffix}`); mkdirSync(artifact,{recursive:true});
   const password=randomUUID(), accountId=randomUUID(), sessionId=randomUUID(), secret=randomBytes(32).toString('base64url'), principal={accountId,sessionId};
@@ -81,21 +81,23 @@ export async function runHomeProgramFixture(preview: boolean, surfacesOnly = fal
       intent = expandWorkoutDefaults(intent);
     }
     // Keep template identity/inheritance valid; a separate authored plan exercises long names.
-    const planId=randomUUID();accepted(await createDraft(db,principal,{...envelope(),commandType:'CreateDraft',target:{planId},expected:{},intent}));
-    const head=(await readDraft(reader,principal,planId))!;accepted(await activatePlan(db,principal,{...envelope(),commandType:'ActivatePlan',target:{planId},expected:{planRevisionId:head.revisionId},intent:{reviewed:head.activation}}));
-    const start=async(index:number)=>accepted(await startOccurrence(db!,principal,{...envelope(),commandType:'StartOccurrence',target:{planId,occurrenceId:intent.occurrences[index].id},expected:{planRevisionId:head.revisionId,instructionEpoch:0},intent:{}}));
+    const planId=randomUUID();if (!emptyAccount) accepted(await createDraft(db,principal,{...envelope(),commandType:'CreateDraft',target:{planId},expected:{},intent}));
+    const head=emptyAccount ? null : (await readDraft(reader,principal,planId))!;if (head) accepted(await activatePlan(db,principal,{...envelope(),commandType:'ActivatePlan',target:{planId},expected:{planRevisionId:head!.revisionId},intent:{reviewed:head.activation}}));
+    const start=async(index:number)=>accepted(await startOccurrence(db!,principal,{...envelope(),commandType:'StartOccurrence',target:{planId,occurrenceId:intent.occurrences[index].id},expected:{planRevisionId:head!.revisionId,instructionEpoch:0},intent:{}}));
     const finish=async(id:string)=>accepted(await finishExecution(db!,principal,{...envelope(),commandType:'FinishExecution',target:{executionId:id},expected:reviewedResults((await readExecution(reader!,principal,id))!),intent:{acknowledgeUnrecorded:true}}));
-    const skip=async(index:number)=>accepted(await skipOccurrence(db!,principal,{...envelope(),commandType:'SkipOccurrence',target:{planId,occurrenceId:intent.occurrences[index].id},expected:{planRevisionId:head.revisionId,acceptedSequence:(await readNextWorkout(reader!,principal,planId)).acceptedSequence},intent:{}}));
-    const advance=async()=>{const next=await readNextWorkout(reader!,principal,planId);return accepted(await advanceWeek(db!,principal,{...envelope(),commandType:'AdvanceWeek',target:{planId},expected:{planRevisionId:head.revisionId,acceptedSequence:next.acceptedSequence,weekIndex:next.week.index,firstOccurrenceId:next.week.firstOccurrenceId},intent:{}}));};
+    const skip=async(index:number)=>accepted(await skipOccurrence(db!,principal,{...envelope(),commandType:'SkipOccurrence',target:{planId,occurrenceId:intent.occurrences[index].id},expected:{planRevisionId:head!.revisionId,acceptedSequence:(await readNextWorkout(reader!,principal,planId)).acceptedSequence},intent:{}}));
+    const advance=async()=>{const next=await readNextWorkout(reader!,principal,planId);return accepted(await advanceWeek(db!,principal,{...envelope(),commandType:'AdvanceWeek',target:{planId},expected:{planRevisionId:head!.revisionId,acceptedSequence:next.acceptedSequence,weekIndex:next.week.index,firstOccurrenceId:next.week.firstOccurrenceId},intent:{}}));};
+    if (!emptyAccount) {
     const first=await start(0);await finish(first.executionId);
     if (loggerJourney) {
       const prior = await start(1), read = (await readExecution(reader!, principal, prior.executionId))!;
       for (const target of executionPositions(read)[0].targets) accepted(await saveSetResult(db!, principal, { ...envelope(), commandType: 'RecordSetResult', target: { executionId: prior.executionId, targetId: target.id }, expected: { resultVersion: 0 }, intent: { result: { reps: { value: 10, basis: 'total' }, measurement: { kind: 'externalLoad', value: '60.123456', unit: 'kg', convention: 'perImplement', zeroMeaning: 'validZero' }, rir: '3' } } }));
       await finish(prior.executionId);
     } else await skip(1);
-    const open = preview || loggerJourney ? await start(3) : null;
+    }
+    const open = !emptyAccount && (preview || loggerJourney) ? await start(3) : null;
     const webPort=await new Promise<number>((res,rej)=>{const probe=createServer();probe.once('error',rej);probe.listen(0,'127.0.0.1',()=>{const a=probe.address();assert(a&&typeof a!=='string');probe.close(e=>e?rej(e):res(a.port));});});
-    base=`http://127.0.0.1:${webPort}`;home=`${base}/trainer2/dev/drafts?planId=${planId}`;
+    base=`http://127.0.0.1:${webPort}`;home=emptyAccount ? `${base}/trainer2` : `${base}/trainer2/dev/drafts?planId=${planId}`;
     const readinessKey=randomBytes(32).toString('hex');
     server=spawn(process.execPath,[resolve('node_modules/next/dist/bin/next'),'dev','--webpack','--hostname','127.0.0.1','--port',String(webPort)],{windowsHide:true,stdio:'pipe',env:{...authWebPlatformEnvironment(process.env),NODE_ENV:'development',TRAINER2_LOCAL_DRAFTS:'enabled',TRAINER2_OWNER_USER_ID:accountId,TRAINER2_APP_ORIGIN:base,TRAINER2_IDENTITY_CONNECTION_STRING:url('trainer2_identity_runtime'),TRAINER2_READ_CONNECTION_STRING:url('trainer2_draft_reader'),TRAINER2_WRITE_CONNECTION_STRING:url('trainer2_draft_runtime'),TRAINER2_READINESS_KEY:readinessKey,NODE_OPTIONS:`--require="${resolve('scripts/trainer2/web-readiness-preload.cjs').replaceAll('\\','/')}"`}});
     server.stdout?.on('data',d=>serverLog+=d);server.stderr?.on('data',d=>serverLog+=d);
@@ -117,7 +119,7 @@ export async function runHomeProgramFixture(preview: boolean, surfacesOnly = fal
     await context.addCookies([{name:'__Host-trainer2-session',value:`${sessionId}.${secret}`,domain:'127.0.0.1',path:'/',httpOnly:true,secure:true,sameSite:'Strict'}]);
     const page=await context.newPage(), errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(30_000);
     if (loggerJourney) {
-      try { await loggerJourney({ page, base, home, artifact, accountId, planId, executionId: open!.executionId, pass, db: db!, reader: reader!, principal }); }
+      try { await loggerJourney({ page, base, home, artifact, accountId, planId, executionId: open?.executionId ?? '', pass, db: db!, reader: reader!, principal }); }
       catch (error) { await page.screenshot({ path: resolve(artifact, 'failed-page.png'), fullPage: true }).catch(() => {}); writeFileSync(resolve(artifact, 'failed-dom.txt'), await page.locator('body').innerText().catch(() => 'Unavailable')); throw error; }
       assert.deepEqual(errors, []);
       assert.equal(verificationSource().manifestHash, source.manifestHash, 'Source changed during verification');

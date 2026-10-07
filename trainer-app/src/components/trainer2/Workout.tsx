@@ -25,6 +25,7 @@ import { control } from './DraftEditor';
 import { TrainingOverview, PlannedWorkout } from './TrainingOverview';
 import { effortSummary, targetLabel, trainingUrl } from './training-summary';
 import { fetchWithRecovery } from './request-recovery';
+import { useTrainer2Destination } from './Trainer2Shell';
 
 // Both reads are validated; retain accepted identities and newer evidence against delayed snapshots.
 export function mergeExecutionRead(current: ExecutionRead | null, value: ExecutionRead): ExecutionRead {
@@ -56,6 +57,7 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
   const [next, setNext] = useState<z.infer<typeof nextWorkoutRead> | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [execution, setExecution] = useState<ExecutionRead | null>(null);
+  useTrainer2Destination(execution?.initial.planId ?? planId);
   const [pending, setPending] = useState<StartOccurrenceCommand | null>(null);
   const [busy, setBusy] = useState(false), [skipLocked, setSkipLocked] = useState(true);
   const [message, setMessage] = useState('Loading workout…');

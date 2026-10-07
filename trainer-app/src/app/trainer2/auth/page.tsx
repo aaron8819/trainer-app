@@ -3,6 +3,7 @@ import { databaseFor } from "@/lib/api/trainer2/database";
 import { developmentEnabled } from "@/lib/api/trainer2/development";
 import { sessionForRequest, soleOwner } from "@/lib/api/trainer2/sessions";
 import { hostedTestEnabled } from "@/lib/api/trainer2/access";
+import Link from 'next/link';
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ export default async function AuthPage() {
     signedIn = true;
   } catch { /* render signed-out state without persistence details */ }
   return <main className="mx-auto max-w-lg space-y-5 p-8">
-    <h1 className="text-2xl font-semibold">Trainer2 sign in</h1>
+    <h1 className="text-2xl font-semibold">{signedIn ? 'Device access' : 'Trainer2 sign in'}</h1>
     <p>{signedIn ? "Signed in." : "Signed out."}</p>
     {enabled && !signedIn && <form action={setup ? "/trainer2/auth/setup" : "/trainer2/auth/sign-in"} method="post" className="space-y-3">
       {setup && <label className="block">One-time setup code <input className="block border p-2" name="setupCode" type="password" required autoComplete="off" /></label>}
@@ -26,5 +27,6 @@ export default async function AuthPage() {
     </form>}
     {signedIn && <><form action="/trainer2/auth/logout" method="post"><button className="rounded border px-3 py-2" type="submit">Sign out this device</button></form>
       <form action="/trainer2/auth/revoke-all" method="post"><button className="rounded border px-3 py-2" type="submit">Sign out every device</button></form></>}
+    <Link className="inline-flex min-h-11 items-center underline" href="/trainer2">Back to Training</Link>
   </main>;
 }

@@ -4,6 +4,37 @@ Trainer2 bounded program variants and exact prescribed-load prefill: [definition
 
 # 05 UI Flows
 
+## Trainer2 navigation shell
+
+`src/app/trainer2/layout.tsx` mounts the presentation-only `Trainer2Shell` for all
+Trainer2 pages. V1 `AppNavigation` excludes only `/trainer2` and its descendants;
+its remaining routes and presentation are unchanged. Trainer2 uses compact,
+non-sticky desktop navigation and a mobile bottom bar with safe-area clearance.
+The existing visual-viewport signal hides the bar while a software keyboard is
+open. Builder's fixed actions reserve the bar's height; Logger's existing timer,
+modal and deliberate set-scroll owners are unchanged.
+
+Training and Program support an account without plans at `/trainer2` and
+`/trainer2?view=program`. Saved plans retain existing `dev/drafts?planId=…`
+destinations and Program's `view=program`; Builder uses `view=builder`. Settings
+opens existing device access at `/trainer2/auth`, with minimal authentication
+presentation, existing sign-out forms and a Training return link. Navigation
+does not allocate, activate or start training state. All existing route and
+account gates remain authoritative.
+
+The shell receives destination context from the existing Builder/Workout
+controllers and retains the last Builder bookmark during client navigation.
+Same-plan Training/Program navigation keeps the existing keyed controller.
+Logger link clicks reuse its retained-input guard; draft and pending-envelope
+storage remains in its existing owners. No shell storage or command replay is
+introduced. Physical iPhone/Safari and actual keyboard qualification remain
+separate from Chromium viewport and visual-viewport-signal checks.
+
+Saved-plan entry arms its initial read after mount replay, while retaining the
+once-only draft initialization and existing unmount/read-generation protection.
+This prevents a development Strict Mode client transition from discarding its
+only initial read and staying on Loading plan. It does not submit a command.
+
 Trainer2 load display and user load authoring use pounds only in Builder (including advanced fields), saved review, Program, Logger and History. No kg selector is exposed. Untouched legacy kg values and frozen snapshots remain internally intact; explicit load edits save lb with the same measurement meaning. See [program support and pounds-only presentation](architecture/trainer2/PROGRAM_SUPPORT.md).
 
 Trainer2 approved Builder: [template-first authoring, focused sheets, overrides, recovery, review/activation and mobile verification](architecture/trainer2/BUILDER_DESIGN.md).

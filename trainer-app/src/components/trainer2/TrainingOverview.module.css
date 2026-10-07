@@ -1,5 +1,5 @@
 :global(body):has(.screen) { background: #f6f5f1; }
-.screen { --ink: #171a18; --muted: #596159; --line: #dcded5; color: var(--ink); font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding-bottom: calc(112px + env(safe-area-inset-bottom)); }
+.screen { --ink: #171a18; --muted: #596159; --line: #dcded5; color: var(--ink); font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
 .screen h1, .screen h2, .screen h3, .screen h4, .screen p { margin: 0; overflow-wrap: anywhere; }
 .screen h1 { font-size: 40px; line-height: 1.1; letter-spacing: -1.5px; font-weight: 650; }
 .screen h2 { font-size: 24px; line-height: 1.2; letter-spacing: -.6px; font-weight: 650; }
@@ -50,15 +50,10 @@
 .programGrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
 .workoutSummary { font-size: 19px; font-weight: 650; min-height: 46px; cursor: pointer; overflow-wrap: anywhere; }
 .cardMeta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; font-size: 15px; color: var(--muted); }
-.navigation { position: fixed; bottom: calc(16px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); z-index: 30; display: flex; gap: 4px; padding: 6px; border: 1px solid var(--line); background: #fffffff2; backdrop-filter: blur(12px); border-radius: 20px; box-shadow: 0 4px 28px #17201912; }
-.navigation a { min-width: 100px; min-height: 46px; display: flex; align-items: center; justify-content: center; padding: 10px 16px; border-radius: 12px; font-size: 15px; font-weight: 600; text-decoration: none; white-space: nowrap; }
-.navigation a[aria-current] { background: var(--ink); color: white; }
 @media (max-width: 799px) { .layout, .programGrid { grid-template-columns: minmax(0, 1fr); gap: 20px; } }
 @media (max-width: 600px) {
   .title { margin: 18px 0 24px; } .screen h1 { font-size: 34px; letter-spacing: -1px; } .subtitle { font-size: 16px; }
   .card { padding: 20px; } .hero h2 { font-size: 27px; } .screen .choice { padding: 12px; gap: 10px; } .choice strong { font-size: 17px; }
-  .navigation { width: calc(100% - 32px); bottom: calc(10px + env(safe-area-inset-bottom)); justify-content: space-between; }
-  .navigation a { flex: 1; min-width: 0; padding: 10px 7px; font-size: 14px; }
 }
 @media (max-width: 350px) { .screen h1 { font-size: 30px; } .card { padding: 16px; } .hero h2 { font-size: 25px; } }
 

@@ -7,6 +7,7 @@ import { DraftWorkbench } from './DraftWorkbench';
 import { reviewPlan, REVIEW_POLICY } from '@/lib/engine/trainer2/plan-review';
 import { canonicalJson, integrityHash } from '@/lib/api/trainer2/integrity';
 import { webcrypto } from 'node:crypto';
+import { StrictMode } from 'react';
 beforeEach(() => vi.stubGlobal('crypto', webcrypto));
 const plan = createHypertrophyPlan();
 const rawState = (name = plan.name, revisionNumber = 1) => ({ planId: '00000000-0000-4000-8000-000000000001', revisionId: `00000000-0000-4000-8000-00000000000${revisionNumber + 1}`, revisionNumber, intent: { ...plan, name }, activationBlockers: [] });
@@ -29,6 +30,16 @@ const reviewed = (name = plan.name, revisionNumber = 1) => {
 const state = reviewed;
 afterEach(() => { cleanup(); sessionStorage.clear(); vi.unstubAllGlobals(); window.history.replaceState(null, '', '/'); });
 describe('builder save recovery', () => {
+  it('loads a saved draft during a Strict Mode client mount without writing or allocating a new draft', async () => {
+    const fetcher = vi.fn().mockResolvedValue(json(state()));
+    vi.stubGlobal('fetch', fetcher);
+    render(<StrictMode><DraftWorkbench accountId="account-a" ownershipEpoch={0} initialPlanId={state().planId} /></StrictMode>);
+    await waitFor(() => expect(screen.getByLabelText('Plan name')).toHaveValue(plan.name));
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0][0]).toBe(`/api/trainer2/drafts/${state().planId}`);
+    expect(fetcher.mock.calls[0][1]).toEqual({ cache: 'no-store' });
+    expect(sessionStorage.getItem('trainer2-builder:account-a:new')).toBeNull();
+  });
   it('recovers an unsaved template draft after a remount', async () => {
     const view = mount();
     fireEvent.change(screen.getByLabelText('Plan name'), { target: { value: 'Retained local draft' } });

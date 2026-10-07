@@ -2,7 +2,7 @@
 import { spawn } from 'node:child_process';
 import * as childProcesses from 'node:child_process';
 import { describe, expect, it, vi } from 'vitest';
-import { browserProcessesForProfile, ownedProcessTree, terminateOwnedProcesses, waitForWorker, cleanupSteps } from '../../../scripts/trainer2/disposable-cleanup';
+import { browserProcessesForProfile, ownedProcessTree, terminateOwnedProcesses, waitForWorker, waitForWorkerAfterCleanup, cleanupSteps } from '../../../scripts/trainer2/disposable-cleanup';
 
 vi.mock('node:child_process', async original=>({...await original<typeof childProcesses>()}));
 
@@ -105,5 +105,18 @@ describe('generation-qualified disposable cleanup', () => {
       await terminateOwnedProcesses(captured);expect(()=>process.kill(orphan,0)).toThrow();
     }finally{if(captured.length)await terminateOwnedProcesses(captured);child.kill();}
   },45000);
+
+  it.skipIf(process.platform!=='win32')('bounds a worker left alive after cleanup and then observes qualified completion',async()=>{
+    const child=spawn(process.execPath,['-e',"console.log('cleanup');setInterval(()=>{},1000)"],{windowsHide:true,stdio:['ignore','pipe','pipe']});
+    const cleanupDone=new Promise<void>(resolve=>child.stdout.once('data',()=>resolve()));
+    const captured=ownedProcessTree(child.pid!);
+    try{
+      const first=await waitForWorkerAfterCleanup(child,cleanupDone,15000,20);
+      expect(first).toMatchObject({timedOut:true,error:'Worker did not finish after cleanup'});
+      await terminateOwnedProcesses(captured);
+      const closed=await waitForWorker(child,5000);expect(closed.timedOut).toBe(false);expect(closed.exitCode).toBe(1);
+      expect(first.timedOut).toBe(true);
+    }finally{await terminateOwnedProcesses(captured);}
+  },30000);
 
 });

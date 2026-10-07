@@ -10,6 +10,7 @@ $deadline = [DateTimeOffset]::FromUnixTimeMilliseconds($DeadlineUnixMs).UtcDateT
 $known = @{}
 $handles = @{}
 $terminated = @{}
+$terminationErrors = @{}
 $nativeAbsent = @{}
 
 # CIM reports microseconds; compare the native handle's creation time at that
@@ -74,6 +75,10 @@ function Native-ExitTime($Key) {
     [long]$creation=0; [long]$exit=0; [long]$kernel=0; [long]$user=0
     if (![OwnedProcessNative]::GetProcessTimes($handles[$Key],[ref]$creation,[ref]$exit,[ref]$kernel,[ref]$user)) { throw 'Process times unavailable' }
     return $exit
+}
+function Request-Termination($Handle, [int]$TargetPid) {
+    if ([OwnedProcessNative]::TerminateProcess($Handle, 1)) { return 0 }
+    return [Runtime.InteropServices.Marshal]::GetLastWin32Error()
 }
 function Remember($Row, [long]$Seen) {
     if ($Row.pid -le 0 -or $Row.pid -eq $PID -or $Row.pid -eq $ownership.runnerPid -or
@@ -161,8 +166,8 @@ try {
         if ([DateTime]::UtcNow -ge $deadline) { throw 'Browser tree deadline exceeded' }
         $survivors = @(Refresh-Tree)
         $ownership.processes = @($known.Values | Sort-Object pid, created)
-        $pending = @($survivors | Where-Object { (Native-ExitTime (Identity-Key $_)) -gt 0 })
-        @{ ownership=$ownership; survivors=$survivors; terminated=@($terminated.Values); pendingTermination=$pending; nativeAbsent=@($nativeAbsent.Keys);
+        $pending = @($survivors | Where-Object { (Native-ExitTime (Identity-Key $_)) -gt 0 -or $terminationErrors.ContainsKey((Identity-Key $_)) })
+        @{ ownership=$ownership; survivors=$survivors; terminated=@($terminated.Values); pendingTermination=$pending; terminationErrors=@($terminationErrors.Values); nativeAbsent=@($nativeAbsent.Keys);
             at=[DateTime]::UtcNow.ToString('o') } | ConvertTo-Json -Compress -Depth 8
         if ($Mode -eq 'capture' -or $Mode -eq 'inventory' -or !$survivors.Count) { break }
         if ($Mode -eq 'terminate') {
@@ -172,15 +177,15 @@ try {
                 $key = Identity-Key $row
                 if (!$handles.ContainsKey($key)) { continue }
                 $process = $handles[$key]
-                if (!(Native-Exited $key) -and !$terminated.ContainsKey($key) -and (Native-ExitTime $key) -eq 0) {
-                    if (![OwnedProcessNative]::TerminateProcess($process, 1)) {
-                        $code=[Runtime.InteropServices.Marshal]::GetLastWin32Error()
-                        # An asynchronous termination may win this race. It still
-                        # needs a signaled kernel handle; ExitTime is never absence.
-                        if ($code -eq 5 -and (Native-ExitTime $key) -gt 0) { continue }
-                        throw "Native termination failed: $code"
+                if (!(Native-Exited $key) -and !$terminated.ContainsKey($key) -and !$terminationErrors.ContainsKey($key) -and (Native-ExitTime $key) -eq 0) {
+                    $code=Request-Termination $process $row.pid
+                    if($code -ne 0){
+                        # Retain the request error and continue every other qualified
+                        # member. Native completion remains a separate kernel wait.
+                        $terminationErrors[$key]=@{pid=$row.pid;created=$row.created;win32=$code;api='TerminateProcess'}
+                        continue
                     }
-                    $terminated[$key] = $known[$key]
+                    $terminated[$key]=$known[$key]
                 }
             }
         }

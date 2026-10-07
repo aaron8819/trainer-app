@@ -201,6 +201,23 @@ export async function waitForWorker(child: ChildProcess, timeoutMs: number): Pro
   });
 }
 
+// Cleanup completion starts a short exit grace period; an open connection cannot
+// silently keep a failed disposable worker alive for the whole journey budget.
+export async function waitForWorkerAfterCleanup(child: ChildProcess, cleanupCompleted: Promise<void>, timeoutMs: number, graceMs = 5_000): Promise<WorkerCompletion> {
+  const completion=waitForWorker(child,timeoutMs);
+  const first=await Promise.race([
+    completion.then(result=>({kind:'closed' as const,result})),
+    cleanupCompleted.then(()=>({kind:'cleanup' as const})),
+  ]);
+  if(first.kind==='closed')return first.result;
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  try{
+    return await Promise.race([completion,new Promise<WorkerCompletion>(resolve=>{
+      timer=setTimeout(()=>resolve({exitCode:null,signal:null,timedOut:true,error:'Worker did not finish after cleanup'}),graceMs);
+    })]);
+  }finally{clearTimeout(timer);}
+}
+
 export type CleanupStep = { name: string; run: () => unknown | Promise<unknown>; timeoutMs?: number };
 export type CleanupResult = { name: string; status: 'passed' | 'failed' | 'timed-out'; error?: string; diagnostics?: unknown };
 

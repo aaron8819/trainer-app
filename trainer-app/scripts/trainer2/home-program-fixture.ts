@@ -39,6 +39,7 @@ export async function runHomeProgramFixture(preview: boolean, surfacesOnly = fal
   let serverCompletion: ReturnType<typeof waitForWorker> | undefined, browserCompletion: ReturnType<typeof waitForWorker> | undefined;
   let serverPids: number[] = [];
   const recordProcessTree = (row: Record<string, unknown>) => writeFileSync(resolve(artifact, 'process-tree.jsonl'), JSON.stringify(row) + '\n', { flag: 'a' });
+  let browserShutdown:{forceFallback:boolean}|undefined;
   let browserServer: Awaited<ReturnType<typeof chromium.launchServer>> | undefined, browserOwnership: BrowserOwnership | undefined;
   const recordBrowserTree = (row: Record<string, unknown>) => writeFileSync(resolve(artifact, 'browser-tree.jsonl'), JSON.stringify(row) + '\n', { flag: 'a' });
   writeFileSync(resolve(artifact,'source.json'),JSON.stringify(source,null,2));
@@ -235,10 +236,10 @@ export async function runHomeProgramFixture(preview: boolean, surfacesOnly = fal
     cleanup.push(...await cleanupSteps([
       {name:'browser connection', run:()=>browser?.close()},
       {name:'browser',timeoutMs:35_000,run:async()=>{
-        if (browserServer && browserOwnership) await shutdownOwnedBrowser(browserServer, browserOwnership, recordBrowserTree, { timeoutMs: 30_000 });
+        if (browserServer && browserOwnership) {browserShutdown=await shutdownOwnedBrowser(browserServer, browserOwnership, recordBrowserTree, { timeoutMs: 30_000 });recordBrowserTree({event:'browser-shutdown',...browserShutdown});}
         else await browser?.close();
       }},
-      {name:'browser worker completion',timeoutMs:5_000,run:async()=>{if(browserCompletion){const result=await browserCompletion;writeFileSync(resolve(artifact,'browser-worker-exit.json'),JSON.stringify(result,null,2));assert(!result.timedOut&&!result.error&&result.exitCode===0,'Browser worker did not exit successfully');}}},
+      {name:'browser worker completion',timeoutMs:5_000,run:async()=>{if(browserCompletion){const result=await browserCompletion;writeFileSync(resolve(artifact,'browser-worker-exit.json'),JSON.stringify({...result,forceFallback:browserShutdown?.forceFallback??false},null,2));assert(!result.timedOut&&!result.error&&(result.exitCode===0||(browserShutdown?.forceFallback&&result.exitCode===1)),'Browser worker did not exit successfully');}}},
       {name:'Next process tree',timeoutMs:30_000,run:async()=>{if(!serverPids.length&&server?.pid&&server.exitCode===null)serverPids=ownedProcessTree(server.pid,resolve('node_modules/next/dist/bin/next'));if(serverPids.length)await terminateOwnedProcesses(serverPids,recordProcessTree);}},
       {name:'Next pipes',run:()=>{for(const stream of server?.stdio??[])stream?.destroy();}},
       {name:'Next worker completion',timeoutMs:5_000,run:async()=>{if(serverCompletion){const result=await serverCompletion;writeFileSync(resolve(artifact,'server-worker-exit.json'),JSON.stringify(result,null,2));assert(!result.timedOut&&!result.error&&result.exitCode!==null,'Next worker exit unobserved');}}},
@@ -248,6 +249,7 @@ export async function runHomeProgramFixture(preview: boolean, surfacesOnly = fal
     ]));
     writeFileSync(resolve(artifact,'assertions.json'),JSON.stringify({status:failure?'failed':'passed',checks,error:failure?String(failure):undefined},null,2));
     writeFileSync(resolve(artifact,'cleanup.json'),JSON.stringify(cleanup,null,2));writeFileSync(resolve(artifact,'server.log'),serverLog.replaceAll(password,'[fixture-secret]'));
+    if(equipmentDraft&&process.send)process.send({kind:'fixture-cleanup-complete',artifact},()=>{if(process.connected)process.disconnect();});
     console.log('Fixture cleanup '+JSON.stringify(cleanup));if(!failure)assert(cleanup.every(r=>(r as {status:string}).status==='passed'));
   }
 }

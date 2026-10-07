@@ -54,11 +54,32 @@ describe.skipIf(process.platform!=='win32')('native ownership adversarial contro
       const capture=await runCleanupCommand('powershell.exe',['-NoProfile','-File',native,'-Mode','capture','-OwnershipBase64',Buffer.from(JSON.stringify({rootPid:child.pid,runnerPid:process.pid,executable:process.execPath,profile:'',processes:[]})).toString('base64'),'-DeadlineUnixMs',String(Date.now()+9000)],10000);
       expect(capture.status).toBe(0);const ownership=JSON.parse(capture.stdout.trim()).ownership;
       const path=resolve(artifact,'negative-enumeration.ps1');writeFileSync(path,ownershipScript.replace(/function Inventory \{[\s\S]*?\n\}/,'function Inventory { return @() }'));
-      const result=await runCleanupCommand('powershell.exe',['-NoProfile','-File',path,'-Mode','observe','-OwnershipBase64',Buffer.from(JSON.stringify(ownership)).toString('base64'),'-DeadlineUnixMs',String(Date.now()+12000)],13000,undefined,line=>{if(JSON.parse(line).survivors.length)child.stdin.write('exit');});
+      let released=false;
+      const result=await runCleanupCommand('powershell.exe',['-NoProfile','-File',path,'-Mode','observe','-OwnershipBase64',Buffer.from(JSON.stringify(ownership)).toString('base64'),'-DeadlineUnixMs',String(Date.now()+12000)],13000,undefined,line=>{if(!released&&JSON.parse(line).survivors.length){released=true;child.stdin.write('exit');}});
       writeFileSync(path+'.json',JSON.stringify(result,null,2));expect(result.status).toBe(0);
       const observations=result.stdout.trim().split(/\r?\n/).map(line=>JSON.parse(line));
       expect(observations[0].survivors.some((p:{pid:number})=>p.pid===child.pid)).toBe(true);
       expect(observations.at(-1).survivors).toEqual([]);expect((await completion).exitCode).toBe(0);
     }finally{if(captured.length)await terminateOwnedProcesses(captured);child.kill();}
   },45000);
+  it('retains denied termination diagnostics and observes real native exit',async()=>{
+    mkdirSync(artifact,{recursive:true});
+    const child=spawn(process.execPath,['-e',"process.stdin.once('data',()=>setTimeout(()=>process.exit(0),300))"],{windowsHide:true,stdio:['pipe','ignore','ignore']});
+    const completion=waitForWorker(child,20000);let captured:number[]=[];
+    try{
+      captured=ownedProcessTree(child.pid!);
+      const capture=await runCleanupCommand('powershell.exe',['-NoProfile','-File',native,'-Mode','capture','-OwnershipBase64',Buffer.from(JSON.stringify({rootPid:child.pid,runnerPid:process.pid,executable:process.execPath,profile:'',processes:[]})).toString('base64'),'-DeadlineUnixMs',String(Date.now()+9000)],10000);
+      expect(capture.status).toBe(0);const ownership=JSON.parse(capture.stdout.trim()).ownership;
+      const path=resolve(artifact,'denied-termination.ps1');writeFileSync(path,readFileSync(native,'utf8').replace(/function Request-Termination\([\s\S]*?\n\}/,'function Request-Termination($Handle, [int]$TargetPid) { return 5 }'));
+      const observations: {survivors:{pid:number}[];terminationErrors:{win32:number}[]}[]=[];let released=false;
+      const result=await runCleanupCommand('powershell.exe',['-NoProfile','-File',path,'-Mode','terminate','-OwnershipBase64',Buffer.from(JSON.stringify(ownership)).toString('base64'),'-DeadlineUnixMs',String(Date.now()+12000)],13000,undefined,line=>{
+        const row=JSON.parse(line);observations.push(row);
+        if(!released&&row.terminationErrors.length&&row.survivors.length){released=true;child.stdin.write('exit');}
+      });
+      writeFileSync(path+'.json',JSON.stringify(result,null,2));expect(result.status).toBe(0);
+      expect(observations.some(row=>row.survivors.length&&row.terminationErrors.some(error=>error.win32===5))).toBe(true);
+      expect(observations.at(-1)?.survivors).toEqual([]);expect((await completion).exitCode).toBe(0);
+    }finally{if(captured.length)await terminateOwnedProcesses(captured);child.kill();}
+  },45000);
+
 });

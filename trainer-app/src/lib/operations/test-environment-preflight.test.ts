@@ -1,5 +1,8 @@
 // @vitest-environment node
 import { spawnSync } from "node:child_process";
+import { runInNewContext } from "node:vm";
+import ts from "typescript";
+import assert from "node:assert/strict";
 import {
   existsSync,
   mkdirSync,
@@ -1635,6 +1638,15 @@ describe("command coverage honesty", () => {
         continue;
       }
 
+      if (["trainer-app/scripts/test-trainer2-real-access.ts",
+        "trainer-app/scripts/test-trainer2-real-access-supervised.ts"].includes(entry.entrypoint ?? "")) {
+        const source = readFileSync(resolve(entry.entrypoint!.replace(/^trainer-app\//, "")), "utf8");
+        expect(source).toMatch(
+          /async function main\(\) \{\s*assert\.deepEqual\(process\.argv\.slice\(2\), \['--confirm-disposable'\]\);/
+        );
+        continue;
+      }
+
       const approvedAlias = approvedAliases.get(packageScript);
       if (approvedAlias) {
         expect(packageJson.scripts[packageScript]).toBe(approvedAlias);
@@ -1685,4 +1697,50 @@ describe("command coverage honesty", () => {
     expect(docs).toContain("DB-required suites excluded");
     expect(docs).toContain("import-only placeholder");
   });
+});
+
+
+describe("real-access exact-array admission (in-memory only)", () => {
+  for (const entry of ["test-trainer2-real-access.ts", "test-trainer2-real-access-supervised.ts"]) {
+    it(`${entry} admits the exact confirmation at its existing first guard`, () => {
+      const source = readFileSync(resolve("scripts", entry), "utf8");
+      const guard = source.match(/assert\.deepEqual\(process\.argv\.slice\(2\), \['--confirm-disposable'\]\);/)![0];
+      runInNewContext(`const process = { argv: ["node", "worker", "--confirm-disposable"] }; ${guard}`,
+        { assert });
+    });
+    it.each([[], ["--confirm-disposable", "--confirm-disposable"],
+      ["--confirm-disposable", "--extra"], ["--unknown"]])(
+      `${entry} rejects %j without resource creation or cleanup`, async (...args: string[]) => {
+        const operations: string[] = [];
+        const forbidden = (name: string) => () => { operations.push(name); throw new Error(name); };
+        const fakeProcess = { argv: ["node", entry, ...args], env: {}, exitCode: 0,
+          once: forbidden("exit-artifact-registration") };
+        const code = ts.transpileModule(readFileSync(resolve("scripts", entry), "utf8"), {
+          compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true },
+        }).outputText;
+        runInNewContext(`process.argv = ${JSON.stringify(fakeProcess.argv)};\n${code}`, { exports: {}, process: fakeProcess,
+          console: { log: () => {}, error: () => {} },
+          require: (name: string) => {
+            if (name === "node:assert/strict") return assert;
+            if (name === "node:crypto") return { randomUUID: () => "synthetic",
+              randomBytes: () => ({ toString: () => "synthetic" }) };
+            if (name === "node:path") return { resolve };
+            if (name === "node:fs") return { mkdirSync: forbidden("mkdir"),
+              writeFileSync: forbidden("write"), readFileSync: forbidden("read") };
+            if (name === "node:child_process") return { spawn: forbidden("spawn"),
+              spawnSync: forbidden("spawnSync") };
+            if (name.endsWith("disposable-cleanup")) return {
+              cleanupSteps: forbidden("cleanup"), ownedProcessTree: forbidden("inventory"),
+              terminateOwnedProcesses: forbidden("terminate"),
+            };
+            return {};
+          },
+        });
+        // Settle catch/finally without executing the real worker or an OS subprocess.
+        for (let n = 0; n < 8; n++) await Promise.resolve();
+        expect(fakeProcess.exitCode).toBe(1);
+        expect(operations).toEqual([]);
+      }
+    );
+  }
 });

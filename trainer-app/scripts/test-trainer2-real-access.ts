@@ -18,7 +18,8 @@ import { assertConnectionPrivileges } from '../src/lib/api/trainer2/database';
 import { readTrainingHome } from '../src/lib/api/trainer2/training-home';
 import { publishAttribution } from './trainer2/private-attribution';
 
-const artifact = resolve('artifacts/real-access-fixes', `run-${Date.now()}`); mkdirSync(artifact, { recursive: true });
+let artifact: string | undefined;
+let fixtureCreated = false;
 const results: Record<string, unknown>[] = [];
 function record(test: string, detail: unknown = 'PASS') { results.push({ test, detail }); console.log(test, typeof detail === 'string' ? detail : 'recorded'); }
 function docker(args: string[]) { const r = spawnSync('docker', args, { encoding: 'utf8', windowsHide: true }); assert.equal(r.status, 0, 'Docker command failed'); return r.stdout.trim(); }
@@ -29,13 +30,17 @@ const synthetic = randomUUID(), target = randomUUID(), other = randomUUID();
 const syntheticPasscode = randomBytes(32).toString('base64url');
 let primaryError: unknown;
 let finalCleanup: Awaited<ReturnType<typeof cleanupSteps>> = [];
-process.once('exit', exitCode => writeFileSync(resolve(artifact, 'worker-exit.json'), JSON.stringify({ exitCode, primaryError: primaryError ? String(primaryError) : null, cleanup: finalCleanup })));
+
 const setupCode = randomBytes(32).toString('base64url'), passcode = randomBytes(32).toString('base64url');
 const request = (token: string) => new Request('http://localhost/trainer2/auth', { headers: { cookie: `${SESSION_COOKIE}=${token}` } });
 let oldTokens: string[] = [];
 async function main() {
   assert.deepEqual(process.argv.slice(2), ['--confirm-disposable']);
+  artifact = resolve('artifacts/real-access-fixes', `run-${Date.now()}`);
+  mkdirSync(artifact, { recursive: true });
+  process.once('exit', exitCode => writeFileSync(resolve(artifact!, 'worker-exit.json'), JSON.stringify({ exitCode, primaryError: primaryError ? String(primaryError) : null, cleanup: finalCleanup })));
   docker(['run', '--pull=never', '--rm', '-d', '--name', container, '--label', 'trainer2.real-review=owned', '-e', `POSTGRES_PASSWORD=${password}`, '-e', 'POSTGRES_DB=trainer2_disposable_review', '-p', '127.0.0.1::5432', 'postgres:17-alpine']);
+  fixtureCreated = true;
   for (let n = 0; n < 60; n++) { if (spawnSync('docker', ['exec', container, 'pg_isready', '-U', 'postgres'], { windowsHide: true }).status === 0) break; await new Promise(r => setTimeout(r, 500)); }
   const port = docker(['port', container, '5432/tcp']).match(/:(\d+)$/)![1];
   const url = (role: string) => `postgresql://${role}:${password}@127.0.0.1:${port}/trainer2_disposable_review`;
@@ -186,11 +191,12 @@ async function main() {
   record('no-plans-or-executions-created');
 }
 main().catch(error => { primaryError = error; record('harness-error', { message: String(error?.message).replace(/postgresql:\/\/\S+/g, '[redacted]'), cause: error?.cause ? String(error.cause) : null }); process.exitCode = 1; }).finally(async () => {
+  if (!artifact) return;
   finalCleanup = await cleanupSteps([
     ...clients.map((client, index) => ({ name: `client ${index}`, run: () => client.$disconnect() })),
     ...pools.map((pool, index) => ({ name: `pool ${index}`, run: () => pool.end() })),
-    { name: 'disposable container stop', timeoutMs: 20_000, run: () => { const result = spawnSync('docker', ['stop', container], { encoding: 'utf8', windowsHide: true, timeout: 15_000 }); assert.equal(result.status, 0); } },
-    { name: 'container absence', run: () => { const result = spawnSync('docker', ['container', 'inspect', container], { encoding: 'utf8', windowsHide: true, timeout: 5000 }); assert(result.status !== 0 && result.stderr.includes('No such container')); } },
+    ...(fixtureCreated ? [{ name: 'disposable container stop', timeoutMs: 20_000, run: () => { const result = spawnSync('docker', ['stop', container], { encoding: 'utf8', windowsHide: true, timeout: 15_000 }); assert.equal(result.status, 0); } },
+    { name: 'container absence', run: () => { const result = spawnSync('docker', ['container', 'inspect', container], { encoding: 'utf8', windowsHide: true, timeout: 5000 }); assert(result.status !== 0 && result.stderr.includes('No such container')); } }] : []),
   ]);
   try { finishQualification(primaryError, finalCleanup); } catch { process.exitCode = 1; }
   writeFileSync(resolve(artifact, 'qualification.json'), JSON.stringify({ at: new Date().toISOString(), results, assertions: { completedGroups: results.filter(result => result.detail === 'PASS').map(result => result.test), primaryBrowserFailure: results.find(result => result.test === 'browser-primary-error') ?? null }, harnessError: primaryError ? String(primaryError) : null, cleanup: finalCleanup, container }, null, 2));

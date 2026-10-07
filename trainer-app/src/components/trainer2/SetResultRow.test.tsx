@@ -16,7 +16,7 @@ const accepted = (body: string, version = 1) => { const c = resultMutationComman
 beforeEach(() => { sessionStorage.clear(); vi.stubGlobal('crypto', webcrypto); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-describe('Accepted addition load prefill', () => {
+describe('Explicit prescription load prefill', () => {
   const external = { kind: 'externalLoad' as const, convention: 'machineDisplayed' as const, zeroMeaning: 'validZero' as const, value: '10', unit: 'kg' as const };
   const assistance = { kind: 'assistance' as const, convention: 'displayedAssistance' as const, zeroMeaning: 'noAssistance' as const, value: '10', unit: 'kg' as const };
   const added = { kind: 'addedLoad' as const, convention: 'addedExternal' as const, zeroMeaning: 'noAddedLoad' as const, value: '10', unit: 'kg' as const };
@@ -30,8 +30,13 @@ describe('Accepted addition load prefill', () => {
     { id: 't2:weighted-pull-up', measurement: added, display: '22.05' },
     { id: 't2:weighted-pull-up', measurement: { ...added, value: '0.00' }, display: '0' },
     { id: 't2:concentration-curl', measurement: dumbbell, display: '22.05' },
+    { id: 't2:smith-machine-bulgarian-split-squat-plates-added', measurement: { ...external, convention: 'smithPlatesTotal' as const, value: '12.5', unit: 'lb' as const }, display: '12.5' },
+    { id: 't2:chest-supported-machine-row-plates-per-arm', measurement: { ...external, convention: 'machinePlatesPerArm' as const, value: '12.5', unit: 'lb' as const }, display: '12.5' },
+    { id: 't2:single-arm-cable-lateral-raise', measurement: { ...external, zeroMeaning: 'notAllowed' as const }, display: '22.05' },
+    { id: 't2:leg-press', measurement: { ...external, value: '0.000001' }, display: '0.000002' },
+    { id: 't2:leg-press', measurement: { ...external, value: '999999999' }, display: '2204622619.64' },
   ];
-  it.each(cases)('logs untouched $id $measurement.value $measurement.unit through bounded display conversion', async ({ id, measurement, display }) => {
+  it.each(cases.flatMap(c => [false, true].map(sessionAdded => ({ ...c, sessionAdded }))))('logs untouched $id $measurement.value $measurement.unit through bounded display conversion', async ({ id, measurement, display, sessionAdded }) => {
     const exercise = catalogExercise(catalog.find(e => e.id === id)!);
     if (exercise.kind !== 'catalogSnapshot') throw new Error('Expected catalog snapshot');
     const prescription = { id: props.targetId, classification: 'working' as const, required: true,
@@ -39,7 +44,7 @@ describe('Accepted addition load prefill', () => {
     const before = JSON.stringify(prescription);
     let submitted = '';
     vi.stubGlobal('fetch', vi.fn((_url, init) => { submitted = init.body; return response(accepted(submitted)); }));
-    render(<SetResultRow {...props} activePanel sessionAdded authoredLoad exercise={exercise} prescription={prescription}
+    render(<SetResultRow {...props} activePanel sessionAdded={sessionAdded} exercise={exercise} prescription={prescription}
       refresh={async () => [{ ...saved, actionId: JSON.parse(submitted).actionId, result: JSON.parse(submitted).intent.result }]} />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeEnabled());
     expect(screen.getByLabelText('Set 1 Actual load', { exact: true })).toHaveValue(display);
@@ -54,14 +59,14 @@ describe('Accepted addition load prefill', () => {
       reps: { min: 8, max: 8, basis: 'total' as const }, measurement: external, rir: '2', restSeconds: '120' };
     let submitted = '';
     vi.stubGlobal('fetch', vi.fn((_url, init) => { submitted = init.body; return response(accepted(submitted)); }));
-    render(<SetResultRow {...props} activePanel sessionAdded authoredLoad exercise={exercise} prescription={prescription}
+    render(<SetResultRow {...props} activePanel sessionAdded exercise={exercise} prescription={prescription}
       refresh={async () => [{ ...saved, actionId: JSON.parse(submitted).actionId, result: JSON.parse(submitted).intent.result }]} />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeEnabled());
     fireEvent.change(screen.getByLabelText('Set 1 Actual load', { exact: true }), { target: { value: '25' } });
     fireEvent.click(screen.getByRole('button', { name: 'Log set' })); await screen.findByText('Saved');
     expect(JSON.parse(submitted).intent.result.measurement).toEqual({ ...external, value: '25', unit: 'lb' });
   });
-  it.each(cases.filter(c => c.measurement.unit === 'kg'))('keeps the existing nearest-five history suggestion for $id $measurement.value', async ({ id, measurement }) => {
+  it.each(cases.filter(c => c.measurement.unit === 'kg' && !['0.000001', '999999999'].includes(c.measurement.value)))('keeps the existing nearest-five history suggestion for $id $measurement.value', async ({ id, measurement }) => {
     const exercise = catalogExercise(catalog.find(e => e.id === id)!);
     if (exercise.kind !== 'catalogSnapshot') throw new Error('Expected catalog snapshot');
     const prescription = { id: props.targetId, classification: 'working' as const, required: true,
@@ -85,7 +90,7 @@ describe('Accepted addition load prefill', () => {
       reps: { min: 8, max: 8, basis: exercise.repBasis }, measurement, rir: '2', restSeconds: '120' };
     let submitted = '';
     vi.stubGlobal('fetch', vi.fn((_url, init) => { submitted = init.body; return response(accepted(submitted)); }));
-    render(<SetResultRow {...props} activePanel sessionAdded authoredLoad exercise={exercise} prescription={prescription}
+    render(<SetResultRow {...props} activePanel sessionAdded exercise={exercise} prescription={prescription}
       refresh={async () => [{ ...saved, actionId: JSON.parse(submitted).actionId, result: JSON.parse(submitted).intent.result }]} />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeEnabled());
     expect(screen.queryByLabelText('Set 1 Actual load', { exact: true })).toBeNull();
@@ -338,13 +343,13 @@ describe('Pounds and stable logging suggestions', () => {
     expect(pounds('140.125', 'lb')).toBe('140.125');
     expect(loadLabel(null)).toBe('load unspecified');
     expect(loadLabel({ kind: 'bodyweight', convention: 'bodyweightOnly' })).toBe('bodyweight');
-    expect(loadLabel({ kind: 'assistance', convention: 'displayedAssistance', zeroMeaning: 'noAssistance', value: '20', unit: 'kg' }, true)).toBe('44.09 lb assistance (recorded 20 kg)');
+    expect(loadLabel({ kind: 'assistance', convention: 'displayedAssistance', zeroMeaning: 'noAssistance', value: '20', unit: 'kg' })).toBe('44.09 lb assistance');
   });
   it('refreshes untouched suggestions when preceding saves arrive, including remount', async () => {
     const blocked = vi.fn(), fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
     const view = render(<SetResultRow {...ui} refresh={vi.fn()} onInputState={blocked} />);
     await waitFor(() => expect(blocked).toHaveBeenLastCalledWith(props.targetId, false));
-    expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('45');
+    expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('44.09');
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('8');
     expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('2');
     const preceding = [{ ...saved, result: { reps: { value: 5, basis: 'total' as const }, measurement: prescription.measurement, rir: '0' } }];
@@ -363,7 +368,7 @@ describe('Pounds and stable logging suggestions', () => {
     expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('');
     view.unmount(); sessionStorage.clear();
     render(<SetResultRow {...ui} preceding={[{ ...saved, result: { ...result, measurement: { ...prescription.measurement, convention: 'perImplement' } } }]} refresh={vi.fn()} />);
-    expect(await screen.findByLabelText('Set 1 Actual load')).toHaveValue('45');
+    expect(await screen.findByLabelText('Set 1 Actual load')).toHaveValue('44.09');
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('8');
   });
   it('leaves ranged reps and absent mass blank; untouched saved kg creates no correction and rep-only correction retains kg bytes', async () => {
@@ -431,7 +436,7 @@ describe('Logger correction regressions', () => {
   it('refreshes saved values/action over an old untouched suggestion, but keeps a stale user draft', async () => {
     const view = render(<SetResultRow {...ui} />);
     await screen.findByRole('button', { name: 'Log set' });
-    expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('130');
+    expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('132.28');
     view.rerender(<SetResultRow {...ui} saved={{ ...saved, result: { measurement: null, reps: null, rir: '3' } }} />);
     expect(screen.getByRole('button', { name: 'Update set' })).toBeEnabled();
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('');
@@ -443,7 +448,7 @@ describe('Logger correction regressions', () => {
   it('prefers prescription over history; history only supplies first-set weight; blank decrement is not zero', async () => {
     const view = render(<SetResultRow {...ui} firstSetLoad={prior} />);
     await screen.findByRole('button', { name: 'Log set' });
-    expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('130');
+    expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('132.28');
     view.rerender(<SetResultRow {...ui} prescription={{ ...target, measurement: null, reps: { ...target.reps, max: 10 } }} firstSetLoad={prior} />);
     expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('135');
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('');

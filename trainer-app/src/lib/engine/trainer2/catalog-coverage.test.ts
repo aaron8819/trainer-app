@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import shared from '../../../../prisma/exercises_comprehensive.json';
 import baseline from './qualified-catalog-v1.json';
-import { normalizeCatalogEntry } from './catalog-adapter';
+import { catalogSources, normalizeCatalogEntry } from './catalog-adapter';
 import { catalog, library, catalogExercise, browseCatalog, swapPrescription } from './catalog';
 import { draftDocument } from '../../trainer2-contracts/draft';
 import { readSavedDocument, validateWorkoutDefaults } from './planning';
@@ -12,7 +12,7 @@ import { canonicalJson } from '../../trainer2-contracts/canonical-json';
 import { replacementContent } from './exercise-swap';
 import type { ExecutionRead } from '../../trainer2-contracts/execution';
 
-const conventions = { BARBELL_TOTAL: 'barbellTotal', IMPLEMENT_WEIGHT: 'perImplement', MACHINE_DISPLAYED: 'machineDisplayed',
+const conventions = { BARBELL_TOTAL: 'barbellTotal', IMPLEMENT_WEIGHT: 'perImplement', MACHINE_DISPLAYED: 'machineDisplayed', MACHINE_PLATES_PER_ARM: 'machinePlatesPerArm', SMITH_PLATES_TOTAL: 'smithPlatesTotal',
   ADDED_EXTERNAL_LOAD: 'addedExternal', DISPLAYED_ASSISTANCE: 'displayedAssistance' };
 const kinds = { REPS_EXTERNAL_LOAD: 'externalLoad', REPS_BODYWEIGHT: 'bodyweight', REPS_BODYWEIGHT_PLUS_LOAD: 'addedLoad', REPS_ASSISTED: 'assistance' };
 
@@ -20,10 +20,10 @@ describe('complete canonical catalog integration', () => {
   it('qualifies every reviewed tuple without a second membership list', () => {
     expect(shared.exercises).toHaveLength(150);
     expect(baseline).toHaveLength(48);
-    expect(catalog).toHaveLength(91);
+    expect(catalog).toHaveLength(100);
     expect(library.filter(e => !e.selectable)).toHaveLength(59);
-    expect(new Set(library.map(e => e.catalogId)).size).toBe(150);
-    const compatible = shared.exercises.filter(e => 'measurementProfile' in e);
+    expect(new Set(library.map(e => e.catalogId)).size).toBe(159);
+    const compatible = catalogSources.filter(e => 'measurementProfile' in e);
     expect(catalog.map(e => e.id).sort()).toEqual(compatible.map(e => 't2:' + e.catalogKey).sort());
     const future = { ...compatible[0], catalogKey: 'future-reviewed-exercise', name: 'Renamed arbitrary display' };
     expect(normalizeCatalogEntry(future).selectable).toBe(true);
@@ -34,7 +34,7 @@ describe('complete canonical catalog integration', () => {
     expect(normalizeCatalogEntry({ ...future, repRangeRecommendation: undefined }).selectable).toBe(false);
   });
   it.each(catalog.map(e => [e.id, e] as const))('%s agrees with the canonical recording tuple and prescription', (id, entry) => {
-    const source = shared.exercises.find(e => 't2:' + e.catalogKey === id)!;
+    const source = catalogSources.find(e => 't2:' + e.catalogKey === id)!;
     expect('measurementProfile' in source).toBe(true);
     const columns = source as unknown as { measurementProfile: keyof typeof kinds; loadConvention: keyof typeof conventions; repBasis: string };
     expect(entry.loadKind).toBe(kinds[columns.measurementProfile]);
@@ -45,7 +45,7 @@ describe('complete canonical catalog integration', () => {
       expect(entry.equipment).toEqual(source.equipment);
       expect(entry.purpose).toBe(source.movementPatterns.join(' + '));
       expect(entry.catalogFacts).toEqual({ movementPatterns: source.movementPatterns, primaryMuscles: source.primaryMuscles,
-        secondaryMuscles: source.secondaryMuscles, externalZeroMeaning: entry.loadKind === 'externalLoad' ? 'notAllowed' : null,
+        secondaryMuscles: source.secondaryMuscles, externalZeroMeaning: entry.loadKind === 'externalLoad' ? ('zeroLoadMeaning' in source && source.zeroLoadMeaning ? 'validZero' : 'notAllowed') : null,
         repDefaults: source.repRangeRecommendation });
     }
     const stageId = randomUUID();
@@ -111,7 +111,7 @@ describe('complete canonical catalog integration', () => {
       expect(browseCatalog('bench', []).map(e => e.id)).toContain('t2:' + key);
     }
     expect(browseCatalog('decline', ['Dumbbell', 'Bench']).map(e => e.id)).toEqual(['t2:decline-dumbbell-bench-press']);
-    const source = shared.exercises.find(e => e.catalogKey === 'decline-dumbbell-bench-press')!;
+    const source = catalogSources.find(e => e.catalogKey === 'decline-dumbbell-bench-press')!;
     expect(normalizeCatalogEntry({ ...source, name: 'Unrelated display text' }).entry?.id).toBe('t2:' + source.catalogKey);
   });
   it('retains load/rep ambiguity barriers and zero policy in snapshots without a catalog lookup', () => {
@@ -133,4 +133,21 @@ describe('complete canonical catalog integration', () => {
     const assisted = catalogExercise(catalog.find(e => e.id === 't2:machine-assisted-pull-up')!);
     expect(compatibleLoggingLoad({ kind: 'addedLoad', value: '10', unit: 'lb', convention: 'addedExternal', zeroMeaning: 'noAddedLoad' }, target, assisted)).toBe(false);
   });
+  it('keeps stack, per-arm plate and Smith plate-only recording bases distinct', () => {
+    const stack = catalogExercise(catalog.find(e => e.id === 't2:chest-supported-machine-row-stack')!);
+    const plates = catalogExercise(catalog.find(e => e.id === 't2:chest-supported-machine-row-plates-per-arm')!);
+    const smith = catalogExercise(catalog.find(e => e.id === 't2:smith-machine-bulgarian-split-squat-plates-added')!);
+    const target = { id: randomUUID(), classification: 'working' as const, required: true, reps: { min: 8, max: 12, basis: 'total' as const }, measurement: null, rir: null, restSeconds: null };
+    const load = { kind: 'externalLoad' as const, value: '0.000000', unit: 'kg' as const, convention: 'machinePlatesPerArm' as const, zeroMeaning: 'validZero' as const };
+    expect(compatibleLoggingLoad(load, target, plates)).toBe(true);
+    expect(compatibleLoggingLoad(load, target, stack)).toBe(false);
+    expect(compatibleLoggingLoad({ ...load, convention: 'barbellTotal' }, target, plates)).toBe(false);
+    expect(compatibleLoggingLoad({ ...load, convention: 'smithPlatesTotal' }, { ...target, reps: { ...target.reps, basis: 'perSide' } }, smith)).toBe(true);
+    expect(compatibleLoggingLoad({ ...load, convention: 'barbellTotal' }, target, smith)).toBe(false);
+    expect(sameLoggingExercise(stack, plates)).toBe(false);
+    const plateSource = catalogSources.find(e => e.catalogKey === 'smith-machine-bulgarian-split-squat-plates-added')!;
+    expect(normalizeCatalogEntry(plateSource).selectable).toBe(false);
+    expect(normalizeCatalogEntry(plateSource, true).selectable).toBe(true);
+  });
+
 });

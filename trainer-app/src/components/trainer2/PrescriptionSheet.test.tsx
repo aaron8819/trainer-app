@@ -12,6 +12,8 @@ it('preserves an exact kg prescription when only reps change', () => {
   const target = { ...p.targets[0], measurement: { kind: 'externalLoad' as const, value: '61.234567', unit: 'kg' as const, convention: 'barbellTotal' as const, zeroMeaning: 'notAllowed' as const } };
   const apply = vi.fn();
   render(<PrescriptionSheet exercise={p.exercise} target={target} sets={3} scope="All weeks" trigger={document.createElement('button')} close={vi.fn()} apply={apply} />);
+  expect(document.body.textContent).not.toMatch(/\bkg\b/);
+  expect(screen.queryByRole('combobox', { name: 'Unit' })).toBeNull();
   fireEvent.change(screen.getByLabelText('Reps from'), { target: { value: '7' } });
   fireEvent.click(screen.getByRole('button', { name: 'Apply changes' }));
   expect(apply.mock.calls[0][1].measurement).toEqual(target.measurement);

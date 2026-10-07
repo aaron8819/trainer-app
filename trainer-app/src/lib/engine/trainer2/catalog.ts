@@ -7,7 +7,7 @@ type Prescription = Omit<DraftDocument['occurrences'][number]['positions'][numbe
 export const equipmentOptions = [...new Set(catalog.flatMap(e => e.equipment))].sort();
 export function catalogExercise(entry: CatalogExercise): Exercise {
   return { kind: 'catalogSnapshot', catalogVersion: 1, catalogId: entry.id, name: entry.name,
-    variation: entry.equipment.join(' + '), equipment: [...entry.equipment], purpose: entry.purpose,
+    variation: entry.variation ?? entry.equipment.join(' + '), equipment: [...entry.equipment], purpose: entry.purpose,
     repBasis: entry.repBasis as 'total' | 'perSide', loadKind: entry.loadKind as 'externalLoad' | 'bodyweight' | 'addedLoad' | 'assistance',
     convention: entry.convention,
     ...(entry.catalogFacts ? { catalogFacts: structuredClone(entry.catalogFacts) } : {}) };

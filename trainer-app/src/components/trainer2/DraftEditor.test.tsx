@@ -11,11 +11,47 @@ import { draftDocument } from '@/lib/trainer2-contracts/draft';
 import { webcrypto } from 'node:crypto';
 import { canonicalJson, integrityHash } from '@/lib/api/trainer2/integrity';
 import { reviewPlan, REVIEW_POLICY } from '@/lib/engine/trainer2/plan-review';
+import { TargetFields } from './DraftEditor';
+import { loadLabel } from './pound-display';
 beforeEach(() => {
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function (this: HTMLDialogElement) { this.setAttribute('open', ''); } });
   Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: function (this: HTMLDialogElement) { this.removeAttribute('open'); } });
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); window.history.replaceState(null, '', '/'); });
+it('advanced fields display legacy masses in lb and preserve meaning when the load is edited', () => {
+  const measurements = [
+    { kind: 'externalLoad' as const, convention: 'barbellTotal' as const, zeroMeaning: 'notAllowed' as const },
+    { kind: 'externalLoad' as const, convention: 'perImplement' as const, zeroMeaning: 'notAllowed' as const },
+    { kind: 'externalLoad' as const, convention: 'machinePlatesPerArm' as const, zeroMeaning: 'validZero' as const },
+    { kind: 'externalLoad' as const, convention: 'smithPlatesTotal' as const, zeroMeaning: 'validZero' as const },
+    { kind: 'addedLoad' as const, convention: 'addedExternal' as const, zeroMeaning: 'noAddedLoad' as const },
+    { kind: 'assistance' as const, convention: 'displayedAssistance' as const, zeroMeaning: 'noAssistance' as const },
+  ];
+  for (const measurement of measurements) {
+    const target = { ...createHypertrophyPlan().occurrences[0].positions[0].targets[0],
+      measurement: { ...measurement, value: '60.123456', unit: 'kg' as const } };
+    const original = structuredClone(target); const change = vi.fn();
+    const view = render(<TargetFields target={target} change={change} />);
+    expect(screen.getByLabelText('Load or assistance · lb')).toHaveValue('132.55');
+    expect(view.container.textContent).not.toMatch(/\bkg\b/);
+    expect(screen.queryByRole('combobox', { name: 'Unit' })).toBeNull();
+    expect(loadLabel(target.measurement)).toContain('132.55 lb');
+    fireEvent.change(screen.getByLabelText('Load or assistance · lb'), { target: { value: '132.5' } });
+    expect(target).toEqual(original);
+    change.mock.calls[0][0](target);
+    expect(target.measurement).toEqual({ ...original.measurement, value: '132.5', unit: 'lb' });
+    view.unmount();
+  }
+});
+it('advanced fields initialize all numeric measurement kinds in lb', () => {
+  for (const kind of ['externalLoad', 'addedLoad', 'assistance']) {
+    const target = { ...createHypertrophyPlan().occurrences[0].positions[0].targets[0], measurement: null };
+    const change = vi.fn(); const view = render(<TargetFields target={target} change={change} />);
+    fireEvent.change(screen.getByLabelText('Measurement kind'), { target: { value: kind } });
+    change.mock.calls[0][0](target);
+    expect(target.measurement).toMatchObject({ kind, unit: 'lb' }); view.unmount();
+  }
+});
 it('reorders older independent workouts without inventing field provenance', () => {
   const doc = createHypertrophyPlan(); doc.occurrences[0].weekOverride = true;
   const changed = vi.fn(); render(<PlanBuilder document={doc} disabled={false} onChange={changed} />);

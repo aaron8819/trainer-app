@@ -1,12 +1,13 @@
 {
   "source": "prisma/exercises_comprehensive.json",
+  "trainer2VariantSource": "src/lib/engine/trainer2/program-catalog.json",
   "baselineCommit": "3a2e057d3a205241849827a1f7e7ca580787acaf",
   "totals": {
-    "canonical": 150,
+    "canonical": 159,
     "before": 48,
-    "after": 91,
+    "after": 100,
     "currentlySupported": 48,
-    "compatibleMissingIntegration": 43,
+    "compatibleMissingIntegration": 52,
     "missingOrConflictingMetadata": 48,
     "requiresNewCapability": 11
   },
@@ -7107,6 +7108,595 @@
           "externalZeroMeaning": null,
           "repDefaults": {
             "min": 5,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:neutral-grip-lat-pulldown",
+      "catalogKey": "neutral-grip-lat-pulldown",
+      "name": "Neutral-Grip Lat Pulldown",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable",
+        "Machine"
+      ],
+      "movementPatterns": [
+        "vertical_pull"
+      ],
+      "primaryMuscles": [
+        "Lats"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Upper Back",
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:neutral-grip-lat-pulldown",
+        "name": "Neutral-Grip Lat Pulldown",
+        "equipment": [
+          "Cable",
+          "Machine"
+        ],
+        "purpose": "vertical_pull",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "variation": "Neutral grip; both arms together. Record the displayed stack setting, not inferred handle resistance.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "vertical_pull"
+          ],
+          "primaryMuscles": [
+            "Lats"
+          ],
+          "secondaryMuscles": [
+            "Biceps",
+            "Upper Back",
+            "Forearms"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:ez-bar-preacher-curl",
+      "catalogKey": "ez-bar-preacher-curl",
+      "name": "EZ-Bar Preacher Curl",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "EZ_Bar",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:ez-bar-preacher-curl",
+        "name": "EZ-Bar Preacher Curl",
+        "equipment": [
+          "EZ_Bar",
+          "Bench"
+        ],
+        "purpose": "flexion",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "barbellTotal",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "variation": "Both arms together; total EZ-bar weight including the bar.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "flexion"
+          ],
+          "primaryMuscles": [
+            "Biceps"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:rope-hammer-curl",
+      "catalogKey": "rope-hammer-curl",
+      "name": "Rope Hammer Curl",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:rope-hammer-curl",
+        "name": "Rope Hammer Curl",
+        "equipment": [
+          "Cable"
+        ],
+        "purpose": "flexion",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "variation": "Rope attachment, neutral grip, both arms together. Record the displayed stack setting.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "flexion"
+          ],
+          "primaryMuscles": [
+            "Biceps"
+          ],
+          "secondaryMuscles": [
+            "Forearms"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:single-arm-cable-lateral-raise",
+      "catalogKey": "single-arm-cable-lateral-raise",
+      "name": "Single-Arm Cable Lateral Raise",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "PER_SIDE",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable"
+      ],
+      "movementPatterns": [
+        "abduction"
+      ],
+      "primaryMuscles": [
+        "Side Delts"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 10,
+        "max": 20
+      },
+      "normalized": {
+        "id": "t2:single-arm-cable-lateral-raise",
+        "name": "Single-Arm Cable Lateral Raise",
+        "equipment": [
+          "Cable"
+        ],
+        "purpose": "abduction",
+        "aliases": [],
+        "repBasis": "perSide",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 10,
+          "max": 20
+        },
+        "variation": "One arm at a time; reps per side. Record the displayed cable stack setting.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "abduction"
+          ],
+          "primaryMuscles": [
+            "Side Delts"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 10,
+            "max": 20
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:chest-supported-machine-row-stack",
+      "catalogKey": "chest-supported-machine-row-stack",
+      "name": "Chest-Supported Machine Row (Stack)",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:chest-supported-machine-row-stack",
+        "name": "Chest-Supported Machine Row (Stack)",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "horizontal_pull",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "variation": "Chest supported; both arms together. Record the single displayed stack setting.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "horizontal_pull"
+          ],
+          "primaryMuscles": [
+            "Lats",
+            "Upper Back"
+          ],
+          "secondaryMuscles": [
+            "Biceps",
+            "Forearms"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:chest-supported-machine-row-plates-per-arm",
+      "catalogKey": "chest-supported-machine-row-plates-per-arm",
+      "name": "Chest-Supported Machine Row (Plates per Arm)",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_PLATES_PER_ARM",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD",
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:chest-supported-machine-row-plates-per-arm",
+        "name": "Chest-Supported Machine Row (Plates per Arm)",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "horizontal_pull",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machinePlatesPerArm",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "variation": "Chest supported; both arms together, equal plates per arm. Record plates added per arm; exclude machine starting resistance.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "horizontal_pull"
+          ],
+          "primaryMuscles": [
+            "Lats",
+            "Upper Back"
+          ],
+          "secondaryMuscles": [
+            "Biceps",
+            "Forearms"
+          ],
+          "externalZeroMeaning": "validZero",
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:chest-supported-machine-high-row-stack",
+      "catalogKey": "chest-supported-machine-high-row-stack",
+      "name": "Chest-Supported Machine High Row (Stack)",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Upper Back",
+        "Lats"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Rear Delts"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:chest-supported-machine-high-row-stack",
+        "name": "Chest-Supported Machine High Row (Stack)",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "horizontal_pull",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "variation": "Chest supported; both arms together. Record the single displayed stack setting.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "horizontal_pull"
+          ],
+          "primaryMuscles": [
+            "Upper Back",
+            "Lats"
+          ],
+          "secondaryMuscles": [
+            "Biceps",
+            "Rear Delts"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:chest-supported-machine-high-row-plates-per-arm",
+      "catalogKey": "chest-supported-machine-high-row-plates-per-arm",
+      "name": "Chest-Supported Machine High Row (Plates per Arm)",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_PLATES_PER_ARM",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD",
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Upper Back",
+        "Lats"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Rear Delts"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:chest-supported-machine-high-row-plates-per-arm",
+        "name": "Chest-Supported Machine High Row (Plates per Arm)",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "horizontal_pull",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machinePlatesPerArm",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "variation": "Chest supported; both arms together, equal plates per arm. Record plates added per arm; exclude machine starting resistance.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "horizontal_pull"
+          ],
+          "primaryMuscles": [
+            "Upper Back",
+            "Lats"
+          ],
+          "secondaryMuscles": [
+            "Biceps",
+            "Rear Delts"
+          ],
+          "externalZeroMeaning": "validZero",
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:smith-machine-bulgarian-split-squat-plates-added",
+      "catalogKey": "smith-machine-bulgarian-split-squat-plates-added",
+      "name": "Smith-Machine Bulgarian Split Squat (Plates Added)",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "SMITH_PLATES_TOTAL",
+      "repBasis": "PER_SIDE",
+      "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD",
+      "equipment": [
+        "Smith_Machine",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "lunge"
+      ],
+      "primaryMuscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Hamstrings",
+        "Adductors"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:smith-machine-bulgarian-split-squat-plates-added",
+        "name": "Smith-Machine Bulgarian Split Squat (Plates Added)",
+        "equipment": [
+          "Smith_Machine",
+          "Bench"
+        ],
+        "purpose": "lunge",
+        "aliases": [],
+        "repBasis": "perSide",
+        "loadKind": "externalLoad",
+        "convention": "smithPlatesTotal",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "variation": "Reps per leg. Record total plates added across both sides; exclude Smith bar resistance.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "lunge"
+          ],
+          "primaryMuscles": [
+            "Quads",
+            "Glutes"
+          ],
+          "secondaryMuscles": [
+            "Hamstrings",
+            "Adductors"
+          ],
+          "externalZeroMeaning": "validZero",
+          "repDefaults": {
+            "min": 6,
             "max": 12
           }
         }

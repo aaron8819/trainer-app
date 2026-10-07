@@ -6,7 +6,7 @@ const label = z.string().max(200);
 export const decimal = z.string().regex(/^(0|[1-9]\d{0,8})(\.\d{1,6})?$/);
 export const measurement = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("externalLoad"), value: decimal,
-    unit: z.enum(["kg", "lb"]), convention: z.enum(["barbellTotal", "perImplement", "machineDisplayed"]),
+    unit: z.enum(["kg", "lb"]), convention: z.enum(["barbellTotal", "perImplement", "machineDisplayed", "machinePlatesPerArm", "smithPlatesTotal"]),
     zeroMeaning: z.enum(["validZero", "notAllowed"]) }).strict(),
   z.object({ kind: z.literal("addedLoad"), value: decimal, unit: z.enum(["kg", "lb"]),
     convention: z.literal("addedExternal"), zeroMeaning: z.literal("noAddedLoad") }).strict(),
@@ -28,7 +28,7 @@ export const exercise = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('catalogSnapshot'), catalogId: label, catalogVersion: z.literal(1), name: label, variation: label,
     equipment: z.array(label).min(1), purpose: label, repBasis: target.shape.reps.shape.basis,
     loadKind: z.enum(['externalLoad', 'bodyweight', 'addedLoad', 'assistance']),
-    convention: z.enum(['barbellTotal', 'perImplement', 'machineDisplayed', 'bodyweightOnly', 'addedExternal', 'displayedAssistance']),
+    convention: z.enum(['barbellTotal', 'perImplement', 'machineDisplayed', 'machinePlatesPerArm', 'smithPlatesTotal', 'bodyweightOnly', 'addedExternal', 'displayedAssistance']),
     // Absent in the frozen released v1 definitions; never backfilled on read.
     catalogFacts: z.object({ movementPatterns: z.array(label).min(1), primaryMuscles: z.array(label),
       secondaryMuscles: z.array(label), externalZeroMeaning: z.enum(['validZero', 'notAllowed']).nullable(),

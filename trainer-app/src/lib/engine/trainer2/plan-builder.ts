@@ -155,7 +155,7 @@ function discardedPrescription(t: Position['targets'][number]): string {
   if (t.restSeconds !== null) details.push(`${t.restSeconds} seconds rest`);
   if (m?.kind === 'bodyweight') details.push('bodyweight only');
   else if (m) {
-    const convention = { barbellTotal: 'barbell total', perImplement: 'per implement', machineDisplayed: 'machine displayed', addedExternal: 'added load', displayedAssistance: 'displayed assistance' }[m.convention];
+    const convention = { barbellTotal: 'barbell total', perImplement: 'per implement', machinePlatesPerArm: 'plates added per arm', smithPlatesTotal: 'total Smith plates added', machineDisplayed: 'machine displayed', addedExternal: 'added load', displayedAssistance: 'displayed assistance' }[m.convention];
     const zero = { validZero: 'zero is valid', notAllowed: 'zero not allowed', noAddedLoad: 'zero means no added load', noAssistance: 'zero means no assistance' }[m.zeroMeaning];
     details.push(`${m.value} ${m.unit} ${convention} (${zero})`);
   }

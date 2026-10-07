@@ -2,10 +2,13 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { expect as baseExpect, type Page } from '@playwright/test';
+import type { PrismaClient } from '@prisma/client';
+import { assertPoundSurface, lbOnlyBuilderJourney } from './lb-only-journey';
 
 const expect = baseExpect.configure({ timeout: 30_000 });
-export async function loggerJourney({ page, base, home, artifact, accountId, executionId, pass }: {
+export async function loggerJourney({ page, base, home, artifact, accountId, executionId, db, reader, principal, pass }: {
   page: Page; base: string; home: string; artifact: string; accountId: string; planId: string; executionId: string; pass: (value: string) => void;
+  db: PrismaClient; reader: PrismaClient; principal: { accountId: string; sessionId: string };
 }) {
   const url = `${base}/trainer2/dev/executions/${executionId}`;
   const active = page.getByRole('region', { name: 'Active set' });
@@ -14,7 +17,7 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   const read = async () => page.evaluate(async path => { const response = await fetch(path); if (!response.ok) throw new Error('Execution read failed'); return response.json(); }, `/api/trainer2/executions/${executionId}`);
   const draft = async () => page.evaluate(({ accountId, executionId }) => Object.fromEntries(Object.entries(sessionStorage).filter(([key]) => key.startsWith(`trainer2-result:${accountId}:${executionId}:`))), { accountId, executionId });
   await page.goto(url);
-  await expect(active.getByLabel('Set 1 Actual load', { exact: true })).toHaveValue('130');
+  await expect(active.getByLabel('Set 1 Actual load', { exact: true })).toHaveValue('132.28');
   await expect(active.getByLabel('Set 1 Actual reps', { exact: true })).toHaveValue('');
   for (const width of [1280, 390, 320]) {
     await page.setViewportSize({ width, height: 844 });
@@ -23,6 +26,7 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
     await active.getByLabel('Set 1 Actual reps', { exact: true }).fill('8');
     assert(Math.abs((await active.boundingBox())!.height - before!.height) < 1, 'Numeric entry changed card height');
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await assertPoundSurface(page);
     assert.equal(await active.getByLabel('Set 1 Actual reps', { exact: true }).evaluate(e => getComputedStyle(e).fontSize), '27px');
     await shot(`logger-${width}`);
   }
@@ -30,6 +34,11 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   const history = page.getByRole('dialog', { name: 'Exercise history' });
   await expect(history.getByRole('table')).toBeVisible();
   await expect(history).toContainText('10');
+  await expect(history).toContainText('132.55 lb');
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 }); await assertPoundSurface(page);
+    await shot(`lb-history-${width}`);
+  }
   await shot('history-320');
   await history.press('Escape');
   await expect(history).not.toBeVisible();
@@ -39,11 +48,11 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
 
   await active.getByRole('button', { name: 'Log set', exact: true }).click();
   await expect(active.getByLabel('Set 2 Actual reps', { exact: true })).toHaveValue('8');
-  await expect(active.getByLabel('Set 2 Actual load', { exact: true })).toHaveValue('130');
+  await expect(active.getByLabel('Set 2 Actual load', { exact: true })).toHaveValue('132.28');
   const initial = await read();
-  assert.equal(initial.results[0].result.measurement.unit, 'lb');
+  assert.equal(initial.results[0].result.measurement.unit, 'kg');
   assert.equal(initial.initial.occurrence.positions[0].targets[0].measurement.unit, 'kg');
-  assert.equal(initial.results[0].result.measurement.value, '130');
+  assert.equal(initial.results[0].result.measurement.value, '60');
   const timer = page.getByLabel('Rest timer', { exact: true });
   await expect(timer).toBeVisible();
   const timerStorage = `trainer2-rest:${accountId}:${executionId}`;
@@ -56,7 +65,7 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   assert(timerBefore);
   await page.reload();
   await expect(timer).toBeVisible();
-  pass('Prescribed kg load rounds to the released lbs suggestion without changing its target; confirmed log carries values forward; skip advances; timer adjustments and reload persist');
+  pass('Prescribed kg load displays in pounds and logs its untouched original kg value; confirmed log carries values forward; skip advances; timer adjustments and reload persist');
 
   // Abort every delivery response after the server accepts the exact request.
   const bodies: string[] = [];
@@ -83,7 +92,8 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   await expect(active.getByLabel('Set 1 Actual reps', { exact: true })).toBeVisible();
   assert.equal(retry, bodies[0]);
   const afterRetry = await read();
-  assert.equal(afterRetry.results.find((r: { targetId: string }) => r.targetId === JSON.parse(bodies[0]).target.targetId).result.measurement.unit, 'lb');
+  assert.deepEqual(afterRetry.results.find((r: { targetId: string }) => r.targetId === JSON.parse(bodies[0]).target.targetId).result.measurement,
+    { kind: 'externalLoad', value: '132.5', unit: 'lb', convention: 'perImplement', zeroMeaning: 'validZero' });
   pass('Accepted lost response preserves exact pending envelope and typed draft across reload; replay confirms edited lbs without duplicate work');
 
   const firstName = initial.initial.occurrence.positions[0].exercise.name;
@@ -164,4 +174,14 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   await expect(page.getByText('Saved', { exact: true })).toBeVisible();
   await shot('completed-review-320');
   pass('Reduced viewport, numeric keyboard attributes, keyboard navigation, finish cancel/confirm to Home, completed review and historical correction');
+  await page.goto(home + '&view=program');
+  await expect(page.getByText('Your saved prescriptions, week by week.', { exact: true })).toBeVisible();
+  await page.locator('[data-occurrence-id] > summary').last().click();
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 }); await assertPoundSurface(page);
+    await expect(page.getByText(/132.28 lb per implement/).first()).toBeVisible();
+    await shot(`lb-program-${width}`);
+  }
+  pass('Untouched legacy kg Program and History show pounds only at 390px and 320px');
+  await lbOnlyBuilderJourney({ page, base, artifact, db, reader, principal, pass });
 }

@@ -1,4 +1,4 @@
-import shared from '../../prisma/exercises_comprehensive.json';
+import { catalogSources } from '../../src/lib/engine/trainer2/catalog-adapter';
 import before from '../../src/lib/engine/trainer2/qualified-catalog-v1.json';
 import { library } from '../../src/lib/engine/trainer2/catalog';
 
@@ -30,7 +30,7 @@ function recommend(key: string, equipment: string[]) {
   return `Review the ${equipment.join(', ')} execution: specify unilateral/bilateral use, how logged reps count, load per implement versus displayed/combined load, and whether zero is meaningful. Publish that concrete tuple before enabling.`;
 }
 const rows = library.map(row => {
-  const source = shared.exercises.find(e => e.catalogKey === row.catalogKey)!;
+  const source = catalogSources.find(e => e.catalogKey === row.catalogKey)!;
   const columns = source as typeof source & { measurementProfile?: string; loadConvention?: string | null; repBasis?: string; zeroLoadMeaning?: string };
   const status = existing.has(row.catalogId) ? 'currentlySupported' : row.selectable ? 'compatibleMissingIntegration' :
     requiresDurationOrDistance.has(row.catalogKey) ? 'requiresNewCapability' : 'missingOrConflictingMetadata';
@@ -44,7 +44,7 @@ const rows = library.map(row => {
       'Define duration/distance targets and performed evidence, identity/basis, history compatibility and prefill before enabling.' :
       recommend(row.catalogKey, source.equipment) };
 });
-console.log(JSON.stringify({ source: 'prisma/exercises_comprehensive.json', baselineCommit: '3a2e057d3a205241849827a1f7e7ca580787acaf',
+console.log(JSON.stringify({ source: 'prisma/exercises_comprehensive.json', trainer2VariantSource: 'src/lib/engine/trainer2/program-catalog.json', baselineCommit: '3a2e057d3a205241849827a1f7e7ca580787acaf',
   totals: { canonical: rows.length, before: before.length, after: rows.filter(r => r.supportedAfter).length,
     ...Object.fromEntries(['currentlySupported', 'compatibleMissingIntegration', 'missingOrConflictingMetadata', 'requiresNewCapability'].map(status => [status, rows.filter(r => r.status === status).length])) },
   rows }, null, 2));

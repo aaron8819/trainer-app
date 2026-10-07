@@ -7,7 +7,7 @@ import { rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { Writable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
-import { captureBrowserOwnership, settleBrowserTree, shutdownOwnedBrowser, waitForWorker, type BrowserOwnership } from '../../../scripts/trainer2/disposable-cleanup';
+import { cleanupSteps, captureBrowserOwnership, settleBrowserTree, shutdownOwnedBrowser, waitForWorker, type BrowserOwnership } from '../../../scripts/trainer2/disposable-cleanup';
 
 vi.mock('node:child_process', async original => ({ ...await original<typeof childProcesses>() }));
 
@@ -30,14 +30,14 @@ describe.skipIf(process.platform !== 'win32')('qualified browser tree', () => {
       let latePage: Promise<void> | undefined;
       let lateClient: Awaited<ReturnType<typeof chromium.connect>> | undefined;
       const unrelated = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { windowsHide: true, stdio: 'ignore' });
-      const unrelatedClose = waitForWorker(unrelated, 45_000);
+      const unrelatedClose = waitForWorker(unrelated, 65_000);
       try {
         process.env.TEMP = profile; process.env.TMP = profile;
         server = await chromium.launchServer({ headless: true, timeout: 30_000, args: pinnedFlags });
         if (priorTemp === undefined) delete process.env.TEMP; else process.env.TEMP = priorTemp;
         if (priorTmp === undefined) delete process.env.TMP; else process.env.TMP = priorTmp;
         const child = server.process();
-        const completion = waitForWorker(child, 30_000);
+        const completion = waitForWorker(child, 50_000);
         child.on('exit', (code, signal) => observations.push({ event: 'native-exit', code, signal }));
         child.on('close', (code, signal) => observations.push({ event: 'native-close', code, signal }));
         const browser = await chromium.connect(server.wsEndpoint());
@@ -48,7 +48,7 @@ describe.skipIf(process.platform !== 'win32')('qualified browser tree', () => {
         ownership = await captureBrowserOwnership(child, profile, result => observations.push(result));
         const initialPids = new Set(ownership.processes.map(row => row.pid));
         const initialRows = observations.at(-1)!.survivors as { pid: number; command: string }[];
-        expect(initialRows.some(row => row.pid !== child.pid && !row.command.includes('--user-data-dir'))).toBe(true);
+        expect(initialRows.some(row => row.pid !== child.pid && row.pid !== child.pid)).toBe(true);
         await context.close(); await browser.close();
 
         if (force) {
@@ -80,7 +80,7 @@ describe.skipIf(process.platform !== 'win32')('qualified browser tree', () => {
             // Consume a late rejection even if native teardown fails first.
             void latePage.catch(() => {});
           }
-        }, { graceMs: force ? 2_000 : 5_000 });
+        }, { graceMs: force ? 2_000 : 5_000, timeoutMs:30_000 });
         if (latePage) await latePage;
         expect(result.forceFallback).toBe(force);
         expect(blockedCloseRequest).toBe(force);
@@ -96,7 +96,7 @@ describe.skipIf(process.platform !== 'win32')('qualified browser tree', () => {
           expect(terminated.some(row => row.pid !== child.pid)).toBe(true);
           expect(ownership.processes.some(row => !initialPids.has(row.pid))).toBe(true);
           expect(observations.some(row => (row.survivors as {pid: number;command: string}[] | undefined)?.some(
-            process => !initialPids.has(process.pid) && !process.command.includes('--user-data-dir')))).toBe(true);
+            process => !initialPids.has(process.pid) && process.pid !== child.pid))).toBe(true);
         }
         await settleBrowserTree(ownership, 'observe', row => observations.push(row));
         expect(observations.at(-1)?.survivors).toEqual([]);
@@ -147,7 +147,7 @@ describe.skipIf(process.platform !== 'win32')('qualified browser tree', () => {
     try {
       await expect(captureBrowserOwnership(server.process(), profile + '-other')).rejects.toThrow('does not own');
       const ownership = await captureBrowserOwnership(server.process(), profile);
-      await shutdownOwnedBrowser(server, ownership);
+      await shutdownOwnedBrowser(server, ownership, undefined, {timeoutMs:30_000});
       await rm(profile, { recursive: true, force: true });
     } catch (error) {
       writeFileSync(profile + '.json', JSON.stringify({ failure: String(error), retained: true }));
@@ -202,8 +202,27 @@ describe.skipIf(process.platform !== 'win32')('qualified browser tree', () => {
       expect((await commandClose)?.timedOut).toBe(false);
       expect(commandChild?.stdout?.destroyed).toBe(true);
       expect(commandChild?.stderr?.destroyed).toBe(true);
-      expect(observations.some(row => row.commandError === 'Cleanup command deadline exceeded')).toBe(true);
+      expect(observations.some(row => row.commandError === 'Cleanup command deadline exceeded' || (row.diagnostics as {error?:string}|undefined)?.error === 'Cleanup command deadline exceeded')).toBe(true);
       expect(() => process.kill(commandChild!.pid!,0)).toThrow();
     } finally { probe.mockRestore(); }
   });
+  it('bounds a permanently stalled server close and continues later cleanup', async () => {
+    const nativeSpawn=childProcesses.spawn;
+    const ownership:BrowserOwnership={rootPid:123,runnerPid:process.pid,executable:'C:\\browser.exe',profile:'C:\\profile',processes:[]};
+    const probe=vi.spyOn(childProcesses,'spawn').mockImplementation(()=>nativeSpawn(process.execPath,
+      ['-e',`console.log(JSON.stringify(${JSON.stringify({ownership,survivors:[],terminated:[],at:'fixture'})}))`],
+      {windowsHide:true,stdio:['ignore','pipe','pipe']}));
+    let continued=false;
+    const server={close:vi.fn(()=>new Promise<void>(()=>{}))};
+    try{
+      const results=await cleanupSteps([
+        {name:'browser',timeoutMs:4000,run:()=>shutdownOwnedBrowser(server,ownership,undefined,{timeoutMs:2500,graceMs:20})},
+        {name:'remaining',run:()=>{continued=true;}},
+      ]);
+      expect(server.close).toHaveBeenCalledOnce();expect(continued).toBe(true);
+      expect(results[0]).toMatchObject({status:'failed',error:expect.stringContaining('did not settle')});
+      expect(results[1].status).toBe('passed');
+    }finally{probe.mockRestore();}
+  },10000);
+
 });

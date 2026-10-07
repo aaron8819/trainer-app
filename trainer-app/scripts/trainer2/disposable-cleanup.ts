@@ -8,7 +8,7 @@ type CleanupCommandResult = {
 
 // Keep the event loop available for the browser's exit/close and pipe handlers.
 // A synchronous OS poll prevents the parent observing child completion promptly.
-export async function runCleanupCommand(file: string, args: string[], timeoutMs: number, env?: NodeJS.ProcessEnv): Promise<CleanupCommandResult> {
+export async function runCleanupCommand(file: string, args: string[], timeoutMs: number, env?: NodeJS.ProcessEnv, onLine?: (line:string)=>void): Promise<CleanupCommandResult> {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error('Invalid cleanup command deadline');
   const startedAt = new Date().toISOString();
   const deadline = Date.now() + timeoutMs;
@@ -18,9 +18,17 @@ export async function runCleanupCommand(file: string, args: string[], timeoutMs:
     ? { ...(env ?? process.env), PSModulePath: join(process.env.SystemRoot ?? 'C:\\Windows', 'System32/WindowsPowerShell/v1.0/Modules') }
     : env;
   const child = spawn(file, args, { env: commandEnv, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-  let stdout = '', stderr = '';
+  let stdout = '', stderr = '', pendingLine = '';
+  let outputError: string | undefined;
   child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
-  child.stdout.on('data', value => { stdout += value; });
+  child.stdout.on('data', value => {
+    stdout += value;
+    if(onLine){
+      pendingLine += value;
+      const lines=pendingLine.split(/\r?\n/);pendingLine=lines.pop()!;
+      for(const line of lines.filter(Boolean))try{onLine(line);}catch(error){outputError ??= String(error);}
+    }
+  });
   child.stderr.on('data', value => { stderr += value; });
   return new Promise(resolve => {
     let settled = false;
@@ -29,7 +37,7 @@ export async function runCleanupCommand(file: string, args: string[], timeoutMs:
       settled = true;
       clearTimeout(timer);
       resolve({ pid: child.pid, status, signal, stdout, stderr, startedAt, closedAt,
-        error: error ?? (Date.now() > deadline ? 'Cleanup command deadline exceeded' : undefined) });
+        error: error ?? outputError ?? (Date.now() > deadline ? 'Cleanup command deadline exceeded' : undefined) });
     };
     const timer = setTimeout(() => {
       try { child.kill('SIGKILL'); } catch (error) { stderr += String(error); }
@@ -61,7 +69,7 @@ export async function ownedBrowserProcesses(profile: string, options: { executab
   browserProcessesForProfile([], profile, executableName);
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error('Invalid browser inventory deadline');
   const result = await runCleanupCommand('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Get-CimInstance Win32_Process | Select-Object ProcessId,Name,CommandLine | ConvertTo-Json -Compress'], Math.min(10_000, timeoutMs));
-  if (result.status !== 0 || result.error) throw new Error(`Unable to inventory task browser processes: ${result.error ?? result.stderr}`);
+  if (result.status !== 0 || result.error) throw commandFailure('Task browser inventory', result);
   const rows = JSON.parse(result.stdout) as { ProcessId: number; Name: string; CommandLine?: string }[];
   return browserProcessesForProfile(rows.map(row => ({ pid: row.ProcessId, name: row.Name, command: row.CommandLine })), profile,executableName);
 }
@@ -85,19 +93,23 @@ async function browserTreeCommand(ownership: BrowserOwnership, mode: 'capture' |
   if (process.platform !== 'win32') throw new Error('Qualified browser teardown requires Windows');
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 100) throw new Error('Browser tree deadline exceeded');
   const seed = Buffer.from(JSON.stringify(ownership)).toString('base64');
-  const command = await runCleanupCommand('powershell.exe', ['-NoProfile', '-NonInteractive', '-File',
-    resolve('scripts/trainer2/browser-tree.ps1'), '-Mode', mode, '-OwnershipBase64', seed,
-    '-DeadlineUnixMs', String(Date.now() + timeoutMs - 100)], timeoutMs);
   let last: BrowserTreeObservation | undefined;
-  for (const line of command.stdout.trim().split(/\r?\n/).filter(Boolean)) {
+  const consume = (line: string) => {
     last = JSON.parse(line) as BrowserTreeObservation;
     ownership.processes = last.ownership.processes;
-    record?.({ mode, ...last, commandPid: command.pid, commandStartedAt: command.startedAt,
-      commandClosedAt: command.closedAt, commandStatus: command.status, commandError: command.error });
-  }
+    // Deliver native progress while the observer is alive. The caller can close
+    // original pipes after termination is requested, unblocking kernel teardown.
+    record?.({ mode, ...last, commandPending: true });
+  };
+  const command = await runCleanupCommand('powershell.exe', ['-NoProfile', '-NonInteractive', '-File',
+    resolve('scripts/trainer2/browser-tree.ps1'), '-Mode', mode, '-OwnershipBase64', seed,
+    '-DeadlineUnixMs', String(Date.now() + timeoutMs - 100)], timeoutMs, undefined, consume);
+  if(last)record?.({mode,...last,commandPid:command.pid,commandStartedAt:command.startedAt,
+    commandClosedAt:command.closedAt,commandStatus:command.status,commandError:command.error});
   if (command.error || command.status !== 0) {
-    record?.({ mode, command });
-    throw new Error(`Qualified browser tree ${mode} failed: ${command.error ?? command.stderr}`);
+    const failure = commandFailure(`Qualified process tree ${mode}`, command);
+    record?.({ mode, diagnostics: (failure as Error & { diagnostics: unknown }).diagnostics });
+    throw failure;
   }
   if (!last) throw new Error('Browser tree returned no authoritative observation');
   if (mode !== 'capture' && last.survivors.length) throw new Error('Qualified browser tree survived shutdown');
@@ -129,14 +141,14 @@ export async function settleBrowserTree(ownership: BrowserOwnership, mode: 'obse
 // Shared by the real disposable runner and the short fallback fixture. Capture
 // before requesting server close, keep the original grace/total bounds, and
 // await both authoritative tree absence and the actual server-close operation.
-export async function shutdownOwnedBrowser(server: { close: () => Promise<void> }, ownership: BrowserOwnership,
+export async function shutdownOwnedBrowser(server: { close: () => Promise<void>; process?:()=>ChildProcess }, ownership: BrowserOwnership,
   record?: CleanupRecorder, options: { timeoutMs?: number; graceMs?: number } = {}) {
   const deadline = Date.now() + (options.timeoutMs ?? 10_000);
   let captureError: unknown;
   try { await browserTreeCommand(ownership, 'capture', deadline - Date.now(), record); }
   catch (error) { captureError = error; record?.({ event: 'ownership-refresh-failed', error: String(error) }); }
   let closeError: unknown;
-  const closing = server.close().then(() => true, error => { closeError = error; return false; });
+  const closing = Promise.resolve().then(() => server.close()).then(() => true, error => { closeError = error; return false; });
   record?.({ event: 'server-close-initiated' });
   let timer: ReturnType<typeof setTimeout> | undefined;
   let graceful: boolean;
@@ -146,9 +158,16 @@ export async function shutdownOwnedBrowser(server: { close: () => Promise<void> 
     })]);
   } finally { clearTimeout(timer); }
   record?.({ event: 'grace-completed', graceful });
-  // Observation after graceful close also checks captured, unmarked orphans.
-  try { await settleBrowserTree(ownership, graceful ? 'observe' : 'terminate', record, Math.min(5_000, deadline - Date.now())); }
+  const disposePipes=()=>{for(const stream of server.process?.().stdio??[])stream?.destroy();};
+  const progress=(row:Record<string,unknown>)=>{
+    record?.(row);
+    const requested=[...((row.terminated as BrowserProcessIdentity[]|undefined)??[]),...((row.pendingTermination as BrowserProcessIdentity[]|undefined)??[])];
+    if(requested.some(process=>process.pid===ownership.rootPid))disposePipes();
+  };
+  // Native observation remains authoritative even after original pipes close.
+  try { await settleBrowserTree(ownership, graceful ? 'observe' : 'terminate', progress, Math.max(101, deadline - Date.now() - 1000)); }
   catch (error) { throw captureError ?? error; }
+  finally { disposePipes(); }
   try {
     await Promise.race([closing, new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new Error('Browser server close did not settle')), Math.max(0, deadline - Date.now()));
@@ -160,16 +179,20 @@ export async function shutdownOwnedBrowser(server: { close: () => Promise<void> 
   return { gracefulServerClose: graceful, forceFallback: !graceful };
 }
 
-export async function waitForWorker(child: ChildProcess, timeoutMs: number) {
+type WorkerCompletion = {exitCode:number|null;signal:NodeJS.Signals|null;timedOut:boolean;error?:string};
+const workerClosures = new WeakMap<ChildProcess, WorkerCompletion>();
+export async function waitForWorker(child: ChildProcess, timeoutMs: number): Promise<WorkerCompletion> {
+  const observed=workerClosures.get(child);if(observed)return observed;
   return new Promise<{ exitCode: number | null; signal: NodeJS.Signals | null; timedOut: boolean; error?: string }>(resolve => {
     const closed = (exitCode: number | null, signal: NodeJS.Signals | null) => {
+      workerClosures.set(child,{exitCode,signal,timedOut:false});
       clearTimeout(timer);
       child.off('error',failed);
       resolve({ exitCode, signal, timedOut: false });
     };
     const failed=(error: Error)=>{clearTimeout(timer);child.off('close',closed);resolve({exitCode:null,signal:null,timedOut:false,error:error.message});};
     const timer = setTimeout(() => {
-      child.off('close', closed);
+      // Keep observing actual close after the deadline for bounded recovery.
       // Consume a late spawn/termination error while the caller cleans up.
       resolve({ exitCode: null, signal: null, timedOut: true });
     }, timeoutMs);
@@ -179,7 +202,7 @@ export async function waitForWorker(child: ChildProcess, timeoutMs: number) {
 }
 
 export type CleanupStep = { name: string; run: () => unknown | Promise<unknown>; timeoutMs?: number };
-export type CleanupResult = { name: string; status: 'passed' | 'failed' | 'timed-out'; error?: string };
+export type CleanupResult = { name: string; status: 'passed' | 'failed' | 'timed-out'; error?: string; diagnostics?: unknown };
 
 // Every step gets its own deadline. A rejected or stalled resource never blocks
 // cleanup of the remaining resources. The caller still fails the runner.
@@ -202,7 +225,7 @@ export async function cleanupSteps(steps: CleanupStep[]): Promise<CleanupResult[
       results.push({ name: step.name, status: 'passed' });
     } catch (error) {
       timedOut ||= Date.now() > deadline;
-      results.push({ name: step.name, status: timedOut ? 'timed-out' : 'failed', error: error instanceof Error ? error.message : String(error) });
+      results.push({ name: step.name, status: timedOut ? 'timed-out' : 'failed', error: error instanceof Error ? error.message : String(error), diagnostics: error instanceof Error && 'diagnostics' in error ? error.diagnostics : undefined });
     } finally {
       clearTimeout(timer);
     }
@@ -218,83 +241,56 @@ export function processAlive(pid: number): boolean {
 }
 
 
-// Capture descendants before killing the root: after reparenting, ownership
-// cannot safely be inferred from the executable name or a shared port.
-export function ownedProcessTree(pid: number, rootMarker?: string): number[] {
+// Numeric PIDs are only lookup keys for receipts captured while a direct child
+// is alive. An exited creator PID alone can never establish orphan ownership.
+const capturedTrees = new Map<number, BrowserOwnership>();
+export function ownedProcessTree(pid: number, rootMarker?: string, record?: CleanupRecorder): number[] {
+  if (process.platform !== 'win32') throw new Error('Qualified native ownership requires Windows');
   if (!Number.isSafeInteger(pid) || pid <= 0 || pid === process.pid) throw new Error('Invalid task-owned process');
-  const result = process.platform === 'win32'
-    ? spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress'], { encoding: 'utf8', windowsHide: true, timeout: 10_000 })
-    : spawnSync('ps', ['-eo', 'pid=,ppid='], { encoding: 'utf8', timeout: 10_000 });
-  if (result.status !== 0) throw new Error('Unable to inventory task-owned child processes');
-  const rows: { pid: number; parent: number; command?: string }[] = process.platform === 'win32'
-    ? JSON.parse(result.stdout).map((p: { ProcessId: number; ParentProcessId: number; CommandLine?: string }) => ({ pid: p.ProcessId, parent: p.ParentProcessId, command:p.CommandLine }))
-    : result.stdout.trim().split('\n').map(line => { const [child, parent] = line.trim().split(/\s+/).map(Number); return { pid: child, parent }; });
-  const owned = new Set([pid]);
-  const root=rows.find(row=>row.pid===pid);
-  if(rootMarker&&process.platform==='win32'&&root&&!root.command?.toLowerCase().includes(rootMarker.toLowerCase()))throw new Error('Task root identity changed; refusing process termination');
-  for (let changed = true; changed;) {
-    changed = false;
-    for (const row of rows) if (owned.has(row.parent) && !owned.has(row.pid)) { owned.add(row.pid); changed = true; }
+  const previous = capturedTrees.get(pid);
+  const ownership: BrowserOwnership = previous ?? { rootPid: pid, runnerPid: process.pid,
+    executable: '', profile: '', processes: [] };
+  // Bootstrap only a current direct child, using CIM creation time and then a
+  // generation-bound native handle. Capture mode also checks creator lifetime.
+  if (!previous) {
+    const startedAt = new Date().toISOString();
+    const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+      `$ErrorActionPreference='Stop'; Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}" | Select-Object ExecutablePath,CommandLine | ConvertTo-Json -Compress`],
+      { encoding: 'utf8', windowsHide: true, timeout: 10_000, env: nativeObserverEnvironment() });
+    if (result.status !== 0 || result.error) throw commandFailure('Task root inventory', { ...result, startedAt, closedAt:new Date().toISOString(), stdout: result.stdout ?? '', stderr: result.stderr ?? '', error: result.error?.message });
+    const root = JSON.parse(result.stdout || 'null');
+    if (!root?.ExecutablePath || (rootMarker && !root.CommandLine?.toLowerCase().includes(rootMarker.toLowerCase()))) throw new Error('Task root identity unavailable or changed');
+    ownership.executable = root.ExecutablePath;
   }
-  if (owned.has(process.pid)) throw new Error('Refusing to terminate runner ancestors');
-  // Windows keeps the creator PID on an orphan. Even when the root has already
-  // exited, late browser/crash-handler children must still be discovered.
-  // Node's Windows kill(pid, 0) can report ESRCH for an Edge process that CIM
-  // still inventories and whose ChildProcess has not emitted exit. Keep the
-  // inventoried root: dropping it leaves the browser and profile writers alive.
-  return rows.filter(row => owned.has(row.pid)).map(row => row.pid);
+  const startedAt = new Date().toISOString();
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', resolve('scripts/trainer2/browser-tree.ps1'),
+    '-Mode', previous ? 'inventory' : 'capture', '-OwnershipBase64', Buffer.from(JSON.stringify(ownership)).toString('base64'),
+    '-DeadlineUnixMs', String(Date.now() + 9_000)], { encoding: 'utf8', windowsHide: true, timeout: 10_000, env: nativeObserverEnvironment() });
+  if (result.status !== 0 || result.error) throw commandFailure('Task tree inventory', { ...result, startedAt, closedAt:new Date().toISOString(), stdout: result.stdout ?? '', stderr: result.stderr ?? '', error: result.error?.message });
+  const last = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1)!) as BrowserTreeObservation;
+  record?.({mode:'process-capture',...last,commandStatus:result.status,commandSignal:result.signal,elapsedMs:Date.now()-Date.parse(startedAt)});
+  for (const row of last.ownership.processes) capturedTrees.set(row.pid, last.ownership);
+  return last.survivors.map(row => row.pid);
 }
-
-export async function terminateOwnedProcesses(pids: number[], record?: (result: Record<string, unknown>) => void, timeoutMs = 20_000): Promise<void> {
-  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error('Invalid termination deadline');
-  const terminationDeadline = Date.now() + timeoutMs;
-  // Validate the whole captured tree before terminating anything.
+function nativeObserverEnvironment() {
+  return { ...process.env, PSModulePath: join(process.env.SystemRoot ?? 'C:\\Windows', 'System32/WindowsPowerShell/v1.0/Modules') };
+}
+function commandFailure(label: string, command: CleanupCommandResult): Error {
+  // Process inventories contain arbitrary command lines. Retain OS diagnostics,
+  // never raw inventory stdout or inherited environment/credentials.
+  const diagnostics = { status: command.status, signal: command.signal, error: command.error,
+    startedAt: command.startedAt, closedAt: command.closedAt, elapsedMs: Date.now() - Date.parse(command.startedAt), stdoutBytes: Buffer.byteLength(command.stdout),
+    stderr: command.stderr.replace(/(postgres(?:ql)?:\/\/)[^\s]+/gi, '$1[redacted]').slice(0, 4000) };
+  return Object.assign(new Error(`${label} failed: ${JSON.stringify(diagnostics)}`), { diagnostics });
+}
+export async function terminateOwnedProcesses(pids: number[], record?: CleanupRecorder, timeoutMs = 20_000): Promise<void> {
+  if(!Number.isFinite(timeoutMs)||timeoutMs<=0)throw new Error('Invalid termination deadline');
+  const trees = new Set<BrowserOwnership>();
   for (const pid of pids) {
-    if (pid === process.pid || !Number.isSafeInteger(pid) || pid <= 0) throw new Error('Invalid task-owned process');
+    const tree = capturedTrees.get(pid);
+    if (!tree || pid === process.pid) throw new Error('Missing captured process identity; refusing numeric PID termination');
+    trees.add(tree);
   }
-  if (process.platform === 'win32' && pids.length) {
-    // Native Node SIGKILL can block on an exiting browser process on Windows.
-    // Discard inherited output handles and bound the OS termination command.
-    const killed = await runCleanupCommand('taskkill.exe', [...pids.flatMap(pid => ['/PID', String(pid)]), '/F'], Math.min(15_000, timeoutMs));
-    record?.({ pids, ...killed });
-    if (killed.error) throw new Error(`Task process termination failed: ${killed.error}`);
-    // taskkill may return nonzero for an already-exited member; verify absence.
-    // Do not use kill(pid, 0) here: on Windows it can miss a still-inventoried
-    // Edge child. Query the OS inventory independently and fail closed.
-    const absenceDeadline=Math.min(terminationDeadline,Date.now()+5_000);
-    const remaining=absenceDeadline-Date.now();
-    if(remaining<=0)throw new Error(`Task process absence deadline exceeded: ${pids.join(',')}`);
-    // One observer retains the original five-second poll. Repeated PowerShell
-    // startup can consume the last poll's remaining time before it inventories.
-    const observer=`$ErrorActionPreference='Stop'; $owned=@(${pids.join(',')}); $deadline=[DateTimeOffset]::FromUnixTimeMilliseconds(${absenceDeadline}).UtcDateTime;
-do { $survivors=@(Get-CimInstance Win32_Process | Where-Object { $owned -contains $_.ProcessId } | Select-Object ProcessId,ParentProcessId,Name,CreationDate); @{at=[DateTime]::UtcNow.ToString('o');survivors=$survivors} | ConvertTo-Json -Compress -Depth 5; if(!$survivors.Count){break}; if([DateTime]::UtcNow -lt $deadline){Start-Sleep -Milliseconds 50} } while([DateTime]::UtcNow -lt $deadline)`;
-    const inventory = await runCleanupCommand('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', observer], remaining);
-    let last: { at: string; survivors: { ProcessId: number }[] } | undefined;
-    for (const line of inventory.stdout.trim().split(/\r?\n/).filter(Boolean)) {
-      try { last = JSON.parse(line) as typeof last; }
-      catch (error) {
-        record?.({ pids, observer: inventory });
-        throw new Error(`Task process absence inventory was malformed: ${String(error)}`);
-      }
-      record?.({ pids, ...last, observerPid: inventory.pid, observerStartedAt: inventory.startedAt,
-        observerClosedAt: inventory.closedAt, observerStatus: inventory.status, observerError: inventory.error });
-    }
-    if (inventory.status !== 0 || inventory.error) {
-      record?.({ pids, observer: inventory });
-      throw new Error(`Task process absence inventory failed: ${inventory.error ?? inventory.stderr}`);
-    }
-    if (!last) throw new Error('Task process absence inventory returned no observations');
-    if (last.survivors.length) throw new Error(`Task-owned processes survived OS termination: ${last.survivors.map(row => row.ProcessId).join(',')}`);
-    return;
-  } else for (const pid of pids) {
-    if (!processAlive(pid)) continue;
-    try { process.kill(pid, 'SIGKILL'); } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
-    }
-  }
-  const live=()=>pids.filter(processAlive);
-  const deadline = Date.now() + 5_000;
-  while (live().length && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
-  const survivors = live();
-  if (survivors.length) throw new Error(`Task-owned processes survived: ${survivors.join(',')}`);
+  const deadline = Date.now() + timeoutMs;
+  for (const tree of trees) await settleBrowserTree(tree, 'terminate', record, deadline - Date.now());
 }

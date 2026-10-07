@@ -1,5 +1,5 @@
 param(
-    [Parameter(Mandatory = $true)][ValidateSet('capture', 'observe', 'terminate')][string]$Mode,
+    [Parameter(Mandatory = $true)][ValidateSet('capture', 'inventory', 'observe', 'terminate')][string]$Mode,
     [Parameter(Mandatory = $true)][string]$OwnershipBase64,
     [Parameter(Mandatory = $true)][long]$DeadlineUnixMs
 )
@@ -29,29 +29,51 @@ function Inventory {
             name=[string]$_.Name; command=[string]$_.CommandLine }
     })
 }
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class OwnedProcessNative {
+ [DllImport("kernel32.dll", SetLastError=true)] public static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
+ [DllImport("kernel32.dll", SetLastError=true)] public static extern bool GetProcessTimes(IntPtr h, out long creation, out long exit, out long kernel, out long user);
+ [DllImport("kernel32.dll", SetLastError=true)] public static extern uint WaitForSingleObject(IntPtr h, uint ms);
+ [DllImport("kernel32.dll", SetLastError=true)] public static extern bool TerminateProcess(IntPtr h, uint code);
+ [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr h);
+}
+"@
 function Pin-Handle($Row) {
     $key = Identity-Key $Row
-    if ($handles.ContainsKey($key)) {
-        if ($handles[$key].HasExited) { $nativeAbsent[$key] = $true }
+    if ($handles.ContainsKey($key) -or $nativeAbsent.ContainsKey($key)) { return }
+    $handle = [OwnedProcessNative]::OpenProcess(0x101001, $false, $Row.pid)
+    if ($handle -eq [IntPtr]::Zero) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        if ($code -eq 87) { $nativeAbsent[$key] = $true; return }
+        throw "OpenProcess failed: pid=$($Row.pid) win32=$code"
+    }
+    [long]$creation=0; [long]$exit=0; [long]$kernel=0; [long]$user=0
+    if (![OwnedProcessNative]::GetProcessTimes($handle,[ref]$creation,[ref]$exit,[ref]$kernel,[ref]$user)) {
+        $null=[OwnedProcessNative]::CloseHandle($handle); throw 'GetProcessTimes failed'
+    }
+    if ((Creation-Key ([DateTime]::FromFileTimeUtc($creation))) -ne $Row.created) {
+        $null=[OwnedProcessNative]::CloseHandle($handle)
+        $nativeAbsent[$key]=$true # Original generation is gone; replacement is never touched.
         return
     }
-    $process = $null
-    try {
-        $process = [Diagnostics.Process]::GetProcessById($Row.pid)
-        # Materialize/cache the handle before checking StartTime. A StartTime
-        # read alone may use a temporary handle; Kill must use this pinned one.
-        $null = $process.Handle
-        if ($process.HasExited) { $nativeAbsent[$key] = $true; $process.Dispose(); return }
-        if ((Creation-Key $process.StartTime) -ne $Row.created) { $process.Dispose(); return }
-        $handles[$key] = $process
-    } catch [ArgumentException] {
-        # CIM can retain an exited row while native process handles are held.
-        # GetProcessById's no-process result qualifies that captured identity's
-        # absence; a stale CIM row must not become an unkillable survivor.
-        $nativeAbsent[$key] = $true
-        if ($process) { $process.Dispose() }
-    }
-    catch [InvalidOperationException] { if ($process) { $process.Dispose() } }
+    $handles[$key]=$handle
+}
+function Native-Exited($Key) {
+    if ($nativeAbsent.ContainsKey($Key)) { return $true }
+    if (!$handles.ContainsKey($Key)) { Pin-Handle $known[$Key] }
+    if ($nativeAbsent.ContainsKey($Key)) { return $true }
+    $wait=[OwnedProcessNative]::WaitForSingleObject($handles[$Key],0)
+    if ($wait -eq 0) { return $true }
+    if ($wait -eq 258) { return $false }
+    throw "Native process wait failed: $wait"
+}
+function Native-ExitTime($Key) {
+    if (!$handles.ContainsKey($Key)) { return 0 }
+    [long]$creation=0; [long]$exit=0; [long]$kernel=0; [long]$user=0
+    if (![OwnedProcessNative]::GetProcessTimes($handles[$Key],[ref]$creation,[ref]$exit,[ref]$kernel,[ref]$user)) { throw 'Process times unavailable' }
+    return $exit
 }
 function Remember($Row, [long]$Seen) {
     if ($Row.pid -le 0 -or $Row.pid -eq $PID -or $Row.pid -eq $ownership.runnerPid -or
@@ -84,8 +106,10 @@ function Refresh-Tree {
                 $parentLive = $byPid.ContainsKey($parent.pid) -and (Same-Identity $parent $byPid[$parent.pid])
                 $until = [long]$parent.lastSeen
                 $parentKey = Identity-Key $parent
-                if ($handles.ContainsKey($parentKey) -and $handles[$parentKey].HasExited) {
-                    $until = $handles[$parentKey].ExitTime.ToUniversalTime().Ticks
+                if ($handles.ContainsKey($parentKey)) {
+                    [long]$birth=0; [long]$exit=0; [long]$kernel=0; [long]$user=0
+                    if (![OwnedProcessNative]::GetProcessTimes($handles[$parentKey],[ref]$birth,[ref]$exit,[ref]$kernel,[ref]$user)) { throw 'Parent times unavailable' }
+                    if ($exit -gt 0) { $until = [DateTime]::FromFileTimeUtc($exit).Ticks }
                 }
                 # A child of the replacement parent cannot belong to the old tree.
                 if ($byPid.ContainsKey($parent.pid) -and !$parentLive -and
@@ -99,10 +123,9 @@ function Refresh-Tree {
             }
         }
     } while ($changed)
-    return @($rows | Where-Object {
-        $key = Identity-Key $_
-        $known.ContainsKey($key) -and (Same-Identity $known[$key] $_) -and !$nativeAbsent.ContainsKey($key)
-    })
+    # Enumeration absence and ExitTime are insufficient: every captured generation
+    # must signal its kernel handle, including rows that vanished from CIM.
+    return @($known.Values | Where-Object { !(Native-Exited (Identity-Key $_)) })
 }
 
 try {
@@ -114,10 +137,13 @@ try {
             ![string]::Equals($root[0].executable, $ownership.executable, [StringComparison]::OrdinalIgnoreCase)) {
             throw 'Launched browser root identity could not be established'
         }
+        $runner = @($rows | Where-Object { $_.pid -eq $ownership.runnerPid })
+        if ($runner.Count -ne 1 -or [long]$root[0].created -lt [long]$runner[0].created) { throw 'Root predates its captured creator' }
         $previousRoot = @($known.Values | Where-Object { $_.pid -eq $ownership.rootPid })
         if ($previousRoot.Count -and !(@($previousRoot | Where-Object { Same-Identity $_ $root[0] }).Count)) {
             throw 'Launched browser root PID was reused'
         }
+        if ($ownership.profile) {
         $match = [regex]::Match($root[0].command, '--user-data-dir=(?:"([^"]+)"|([^\s]+))')
         $profile = if ($match.Groups[1].Success) { $match.Groups[1].Value } else { $match.Groups[2].Value }
         $expected = [IO.Path]::GetFullPath($ownership.profile).TrimEnd('\')
@@ -125,6 +151,7 @@ try {
         if (![string]::Equals($actual, $expected, [StringComparison]::OrdinalIgnoreCase) -and
             !$actual.StartsWith($expected + '\', [StringComparison]::OrdinalIgnoreCase)) {
             throw 'Launched browser root does not own the task profile'
+        }
         }
         Remember $root[0] ([DateTime]::UtcNow.Ticks)
     } else {
@@ -134,9 +161,10 @@ try {
         if ([DateTime]::UtcNow -ge $deadline) { throw 'Browser tree deadline exceeded' }
         $survivors = @(Refresh-Tree)
         $ownership.processes = @($known.Values | Sort-Object pid, created)
-        @{ ownership=$ownership; survivors=$survivors; terminated=@($terminated.Values); nativeAbsent=@($nativeAbsent.Keys);
+        $pending = @($survivors | Where-Object { (Native-ExitTime (Identity-Key $_)) -gt 0 })
+        @{ ownership=$ownership; survivors=$survivors; terminated=@($terminated.Values); pendingTermination=$pending; nativeAbsent=@($nativeAbsent.Keys);
             at=[DateTime]::UtcNow.ToString('o') } | ConvertTo-Json -Compress -Depth 8
-        if ($Mode -eq 'capture' -or !$survivors.Count) { break }
+        if ($Mode -eq 'capture' -or $Mode -eq 'inventory' -or !$survivors.Count) { break }
         if ($Mode -eq 'terminate') {
             # Descendants first, root last. Retained native handles protect the
             # interval between the identity check and termination from PID reuse.
@@ -144,15 +172,21 @@ try {
                 $key = Identity-Key $row
                 if (!$handles.ContainsKey($key)) { continue }
                 $process = $handles[$key]
-                if (!$process.HasExited) {
-                    $process.Kill()
+                if (!(Native-Exited $key) -and !$terminated.ContainsKey($key) -and (Native-ExitTime $key) -eq 0) {
+                    if (![OwnedProcessNative]::TerminateProcess($process, 1)) {
+                        $code=[Runtime.InteropServices.Marshal]::GetLastWin32Error()
+                        # An asynchronous termination may win this race. It still
+                        # needs a signaled kernel handle; ExitTime is never absence.
+                        if ($code -eq 5 -and (Native-ExitTime $key) -gt 0) { continue }
+                        throw "Native termination failed: $code"
+                    }
                     $terminated[$key] = $known[$key]
                 }
             }
         }
         if ([DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 50 }
     } while ([DateTime]::UtcNow -lt $deadline)
-    if ($Mode -ne 'capture' -and $survivors.Count) { throw 'Qualified browser tree survived shutdown' }
+    if ($Mode -ne 'capture' -and $Mode -ne 'inventory' -and $survivors.Count) { throw 'Qualified browser tree survived shutdown' }
 } finally {
-    foreach ($process in $handles.Values) { $process.Dispose() }
+    foreach ($handle in $handles.Values) { $null=[OwnedProcessNative]::CloseHandle($handle) }
 }

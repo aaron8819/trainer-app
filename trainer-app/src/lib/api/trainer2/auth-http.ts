@@ -7,13 +7,7 @@ import { DraftAccessError } from "./principal";
 import { enterPasscode, revokeSession, SESSION_COOKIE, sessionCookieOptions } from "./sessions";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { hostedTestEnabled } from "./access";
-
-export function privateAuthResponse(response: NextResponse) {
-  response.headers.set("Cache-Control", "private, no-store");
-  response.headers.set("Vary", "Cookie");
-  response.headers.set("Referrer-Policy", "same-origin");
-  return response;
-}
+import { privateAuthResponse } from "./auth-response";
 
 /** These POSTs never accept credentials in a URL or return them in a response body. */
 export async function authHttp(request: NextRequest, operation: "sign-in" | "setup" | "logout" | "revoke-all") {

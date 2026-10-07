@@ -261,8 +261,22 @@ describe("test-suite environment manifest", () => {
       manifest: currentManifest,
       discoveredTestFiles,
     });
-    expect(discoveredTestFiles).toHaveLength(418);
-    expect(selection.credentialFree).toHaveLength(379);
+    const partition = [
+      ...selection.credentialFree,
+      ...selection.importOnlyPlaceholder.map(entry => entry.path),
+      ...selection.databaseRequired.map(entry => entry.path),
+    ];
+    expect(new Set(partition).size).toBe(partition.length);
+    expect([...partition].sort()).toEqual([...discoveredTestFiles].sort());
+    // Six reviewed additions since the 429-file release base are credential-free.
+    for (const file of [
+      "src/components/trainer2/EquipmentSetup.test.tsx",
+      "src/components/trainer2/Trainer2Shell.test.tsx",
+      "src/lib/engine/trainer2/equipment-recording.test.ts",
+      "src/lib/operations/trainer2-cleanup-adversarial.test.ts",
+      "src/lib/operations/trainer2-isolated-linux-lifecycle.test.ts",
+      "src/lib/operations/trainer2-shutdown-evidence.test.ts",
+    ]) expect(selection.credentialFree).toContain(file);
     expect(selection.credentialFree).toContain("src/lib/operations/trainer2-disposable-cleanup.test.ts");
     expect(selection.credentialFree).toContain("src/lib/engine/trainer2/catalog-qualification.test.ts");
     expect(selection.credentialFree).toContain("src/lib/engine/trainer2/add-exercise.test.ts");

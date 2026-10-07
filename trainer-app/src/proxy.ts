@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { privateAuthResponse } from "@/lib/api/trainer2/auth-http";
+import { privateAuthResponse } from "@/lib/api/trainer2/auth-response";
 import { currentDeploymentDecision } from "@/lib/operations/deployment-boundary";
 import {
   UI_AUDIT_FIXTURE_HEADER,

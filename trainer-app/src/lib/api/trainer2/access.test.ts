@@ -7,6 +7,8 @@ import { executionHttp } from "./execution-http";
 
 describe("direct Trainer2 endpoint access", () => {
   beforeEach(() => {
+    for (const key of ["CI", "VERCEL", "VERCEL_ENV", "NETLIFY", "RENDER", "WEBSITE_SITE_NAME"])
+      vi.stubEnv(key, "");
     vi.stubEnv("NODE_ENV", "development");
     vi.stubEnv("TRAINER2_LOCAL_DRAFTS", "enabled");
     vi.stubEnv("TRAINER2_APP_ORIGIN", "http://localhost");
@@ -16,6 +18,11 @@ describe("direct Trainer2 endpoint access", () => {
   afterEach(() => vi.unstubAllEnvs());
   const request = (method: string, origin = "http://localhost") => new Request("http://localhost/api/trainer2/drafts/x", {
     method, headers: { host: "localhost", ...(method === "POST" ? { origin } : {}) },
+  });
+  it("denies CI admission before opening any pool", async () => {
+    vi.stubEnv("CI", "true");
+    expect((await draftHttp(request("GET"), "ReadDraft", "x")).status).toBe(403);
+    expect(fixture.database).not.toHaveBeenCalled();
   });
   it("denies direct reads without a cookie before opening a training pool", async () => {
     const response = await draftHttp(request("GET"), "ReadDraft", "x");

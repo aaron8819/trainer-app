@@ -1602,12 +1602,30 @@ describe("command coverage honesty", () => {
           resolve(entry.entrypoint.replace(/^trainer-app\//, "")),
           "utf8"
         );
-        expect(
-          source,
-          `${packageScript} must use the canonical exact-confirmation parser`
-        ).toMatch(
-          /parseExactDisposableConfirmationArgs\s*\(\s*process\.argv\.slice\(2\)/
-        );
+
+        if (entry.entrypoint === "trainer-app/scripts/test-trainer2-current-week.ts") {
+          const normalization = source.match(/const confirmationArgs=process\.argv\.slice\(2\)\.filter\(a=>([^;]+)\);/);
+          expect(normalization).not.toBeNull();
+          expect(normalization![1]).toBe(
+            "a!=='--diagnose-admission'&&a!=='--diagnose-advancement'&&a!=='--diagnose-recovery'"
+          );
+          const diagnostics = [...normalization![1].matchAll(/a!=='([^']+)'/g)].map(m => m[1]);
+          expect(diagnostics).toEqual([
+            "--diagnose-admission", "--diagnose-advancement", "--diagnose-recovery",
+          ]);
+          expect(source).toMatch(/parseExactDisposableConfirmationArgs\(confirmationArgs\)/);
+          const normalize = (args: string[]) => args.filter(arg => !diagnostics.includes(arg));
+          expect(parseExactDisposableConfirmationArgs(normalize([
+            "--confirm-disposable", ...diagnostics,
+          ])).valid).toBe(true);
+          for (const args of [["--confirm-disposable", "--unknown"],
+            ["--confirm-disposable", "--confirm-disposable", ...diagnostics]])
+            expect(parseExactDisposableConfirmationArgs(normalize(args)).valid).toBe(false);
+        } else {
+          expect(source).toMatch(
+            /parseExactDisposableConfirmationArgs\s*\(\s*process\.argv\.slice\(2\)/
+          );
+        }
         expect(
           source,
           `${packageScript} must not use a permissive confirmation check`

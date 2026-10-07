@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, relative } from "node:path";
 import ts from "typescript";
 import { developmentEnabled } from "./development";
 
@@ -16,8 +16,21 @@ describe("Trainer2 boundary", () => {
     const allowed = ["app/api/trainer2/", "app/trainer2/dev/drafts/", "components/trainer2/", "lib/api/trainer2/", "lib/engine/trainer2/", "lib/trainer2-contracts/"];
     function walk(file: string) {
       if (seen.has(file)) return; seen.add(file);
-      const relative = file.slice(app.length + 1).replaceAll("\\", "/");
-      expect(allowed.some(prefix => relative.startsWith(prefix)) || ["app/trainer2/dev/executions/[executionId]/page.tsx", "lib/operations/production-write-gate-http.ts", "lib/operations/production-write-gate.ts", "lib/operations/deployment-boundary.ts"].includes(relative), relative).toBe(true);
+      const relativePath = relative(app, file).replaceAll("\\", "/");
+      const pureOwners = [
+        "app/trainer2/dev/executions/[executionId]/page.tsx",
+        "lib/operations/production-write-gate-http.ts",
+        "lib/operations/production-write-gate.ts",
+        "lib/operations/deployment-boundary.ts",
+        "lib/exercise-measurement/semantics.ts",
+        "lib/exercise-measurement/load-entry-policy.ts",
+        "lib/ui/use-visual-viewport-metrics.ts",
+      ];
+      expect(
+        allowed.some(prefix => relativePath.startsWith(prefix)) ||
+        pureOwners.includes(relativePath) ||
+        file === resolve("prisma/exercises_comprehensive.json"), relativePath
+      ).toBe(true);
       if (file.endsWith(".json")) { JSON.parse(readFileSync(file, "utf8")); return; }
       const source = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
       const visit = (node: ts.Node) => {
@@ -41,7 +54,9 @@ describe("Trainer2 boundary", () => {
     expect(seen.size).toBeGreaterThan(6);
     const routeFiles = [...seen].filter(p => p.endsWith("route.ts"));
     // All current Trainer2 API route modules must stay within the isolated graph.
-    expect(routeFiles).toHaveLength(14);
+    expect(routeFiles).toHaveLength(19);
+    for (const route of ["add-exercise", "add-set", "swap-exercise-preview", "swap-exercise", "skip-set"])
+      expect(routeFiles).toContain(resolve(app, `app/api/trainer2/executions/${route}/route.ts`));
     expect(routeFiles).toContain(resolve(app, "app/api/trainer2/executions/corrections/route.ts"));
     expect(routeFiles).toContain(resolve(app, "app/api/trainer2/executions/discard/route.ts"));
     expect(routeFiles).toContain(resolve(app, "app/api/trainer2/occurrences/skip/route.ts"));

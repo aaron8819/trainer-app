@@ -128,7 +128,7 @@ describe("read-only legacy source references", () => {
       expect(() => validateLegacySourceTarget(url)).toThrow();
   });
   it("traverses adapter/CLI imports and permits only source contracts, hashing, pg and read-only source owners", () => {
-    const allowed = ["scripts/capture-trainer2-legacy-source.ts", "src/lib/api/trainer2/legacy-source.ts", "src/lib/api/trainer2/legacy-source-queries.ts", "src/lib/api/trainer2/integrity.ts", "src/lib/legacy-history/source.ts", "src/lib/legacy-history/relations.ts", "src/lib/trainer2-contracts/legacy-source.ts", "src/lib/operations/test-environment-preflight.ts"];
+    const allowed = ["scripts/capture-trainer2-legacy-source.ts", "src/lib/api/trainer2/legacy-source.ts", "src/lib/api/trainer2/legacy-source-queries.ts", "src/lib/api/trainer2/integrity.ts", "src/lib/trainer2-contracts/canonical-json.ts", "src/lib/legacy-history/source.ts", "src/lib/legacy-history/relations.ts", "src/lib/trainer2-contracts/legacy-source.ts", "src/lib/operations/test-environment-preflight.ts"];
     const seen = new Set<string>();
     function walk(path: string) {
       if (seen.has(path)) return; seen.add(path);
@@ -148,6 +148,6 @@ describe("read-only legacy source references", () => {
       visit(source);
     }
     walk(resolve("scripts/capture-trainer2-legacy-source.ts"));
-    expect(seen.size).toBe(8);
+    expect(seen.size).toBe(9);
   });
 });

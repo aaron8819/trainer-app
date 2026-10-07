@@ -12,6 +12,38 @@ $handles = @{}
 $terminated = @{}
 $terminationErrors = @{}
 $nativeAbsent = @{}
+$identityPhase = 'capture'
+
+# Diagnostics contain only ownership coordinates and path validity, never inventory
+# command lines, full executable paths, profile paths or environment values.
+function Diagnostic-Number($Value) {
+    [long]$number = 0
+    if ([long]::TryParse([string]$Value, [ref]$number)) { return $number }
+    return $null
+}
+function Diagnostic-Identity($Row) {
+    if ($null -eq $Row) { return $null }
+    $creation = [string]$Row.created
+    return @{
+        pid=(Diagnostic-Number $Row.pid); parentPid=(Diagnostic-Number $Row.parentPid)
+        created=$(if ($creation -match '^\d{1,20}$') { $creation } else { $null })
+        creationIdentityPresent=[bool]$Row.created
+        executableRooted=[IO.Path]::IsPathRooted([string]$Row.executable)
+    }
+}
+function New-IdentityRejectionDiagnostic($Row, [string]$Predicate, $Parent) {
+    return @{
+        schemaVersion=1; event='ownership-identity-rejected'; operation=$Mode
+        phase=$identityPhase; predicate=$Predicate
+        candidate=(Diagnostic-Identity $Row); parent=(Diagnostic-Identity $Parent)
+        observerPid=$PID; runnerPid=(Diagnostic-Number $ownership.runnerPid)
+        rootPid=(Diagnostic-Number $ownership.rootPid)
+    }
+}
+function Write-IdentityRejection($Row, [string]$Predicate, $Parent) {
+    $diagnostic = New-IdentityRejectionDiagnostic $Row $Predicate $Parent
+    [Console]::Error.WriteLine(($diagnostic | ConvertTo-Json -Compress -Depth 5))
+}
 
 # CIM reports microseconds; compare the native handle's creation time at that
 # precision. Never kill by a PID fetched earlier from a different process.
@@ -80,9 +112,18 @@ function Request-Termination($Handle, [int]$TargetPid) {
     if ([OwnedProcessNative]::TerminateProcess($Handle, 1)) { return 0 }
     return [Runtime.InteropServices.Marshal]::GetLastWin32Error()
 }
-function Remember($Row, [long]$Seen) {
-    if ($Row.pid -le 0 -or $Row.pid -eq $PID -or $Row.pid -eq $ownership.runnerPid -or
-        !$Row.created -or ![IO.Path]::IsPathRooted($Row.executable)) { throw 'Invalid browser process identity' }
+function Remember($Row, [long]$Seen, $Parent = $null) {
+    # Retain the guard's original order and fail-closed predicates.
+    $predicate = if ($Row.pid -le 0) { 'invalid-pid' }
+        elseif ($Row.pid -eq $PID) { 'observer-pid' }
+        elseif ($Row.pid -eq $ownership.runnerPid) { 'runner-pid' }
+        elseif (!$Row.created) { 'missing-created' }
+        elseif (![IO.Path]::IsPathRooted($Row.executable)) { 'non-rooted-executable' }
+        else { $null }
+    if ($predicate) {
+        Write-IdentityRejection $Row $predicate $Parent
+        throw 'Invalid browser process identity'
+    }
     $key = Identity-Key $Row
     if (!$known.ContainsKey($key)) {
         $known[$key] = [pscustomobject]@{ pid=$Row.pid; parentPid=$Row.parentPid;
@@ -91,6 +132,8 @@ function Remember($Row, [long]$Seen) {
     Pin-Handle $Row
 }
 function Refresh-Tree {
+    $script:identityPhase = if ($Mode -eq 'terminate') { 'termination-observation' }
+        else { 'refresh' }
     $rows = Inventory
     $seen = [DateTime]::UtcNow.Ticks
     $byPid = @{}
@@ -98,7 +141,10 @@ function Refresh-Tree {
     # A seed remains evidence for its original identity, never for a reused PID.
     foreach ($entry in @($known.Values)) {
         if ($byPid.ContainsKey($entry.pid) -and (Same-Identity $entry $byPid[$entry.pid])) {
-            Remember $byPid[$entry.pid] $seen
+            $parentRow = if ($byPid.ContainsKey($entry.parentPid)) {
+                $byPid[$entry.parentPid]
+            } else { $null }
+            Remember $byPid[$entry.pid] $seen $parentRow
         }
     }
     do {
@@ -122,7 +168,7 @@ function Refresh-Tree {
                 if (!$parentLive -and [long]$row.created -gt $until) {
                     throw "Ambiguous browser descendant ownership: $($row.pid)"
                 }
-                Remember $row $seen
+                Remember $row $seen $parent
                 $changed = $true
                 break
             }
@@ -158,7 +204,7 @@ try {
             throw 'Launched browser root does not own the task profile'
         }
         }
-        Remember $root[0] ([DateTime]::UtcNow.Ticks)
+        Remember $root[0] ([DateTime]::UtcNow.Ticks) $runner[0]
     } else {
         if (!@($ownership.processes).Count) { throw 'Missing qualified browser tree' }
     }

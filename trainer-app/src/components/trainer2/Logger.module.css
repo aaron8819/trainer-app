@@ -13,7 +13,7 @@
 .screen h2 { font-size: 26px; letter-spacing: -.7px; }
 .screen h3 { font-size: 23px; line-height: 1.2; letter-spacing: -.4px; }
 .screen button, .screen input, .screen select { font-family: inherit; }
-.screen button { min-height: 46px; border-color: var(--line); font-size: 15px; }
+.screen button { min-width: 44px; min-height: 46px; border-color: var(--line); font-size: 15px; }
 .screen button:disabled { opacity: .45; }
 .screen :is(button, a, input, select, summary):focus-visible { outline: 3px solid #658b3d; outline-offset: 3px; }
 .screen input, .screen select { font-size: 16px; }
@@ -44,6 +44,7 @@
 .actions > :first-child { order: 2; }
 .feedback { min-height: 26px; margin: 4px 0; font-size: 14px; color: #365a39; }
 .queue { margin-top: 24px; }
+.queue summary { min-height: 44px; }
 .queue h3 { font-size: 21px; }
 .queueRow { border-top: 1px solid var(--line); padding: 18px 0; }
 .queueRow > button { font-size: 17px; }

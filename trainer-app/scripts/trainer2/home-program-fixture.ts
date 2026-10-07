@@ -27,11 +27,15 @@ import { captureBrowserOwnership, shutdownOwnedBrowser, cleanupSteps, runCleanup
 import { observeWebReadiness } from './web-readiness';
 import { randomBytes } from 'node:crypto';
 import { browserShutdownEvidence } from './browser-shutdown-evidence';
+import { isolatedLinuxJob, ownLinuxGroup, observeChild, bounded } from './isolated-linux-lifecycle';
 
 const expect=baseExpect.configure({timeout:30_000});
 
 // Separate disposable fixture per invocation. Uses released owners, never configured targets.
 export async function runHomeProgramFixture(preview: boolean, surfacesOnly = false, loggerJourney?: (context: { page: import('@playwright/test').Page; base: string; home: string; artifact: string; accountId: string; planId: string; executionId: string; pass: (value: string) => void; db: PrismaClient; reader: PrismaClient; principal: { accountId: string; sessionId: string } }) => Promise<void>, emptyAccount = false, equipmentDraft?: DraftDocument) {
+  const linuxJob = isolatedLinuxJob(process.platform, process.env);
+  let linuxServer: ReturnType<typeof ownLinuxGroup> | undefined;
+  let linuxBrowser: ReturnType<typeof observeChild> | undefined;
   const suffix=randomUUID().slice(0,8), container=`trainer2-home-program-${suffix}`, database=`trainer2_disposable_${suffix}`;
   const artifact=resolve(`artifacts/trainer2/${loggerJourney?'logger':'home-program'}-${preview?'preview':surfacesOnly?'surfaces':'verify'}-${suffix}`); mkdirSync(artifact,{recursive:true});
   const password=randomUUID(), accountId=randomUUID(), sessionId=randomUUID(), secret=randomBytes(32).toString('base64url'), principal={accountId,sessionId};
@@ -44,7 +48,7 @@ export async function runHomeProgramFixture(preview: boolean, surfacesOnly = fal
   let browserServer: Awaited<ReturnType<typeof chromium.launchServer>> | undefined, browserOwnership: BrowserOwnership | undefined;
   const recordBrowserTree = (row: Record<string, unknown>) => writeFileSync(resolve(artifact, 'browser-tree.jsonl'), JSON.stringify(row) + '\n', { flag: 'a' });
   writeFileSync(resolve(artifact,'source.json'),JSON.stringify(source,null,2));
-  if(equipmentDraft)process.once('exit',exitCode=>writeFileSync(resolve(artifact,'fixture-worker-exit.json'),JSON.stringify({pid:process.pid,exitCode})));
+  if(equipmentDraft || linuxJob)process.once('exit',exitCode=>writeFileSync(resolve(artifact,'fixture-worker-exit.json'),JSON.stringify({pid:process.pid,exitCode})));
   let serverLog='', base='', home='';let releaseRead=()=>{};let failure:unknown;
   const nativeBin=process.platform==='win32'&&existsSync('C:/Program Files/PostgreSQL/17/bin/pg_ctl.exe')?'C:/Program Files/PostgreSQL/17/bin':null;
   const nativeData=resolve(artifact,'postgres-data');let nativeStarted=false;
@@ -109,9 +113,15 @@ export async function runHomeProgramFixture(preview: boolean, surfacesOnly = fal
     const webPort=await new Promise<number>((res,rej)=>{const probe=createServer();probe.once('error',rej);probe.listen(0,'127.0.0.1',()=>{const a=probe.address();assert(a&&typeof a!=='string');probe.close(e=>e?rej(e):res(a.port));});});
     base=`http://127.0.0.1:${webPort}`;home=emptyAccount ? `${base}/trainer2` : `${base}/trainer2/dev/drafts?planId=${planId}`;
     const readinessKey=randomBytes(32).toString('hex');
-    server=spawn(process.execPath,[resolve('node_modules/next/dist/bin/next'),'dev','--webpack','--hostname','127.0.0.1','--port',String(webPort)],{windowsHide:true,stdio:'pipe',env:{...authWebPlatformEnvironment(process.env),NODE_ENV:'development',TRAINER2_LOCAL_DRAFTS:'enabled',TRAINER2_OWNER_USER_ID:accountId,TRAINER2_APP_ORIGIN:base,TRAINER2_IDENTITY_CONNECTION_STRING:url('trainer2_identity_runtime'),TRAINER2_READ_CONNECTION_STRING:url('trainer2_draft_reader'),TRAINER2_WRITE_CONNECTION_STRING:url('trainer2_draft_runtime'),TRAINER2_READINESS_KEY:readinessKey,NODE_OPTIONS:`--require="${resolve('scripts/trainer2/web-readiness-preload.cjs').replaceAll('\\','/')}"`}});
-    serverCompletion = waitForWorker(server, 20 * 60_000);
-    serverPids = ownedProcessTree(server.pid!,undefined,recordProcessTree);
+    server=spawn(process.execPath,[resolve('node_modules/next/dist/bin/next'),'dev','--webpack','--hostname','127.0.0.1','--port',String(webPort)],{detached:linuxJob,windowsHide:true,stdio:'pipe',env:{...authWebPlatformEnvironment(process.env),NODE_ENV:'development',TRAINER2_LOCAL_DRAFTS:'enabled',TRAINER2_OWNER_USER_ID:accountId,TRAINER2_APP_ORIGIN:base,TRAINER2_IDENTITY_CONNECTION_STRING:url('trainer2_identity_runtime'),TRAINER2_READ_CONNECTION_STRING:url('trainer2_draft_reader'),TRAINER2_WRITE_CONNECTION_STRING:url('trainer2_draft_runtime'),TRAINER2_READINESS_KEY:readinessKey,NODE_OPTIONS:`--require="${resolve('scripts/trainer2/web-readiness-preload.cjs').replaceAll('\\','/')}"`}});
+    if (linuxJob) {
+      linuxServer = ownLinuxGroup(server);
+      recordProcessTree({event:'isolated-linux-spawn',pid:server.pid,group:server.pid,
+        runnerPid:process.pid,run:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT});
+    } else {
+      serverCompletion = waitForWorker(server, 20 * 60_000);
+      serverPids = ownedProcessTree(server.pid!,undefined,recordProcessTree);
+    }
     writeFileSync(resolve(artifact, 'resources.json'), JSON.stringify({ serverPid: server.pid, base, nativeData, nativePort: port }, null, 2));
     server.stdout?.on('data',d=>serverLog+=d);server.stderr?.on('data',d=>serverLog+=d);
     await observeWebReadiness(base,server,row=>writeFileSync(resolve(artifact,'readiness.jsonl'),JSON.stringify(row)+'\n',{flag:'a'}),{key:readinessKey});
@@ -135,6 +145,10 @@ export async function runHomeProgramFixture(preview: boolean, surfacesOnly = fal
       const profile = child.spawnargs.find(arg => arg.startsWith('--user-data-dir='))?.slice('--user-data-dir='.length);
       assert(profile, 'Task browser profile is missing');
       browserOwnership = await captureBrowserOwnership(child, profile, recordBrowserTree);
+      browser = await chromium.connect(browserServer.wsEndpoint());
+    } else if (linuxJob) {
+      browserServer = await chromium.launchServer({headless:true,env:authWebPlatformEnvironment(process.env)});
+      linuxBrowser = observeChild(browserServer.process());
       browser = await chromium.connect(browserServer.wsEndpoint());
     } else browser=await chromium.launch({headless:true,env:authWebPlatformEnvironment(process.env)});
     const context=await browser.newContext({viewport:{width:1280,height:900},reducedMotion:'reduce'});
@@ -238,10 +252,11 @@ export async function runHomeProgramFixture(preview: boolean, surfacesOnly = fal
       {name:'browser connection', run:()=>browser?.close()},
       {name:'browser',timeoutMs:35_000,run:async()=>{
         if (browserServer && browserOwnership) {browserShutdown=await shutdownOwnedBrowser(browserServer, browserOwnership, recordBrowserTree, { timeoutMs: 30_000 });recordBrowserTree({event:'browser-shutdown',...browserShutdown});}
+        else if (linuxJob && browserServer) await bounded(browserServer.close(), 10_000);
         else await browser?.close();
       }},
-      {name:'browser worker completion',timeoutMs:5_000,run:async()=>{if(browserCompletion){const result=await browserCompletion;writeFileSync(resolve(artifact,'browser-worker-exit.json'),JSON.stringify({...result,...browserShutdownEvidence(browserShutdown)},null,2));assert(!result.timedOut&&!result.error&&(result.exitCode===0||(browserShutdown?.forceFallback&&result.exitCode===1)),'Browser worker did not exit successfully');}}},
-      {name:'Next process tree',timeoutMs:30_000,run:async()=>{if(!serverPids.length&&server?.pid&&server.exitCode===null)serverPids=ownedProcessTree(server.pid,resolve('node_modules/next/dist/bin/next'));if(serverPids.length)await terminateOwnedProcesses(serverPids,recordProcessTree);}},
+      {name:'browser worker completion',timeoutMs:5_000,run:async()=>{if(linuxBrowser){const result=await bounded(linuxBrowser,4_000);writeFileSync(resolve(artifact,'browser-worker-exit.json'),JSON.stringify(result,null,2));assert.equal(result.exitCode,0);assert(!result.error);}if(browserCompletion){const result=await browserCompletion;writeFileSync(resolve(artifact,'browser-worker-exit.json'),JSON.stringify({...result,...browserShutdownEvidence(browserShutdown)},null,2));assert(!result.timedOut&&!result.error&&(result.exitCode===0||(browserShutdown?.forceFallback&&result.exitCode===1)),'Browser worker did not exit successfully');}}},
+      {name:'Next process tree',timeoutMs:30_000,run:async()=>{if(linuxServer){const result=await linuxServer.stop();writeFileSync(resolve(artifact,'server-worker-exit.json'),JSON.stringify(result,null,2));return;}if(!serverPids.length&&server?.pid&&server.exitCode===null)serverPids=ownedProcessTree(server.pid,resolve('node_modules/next/dist/bin/next'));if(serverPids.length)await terminateOwnedProcesses(serverPids,recordProcessTree);}},
       {name:'Next pipes',run:()=>{for(const stream of server?.stdio??[])stream?.destroy();}},
       {name:'Next worker completion',timeoutMs:5_000,run:async()=>{if(serverCompletion){const result=await serverCompletion;writeFileSync(resolve(artifact,'server-worker-exit.json'),JSON.stringify(result,null,2));assert(!result.timedOut&&!result.error&&result.exitCode!==null,'Next worker exit unobserved');}}},
       {name:'runtime client',run:()=>db?.$disconnect()}, {name:'read client',run:()=>reader?.$disconnect()}, {name:'admin pool',run:()=>admin?.end()},

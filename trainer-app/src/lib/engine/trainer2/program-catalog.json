@@ -228,5 +228,103 @@
     "repBasis": "PER_SIDE",
     "variation": "Reps per leg. Record total plates added across both sides; exclude Smith bar resistance.",
     "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD"
+  },
+  {
+    "catalogKey": "hack-squat-plates-added",
+    "name": "Hack Squat (Plates Added)",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "squat"
+    ],
+    "primaryMuscles": [
+      "Quads"
+    ],
+    "secondaryMuscles": [
+      "Glutes"
+    ],
+    "repRangeRecommendation": {
+      "min": 6,
+      "max": 12
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "MACHINE_ADDED_PLATES_TOTAL",
+    "repBasis": "TOTAL",
+    "variation": "Total plates added across both sides; exclude machine starting resistance. Total reps. Zero means no added plates.",
+    "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD"
+  },
+  {
+    "catalogKey": "seated-calf-raise-plates-added",
+    "name": "Seated Calf Raise (Plates Added)",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "isolation"
+    ],
+    "primaryMuscles": [
+      "Calves"
+    ],
+    "secondaryMuscles": [],
+    "repRangeRecommendation": {
+      "min": 10,
+      "max": 20
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "MACHINE_ADDED_PLATES_TOTAL",
+    "repBasis": "TOTAL",
+    "variation": "Total plates added; exclude machine starting resistance. Total reps. Zero means no added plates.",
+    "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD"
+  },
+  {
+    "catalogKey": "smith-machine-standing-calf-raise-plates-added",
+    "name": "Smith-Machine Standing Calf Raise (Plates Added)",
+    "equipment": [
+      "Smith_Machine"
+    ],
+    "movementPatterns": [
+      "isolation"
+    ],
+    "primaryMuscles": [
+      "Calves"
+    ],
+    "secondaryMuscles": [],
+    "repRangeRecommendation": {
+      "min": 10,
+      "max": 20
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "SMITH_PLATES_TOTAL",
+    "repBasis": "TOTAL",
+    "variation": "Total plates added across both sides; exclude Smith bar resistance. Total reps. Zero means no added plates.",
+    "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD"
+  },
+  {
+    "catalogKey": "iso-lateral-low-row-plates-per-arm",
+    "name": "Iso-Lateral Low Row (Plates per Arm)",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Lats",
+      "Upper Back"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Rear Delts"
+    ],
+    "repRangeRecommendation": {
+      "min": 6,
+      "max": 12
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "MACHINE_PLATES_PER_ARM",
+    "repBasis": "TOTAL",
+    "variation": "Both arms together with equal loading. Record added plates per arm, excluding starting resistance: 45 lb each arm records as 45, not 90. Total bilateral reps.",
+    "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD"
   }
 ]

@@ -1,5 +1,6 @@
 import type { DraftDocument } from '../../trainer2-contracts/draft';
 import type { PerformedResult } from '../../trainer2-contracts/set-results';
+import { canonicalJson } from '../../trainer2-contracts/canonical-json';
 type Position = DraftDocument['occurrences'][number]['positions'][number];
 // New catalog definitions carry their reviewed recording policy. Legacy snapshots
 // and authored descriptions retain the released free-evidence behavior.
@@ -15,6 +16,7 @@ export function sameLoggingExercise(a: Position['exercise'], b: Position['exerci
     a.catalogId === b.catalogId && a.catalogVersion === b.catalogVersion && a.variation === b.variation &&
     a.loadKind === b.loadKind && a.convention === b.convention && a.repBasis === b.repBasis &&
     a.catalogFacts?.externalZeroMeaning === b.catalogFacts?.externalZeroMeaning &&
+    canonicalJson(a.equipmentSetup ?? null) === canonicalJson(b.equipmentSetup ?? null) &&
     JSON.stringify([...a.equipment].sort()) === JSON.stringify([...b.equipment].sort());
 }
 export function compatibleLoggingLoad(m: PerformedResult['measurement'], target: Position['targets'][number], exercise: Position['exercise']) {

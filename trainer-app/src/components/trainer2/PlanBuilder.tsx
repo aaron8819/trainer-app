@@ -1,8 +1,9 @@
 "use client";
+import { EquipmentResistance, EquipmentSetupEditor } from './EquipmentSetup';
 
 import { useEffect, useRef, useState } from 'react';
 import type { DraftDocument } from '@/lib/trainer2-contracts/draft';
-import { changeSetCount, SetCountConflict, removeBuilderRow, expandWorkoutDefaults, markOverride, newRow, resetField, restoreWeek, sharedSwapConflicts, type OverrideField, type Row } from '@/lib/engine/trainer2/plan-builder';
+import { setEquipmentSetup, changeSetCount, SetCountConflict, removeBuilderRow, expandWorkoutDefaults, markOverride, newRow, resetField, restoreWeek, sharedSwapConflicts, type OverrideField, type Row } from '@/lib/engine/trainer2/plan-builder';
 import { equipmentOptions, swapPrescription } from '@/lib/engine/trainer2/catalog';
 import { DraftEditor, control, TargetFields } from './DraftEditor';
 import { prescriptionSummary } from './prescription-summary';
@@ -263,7 +264,7 @@ export function PlanBuilder({
     {notice && <p role="status" className="text-sm text-teal-800">{notice}</p>}
     <div>{rows.map((r, i) => <section key={r.key} aria-label={`Exercise ${i + 1}`} className={styles.card}>
       <p className={styles.muted}>{String(i + 1).padStart(2, '0')} · {occurrence ? (r.position?.sourceKey ? (occurrence.overrides?.fields[r.key]?.length ? 'Week-only fields: ' + occurrence.overrides.fields[r.key].join(', ') : 'Inherited workout prescription') : 'Independent week-only exercise') : 'Workout prescription'} · {r.role ?? 'Exercise'}</p>
-      <h3>{r.exercise.name || 'Choose exercise'}</h3>
+      <h3>{r.exercise.name || 'Choose exercise'}</h3><EquipmentResistance exercise={r.exercise} />
       <p>{r.position ? prescriptionSummary(r.position.targets) : r.prescription ? `${r.sets} × ${r.prescription.reps.min}–${r.prescription.reps.max} reps · ${r.prescription.rir === null ? 'weekly RIR' : 'RIR ' + r.prescription.rir}` : 'No prescription'}</p>
       <p className={styles.muted}>{r.prescription ? loadLabel(r.prescription.measurement) : 'Load unspecified'}{r.prescription?.reps.basis === 'perSide' ? ' · reps per side' : ''}</p>
       {r.position && r.position.targets.some(t => JSON.stringify({ ...t, id: '' }) !== JSON.stringify({ ...r.position!.targets[0], id: '' })) && <p className={styles.muted}>Individual sets differ. The load above is Set 1; inspect Individual sets below for each prescription.</p>}
@@ -274,7 +275,8 @@ export function PlanBuilder({
         <button type="button" aria-label={`Move ${r.exercise.name} up`} disabled={i === 0} onClick={() => move(r.key, -1)}>↑</button>
         <button type="button" aria-label={`Move ${r.exercise.name} down`} disabled={i === rows.length - 1} onClick={() => move(r.key, 1)}>↓</button>
       </div>
-      <details><summary className="cursor-pointer">Role & inheritance details</summary><label className="block">Role <select className={control} value={r.role ?? 'Accessory'} onChange={e => update(d => {
+      <EquipmentSetupEditor key={JSON.stringify(r.exercise)} exercise={r.exercise} apply={setup => onChange(setEquipmentSetup(doc, { key: r.key, workoutKey: workout.key, occurrenceId: occurrence?.id }, setup))} />
+        <details><summary className="cursor-pointer">Role & inheritance details</summary><label className="block">Role <select className={control} value={r.role ?? 'Accessory'} onChange={e => update(d => {
         if (occurrence) { const o = d.occurrences.find(o => o.id === occurrence.id)!; const p = o.positions.find(p => p.id === r.key)!; markOverride(o, p.id, ['role']); p.role = e.target.value as Row['role']; }
         else d.builder!.workouts[workoutIndex].rows.find(row => row.key === r.key)!.role = e.target.value as Row['role'];
       })}>{roles.map(role => <option key={role}>{role}</option>)}</select></label>

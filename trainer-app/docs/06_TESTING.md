@@ -897,3 +897,5 @@ Exercise-swap policy coverage lives in `src/lib/engine/trainer2/exercise-swap.te
 
 
 Trainer2 execution-local Add exercise ownership, identity, command, UI and migration/recovery requirements are documented in [ADD_EXERCISE.md](architecture/trainer2/ADD_EXERCISE.md).
+
+Trainer2 equipment journey: run repository-local `node node_modules/tsx/dist/cli.mjs scripts/test-trainer2-equipment-recording.ts --confirm-disposable` from `trainer-app`. It creates only an owned local fixture, requires no inherited database target, and verifies Builder to Logger to history/prefill plus cleanup. See [equipment support](architecture/trainer2/PROGRAM_SUPPORT.md#equipment-recording-extension).

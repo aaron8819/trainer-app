@@ -1,3 +1,4 @@
+import type { DraftDocument } from '../../src/lib/trainer2-contracts/draft';
 import assert from 'node:assert/strict';
 import { randomUUID, createHash } from 'node:crypto';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
@@ -22,20 +23,27 @@ import { expandWorkoutDefaults } from '../../src/lib/engine/trainer2/plan-builde
 import { makeVerifier } from '../../src/lib/api/trainer2/sessions';
 import { authWebPlatformEnvironment } from './auth-web-environment';
 import { verificationSource } from './verification-source';
-import { cleanupSteps, runCleanupCommand, ownedProcessTree, terminateOwnedProcesses } from './disposable-cleanup';
+import { captureBrowserOwnership, shutdownOwnedBrowser, cleanupSteps, runCleanupCommand, ownedProcessTree, terminateOwnedProcesses, waitForWorker, type BrowserOwnership } from './disposable-cleanup';
 import { observeWebReadiness } from './web-readiness';
 import { randomBytes } from 'node:crypto';
 
 const expect=baseExpect.configure({timeout:30_000});
 
 // Separate disposable fixture per invocation. Uses released owners, never configured targets.
-export async function runHomeProgramFixture(preview: boolean, surfacesOnly = false, loggerJourney?: (context: { page: import('@playwright/test').Page; base: string; home: string; artifact: string; accountId: string; planId: string; executionId: string; pass: (value: string) => void; db: PrismaClient; reader: PrismaClient; principal: { accountId: string; sessionId: string } }) => Promise<void>, emptyAccount = false) {
+export async function runHomeProgramFixture(preview: boolean, surfacesOnly = false, loggerJourney?: (context: { page: import('@playwright/test').Page; base: string; home: string; artifact: string; accountId: string; planId: string; executionId: string; pass: (value: string) => void; db: PrismaClient; reader: PrismaClient; principal: { accountId: string; sessionId: string } }) => Promise<void>, emptyAccount = false, equipmentDraft?: DraftDocument) {
   const suffix=randomUUID().slice(0,8), container=`trainer2-home-program-${suffix}`, database=`trainer2_disposable_${suffix}`;
   const artifact=resolve(`artifacts/trainer2/${loggerJourney?'logger':'home-program'}-${preview?'preview':surfacesOnly?'surfaces':'verify'}-${suffix}`); mkdirSync(artifact,{recursive:true});
   const password=randomUUID(), accountId=randomUUID(), sessionId=randomUUID(), secret=randomBytes(32).toString('base64url'), principal={accountId,sessionId};
   const ownerLabel=randomUUID(), source=verificationSource(), checks:string[]=[], cleanup:unknown[]=[];
   let server:ChildProcess|undefined, browser:Awaited<ReturnType<typeof chromium.launch>>|undefined, admin:Pool|undefined, db:PrismaClient|undefined, reader:PrismaClient|undefined, created=false;
+  let serverCompletion: ReturnType<typeof waitForWorker> | undefined, browserCompletion: ReturnType<typeof waitForWorker> | undefined;
+  let serverPids: number[] = [];
+  const recordProcessTree = (row: Record<string, unknown>) => writeFileSync(resolve(artifact, 'process-tree.jsonl'), JSON.stringify(row) + '\n', { flag: 'a' });
+  let browserShutdown:{forceFallback:boolean}|undefined;
+  let browserServer: Awaited<ReturnType<typeof chromium.launchServer>> | undefined, browserOwnership: BrowserOwnership | undefined;
+  const recordBrowserTree = (row: Record<string, unknown>) => writeFileSync(resolve(artifact, 'browser-tree.jsonl'), JSON.stringify(row) + '\n', { flag: 'a' });
   writeFileSync(resolve(artifact,'source.json'),JSON.stringify(source,null,2));
+  if(equipmentDraft)process.once('exit',exitCode=>writeFileSync(resolve(artifact,'fixture-worker-exit.json'),JSON.stringify({pid:process.pid,exitCode})));
   let serverLog='', base='', home='';let releaseRead=()=>{};let failure:unknown;
   const nativeBin=process.platform==='win32'&&existsSync('C:/Program Files/PostgreSQL/17/bin/pg_ctl.exe')?'C:/Program Files/PostgreSQL/17/bin':null;
   const nativeData=resolve(artifact,'postgres-data');let nativeStarted=false;
@@ -73,8 +81,8 @@ export async function runHomeProgramFixture(preview: boolean, surfacesOnly = fal
     process.env.TRAINER2_OWNER_USER_ID=accountId;
     db=new PrismaClient({adapter:new PrismaPg({connectionString:url('trainer2_draft_runtime')})});
     reader=new PrismaClient({adapter:new PrismaPg({connectionString:url('trainer2_draft_reader')})});
-    let intent=createHypertrophyPlan(); intent.name='Five-week hypertrophy · synthetic review';
-    if (loggerJourney) {
+    let intent=equipmentDraft ?? createHypertrophyPlan(); intent.name='Five-week hypertrophy · synthetic review';
+    if (loggerJourney && !equipmentDraft) {
       const row = intent.builder!.workouts[3].rows[0];
       row.prescription.measurement = { kind: 'externalLoad', value: '60', unit: 'kg', convention: 'perImplement', zeroMeaning: 'validZero' };
       intent.builder!.workouts[1].rows[0].exercise = row.exercise;
@@ -82,24 +90,28 @@ export async function runHomeProgramFixture(preview: boolean, surfacesOnly = fal
     }
     // Keep template identity/inheritance valid; a separate authored plan exercises long names.
     const planId=randomUUID();if (!emptyAccount) accepted(await createDraft(db,principal,{...envelope(),commandType:'CreateDraft',target:{planId},expected:{},intent}));
-    const head=emptyAccount ? null : (await readDraft(reader,principal,planId))!;if (head) accepted(await activatePlan(db,principal,{...envelope(),commandType:'ActivatePlan',target:{planId},expected:{planRevisionId:head!.revisionId},intent:{reviewed:head.activation}}));
+    const head=emptyAccount ? null : (await readDraft(reader,principal,planId))!;if (head && !equipmentDraft) accepted(await activatePlan(db,principal,{...envelope(),commandType:'ActivatePlan',target:{planId},expected:{planRevisionId:head!.revisionId},intent:{reviewed:head.activation}}));
     const start=async(index:number)=>accepted(await startOccurrence(db!,principal,{...envelope(),commandType:'StartOccurrence',target:{planId,occurrenceId:intent.occurrences[index].id},expected:{planRevisionId:head!.revisionId,instructionEpoch:0},intent:{}}));
     const finish=async(id:string)=>accepted(await finishExecution(db!,principal,{...envelope(),commandType:'FinishExecution',target:{executionId:id},expected:reviewedResults((await readExecution(reader!,principal,id))!),intent:{acknowledgeUnrecorded:true}}));
     const skip=async(index:number)=>accepted(await skipOccurrence(db!,principal,{...envelope(),commandType:'SkipOccurrence',target:{planId,occurrenceId:intent.occurrences[index].id},expected:{planRevisionId:head!.revisionId,acceptedSequence:(await readNextWorkout(reader!,principal,planId)).acceptedSequence},intent:{}}));
     const advance=async()=>{const next=await readNextWorkout(reader!,principal,planId);return accepted(await advanceWeek(db!,principal,{...envelope(),commandType:'AdvanceWeek',target:{planId},expected:{planRevisionId:head!.revisionId,acceptedSequence:next.acceptedSequence,weekIndex:next.week.index,firstOccurrenceId:next.week.firstOccurrenceId},intent:{}}));};
-    if (!emptyAccount) {
-    const first=await start(0);await finish(first.executionId);
-    if (loggerJourney) {
-      const prior = await start(1), read = (await readExecution(reader!, principal, prior.executionId))!;
-      for (const target of executionPositions(read)[0].targets) accepted(await saveSetResult(db!, principal, { ...envelope(), commandType: 'RecordSetResult', target: { executionId: prior.executionId, targetId: target.id }, expected: { resultVersion: 0 }, intent: { result: { reps: { value: 10, basis: 'total' }, measurement: { kind: 'externalLoad', value: '60.123456', unit: 'kg', convention: 'perImplement', zeroMeaning: 'validZero' }, rir: '3' } } }));
-      await finish(prior.executionId);
-    } else await skip(1);
+    let open: { executionId: string } | null = null;
+    if (!equipmentDraft && !emptyAccount) {
+      const first=await start(0);await finish(first.executionId);
+      if (loggerJourney) {
+        const prior = await start(1), read = (await readExecution(reader!, principal, prior.executionId))!;
+        for (const target of executionPositions(read)[0].targets) accepted(await saveSetResult(db!, principal, { ...envelope(), commandType: 'RecordSetResult', target: { executionId: prior.executionId, targetId: target.id }, expected: { resultVersion: 0 }, intent: { result: { reps: { value: 10, basis: 'total' }, measurement: { kind: 'externalLoad', value: '60.123456', unit: 'kg', convention: 'perImplement', zeroMeaning: 'validZero' }, rir: '3' } } }));
+        await finish(prior.executionId);
+      } else await skip(1);
+      open = preview || loggerJourney ? await start(3) : null;
     }
-    const open = !emptyAccount && (preview || loggerJourney) ? await start(3) : null;
     const webPort=await new Promise<number>((res,rej)=>{const probe=createServer();probe.once('error',rej);probe.listen(0,'127.0.0.1',()=>{const a=probe.address();assert(a&&typeof a!=='string');probe.close(e=>e?rej(e):res(a.port));});});
     base=`http://127.0.0.1:${webPort}`;home=emptyAccount ? `${base}/trainer2` : `${base}/trainer2/dev/drafts?planId=${planId}`;
     const readinessKey=randomBytes(32).toString('hex');
     server=spawn(process.execPath,[resolve('node_modules/next/dist/bin/next'),'dev','--webpack','--hostname','127.0.0.1','--port',String(webPort)],{windowsHide:true,stdio:'pipe',env:{...authWebPlatformEnvironment(process.env),NODE_ENV:'development',TRAINER2_LOCAL_DRAFTS:'enabled',TRAINER2_OWNER_USER_ID:accountId,TRAINER2_APP_ORIGIN:base,TRAINER2_IDENTITY_CONNECTION_STRING:url('trainer2_identity_runtime'),TRAINER2_READ_CONNECTION_STRING:url('trainer2_draft_reader'),TRAINER2_WRITE_CONNECTION_STRING:url('trainer2_draft_runtime'),TRAINER2_READINESS_KEY:readinessKey,NODE_OPTIONS:`--require="${resolve('scripts/trainer2/web-readiness-preload.cjs').replaceAll('\\','/')}"`}});
+    serverCompletion = waitForWorker(server, 20 * 60_000);
+    serverPids = ownedProcessTree(server.pid!,undefined,recordProcessTree);
+    writeFileSync(resolve(artifact, 'resources.json'), JSON.stringify({ serverPid: server.pid, base, nativeData, nativePort: port }, null, 2));
     server.stdout?.on('data',d=>serverLog+=d);server.stderr?.on('data',d=>serverLog+=d);
     await observeWebReadiness(base,server,row=>writeFileSync(resolve(artifact,'readiness.jsonl'),JSON.stringify(row)+'\n',{flag:'a'}),{key:readinessKey});
     if(preview){
@@ -114,7 +126,16 @@ export async function runHomeProgramFixture(preview: boolean, surfacesOnly = fal
       });
       return;
     }
-    browser=await chromium.launch({headless:true,env:authWebPlatformEnvironment(process.env)});
+    if (equipmentDraft && process.platform === 'win32') {
+      // Use the existing qualified Windows teardown for this task's browser.
+      browserServer = await chromium.launchServer({ headless: true, env: authWebPlatformEnvironment(process.env) });
+      const child = browserServer.process();
+      browserCompletion = waitForWorker(child, 20 * 60_000);
+      const profile = child.spawnargs.find(arg => arg.startsWith('--user-data-dir='))?.slice('--user-data-dir='.length);
+      assert(profile, 'Task browser profile is missing');
+      browserOwnership = await captureBrowserOwnership(child, profile, recordBrowserTree);
+      browser = await chromium.connect(browserServer.wsEndpoint());
+    } else browser=await chromium.launch({headless:true,env:authWebPlatformEnvironment(process.env)});
     const context=await browser.newContext({viewport:{width:1280,height:900},reducedMotion:'reduce'});
     await context.addCookies([{name:'__Host-trainer2-session',value:`${sessionId}.${secret}`,domain:'127.0.0.1',path:'/',httpOnly:true,secure:true,sameSite:'Strict'}]);
     const page=await context.newPage(), errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(30_000);
@@ -213,13 +234,22 @@ export async function runHomeProgramFixture(preview: boolean, surfacesOnly = fal
     // Always release an intercepted read, including when a loading assertion fails.
     releaseRead();
     cleanup.push(...await cleanupSteps([
-      {name:'browser',timeoutMs:20_000,run:()=>browser?.close()},
-      {name:'Next process tree',timeoutMs:30_000,run:async()=>{if(server?.pid&&server.exitCode===null){await terminateOwnedProcesses(ownedProcessTree(server.pid));}for(const stream of server?.stdio??[])stream?.destroy();}},
+      {name:'browser connection', run:()=>browser?.close()},
+      {name:'browser',timeoutMs:35_000,run:async()=>{
+        if (browserServer && browserOwnership) {browserShutdown=await shutdownOwnedBrowser(browserServer, browserOwnership, recordBrowserTree, { timeoutMs: 30_000 });recordBrowserTree({event:'browser-shutdown',...browserShutdown});}
+        else await browser?.close();
+      }},
+      {name:'browser worker completion',timeoutMs:5_000,run:async()=>{if(browserCompletion){const result=await browserCompletion;writeFileSync(resolve(artifact,'browser-worker-exit.json'),JSON.stringify({...result,forceFallback:browserShutdown?.forceFallback??false},null,2));assert(!result.timedOut&&!result.error&&(result.exitCode===0||(browserShutdown?.forceFallback&&result.exitCode===1)),'Browser worker did not exit successfully');}}},
+      {name:'Next process tree',timeoutMs:30_000,run:async()=>{if(!serverPids.length&&server?.pid&&server.exitCode===null)serverPids=ownedProcessTree(server.pid,resolve('node_modules/next/dist/bin/next'));if(serverPids.length)await terminateOwnedProcesses(serverPids,recordProcessTree);}},
+      {name:'Next pipes',run:()=>{for(const stream of server?.stdio??[])stream?.destroy();}},
+      {name:'Next worker completion',timeoutMs:5_000,run:async()=>{if(serverCompletion){const result=await serverCompletion;writeFileSync(resolve(artifact,'server-worker-exit.json'),JSON.stringify(result,null,2));assert(!result.timedOut&&!result.error&&result.exitCode!==null,'Next worker exit unobserved');}}},
       {name:'runtime client',run:()=>db?.$disconnect()}, {name:'read client',run:()=>reader?.$disconnect()}, {name:'admin pool',run:()=>admin?.end()},
-      {name:'native fixture cluster',timeoutMs:15_000,run:async()=>{if(nativeStarted&&nativeBin){const r=await runCleanupCommand(resolve(nativeBin,'pg_ctl.exe'),['-D',nativeData,'-m','fast','-w','stop'],12_000);assert.equal(r.status,0);assert.equal(spawnSync(resolve(nativeBin,'pg_ctl.exe'),['-D',nativeData,'status'],{windowsHide:true}).status,3);}}},
+      {name:'native fixture cluster',timeoutMs:15_000,run:async()=>{if(nativeStarted&&nativeBin){const r=await runCleanupCommand(resolve(nativeBin,'pg_ctl.exe'),['-D',nativeData,'-m','fast','-w','stop'],12_000);recordProcessTree({event:'cluster-stop',...r,stdout:r.stdout.replaceAll(password,'[fixture-secret]'),stderr:r.stderr.replaceAll(password,'[fixture-secret]')});assert.equal(r.status,0);assert.equal(spawnSync(resolve(nativeBin,'pg_ctl.exe'),['-D',nativeData,'status'],{windowsHide:true}).status,3);}}},
       {name:'fixture container',timeoutMs:15_000,run:async()=>{if(created){const inspection=command('docker',['inspect','--format','{{ index .Config.Labels "trainer2.home-program.owner" }}',container]);assert.equal(inspection,ownerLabel);const r=await runCleanupCommand('docker',['rm','-f',container],10_000);assert.equal(r.status,0);assert.equal(spawnSync('docker',['inspect',container],{windowsHide:true}).status,1);}}},
     ]));
+    writeFileSync(resolve(artifact,'assertions.json'),JSON.stringify({status:failure?'failed':'passed',checks,error:failure?String(failure):undefined},null,2));
     writeFileSync(resolve(artifact,'cleanup.json'),JSON.stringify(cleanup,null,2));writeFileSync(resolve(artifact,'server.log'),serverLog.replaceAll(password,'[fixture-secret]'));
+    if(equipmentDraft&&process.send)process.send({kind:'fixture-cleanup-complete',artifact},()=>{if(process.connected)process.disconnect();});
     console.log('Fixture cleanup '+JSON.stringify(cleanup));if(!failure)assert(cleanup.every(r=>(r as {status:string}).status==='passed'));
   }
 }

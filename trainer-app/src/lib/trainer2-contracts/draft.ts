@@ -4,9 +4,14 @@ export const id = z.uuid().refine(v => v === v.toLowerCase(), "UUIDs must use lo
 const label = z.string().max(200);
 // Decimal spelling is authored meaning: never coerce, quantize, or normalize it.
 export const decimal = z.string().regex(/^(0|[1-9]\d{0,8})(\.\d{1,6})?$/);
+// Authored equipment facts, not a catalog default or part of the entered load.
+export const equipmentSetup = z.object({
+  label: z.string().min(1).max(200).refine(v => v.trim().length > 0),
+  startingResistance: z.object({ value: decimal, unit: z.enum(['kg', 'lb']) }).strict(),
+}).strict();
 export const measurement = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("externalLoad"), value: decimal,
-    unit: z.enum(["kg", "lb"]), convention: z.enum(["barbellTotal", "perImplement", "machineDisplayed", "machinePlatesPerArm", "smithPlatesTotal"]),
+    unit: z.enum(["kg", "lb"]), convention: z.enum(["barbellTotal", "perImplement", "machineDisplayed", "machinePlatesPerArm", "machineAddedPlatesTotal", "smithPlatesTotal"]),
     zeroMeaning: z.enum(["validZero", "notAllowed"]) }).strict(),
   z.object({ kind: z.literal("addedLoad"), value: decimal, unit: z.enum(["kg", "lb"]),
     convention: z.literal("addedExternal"), zeroMeaning: z.literal("noAddedLoad") }).strict(),
@@ -28,14 +33,19 @@ export const exercise = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('catalogSnapshot'), catalogId: label, catalogVersion: z.literal(1), name: label, variation: label,
     equipment: z.array(label).min(1), purpose: label, repBasis: target.shape.reps.shape.basis,
     loadKind: z.enum(['externalLoad', 'bodyweight', 'addedLoad', 'assistance']),
-    convention: z.enum(['barbellTotal', 'perImplement', 'machineDisplayed', 'machinePlatesPerArm', 'smithPlatesTotal', 'bodyweightOnly', 'addedExternal', 'displayedAssistance']),
+    convention: z.enum(['barbellTotal', 'perImplement', 'machineDisplayed', 'machinePlatesPerArm', 'machineAddedPlatesTotal', 'smithPlatesTotal', 'bodyweightOnly', 'addedExternal', 'displayedAssistance']),
+    equipmentSetup: equipmentSetup.optional(),
     // Absent in the frozen released v1 definitions; never backfilled on read.
     catalogFacts: z.object({ movementPatterns: z.array(label).min(1), primaryMuscles: z.array(label),
       secondaryMuscles: z.array(label), externalZeroMeaning: z.enum(['validZero', 'notAllowed']).nullable(),
       repDefaults: z.object({ min: z.int().min(1).max(1000), max: z.int().min(1).max(1000) }).strict().refine(v => v.min <= v.max),
     }).strict().optional(),
   }).strict(),
-]);
+]).superRefine((e, ctx) => {
+  if (e.kind === 'catalogSnapshot' && e.equipmentSetup &&
+    !['machineAddedPlatesTotal', 'machinePlatesPerArm', 'smithPlatesTotal'].includes(e.convention))
+    ctx.addIssue({ code: 'custom', message: 'Separate starting resistance requires an added-plates definition' });
+});
 export const role = z.enum(['Main lift', 'Secondary lift', 'Accessory', 'Calves', 'Core']);
 export const overrideField = z.enum(['exercise', 'role', 'sets', 'reps', 'measurement', 'rir', 'restSeconds', 'classification', 'required']);
 export const weekEdits = z.object({ removed: z.array(id), order: z.boolean(),

@@ -635,3 +635,5 @@ Trainer2 adds read-only POST `executions/swap-exercise-preview` and accepted POS
 
 
 Trainer2 execution-local Add exercise ownership, identity, command, UI and migration/recovery requirements are documented in [ADD_EXERCISE.md](architecture/trainer2/ADD_EXERCISE.md).
+
+Trainer2 added-plate measurements include `machineAddedPlatesTotal`; catalog snapshots may carry separate equipment-specific `equipmentSetup` facts. See [equipment-recording contract](architecture/trainer2/PROGRAM_SUPPORT.md#equipment-recording-extension) and `src/lib/trainer2-contracts/draft.ts`.

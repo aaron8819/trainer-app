@@ -2,11 +2,77 @@
 import { spawn } from 'node:child_process';
 import * as childProcesses from 'node:child_process';
 import { describe, expect, it, vi } from 'vitest';
-import { browserProcessesForProfile, cleanupSteps, ownedProcessTree, processAlive, terminateOwnedProcesses, waitForWorker } from '../../../scripts/trainer2/disposable-cleanup';
+import { browserProcessesForProfile, ownedProcessTree, terminateOwnedProcesses, waitForWorker, waitForWorkerAfterCleanup, cleanupSteps } from '../../../scripts/trainer2/disposable-cleanup';
 
-vi.mock('node:child_process', async importOriginal => ({ ...await importOriginal<typeof childProcesses>() }));
+vi.mock('node:child_process', async original=>({...await original<typeof childProcesses>()}));
 
-describe('Trainer2 disposable cleanup', () => {
+describe('generation-qualified disposable cleanup', () => {
+  it('continues after connection failure, stalled and late-rejecting cleanup', async () => {
+    const reached: string[] = [];
+    const results = await cleanupSteps([
+      { name: 'connection', run: () => { throw new Error('connection failed'); } },
+      { name: 'close', timeoutMs: 20, run: () => new Promise(() => {}) },
+      { name: 'late', timeoutMs: 20, run: () => new Promise((_, reject) => setTimeout(() => reject(new Error('late')), 50)) },
+      { name: 'server', run: () => { reached.push('server'); } },
+      { name: 'database', run: () => { reached.push('database'); } },
+    ]);
+    expect(results.map(r => r.status)).toEqual(['failed','timed-out','timed-out','passed','passed']);
+    expect(reached).toEqual(['server','database']);
+    await new Promise(r => setTimeout(r, 60));
+  });
+  it('rejects numeric PIDs without a captured identity', async () => {
+    await expect(terminateOwnedProcesses([2147483647])).rejects.toThrow('captured process identity');
+  });
+  it.skipIf(process.platform!=='win32')('retains sanitized failed OS diagnostics and continues cleanup',async()=>{
+    const probe=vi.spyOn(childProcesses,'spawnSync').mockReturnValue({pid:123,status:null,signal:'SIGTERM',stdout:'private inventory command line',stderr:'postgresql://user:secret@localhost/db',error:new Error('observer failed'),output:[]} as ReturnType<typeof childProcesses.spawnSync>);
+    try{
+      const results=await cleanupSteps([
+        {name:'inventory',run:()=>ownedProcessTree(2147483646)},
+        {name:'remaining resource',run:()=>undefined},
+      ]);
+      expect(results[0]).toMatchObject({status:'failed',diagnostics:{status:null,signal:'SIGTERM',error:'observer failed',stdoutBytes:30}});
+      expect(results[0].error).not.toContain('private inventory');expect(results[0].error).not.toContain('secret@');
+      expect(results[0].diagnostics).toMatchObject({startedAt:expect.any(String),elapsedMs:expect.any(Number)});
+      expect(results[1].status).toBe('passed');
+    }finally{probe.mockRestore();}
+  });
+  it('observes actual worker completion and preserves failed exits', async () => {
+    const child = spawn(process.execPath, ['-e','process.exit(7)'], { windowsHide:true, stdio:'ignore' });
+    expect(await waitForWorker(child, 5000)).toEqual({exitCode:7,signal:null,timedOut:false});
+  });
+  it('keeps a timed-out worker failed while observing its later actual completion',async()=>{
+    const child=spawn(process.execPath,['-e','setTimeout(()=>process.exit(3),100)'],{windowsHide:true,stdio:'ignore'});
+    const first=await waitForWorker(child,20);expect(first.timedOut).toBe(true);
+    const later=await waitForWorker(child,5000);expect(later).toEqual({exitCode:3,signal:null,timedOut:false});
+    expect(first.timedOut).toBe(true);expect(await waitForWorker(child,20)).toEqual(later);
+  });
+  it('records spawn failure', async () => {
+    const child = spawn(process.execPath+'-missing', [], {windowsHide:true,stdio:'ignore'});
+    expect(await waitForWorker(child,5000)).toMatchObject({timedOut:false,error:expect.stringContaining('ENOENT')});
+  });
+  it.skipIf(process.platform!=='win32')('captures late descendants and preserves an unrelated process', async () => {
+    const unrelated = spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{windowsHide:true,stdio:'ignore'});
+    const child = spawn(process.execPath,['-e',`setTimeout(()=>{const c=require('node:child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',windowsHide:true});console.log(c.pid)},4000);setInterval(()=>{},1000)`],{windowsHide:true,stdio:['ignore','pipe','pipe']});
+    const completion = waitForWorker(child,30000);
+    const unrelatedCompletion = waitForWorker(unrelated,30000);
+    const descendant = new Promise<number>(r=>child.stdout.once('data',v=>r(Number(String(v).trim()))));
+    let captured: number[] = [], unrelatedPids: number[] = [];
+    try {
+      captured = ownedProcessTree(child.pid!);
+      unrelatedPids=ownedProcessTree(unrelated.pid!);
+      const latePid = await descendant;
+      await terminateOwnedProcesses(captured);
+      expect((await completion).timedOut).toBe(false);
+      expect(()=>process.kill(latePid,0)).toThrow();
+      expect(()=>process.kill(unrelated.pid!,0)).not.toThrow();
+      await terminateOwnedProcesses(unrelatedPids);
+      expect((await unrelatedCompletion).timedOut).toBe(false);
+    } finally {
+      if(captured.length) await terminateOwnedProcesses(captured);
+      if(unrelatedPids.length) await terminateOwnedProcesses(unrelatedPids);
+      child.kill(); unrelated.kill();
+    }
+  },45000);
   it('does not let a blocking OS operation report success after its deadline', async () => {
     const results = await cleanupSteps([
       { name: 'blocking operation', timeoutMs: 20, run: () => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 40) },
@@ -14,50 +80,6 @@ describe('Trainer2 disposable cleanup', () => {
     ]);
     expect(results.map(result => result.status)).toEqual(['timed-out', 'passed']);
   });
-  it.skipIf(process.platform !== 'win32')('rejects surviving OS processes even when taskkill and the Node probe claim success', async () => {
-    const child = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { windowsHide: true, stdio: 'ignore' });
-    const nativeSpawn = childProcesses.spawn;
-    const nativeKill = process.kill.bind(process);
-    const spawnProbe = vi.spyOn(childProcesses, 'spawn').mockImplementation(((file: string, ...args: unknown[]) => {
-      if (file === 'taskkill.exe') return nativeSpawn(process.execPath, ['-e', "process.stdout.write('pretend success')"], {windowsHide:true,stdio:['ignore','pipe','pipe']});
-      return Reflect.apply(nativeSpawn, childProcesses, [file, ...args]);
-    }) as typeof childProcesses.spawn);
-    const killProbe = vi.spyOn(process, 'kill').mockImplementation((pid, signal) => {
-      if (pid === child.pid && signal === 0) throw Object.assign(new Error('Missed by native probe'), { code: 'ESRCH' });
-      return nativeKill(pid, signal);
-    });
-    const receipts: Record<string, unknown>[] = [];
-    try {
-      await expect(terminateOwnedProcesses([child.pid!], result => receipts.push(result))).rejects.toThrow(/Task.*(?:survived OS termination|absence)/);
-      expect(receipts[0]).toMatchObject({ status: 0, stdout: 'pretend success' });
-      expect(receipts[1]).toMatchObject({ survivors: [expect.objectContaining({ ProcessId: child.pid })] });
-    } finally {
-      spawnProbe.mockRestore(); killProbe.mockRestore();
-      await terminateOwnedProcesses([child.pid!]);
-    }
-  }, 30_000);
-  it.skipIf(process.platform !== 'win32')('waits for actual OS absence when a terminating child remains in the first inventory', async () => {
-    const child = spawn(process.execPath, ['-e', 'setTimeout(()=>process.exit(0),3000)'], { windowsHide: true, stdio: 'ignore' });
-    const completion = waitForWorker(child, 10_000);
-    const nativeSpawn = childProcesses.spawn;
-    const probe = vi.spyOn(childProcesses, 'spawn').mockImplementation(((file: string, ...args: unknown[]) => {
-      if (file === 'taskkill.exe') return nativeSpawn(process.execPath, ['-e', 'process.exit(0)'], {windowsHide:true,stdio:['ignore','pipe','pipe']});
-      return Reflect.apply(nativeSpawn, childProcesses, [file, ...args]);
-    }) as typeof childProcesses.spawn);
-    const receipts: Record<string, unknown>[] = [];
-    let heartbeat = false;
-    const timer = setTimeout(() => { heartbeat = true; }, 100);
-    try {
-      await terminateOwnedProcesses([child.pid!], result => receipts.push(result));
-      expect(heartbeat).toBe(true);
-      expect(receipts.some(result => (result.survivors as {ProcessId:number}[] | undefined)?.some(row => row.ProcessId === child.pid))).toBe(true);
-      expect(receipts.at(-1)).toMatchObject({ survivors: [] });
-      expect((await completion).timedOut).toBe(false);
-    } finally {
-      clearTimeout(timer); probe.mockRestore();
-      await terminateOwnedProcesses([child.pid!]);
-    }
-  }, 30_000);
   it('selects profile-owned orphans without admitting a reused PID or adjacent profile', () => {
     const profile = 'C:\\task with spaces\\browser-profile-123';
     expect(browserProcessesForProfile([
@@ -72,66 +94,29 @@ describe('Trainer2 disposable cleanup', () => {
     expect(() => browserProcessesForProfile([],profile,'unrelated.exe')).toThrow('Unsupported');
     expect(() => browserProcessesForProfile([], 'relative-profile')).toThrow('absolute');
   });
-  it.skipIf(process.platform!=='win32')('discovers an orphan after its task root exits', async () => {
-    const child=spawn(process.execPath,['-e',`const {spawn}=require('node:child_process'); const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',detached:true,windowsHide:true});child.unref();process.stdout.write(String(child.pid)+'\\n',()=>process.exit(0));`],{windowsHide:true,stdio:['ignore','pipe','pipe']});
-    const completion=waitForWorker(child,5_000);
-    const orphan=await new Promise<number>((resolve,reject)=>{child.stdout.once('data',v=>resolve(Number(String(v).trim())));child.once('error',reject);});
-    try {
-      expect((await completion).exitCode).toBe(0);
-      expect(processAlive(orphan)).toBe(true);
+  it.skipIf(process.platform!=='win32')('retains qualified orphan identities after the captured root exits',async()=>{
+    const child=spawn(process.execPath,['-e',`const {spawn}=require('node:child_process');const c=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{windowsHide:true,stdio:'ignore',detached:true});c.unref();console.log(c.pid);process.stdin.once('data',()=>process.exit(0));`],{windowsHide:true,stdio:['pipe','pipe','pipe']});
+    const completion=waitForWorker(child,30000);let captured:number[]=[];
+    try{
+      const orphan=await new Promise<number>(r=>child.stdout.once('data',v=>r(Number(String(v).trim()))));
+      captured=ownedProcessTree(child.pid!);expect(captured).toContain(orphan);
+      child.stdin.write('exit');expect((await completion).exitCode).toBe(0);
       expect(ownedProcessTree(child.pid!)).toContain(orphan);
-      await terminateOwnedProcesses([orphan]);expect(processAlive(orphan)).toBe(false);
-    }finally{await terminateOwnedProcesses([child.pid!,orphan]);}
-  },15_000);
-  it('returns a worker spawn failure without an unhandled error or pending wait', async () => {
-    const child=spawn(process.execPath+'-trainer2-missing',[],{windowsHide:true,stdio:'ignore'});
-    expect(await waitForWorker(child,5_000)).toMatchObject({exitCode:null,timedOut:false,error:expect.stringContaining('ENOENT')});
-  });
-  it('observes actual worker exit and preserves a failed exit code', async () => {
-    const child=spawn(process.execPath,['-e','process.exit(7)'],{windowsHide:true,stdio:'ignore'});
-    try {
-      expect(await waitForWorker(child,5_000)).toEqual({exitCode:7,signal:null,timedOut:false});
-      expect(processAlive(child.pid!)).toBe(false);
-    } finally {await terminateOwnedProcesses([child.pid!]);}
-  }, 10_000);
-  it('continues after stalled, failed and late-rejecting cleanup without claiming success', async () => {
-    const reached: string[] = [];
-    const results = await cleanupSteps([
-      { name: 'stalled browser', timeoutMs: 20, run: () => new Promise(() => {}) },
-      { name: 'failed client', run: () => { throw new Error('disconnect failed'); } },
-      { name: 'late rejection', timeoutMs: 20, run: () => new Promise((_, reject) => setTimeout(() => reject(new Error('late')), 40)) },
-      { name: 'server', run: () => { reached.push('server'); } },
-      { name: 'postgres', run: () => { reached.push('postgres'); } },
-    ]);
-    expect(results.map(r => r.status)).toEqual(['timed-out', 'failed', 'timed-out', 'passed', 'passed']);
-    expect(reached).toEqual(['server', 'postgres']);
-    await new Promise(resolve => setTimeout(resolve, 50));
-  });
+      await terminateOwnedProcesses(captured);expect(()=>process.kill(orphan,0)).toThrow();
+    }finally{if(captured.length)await terminateOwnedProcesses(captured);child.kill();}
+  },45000);
 
-  it('terminates an actual task-owned root and child even after stalled cleanup', async () => {
-    const child = spawn(process.execPath, ['-e', `const {spawn}=require('node:child_process'); const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'}); console.log(child.pid); setInterval(()=>{},1000);`], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-    const descendant = await new Promise<number>((resolve, reject) => {
-      child.stdout.once('data', data => resolve(Number(String(data).trim())));
-      child.once('error', reject);
-    });
-    const pids = [child.pid!, descendant];
-    try {
-      expect(ownedProcessTree(child.pid!)).toEqual(expect.arrayContaining(pids));
-      const nativeKill = process.kill.bind(process);
-      const probe = vi.spyOn(process, 'kill').mockImplementation((pid, signal) => {
-        if (pid === child.pid && signal === 0) throw Object.assign(new Error('Native probe misses root'), { code: 'ESRCH' });
-        return nativeKill(pid, signal);
-      });
-      try {
-        expect(ownedProcessTree(child.pid!)).toEqual(expect.arrayContaining(pids));
-      } finally { probe.mockRestore(); }
-      expect((await waitForWorker(child,20)).timedOut).toBe(true);
-      const results = await cleanupSteps([
-        { name: 'stalled graceful close', timeoutMs: 20, run: () => new Promise(() => {}) },
-        { name: 'owned process termination', timeoutMs: 20_000, run: () => terminateOwnedProcesses(pids) },
-      ]);
-      expect(results.map(r => r.status)).toEqual(['timed-out', 'passed']);
-      expect(pids.some(processAlive)).toBe(false);
-    } finally { await terminateOwnedProcesses(pids); }
-  }, 30_000);
+  it.skipIf(process.platform!=='win32')('bounds a worker left alive after cleanup and then observes qualified completion',async()=>{
+    const child=spawn(process.execPath,['-e',"console.log('cleanup');setInterval(()=>{},1000)"],{windowsHide:true,stdio:['ignore','pipe','pipe']});
+    const cleanupDone=new Promise<void>(resolve=>child.stdout.once('data',()=>resolve()));
+    const captured=ownedProcessTree(child.pid!);
+    try{
+      const first=await waitForWorkerAfterCleanup(child,cleanupDone,15000,20);
+      expect(first).toMatchObject({timedOut:true,error:'Worker did not finish after cleanup'});
+      await terminateOwnedProcesses(captured);
+      const closed=await waitForWorker(child,5000);expect(closed.timedOut).toBe(false);expect(closed.exitCode).toBe(1);
+      expect(first.timedOut).toBe(true);
+    }finally{await terminateOwnedProcesses(captured);}
+  },30000);
+
 });

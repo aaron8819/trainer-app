@@ -468,3 +468,5 @@ Swap and History share the same button dimensions. Swap disappears once any set 
 
 
 Trainer2 execution-local Add exercise ownership, identity, command, UI and migration/recovery requirements are documented in [ADD_EXERCISE.md](architecture/trainer2/ADD_EXERCISE.md).
+
+Trainer2 equipment recording: Builder captures identified machine starting resistance separately from added plates; Logger and history preserve that snapshot. See [equipment-recording extension](architecture/trainer2/PROGRAM_SUPPORT.md#equipment-recording-extension).

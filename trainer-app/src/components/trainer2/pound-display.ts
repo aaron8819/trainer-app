@@ -13,6 +13,6 @@ export function loadLabel(m: PerformedResult['measurement']): string {
   if (!m) return 'load unspecified';
   if (m.kind === 'bodyweight') return 'bodyweight';
   const meaning = m.kind === 'assistance' ? 'assistance' : m.kind === 'addedLoad' ? 'added' :
-    m.convention === 'machinePlatesPerArm' ? 'plates added per arm' : m.convention === 'smithPlatesTotal' ? 'total Smith plates added' : m.convention === 'perImplement' ? 'per implement' : m.convention === 'machineDisplayed' ? 'machine displayed' : 'barbell total';
+    m.convention === 'machineAddedPlatesTotal' ? 'total machine plates added' : m.convention === 'machinePlatesPerArm' ? 'plates added per arm' : m.convention === 'smithPlatesTotal' ? 'total Smith plates added' : m.convention === 'perImplement' ? 'per implement' : m.convention === 'machineDisplayed' ? 'machine displayed' : 'barbell total';
   return `${pounds(m.value, m.unit)} lb ${meaning}`;
 }

@@ -21,7 +21,9 @@ export function validateWorkoutDefaults(doc: DraftDocument, qualifyCatalog = tru
     // Compare the complete snapshot, including optional-field presence and nested
     // facts. Object order is immaterial; saved prescriptions are never enriched.
     try {
-      if (!entry || canonicalJson(e) !== canonicalJson(catalogExercise(entry))) throw new Error('Unqualified snapshot');
+      const { equipmentSetup: setup, ...definition } = e;
+      if (setup && !['machineAddedPlatesTotal', 'machinePlatesPerArm', 'smithPlatesTotal'].includes(e.convention)) throw new Error('Unsupported equipment setup');
+      if (!entry || canonicalJson(definition) !== canonicalJson(catalogExercise(entry))) throw new Error('Unqualified snapshot');
     } catch { throw new DraftFailure('INVALID_DOCUMENT'); }
   }
   if (!doc.builder) return;

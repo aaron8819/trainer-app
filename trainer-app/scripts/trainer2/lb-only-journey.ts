@@ -23,7 +23,7 @@ export async function lbOnlyBuilderJourney({ page, base, artifact, db, reader, p
   const sheet = page.getByRole('dialog', { name: 'Edit prescription', exact: true });
   const open = () => row.getByRole('button', { name: 'Edit', exact: true }).click();
   const saved = () => expect(page.getByRole('status').filter({ hasText: /^Saved$/ })).toBeVisible();
-  await page.goto(base + '/trainer2/dev/drafts');
+  await page.goto(base + '/trainer2/dev/drafts?view=builder');
   await page.getByRole('button', { name: 'Customize this template' }).click();
   await open();
   await sheet.getByText('Advanced prescription details', { exact: true }).click();

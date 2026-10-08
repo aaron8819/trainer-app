@@ -9,11 +9,14 @@ export function pounds(value: string, unit: 'kg' | 'lb') {
   // A positive supported kg decimal must never display as zero.
   return String(rounded || (converted > 0 ? Math.round(converted * 1e6) / 1e6 : 0));
 }
+export function displayPounds(value: string, unit: 'kg' | 'lb'): string {
+  return pounds(value, unit).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+}
 export function loadLabel(m: PerformedResult['measurement']): string {
   if (!m) return 'load unspecified';
   if (m.kind === 'bodyweight') return 'bodyweight';
   const meaning = m.kind === 'assistance' ? 'assistance' : m.kind === 'addedLoad' ? 'added' :
     m.convention === 'machineAddedPlatesTotal' ? 'total machine plates added' : m.convention === 'machinePlatesPerArm' ? 'plates added per arm' : m.convention === 'smithPlatesTotal' ? 'total Smith plates added' : m.convention === 'perImplement' ? 'per implement' : m.convention === 'machineDisplayed' ? 'machine displayed' : 'barbell total';
-  const display = pounds(m.value, m.unit).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+  const display = displayPounds(m.value, m.unit);
   return `${display} lb ${meaning}`;
 }

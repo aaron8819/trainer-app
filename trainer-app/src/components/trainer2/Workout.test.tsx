@@ -229,6 +229,27 @@ function activeTransport(results: SavedSetResult[]) {
     return response({ replayed: false, outcomeCursor: '1', outcome: { status: 'Accepted', actionId: c.actionId, commandType: c.commandType, acceptedSequence: '1', result: { executionId: saved.executionId, targetId: saved.targetId, performedSetId: saved.performedSetId, version: saved.version } } });
   });
 }
+it('trims History modal loads while retaining exact stored historical precision', async () => {
+  const value = activeFixture(), previousId = randomUUID();
+  const results = ['0.000000', '50.125000'].map(load => ({
+    executionId: previousId, targetId: randomUUID(), performedSetId: randomUUID(),
+    actionId: randomUUID(), version: 1, recordedAt: '2026-10-01T12:00:00.000Z', reason: null,
+    result: { reps: { value: 8, basis: 'total' as const }, rir: '2',
+      measurement: { kind: 'externalLoad' as const, value: load, unit: 'lb' as const,
+        convention: 'machinePlatesPerArm' as const, zeroMeaning: 'validZero' as const } },
+  }));
+  value.previous = [{ positionId: value.initial.occurrence.positions[0].id,
+    sourcePositionId: randomUUID(), executionId: previousId, workoutName: 'Previous workout',
+    finishedAt: '2026-10-01T12:00:00.000Z', results }];
+  const view = render(<ActiveHarness value={value} read={async () => value.results} />);
+  const history = view.container.querySelector<HTMLElement>('dialog[aria-label="Exercise history"]');
+  if (!history) throw new Error('History modal missing');
+  expect(within(history).getByText('0 lb', { exact: true })).toBeInTheDocument();
+  expect(within(history).getByText('50.125 lb', { exact: true })).toBeInTheDocument();
+  expect(within(history).getByText('plates added per arm', { exact: true })).toBeInTheDocument();
+  expect(results.map(result => result.result.measurement.value))
+    .toEqual(['0.000000', '50.125000']);
+});
 describe('Single active set and queue', () => {
   it('renders one editor, preserves drafts by identity, and restores selection on remount', async () => {
     const value = activeFixture(), read = vi.fn().mockResolvedValue([]);

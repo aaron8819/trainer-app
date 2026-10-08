@@ -15,7 +15,7 @@ import type { SavedSetResult } from '@/lib/trainer2-contracts/set-results';
 import type { SetSkip } from '@/lib/trainer2-contracts/skip-set';
 import { SetResultRow } from './SetResultRow';
 import { targetLabel } from './training-summary';
-import { loadLabel, pounds } from './pound-display';
+import { displayPounds, loadLabel, pounds } from './pound-display';
 import { MuscleTags } from './MuscleTags';
 import { RestBar } from './RestBar';
 import { readRest, recordRest, restKey, type RestState } from './rest-state';
@@ -143,7 +143,7 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
             <table className={styles.history}><caption className="sr-only">Previous exercise results</caption><thead className="border-b text-xs text-slate-500"><tr>{['Set', 'Weight', 'Reps', 'RIR'].map(label => <th key={label} scope="col" className="py-1 pr-2 font-medium">{label}</th>)}</tr></thead>
               <tbody>{prior.results.map((r, index) => {
                 const m = r.result?.measurement, reps = r.result?.reps;
-                return <tr key={r.targetId} className="border-b border-slate-100 align-top"><th scope="row" className="py-2 pr-2 font-normal">{index + 1}</th><td className="py-2 pr-2">{m && 'value' in m ? `${pounds(m.value, m.unit)} lb` : m?.kind === 'bodyweight' ? 'Bodyweight' : '—'}{historyMeanings.length > 1 && m && 'value' in m && <span className="block text-[11px] text-slate-500">{loadLabel(m).split(' lb ')[1]}</span>}</td><td className="py-2 pr-2">{reps?.value ?? '—'}{reps && reps.basis !== 'total' && <span className="block text-[11px] text-slate-500">{reps.basis === 'perSide' ? 'per side' : 'alternating'}</span>}</td><td className="py-2">{r.result?.rir ?? '—'}</td></tr>;
+                return <tr key={r.targetId} className="border-b border-slate-100 align-top"><th scope="row" className="py-2 pr-2 font-normal">{index + 1}</th><td className="py-2 pr-2">{m && 'value' in m ? `${displayPounds(m.value, m.unit)} lb` : m?.kind === 'bodyweight' ? 'Bodyweight' : '-'}{historyMeanings.length > 1 && m && 'value' in m && <span className="block text-[11px] text-slate-500">{loadLabel(m).split(' lb ')[1]}</span>}</td><td className="py-2 pr-2">{reps?.value ?? '-'}{reps && reps.basis !== 'total' && <span className="block text-[11px] text-slate-500">{reps.basis === 'perSide' ? 'per side' : 'alternating'}</span>}</td><td className="py-2">{r.result?.rir ?? '-'}</td></tr>;
               })}</tbody></table>
             <a className="inline-block min-h-11 py-2 underline" href={`/trainer2/dev/executions/${prior.executionId}`}>View source workout</a></> : <p>No previous exercise results.</p>}
 

@@ -160,4 +160,7 @@ export async function equipmentJourney({ page, base, home, artifact, accountId, 
   }
   pass('V1 root shell retains its destinations outside V2 at desktop/390/320');
 }
-function firstName(index: number) { return catalog.find(e => e.id === `t2:${variants[index]}`)!.name; }
+function firstName(index: number) {
+  return ['Hack Squat', 'Seated Calf Raise', 'Smith-Machine Standing Calf Raise',
+    'Iso-Lateral Low Row'][index];
+}

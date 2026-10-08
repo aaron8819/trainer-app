@@ -156,6 +156,32 @@ export async function revokeSession(db: PrismaClient, request: Request, all: boo
   });
 }
 
+/** A current device can choose a replacement directly; no setup credential is issued. */
+export async function replacePasscode(db: PrismaClient, request: Request, input: {
+  accountId: string; epoch: number; passcode: string; confirmation: string;
+}) {
+  if (input.passcode.length < 12 || input.passcode.length > 128 ||
+    input.passcode !== input.confirmation || !Number.isInteger(input.epoch) || input.epoch < 0)
+    throw new DraftAccessError("AUTHENTICATION_FAILED");
+  const principal = await sessionForRequest(db, request);
+  await db.$transaction(async tx => {
+    await tx.$queryRaw`SELECT id FROM "Trainer2Owner" WHERE id = 1 FOR UPDATE`;
+    const current = await sessionForRequest(tx, request);
+    const owner = await soleOwner(tx);
+    if (current.accountId !== principal.accountId || current.sessionId !== principal.sessionId ||
+      owner.accountId !== input.accountId || owner.sessionEpoch !== input.epoch)
+      throw new DraftAccessError("UNAUTHENTICATED");
+    assertEpochCapacity(owner.sessionEpoch);
+    const verifier = await makeVerifier(input.passcode);
+    await tx.trainer2Owner.update({ where: { id: 1 }, data: {
+      passcodeVerifier: verifier, setupVerifier: null, sessionEpoch: { increment: 1 },
+      failedAttempts: 0, lockedUntil: null,
+    } });
+    await tx.trainer2DeviceSession.updateMany({ where: { ownerId: 1, revokedAt: null },
+      data: { revokedAt: new Date() } });
+  });
+}
+
 export function sessionCookieOptions() {
   return { path: "/", sameSite: "lax" as const, httpOnly: true, secure: true,
     maxAge: ABSOLUTE_DAYS * 24 * 60 * 60 };

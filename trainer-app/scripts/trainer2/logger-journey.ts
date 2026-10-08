@@ -5,6 +5,8 @@ import { expect as baseExpect, type Page } from '@playwright/test';
 import type { PrismaClient } from '@prisma/client';
 import { assertPoundSurface, lbOnlyBuilderJourney } from './lb-only-journey';
 import { validateExecutionRead } from '../../src/lib/trainer2-contracts/execution';
+import { exerciseTitle } from '../../src/components/trainer2/exercise-title';
+import { currentAssignment } from '../../src/lib/engine/trainer2/exercise-swap';
 
 const expect = baseExpect.configure({ timeout: 30_000 });
 export async function loggerJourney({ page, base, home, artifact, accountId, executionId, db, reader, principal, pass }: {
@@ -141,6 +143,10 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   await swap.getByRole('button', { name: 'Confirm swap', exact: true }).click();
   await expect(swap).not.toBeVisible();
   const swapped = await validateExecutionRead(await read(), accountId, executionId);
+  const keptSwap = swapped.swaps!.at(-1)!;
+  assert.equal(keptSwap.content.exercise.kind, 'catalogSnapshot');
+  assert(keptSwap.content.exercise.kind === 'catalogSnapshot');
+  assert.equal(keptSwap.content.exercise.catalogId, 't2:chest-supported-dumbbell-row');
   await page.goto(home);
   await page.getByRole('link', { name: 'Resume workout', exact: true }).click();
   await expect(page).toHaveURL(url);
@@ -163,6 +169,19 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   await expect(queue.getByRole('button', { name: /Machine Crunch, set 1,/ })).toBeVisible();
   pass('Real swap and restore commands, assignment readback, Add set and Add exercise update queue and counts');
 
+  // Add set/exercise deliberately selects the addition; reselect the retained swap.
+  const swappedName = exerciseTitle(keptSwap.content.exercise);
+  const swappedTarget = keptSwap.content.targets[0].id;
+  const swappedChip = queue.getByRole('button', {
+    name: `${swappedName}, set 1, unrecorded`, exact: true,
+  });
+  await swappedChip.click();
+  await expect(swappedChip).toHaveAttribute('aria-pressed', 'true');
+  await expect(active.getByRole('heading', { name: swappedName, exact: true })).toBeVisible();
+  const selected = await validateExecutionRead(await read(), accountId, executionId);
+  assert.equal(currentAssignment(selected, keptSwap.positionId).actionId, keptSwap.actionId);
+  assert.equal(currentAssignment(selected, keptSwap.positionId).version, keptSwap.version);
+  assert(!selected.results.some(result => result.targetId === swappedTarget));
   await page.setViewportSize({ width: 390, height: 500 });
   await active.getByLabel('Set 1 Actual reps', { exact: true }).fill('10');
   await active.getByLabel('Set 1 Actual load', { exact: true }).fill('40');
@@ -172,6 +191,15 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   await active.getByLabel('Set 1 Actual RIR (optional)', { exact: true }).press('Tab');
   assert(await page.evaluate(() => document.activeElement?.tagName === 'BUTTON'));
   await active.getByRole('button', { name: 'Log set', exact: true }).click();
+  await expect(queue.getByRole('button', {
+    name: `${swappedName}, set 1, recorded`, exact: true,
+  })).toBeVisible();
+  const logged = await validateExecutionRead(await read(), accountId, executionId);
+  assert.equal(logged.results.length, selected.results.length + 1);
+  assert.deepEqual(logged.results.filter(result => result.targetId !== swappedTarget), selected.results);
+  const loggedSwap = logged.results.find(result => result.targetId === swappedTarget);
+  assert.equal(loggedSwap?.assignment?.actionId, keptSwap.actionId);
+  assert.equal(loggedSwap?.assignment?.version, keptSwap.version);
   await expect(active.getByRole('heading', { name: 'Ready to finish' })).not.toBeVisible();
   await page.setViewportSize({ width: 320, height: 844 });
   await page.getByRole('button', { name: 'Finish workout', exact: true }).click();
@@ -191,7 +219,6 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   assert.deepEqual(finished.history, beforeFinish.history);
   assert.deepEqual(finished.skips, beforeFinish.skips);
   assert.deepEqual(finished.swaps, beforeFinish.swaps);
-  const keptSwap = swapped.swaps!.at(-1)!;
   const swappedResult = finished.results.find(r => r.targetId === keptSwap.content.targets[0].id);
   assert.equal(swappedResult?.assignment?.actionId, keptSwap.actionId);
   assert.equal(swappedResult?.assignment?.version, keptSwap.version);

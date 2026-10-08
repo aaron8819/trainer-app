@@ -259,7 +259,7 @@ export function SetResultRow({ sessionAdded = false, assignment, accountId, owne
   // Retain recovery state by identity without rendering inactive forms.
   if (!active || (retainedOnly && !draft)) return null;
   return <div className={activePanel ? "mt-2" : "mt-3 rounded-lg bg-slate-50 p-3"} aria-label={`Set ${number} actual result`}>
-    {!activePanel && <p className="text-sm font-medium">{saved ? `Saved v${saved.version}: ${resultLabel(saved.result)}` : 'Not recorded'}</p>}
+    {!activePanel && <p className="text-sm font-medium">{saved ? `Saved result: ${resultLabel(saved.result)}` : 'Not recorded'}</p>}
     {historical && history.length > 0 && <details className="mt-2 text-sm"><summary className="min-h-11 cursor-pointer">Result history</summary><ol className="space-y-2">{[...history].sort((a, b) => a.version - b.version).map(r => <li key={r.version}><p>{r.version === 1 ? 'Original record' : 'Correction'} · v{r.version}{r.version === finishVersion ? ' · Acknowledged at finish' : ''}</p><p>{resultLabel(r.result)}</p><p>{r.recordedAt} · {r.reason ?? 'Recorded result'}</p></li>)}</ol></details>}
     {saved?.reason && <p className="text-xs text-slate-600">Correction: {saved.reason}</p>}
     {!compact && !draft && !readOnly && (!historical || !!saved?.result) && <button ref={editButton} className={control} disabled={!ready || locked} onClick={begin}>{historical ? 'Correct result' : saved ? saved.result ? 'Edit result' : 'Re-record result' : 'Enter actual result'}</button>}

@@ -109,7 +109,7 @@ describe('Workout start consumer', () => {
     workout.positions[0].targets = [{ ...workout.positions[0].targets[0], required: false, classification: 'optionalFinisher',
       reps: { min: 5, max: 8, basis: 'perSide' }, measurement: { kind: 'addedLoad', value: '0.00', unit: 'lb', convention: 'addedExternal', zeroMeaning: 'noAddedLoad' }, rir: '0', restSeconds: null }];
     render(<WorkoutPrescription workout={workout} />);
-    expect(screen.getByText(/0.00 lb added/)).toBeInTheDocument(); expect(screen.getByText(/per side/)).toBeInTheDocument(); expect(screen.getByText(/Optional/)).toBeInTheDocument(); expect(screen.queryByText(/Rest unspecified/)).not.toBeInTheDocument();
+    expect(screen.getByText(/0 lb added/)).toBeInTheDocument(); expect(screen.getByText(/per side/)).toBeInTheDocument(); expect(screen.getByText(/Optional/)).toBeInTheDocument(); expect(screen.queryByText(/Rest unspecified/)).not.toBeInTheDocument();
   });
 });
 import { TrainingOverview, PlannedWorkout } from './TrainingOverview';

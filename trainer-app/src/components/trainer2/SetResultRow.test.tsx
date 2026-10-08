@@ -216,6 +216,9 @@ describe('Historical corrections', () => {
     view.rerender(<SetResultRow {...props} historical saved={{ ...saved, result: null }} refresh={vi.fn()} />);
     expect(screen.queryByRole('button', { name: 'Correct result' })).toBeNull();
     view.rerender(<SetResultRow {...props} historical saved={saved} history={[saved]} finishVersion={1} refresh={vi.fn()} />);
+    expect(screen.getByText(/^Saved result:/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Saved v/)).toBeNull();
+    expect(screen.getByText(/Original record.*v1.*Acknowledged at finish/)).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: 'Correct result' }));
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('0');
     expect(screen.queryByLabelText('Set 1 correction reason')).toBeNull();
@@ -265,7 +268,7 @@ describe('Historical corrections', () => {
     render(<SetResultRow {...props} historical saved={{ ...saved, version: 5 }} refresh={refresh} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Retry save' }));
     await screen.findByText('Saved'); expect(fetch.mock.calls[1][1].body).toBe(body);
-    expect(screen.getByText(/^Saved v5/)).toBeInTheDocument();
+    expect(screen.getByText(/^Saved result:/)).toBeInTheDocument();
   });
   it('requires exact identity/version and a supported non-null historical result', () => {
     const command = { schemaVersion: 1, actionId: randomUUID(), deviceId: randomUUID(), originatingAccountId: props.accountId,

@@ -1,6 +1,7 @@
 'use client';
 
 import { exerciseTitle } from './exercise-title';
+import { LocalDateTime } from './LocalDateTime';
 import { EquipmentResistance } from './EquipmentSetup';
 import { AdvanceWeek } from './AdvanceWeek';
 import styles from './TrainingOverview.module.css';
@@ -172,7 +173,11 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
     {execution && <section className={logger.screen}><h2 className="text-xl font-semibold">{execution.lifecycle === 'Discarded' ? 'Workout attempt discarded' : execution.lifecycle === 'Finished' ? 'Workout finished' : execution.initial.occurrence.name}</h2>
       <p className="text-slate-600">{execution.lifecycle === 'Discarded' ? 'This attempt was discarded. Its original start and prescription are retained. Discarding this attempt did not complete or skip the scheduled workout.' : execution.lifecycle === 'Finished' ? 'Latest saved results appear below. Corrections preserve completion and the original targets. Result history shows what was acknowledged at finish.' : ''}</p>
       {execution.discard && <p>Started {execution.initial.startedAt}. Discarded {execution.discard.discardedAt}.</p>}
-      {execution.finish && <p className="text-sm text-slate-600">Started {execution.initial.startedAt}. Finished {execution.finish.finishedAt}. Later correction times appear in result history.</p>}
+      {execution.finish && <p className="text-sm text-slate-600">
+        Started <LocalDateTime value={execution.initial.startedAt} />.
+        {' '}Finished <LocalDateTime value={execution.finish.finishedAt} />.
+        {' '}Later correction times appear in result history.
+      </p>}
       {execution.lifecycle === 'Finished' && <ExerciseSwapHistory execution={execution} />}
       {execution.lifecycle === 'Finished' && execution.initial.occurrence.positions.map(p => { const changed = effectiveOccurrence(execution).positions.find(e => e.id === p.id)!; return execution.swaps?.some(s => s.positionId === executionPositions(execution).find(o => o.sourcePositionId === p.id)?.id) ? <p key={p.id}>{exerciseTitle(changed.exercise)} · originally {exerciseTitle(p.exercise)}</p> : null; })}<p className="font-medium text-teal-800">{execution.initial.stage.name} · {effortSummary(effectiveOccurrence(execution))}</p><a className="inline-block min-h-11 py-2 text-sm text-teal-800 underline" href={trainingUrl(execution.initial.planId)}>Back to training</a>
 

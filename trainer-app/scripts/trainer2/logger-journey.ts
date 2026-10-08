@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { expect as baseExpect, type Page } from '@playwright/test';
 import type { PrismaClient } from '@prisma/client';
 import { assertPoundSurface, lbOnlyBuilderJourney } from './lb-only-journey';
+import { validateExecutionRead } from '../../src/lib/trainer2-contracts/execution';
 
 const expect = baseExpect.configure({ timeout: 30_000 });
 export async function loggerJourney({ page, base, home, artifact, accountId, executionId, db, reader, principal, pass }: {
@@ -133,6 +134,22 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   await swap.getByRole('button', { name: 'Return to original', exact: true }).click();
   await swap.getByRole('button', { name: 'Confirm swap', exact: true }).click();
   await expect(swap).not.toBeVisible();
+  // Keep a real untouched-position replacement for the leave/resume/finish review.
+  await active.getByRole('button', { name: 'Swap', exact: true }).click();
+  await swap.getByLabel('Search library').fill('chest supported dumbbell row');
+  await swap.getByRole('button', { name: /Chest.*Supported.*Dumbbell Row/i }).click();
+  await swap.getByRole('button', { name: 'Confirm swap', exact: true }).click();
+  await expect(swap).not.toBeVisible();
+  const swapped = await validateExecutionRead(await read(), accountId, executionId);
+  await page.goto(home);
+  await page.getByRole('link', { name: 'Resume workout', exact: true }).click();
+  await expect(page).toHaveURL(url);
+  await expect(active.getByRole('heading', { name: /Chest.*Supported.*Dumbbell Row/i }))
+    .toBeVisible();
+  const resumed = await validateExecutionRead(await read(), accountId, executionId);
+  assert.deepEqual(resumed.swaps, swapped.swaps);
+  assert.deepEqual(resumed.results, swapped.results);
+  assert.deepEqual(resumed.skips, swapped.skips);
   const chipsBefore = await queue.getByRole('button', { name: /, set \d+,/ }).count();
   await queue.getByRole('button', { name: '+ Add set', exact: true }).nth(1).click();
   await expect(queue.getByRole('button', { name: /, set \d+,/ })).toHaveCount(chipsBefore + 1);
@@ -161,12 +178,28 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   await expect(page.getByRole('button', { name: 'Finish anyway', exact: true })).toBeVisible();
   await shot('finish-confirmation-320');
   await page.getByRole('button', { name: 'Keep working', exact: true }).click();
+  const beforeFinish = await validateExecutionRead(await read(), accountId, executionId);
   await page.getByRole('button', { name: 'Finish workout', exact: true }).click();
   await page.getByRole('button', { name: 'Finish anyway', exact: true }).click();
   await expect(page).toHaveURL(home);
   await expect(page.getByText('Workout finished.', { exact: false }).first()).toBeVisible();
   await page.goto(url);
   await expect(page.getByRole('heading', { name: 'Workout finished', exact: true })).toBeVisible();
+  const finished = await validateExecutionRead(await read(), accountId, executionId);
+  assert.equal(finished.lifecycle, 'Finished');
+  assert.deepEqual(finished.results, beforeFinish.results);
+  assert.deepEqual(finished.history, beforeFinish.history);
+  assert.deepEqual(finished.skips, beforeFinish.skips);
+  assert.deepEqual(finished.swaps, beforeFinish.swaps);
+  const keptSwap = swapped.swaps!.at(-1)!;
+  const swappedResult = finished.results.find(r => r.targetId === keptSwap.content.targets[0].id);
+  assert.equal(swappedResult?.assignment?.actionId, keptSwap.actionId);
+  assert.equal(swappedResult?.assignment?.version, keptSwap.version);
+  assert((finished.skips?.length ?? 0) > 0);
+  await expect(page.getByText('Explicitly skipped · no performed result.').first()).toBeVisible();
+  await page.getByText('Exercise swap history', { exact: true }).click();
+  await expect(page.getByText(/Swapped for today/).first()).toBeVisible();
+  pass('Untouched swap survives leave/resume and UI finish; swapped/skipped history and result identities/count remain intact');
   const correction = page.getByRole('button', { name: 'Correct result', exact: true }).first();
   await correction.click();
   await page.getByLabel('Set 1 Actual reps', { exact: true }).first().fill('13');

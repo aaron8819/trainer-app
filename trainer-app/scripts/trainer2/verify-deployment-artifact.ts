@@ -7,6 +7,7 @@ import { createServer } from "node:net";
 import { createHmac, randomBytes } from "node:crypto";
 import { isolatedLinuxJob, ownLinuxGroup } from "./isolated-linux-lifecycle";
 import { verificationSource } from "./verification-source";
+import { artifactGet } from "./artifact-http";
 
 async function productionArtifact(): Promise<void> {
   assert(isolatedLinuxJob(process.platform, process.env), "Requires isolated Linux CI");
@@ -73,8 +74,7 @@ async function productionArtifact(): Promise<void> {
       attempt: process.env.GITHUB_RUN_ATTEMPT, environmentKeys: Object.keys(env).sort(),
     }, null, 2));
     const get = (path: string, requestedHost = host): Promise<Response> =>
-      fetch(origin + path, { headers: { host: requestedHost }, redirect: 'manual',
-        signal: AbortSignal.timeout(10_000) });
+      artifactGet(origin, path, requestedHost);
     try {
       const challenge = randomBytes(16).toString('hex');
       let ready: Response | undefined;

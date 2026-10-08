@@ -1,5 +1,7 @@
 "use client";
 
+import { exerciseTitle } from './exercise-title';
+
 import { useEffect, useRef, useState } from 'react';
 import type { DraftDocument } from '@/lib/trainer2-contracts/draft';
 import { browseCatalog, catalogExercise, equipmentOptions, library, matchesCatalogSearch } from '@/lib/engine/trainer2/catalog';
@@ -79,10 +81,10 @@ export function ExercisePicker({
     }}>
       {!results.length && <p role="status" className="py-6 text-slate-600">No matching exercises. Clear the search or broaden equipment preferences. Timed, distance, and unreviewed measurement variants are not included.</p>}
       {results.map(e => <button type="button" data-exercise key={e.id} className="block min-h-16 w-full rounded-xl border p-3 text-left hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-teal-600" onClick={() => choose(catalogExercise(e))}>
-        <span className="font-medium">{e.name}</span><span className="block text-sm text-slate-500">{e.equipment.join(' + ')} · {e.repBasis === 'perSide' ? 'reps per side' : 'total reps'}{e.loadKind === 'assistance' ? ' · displayed assistance' : ''}{current?.kind === 'catalogSnapshot' && e.purpose === current.purpose ? ' · Suggested alternative' : ''}</span>
+        <span className="font-medium">{exerciseTitle(e)}</span><span className="block text-sm text-slate-500">{e.equipment.join(' + ')} · {e.repBasis === 'perSide' ? 'reps per side' : 'total reps'}{e.loadKind === 'assistance' ? ' · displayed assistance' : ''}{current?.kind === 'catalogSnapshot' && e.purpose === current.purpose ? ' · Suggested alternative' : ''}</span>
       </button>)}
       {unavailable.map(e => <div key={e.catalogId} className="rounded-xl border p-3 text-sm text-slate-500">
-        <span className="font-medium">{e.name}</span><span className="block">{e.unavailableReason}</span>
+        <span className="font-medium">{exerciseTitle(e)}</span><span className="block">{e.unavailableReason}</span>
       </div>)}
       {!qualifiedOnly && <details className="border-t pt-4"><summary className="cursor-pointer text-sm">Create custom exercise</summary><p className="my-2 text-sm text-slate-600">Saved as your description, with no catalog match. Review its rep and measurement details.</p><input aria-label="Custom exercise name" className={`${control} w-full`} value={custom} maxLength={200} onChange={e => setCustom(e.target.value)} /><button type="button" className={`${control} mt-2`} disabled={!custom.trim()} onClick={() => choose({
           kind: 'authoredDescription',

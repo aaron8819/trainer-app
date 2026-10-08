@@ -1,3 +1,4 @@
+import { exerciseTitle } from './exercise-title';
 import { executionPositions, originalPositions } from '@/lib/engine/trainer2/execution-targets';
 import type { ExecutionRead } from '@/lib/trainer2-contracts/execution';
 
@@ -9,9 +10,9 @@ export function ExerciseSwapHistory({ execution }: { execution: ExecutionRead })
       const swaps = execution.swaps!.filter(s => s.positionId === owned.id).sort((a, b) => a.version - b.version);
       if (!swaps.length) return null;
       const original = originalPositions(execution).find(p => p.id === owned.displayPositionId)!;
-      return <li key={owned.id}><p className="font-semibold">Originally {original.exercise.name}</p>
+      return <li key={owned.id}><p className="font-semibold">Originally {exerciseTitle(original.exercise)}</p>
         <ol className="space-y-1">{swaps.map((swap, index) => <li key={swap.version}>
-          {index === 0 ? original.exercise.name : swaps[index - 1].content.exercise.name} → {swap.content.exercise.name}
+          {index === 0 ? exerciseTitle(original.exercise) : exerciseTitle(swaps[index - 1].content.exercise)} → {exerciseTitle(swap.content.exercise)}
           {swap.content.restoreOriginal ? ' · Returned to original' : ' · Swapped for today'}
           <span className="block text-xs text-slate-500">{swap.recordedAt}</span>
         </li>)}</ol>

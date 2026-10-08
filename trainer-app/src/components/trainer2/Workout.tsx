@@ -1,4 +1,6 @@
 'use client';
+
+import { exerciseTitle } from './exercise-title';
 import { EquipmentResistance } from './EquipmentSetup';
 import { AdvanceWeek } from './AdvanceWeek';
 import styles from './TrainingOverview.module.css';
@@ -47,8 +49,10 @@ export function mergeExecutionRead(current: ExecutionRead | null, value: Executi
 export function WorkoutPrescription({ workout, resultRow, previous }: { workout: DraftDocument['occurrences'][number]; resultRow?: (positionId: string, targetId: string, number: number) => ReactNode; previous?: (positionId: string) => ReactNode }) {
   if (!resultRow) return <PlannedWorkout workout={workout} />;
   return <div className="space-y-4"><h3 className="text-xl font-semibold">{workout.name}</h3>{workout.positions.map(p =>
-    <section key={p.id} className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4"><div className="flex flex-wrap justify-between gap-1"><h4 className="font-semibold">{p.exercise.name}{p.exercise.variation ? ' · ' + p.exercise.variation : ''}</h4><span className="text-xs text-slate-500">{p.role}</span></div>
-      <EquipmentResistance exercise={p.exercise} />{previous?.(p.id)}
+    <section key={p.id} className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4"><div className="flex flex-wrap justify-between gap-1"><h4 className="font-semibold">{exerciseTitle(p.exercise)}</h4><span className="text-xs text-slate-500">{p.role}</span></div>
+      <EquipmentResistance exercise={p.exercise} />
+      {p.exercise.variation && <p className="text-sm text-slate-600">{p.exercise.variation}</p>}
+      {previous?.(p.id)}
       <ol className="mt-3 divide-y divide-slate-100">{p.targets.map((t, i) => <li key={t.id} className="py-2 text-sm">
         <p className="text-xs text-slate-500">Set {i + 1} · {targetLabel(t)}</p>{resultRow(p.id, t.id, i + 1)}
       </li>)}</ol></section>)}</div>;
@@ -170,7 +174,7 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
       {execution.discard && <p>Started {execution.initial.startedAt}. Discarded {execution.discard.discardedAt}.</p>}
       {execution.finish && <p className="text-sm text-slate-600">Started {execution.initial.startedAt}. Finished {execution.finish.finishedAt}. Later correction times appear in result history.</p>}
       {execution.lifecycle === 'Finished' && <ExerciseSwapHistory execution={execution} />}
-      {execution.lifecycle === 'Finished' && execution.initial.occurrence.positions.map(p => { const changed = effectiveOccurrence(execution).positions.find(e => e.id === p.id)!; return execution.swaps?.some(s => s.positionId === executionPositions(execution).find(o => o.sourcePositionId === p.id)?.id) ? <p key={p.id}>{changed.exercise.name} · originally {p.exercise.name}</p> : null; })}<p className="font-medium text-teal-800">{execution.initial.stage.name} · {effortSummary(effectiveOccurrence(execution))}</p><a className="inline-block min-h-11 py-2 text-sm text-teal-800 underline" href={trainingUrl(execution.initial.planId)}>Back to training</a>
+      {execution.lifecycle === 'Finished' && execution.initial.occurrence.positions.map(p => { const changed = effectiveOccurrence(execution).positions.find(e => e.id === p.id)!; return execution.swaps?.some(s => s.positionId === executionPositions(execution).find(o => o.sourcePositionId === p.id)?.id) ? <p key={p.id}>{exerciseTitle(changed.exercise)} · originally {exerciseTitle(p.exercise)}</p> : null; })}<p className="font-medium text-teal-800">{execution.initial.stage.name} · {effortSummary(effectiveOccurrence(execution))}</p><a className="inline-block min-h-11 py-2 text-sm text-teal-800 underline" href={trainingUrl(execution.initial.planId)}>Back to training</a>
 
       {execution.lifecycle === 'Open' ? <ActiveWorkout key={`active:${execution.executionId}`} execution={execution} ownershipEpoch={ownershipEpoch} locked={finishLocked || discardLocked} inputStates={inputStates} onInputState={onInputState} onSwapLock={setSwapLocked}
         refreshExecution={async () => { const value = await load(); if (!value || !('results' in value)) throw new Error('Read failed'); return value; }}

@@ -1,4 +1,6 @@
 "use client";
+
+import { exerciseTitle } from './exercise-title';
 import { EquipmentResistance, EquipmentSetupEditor } from './EquipmentSetup';
 
 import { useEffect, useRef, useState } from 'react';
@@ -189,15 +191,15 @@ export function PlanBuilder({
     });
     setPicker(null);
     const reps = selected?.prescription && swapPrescription(selected.exercise, exercise, selected.prescription).reps;
-    setNotice(selected && reps ? `${exercise.name} selected for ${scope.toLowerCase()}. Sets retained; weight cleared. ${reps.min}–${reps.max} reps ${reps.basis === 'perSide' ? 'per side' : reps.basis === 'alternating' ? 'alternating' : 'total'}.` : `${exercise.name} added.`);
+    setNotice(selected && reps ? `${exerciseTitle(exercise)} selected for ${scope.toLowerCase()}. Sets retained; weight cleared. ${reps.min}–${reps.max} reps ${reps.basis === 'perSide' ? 'per side' : reps.basis === 'alternating' ? 'alternating' : 'total'}.` : `${exerciseTitle(exercise)} added.`);
   }
   function remove(key: string) {
     const affected = !occurrence ? doc.occurrences.filter(o => o.workoutKey === workout.key && o.positions.some(p => p.sourceKey === key && (o.weekOverride || o.overrides?.fields[p.id] || p.targets.some(t => o.overrides?.targets?.[t.id])))) : [];
     const run = () => onChange(removeBuilderRow(doc, { key, occurrenceId: occurrence?.id, workoutKey: workout.key }));
     if (affected.some(o => !o.weekOverride)) setPending({
-      text: `Remove ${rows.find(r => r.key === key)!.exercise.name} from all inheriting weeks? This discards its week-only edits in ${affected.filter(o => !o.weekOverride).map(o => doc.stages.find(s => s.id === o.stageId)!.name).join(', ')}. Other exercises remain.`,
+      text: `Remove ${exerciseTitle(rows.find(r => r.key === key)!.exercise)} from all inheriting weeks? This discards its week-only edits in ${affected.filter(o => !o.weekOverride).map(o => doc.stages.find(s => s.id === o.stageId)!.name).join(', ')}. Other exercises remain.`,
       run
-    });else setPending({ text: `Remove ${rows.find(r => r.key === key)!.exercise.name} from ${scope.toLowerCase()}? Other exercises stay.`, run });
+    });else setPending({ text: `Remove ${exerciseTitle(rows.find(r => r.key === key)!.exercise)} from ${scope.toLowerCase()}? Other exercises stay.`, run });
   }
   function move(key: string, direction: number) {
     update(d => {
@@ -250,7 +252,7 @@ export function PlanBuilder({
           return <button key={o.id} type="button" className="mt-3 block w-full text-left text-sm" onClick={() => {
             setWorkoutIndex(index);
             setWeekIndex(i);
-          }}><span className="font-medium underline">{o.name}</span>{(o.weekOverride || o.overrides || o.positions.some(p => !p.sourceKey)) && <span className="block text-teal-800">Week-only edits</span>}<span className="block text-xs text-slate-600">{o.positions.map(p => `${p.exercise.name}: ${prescriptionSummary(p.targets)}`).join('; ')}</span></button>;
+          }}><span className="font-medium underline">{o.name}</span>{(o.weekOverride || o.overrides || o.positions.some(p => !p.sourceKey)) && <span className="block text-teal-800">Week-only edits</span>}<span className="block text-xs text-slate-600">{o.positions.map(p => `${exerciseTitle(p.exercise)}: ${prescriptionSummary(p.targets)}`).join('; ')}</span></button>;
         })}</div>)}</section>}
     <div className={styles.layout}><div role="tablist" aria-label="Workouts" className={styles.tabs}>{b.workouts.map((w, i) => <button type="button" role="tab" aria-selected={i === workoutIndex} key={w.key} onClick={() => setWorkoutIndex(i)} className={`rounded-xl px-2 py-3 text-sm font-medium ${i === workoutIndex ? 'bg-slate-900 text-white' : 'bg-slate-100'}`}>{w.name}</button>)}</div>
     <div><div className={styles.scope}><h2 className="font-semibold">{workout.name} · {rows.reduce((sum, row) => sum + row.sets, 0)} sets</h2><label className="text-sm font-medium">Editing <select aria-label="Edit scope" className={control} value={weekIndex ?? 'all'} onChange={e => setWeekIndex(e.target.value === 'all' ? null : Number(e.target.value))}><option value="all">Workout defaults · all weeks</option>{b.weeks.map((w, i) => <option value={i} key={w.stageId}>Week {i + 1} only</option>)}</select></label><p className="text-xs text-slate-600">{occurrence?.weekOverride ? 'Older independent workout. Restore to inherit shared defaults.' : occurrence ? 'Inherited fields follow workout defaults; only explicitly edited fields stay week-specific.' : 'Changes flow to weeks that inherit these defaults.'}</p>{occurrence && <button type="button" className="text-sm underline" onClick={() => setPending({
@@ -264,7 +266,7 @@ export function PlanBuilder({
     {notice && <p role="status" className="text-sm text-teal-800">{notice}</p>}
     <div>{rows.map((r, i) => <section key={r.key} aria-label={`Exercise ${i + 1}`} className={styles.card}>
       <p className={styles.muted}>{String(i + 1).padStart(2, '0')} · {occurrence ? (r.position?.sourceKey ? (occurrence.overrides?.fields[r.key]?.length ? 'Week-only fields: ' + occurrence.overrides.fields[r.key].join(', ') : 'Inherited workout prescription') : 'Independent week-only exercise') : 'Workout prescription'} · {r.role ?? 'Exercise'}</p>
-      <h3>{r.exercise.name || 'Choose exercise'}</h3><EquipmentResistance exercise={r.exercise} />
+      <h3>{exerciseTitle(r.exercise) || 'Choose exercise'}</h3><EquipmentResistance exercise={r.exercise} />
       <p>{r.position ? prescriptionSummary(r.position.targets) : r.prescription ? `${r.sets} × ${r.prescription.reps.min}–${r.prescription.reps.max} reps · ${r.prescription.rir === null ? 'weekly RIR' : 'RIR ' + r.prescription.rir}` : 'No prescription'}</p>
       <p className={styles.muted}>{r.prescription ? loadLabel(r.prescription.measurement) : 'Load unspecified'}{r.prescription?.reps.basis === 'perSide' ? ' · reps per side' : ''}</p>
       {r.position && r.position.targets.some(t => JSON.stringify({ ...t, id: '' }) !== JSON.stringify({ ...r.position!.targets[0], id: '' })) && <p className={styles.muted}>Individual sets differ. The load above is Set 1; inspect Individual sets below for each prescription.</p>}
@@ -272,8 +274,8 @@ export function PlanBuilder({
       <div className={styles.tools}>
         <button type="button" disabled={!r.prescription} onClick={e => setEditing({ key: r.key, trigger: e.currentTarget })}>Edit</button>
         <button type="button" onClick={e => setPicker({ key: r.key, trigger: e.currentTarget })}>Replace</button>
-        <button type="button" aria-label={`Move ${r.exercise.name} up`} disabled={i === 0} onClick={() => move(r.key, -1)}>↑</button>
-        <button type="button" aria-label={`Move ${r.exercise.name} down`} disabled={i === rows.length - 1} onClick={() => move(r.key, 1)}>↓</button>
+        <button type="button" aria-label={`Move ${exerciseTitle(r.exercise)} up`} disabled={i === 0} onClick={() => move(r.key, -1)}>↑</button>
+        <button type="button" aria-label={`Move ${exerciseTitle(r.exercise)} down`} disabled={i === rows.length - 1} onClick={() => move(r.key, 1)}>↓</button>
       </div>
       <EquipmentSetupEditor key={JSON.stringify(r.exercise)} exercise={r.exercise} apply={setup => onChange(setEquipmentSetup(doc, { key: r.key, workoutKey: workout.key, occurrenceId: occurrence?.id }, setup))} />
         <details><summary className="cursor-pointer">Role & inheritance details</summary><label className="block">Role <select className={control} value={r.role ?? 'Accessory'} onChange={e => update(d => {

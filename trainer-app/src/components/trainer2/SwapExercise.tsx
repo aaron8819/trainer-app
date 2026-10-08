@@ -1,4 +1,6 @@
 'use client';
+
+import { exerciseTitle } from './exercise-title';
 import { executionPositions, originalPositions } from '@/lib/engine/trainer2/execution-targets';
 import { useEffect, useRef, useState } from 'react';
 import type { ExecutionRead } from '@/lib/trainer2-contracts/execution';
@@ -123,13 +125,13 @@ export function SwapExercise({ execution, positionId, ownershipEpoch, locked, re
     {!open && message && <p role="status">{message}</p>}
     {open && <dialog ref={dialog} aria-labelledby={`swap-title-${positionId}`} onCancel={e => { e.preventDefault(); if (!pending) close(); }} className="m-auto max-h-[90dvh] w-[min(96vw,640px)] overflow-y-auto rounded-2xl p-4 backdrop:bg-black/40">
       <div className="flex items-center justify-between"><h2 id={`swap-title-${positionId}`} className="text-lg font-semibold">Swap exercise</h2><button className={control} disabled={!!pending} onClick={close}>Close</button></div>
-      <p className="my-2 text-sm">Today only · replaces {original.exercise.name}</p>
+      <p className="my-2 text-sm">Today only · replaces {exerciseTitle(original.exercise)}</p>
       <label className="block text-sm">Search library<input autoFocus className="my-2 min-h-11 w-full rounded-lg border p-2" value={query} onChange={e => setQuery(e.target.value)} /></label>
       <label className="block text-sm">Equipment<select className="my-2 min-h-11 w-full rounded-lg border p-2" value={equipment} onChange={e => setEquipment(e.target.value)}><option value="">All equipment</option>{equipmentOptions.map(e => <option key={e}>{e}</option>)}</select></label>
       {currentAssignment(execution, positionId).version > 0 && <button className={control} disabled={busy || !!pending} onClick={() => void choose({ restoreOriginal: true })}>Return to original</button>}
       <h3 className="my-2 font-semibold">{query ? 'Library results' : 'Similar exercises first'}</h3>
-      <ul className="max-h-64 overflow-y-auto">{entries.map(e => <li key={e.catalogId} className="border-b py-2"><button className="min-h-11 w-full text-left disabled:text-slate-500" disabled={!e.selectable || busy || !!pending} onClick={() => void choose({ restoreOriginal: false, catalogId: e.catalogId })}>{e.name}<span className="block text-xs">{e.equipment.join(' · ')}{!e.selectable && ` · ${e.unavailableReason}`}</span></button></li>)}</ul>
-      {preview && <section className="my-3 rounded-lg border p-3"><h3 className="font-semibold">Preview · {preview.content.exercise.name}</h3>{preview.targetsChanged && <p>Rep targets change for this exercise.</p>}<ol>{preview.content.targets.map((t,i) => <li key={t.id} className="text-sm">Set {i+1} · {targetLabel(t)}</li>)}</ol><p className="text-sm">{preview.suggestedLoad === null ? 'Weight left blank for manual entry.' : `${preview.suggestedLoad} lb suggested`}</p><p className="text-sm">{original.role ?? 'Exercise'} · rest {original.role === 'Main lift' ? 180 : 120} seconds. Current timer continues.</p><button className={`${control} mt-3 bg-black text-white`} disabled={busy || !!pending} onClick={confirm}>Confirm swap</button></section>}
+      <ul className="max-h-64 overflow-y-auto">{entries.map(e => <li key={e.catalogId} className="border-b py-2"><button className="min-h-11 w-full text-left disabled:text-slate-500" disabled={!e.selectable || busy || !!pending} onClick={() => void choose({ restoreOriginal: false, catalogId: e.catalogId })}>{exerciseTitle(e)}<span className="block text-xs">{e.equipment.join(' · ')}{!e.selectable && ` · ${e.unavailableReason}`}</span></button></li>)}</ul>
+      {preview && <section className="my-3 rounded-lg border p-3"><h3 className="font-semibold">Preview · {exerciseTitle(preview.content.exercise)}</h3>{preview.targetsChanged && <p>Rep targets change for this exercise.</p>}<ol>{preview.content.targets.map((t,i) => <li key={t.id} className="text-sm">Set {i+1} · {targetLabel(t)}</li>)}</ol><p className="text-sm">{preview.suggestedLoad === null ? 'Weight left blank for manual entry.' : `${preview.suggestedLoad} lb suggested`}</p><p className="text-sm">{original.role ?? 'Exercise'} · rest {original.role === 'Main lift' ? 180 : 120} seconds. Current timer continues.</p><button className={`${control} mt-3 bg-black text-white`} disabled={busy || !!pending} onClick={confirm}>Confirm swap</button></section>}
       {message && <p role="status" className="my-2">{message}</p>}
       {pending && <button className={control} disabled={busy} onClick={() => void submit(pending)}>Check swap again</button>}
     </dialog>}

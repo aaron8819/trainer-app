@@ -1,4 +1,6 @@
 "use client";
+
+import { exerciseTitle } from './exercise-title';
 import { useState } from 'react';
 import type { DraftDocument } from '@/lib/trainer2-contracts/draft';
 import type { OverrideField } from '@/lib/engine/trainer2/plan-builder';
@@ -44,7 +46,7 @@ export function PrescriptionSheet({ exercise, target, sets, scope, trigger, clos
   }
   return <BuilderSheet title="Edit prescription" trigger={trigger} close={close}>
     <div className={styles.sheetBody}>
-      <div><h3 className="text-lg font-semibold">{exercise.name}</h3><p className={styles.muted}>{scope}. Only changed fields apply to every set; other individual set details stay.</p></div>
+      <div><h3 className="text-lg font-semibold">{exerciseTitle(exercise)}</h3><p className={styles.muted}>{scope}. Only changed fields apply to every set; other individual set details stay.</p></div>
       <label>Sets<input autoFocus className={styles.numeric} inputMode="numeric" type="number" min="1" max="20" value={count} onChange={e => { setCount(e.target.value); setConfirmation(null); }} /></label>
       <div className={styles.fields}>{(['min','max'] as const).map(bound => <label key={bound}>Reps {bound === 'min' ? 'from' : 'to'}<input className={styles.numeric} inputMode="numeric" type="number" min="1" max="1000" value={draft.reps[bound] || ''} onChange={e => change(t => { t.reps[bound] = Number(e.target.value); }, 'reps')} /></label>)}</div>
       <p className={styles.muted}>Count reps {draft.reps.basis === 'perSide' ? 'per side' : draft.reps.basis === 'alternating' ? 'alternating' : 'in total'}.</p>

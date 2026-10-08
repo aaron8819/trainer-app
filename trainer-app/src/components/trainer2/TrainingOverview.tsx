@@ -1,4 +1,6 @@
 'use client';
+
+import { exerciseTitle } from './exercise-title';
 import { EquipmentResistance } from './EquipmentSetup';
 import { useState, type ReactNode } from 'react';
 import type { DraftDocument } from '@/lib/trainer2-contracts/draft';
@@ -11,13 +13,13 @@ import Link from 'next/link';
 export function PlannedWorkout({ workout, design = false }: { workout: WorkoutIntent; design?: boolean }) {
   if (!design) return <section aria-label="Planned workout" className="space-y-3"><h3 className="text-lg font-semibold">Planned workout</h3>
     <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white px-3 sm:px-4">{workout.positions.map(p => <li key={p.id} className="py-3">
-      <div className="flex flex-wrap justify-between gap-1"><h4 className="min-w-0 break-words font-semibold">{p.exercise.name}</h4><span className="text-xs text-slate-500">{p.role}</span></div>
+      <div className="flex flex-wrap justify-between gap-1"><h4 className="min-w-0 break-words font-semibold">{exerciseTitle(p.exercise)}</h4><span className="text-xs text-slate-500">{p.role}</span></div>
       <EquipmentResistance exercise={p.exercise} />{targetGroups(p.targets).map(g => <p key={g.first} className="mt-1 break-words text-sm text-slate-600">{g.count} × {g.label}</p>)}
       {p.exercise.variation && <details className="mt-1"><summary className="min-h-11 cursor-pointer py-3 text-sm">Exercise details</summary><p className="break-words text-sm">{p.exercise.variation}</p></details>}
     </li>)}</ul></section>;
   return <section aria-label="Planned workout"><h3 className="sr-only">Planned workout</h3>
     <ul className={styles.prescriptions}>{workout.positions.map(p => <li key={p.id}>
-      <h4>{p.exercise.name}</h4>
+      <h4>{exerciseTitle(p.exercise)}</h4>
       <EquipmentResistance exercise={p.exercise} />{targetGroups(p.targets).map(g => <p key={g.first}>{g.count} × {g.label}</p>)}
       {p.targets.some(t => !t.measurement) && <p>Load unspecified · confirm when logging</p>}
       {p.targets.some(t => t.measurement?.kind === 'assistance') && <p>Assistance · more weight means easier</p>}

@@ -14,6 +14,13 @@ The existing visual-viewport signal hides the bar while a software keyboard is
 open. Builder's fixed actions reserve the bar's height; Logger's existing timer,
 modal and deliberate set-scroll owners are unchanged.
 
+Authenticated default Training entry opens the account's existing `Active` plan
+directly; production `/` reaches this same entry through its existing rewrite.
+Accounts with no active plan retain the plan list/empty state. Explicit
+`view=program` retains the list, and builder, settings and direct plan URLs remain
+intentional destinations. This redirect reads lifecycle only; it does not activate,
+replace, start or log anything. Session lifetime/renewal policy is unchanged.
+
 Training and Program support an account without plans at `/trainer2` and
 `/trainer2?view=program`. Saved plans retain existing `dev/drafts?planId=…`
 destinations and Program's `view=program`; Builder uses `view=builder`. Settings

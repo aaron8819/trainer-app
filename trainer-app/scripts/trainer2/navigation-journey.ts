@@ -53,6 +53,15 @@ export async function navigationJourney({ page, base, artifact, accountId, planI
   }
 
   await page.setViewportSize({ width: 320, height: 844 });
+  const executionsBeforeEntry = await db.trainer2Execution.count({ where: { accountId } });
+  await page.goto(`${base}/trainer2`);
+  await page.waitForURL(url => url.pathname === '/trainer2/dev/drafts' &&
+    url.searchParams.get('planId') === planId && !url.searchParams.has('view'));
+  await expect(page.getByRole('region', { name: 'Week progress', exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('region', { name: 'Week progress', exact: true })).toBeVisible();
+  assert.equal(await db.trainer2Execution.count({ where: { accountId } }), executionsBeforeEntry);
+  pass('Authenticated Training entry opens the existing active plan and reloads without starting a workout');
   await page.goto(`${base}/trainer2/dev/drafts?view=builder`);
   await page.getByRole('button', { name: 'Customize this template' }).click();
   await page.getByLabel('Plan name', { exact: true }).fill('Navigation retained draft');

@@ -20,6 +20,10 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     throw error;
   }
   const program = (await searchParams).view === 'program';
+  if (!program) {
+    const active = home.plans.find(plan => plan.lifecycle === 'Active');
+    if (active) redirect(`/trainer2/dev/drafts?planId=${encodeURIComponent(active.id)}`);
+  }
   return <main className={styles.home}>
     <header className={styles.title}><h1>{program ? 'Program' : 'Training'}</h1>
       <p className={styles.subtitle}>{program ? 'Your saved plans and prescriptions.' : 'Your training, one workout at a time.'}</p></header>

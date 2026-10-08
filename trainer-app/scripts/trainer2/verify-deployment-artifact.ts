@@ -42,6 +42,7 @@ async function productionArtifact(): Promise<void> {
     const origin = `http://127.0.0.1:${port}`, key = randomBytes(32).toString('hex');
     const env: NodeJS.ProcessEnv = { ...authWebPlatformEnvironment(process.env),
       NODE_ENV: 'production', NEXT_TELEMETRY_DISABLED: '1',
+      VERCEL_GIT_COMMIT_SHA: source.commit, TRAINER_BUILD_GIT_SHA: source.commit,
       VERCEL_ENV: scenario === 'preview-environment' ? 'preview' :
         scenario === 'unknown-environment' ? 'unknown' : 'production',
       ...(scenario === 'missing-runtime' ? {} : {

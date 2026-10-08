@@ -5,7 +5,7 @@ const fixture = vi.hoisted(() => ({ session: vi.fn() }));
 vi.mock('next/headers', () => ({ headers: async () => new Headers() }));
 vi.mock('@/lib/api/trainer2/database', () => ({ databaseFor: async () => ({}) }));
 vi.mock('@/lib/api/trainer2/development', () => ({ developmentEnabled: () => true }));
-vi.mock('@/lib/api/trainer2/access', () => ({ hostedTestEnabled: () => false }));
+vi.mock('@/lib/api/trainer2/access', () => ({ hostedEnabled: () => false }));
 vi.mock('@/lib/api/trainer2/sessions', () => ({
   sessionForRequest: fixture.session,
   soleOwner: async () => ({ accountId: 'synthetic-owner', sessionEpoch: 4,

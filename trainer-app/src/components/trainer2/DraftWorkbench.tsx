@@ -18,10 +18,10 @@ import { Instructions } from './Instructions';
 import { useTrainer2Destination } from './Trainer2Shell';
 
 type WriteCommand = DraftCommand | ActivatePlanCommand | InstructionCommand;
-type Props = { accountId: string; ownershipEpoch: number; initialPlanId?: string; view?: 'program'; hostedTrial?: boolean };
+type Props = { accountId: string; ownershipEpoch: number; initialPlanId?: string; view?: 'program'; hostedTrial?: boolean; production?: boolean };
 export function DraftWorkbench(props: Props) { return <Workbench key={`${props.accountId}:${props.initialPlanId ?? ''}`} {...props} />; }
 type Loaded = SavedPlanResponse;
-function Workbench({ accountId, ownershipEpoch, initialPlanId = '', view, hostedTrial = false }: Props) {
+function Workbench({ accountId, ownershipEpoch, initialPlanId = '', view, hostedTrial = false, production = false }: Props) {
   const recoveryKey = `trainer2-builder:${accountId}:${initialPlanId || 'new'}`;
   const [templateOpen, setTemplateOpen] = useState(!initialPlanId);
   const [recoveryReady, setRecoveryReady] = useState(false);
@@ -224,10 +224,10 @@ function Workbench({ accountId, ownershipEpoch, initialPlanId = '', view, hosted
       <div className={styles.art} aria-hidden="true">{[60,72,86,100,40].map((height,i) => <span key={i} style={{ height: height + '%', background: i === 4 ? '#83946c' : undefined }} />)}</div>
       <p>Lower A · Upper A · Lower B · Upper B</p><p className={styles.muted}>Weekly RIR 3 / 3 / 2 / 1 / 4. Deload working sets are halved, rounded up. Starting loads are unspecified.</p>
       <button className={styles.primary} onClick={() => setTemplateOpen(false)}>Customize this template</button>
-    </section><p className="mt-5 text-sm">Synthetic local workspace. Saving keeps a draft; activation is a separate reviewed command.</p>
+    </section><p className="mt-5 text-sm">{production ? 'Saving keeps a draft; activation is a separate reviewed command.' : 'Synthetic local workspace. Saving keeps a draft; activation is a separate reviewed command.'}</p>
   </div></main>;
   return <main className={styles.shell}><div className={`${styles.content} space-y-5`}>
-    <header className={`${styles.header} space-y-3`}><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-semibold uppercase tracking-widest text-teal-700">Trainer / Plan builder</p><p className="rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-900">{hostedTrial ? 'Protected synthetic trial: plans are saved in durable database storage.' : 'Demo: plans are deleted when the demo stops.'}</p></div>
+    <header className={`${styles.header} space-y-3`}><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-semibold uppercase tracking-widest text-teal-700">Trainer / Plan builder</p>{!production && <p className="rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-900">{hostedTrial ? 'Protected synthetic trial: plans are saved in durable database storage.' : 'Demo: plans are deleted when the demo stops.'}</p>}</div>
       <h1 className="sr-only">Plan builder</h1><p className={styles.muted}>Customize → Save draft → Review → Activate</p>
       {form && <label className="block"><span className="sr-only">Plan name</span><input aria-label="Plan name" className="w-full rounded border border-transparent bg-transparent py-2 text-2xl font-semibold tracking-tight hover:border-slate-200 focus:border-teal-600 sm:text-3xl" disabled={locked} value={form.name} onChange={e => changed({ ...form, name: e.target.value })} /></label>}
       {form?.builder && <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm"><span className="py-1">5 weeks · 4 workouts · lbs</span><span className="py-1 text-slate-500">4 accumulation + 1 deload</span></div>}

@@ -31,3 +31,27 @@ The original Vercel project's Preview still inherits V1 credentials, so it remai
 ## Local verification and limits
 
 `scripts/test-trainer2-principal-postgres.ts --confirm-disposable` runs the single-user PostgreSQL 17 fixture with the V1 migration prefix, a synthetic V1 User, then additive Trainer2 migrations and grants. It compares V1 columns, indexes, constraints, triggers, functions and grants, exercises a V1 User write, and checks effective API-role denial for Trainer2 tables, sequences and functions. `TRAINER2_BROWSER=1` adds desktop and phone-sized browser profiles, browser and Next restarts, sign-out and revocation. `scripts/trainer2/verify-deployment-artifact.ts` probes real Preview and ordinary Next builds with `next start` in both mismatch directions. These tests do not authorize production migration, real account binding, hosted login or real training.
+
+
+## Explicit V2 production mode
+
+`v2-production` is a separate build/runtime mode, accepted only in Vercel Production with
+matching mode values, all three restricted connections, CA, configured owner, a canonical HTTPS
+`TRAINER2_APP_ORIGIN`, and no legacy credentials. It does not admit hosted-test into Production
+or weaken Preview isolation. Existing strict TLS, effective role checks, owner/session checks,
+and same-origin mutations remain required. The proxy and direct request/auth adapters reject
+requests whose Host differs from the configured origin. Unknown/mismatched modes fail closed.
+
+Only V2 routes and existing static assets are exposed. `/` privately rewrites to Training at
+`/trainer2`, preserving query parameters and preventing the V1 landing handler from executing.
+The existing `/trainer2` path remains valid. The manifest is accessible in production with root
+start URL/scope and standalone display, using the existing icons. Apple installation metadata
+uses the existing Apple icon. There is no service worker or offline mutation queue. V1 mode
+retains its landing, navigation and route admission. Production V2 omits disposable/trial labels.
+
+This code does not authorize or perform hosting configuration, domain transfer, credential
+changes, database migration, or cutover. The release executor must verify exact domain and secure
+environment scopes, keep Preview protected, preserve the existing owner/passcode/plan/history,
+and qualify the frozen source before publishing. A new host requires Aaron to sign in with his
+already chosen passcode; no reset or session transfer is performed by this patch. Desktop/mobile
+viewport automation does not establish physical iPhone/Safari installation behavior.

@@ -2,6 +2,19 @@ import { describe, expect, it } from "vitest";
 import { deploymentDecision } from "./deployment-boundary";
 
 describe("built deployment boundary", () => {
+  it("requires an explicit production build/runtime, production environment and safe origin", () => {
+    const production = { built: "v2-production", runtime: "v2-production",
+      vercelEnvironment: "production", legacyCredentialsPresent: false,
+      restrictedCredentialsPresent: true, hostedConfigurationPresent: true,
+      productionOriginValid: true };
+    expect(deploymentDecision(production)).toBe("v2-production");
+    for (const change of [{ built: "unknown" }, { runtime: undefined }, { runtime: "hosted-test" },
+      { vercelEnvironment: undefined }, { vercelEnvironment: "unknown" },
+      { vercelEnvironment: "preview" }, { legacyCredentialsPresent: true },
+      { restrictedCredentialsPresent: false }, { hostedConfigurationPresent: false },
+      { productionOriginValid: false }])
+      expect(deploymentDecision({ ...production, ...change })).toBe("deny");
+  });
   const base = { built: "preview", runtime: "preview", vercelEnvironment: "preview", legacyCredentialsPresent: false };
   it("fails both mismatch directions, including missing and empty runtime mode", () => {
     expect(deploymentDecision(base)).toBe("preview");

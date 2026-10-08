@@ -6,7 +6,7 @@ import { developmentEnabled } from "./development";
 import { DraftAccessError } from "./principal";
 import { enterPasscode, revokeSession, replacePasscode, SESSION_COOKIE, sessionCookieOptions } from "./sessions";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
-import { hostedTestEnabled } from "./access";
+import { hostedEnabled, assertProductionRequest } from "./access";
 import { privateAuthResponse } from "./auth-response";
 
 /** These POSTs never accept credentials in a URL or return them in a response body. */
@@ -14,7 +14,8 @@ export async function authHttp(request: NextRequest, operation: "sign-in" | "set
   const paused = productionWritePauseResponse("operational_principal", request.nextUrl.pathname);
   if (paused) return privateAuthResponse(paused);
   try {
-    if (!developmentEnabled() && !hostedTestEnabled()) throw new DraftAccessError("HOSTED_ADMISSION_DISABLED");
+    if (!developmentEnabled() && !hostedEnabled()) throw new DraftAccessError("HOSTED_ADMISSION_DISABLED");
+    assertProductionRequest(request);
     const { origin } = authConfiguration();
     assertSessionMutationOrigin(request);
     if (request.headers.has("authorization")) throw new DraftAccessError("UNSUPPORTED_CREDENTIAL_TRANSPORT");

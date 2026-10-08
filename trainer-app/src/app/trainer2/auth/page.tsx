@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { databaseFor } from "@/lib/api/trainer2/database";
 import { developmentEnabled } from "@/lib/api/trainer2/development";
 import { sessionForRequest, soleOwner } from "@/lib/api/trainer2/sessions";
-import { hostedTestEnabled } from "@/lib/api/trainer2/access";
+import { hostedEnabled } from "@/lib/api/trainer2/access";
 import Link from 'next/link';
 
 export const dynamic = "force-dynamic";
@@ -11,7 +11,7 @@ export default async function AuthPage() {
   let signedIn = false;
   let setup = false;
   let recovery: { accountId: string; epoch: number } | null = null;
-  const enabled = developmentEnabled() || hostedTestEnabled();
+  const enabled = developmentEnabled() || hostedEnabled();
   if (enabled) try {
     const db = await databaseFor("identity", developmentEnabled());
     const owner = await soleOwner(db);

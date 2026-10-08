@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
-import { requestContext, hostedTestEnabled } from "@/lib/api/trainer2/access";
+import { requestContext, hostedEnabled } from "@/lib/api/trainer2/access";
 import { developmentEnabled } from "@/lib/api/trainer2/development";
 import { DraftAccessError } from "@/lib/api/trainer2/principal";
 import { readTrainingHome } from "@/lib/api/trainer2/training-home";
@@ -9,7 +9,7 @@ import styles from '@/components/trainer2/Trainer2Shell.module.css';
 
 export const dynamic = "force-dynamic";
 export default async function TrainingPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
-  if (!developmentEnabled() && !hostedTestEnabled()) notFound();
+  if (!developmentEnabled() && !hostedEnabled()) notFound();
   const request = new Request("http://localhost/trainer2", { headers: await headers() });
   let home;
   try {

@@ -34,12 +34,14 @@ async function productionArtifact(): Promise<void> {
     'missing-runtime', 'wrong-runtime']) {
     const port = await new Promise<number>((resolvePort, reject) => {
       const probe = createServer(); probe.once('error', reject);
-      probe.listen(0, '127.0.0.1', () => {
+      probe.listen(0, 'localhost', () => {
         const address = probe.address(); assert(address && typeof address !== 'string');
         probe.close(error => error ? reject(error) : resolvePort(address.port));
       });
     });
-    const origin = `http://127.0.0.1:${port}`, key = randomBytes(32).toString('hex');
+    // NextURL normalizes 127.0.0.1 to localhost. Match the server's initial origin
+    // so its root rewrite stays internal and preserves the synthetic public Host.
+    const origin = `http://localhost:${port}`, key = randomBytes(32).toString('hex');
     const env: NodeJS.ProcessEnv = { ...authWebPlatformEnvironment(process.env),
       NODE_ENV: 'production', NEXT_TELEMETRY_DISABLED: '1',
       VERCEL_GIT_COMMIT_SHA: source.commit, TRAINER_BUILD_GIT_SHA: source.commit,
@@ -63,7 +65,7 @@ async function productionArtifact(): Promise<void> {
     };
     const log = openSync(resolve(artifact, `${scenario}-server.log`), 'w');
     const child = spawn(process.execPath, [resolve('node_modules/next/dist/bin/next'),
-      'start', '--hostname', '127.0.0.1', '-p', String(port)],
+      'start', '--hostname', 'localhost', '-p', String(port)],
     { env, detached: true, stdio: ['ignore', log, log] });
     const owned = ownLinuxGroup(child);
     writeFileSync(resolve(artifact, `${scenario}-ownership.json`), JSON.stringify({
@@ -89,6 +91,10 @@ async function productionArtifact(): Promise<void> {
       assert(pid && /^\d+$/.test(pid), 'Readiness process identity missing');
       assert.equal(ready.headers.get('x-trainer2-readiness-proof'),
         createHmac('sha256', key).update(`${challenge}\n${child.pid}\n${pid}`).digest('hex'));
+      writeFileSync(resolve(artifact, `${scenario}-readiness.json`), JSON.stringify({
+        status: ready.status, identityVerified: true, transportHost: 'localhost',
+      }, null, 2));
+      assert.equal(ready.status, scenario === 'production' ? 200 : 503);
       const paths = ['/', '/trainer2', '/trainer2/auth', '/manifest.webmanifest',
         '/icons/trainer-icon-192.png', '/icons/trainer-icon-512.png', '/apple-icon.png'];
       const statuses: Record<string, number> = {};

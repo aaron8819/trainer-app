@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { getRelativeURL } from 'next/dist/shared/lib/router/utils/relativize-url';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { proxy } from './proxy';
 import manifest from './app/manifest';
@@ -27,6 +28,19 @@ it('rewrites root to Training, preserves query and uses private responses', () =
   expect(response.headers.get('cache-control')).toBe('private, no-store');
   expect(hostedEnabled()).toBe(true);
   expect(hostedTestEnabled()).toBe(false);
+});
+
+it('keeps the fixture rewrite internal when Next normalizes its loopback URL', () => {
+  const loopbackRequest = (origin: string): NextRequest => new NextRequest(origin + '/', {
+    headers: { host: 'trainer.example.test' },
+  });
+  const oldOrigin = 'http://127.0.0.1:43000';
+  const oldRewrite = proxy(loopbackRequest(oldOrigin)).headers.get('x-middleware-rewrite')!;
+  expect(oldRewrite).toBe('http://localhost:43000/trainer2');
+  expect(getRelativeURL(oldRewrite, oldOrigin)).toBe(oldRewrite);
+  const origin = 'http://localhost:43000';
+  const rewrite = proxy(loopbackRequest(origin)).headers.get('x-middleware-rewrite')!;
+  expect(getRelativeURL(rewrite, origin)).toBe('/trainer2');
 });
 
 it('permits existing V2/auth and install assets while denying V1 and unknown hosts', () => {

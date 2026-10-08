@@ -41,6 +41,7 @@ export async function runHomeProgramFixture(preview: boolean, surfacesOnly = fal
   const password=randomUUID(), accountId=randomUUID(), sessionId=randomUUID(), secret=randomBytes(32).toString('base64url'), principal={accountId,sessionId};
   const ownerLabel=randomUUID(), source=verificationSource(), checks:string[]=[], cleanup:unknown[]=[];
   let server:ChildProcess|undefined, browser:Awaited<ReturnType<typeof chromium.launch>>|undefined, admin:Pool|undefined, db:PrismaClient|undefined, reader:PrismaClient|undefined, created=false;
+  let identity: PrismaClient | undefined;
   let serverCompletion: ReturnType<typeof waitForWorker> | undefined, browserCompletion: ReturnType<typeof waitForWorker> | undefined;
   let serverPids: number[] = [];
   const recordProcessTree = (row: Record<string, unknown>) => writeFileSync(resolve(artifact, 'process-tree.jsonl'), JSON.stringify(row) + '\n', { flag: 'a' });
@@ -157,6 +158,11 @@ export async function runHomeProgramFixture(preview: boolean, surfacesOnly = fal
     if (loggerJourney) {
       try { await loggerJourney({ page, base, home, artifact, accountId, planId, executionId: open?.executionId ?? '', pass, db: db!, reader: reader!, principal }); }
       catch (error) { await page.screenshot({ path: resolve(artifact, 'failed-page.png'), fullPage: true }).catch(() => {}); writeFileSync(resolve(artifact, 'failed-dom.txt'), await page.locator('body').innerText().catch(() => 'Unavailable')); throw error; }
+      if (linuxJob && equipmentDraft) {
+        const { verifyPasscodeRecovery } = await import('./verify-passcode-recovery');
+        identity = new PrismaClient({adapter: new PrismaPg({connectionString: url('trainer2_identity_runtime')})});
+        await verifyPasscodeRecovery(identity, admin!, accountId, `${sessionId}.${secret}`, pass);
+      }
       assert.deepEqual(errors, []);
       assert.equal(verificationSource().manifestHash, source.manifestHash, 'Source changed during verification');
       writeFileSync(resolve(artifact, 'report.json'), JSON.stringify({ source, checks, errors, home }, null, 2));
@@ -259,7 +265,7 @@ export async function runHomeProgramFixture(preview: boolean, surfacesOnly = fal
       {name:'Next process tree',timeoutMs:30_000,run:async()=>{if(linuxServer){const result=await linuxServer.stop();writeFileSync(resolve(artifact,'server-worker-exit.json'),JSON.stringify(result,null,2));return;}if(!serverPids.length&&server?.pid&&server.exitCode===null)serverPids=ownedProcessTree(server.pid,resolve('node_modules/next/dist/bin/next'));if(serverPids.length)await terminateOwnedProcesses(serverPids,recordProcessTree);}},
       {name:'Next pipes',run:()=>{for(const stream of server?.stdio??[])stream?.destroy();}},
       {name:'Next worker completion',timeoutMs:5_000,run:async()=>{if(serverCompletion){const result=await serverCompletion;writeFileSync(resolve(artifact,'server-worker-exit.json'),JSON.stringify(result,null,2));assert(!result.timedOut&&!result.error&&result.exitCode!==null,'Next worker exit unobserved');}}},
-      {name:'runtime client',run:()=>db?.$disconnect()}, {name:'read client',run:()=>reader?.$disconnect()}, {name:'admin pool',run:()=>admin?.end()},
+      {name:'identity client',run:()=>identity?.$disconnect()}, {name:'runtime client',run:()=>db?.$disconnect()}, {name:'read client',run:()=>reader?.$disconnect()}, {name:'admin pool',run:()=>admin?.end()},
       {name:'native fixture cluster',timeoutMs:15_000,run:async()=>{if(nativeStarted&&nativeBin){const r=await runCleanupCommand(resolve(nativeBin,'pg_ctl.exe'),['-D',nativeData,'-m','fast','-w','stop'],12_000);recordProcessTree({event:'cluster-stop',...r,stdout:r.stdout.replaceAll(password,'[fixture-secret]'),stderr:r.stderr.replaceAll(password,'[fixture-secret]')});assert.equal(r.status,0);assert.equal(spawnSync(resolve(nativeBin,'pg_ctl.exe'),['-D',nativeData,'status'],{windowsHide:true}).status,3);}}},
       {name:'fixture container',timeoutMs:15_000,run:async()=>{if(created){const inspection=command('docker',['inspect','--format','{{ index .Config.Labels "trainer2.home-program.owner" }}',container]);assert.equal(inspection,ownerLabel);const r=await runCleanupCommand('docker',['rm','-f',container],10_000);assert.equal(r.status,0);assert.equal(spawnSync('docker',['inspect',container],{windowsHide:true}).status,1);}}},
     ]));

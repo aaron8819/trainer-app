@@ -1,6 +1,13 @@
 # Trainer2 catalog coverage
 
-Trainer2 adds nine bounded program variants in `src/lib/engine/trainer2/program-catalog.json`, for 100 selectable definitions across 159 identities (59 exclusions remain). The shared 150-entry library and all 48 frozen Trainer2 definitions are unchanged. Definition provenance and distinct plate-only conventions are recorded in [PROGRAM_SUPPORT](PROGRAM_SUPPORT.md).
+Trainer2 adds 13 bounded program variants in `src/lib/engine/trainer2/program-catalog.json`, for 104 selectable definitions across 163 identities (59 exclusions remain). The shared 150-entry library and all 48 frozen Trainer2 definitions are unchanged. Definition provenance and distinct plate-only conventions are recorded in [PROGRAM_SUPPORT](PROGRAM_SUPPORT.md).
+
+Common gym names and abbreviations are search-only aliases in
+`catalog-search-aliases.json`, applied by the same matcher for Builder and Swap.
+They never alter qualified entries, stable IDs, incoming snapshot equality or
+historical captures. Explicit stack/plates/per-arm searches retain those distinctions;
+aliases do not qualify excluded exercises. Display titles and logger weight tips
+retain their existing presentation and recording definitions.
 
 The canonical exercise library is `prisma/exercises_comprehensive.json`. Trainer2 qualification is owned by `src/lib/engine/trainer2/catalog-adapter.ts`: it reads reviewed measurement columns through the shared measurement parser and zero-load policy, then translates the supported tuple into Trainer2 recording fields. Identity is exclusively `t2:<catalogKey>`. Names are display/search text.
 

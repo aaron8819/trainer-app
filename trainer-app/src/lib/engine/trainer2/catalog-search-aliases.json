@@ -1,0 +1,133 @@
+{
+  "t2:barbell-back-squat": [
+    "BB back squat",
+    "barbell squat"
+  ],
+  "t2:leg-press": [
+    "machine leg press"
+  ],
+  "t2:lying-leg-curl": [
+    "lying hamstring curl",
+    "prone leg curl"
+  ],
+  "t2:seated-leg-curl": [
+    "seated hamstring curl"
+  ],
+  "t2:hip-abduction-machine": [
+    "hip abduction",
+    "hip abductor machine"
+  ],
+  "t2:cable-crunch": [
+    "kneeling cable crunch",
+    "rope crunch"
+  ],
+  "t2:barbell-bench-press": [
+    "BB bench",
+    "flat barbell bench"
+  ],
+  "t2:neutral-grip-lat-pulldown": [
+    "neutral grip pulldown",
+    "parallel grip pulldown"
+  ],
+  "t2:lat-pulldown": [
+    "lat pull down"
+  ],
+  "t2:chest-supported-machine-row-stack": [
+    "chest supported row stack",
+    "machine row stack"
+  ],
+  "t2:chest-supported-machine-row-plates-per-arm": [
+    "chest supported row plates",
+    "machine row per arm"
+  ],
+  "t2:single-arm-cable-lateral-raise": [
+    "one arm cable lateral raise",
+    "single arm cable side raise"
+  ],
+  "t2:ez-bar-preacher-curl": [
+    "EZ preacher curl",
+    "EZ bar preacher"
+  ],
+  "t2:rope-triceps-pushdown": [
+    "rope pushdown",
+    "rope pressdown",
+    "tricep rope pushdown"
+  ],
+  "t2:cable-triceps-pushdown": [
+    "cable pressdown",
+    "tricep pushdown"
+  ],
+  "t2:barbell-romanian-deadlift": [
+    "BB RDL",
+    "barbell RDL"
+  ],
+  "t2:dumbbell-romanian-deadlift": [
+    "DB RDL",
+    "dumbbell RDL"
+  ],
+  "t2:hack-squat-plates-added": [
+    "plate loaded hack squat",
+    "hack squat plates"
+  ],
+  "t2:smith-machine-bulgarian-split-squat-plates-added": [
+    "Smith Bulgarian split squat",
+    "Smith rear foot elevated split squat"
+  ],
+  "t2:seated-calf-raise-plates-added": [
+    "plate loaded seated calf raise",
+    "seated calf raise plates"
+  ],
+  "t2:smith-machine-standing-calf-raise-plates-added": [
+    "Smith standing calf raise",
+    "Smith calf raise"
+  ],
+  "t2:reverse-crunch": [
+    "bodyweight reverse crunch"
+  ],
+  "t2:chest-supported-machine-high-row-plates-per-arm": [
+    "machine high row plates per arm",
+    "plate loaded high row"
+  ],
+  "t2:chest-supported-machine-high-row-stack": [
+    "machine high row stack"
+  ],
+  "t2:iso-lateral-low-row-plates-per-arm": [
+    "plate loaded low row",
+    "low row per arm"
+  ],
+  "t2:machine-assisted-pull-up": [
+    "assisted pullup",
+    "assisted pull up"
+  ],
+  "t2:incline-dumbbell-bench-press": [
+    "incline DB bench",
+    "incline dumbbell bench"
+  ],
+  "t2:reverse-pec-deck": [
+    "rear delt fly machine",
+    "reverse fly machine"
+  ],
+  "t2:dumbbell-lateral-raise": [
+    "DB lateral raise",
+    "dumbbell side raise"
+  ],
+  "t2:rope-hammer-curl": [
+    "cable rope hammer curl",
+    "rope curl"
+  ],
+  "t2:overhead-cable-triceps-extension": [
+    "overhead rope extension",
+    "overhead cable tricep extension"
+  ],
+  "t2:leg-extension": [
+    "quad extension",
+    "knee extension machine"
+  ],
+  "t2:face-pull": [
+    "rope face pull"
+  ],
+  "t2:dumbbell-bench-press": [
+    "flat DB bench",
+    "flat dumbbell bench"
+  ]
+}

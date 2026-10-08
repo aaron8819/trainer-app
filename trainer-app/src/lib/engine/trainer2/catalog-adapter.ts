@@ -1,6 +1,7 @@
 import shared from '../../../../prisma/exercises_comprehensive.json';
 import program from './program-catalog.json';
 import qualifiedV1 from './qualified-catalog-v1.json';
+import searchAliases from './catalog-search-aliases.json';
 import { frozenMeasurementSnapshot, assertFrozenMeasurementSnapshotInvariant } from '../../exercise-measurement/semantics';
 import { deriveLoadEntryPolicy } from '../../exercise-measurement/load-entry-policy';
 import type { DraftDocument } from '../../trainer2-contracts/draft';
@@ -91,7 +92,13 @@ export const catalog: CatalogExercise[] = library.flatMap(e => e.entry ? [e.entr
 export function capturedRepDefaults(exercise: Exercise) {
   return exercise.catalogFacts?.repDefaults ?? legacy.get(exercise.catalogId)?.reps;
 }
-export function matchesCatalogSearch(entry: { name: string; aliases: string[] }, query: string) {
+export function matchesCatalogSearch(entry: {
+  name: string; aliases: string[]; id?: string; catalogId?: string;
+}, query: string) {
   const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-  return [entry.name, ...entry.aliases].some(s => normalize(s).includes(normalize(query)));
+  // Search-only enrichment never changes qualified definitions or captured snapshots.
+  const aliases: Readonly<Record<string, readonly string[]>> = searchAliases;
+  const extra = aliases[entry.id ?? entry.catalogId ?? ''] ?? [];
+  return [entry.name, ...entry.aliases, ...extra]
+    .some(s => normalize(s).includes(normalize(query)));
 }

@@ -3,11 +3,11 @@
   "trainer2VariantSource": "src/lib/engine/trainer2/program-catalog.json",
   "baselineCommit": "3a2e057d3a205241849827a1f7e7ca580787acaf",
   "totals": {
-    "canonical": 159,
+    "canonical": 163,
     "before": 48,
-    "after": 100,
+    "after": 104,
     "currentlySupported": 48,
-    "compatibleMissingIntegration": 52,
+    "compatibleMissingIntegration": 56,
     "missingOrConflictingMetadata": 48,
     "requiresNewCapability": 11
   },
@@ -7693,6 +7693,254 @@
           "secondaryMuscles": [
             "Hamstrings",
             "Adductors"
+          ],
+          "externalZeroMeaning": "validZero",
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:hack-squat-plates-added",
+      "catalogKey": "hack-squat-plates-added",
+      "name": "Hack Squat (Plates Added)",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_ADDED_PLATES_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD",
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "squat"
+      ],
+      "primaryMuscles": [
+        "Quads"
+      ],
+      "secondaryMuscles": [
+        "Glutes"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:hack-squat-plates-added",
+        "name": "Hack Squat (Plates Added)",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "squat",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineAddedPlatesTotal",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "variation": "Total plates added across both sides; exclude machine starting resistance. Total reps. Zero means no added plates.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "squat"
+          ],
+          "primaryMuscles": [
+            "Quads"
+          ],
+          "secondaryMuscles": [
+            "Glutes"
+          ],
+          "externalZeroMeaning": "validZero",
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:seated-calf-raise-plates-added",
+      "catalogKey": "seated-calf-raise-plates-added",
+      "name": "Seated Calf Raise (Plates Added)",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_ADDED_PLATES_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD",
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "isolation"
+      ],
+      "primaryMuscles": [
+        "Calves"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 10,
+        "max": 20
+      },
+      "normalized": {
+        "id": "t2:seated-calf-raise-plates-added",
+        "name": "Seated Calf Raise (Plates Added)",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "isolation",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineAddedPlatesTotal",
+        "reps": {
+          "min": 10,
+          "max": 20
+        },
+        "variation": "Total plates added; exclude machine starting resistance. Total reps. Zero means no added plates.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "isolation"
+          ],
+          "primaryMuscles": [
+            "Calves"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": "validZero",
+          "repDefaults": {
+            "min": 10,
+            "max": 20
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:smith-machine-standing-calf-raise-plates-added",
+      "catalogKey": "smith-machine-standing-calf-raise-plates-added",
+      "name": "Smith-Machine Standing Calf Raise (Plates Added)",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "SMITH_PLATES_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD",
+      "equipment": [
+        "Smith_Machine"
+      ],
+      "movementPatterns": [
+        "isolation"
+      ],
+      "primaryMuscles": [
+        "Calves"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 10,
+        "max": 20
+      },
+      "normalized": {
+        "id": "t2:smith-machine-standing-calf-raise-plates-added",
+        "name": "Smith-Machine Standing Calf Raise (Plates Added)",
+        "equipment": [
+          "Smith_Machine"
+        ],
+        "purpose": "isolation",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "smithPlatesTotal",
+        "reps": {
+          "min": 10,
+          "max": 20
+        },
+        "variation": "Total plates added across both sides; exclude Smith bar resistance. Total reps. Zero means no added plates.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "isolation"
+          ],
+          "primaryMuscles": [
+            "Calves"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": "validZero",
+          "repDefaults": {
+            "min": 10,
+            "max": 20
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:iso-lateral-low-row-plates-per-arm",
+      "catalogKey": "iso-lateral-low-row-plates-per-arm",
+      "name": "Iso-Lateral Low Row (Plates per Arm)",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_PLATES_PER_ARM",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD",
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Rear Delts"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:iso-lateral-low-row-plates-per-arm",
+        "name": "Iso-Lateral Low Row (Plates per Arm)",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "horizontal_pull",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machinePlatesPerArm",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "variation": "Both arms together with equal loading. Record added plates per arm, excluding starting resistance: 45 lb each arm records as 45, not 90. Total bilateral reps.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "horizontal_pull"
+          ],
+          "primaryMuscles": [
+            "Lats",
+            "Upper Back"
+          ],
+          "secondaryMuscles": [
+            "Biceps",
+            "Rear Delts"
           ],
           "externalZeroMeaning": "validZero",
           "repDefaults": {

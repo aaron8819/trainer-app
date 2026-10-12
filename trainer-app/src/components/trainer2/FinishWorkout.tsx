@@ -67,6 +67,11 @@ export function FinishWorkout({ execution, ownershipEpoch, blocked, refresh, che
   }
   function begin() {
     if (blocked || !ready || pending || busy || execution.lifecycle !== 'Open') return;
+    if (unrecordedTargets(execution).every(t => t.skipped)) {
+      setMessage('');
+      finish(execution);
+      return;
+    }
     // Snapshot stays fixed through refresh, including same-value newer versions.
     setReview(execution); onLock(true); setMessage('');
   }

@@ -10,7 +10,9 @@ Prescribed loads retain the existing nearest-five lbs suggestion. Untouched acce
 
 `RestBar.tsx` changes presentation only: deadline, start/reset qualification, adjustments, dismissal, cross-tab synchronization and persistence stay in their existing owners. Corrections and skips do not become rest-start events.
 
-`FinishWorkout.tsx` now reviews both resolved and unresolved workouts before submission. The existing inline confirmation owner freezes the reviewed snapshot, preserves exact retry/readback and navigates to Home only after confirmed completion. No next workout starts automatically. Keep working cancels the decision. Completed results remain reviewable and correctable.
+`FinishWorkout.tsx` submits directly when every set is logged or explicitly skipped. Unresolved sets retain inline confirmation with a frozen reviewed snapshot. Both paths use the same finish owner, preserve exact retry/readback and navigate to Home only after confirmed completion. Explicit skips retain wire acknowledgement. No next workout starts automatically. Keep working cancels the unresolved decision. Completed results remain reviewable and correctable.
+
+Each exercise occurrence in `ActiveWorkout.tsx` collapses its queue details when all sets resolve. The title and logged count remain visible with Show sets for manual reopening. Reopening survives unrelated renders; added or cleared unresolved targets reveal details. Hidden contents and identity-keyed set controllers remain mounted, and duplicate exercise occurrences have independent disclosure state.
 
 ## Prototype adaptations
 

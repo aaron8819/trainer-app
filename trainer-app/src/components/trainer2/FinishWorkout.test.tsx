@@ -41,7 +41,6 @@ describe('Finish workout decisions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Finish anyway' }));
     await screen.findByText(/Finish was not accepted/); expect(JSON.parse(fetch.mock.calls[0][1].body).expected).toEqual(reviewedResults(execution));
     expect(fetch).toHaveBeenCalledTimes(1); fireEvent.click(screen.getByRole('button', { name: 'Finish workout' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Finish & go home' }));
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
     expect(JSON.parse(fetch.mock.calls[1][1].body).expected.results[0].resultVersion).toBe(3);
   });
@@ -80,13 +79,12 @@ it('navigates only after accepted finish has authoritative successful readback',
   expect(sessionStorage.getItem(`trainer2-finish:${execution.initial.accountId}:${execution.executionId}`)).toBeNull();
 });
 
-it('confirms explicit skips with the skip bound in the exact command', async () => {
+it('directly finishes explicit skips with the skip bound in the exact command', async () => {
   const skipped = { ...execution, skips: [{ executionId: execution.executionId, targetId, actionId: randomUUID(), skippedAt: new Date().toISOString() }] };
   const fetch = vi.fn().mockImplementation((_u, init) => response(accepted(init.body))); vi.stubGlobal('fetch', fetch);
   render(<FinishWorkout {...props} execution={skipped} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Finish workout' }));
-  expect(fetch).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Finish & go home' }));
+  expect(screen.queryByRole('button', { name: 'Finish & go home' })).toBeNull();
   await screen.findByText('Workout finished.');
   expect(screen.queryByRole('button', { name: 'Finish anyway' })).toBeNull();
   const command = JSON.parse(fetch.mock.calls[0][1].body);
@@ -94,16 +92,37 @@ it('confirms explicit skips with the skip bound in the exact command', async () 
   expect(command.intent.acknowledgeUnrecorded).toBe(true);
 });
 
-it('confirms logged sets before finishing', async () => {
+it('directly finishes logged sets', async () => {
   const logged = { ...execution, results: [{ targetId, version: 1, performedSetId: randomUUID(), result: { reps: { value: 10, basis: 'total' }, measurement: null, rir: '3' } }] } as ExecutionRead;
   const fetch = vi.fn().mockImplementation((_u, init) => response(accepted(init.body))); vi.stubGlobal('fetch', fetch);
   render(<FinishWorkout {...props} execution={logged} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Finish workout' }));
-  expect(fetch).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Finish & go home' }));
+  expect(screen.queryByRole('button', { name: 'Finish & go home' })).toBeNull();
   await screen.findByText('Workout finished.');
   expect(fetch).toHaveBeenCalledOnce();
   expect(JSON.parse(fetch.mock.calls[0][1].body).intent.acknowledgeUnrecorded).toBe(false);
+});
+it('single-flights direct finish and retains its exact request after failed readback', async () => {
+  const skipped = { ...execution, skips: [{ executionId: execution.executionId, targetId,
+    actionId: randomUUID(), skippedAt: new Date().toISOString() }] };
+  let resolve!: (response: Response) => void;
+  const fetch = vi.fn().mockImplementationOnce(() => new Promise<Response>(done => { resolve = done; }))
+    .mockImplementation((_url, init) => response(accepted(init.body)));
+  const refresh = vi.fn().mockRejectedValueOnce(new Error('Read failed')).mockResolvedValue(undefined);
+  vi.stubGlobal('fetch', fetch);
+  render(<FinishWorkout {...props} execution={skipped} refresh={refresh} />);
+  const button = await screen.findByRole('button', { name: 'Finish workout' });
+  fireEvent.click(button);
+  fireEvent.click(button);
+  expect(fetch).toHaveBeenCalledOnce();
+  const body = fetch.mock.calls[0][1].body;
+  resolve(response(accepted(body)));
+  await screen.findByText(/Finish could not be confirmed/);
+  expect(sessionStorage.getItem(`trainer2-finish:finish-test:${execution.executionId}`)).toBe(body);
+  fireEvent.click(screen.getByRole('button', { name: 'Check finish again' }));
+  await screen.findByText('Workout finished.');
+  expect(fetch.mock.calls[1][1].body).toBe(body);
+  expect(refresh).toHaveBeenCalledTimes(2);
 });
 it('uses the same owner for an external ready-card button and avoids a success screen before navigation', async () => {
   const skipped = { ...execution, skips: [{ executionId: execution.executionId, targetId, actionId: randomUUID(), skippedAt: new Date().toISOString() }] };
@@ -114,7 +133,6 @@ it('uses the same owner for an external ready-card button and avoids a success s
   await waitFor(() => expect(screen.getByRole('button', { name: 'Finish workout' })).toBeEnabled());
   fireEvent.click(screen.getByRole('button', { name: 'Finish from ready card' }));
   expect(onFinished).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Finish & go home' }));
   await waitFor(() => expect(onFinished).toHaveBeenCalledOnce());
   expect(screen.queryByText('Workout finished.')).toBeNull();
   expect(screen.getByRole('button', { name: 'Finishing…' })).toBeDisabled();

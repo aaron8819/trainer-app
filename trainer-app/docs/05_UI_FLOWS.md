@@ -11,7 +11,10 @@ Trainer2 pages. V1 `AppNavigation` excludes only `/trainer2` and its descendants
 its remaining routes and presentation are unchanged. Trainer2 uses compact,
 non-sticky desktop navigation and a mobile bottom bar with safe-area clearance.
 The existing visual-viewport signal hides the bar while a software keyboard is
-open. Builder's fixed actions reserve the bar's height; Logger's existing timer,
+open. Open workout logging on execution routes omits shell navigation and its
+bottom clearance; the accessible Back to training link remains the return path.
+Completed execution review and other screens retain navigation. Builder's fixed
+actions reserve the bar's height; Logger's existing timer,
 modal and deliberate set-scroll owners are unchanged.
 
 Authenticated default Training entry opens the account's existing `Active` plan

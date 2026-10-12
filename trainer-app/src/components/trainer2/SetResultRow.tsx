@@ -258,13 +258,15 @@ export function SetResultRow({ sessionAdded = false, assignment, accountId, owne
     value={f![field]} onChange={e => change(field, e.target.value)} /></label>;
   // Retain recovery state by identity without rendering inactive forms.
   if (!active || (retainedOnly && !draft)) return null;
+  const feedback = busy && draft?.pending ? 'Saving…' : message;
   return <div className={activePanel ? "mt-2" : "mt-3 rounded-lg bg-slate-50 p-3"} aria-label={`Set ${number} actual result`}>
     {!activePanel && <p className="text-sm font-medium">{saved ? `Saved result: ${resultLabel(saved.result)}` : 'Not recorded'}</p>}
     {historical && history.length > 0 && <details className="mt-2 text-sm"><summary className="min-h-11 cursor-pointer">Result history</summary><ol className="space-y-2">{[...history].sort((a, b) => a.version - b.version).map(r => <li key={r.version}><p>{r.version === 1 ? 'Original record' : 'Correction'} · v{r.version}{r.version === finishVersion ? ' · Acknowledged at finish' : ''}</p><p>{resultLabel(r.result)}</p><p>{r.recordedAt} · {r.reason ?? 'Recorded result'}</p></li>)}</ol></details>}
     {saved?.reason && <p className="text-xs text-slate-600">Correction: {saved.reason}</p>}
     {!compact && !draft && !readOnly && (!historical || !!saved?.result) && <button ref={editButton} className={control} disabled={!ready || locked} onClick={begin}>{historical ? 'Correct result' : saved ? saved.result ? 'Edit result' : 'Re-record result' : 'Enter actual result'}</button>}
     {skipped && !saved && !compact && <div className="py-3"><p className="mb-2 text-sm">Skipped · no performed result</p><button className={control} disabled={locked || readOnly} onClick={() => setReopening(true)}>Log this set</button></div>}
-    <p className={styles.feedback} role="status" tabIndex={message ? 0 : undefined} aria-live="polite">{busy && draft?.pending ? 'Saving…' : message}</p>
+    <p className={feedback ? styles.feedback : 'sr-only'} role="status"
+      tabIndex={message ? 0 : undefined} aria-live="polite">{feedback}</p>
     {(draft || compact) && f && <fieldset disabled={disabled} className="mt-2 space-y-3">
       <legend className="sr-only">{draft?.pending ? 'Pending confirmation' : 'Set values'}{draft?.base ? ` · editing v${draft.base.version}` : ''}</legend>
       {activePanel ? <>

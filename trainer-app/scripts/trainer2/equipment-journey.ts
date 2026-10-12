@@ -90,7 +90,7 @@ export async function equipmentJourney({ page, base, home, artifact, accountId, 
       page.on('dialog', dialog => dialog.accept());
       const retained = await page.evaluate(() => Object.fromEntries(Object.entries(sessionStorage)
         .filter(([key]) => key.startsWith('trainer2-result:'))));
-      await nav.getByRole('link', { name: 'Program', exact: true }).click();
+      await page.getByRole('link', { name: 'Back to training', exact: true }).click();
       await page.goto(`${base}/trainer2/dev/executions/${initial.executionId}`);
       await expect(active.getByLabel('Set 1 Actual reps', { exact: true })).toHaveValue('10');
       assert.deepEqual(await page.evaluate(() => Object.fromEntries(Object.entries(sessionStorage)
@@ -105,7 +105,7 @@ export async function equipmentJourney({ page, base, home, artifact, accountId, 
       await expect(active.getByRole('button', { name: 'Retry save', exact: true })).toBeVisible();
       const pending = await page.evaluate(() => Object.fromEntries(Object.entries(sessionStorage)
         .filter(([key]) => key.startsWith('trainer2-result:'))));
-      await nav.getByRole('link', { name: 'Program', exact: true }).click();
+      await page.getByRole('link', { name: 'Back to training', exact: true }).click();
       await page.goto(`${base}/trainer2/dev/executions/${initial.executionId}`);
       await page.reload();
       await expect(active.getByRole('button', { name: 'Retry save', exact: true })).toBeVisible();

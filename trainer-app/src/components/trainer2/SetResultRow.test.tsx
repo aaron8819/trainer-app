@@ -416,6 +416,22 @@ describe('Logger correction regressions', () => {
   const target = { ...p.targets[0], measurement: m, reps: { min: 8, max: 8, basis: 'total' as const }, rir: '3' };
   const ui = { ...props, activePanel: true, prescription: target, exercise: p.exercise, refresh: vi.fn() };
   const prior = { ...saved, result: { reps: { value: 9, basis: 'total' as const }, measurement: { ...m, value: '137.125', unit: 'lb' as const }, rir: '0' } };
+  it('keeps an empty live region out of layout and reveals recovery feedback in place', async () => {
+    const fetch = vi.fn().mockResolvedValue(response({ malformed: true }));
+    vi.stubGlobal('fetch', fetch);
+    render(<SetResultRow {...ui} />);
+    const status = screen.getByRole('status');
+    expect(status).toHaveClass('sr-only');
+    expect(status).toHaveAttribute('aria-live', 'polite');
+    expect(status).not.toHaveAttribute('tabindex');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
+    await screen.findByRole('button', { name: 'Retry save' });
+    expect(screen.getByRole('status')).toBe(status);
+    expect(status).not.toHaveClass('sr-only');
+    expect(status).not.toHaveTextContent(/^$/);
+    expect(status).toHaveAttribute('tabindex', '0');
+  });
   it('rounds only initial suggestions, including positive ties and zero', () => {
     expect(startingPounds(m)).toBe('130');
     expect(startingPounds({ ...m, value: '132.5', unit: 'lb' })).toBe('135');

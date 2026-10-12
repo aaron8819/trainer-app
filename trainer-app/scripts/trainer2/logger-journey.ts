@@ -100,6 +100,8 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   pass('Accepted lost response preserves exact pending envelope and typed draft across reload; replay confirms edited lbs without duplicate work');
 
   const firstName = initial.initial.occurrence.positions[0].exercise.name;
+  // Completed exercise details now collapse; reopen before correcting a saved set.
+  await queue.getByRole('button', { name: 'Show sets', exact: true }).first().click();
   await queue.getByRole('button', { name: new RegExp(`${firstName}, set 1, recorded`) }).click();
   await active.getByLabel('Set 1 Actual reps', { exact: true }).fill('11');
   let competed = false;
@@ -157,7 +159,8 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   assert.deepEqual(resumed.results, swapped.results);
   assert.deepEqual(resumed.skips, swapped.skips);
   const chipsBefore = await queue.getByRole('button', { name: /, set \d+,/ }).count();
-  await queue.getByRole('button', { name: '+ Add set', exact: true }).nth(1).click();
+  // The completed first occurrence is collapsed again after leaving and resuming.
+  await queue.getByRole('button', { name: '+ Add set', exact: true }).first().click();
   await expect(queue.getByRole('button', { name: /, set \d+,/ })).toHaveCount(chipsBefore + 1);
   await page.getByRole('button', { name: '+ Add exercise', exact: true }).click();
   const picker = page.getByRole('dialog', { name: 'Add exercise', exact: true });

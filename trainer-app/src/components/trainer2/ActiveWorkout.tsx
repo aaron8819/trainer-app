@@ -5,6 +5,7 @@ import styles from './Logger.module.css';
 import { canonicalJson } from '@/lib/trainer2-contracts/canonical-json';
 import { AddExercise } from './AddExercise';
 import { AddSet } from './AddSet';
+import { ExerciseQueueDisclosure } from './ExerciseQueueDisclosure';
 import { executionPositions, originalPositions } from '@/lib/engine/trainer2/execution-targets';
 import { finishFormId } from './FinishWorkout';
 import { currentAssignment, effectiveOccurrence } from '@/lib/engine/trainer2/exercise-swap';
@@ -167,8 +168,12 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
           const assignment = currentAssignment(execution, owned.id);
           const swap = execution.swaps?.find(s => s.positionId === owned.id && s.version === assignment.version);
           const recordedCount = items.filter(s => execution.results.some(r => r.targetId === s.id && r.result)).length;
+          const unresolved = items.filter(s => !execution.results.some(r => r.targetId === s.id && r.result)
+            && (!execution.skips?.some(k => k.targetId === s.id)
+              || execution.results.some(r => r.targetId === s.id))).map(s => s.id).join(',');
           return <div key={owned.id} className={styles.queueRow}>
             <button className="flex min-h-11 w-full items-center justify-between gap-3 text-left hover:text-slate-700 focus-visible:rounded-md" onClick={() => select(items.find(s => !execution.results.some(r => r.targetId === s.id && r.result) && (!execution.skips?.some(k => k.targetId === s.id) || execution.results.some(r => r.targetId === s.id)))?.id ?? items[0].id, true)}><span className="font-semibold">{exerciseTitle(position.exercise)}{sets.filter(s => s.number === 1 && s.position.exercise.kind === position.exercise.kind && s.position.exercise.name === position.exercise.name).length > 1 && ` · occurrence ${sets.filter(s => s.number === 1 && s.position.exercise.name === position.exercise.name).findIndex(s => s.positionId === owned.id)+1}`}</span><span className="shrink-0 text-xs tabular-nums text-slate-500">{recordedCount}/{items.length} logged</span></button>
+            <ExerciseQueueDisclosure unresolved={unresolved}>
             {swap && <p className="mb-2 text-xs text-slate-600">{swap.content.restoreOriginal ? `Returned to original: ${exerciseTitle(original.exercise)}` : `${exerciseTitle(original.exercise)} → ${exerciseTitle(position.exercise)} · Swapped for today`}</p>}
             <MuscleTags exercise={position.exercise} />
             <div className="mt-2 flex flex-wrap gap-1.5">{items.map(s => {
@@ -178,6 +183,7 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
                 className={`min-h-11 rounded-lg border px-3 py-2 text-left text-sm tabular-nums transition-colors ${selected === s.id ? 'border-black bg-black font-medium text-white' : saved?.result ? 'border-emerald-200 bg-emerald-50/40 text-emerald-900 hover:bg-emerald-50' : skipped ? 'border-dashed border-slate-400 text-slate-600 hover:bg-slate-50' : 'border-slate-300 text-slate-700 hover:bg-slate-50'}`} onClick={() => select(s.id, true)}><span className="font-semibold">{s.number}</span><span className="ml-1.5">{saved?.result ? '· ' + queueResultLabel(saved.result) : skipped ? '· Skipped' : <span aria-hidden="true" className="inline-block h-3 w-3 rounded-full border-2 border-current align-middle" />}</span>{inputStates[s.id] ? ' •' : ''}</button>;
             })}<AddSet execution={execution} positionId={owned.id} ownershipEpoch={ownershipEpoch} locked={locked || swapActive}
               refresh={refreshExecution} onLock={lockCallbacks.current[`add:${owned.id}`]} onAdded={id => select(id, true)} /></div>
+            </ExerciseQueueDisclosure>
           </div>;
         })}
       </details>)}

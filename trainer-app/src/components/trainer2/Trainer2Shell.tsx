@@ -6,13 +6,13 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { useVisualViewportMetrics } from '@/lib/ui/use-visual-viewport-metrics';
 import styles from './Trainer2Shell.module.css';
 
-type Destination = { planId?: string; builder: boolean };
+type Destination = { planId?: string; builder: boolean; logging?: boolean };
 type NavigationState = Destination & { builderId?: string };
 const DestinationContext = createContext<((value: Destination) => void) | null>(null);
 // Presentation context only. The existing controllers still own drafts and commands.
-export function useTrainer2Destination(planId: string | undefined, builder = false) {
+export function useTrainer2Destination(planId: string | undefined, builder = false, logging = false) {
   const report = useContext(DestinationContext);
-  useEffect(() => { report?.({ planId, builder }); }, [report, planId, builder]);
+  useEffect(() => { report?.({ planId, builder, logging }); }, [report, planId, builder, logging]);
 }
 
 export function Trainer2Shell({ children }: { children: React.ReactNode }) {
@@ -22,9 +22,11 @@ export function Trainer2Shell({ children }: { children: React.ReactNode }) {
   const report = useCallback((value: Destination) => setDestination(previous => ({ ...value,
     builderId: value.builder ? value.planId : previous.builderId === value.planId ? undefined : previous.builderId })), []);
   const auth = pathname === '/trainer2/auth' || pathname?.startsWith('/trainer2/auth/');
-  return <div className={styles.shell} data-trainer2-shell data-auth={auth || undefined} data-keyboard={keyboardOpen || undefined}>
+  const logging = destination.logging && /^\/trainer2\/dev\/executions\/[^/]+$/.test(pathname ?? '');
+  return <div className={styles.shell} data-trainer2-shell data-auth={auth || undefined}
+    data-logging={logging || undefined} data-keyboard={keyboardOpen || undefined}>
     <DestinationContext.Provider value={report}>
-      {!auth && <Suspense><Trainer2Navigation pathname={pathname} destination={destination} bottomOffset={bottomOffset} /></Suspense>}
+      {!auth && !logging && <Suspense><Trainer2Navigation pathname={pathname} destination={destination} bottomOffset={bottomOffset} /></Suspense>}
       {children}
     </DestinationContext.Provider>
   </div>;

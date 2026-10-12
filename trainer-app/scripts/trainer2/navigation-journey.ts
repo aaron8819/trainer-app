@@ -103,6 +103,8 @@ export async function navigationJourney({ page, base, artifact, accountId, planI
   page.on('dialog', dialog => dialog.accept());
   await reps.fill('9');
   const retained = await page.evaluate(() => Object.fromEntries(Object.entries(sessionStorage).filter(([key]) => key.startsWith('trainer2-result:'))));
+  await expect(nav).toHaveCount(0);
+  await page.getByRole('link', { name: 'Back to training', exact: true }).click();
   await nav.getByRole('link', { name: 'Program', exact: true }).click();
   await expect(page.getByRole('link', { name: 'Back to training', exact: true })).toBeVisible();
   await page.goto(logger); await expect(reps).toHaveValue('9');
@@ -111,6 +113,7 @@ export async function navigationJourney({ page, base, artifact, accountId, planI
   await active.getByRole('button', { name: 'Log set', exact: true }).click();
   await expect(active.getByRole('button', { name: 'Retry save', exact: true })).toBeVisible();
   const pending = await page.evaluate(() => Object.fromEntries(Object.entries(sessionStorage).filter(([key]) => key.startsWith('trainer2-result:'))));
+  await page.getByRole('link', { name: 'Back to training', exact: true }).click();
   await nav.getByRole('link', { name: 'Program', exact: true }).click();
   await expect(page.getByRole('link', { name: 'Back to training', exact: true })).toBeVisible();
   await page.goto(logger); await expect(active.getByRole('button', { name: 'Retry save', exact: true })).toBeVisible();
@@ -120,12 +123,13 @@ export async function navigationJourney({ page, base, artifact, accountId, planI
   await expect(page.getByLabel('Rest timer', { exact: true })).toBeVisible();
   pass('Logger draft guard and exact pending result envelope survive navigation; retry retains command identity and starts existing rest');
   for (const width of [1280, 390, 320]) {
-    await page.setViewportSize({ width, height: 844 }); await surface('Training', width);
+    await page.setViewportSize({ width, height: 844 });
+    await expect(nav).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Back to training', exact: true })).toBeVisible();
     await active.getByRole('button', { name: 'Log set', exact: true }).scrollIntoViewIfNeeded();
-    if (width < 768) {
-      const action = (await active.getByRole('button', { name: 'Log set', exact: true }).boundingBox())!;
-      assert(action.y + action.height <= (await nav.boundingBox())!.y);
-    }
+    const action = (await active.getByRole('button', { name: 'Log set', exact: true }).boundingBox())!;
+    assert(action.width >= 44 && action.height >= 44 && action.y >= 0 && action.y + action.height <= 844);
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await shot(`active-logger-${width}`);
     await active.getByRole('button', { name: 'History', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Exercise history' }); await expect(dialog).toBeVisible();
@@ -141,7 +145,7 @@ export async function navigationJourney({ page, base, artifact, accountId, planI
     (document.activeElement as HTMLElement).blur();
     window.visualViewport!.dispatchEvent(new Event('resize'));
   });
-  await expect(nav).toBeVisible();
+  await expect(nav).toHaveCount(0);
   const completed = await db.trainer2Execution.findFirst({ where: { accountId, planId, lifecycle: 'Finished' } }); assert(completed);
   for (const width of [1280, 390, 320]) {
     await page.setViewportSize({ width, height: 844 });
@@ -163,5 +167,5 @@ export async function navigationJourney({ page, base, artifact, accountId, planI
     await expect(page.getByRole('link', { name: 'Settings', exact: true })).toHaveAttribute('href', '/settings');
     await expect(nav).toHaveCount(0); await shot(`v1-navigation-${width}`);
   }
-  pass('Keyboard signal hides bottom navigation; V1 root navigation remains visible with its original destinations outside the Trainer2 path boundary');
+  pass('Logger navigation remains absent across keyboard signals; V1 root navigation remains visible with its original destinations outside the Trainer2 path boundary');
 }

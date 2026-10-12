@@ -6,9 +6,26 @@ import { Trainer2Shell, useTrainer2Destination } from './Trainer2Shell';
 const route = vi.hoisted(() => ({ pathname: '/trainer2', query: '' }));
 vi.mock('next/navigation', () => ({ usePathname: () => route.pathname, useSearchParams: () => new URLSearchParams(route.query) }));
 vi.mock('@/lib/ui/use-visual-viewport-metrics', () => ({ useVisualViewportMetrics: () => ({ keyboardOpen: false, bottomOffset: 0 }) }));
-function Owner({ id, builder = false }: { id?: string; builder?: boolean }) { useTrainer2Destination(id, builder); return <p>Owner remains mounted</p>; }
+function Owner({ id, builder = false, logging = false }: {
+  id?: string; builder?: boolean; logging?: boolean;
+}) { useTrainer2Destination(id, builder, logging); return <p>Owner remains mounted</p>; }
 afterEach(() => { cleanup(); route.pathname = '/trainer2'; route.query = ''; });
 describe('Trainer2 shell destinations', () => {
+  it('hides navigation only for open logging and restores it for completed review and Training', async () => {
+    route.pathname = '/trainer2/dev/executions/execution-a';
+    const view = render(<Trainer2Shell><Owner id="plan-a" logging />
+      <a href="/trainer2/dev/drafts?planId=plan-a">Back to training</a></Trainer2Shell>);
+    await waitFor(() => expect(screen.queryByRole('navigation')).toBeNull());
+    expect(screen.getByRole('link', { name: 'Back to training' })).toBeVisible();
+    expect(document.querySelector('[data-trainer2-shell]')).toHaveAttribute('data-logging');
+    view.rerender(<Trainer2Shell><Owner id="plan-a" /></Trainer2Shell>);
+    await waitFor(() => expect(screen.getByRole('navigation')).toBeVisible());
+    expect(document.querySelector('[data-trainer2-shell]')).not.toHaveAttribute('data-logging');
+    route.pathname = '/trainer2/dev/drafts';
+    view.rerender(<Trainer2Shell><Owner id="plan-a" logging /></Trainer2Shell>);
+    expect(screen.getByRole('navigation')).toBeVisible();
+    expect(document.querySelector('[data-trainer2-shell]')).not.toHaveAttribute('data-logging');
+  });
   it('keeps empty Training and Program links within Trainer2 without a plan identity', () => {
     render(<Trainer2Shell><p>Empty account</p></Trainer2Shell>);
     expect(screen.getByRole('link', { name: 'Program' }).getAttribute('href')).toBe('/trainer2?view=program');

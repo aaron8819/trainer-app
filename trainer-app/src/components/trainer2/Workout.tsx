@@ -63,7 +63,7 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
   const [next, setNext] = useState<z.infer<typeof nextWorkoutRead> | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [execution, setExecution] = useState<ExecutionRead | null>(null);
-  useTrainer2Destination(execution?.initial.planId ?? planId);
+  useTrainer2Destination(execution?.initial.planId ?? planId, false, execution?.lifecycle === 'Open');
   const [pending, setPending] = useState<StartOccurrenceCommand | null>(null);
   const [busy, setBusy] = useState(false), [skipLocked, setSkipLocked] = useState(true);
   const [message, setMessage] = useState('Loading workout…');

@@ -115,3 +115,41 @@
 .setOptions { min-width: 0; }
 .setOptions summary { min-height: 44px; }
 .setOptions input, .setOptions select { width: 100%; }
+/* Reference polish: compact hierarchy, softly elevated card and shaded controls. */
+.card { background: linear-gradient(145deg, #fff, #fdfefe); box-shadow: 0 4px 22px #20364d0d, 0 1px 4px #20364d05; border-radius: 22px; }
+.card h3 { font-weight: 750; letter-spacing: -.65px; line-height: 1.15; }
+.fieldLabel { font-weight: 650; margin: 10px 0 6px; }
+.valueControl { background: #fff; box-shadow: inset 0 1px 2px #20364d03; }
+.screen .valueControl .step { background: linear-gradient(145deg, #edf2f7, #e8eef4); }
+.screen .increments .step { background: linear-gradient(145deg, #f0f4f8, #e9eff5); border: 1px solid #dce3ec; }
+.screen .numeric { font-weight: 750; letter-spacing: -.6px; }
+.screen .actions > :first-child { background: linear-gradient(120deg, #006c7b, #005b69); box-shadow: inset 0 1px 1px #ffffff18; font-weight: 650; }
+.screen .actions > :nth-child(2) { border: 1px solid #94a3b8; background: white; font-weight: 650; }
+.retainedRir { color: var(--muted); font-size: 13px; margin: 4px 0; }
+.secondary { gap: 0; padding-top: 6px; }
+.secondary > span:not([hidden]), .secondary > button { border-left: 1px solid var(--line); padding-left: 10px; margin-left: 8px; }
+.secondary summary { list-style: none; display: flex; align-items: center; gap: 7px; font-weight: 500; }
+.secondary summary::-webkit-details-marker { display: none; }
+
+.secondary summary::after { content: '›'; color: var(--muted); font-size: 22px; margin-left: 3px; }
+.secondary button { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+.secondary svg { width: 20px; height: 20px; flex: none; }
+
+.valueReadout { flex: 1; min-width: 0; text-align: center; }
+.valueReadout span { display: block; color: var(--muted); font-size: 13px; line-height: 1.2; padding-bottom: 4px; }
+.screen .valueReadout .numeric { min-height: 36px; padding: 0 4px; }
+
+.screen .rir button:focus-visible { outline-offset: -3px; }
+
+.screen { isolation: isolate; }
+.screen :is(button, a, input, select, summary):focus-visible { outline-color: #006575; }
+.secondary > span:not([hidden]), .secondary > button { border-radius: 0; }
+
+.screen .rir button[aria-pressed="true"]:focus-visible { outline-color: white; }
+
+@media (max-width: 350px) {
+  .secondary summary { white-space: nowrap; gap: 4px; font-size: 14px; }
+  .secondary summary::after { display: none; }
+  .secondary button { gap: 4px; font-size: 14px; }
+  .secondary > span:not([hidden]), .secondary > button { padding-left: 6px; margin-left: 4px; }
+}

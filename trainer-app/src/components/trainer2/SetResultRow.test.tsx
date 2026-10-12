@@ -358,7 +358,7 @@ describe('Pounds and stable logging suggestions', () => {
     await waitFor(() => expect(blocked).toHaveBeenLastCalledWith(props.targetId, false));
     expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('44.09');
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('8');
-    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('');
+    expect(screen.getAllByRole('button', { name: /^[0-5] RIR$/ }).every(b => b.getAttribute('aria-pressed') === 'false')).toBe(true);
     const preceding = [{ ...saved, result: { reps: { value: 5, basis: 'total' as const }, measurement: prescription.measurement, rir: '0' } }];
     view.rerender(<SetResultRow {...ui} preceding={preceding} refresh={vi.fn()} onInputState={blocked} />);
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('5');
@@ -372,7 +372,7 @@ describe('Pounds and stable logging suggestions', () => {
     await screen.findByRole('button', { name: 'Log set' });
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('');
     expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('');
-    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('');
+    expect(screen.getAllByRole('button', { name: /^[0-5] RIR$/ }).every(b => b.getAttribute('aria-pressed') === 'false')).toBe(true);
     view.unmount(); sessionStorage.clear();
     render(<SetResultRow {...ui} preceding={[{ ...saved, result: { ...result, measurement: { ...prescription.measurement, convention: 'perImplement' } } }]} refresh={vi.fn()} />);
     expect(await screen.findByLabelText('Set 1 Actual load')).toHaveValue('44.09');
@@ -454,7 +454,7 @@ describe('Logger correction regressions', () => {
     fireEvent.change(screen.getByLabelText('Set 2 Actual load'), { target: { value: '' } });
     view.rerender(<SetResultRow {...ui} number={2} preceding={[{ ...prior, version: 2, result: { ...prior.result, rir: '4' } }]} />);
     expect(screen.getByLabelText('Set 2 Actual load')).toHaveValue('');
-    expect(screen.getByLabelText('Set 2 Actual RIR (optional)')).toHaveValue('');
+    expect(screen.getAllByRole('button', { name: /^[0-5] RIR$/ }).every(b => b.getAttribute('aria-pressed') === 'false')).toBe(true);
   });
   it('refreshes saved values/action over an old untouched suggestion, but keeps a stale user draft', async () => {
     const view = render(<SetResultRow {...ui} />);
@@ -475,18 +475,28 @@ describe('Logger correction regressions', () => {
     view.rerender(<SetResultRow {...ui} prescription={{ ...target, measurement: null, reps: { ...target.reps, max: 10 } }} firstSetLoad={prior} />);
     expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('135');
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('');
-    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('');
+    expect(screen.getAllByRole('button', { name: /^[0-5] RIR$/ }).every(b => b.getAttribute('aria-pressed') === 'false')).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Clear weight' }));
     fireEvent.click(screen.getByRole('button', { name: 'Decrease load by 10 lb' }));
     expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('');
     fireEvent.click(screen.getByRole('button', { name: '4 RIR' }));
-    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('4');
+    expect(screen.getByRole('button', { name: '4 RIR' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByRole('button', { name: '5 RIR' }));
-    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('5');
-    fireEvent.change(screen.getByLabelText('Set 1 Actual RIR (optional)'), { target: { value: '3.5' } });
-    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('3.5');
+    expect(screen.getByRole('button', { name: '5 RIR' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '5 RIR' }));
+    expect(screen.getByRole('button', { name: '5 RIR' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByText('Other RIR')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '0 RIR' }));
-    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('0');
+    expect(screen.getByRole('button', { name: '0 RIR' })).toHaveAttribute('aria-pressed', 'true');
+  });
+  it.each(['0', '3.5', '7'])('preserves saved RIR %s when updating only reps', async rir => {
+    const fetch = vi.fn().mockResolvedValue(response({ malformed: true })); vi.stubGlobal('fetch', fetch);
+    render(<SetResultRow {...ui} saved={{ ...saved, result: { ...prior.result, rir } }} />);
+    await screen.findByRole('button', { name: 'Update set' });
+    fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Update set' }));
+    expect(JSON.parse(fetch.mock.calls[0][1].body).intent.result.rir).toBe(rir);
+    expect(screen.queryByText('Other RIR')).toBeNull();
   });
   it('does not skip an incompatible preceding result for an older compatible result', async () => {
     render(<SetResultRow {...ui} number={3} preceding={[{ ...prior, result: { ...prior.result, measurement: { ...m, convention: 'perImplement' } } }, prior]} />);

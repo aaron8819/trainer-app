@@ -33,6 +33,7 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
     await assertPoundSurface(page);
     assert.equal(await active.getByLabel('Set 1 Actual reps', { exact: true }).evaluate(e => getComputedStyle(e).fontSize), '27px');
     await shot(`logger-${width}`);
+    await page.screenshot({ path: resolve(artifact, `viewport-${width}.png`), fullPage: false });
     await active.screenshot({ path: resolve(artifact, `active-card-${width}.png`) });
   }
   await active.getByRole('button', { name: 'History', exact: true }).click();
@@ -71,12 +72,8 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
     assert(box && timerBox && box.y >= timerBox.y + timerBox.height && box.y + box.height <= 480, `${name} reachable below timer in keyboard-sized viewport`);
   }
   await shot('active-card-timer-keyboard-viewport-390');
-  await active.getByText('Other RIR', { exact: true }).click();
-  await active.getByLabel('Set 2 Actual RIR (optional)', { exact: true }).fill('3.5');
-  await active.getByRole('button', { name: 'Log set', exact: true }).scrollIntoViewIfNeeded();
-  await shot('active-card-other-rir-keyboard-viewport-390');
-  await active.getByLabel('Set 2 Actual RIR (optional)', { exact: true }).fill('');
-  await active.getByText('Other RIR', { exact: true }).click();
+  await page.screenshot({ path: resolve(artifact, 'timer-reduced-height-390.png'), fullPage: false });
+  await expect(active.getByText("Other RIR", { exact: true })).toHaveCount(0);
   await page.setViewportSize({ width: 320, height: 844 });
   pass('Unreported RIR persists as null and stays blank on the next set; Log/Skip reachable with timer in a keyboard-sized viewport');
   const timerStorage = `trainer2-rest:${accountId}:${executionId}`;
@@ -210,11 +207,11 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   await page.setViewportSize({ width: 390, height: 500 });
   await active.getByLabel('Set 1 Actual reps', { exact: true }).fill('10');
   await active.getByLabel('Set 1 Actual load', { exact: true }).fill('40');
-  await active.getByText('Other RIR', { exact: true }).click();
-  await active.getByLabel('Set 1 Actual RIR (optional)', { exact: true }).fill('3.5');
+  await active.getByRole('button', { name: '0 RIR', exact: true }).click();
   await active.getByRole('button', { name: 'Log set', exact: true }).scrollIntoViewIfNeeded();
   await shot('reduced-height-390');
-  await active.getByLabel('Set 1 Actual RIR (optional)', { exact: true }).press('Tab');
+  await active.getByRole('button', { name: '5 RIR', exact: true }).focus();
+  await active.getByRole('button', { name: '5 RIR', exact: true }).press('Tab');
   assert(await page.evaluate(() => document.activeElement?.tagName === 'BUTTON'));
   await active.getByRole('button', { name: 'Log set', exact: true }).click();
   await expect(queue.getByRole('button', {

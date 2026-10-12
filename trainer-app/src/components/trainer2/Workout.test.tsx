@@ -315,9 +315,9 @@ describe('Single active set and queue', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Decrease load by 5 lb' }));
     expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('0');
     fireEvent.click(screen.getByRole('button', { name: '0 RIR' }));
-    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('0');
-    fireEvent.change(screen.getByLabelText('Set 1 Actual RIR (optional)'), { target: { value: '' } });
-    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('');
+    expect(screen.getByRole('button', { name: '0 RIR' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '0 RIR' }));
+    expect(screen.getByRole('button', { name: '0 RIR' })).toHaveAttribute('aria-pressed', 'false');
     expect(screen.getByText('0/4 resolved')).toBeVisible();
   });
 });

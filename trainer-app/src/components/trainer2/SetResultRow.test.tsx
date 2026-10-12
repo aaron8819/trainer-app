@@ -124,7 +124,7 @@ it('records newly qualified per-side dumbbell work with its captured policy and 
   fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
   await screen.findByText('Saved');
   expect(JSON.parse(submitted).intent.result).toEqual({ reps: { value: 8, basis: 'perSide' },
-    measurement: { kind: 'externalLoad', value: '25', unit: 'lb', convention: 'perImplement', zeroMeaning: 'notAllowed' }, rir: '2' });
+    measurement: { kind: 'externalLoad', value: '25', unit: 'lb', convention: 'perImplement', zeroMeaning: 'notAllowed' }, rir: null });
 });
 describe('Performed result input and recovery', () => {
   it('recovers a transient save without manual retry or a new action and advances once', async () => {
@@ -358,7 +358,7 @@ describe('Pounds and stable logging suggestions', () => {
     await waitFor(() => expect(blocked).toHaveBeenLastCalledWith(props.targetId, false));
     expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('44.09');
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('8');
-    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('2');
+    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('');
     const preceding = [{ ...saved, result: { reps: { value: 5, basis: 'total' as const }, measurement: prescription.measurement, rir: '0' } }];
     view.rerender(<SetResultRow {...ui} preceding={preceding} refresh={vi.fn()} onInputState={blocked} />);
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('5');
@@ -454,7 +454,7 @@ describe('Logger correction regressions', () => {
     fireEvent.change(screen.getByLabelText('Set 2 Actual load'), { target: { value: '' } });
     view.rerender(<SetResultRow {...ui} number={2} preceding={[{ ...prior, version: 2, result: { ...prior.result, rir: '4' } }]} />);
     expect(screen.getByLabelText('Set 2 Actual load')).toHaveValue('');
-    expect(screen.getByLabelText('Set 2 Actual RIR (optional)')).toHaveValue('0');
+    expect(screen.getByLabelText('Set 2 Actual RIR (optional)')).toHaveValue('');
   });
   it('refreshes saved values/action over an old untouched suggestion, but keeps a stale user draft', async () => {
     const view = render(<SetResultRow {...ui} />);
@@ -475,8 +475,8 @@ describe('Logger correction regressions', () => {
     view.rerender(<SetResultRow {...ui} prescription={{ ...target, measurement: null, reps: { ...target.reps, max: 10 } }} firstSetLoad={prior} />);
     expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('135');
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('');
-    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('3');
-    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(screen.getByLabelText('Set 1 Actual RIR (optional)')).toHaveValue('');
+    fireEvent.click(screen.getByRole('button', { name: 'Clear weight' }));
     fireEvent.click(screen.getByRole('button', { name: 'Decrease load by 10 lb' }));
     expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('');
     fireEvent.click(screen.getByRole('button', { name: '4 RIR' }));

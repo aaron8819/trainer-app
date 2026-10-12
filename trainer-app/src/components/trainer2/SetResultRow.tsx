@@ -3,6 +3,7 @@ import { skipSetCommand, skipSetResponse, type SkipSetCommand, type SetSkip } fr
 import { assignmentBinding, type AssignmentBinding } from '@/lib/trainer2-contracts/exercise-swap';
 import type { ExecutionRead } from '@/lib/trainer2-contracts/execution';
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { compatibleCatalogResult, compatibleLoggingLoad, startingPounds } from '@/lib/engine/trainer2/logging-prefill';
 import { pounds, loadLabel } from './pound-display';
 import { z } from 'zod';
@@ -45,7 +46,8 @@ export function resultLabel(r: PerformedResult | null) {
   if (!r) return 'Cleared as erroneous · no current performed result';
   return `${loadLabel(r.measurement)} × ${r.reps ? `${r.reps.value}${r.reps.basis === 'perSide' ? ' per side' : r.reps.basis === 'alternating' ? ' alternating' : ''}` : 'reps unspecified'} · ${r.rir === null ? 'RIR unspecified' : `${r.rir} RIR`}`;
 }
-export function SetResultRow({ sessionAdded = false, assignment, accountId, ownershipEpoch, executionId, targetId, number, saved, refresh, readOnly = false, locked = false, onInputState, historical = false, history = [], finishVersion, retainedOnly = false, prescription, exercise, active = true, activePanel = false, onSubmission, preceding, onRecorded, firstSetLoad, skipped, refreshExecution, onReturn }: {
+export function SetResultRow({ optionsMount, sessionAdded = false, assignment, accountId, ownershipEpoch, executionId, targetId, number, saved, refresh, readOnly = false, locked = false, onInputState, historical = false, history = [], finishVersion, retainedOnly = false, prescription, exercise, active = true, activePanel = false, onSubmission, preceding, onRecorded, firstSetLoad, skipped, refreshExecution, onReturn }: {
+  optionsMount?: HTMLElement | null;
   sessionAdded?: boolean;
   assignment?: AssignmentBinding;
   skipped?: SetSkip; refreshExecution?: () => Promise<ExecutionRead>; onReturn?: () => void;
@@ -66,6 +68,14 @@ export function SetResultRow({ sessionAdded = false, assignment, accountId, owne
   const [message, setMessage] = useState(''), [busy, setBusy] = useState(false);
   const [reviewed, setReviewed] = useState<{ latest: SavedSetResult | null } | null>(null);
   const editButton = useRef<HTMLButtonElement>(null);
+  const actionBar = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!activePanel || !active) return;
+    const viewport = window.visualViewport;
+    const update = () => actionBar.current?.style.setProperty('--keyboard-inset', `${Math.max(0, window.innerHeight - (viewport?.height ?? window.innerHeight) - (viewport?.offsetTop ?? 0))}px`);
+    update(); viewport?.addEventListener('resize', update); viewport?.addEventListener('scroll', update);
+    return () => { viewport?.removeEventListener('resize', update); viewport?.removeEventListener('scroll', update); };
+  }, [activePanel, active]);
   const currentDraft = useRef<Draft | null>(null), alive = useRef(false), flight = useRef(false);
   const key = `${historical ? 'trainer2-historical-result' : 'trainer2-result'}:${accountId}:${executionId}:${targetId}`;
   const suggestionKey = key + ':suggestion';
@@ -121,7 +131,8 @@ export function SetResultRow({ sessionAdded = false, assignment, accountId, owne
     }
     if (saved) return f;
     f.reps = prescription && prescription.reps.min === prescription.reps.max ? String(prescription.reps.min) : '';
-    f.rir = prescription?.rir ?? '';
+    // Each set needs its own reported effort; targets and prior sets are not reports.
+    f.rir = '';
     if ((number === 1 || sessionAdded) && !m && prescription && exercise && firstSetLoad?.result?.measurement &&
       compatibleLoggingLoad(firstSetLoad.result.measurement, prescription, exercise)) f.load = startingPounds(firstSetLoad.result.measurement) ?? '';
     // Nearest recorded target in this position's saved order, never another exercise or an older compatible fallback.
@@ -130,7 +141,7 @@ export function SetResultRow({ sessionAdded = false, assignment, accountId, owne
       (!value.measurement || (prescription && exercise && compatibleLoggingLoad(value.measurement, prescription, exercise))) ? candidate : undefined;
     if (prior?.result) {
       const p = formFor(prior.result);
-      f.reps = p.reps; f.load = p.load; f.rir = p.rir;
+      f.reps = p.reps; f.load = p.load;
       if (!prior.result.measurement && f.kind === 'bodyweight') f.kind = 'unspecified';
     }
     return f;
@@ -259,6 +270,16 @@ export function SetResultRow({ sessionAdded = false, assignment, accountId, owne
   // Retain recovery state by identity without rendering inactive forms.
   if (!active || (retainedOnly && !draft)) return null;
   const feedback = busy && draft?.pending ? 'Saving…' : message;
+  const options = (draft || compact) && f ? (<fieldset disabled={disabled} className={styles.setOptions}><details className="text-sm"><summary className="min-h-11 cursor-pointer py-2 text-slate-500">Set options</summary>
+        <div className="grid grid-cols-2 gap-2">
+
+          <label>Rep basis<select className={control + ' w-full'} disabled={exercise?.kind === 'catalogSnapshot' && !!exercise.catalogFacts} aria-label={`Set ${number} rep basis`} value={f.basis} onChange={e => change('basis', e.target.value)}><option value="total">Total</option><option value="perSide">Per side</option><option value="alternating">Alternating</option></select></label>
+          <label>Actual load type<select className={control + ' w-full'} disabled={exercise?.kind === 'catalogSnapshot' && !!exercise.catalogFacts} aria-label={`Set ${number} actual load type`} value={f.kind} onChange={e => change('kind', e.target.value)}><option value="unspecified">Unspecified</option><option value="bodyweight">Bodyweight</option><option value="externalLoad">External load</option><option value="addedLoad">Added load</option><option value="assistance">Assistance</option></select></label>
+          {f.kind === 'externalLoad' && <label>Load basis<select className={control + ' w-full'} disabled={exercise?.kind === 'catalogSnapshot' && !!exercise.catalogFacts} aria-label={`Set ${number} load basis`} value={f.convention} onChange={e => change('convention', e.target.value)}><option value="barbellTotal">Barbell total</option><option value="perImplement">Per implement</option><option value="machineDisplayed">Machine displayed</option><option value="machineAddedPlatesTotal">Total machine plates added</option><option value="machinePlatesPerArm">Plates added per arm</option><option value="smithPlatesTotal">Total Smith plates added</option></select></label>}
+          {f.kind === 'externalLoad' && <label>Zero load<select className={control + ' w-full'} disabled={exercise?.kind === 'catalogSnapshot' && !!exercise.catalogFacts} aria-label={`Set ${number} zero load meaning`} value={f.zeroMeaning ?? 'validZero'} onChange={e => change('zeroMeaning', e.target.value)}><option value="validZero">Valid zero</option><option value="notAllowed">Zero not allowed</option></select></label>}
+        </div>
+        {activePanel && saved?.result && !draft?.conflict && <button className={control + ' mt-2'} onClick={() => { if (!currentDraft.current) begin(); if (clearing) save(true); else setClearing(true); }}>{clearing ? 'Confirm clear erroneous result' : 'Clear erroneous result'}</button>}
+      </details></fieldset>) : null;
   return <div className={activePanel ? "mt-2" : "mt-3 rounded-lg bg-slate-50 p-3"} aria-label={`Set ${number} actual result`}>
     {!activePanel && <p className="text-sm font-medium">{saved ? `Saved result: ${resultLabel(saved.result)}` : 'Not recorded'}</p>}
     {historical && history.length > 0 && <details className="mt-2 text-sm"><summary className="min-h-11 cursor-pointer">Result history</summary><ol className="space-y-2">{[...history].sort((a, b) => a.version - b.version).map(r => <li key={r.version}><p>{r.version === 1 ? 'Original record' : 'Correction'} · v{r.version}{r.version === finishVersion ? ' · Acknowledged at finish' : ''}</p><p>{resultLabel(r.result)}</p><p>{r.recordedAt} · {r.reason ?? 'Recorded result'}</p></li>)}</ol></details>}
@@ -270,38 +291,31 @@ export function SetResultRow({ sessionAdded = false, assignment, accountId, owne
     {(draft || compact) && f && <fieldset disabled={disabled} className="mt-2 space-y-3">
       <legend className="sr-only">{draft?.pending ? 'Pending confirmation' : 'Set values'}{draft?.base ? ` · editing v${draft.base.version}` : ''}</legend>
       {activePanel ? <>
-        <div><p className={fieldLabel}>Reps{!saved && ' (required)'}{f.basis === 'perSide' ? ' per side' : f.basis === 'alternating' ? ' alternating' : ''}</p><div className="mt-1 flex items-center gap-2">
-          <button type="button" className={stepControl} aria-label="Decrease reps" onClick={() => adjust('reps', -1)}>−1</button>
+        <div><p className={fieldLabel}>Reps{!saved && ' (required)'}{f.basis === 'perSide' ? ' per side' : f.basis === 'alternating' ? ' alternating' : ''}<span className={styles.fieldHint}>{prescription?.reps.min}–{prescription?.reps.max} reps target</span></p><div className={styles.valueControl}>
+          <button type="button" className={stepControl} aria-label="Decrease reps" onClick={() => adjust('reps', -1)}>−</button>
           <input className={fieldControl} aria-label={`Set ${number} Actual reps`} aria-required={!saved} inputMode="numeric" value={f.reps} onFocus={e => e.currentTarget.select()} onChange={e => change('reps', e.target.value)} />
-          <button type="button" className={stepControl} aria-label="Increase reps" onClick={() => adjust('reps', 1)}>+1</button>
+          <button type="button" className={stepControl} aria-label="Increase reps" onClick={() => adjust('reps', 1)}>+</button>
         </div></div>
         {!['unspecified', 'bodyweight'].includes(f.kind) ? <div>
-          <p className={fieldLabel}>{f.kind === 'externalLoad' ? f.convention === 'machineAddedPlatesTotal' ? 'Total plates added (lb) · excludes starting resistance' : f.convention === 'machinePlatesPerArm' ? 'Plates added per arm (lb)' : f.convention === 'smithPlatesTotal' ? 'Total plates added (lb) · excludes Smith bar' : f.convention === 'barbellTotal' ? 'Barbell total (lb)' : f.convention === 'perImplement' ? exercise?.kind === 'catalogSnapshot' && exercise.equipment.some(e => /dumbbell/i.test(e)) ? 'Per dumbbell (lb)' : 'Per implement (lb)' : 'Machine weight (lb)' : f.kind === 'addedLoad' ? 'Added load (lb)' : 'Assistance (lb) · more lbs = easier'}</p><input className={fieldControl} aria-label={`Set ${number} Actual load`} inputMode="decimal" value={f.load} onFocus={e => e.currentTarget.select()} onChange={e => change('load', e.target.value)} />
-<div className={styles.increments}>{[-10, -5, 5, 10].map(delta => <button type="button" key={delta} className={stepControl} aria-label={(delta < 0 ? 'Decrease' : 'Increase') + ' load by ' + Math.abs(delta) + ' lb'} onClick={() => adjust('load', delta)}>{delta < 0 ? '−' : '+'}{Math.abs(delta)}</button>)}</div><button className="min-h-11 px-1 text-sm underline" type="button" onClick={() => change('load', '')}>Clear</button>
+          <p className={fieldLabel}>{f.kind === 'externalLoad' ? f.convention === 'machineAddedPlatesTotal' ? 'Total plates added (lb) · excludes starting resistance' : f.convention === 'machinePlatesPerArm' ? 'Plates added per arm (lb)' : f.convention === 'smithPlatesTotal' ? 'Total plates added (lb) · excludes Smith bar' : f.convention === 'barbellTotal' ? 'Barbell total (lb)' : f.convention === 'perImplement' ? exercise?.kind === 'catalogSnapshot' && exercise.equipment.some(e => /dumbbell/i.test(e)) ? 'Per dumbbell (lb)' : 'Per implement (lb)' : 'Machine weight (lb)' : f.kind === 'addedLoad' ? 'Added load (lb)' : 'Assistance (lb) · more lbs = easier'}{f.kind === 'externalLoad' && f.convention === 'barbellTotal' && <span className={styles.fieldHint}>Include the bar</span>}</p><div className={styles.valueControl}><button type="button" className={stepControl} aria-label="Decrease load by 1 lb" onClick={() => adjust('load', -1)}>−</button><input className={fieldControl} aria-label={`Set ${number} Actual load`} inputMode="decimal" value={f.load} onFocus={e => e.currentTarget.select()} onChange={e => change('load', e.target.value)} /><button type="button" className={stepControl} aria-label="Increase load by 1 lb" onClick={() => adjust('load', 1)}>+</button></div>
+<div className={styles.increments}>{[-10, -5, 5, 10].map(delta => <button type="button" key={delta} className={stepControl} aria-label={(delta < 0 ? 'Decrease' : 'Increase') + ' load by ' + Math.abs(delta) + ' lb'} onClick={() => adjust('load', delta)}>{delta < 0 ? '−' : '+'}{Math.abs(delta)}</button>)}</div><button className="min-h-11 px-1 text-sm underline" type="button" onClick={() => change('load', '')}>Clear weight</button>
 
 
         </div> : <p className="text-sm">{f.kind === 'bodyweight' ? 'Bodyweight' : 'Load unspecified · choose a load type in Set options if needed'}</p>}
-        <div><p className={fieldLabel}>RIR (optional)</p><div className={styles.rir}>{['0', '1', '2', '3', '4', '5'].map(value => <button type="button" key={value} className={'h-11 min-w-0 rounded-full border text-sm font-semibold ' + (f.rir === value ? 'border-black bg-black text-white' : 'border-slate-300')} aria-label={value + ' RIR'} aria-pressed={f.rir === value} onClick={() => change('rir', value)}>{value}</button>)}</div><input className={fieldControl} aria-label={'Set ' + number + ' Actual RIR (optional)'} placeholder="Other" inputMode="decimal" value={f.rir} onFocus={e => e.currentTarget.select()} onChange={e => change('rir', e.target.value)} /></div>
+        <div><p className={fieldLabel}>RIR (optional)</p><div className={styles.rir}>{['0', '1', '2', '3', '4', '5'].map(value => <button type="button" key={value} className={'h-11 min-w-0 rounded-full border text-sm font-semibold ' + (f.rir === value ? 'border-black bg-black text-white' : 'border-slate-300')} aria-label={value + ' RIR'} aria-pressed={f.rir === value} onClick={() => change('rir', f.rir === value ? '' : value)}>{value}</button>)}</div><details className="text-sm"><summary className="cursor-pointer py-2 text-slate-500">Other RIR{f.rir && !['0', '1', '2', '3', '4', '5'].includes(f.rir) ? ` · ${f.rir}` : ''}</summary><label>Reported RIR (optional)<input className={control} aria-label={'Set ' + number + ' Actual RIR (optional)'} placeholder="Blank if unreported" inputMode="decimal" value={f.rir} onFocus={e => e.currentTarget.select()} onChange={e => change('rir', e.target.value)} /></label></details></div>
       </> : <div className="grid grid-cols-3 gap-2">{!['unspecified', 'bodyweight'].includes(f.kind) && input('load', 'Actual load')}{input('reps', 'Actual reps')}{input('rir', 'Actual RIR (optional)')}</div>}
 
       {clearing && !historical && <label className="grid gap-1 text-sm">Reason for clearing<input className={control} aria-label={`Set ${number} correction reason`} maxLength={200} value={f.reason} onChange={e => change('reason', e.target.value)} /></label>}
 
-      <div className={activePanel ? styles.actions : 'flex flex-wrap gap-2'}>
+      <div ref={actionBar} className={activePanel ? styles.actions : 'flex flex-wrap gap-2'}>
       {draft?.conflict ? <><button className={control} onClick={() => void reviewLatest()}>Review latest result</button>{reviewed && <div><p>Latest: {resultLabel(reviewed.latest?.result ?? null)}</p><button className={control} onClick={() => { store({ ...draft, ...(assignment ? { assignment } : {}), base: reviewed.latest, conflict: false }); setReviewed(null); setMessage('Input retained. Save only if this is your intended correction.'); }}>{draft.assignment && assignment && canonicalJson(draft.assignment) !== canonicalJson(assignment) ? `Use ${exercise?.name ?? "this exercise"} for my retained input` : "Use latest result for my correction"}</button></div>}</> : <button className={activePanel ? 'min-h-11 rounded-full bg-black px-5 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-40' : control} disabled={disabled || (!draft?.base && !saved && f.reps === '')} onClick={() => { if (!currentDraft.current) begin(); save(); }}>{busy && draft?.pending ? 'Saving…' : (draft ? draft.base : saved) ? activePanel ? 'Update set' : 'Save correction' : activePanel ? 'Log set' : 'Record set'}</button>}
       {activePanel && (saved ? <button className="min-h-11 rounded-full border border-slate-300 px-3 text-sm font-medium" onClick={onReturn}>Return to active set</button> : !skipped && <button className="min-h-11 rounded-full border border-slate-300 px-3 text-sm font-medium" onClick={skip}>Skip set</button>)}
       </div>
       {!activePanel && !historical && draft?.base?.result && !draft.conflict && <button className={control} onClick={() => { if (clearing) save(true); else setClearing(true); }}>{clearing ? 'Confirm clear erroneous result' : 'Clear erroneous result'}</button>}
       {draft && !activePanel && <button className={control} onClick={cancel}>Cancel</button>}
-      <details className="text-sm"><summary className="min-h-11 cursor-pointer py-2 text-slate-500">Set options</summary>
-        <div className="grid grid-cols-2 gap-2">
-          <label>Rep basis<select className={control + ' w-full'} disabled={exercise?.kind === 'catalogSnapshot' && !!exercise.catalogFacts} aria-label={`Set ${number} rep basis`} value={f.basis} onChange={e => change('basis', e.target.value)}><option value="total">Total</option><option value="perSide">Per side</option><option value="alternating">Alternating</option></select></label>
-          <label>Actual load type<select className={control + ' w-full'} disabled={exercise?.kind === 'catalogSnapshot' && !!exercise.catalogFacts} aria-label={`Set ${number} actual load type`} value={f.kind} onChange={e => change('kind', e.target.value)}><option value="unspecified">Unspecified</option><option value="bodyweight">Bodyweight</option><option value="externalLoad">External load</option><option value="addedLoad">Added load</option><option value="assistance">Assistance</option></select></label>
-          {f.kind === 'externalLoad' && <label>Load basis<select className={control + ' w-full'} disabled={exercise?.kind === 'catalogSnapshot' && !!exercise.catalogFacts} aria-label={`Set ${number} load basis`} value={f.convention} onChange={e => change('convention', e.target.value)}><option value="barbellTotal">Barbell total</option><option value="perImplement">Per implement</option><option value="machineDisplayed">Machine displayed</option><option value="machineAddedPlatesTotal">Total machine plates added</option><option value="machinePlatesPerArm">Plates added per arm</option><option value="smithPlatesTotal">Total Smith plates added</option></select></label>}
-          {f.kind === 'externalLoad' && <label>Zero load<select className={control + ' w-full'} disabled={exercise?.kind === 'catalogSnapshot' && !!exercise.catalogFacts} aria-label={`Set ${number} zero load meaning`} value={f.zeroMeaning ?? 'validZero'} onChange={e => change('zeroMeaning', e.target.value)}><option value="validZero">Valid zero</option><option value="notAllowed">Zero not allowed</option></select></label>}
-        </div>
-        {activePanel && saved?.result && !draft?.conflict && <button className={control + ' mt-2'} onClick={() => { if (!currentDraft.current) begin(); if (clearing) save(true); else setClearing(true); }}>{clearing ? 'Confirm clear erroneous result' : 'Clear erroneous result'}</button>}
-      </details>
+
     </fieldset>}
+    {activePanel && optionsMount ? createPortal(options, optionsMount) : options}
     {readOnly && draft && <p>This workout attempt is closed. Retained input cannot change it.</p>}
     {readOnly && draft && !draft.pending && <button className={control} onClick={() => store(null)}>Discard retained input</button>}
     {draft?.pending && !busy && <button className={control + ' mt-2'} onClick={() => void submit(draft.pending!)}>Retry save</button>}

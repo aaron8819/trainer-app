@@ -53,6 +53,7 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
   useEffect(() => { latestResults.current = execution.results; }, [execution.results]);
   const key = `trainer2-active-set:${execution.initial.accountId}:${execution.executionId}`;
   const timerKey = restKey(execution.initial.accountId, execution.executionId);
+  const [optionsMount, setOptionsMount] = useState<HTMLDivElement | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const historyDialog = useRef<HTMLDialogElement>(null), historyTrigger = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -150,13 +151,13 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
 
           </div></dialog>
       </>}
-      {sets.map(s => <SetResultRow sessionAdded={execution.additions?.some(a => a.content.target.id === s.id) || execution.exerciseAdditions?.some(a => a.content.position.targets.some(t => t.id === s.id))} key={`${s.id}:${currentAssignment(execution, s.positionId).version}:${inputEpoch}`} assignment={currentAssignment(execution, s.positionId)} active={selected === s.id} activePanel accountId={execution.initial.accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
+      {sets.map(s => <SetResultRow optionsMount={optionsMount} sessionAdded={execution.additions?.some(a => a.content.target.id === s.id) || execution.exerciseAdditions?.some(a => a.content.position.targets.some(t => t.id === s.id))} key={`${s.id}:${currentAssignment(execution, s.positionId).version}:${inputEpoch}`} assignment={currentAssignment(execution, s.positionId)} active={selected === s.id} activePanel accountId={execution.initial.accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
         targetId={s.id} number={s.number} saved={execution.results.find(r => r.targetId === s.id)} prescription={s.target} exercise={s.position.exercise}
         firstSetLoad={execution.firstSetLoads?.find(h => h.positionId === s.position.id)?.result}
         preceding={sets.filter(p => p.positionId === s.positionId && p.number < s.number).reverse().flatMap(p => execution.results.filter(r => r.targetId === p.id && (!r.assignment || canonicalJson(r.assignment) === canonicalJson(currentAssignment(execution, s.positionId)))))}
         skipped={execution.skips?.find(k => k.targetId === s.id)} refreshExecution={refreshExecution} onReturn={() => select(firstUnrecorded(execution.results), true)}
         locked={locked || swapActive} onInputState={onInputState} refresh={refresh} onRecorded={recorded} onSubmission={() => onSubmission(s.id)} />)}
-      <div className={styles.secondary}>      {executionPositions(execution).map(p => <span key={p.id} hidden={active?.positionId !== p.id}><SwapExercise execution={execution} positionId={p.id} ownershipEpoch={ownershipEpoch} locked={locked || additionActive}
+      <div className={styles.secondary}><div ref={setOptionsMount} className={styles.optionsSlot} />      {executionPositions(execution).map(p => <span key={p.id} hidden={active?.positionId !== p.id}><SwapExercise execution={execution} positionId={p.id} ownershipEpoch={ownershipEpoch} locked={locked || additionActive}
         refresh={refreshExecution} onLock={lockCallbacks.current[p.id]} onChanged={() => { setInputEpoch(e => e+1); setHistoryOpen(false); setTimeout(reveal, 0); }} /></span>)}
 {active && <button ref={historyTrigger} type="button" aria-haspopup="dialog" aria-expanded={historyOpen} className="min-h-11 min-w-20 shrink-0 rounded-full border border-slate-200 px-3 text-xs font-semibold" onClick={() => setHistoryOpen(v => !v)}>History</button>}</div>
     </section>

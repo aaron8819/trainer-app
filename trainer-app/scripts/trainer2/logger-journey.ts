@@ -22,6 +22,7 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   await page.goto(url);
   await expect(active.getByLabel('Set 1 Actual load', { exact: true })).toHaveValue('132.28');
   await expect(active.getByLabel('Set 1 Actual reps', { exact: true })).toHaveValue('');
+  await expect(active.locator('button[aria-pressed="true"]')).toHaveCount(0);
   for (const width of [1280, 390, 320]) {
     await page.setViewportSize({ width, height: 844 });
     await active.getByLabel('Set 1 Actual reps', { exact: true }).scrollIntoViewIfNeeded();
@@ -32,6 +33,7 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
     await assertPoundSurface(page);
     assert.equal(await active.getByLabel('Set 1 Actual reps', { exact: true }).evaluate(e => getComputedStyle(e).fontSize), '27px');
     await shot(`logger-${width}`);
+    await active.screenshot({ path: resolve(artifact, `active-card-${width}.png`) });
   }
   await active.getByRole('button', { name: 'History', exact: true }).click();
   const history = page.getByRole('dialog', { name: 'Exercise history' });
@@ -53,15 +55,35 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   await expect(active.getByLabel('Set 2 Actual reps', { exact: true })).toHaveValue('8');
   await expect(active.getByLabel('Set 2 Actual load', { exact: true })).toHaveValue('132.28');
   const initial = await read();
+  assert.equal(initial.results[0].result.rir, null, 'Unreported RIR must stay null');
+  await expect(active.locator('button[aria-pressed="true"]')).toHaveCount(0);
   assert.equal(initial.results[0].result.measurement.unit, 'kg');
   assert.equal(initial.initial.occurrence.positions[0].targets[0].measurement.unit, 'kg');
   assert.equal(initial.results[0].result.measurement.value, '60');
   const timer = page.getByLabel('Rest timer', { exact: true });
   await expect(timer).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 480 });
+  await active.getByLabel('Set 2 Actual reps', { exact: true }).focus();
+  await active.getByRole('button', { name: 'Log set', exact: true }).scrollIntoViewIfNeeded();
+  for (const name of ['Log set', 'Skip set']) {
+    const box = await active.getByRole('button', { name, exact: true }).boundingBox();
+    const timerBox = await timer.boundingBox();
+    assert(box && timerBox && box.y >= timerBox.y + timerBox.height && box.y + box.height <= 480, `${name} reachable below timer in keyboard-sized viewport`);
+  }
+  await shot('active-card-timer-keyboard-viewport-390');
+  await active.getByText('Other RIR', { exact: true }).click();
+  await active.getByLabel('Set 2 Actual RIR (optional)', { exact: true }).fill('3.5');
+  await active.getByRole('button', { name: 'Log set', exact: true }).scrollIntoViewIfNeeded();
+  await shot('active-card-other-rir-keyboard-viewport-390');
+  await active.getByLabel('Set 2 Actual RIR (optional)', { exact: true }).fill('');
+  await active.getByText('Other RIR', { exact: true }).click();
+  await page.setViewportSize({ width: 320, height: 844 });
+  pass('Unreported RIR persists as null and stays blank on the next set; Log/Skip reachable with timer in a keyboard-sized viewport');
   const timerStorage = `trainer2-rest:${accountId}:${executionId}`;
   const timerBefore = await page.evaluate(key => localStorage.getItem(key), timerStorage);
   await timer.getByRole('button', { name: '+30 seconds' }).click();
   await timer.getByRole('button', { name: '−30 seconds' }).click();
+  page.once('dialog', dialog => void dialog.accept());
   await active.getByRole('button', { name: 'Skip set', exact: true }).click();
   await expect(active.getByLabel('Set 3 Actual reps', { exact: true })).toHaveValue('8');
   await shot('timer-skip-320');
@@ -188,6 +210,7 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   await page.setViewportSize({ width: 390, height: 500 });
   await active.getByLabel('Set 1 Actual reps', { exact: true }).fill('10');
   await active.getByLabel('Set 1 Actual load', { exact: true }).fill('40');
+  await active.getByText('Other RIR', { exact: true }).click();
   await active.getByLabel('Set 1 Actual RIR (optional)', { exact: true }).fill('3.5');
   await active.getByRole('button', { name: 'Log set', exact: true }).scrollIntoViewIfNeeded();
   await shot('reduced-height-390');

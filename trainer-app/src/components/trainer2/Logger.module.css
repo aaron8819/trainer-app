@@ -83,3 +83,35 @@
 
 .screen .primary { background: #171a18; color: white; border-color: #171a18; }
 .queueRow [aria-label^="Primary muscle"], .queueRow [aria-label^="Secondary muscle"] { font-size: 13px; color: #4f6045; background: transparent; border: 0; padding: 0 4px 0 0; }
+/* Compact active-set controls, with no exercise photo. */
+.screen { --ink: #101827; --muted: #64748b; --line: #dce3ea; }
+.screen::before { background: #f6f8fa; }
+.card { box-shadow: 0 3px 16px #142b4010; }
+.context { margin: 4px 0; }
+.target { margin-top: 4px; color: #334155; }
+.valueControl { display: flex; align-items: center; gap: 8px; padding: 6px; border: 1px solid var(--line); border-radius: 16px; }
+.screen .valueControl .numeric { border: 0; background: transparent; min-height: 48px; padding: 4px; }
+.screen .valueControl .step { background: #eef2f6; border: 0; border-radius: 14px; font-size: 26px; }
+.screen .increments .step { background: #eef2f6; border-radius: 24px; }
+.rir { gap: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.screen .rir button { border: 0; border-right: 1px solid var(--line); border-radius: 0; }
+.screen .rir button:last-child { border-right: 0; }
+.screen .rir button[aria-pressed="true"] { background: #006575; color: white; }
+.actions { position: sticky; bottom: calc(var(--keyboard-inset, 0px) + env(safe-area-inset-bottom)); z-index: 20; background: white; padding: 8px 0; margin-top: 8px; }
+.actions button { border-radius: 14px; }
+.screen .actions > :first-child { background: #006575; }
+.secondary { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 8px; gap: 8px; }
+.secondary > details { flex: 1; min-width: 0; }
+.secondary > details[open] { flex-basis: 100%; }
+.secondary summary { color: #006575; font-weight: 600; }
+.secondary button { text-decoration: none; color: #006575; }
+.secondary input, .secondary select { width: 100%; }
+@media (max-width: 350px) { .rir { grid-template-columns: repeat(6, 1fr); } .secondary { gap: 4px; } }
+.fieldLabel { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 12px; }
+.fieldHint { color: var(--muted); font-size: 13px; font-weight: 400; }
+.optionsSlot { flex: 1; min-width: 0; }
+.secondary:has(.optionsSlot details[open]) { flex-wrap: wrap; }
+.secondary:has(.optionsSlot details[open]) .optionsSlot { flex-basis: 100%; }
+.setOptions { min-width: 0; }
+.setOptions summary { min-height: 44px; }
+.setOptions input, .setOptions select { width: 100%; }

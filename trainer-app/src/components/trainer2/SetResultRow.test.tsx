@@ -142,7 +142,7 @@ it('records newly qualified per-side dumbbell work with its captured policy and 
   fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
   await screen.findByText('Saved');
   expect(JSON.parse(submitted).intent.result).toEqual({ reps: { value: 8, basis: 'perSide' },
-    measurement: { kind: 'externalLoad', value: '25', unit: 'lb', convention: 'perImplement', zeroMeaning: 'notAllowed' }, rir: null });
+    measurement: { kind: 'externalLoad', value: '25', unit: 'lb', convention: 'perImplement', zeroMeaning: 'notAllowed' }, rir: '2' });
 });
 describe('Performed result input and recovery', () => {
   it('recovers a transient save without manual retry or a new action and advances once', async () => {
@@ -376,7 +376,7 @@ describe('Pounds and stable logging suggestions', () => {
     await waitFor(() => expect(blocked).toHaveBeenLastCalledWith(props.targetId, false));
     expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('44.09');
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('8');
-    expect(screen.getAllByRole('button', { name: /^[0-5] RIR$/ }).every(b => b.getAttribute('aria-pressed') === 'false')).toBe(true);
+    expect(screen.getByRole('button', { name: '2 RIR' })).toHaveAttribute('aria-pressed', 'true');
     const preceding = [{ ...saved, result: { reps: { value: 5, basis: 'total' as const }, measurement: prescription.measurement, rir: '0' } }];
     view.rerender(<SetResultRow {...ui} preceding={preceding} refresh={vi.fn()} onInputState={blocked} />);
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('5');
@@ -390,7 +390,7 @@ describe('Pounds and stable logging suggestions', () => {
     await screen.findByRole('button', { name: 'Log set' });
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('');
     expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('');
-    expect(screen.getAllByRole('button', { name: /^[0-5] RIR$/ }).every(b => b.getAttribute('aria-pressed') === 'false')).toBe(true);
+    expect(screen.getByRole('button', { name: '2 RIR' })).toHaveAttribute('aria-pressed', 'true');
     view.unmount(); sessionStorage.clear();
     render(<SetResultRow {...ui} preceding={[{ ...saved, result: { ...result, measurement: { ...prescription.measurement, convention: 'perImplement' } } }]} refresh={vi.fn()} />);
     expect(await screen.findByLabelText('Set 1 Actual load')).toHaveValue('44.09');
@@ -472,7 +472,7 @@ describe('Logger correction regressions', () => {
     fireEvent.change(screen.getByLabelText('Set 2 Actual load'), { target: { value: '' } });
     view.rerender(<SetResultRow {...ui} number={2} preceding={[{ ...prior, version: 2, result: { ...prior.result, rir: '4' } }]} />);
     expect(screen.getByLabelText('Set 2 Actual load')).toHaveValue('');
-    expect(screen.getAllByRole('button', { name: /^[0-5] RIR$/ }).every(b => b.getAttribute('aria-pressed') === 'false')).toBe(true);
+    expect(screen.getByRole('button', { name: '3 RIR' })).toHaveAttribute('aria-pressed', 'true');
   });
   it('refreshes saved values/action over an old untouched suggestion, but keeps a stale user draft', async () => {
     const view = render(<SetResultRow {...ui} />);
@@ -493,7 +493,7 @@ describe('Logger correction regressions', () => {
     view.rerender(<SetResultRow {...ui} prescription={{ ...target, measurement: null, reps: { ...target.reps, max: 10 } }} firstSetLoad={prior} />);
     expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('135');
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('');
-    expect(screen.getAllByRole('button', { name: /^[0-5] RIR$/ }).every(b => b.getAttribute('aria-pressed') === 'false')).toBe(true);
+    expect(screen.getByRole('button', { name: '3 RIR' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByRole('button', { name: 'Clear weight' }));
     fireEvent.click(screen.getByRole('button', { name: 'Decrease load by 10 lb' }));
     expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('');

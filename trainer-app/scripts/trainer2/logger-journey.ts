@@ -22,6 +22,7 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   await page.goto(url);
   await expect(active.getByLabel('Set 1 Actual load', { exact: true })).toHaveValue('132.28');
   await expect(active.getByLabel('Set 1 Actual reps', { exact: true })).toHaveValue('');
+  await expect(active.locator('button[aria-pressed="true"]')).toHaveCount(0);
   for (const width of [1280, 390, 320]) {
     await page.setViewportSize({ width, height: 844 });
     await active.getByLabel('Set 1 Actual reps', { exact: true }).scrollIntoViewIfNeeded();
@@ -32,6 +33,8 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
     await assertPoundSurface(page);
     assert.equal(await active.getByLabel('Set 1 Actual reps', { exact: true }).evaluate(e => getComputedStyle(e).fontSize), '27px');
     await shot(`logger-${width}`);
+    await page.screenshot({ path: resolve(artifact, `viewport-${width}.png`), fullPage: false });
+    await active.screenshot({ path: resolve(artifact, `active-card-${width}.png`) });
   }
   await active.getByRole('button', { name: 'History', exact: true }).click();
   const history = page.getByRole('dialog', { name: 'Exercise history' });
@@ -52,16 +55,63 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   await active.getByRole('button', { name: 'Log set', exact: true }).click();
   await expect(active.getByLabel('Set 2 Actual reps', { exact: true })).toHaveValue('8');
   await expect(active.getByLabel('Set 2 Actual load', { exact: true })).toHaveValue('132.28');
+  await active.getByRole('button', { name: 'Decrease reps', exact: true }).click();
+  await expect(active.getByLabel('Set 2 Actual reps', { exact: true })).toHaveValue('7');
+  await active.getByRole('button', { name: 'Increase reps', exact: true }).click();
+  await expect(active.getByLabel('Set 2 Actual reps', { exact: true })).toHaveValue('8');
+  await active.getByRole('button', { name: 'Increase load by 1 lb', exact: true }).click();
+  await expect(active.getByLabel('Set 2 Actual load', { exact: true })).toHaveValue('133.28');
+  await active.getByRole('button', { name: 'Decrease load by 1 lb', exact: true }).click();
+  await expect(active.getByLabel('Set 2 Actual load', { exact: true })).toHaveValue('132.28');
+  pass('All four centered square step controls adjust the corresponding value');
   const initial = await read();
+  assert.equal(initial.results[0].result.rir, null, 'Unreported RIR must stay null');
+  await expect(active.locator('button[aria-pressed="true"]')).toHaveCount(0);
   assert.equal(initial.results[0].result.measurement.unit, 'kg');
   assert.equal(initial.initial.occurrence.positions[0].targets[0].measurement.unit, 'kg');
   assert.equal(initial.results[0].result.measurement.value, '60');
   const timer = page.getByLabel('Rest timer', { exact: true });
   await expect(timer).toBeVisible();
+  for (const width of [1280, 390, 360, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.evaluate(() => scrollTo(0, 0));
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Timer overflow at ${width}px`);
+    for (const button of await timer.getByRole('button').all()) {
+      const box = await button.boundingBox();
+      assert(box && box.width >= 44 && box.height >= 44 && box.x >= 0 && box.x + box.width <= width, `Timer tap target at ${width}px`);
+    }
+    await page.screenshot({ path: resolve(artifact, `timer-viewport-${width}.png`), fullPage: false });
+    await shot(`timer-logger-${width}`);
+    await queue.screenshot({ path: resolve(artifact, `queue-${width}.png`) });
+  }
+  pass('Active timer and queue fit desktop, 390px, 360px and 320px; timer targets are at least 44px');
+  const deadlineKey = `trainer2-rest:${accountId}:${executionId}`;
+  const deadlineBefore = await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).deadline, deadlineKey);
+  await active.getByRole('button', { name: 'History', exact: true }).click();
+  await expect(history).toBeVisible();
+  await history.press('Escape');
+  await expect(history).not.toBeVisible();
+  assert.equal(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).deadline, deadlineKey), deadlineBefore);
+  await expect(timer).toBeVisible();
+  pass('History dismisses with Escape while the timer deadline remains unchanged');
+  await page.setViewportSize({ width: 390, height: 480 });
+  await active.getByLabel('Set 2 Actual reps', { exact: true }).focus();
+  await active.getByRole('button', { name: 'Log set', exact: true }).scrollIntoViewIfNeeded();
+  for (const name of ['Log set', 'Skip set']) {
+    const box = await active.getByRole('button', { name, exact: true }).boundingBox();
+    const timerBox = await timer.boundingBox();
+    assert(box && timerBox && box.y >= timerBox.y + timerBox.height && box.y + box.height <= 480, `${name} reachable below timer in keyboard-sized viewport`);
+  }
+  await shot('active-card-timer-keyboard-viewport-390');
+  await page.screenshot({ path: resolve(artifact, 'timer-reduced-height-390.png'), fullPage: false });
+  await expect(active.getByText("Other RIR", { exact: true })).toHaveCount(0);
+  await page.setViewportSize({ width: 320, height: 844 });
+  pass('Unreported RIR persists as null and stays blank on the next set; Log/Skip reachable with timer in a keyboard-sized viewport');
   const timerStorage = `trainer2-rest:${accountId}:${executionId}`;
   const timerBefore = await page.evaluate(key => localStorage.getItem(key), timerStorage);
   await timer.getByRole('button', { name: '+30 seconds' }).click();
   await timer.getByRole('button', { name: '−30 seconds' }).click();
+  page.once('dialog', dialog => void dialog.accept());
   await active.getByRole('button', { name: 'Skip set', exact: true }).click();
   await expect(active.getByLabel('Set 3 Actual reps', { exact: true })).toHaveValue('8');
   await shot('timer-skip-320');
@@ -130,6 +180,12 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   // The current unlogged exercise can swap and restore without touching logged identities.
   await active.getByRole('button', { name: 'Swap', exact: true }).click();
   const swap = page.getByRole('dialog', { name: 'Swap exercise', exact: true });
+  const swapDeadline = await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).deadline, deadlineKey);
+  await swap.press('Escape');
+  await expect(swap).not.toBeVisible();
+  assert.equal(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).deadline, deadlineKey), swapDeadline);
+  await active.getByRole('button', { name: 'Swap', exact: true }).click();
+  pass('Swap dismisses with Escape without changing the rest deadline');
   await swap.getByLabel('Search library').fill('row');
   await swap.getByRole('button', { name: /Chest.*Supported.*Dumbbell Row/i }).click();
   await swap.getByRole('button', { name: 'Confirm swap', exact: true }).click();
@@ -188,10 +244,11 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   await page.setViewportSize({ width: 390, height: 500 });
   await active.getByLabel('Set 1 Actual reps', { exact: true }).fill('10');
   await active.getByLabel('Set 1 Actual load', { exact: true }).fill('40');
-  await active.getByLabel('Set 1 Actual RIR (optional)', { exact: true }).fill('3.5');
+  await active.getByRole('button', { name: '0 RIR', exact: true }).click();
   await active.getByRole('button', { name: 'Log set', exact: true }).scrollIntoViewIfNeeded();
   await shot('reduced-height-390');
-  await active.getByLabel('Set 1 Actual RIR (optional)', { exact: true }).press('Tab');
+  await active.getByRole('button', { name: '5 RIR', exact: true }).focus();
+  await active.getByRole('button', { name: '5 RIR', exact: true }).press('Tab');
   assert(await page.evaluate(() => document.activeElement?.tagName === 'BUTTON'));
   await active.getByRole('button', { name: 'Log set', exact: true }).click();
   await expect(queue.getByRole('button', {

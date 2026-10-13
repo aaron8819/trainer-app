@@ -53,6 +53,7 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
   useEffect(() => { latestResults.current = execution.results; }, [execution.results]);
   const key = `trainer2-active-set:${execution.initial.accountId}:${execution.executionId}`;
   const timerKey = restKey(execution.initial.accountId, execution.executionId);
+  const [optionsMount, setOptionsMount] = useState<HTMLDivElement | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const historyDialog = useRef<HTMLDialogElement>(null), historyTrigger = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -150,15 +151,15 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
 
           </div></dialog>
       </>}
-      {sets.map(s => <SetResultRow sessionAdded={execution.additions?.some(a => a.content.target.id === s.id) || execution.exerciseAdditions?.some(a => a.content.position.targets.some(t => t.id === s.id))} key={`${s.id}:${currentAssignment(execution, s.positionId).version}:${inputEpoch}`} assignment={currentAssignment(execution, s.positionId)} active={selected === s.id} activePanel accountId={execution.initial.accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
+      {sets.map(s => <SetResultRow optionsMount={optionsMount} sessionAdded={execution.additions?.some(a => a.content.target.id === s.id) || execution.exerciseAdditions?.some(a => a.content.position.targets.some(t => t.id === s.id))} key={`${s.id}:${currentAssignment(execution, s.positionId).version}:${inputEpoch}`} assignment={currentAssignment(execution, s.positionId)} active={selected === s.id} activePanel accountId={execution.initial.accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
         targetId={s.id} number={s.number} saved={execution.results.find(r => r.targetId === s.id)} prescription={s.target} exercise={s.position.exercise}
         firstSetLoad={execution.firstSetLoads?.find(h => h.positionId === s.position.id)?.result}
         preceding={sets.filter(p => p.positionId === s.positionId && p.number < s.number).reverse().flatMap(p => execution.results.filter(r => r.targetId === p.id && (!r.assignment || canonicalJson(r.assignment) === canonicalJson(currentAssignment(execution, s.positionId)))))}
         skipped={execution.skips?.find(k => k.targetId === s.id)} refreshExecution={refreshExecution} onReturn={() => select(firstUnrecorded(execution.results), true)}
         locked={locked || swapActive} onInputState={onInputState} refresh={refresh} onRecorded={recorded} onSubmission={() => onSubmission(s.id)} />)}
-      <div className={styles.secondary}>      {executionPositions(execution).map(p => <span key={p.id} hidden={active?.positionId !== p.id}><SwapExercise execution={execution} positionId={p.id} ownershipEpoch={ownershipEpoch} locked={locked || additionActive}
+      <div className={styles.secondary}><div ref={setOptionsMount} className={styles.optionsSlot} />      {executionPositions(execution).map(p => <span key={p.id} hidden={active?.positionId !== p.id}><SwapExercise execution={execution} positionId={p.id} ownershipEpoch={ownershipEpoch} locked={locked || additionActive}
         refresh={refreshExecution} onLock={lockCallbacks.current[p.id]} onChanged={() => { setInputEpoch(e => e+1); setHistoryOpen(false); setTimeout(reveal, 0); }} /></span>)}
-{active && <button ref={historyTrigger} type="button" aria-haspopup="dialog" aria-expanded={historyOpen} className="min-h-11 min-w-20 shrink-0 rounded-full border border-slate-200 px-3 text-xs font-semibold" onClick={() => setHistoryOpen(v => !v)}>History</button>}</div>
+{active && <button ref={historyTrigger} type="button" aria-haspopup="dialog" aria-expanded={historyOpen} className="min-h-11 min-w-20 shrink-0 rounded-full border border-slate-200 px-3 text-xs font-semibold" onClick={() => setHistoryOpen(v => !v)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="12" width="4" height="9" rx="1" /><rect x="10" y="3" width="4" height="18" rx="1" /><rect x="17" y="8" width="4" height="13" rx="1" /></svg>History</button>}</div>
     </section>
     <section aria-label="Exercise queue" className={styles.queue}><div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"><h3 className="font-semibold">Exercise queue</h3><span className="text-xs tabular-nums text-slate-500">{count} logged · {skippedCount} skipped · {sets.length - count - skippedCount} remaining</span></div>
       {groups.map(group => <details key={group.id} open className="space-y-2"><summary className="min-h-10 cursor-pointer py-2 text-xs font-semibold uppercase tracking-wider text-slate-500">{group.role}</summary>
@@ -173,10 +174,10 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
               || execution.results.some(r => r.targetId === s.id))).map(s => s.id).join(',');
           return <div key={owned.id} className={styles.queueRow}>
             <button className="flex min-h-11 w-full items-center justify-between gap-3 text-left hover:text-slate-700 focus-visible:rounded-md" onClick={() => select(items.find(s => !execution.results.some(r => r.targetId === s.id && r.result) && (!execution.skips?.some(k => k.targetId === s.id) || execution.results.some(r => r.targetId === s.id)))?.id ?? items[0].id, true)}><span className="font-semibold">{exerciseTitle(position.exercise)}{sets.filter(s => s.number === 1 && s.position.exercise.kind === position.exercise.kind && s.position.exercise.name === position.exercise.name).length > 1 && ` · occurrence ${sets.filter(s => s.number === 1 && s.position.exercise.name === position.exercise.name).findIndex(s => s.positionId === owned.id)+1}`}</span><span className="shrink-0 text-xs tabular-nums text-slate-500">{recordedCount}/{items.length} logged</span></button>
+            <MuscleTags exercise={position.exercise} />
             <ExerciseQueueDisclosure unresolved={unresolved}>
             {swap && <p className="mb-2 text-xs text-slate-600">{swap.content.restoreOriginal ? `Returned to original: ${exerciseTitle(original.exercise)}` : `${exerciseTitle(original.exercise)} → ${exerciseTitle(position.exercise)} · Swapped for today`}</p>}
-            <MuscleTags exercise={position.exercise} />
-            <div className="mt-2 flex flex-wrap gap-1.5">{items.map(s => {
+            <div className={styles.queueSets}>{items.map(s => {
               const skipped = execution.skips?.some(k => k.targetId === s.id) && !execution.results.some(r => r.targetId === s.id);
               const saved = execution.results.find(r => r.targetId === s.id);
               return <button key={s.id} aria-label={`${exerciseTitle(position.exercise)}, set ${s.number}, ${saved?.result ? 'recorded' : skipped ? 'skipped' : 'unrecorded'}${inputStates[s.id] ? ', retained input' : ''}`} aria-pressed={selected === s.id}

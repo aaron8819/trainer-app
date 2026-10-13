@@ -120,7 +120,7 @@ export function SwapExercise({ execution, positionId, ownershipEpoch, locked, re
     setOpen(true); setMessage('');
   }
   return <>
-    {swapEligible(execution, positionId) && <button ref={trigger} className="min-h-11 min-w-20 shrink-0 rounded-full border border-slate-200 px-3 text-xs font-semibold disabled:opacity-40" disabled={locked || busy || !!pending || unreadablePending} onClick={showPicker}>Swap</button>}
+    {swapEligible(execution, positionId) && <button ref={trigger} className="min-h-11 min-w-20 shrink-0 rounded-full border border-slate-200 px-3 text-xs font-semibold disabled:opacity-40" disabled={locked || busy || !!pending || unreadablePending} onClick={showPicker}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 7h16m-5-5 5 5-5 5M20 17H4m5-5-5 5 5 5" /></svg>Swap</button>}
     {pending && <button className={control} disabled={busy} onClick={() => void submit(pending)}>Check swap again</button>}
     {!open && message && <p role="status">{message}</p>}
     {open && <dialog ref={dialog} aria-labelledby={`swap-title-${positionId}`} onCancel={e => { e.preventDefault(); if (!pending) close(); }} className="m-auto max-h-[90dvh] w-[min(96vw,640px)] overflow-y-auto rounded-2xl p-4 backdrop:bg-black/40">

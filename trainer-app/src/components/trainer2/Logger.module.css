@@ -9,7 +9,7 @@
   font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   overflow-wrap: anywhere;
 }
-.screen::before { content: ''; position: fixed; inset: 0; background: #f6f5f1; z-index: -1; }
+.screen::before { content: ''; position: fixed; inset: 0; background: #f6f5f1; z-index: -1; pointer-events: none; }
 .screen h2 { font-size: 26px; letter-spacing: -.7px; }
 .screen h3 { font-size: 23px; line-height: 1.2; letter-spacing: -.4px; }
 .screen button, .screen input, .screen select { font-family: inherit; }
@@ -83,3 +83,124 @@
 
 .screen .primary { background: #171a18; color: white; border-color: #171a18; }
 .queueRow [aria-label^="Primary muscle"], .queueRow [aria-label^="Secondary muscle"] { font-size: 13px; color: #4f6045; background: transparent; border: 0; padding: 0 4px 0 0; }
+/* Compact active-set controls, with no exercise photo. */
+.screen { --ink: #101827; --muted: #64748b; --line: #dce3ea; }
+.screen::before { background: #f6f8fa; }
+.card { box-shadow: 0 3px 16px #142b4010; }
+.context { margin: 4px 0; }
+.target { margin-top: 4px; color: #334155; }
+.valueControl { display: flex; align-items: center; gap: 8px; padding: 6px; border: 1px solid var(--line); border-radius: 16px; }
+.screen .valueControl .numeric { border: 0; background: transparent; min-height: 48px; padding: 4px; }
+.screen .valueControl .step { background: #eef2f6; border: 0; border-radius: 14px; font-size: 26px; }
+.screen .valueControl .step { display: grid; place-items: center; line-height: 1; }
+.screen .valueControl .step svg { display: block; width: 20px; height: 20px; }
+.screen .increments .step { background: #eef2f6; border-radius: 24px; }
+.rir { gap: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.screen .rir button { border: 0; border-right: 1px solid var(--line); border-radius: 0; }
+.screen .rir button:last-child { border-right: 0; }
+.screen .rir button[aria-pressed="true"] { background: #006575; color: white; }
+.actions { position: sticky; bottom: calc(var(--keyboard-inset, 0px) + env(safe-area-inset-bottom)); z-index: 20; background: white; padding: 8px 0; margin-top: 8px; }
+.actions button { border-radius: 14px; }
+.screen .actions > :first-child { background: #006575; }
+.secondary { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 8px; gap: 8px; }
+.secondary > details { flex: 1; min-width: 0; }
+.secondary > details[open] { flex-basis: 100%; }
+.secondary summary { color: #006575; font-weight: 600; }
+.secondary button { text-decoration: none; color: #006575; }
+.secondary input, .secondary select { width: 100%; }
+@media (max-width: 350px) { .rir { grid-template-columns: repeat(6, 1fr); } .secondary { gap: 4px; } }
+.fieldLabel { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 12px; }
+.fieldHint { color: var(--muted); font-size: 13px; font-weight: 400; }
+.optionsSlot { flex: 1; min-width: 0; }
+.secondary:has(.optionsSlot details[open]) { flex-wrap: wrap; }
+.secondary:has(.optionsSlot details[open]) .optionsSlot { flex-basis: 100%; }
+.setOptions { min-width: 0; }
+.setOptions summary { min-height: 44px; }
+.setOptions input, .setOptions select { width: 100%; }
+/* Reference polish: compact hierarchy, softly elevated card and shaded controls. */
+.card { background: linear-gradient(145deg, #fff, #fdfefe); box-shadow: 0 4px 22px #20364d0d, 0 1px 4px #20364d05; border-radius: 22px; }
+.card h3 { font-weight: 750; letter-spacing: -.65px; line-height: 1.15; }
+.fieldLabel { font-weight: 650; margin: 10px 0 6px; }
+.valueControl { background: #fff; box-shadow: inset 0 1px 2px #20364d03; }
+.screen .valueControl .step { background: linear-gradient(145deg, #edf2f7, #e8eef4); }
+.screen .increments .step { background: linear-gradient(145deg, #f0f4f8, #e9eff5); border: 1px solid #dce3ec; }
+.screen .numeric { font-weight: 750; letter-spacing: -.6px; }
+.screen .actions > :first-child { background: linear-gradient(120deg, #006c7b, #005b69); box-shadow: inset 0 1px 1px #ffffff18; font-weight: 650; }
+.screen .actions > :nth-child(2) { border: 1px solid #94a3b8; background: white; font-weight: 650; }
+.retainedRir { color: var(--muted); font-size: 13px; margin: 4px 0; }
+.secondary { gap: 0; padding-top: 6px; }
+.secondary > span:not([hidden]), .secondary > button { border-left: 1px solid var(--line); padding-left: 10px; margin-left: 8px; }
+.secondary summary { list-style: none; display: flex; align-items: center; gap: 7px; font-weight: 500; }
+.secondary summary::-webkit-details-marker { display: none; }
+
+.secondary summary::after { content: '›'; color: var(--muted); font-size: 22px; margin-left: 3px; }
+.secondary button { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+.secondary svg { width: 20px; height: 20px; flex: none; }
+
+.valueReadout { flex: 1; min-width: 0; text-align: center; }
+.valueReadout span { display: block; color: var(--muted); font-size: 13px; line-height: 1.2; padding-bottom: 4px; }
+.screen .valueReadout .numeric { min-height: 36px; padding: 0 4px; }
+
+.screen .rir button:focus-visible { outline-offset: -3px; }
+
+.screen { isolation: isolate; }
+.screen :is(button, a, input, select, summary):focus-visible { outline-color: #006575; }
+.secondary > span:not([hidden]), .secondary > button { border-radius: 0; }
+
+.screen .rir button[aria-pressed="true"]:focus-visible { outline-color: white; }
+
+@media (max-width: 350px) {
+  .secondary summary { white-space: nowrap; gap: 4px; font-size: 14px; }
+  .secondary summary::after { display: none; }
+  .secondary button { gap: 4px; font-size: 14px; }
+  .secondary > span:not([hidden]), .secondary > button { padding-left: 6px; margin-left: 4px; }
+}
+
+/* Queue and advisory rest timer share the active card's visual language. */
+.timer { min-height: 88px; padding: 14px 16px; border-color: #dce4d9; border-radius: 20px; background: linear-gradient(120deg, #f0f5ed, #edf3ea); box-shadow: 0 3px 16px #20364d08; }
+.timerContent { display: flex; flex: 1; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+.timerReadout { display: flex; align-items: center; gap: 14px; }
+.timerIcon { width: 32px; height: 32px; flex: none; color: #245c56; }
+.timerLabel { display: block; margin: 0; color: var(--ink); font-size: 14px; line-height: 1.3; }
+.time { display: block; font-size: 30px; line-height: 1.15; letter-spacing: -.7px; }
+.timerControls { display: flex; align-items: center; gap: 8px; }
+.screen .timer button { display: grid; place-items: center; width: 48px; min-width: 48px; height: 48px; min-height: 48px; border-color: #ced8ca; font-size: 15px; font-weight: 600; }
+.screen .timer .dismiss { margin: 0; background: #245c56; border-color: #245c56; color: white; }
+.timer .dismiss svg { width: 20px; height: 20px; }
+.queue { margin-top: 28px; }
+.queue h3 { font-size: 23px; letter-spacing: -.55px; }
+.queue > details { margin-top: 12px; }
+.queue > details > summary { display: flex; align-items: center; gap: 10px; list-style: none; font-size: 13px; letter-spacing: 1.8px; padding: 10px 2px; }
+.queue > details > summary::-webkit-details-marker { display: none; }
+.queue > details > summary::before { content: ''; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 7px solid #64748b; transform: rotate(-90deg); }
+.queue > details[open] > summary::before { transform: none; }
+.queue > details > summary::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.queueRow { padding: 16px 18px; border: 1px solid var(--line); border-radius: 18px; background: linear-gradient(145deg, #fff, #fdfefe); box-shadow: 0 2px 10px #20364d06; }
+.queueRow > button:first-child { gap: 12px; font-size: 19px; line-height: 1.25; letter-spacing: -.4px; }
+.queueRow > button:first-child > span:first-child { min-width: 0; }
+.queueRow > button:first-child > span:last-child { font-size: 14px; letter-spacing: 0; }
+.queueRow [aria-label^="Primary muscle"], .queueRow [aria-label^="Secondary muscle"] { padding: 3px 10px; border: 0; border-radius: 30px; background: #f0f2f3; color: #475569; font-size: 12px; line-height: 1.5; }
+.queueRow > button[aria-expanded] { color: #006575; padding: 8px 0; text-underline-offset: 3px; }
+.queueSets { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; margin-top: 2px; }
+.screen .queueSets > button { min-height: 48px; padding: 10px 16px; border-radius: 12px; background: #fafbfc; border-color: #dce3ea; }
+.screen .queueSets > button[aria-pressed="true"] { background: linear-gradient(125deg, #171d24, #10151c); border-color: #171d24; color: white; box-shadow: 0 2px 3px #10182718; }
+.queueSets > button span[aria-hidden="true"] { width: 16px; height: 16px; }
+.screen .queueSets > button:not([aria-pressed]) { border-style: dashed; background: white; color: #006575; font-weight: 500; }
+.screen .queueSets > button[aria-pressed="false"]:global(.bg-emerald-50\/40) { background: #edf5ef; border-color: #c9ddcf; }
+@media (max-width: 600px) {
+  .timer { min-height: 76px; padding: 10px 12px; }
+  .timerReadout { gap: 8px; }
+  .timerIcon { width: 26px; height: 26px; }
+  .time { font-size: 27px; }
+  .queueRow { padding: 12px 14px; }
+  .queueRow > button:first-child { font-size: 17px; }
+}
+@media (max-width: 350px) {
+  .timer { padding: 10px 8px; }
+  .timerContent { gap: 6px; }
+  .timerIcon { display: none; }
+  .timerControls { gap: 6px; }
+  .screen .timer button { width: 44px; min-width: 44px; height: 44px; min-height: 44px; }
+  .queueRow > button:first-child { flex-wrap: wrap; gap: 4px; }
+  .screen .queueSets > button { padding-inline: 12px; }
+}

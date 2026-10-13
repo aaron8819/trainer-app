@@ -326,5 +326,427 @@
     "repBasis": "TOTAL",
     "variation": "Both arms together with equal loading. Record added plates per arm, excluding starting resistance: 45 lb each arm records as 45, not 90. Total bilateral reps.",
     "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD"
+  },
+  {
+    "catalogKey": "straight-bar-curl",
+    "name": "Straight-Bar Curl",
+    "equipment": [
+      "Barbell"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Biceps"
+    ],
+    "secondaryMuscles": [
+      "Forearms"
+    ],
+    "repRangeRecommendation": {
+      "min": 8,
+      "max": 15
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "BARBELL_TOTAL",
+    "repBasis": "TOTAL",
+    "variation": "Standing; straight bar; both arms together."
+  },
+  {
+    "catalogKey": "simultaneous-incline-dumbbell-curl",
+    "name": "Incline Dumbbell Curl (Both Arms)",
+    "equipment": [
+      "Dumbbell",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Biceps"
+    ],
+    "secondaryMuscles": [],
+    "repRangeRecommendation": {
+      "min": 8,
+      "max": 15
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "IMPLEMENT_WEIGHT",
+    "repBasis": "TOTAL",
+    "variation": "Seated on an incline bench; both arms curl together. One bilateral repetition counts as one rep."
+  },
+  {
+    "catalogKey": "two-hand-single-dumbbell-overhead-extension",
+    "name": "Two-Hand Dumbbell Overhead Extension",
+    "equipment": [
+      "Dumbbell"
+    ],
+    "movementPatterns": [
+      "extension"
+    ],
+    "primaryMuscles": [
+      "Triceps"
+    ],
+    "secondaryMuscles": [],
+    "repRangeRecommendation": {
+      "min": 8,
+      "max": 15
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "IMPLEMENT_WEIGHT",
+    "repBasis": "TOTAL",
+    "variation": "Both hands hold one dumbbell overhead; both arms extend together."
+  },
+  {
+    "catalogKey": "ez-bar-skull-crusher",
+    "name": "EZ-Bar Skull Crusher",
+    "equipment": [
+      "EZ_Bar",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "extension"
+    ],
+    "primaryMuscles": [
+      "Triceps"
+    ],
+    "secondaryMuscles": [],
+    "repRangeRecommendation": {
+      "min": 8,
+      "max": 15
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "BARBELL_TOTAL",
+    "repBasis": "TOTAL",
+    "variation": "Lying on a bench; both arms extend together with an EZ bar."
+  },
+  {
+    "catalogKey": "dumbbell-walking-lunge",
+    "name": "Dumbbell Walking Lunge",
+    "equipment": [
+      "Dumbbell"
+    ],
+    "movementPatterns": [
+      "lunge"
+    ],
+    "primaryMuscles": [
+      "Quads",
+      "Glutes"
+    ],
+    "secondaryMuscles": [
+      "Hamstrings",
+      "Calves",
+      "Core"
+    ],
+    "repRangeRecommendation": {
+      "min": 6,
+      "max": 12
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "IMPLEMENT_WEIGHT",
+    "repBasis": "PER_SIDE",
+    "variation": "Alternating forward walking lunges; one dumbbell in each hand with equal loading. Count one forward lunge on each leg as one rep for that side; 8 reps per side means 16 lunges overall."
+  },
+  {
+    "catalogKey": "bodyweight-nordic-hamstring-curl",
+    "name": "Bodyweight Nordic Hamstring Curl",
+    "equipment": [
+      "Bodyweight"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Hamstrings"
+    ],
+    "secondaryMuscles": [
+      "Glutes"
+    ],
+    "repRangeRecommendation": {
+      "min": 8,
+      "max": 15
+    },
+    "measurementProfile": "REPS_BODYWEIGHT",
+    "loadConvention": null,
+    "repBasis": "TOTAL",
+    "variation": "Kneeling with both ankles secured to fixed support; both legs together. One controlled lowering and return counts as one rep. No band, hand push-off assistance or added load."
+  },
+  {
+    "catalogKey": "bodyweight-45-degree-back-extension",
+    "name": "Bodyweight 45-Degree Back Extension",
+    "equipment": [
+      "Machine",
+      "Bodyweight"
+    ],
+    "movementPatterns": [
+      "extension"
+    ],
+    "primaryMuscles": [
+      "Glutes",
+      "Hamstrings",
+      "Lower Back"
+    ],
+    "secondaryMuscles": [],
+    "repRangeRecommendation": {
+      "min": 6,
+      "max": 12
+    },
+    "measurementProfile": "REPS_BODYWEIGHT",
+    "loadConvention": null,
+    "repBasis": "TOTAL",
+    "variation": "On a fixed 45-degree back-extension bench with feet secured; both legs together. One controlled lower and return counts as one rep. No external load."
+  },
+  {
+    "catalogKey": "bodyweight-glute-bridge",
+    "name": "Bodyweight Glute Bridge",
+    "equipment": [
+      "Bodyweight"
+    ],
+    "movementPatterns": [
+      "hinge"
+    ],
+    "primaryMuscles": [
+      "Glutes"
+    ],
+    "secondaryMuscles": [
+      "Hamstrings"
+    ],
+    "repRangeRecommendation": {
+      "min": 6,
+      "max": 12
+    },
+    "measurementProfile": "REPS_BODYWEIGHT",
+    "loadConvention": null,
+    "repBasis": "TOTAL",
+    "variation": "Supine on the floor with both feet planted; lift and lower the hips together. One full lift and return counts as one rep. No external load or elevated bench."
+  },
+  {
+    "catalogKey": "single-arm-cable-bayesian-curl",
+    "name": "Single-Arm Cable Bayesian Curl",
+    "equipment": [
+      "Cable"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Biceps"
+    ],
+    "secondaryMuscles": [],
+    "repRangeRecommendation": {
+      "min": 8,
+      "max": 15
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "MACHINE_DISPLAYED",
+    "repBasis": "PER_SIDE",
+    "variation": "Standing, one arm at a time, facing away from a low cable with the upper arm behind the torso. One curl and return counts as one rep for that side."
+  },
+  {
+    "catalogKey": "high-to-low-cable-wood-chop",
+    "name": "High-to-Low Cable Wood Chop",
+    "equipment": [
+      "Cable"
+    ],
+    "movementPatterns": [
+      "rotation"
+    ],
+    "primaryMuscles": [
+      "Abs",
+      "Core"
+    ],
+    "secondaryMuscles": [],
+    "repRangeRecommendation": {
+      "min": 8,
+      "max": 20
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "MACHINE_DISPLAYED",
+    "repBasis": "PER_SIDE",
+    "variation": "Standing; both hands on one high cable handle. One diagonal pull down across the body and return is one rep per direction; perform equally in the opposite direction. Dynamic reps, not a hold."
+  },
+  {
+    "catalogKey": "single-arm-iso-lateral-low-row",
+    "name": "Single-Arm Iso-Lateral Low Row",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Lats",
+      "Upper Back"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Rear Delts"
+    ],
+    "repRangeRecommendation": {
+      "min": 6,
+      "max": 12
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "MACHINE_PLATES_PER_ARM",
+    "repBasis": "PER_SIDE",
+    "variation": "Chest supported; one arm at a time with equal loading. Count reps per arm and perform the same reps on each side.",
+    "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD"
+  },
+  {
+    "catalogKey": "bilateral-iso-lateral-low-row-total-plates",
+    "name": "Iso-Lateral Low Row (Both Arms)",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Lats",
+      "Upper Back"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Rear Delts"
+    ],
+    "repRangeRecommendation": {
+      "min": 6,
+      "max": 12
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "MACHINE_ADDED_PLATES_TOTAL",
+    "repBasis": "TOTAL",
+    "variation": "Chest supported; both arms move together with equal loading. One simultaneous pull and return counts as one bilateral rep.",
+    "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD"
+  },
+  {
+    "catalogKey": "single-arm-iso-lateral-front-lat-pulldown",
+    "name": "Single-Arm Iso-Lateral Front Lat Pulldown",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "vertical_pull"
+    ],
+    "primaryMuscles": [
+      "Lats"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Upper Back"
+    ],
+    "repRangeRecommendation": {
+      "min": 6,
+      "max": 12
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "MACHINE_PLATES_PER_ARM",
+    "repBasis": "PER_SIDE",
+    "variation": "Seated; one arm at a time with equal loading. Count reps per arm and perform the same reps on each side.",
+    "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD"
+  },
+  {
+    "catalogKey": "bilateral-iso-lateral-front-lat-pulldown-total-plates",
+    "name": "Iso-Lateral Front Lat Pulldown (Both Arms)",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "vertical_pull"
+    ],
+    "primaryMuscles": [
+      "Lats"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Upper Back"
+    ],
+    "repRangeRecommendation": {
+      "min": 6,
+      "max": 12
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "MACHINE_ADDED_PLATES_TOTAL",
+    "repBasis": "TOTAL",
+    "variation": "Seated; both arms move together with equal loading. One simultaneous pull and return counts as one bilateral rep.",
+    "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD"
+  },
+  {
+    "catalogKey": "single-arm-iso-lateral-high-row",
+    "name": "Single-Arm Iso-Lateral High Row",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Upper Back",
+      "Lats"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Rear Delts"
+    ],
+    "repRangeRecommendation": {
+      "min": 6,
+      "max": 12
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "MACHINE_PLATES_PER_ARM",
+    "repBasis": "PER_SIDE",
+    "variation": "Chest supported; one arm at a time with equal loading. Count reps per arm and perform the same reps on each side.",
+    "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD"
+  },
+  {
+    "catalogKey": "bilateral-iso-lateral-high-row-total-plates",
+    "name": "Iso-Lateral High Row (Both Arms)",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "horizontal_pull"
+    ],
+    "primaryMuscles": [
+      "Upper Back",
+      "Lats"
+    ],
+    "secondaryMuscles": [
+      "Biceps",
+      "Rear Delts"
+    ],
+    "repRangeRecommendation": {
+      "min": 6,
+      "max": 12
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "MACHINE_ADDED_PLATES_TOTAL",
+    "repBasis": "TOTAL",
+    "variation": "Chest supported; both arms move together with equal loading. One simultaneous pull and return counts as one bilateral rep.",
+    "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD"
+  },
+  {
+    "catalogKey": "plate-loaded-glute-bridge-trainer",
+    "name": "Glute Bridge Trainer",
+    "equipment": [
+      "Machine"
+    ],
+    "movementPatterns": [
+      "hinge"
+    ],
+    "primaryMuscles": [
+      "Glutes"
+    ],
+    "secondaryMuscles": [
+      "Hamstrings"
+    ],
+    "repRangeRecommendation": {
+      "min": 6,
+      "max": 12
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "MACHINE_ADDED_PLATES_TOTAL",
+    "repBasis": "TOTAL",
+    "variation": "Both legs together on a plate-loaded glute bridge trainer; back supported by the machine. One hip lift and controlled return counts as one rep.",
+    "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD"
   }
 ]

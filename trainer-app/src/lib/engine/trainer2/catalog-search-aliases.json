@@ -34,7 +34,10 @@
   ],
   "t2:chest-supported-machine-row-stack": [
     "chest supported row stack",
-    "machine row stack"
+    "machine row stack",
+    "diverging seated row",
+    "diverging seated machine row",
+    "diverging row stack"
   ],
   "t2:chest-supported-machine-row-plates-per-arm": [
     "chest supported row plates",
@@ -96,8 +99,7 @@
     "low row per arm"
   ],
   "t2:machine-assisted-pull-up": [
-    "assisted pullup",
-    "assisted pull up"
+    "assisted pullup"
   ],
   "t2:incline-dumbbell-bench-press": [
     "incline DB bench",
@@ -129,5 +131,83 @@
   "t2:dumbbell-bench-press": [
     "flat DB bench",
     "flat dumbbell bench"
+  ],
+  "t2:straight-bar-curl": [
+    "straight bar biceps curl",
+    "BB curl",
+    "barbell curl"
+  ],
+  "t2:simultaneous-incline-dumbbell-curl": [
+    "incline DB curl",
+    "incline biceps curl"
+  ],
+  "t2:two-hand-single-dumbbell-overhead-extension": [
+    "overhead DB triceps extension",
+    "two hand overhead tricep extension",
+    "overhead dumbbell extension"
+  ],
+  "t2:ez-bar-skull-crusher": [
+    "EZ lying triceps extension",
+    "EZ skullcrusher"
+  ],
+  "t2:hip-adduction-machine": [
+    "hip adductor machine",
+    "inner thigh machine"
+  ],
+  "t2:dumbbell-walking-lunge": [
+    "DB walking lunge",
+    "walking dumbbell lunge"
+  ],
+  "t2:bodyweight-nordic-hamstring-curl": [
+    "Nordic curl",
+    "unassisted Nordic hamstring curl"
+  ],
+  "t2:bodyweight-45-degree-back-extension": [
+    "45 degree back extension",
+    "Roman chair back extension",
+    "bodyweight hyperextension"
+  ],
+  "t2:bodyweight-glute-bridge": [
+    "floor glute bridge",
+    "unweighted glute bridge"
+  ],
+  "t2:single-arm-cable-bayesian-curl": [
+    "Bayesian curl",
+    "behind body cable curl",
+    "single arm Bayesian curl"
+  ],
+  "t2:high-to-low-cable-wood-chop": [
+    "cable wood chop",
+    "cable woodchopper",
+    "high to low cable chop"
+  ],
+  "t2:single-arm-iso-lateral-low-row": [
+    "ISO low row single arm",
+    "single arm low row"
+  ],
+  "t2:bilateral-iso-lateral-low-row-total-plates": [
+    "ISO low row both arms",
+    "low row combined plates"
+  ],
+  "t2:single-arm-iso-lateral-front-lat-pulldown": [
+    "ISO front lat pulldown single arm",
+    "single arm front pulldown"
+  ],
+  "t2:bilateral-iso-lateral-front-lat-pulldown-total-plates": [
+    "ISO front lat pulldown both arms",
+    "front lat pulldown combined plates"
+  ],
+  "t2:single-arm-iso-lateral-high-row": [
+    "ISO high row single arm",
+    "single arm high row"
+  ],
+  "t2:bilateral-iso-lateral-high-row-total-plates": [
+    "ISO high row both arms",
+    "high row combined plates"
+  ],
+  "t2:plate-loaded-glute-bridge-trainer": [
+    "glute bridge machine plates",
+    "machine glute bridge",
+    "plate loaded glute bridge"
   ]
 }

@@ -22,6 +22,30 @@ describe('Explicit prescription load prefill', () => {
   const added = { kind: 'addedLoad' as const, convention: 'addedExternal' as const, zeroMeaning: 'noAddedLoad' as const, value: '10', unit: 'kg' as const };
   const dumbbell = { ...external, convention: 'perImplement' as const, zeroMeaning: 'notAllowed' as const };
   const cases = [
+    ...['low-row', 'front-lat-pulldown', 'high-row'].flatMap(movement => [
+      { id: `t2:single-arm-iso-lateral-${movement}`, measurement: {
+        ...external, convention: 'machinePlatesPerArm' as const, value: '45',
+        unit: 'lb' as const }, display: '45' },
+      { id: `t2:bilateral-iso-lateral-${movement}-total-plates`, measurement: {
+        ...external, convention: 'machineAddedPlatesTotal' as const, value: '90',
+        unit: 'lb' as const }, display: '90' },
+    ]),
+    { id: 't2:plate-loaded-glute-bridge-trainer', measurement: {
+      ...external, convention: 'machineAddedPlatesTotal' as const, value: '90',
+      unit: 'lb' as const }, display: '90' },
+    ...['t2:straight-bar-curl', 't2:ez-bar-skull-crusher'].map(id => ({
+      id, measurement: { ...external, convention: 'barbellTotal' as const,
+        zeroMeaning: 'notAllowed' as const }, display: '22.05',
+    })),
+    ...['t2:simultaneous-incline-dumbbell-curl',
+      't2:two-hand-single-dumbbell-overhead-extension',
+      't2:dumbbell-walking-lunge'].map(id => ({
+      id, measurement: dumbbell, display: '22.05',
+    })),
+    ...['t2:single-arm-cable-bayesian-curl',
+      't2:high-to-low-cable-wood-chop'].map(id => ({
+      id, measurement: { ...external, zeroMeaning: 'notAllowed' as const }, display: '22.05',
+    })),
     { id: 't2:hack-squat-plates-added', measurement: { ...external, convention: 'machineAddedPlatesTotal' as const, value: '0.000000', unit: 'lb' as const }, display: '0.000000' },
     { id: 't2:seated-calf-raise-plates-added', measurement: { ...external, convention: 'machineAddedPlatesTotal' as const, value: '50.125000', unit: 'lb' as const }, display: '50.125000' },
     { id: 't2:smith-machine-standing-calf-raise-plates-added', measurement: { ...external, convention: 'smithPlatesTotal' as const, value: '0', unit: 'lb' as const }, display: '0' },
@@ -55,6 +79,8 @@ describe('Explicit prescription load prefill', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
     await screen.findByText('Saved');
     expect(recordSetResultCommand.parse(JSON.parse(submitted)).intent.result.measurement).toEqual(measurement);
+    expect(recordSetResultCommand.parse(JSON.parse(submitted)).intent.result.reps?.basis)
+      .toBe(exercise.repBasis);
     expect(JSON.stringify(prescription)).toBe(before);
   });
   it('records an edited explicit load in pounds instead of restoring its original kg value', async () => {
@@ -86,8 +112,10 @@ describe('Explicit prescription load prefill', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Log set' })); await screen.findByText('Saved');
     expect(JSON.parse(submitted).intent.result.measurement).toEqual({ ...measurement, value, unit: 'lb' });
   });
-  it('logs an explicit bodyweight target without inventing a numeric load', async () => {
-    const exercise = catalogExercise(catalog.find(e => e.loadKind === 'bodyweight')!);
+  it.each(['t2:push-up', 't2:bodyweight-nordic-hamstring-curl',
+    't2:bodyweight-45-degree-back-extension', 't2:bodyweight-glute-bridge'])(
+    'logs %s without inventing a numeric load', async id => {
+    const exercise = catalogExercise(catalog.find(e => e.id === id)!);
     if (exercise.kind !== 'catalogSnapshot') throw new Error('Expected catalog snapshot');
     const measurement = { kind: 'bodyweight' as const, convention: 'bodyweightOnly' as const };
     const prescription = { id: props.targetId, classification: 'working' as const, required: true,
@@ -100,6 +128,7 @@ describe('Explicit prescription load prefill', () => {
     expect(screen.queryByLabelText('Set 1 Actual load', { exact: true })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Log set' })); await screen.findByText('Saved');
     expect(JSON.parse(submitted).intent.result.measurement).toEqual(measurement);
+    expect(JSON.parse(submitted).intent.result.reps?.basis).toBe('total');
   });
 });
 
@@ -124,7 +153,7 @@ it('records newly qualified per-side dumbbell work with its captured policy and 
   fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
   await screen.findByText('Saved');
   expect(JSON.parse(submitted).intent.result).toEqual({ reps: { value: 8, basis: 'perSide' },
-    measurement: { kind: 'externalLoad', value: '25', unit: 'lb', convention: 'perImplement', zeroMeaning: 'notAllowed' }, rir: null });
+    measurement: { kind: 'externalLoad', value: '25', unit: 'lb', convention: 'perImplement', zeroMeaning: 'notAllowed' }, rir: '2' });
 });
 describe('Performed result input and recovery', () => {
   it('recovers a transient save without manual retry or a new action and advances once', async () => {
@@ -358,7 +387,7 @@ describe('Pounds and stable logging suggestions', () => {
     await waitFor(() => expect(blocked).toHaveBeenLastCalledWith(props.targetId, false));
     expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('44.09');
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('8');
-    expect(screen.getAllByRole('button', { name: /^[0-5] RIR$/ }).every(b => b.getAttribute('aria-pressed') === 'false')).toBe(true);
+    expect(screen.getByRole('button', { name: '2 RIR' })).toHaveAttribute('aria-pressed', 'true');
     const preceding = [{ ...saved, result: { reps: { value: 5, basis: 'total' as const }, measurement: prescription.measurement, rir: '0' } }];
     view.rerender(<SetResultRow {...ui} preceding={preceding} refresh={vi.fn()} onInputState={blocked} />);
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('5');
@@ -372,7 +401,7 @@ describe('Pounds and stable logging suggestions', () => {
     await screen.findByRole('button', { name: 'Log set' });
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('');
     expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('');
-    expect(screen.getAllByRole('button', { name: /^[0-5] RIR$/ }).every(b => b.getAttribute('aria-pressed') === 'false')).toBe(true);
+    expect(screen.getByRole('button', { name: '2 RIR' })).toHaveAttribute('aria-pressed', 'true');
     view.unmount(); sessionStorage.clear();
     render(<SetResultRow {...ui} preceding={[{ ...saved, result: { ...result, measurement: { ...prescription.measurement, convention: 'perImplement' } } }]} refresh={vi.fn()} />);
     expect(await screen.findByLabelText('Set 1 Actual load')).toHaveValue('44.09');
@@ -454,7 +483,7 @@ describe('Logger correction regressions', () => {
     fireEvent.change(screen.getByLabelText('Set 2 Actual load'), { target: { value: '' } });
     view.rerender(<SetResultRow {...ui} number={2} preceding={[{ ...prior, version: 2, result: { ...prior.result, rir: '4' } }]} />);
     expect(screen.getByLabelText('Set 2 Actual load')).toHaveValue('');
-    expect(screen.getAllByRole('button', { name: /^[0-5] RIR$/ }).every(b => b.getAttribute('aria-pressed') === 'false')).toBe(true);
+    expect(screen.getByRole('button', { name: '3 RIR' })).toHaveAttribute('aria-pressed', 'true');
   });
   it('refreshes saved values/action over an old untouched suggestion, but keeps a stale user draft', async () => {
     const view = render(<SetResultRow {...ui} />);
@@ -475,7 +504,7 @@ describe('Logger correction regressions', () => {
     view.rerender(<SetResultRow {...ui} prescription={{ ...target, measurement: null, reps: { ...target.reps, max: 10 } }} firstSetLoad={prior} />);
     expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('135');
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('');
-    expect(screen.getAllByRole('button', { name: /^[0-5] RIR$/ }).every(b => b.getAttribute('aria-pressed') === 'false')).toBe(true);
+    expect(screen.getByRole('button', { name: '3 RIR' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByRole('button', { name: 'Clear weight' }));
     fireEvent.click(screen.getByRole('button', { name: 'Decrease load by 10 lb' }));
     expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('');

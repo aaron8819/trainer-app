@@ -131,8 +131,8 @@ export function SetResultRow({ optionsMount, sessionAdded = false, assignment, a
     }
     if (saved) return f;
     f.reps = prescription && prescription.reps.min === prescription.reps.max ? String(prescription.reps.min) : '';
-    // Each set needs its own reported effort; targets and prior sets are not reports.
-    f.rir = '';
+    // Prefill current intent only for an unresolved set; saved results and drafts own actuals.
+    f.rir = prescription?.rir ?? '';
     if ((number === 1 || sessionAdded) && !m && prescription && exercise && firstSetLoad?.result?.measurement &&
       compatibleLoggingLoad(firstSetLoad.result.measurement, prescription, exercise)) f.load = startingPounds(firstSetLoad.result.measurement) ?? '';
     // Nearest recorded target in this position's saved order, never another exercise or an older compatible fallback.
@@ -259,6 +259,7 @@ export function SetResultRow({ optionsMount, sessionAdded = false, assignment, a
   }
   const compact = (!skipped || !!saved || reopening || !!draft) && !historical && !readOnly && !!prescription && (activePanel || !saved);
   const f = draft?.form ?? (compact ? initialForm() : undefined), disabled = busy || !!draft?.pending || readOnly || locked || !ready;
+  const selectedRirPreset = f?.rir ? String(Number(f.rir)) : '';
   function adjust(field: 'reps' | 'load' | 'rir', delta: number) {
     const value = f?.[field] ?? '';
     if ((value === '' && delta < 0) || (value !== '' && !/^\d+(\.\d+)?$/.test(value))) return;
@@ -302,7 +303,7 @@ export function SetResultRow({ optionsMount, sessionAdded = false, assignment, a
 
 
         </div> : <p className="text-sm">{f.kind === 'bodyweight' ? 'Bodyweight' : 'Load unspecified · choose a load type in Set options if needed'}</p>}
-        <div><p className={fieldLabel}>RIR (optional)</p><div className={styles.rir}>{['0', '1', '2', '3', '4', '5'].map(value => <button type="button" key={value} className={'h-11 min-w-0 rounded-full border text-sm font-semibold ' + (f.rir === value ? 'border-black bg-black text-white' : 'border-slate-300')} aria-label={value + ' RIR'} aria-pressed={f.rir === value} onClick={() => change('rir', f.rir === value ? '' : value)}>{value}</button>)}</div>{f.rir && !['0', '1', '2', '3', '4', '5'].includes(f.rir) && <p className={styles.retainedRir}>Reported RIR: {f.rir} · retained value</p>}</div>
+        <div><p className={fieldLabel}>RIR (optional)</p><div className={styles.rir}>{['0', '1', '2', '3', '4', '5'].map(value => <button type="button" key={value} className={'h-11 min-w-0 rounded-full border text-sm font-semibold ' + (selectedRirPreset === value ? 'border-black bg-black text-white' : 'border-slate-300')} aria-label={value + ' RIR'} aria-pressed={selectedRirPreset === value} onClick={() => change('rir', selectedRirPreset === value ? '' : value)}>{value}</button>)}</div>{f.rir && !['0', '1', '2', '3', '4', '5'].includes(selectedRirPreset) && <p className={styles.retainedRir}>RIR: {f.rir} · outside picker presets</p>}</div>
       </> : <div className="grid grid-cols-3 gap-2">{!['unspecified', 'bodyweight'].includes(f.kind) && input('load', 'Actual load')}{input('reps', 'Actual reps')}{input('rir', 'Actual RIR (optional)')}</div>}
 
       {clearing && !historical && <label className="grid gap-1 text-sm">Reason for clearing<input className={control} aria-label={`Set ${number} correction reason`} maxLength={200} value={f.reason} onChange={e => change('reason', e.target.value)} /></label>}

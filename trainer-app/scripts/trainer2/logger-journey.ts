@@ -22,7 +22,12 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   await page.goto(url);
   await expect(active.getByLabel('Set 1 Actual load', { exact: true })).toHaveValue('132.28');
   await expect(active.getByLabel('Set 1 Actual reps', { exact: true })).toHaveValue('');
-  await expect(active.locator('button[aria-pressed="true"]')).toHaveCount(0);
+  const initialRead = await validateExecutionRead(await read(), accountId, executionId);
+  const prescribedTargets = initialRead.initial.occurrence.positions[0].targets;
+  assert(prescribedTargets[0].rir !== null, 'Fixture must prescribe first-set RIR');
+  const firstRir = String(Number(prescribedTargets[0].rir));
+  await expect(active.getByRole('button', { name: `${firstRir} RIR`, exact: true }))
+    .toHaveAttribute('aria-pressed', 'true');
   for (const width of [1280, 390, 320]) {
     await page.setViewportSize({ width, height: 844 });
     await active.getByLabel('Set 1 Actual reps', { exact: true }).scrollIntoViewIfNeeded();
@@ -52,6 +57,8 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   await expect(active.getByLabel('Set 1 Actual reps', { exact: true })).toHaveValue('8');
   pass('Desktop, 390px, 320px stable entry, prescription prefill, history dialog, Escape, focus return and retained draft');
 
+  await active.getByRole('button', { name: `${firstRir} RIR`, exact: true }).click();
+  await expect(active.locator('button[aria-pressed="true"]')).toHaveCount(0);
   await active.getByRole('button', { name: 'Log set', exact: true }).click();
   await expect(active.getByLabel('Set 2 Actual reps', { exact: true })).toHaveValue('8');
   await expect(active.getByLabel('Set 2 Actual load', { exact: true })).toHaveValue('132.28');
@@ -65,8 +72,11 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   await expect(active.getByLabel('Set 2 Actual load', { exact: true })).toHaveValue('132.28');
   pass('All four centered square step controls adjust the corresponding value');
   const initial = await read();
-  assert.equal(initial.results[0].result.rir, null, 'Unreported RIR must stay null');
-  await expect(active.locator('button[aria-pressed="true"]')).toHaveCount(0);
+  assert.equal(initial.results[0].result.rir, null, 'Deliberately cleared RIR must stay null');
+  assert(prescribedTargets[1].rir !== null, 'Fixture must prescribe second-set RIR');
+  await expect(active.getByRole('button', {
+    name: `${Number(prescribedTargets[1].rir)} RIR`, exact: true,
+  })).toHaveAttribute('aria-pressed', 'true');
   assert.equal(initial.results[0].result.measurement.unit, 'kg');
   assert.equal(initial.initial.occurrence.positions[0].targets[0].measurement.unit, 'kg');
   assert.equal(initial.results[0].result.measurement.value, '60');
@@ -106,7 +116,7 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   await page.screenshot({ path: resolve(artifact, 'timer-reduced-height-390.png'), fullPage: false });
   await expect(active.getByText("Other RIR", { exact: true })).toHaveCount(0);
   await page.setViewportSize({ width: 320, height: 844 });
-  pass('Unreported RIR persists as null and stays blank on the next set; Log/Skip reachable with timer in a keyboard-sized viewport');
+  pass('Prescribed RIR preselects; deliberate clearing logs null; next set uses its own target; Log/Skip remain reachable with the timer');
   const timerStorage = `trainer2-rest:${accountId}:${executionId}`;
   const timerBefore = await page.evaluate(key => localStorage.getItem(key), timerStorage);
   await timer.getByRole('button', { name: '+30 seconds' }).click();

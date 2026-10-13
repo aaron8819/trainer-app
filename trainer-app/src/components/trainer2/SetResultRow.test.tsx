@@ -27,8 +27,13 @@ describe('Explicit prescription load prefill', () => {
         zeroMeaning: 'notAllowed' as const }, display: '22.05',
     })),
     ...['t2:simultaneous-incline-dumbbell-curl',
-      't2:two-hand-single-dumbbell-overhead-extension'].map(id => ({
+      't2:two-hand-single-dumbbell-overhead-extension',
+      't2:dumbbell-walking-lunge'].map(id => ({
       id, measurement: dumbbell, display: '22.05',
+    })),
+    ...['t2:single-arm-cable-bayesian-curl',
+      't2:high-to-low-cable-wood-chop'].map(id => ({
+      id, measurement: { ...external, zeroMeaning: 'notAllowed' as const }, display: '22.05',
     })),
     { id: 't2:hack-squat-plates-added', measurement: { ...external, convention: 'machineAddedPlatesTotal' as const, value: '0.000000', unit: 'lb' as const }, display: '0.000000' },
     { id: 't2:seated-calf-raise-plates-added', measurement: { ...external, convention: 'machineAddedPlatesTotal' as const, value: '50.125000', unit: 'lb' as const }, display: '50.125000' },
@@ -63,6 +68,8 @@ describe('Explicit prescription load prefill', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
     await screen.findByText('Saved');
     expect(recordSetResultCommand.parse(JSON.parse(submitted)).intent.result.measurement).toEqual(measurement);
+    expect(recordSetResultCommand.parse(JSON.parse(submitted)).intent.result.reps?.basis)
+      .toBe(exercise.repBasis);
     expect(JSON.stringify(prescription)).toBe(before);
   });
   it('records an edited explicit load in pounds instead of restoring its original kg value', async () => {
@@ -94,8 +101,10 @@ describe('Explicit prescription load prefill', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Log set' })); await screen.findByText('Saved');
     expect(JSON.parse(submitted).intent.result.measurement).toEqual({ ...measurement, value, unit: 'lb' });
   });
-  it('logs an explicit bodyweight target without inventing a numeric load', async () => {
-    const exercise = catalogExercise(catalog.find(e => e.loadKind === 'bodyweight')!);
+  it.each(['t2:push-up', 't2:bodyweight-nordic-hamstring-curl',
+    't2:bodyweight-45-degree-back-extension', 't2:bodyweight-glute-bridge'])(
+    'logs %s without inventing a numeric load', async id => {
+    const exercise = catalogExercise(catalog.find(e => e.id === id)!);
     if (exercise.kind !== 'catalogSnapshot') throw new Error('Expected catalog snapshot');
     const measurement = { kind: 'bodyweight' as const, convention: 'bodyweightOnly' as const };
     const prescription = { id: props.targetId, classification: 'working' as const, required: true,
@@ -108,6 +117,7 @@ describe('Explicit prescription load prefill', () => {
     expect(screen.queryByLabelText('Set 1 Actual load', { exact: true })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Log set' })); await screen.findByText('Saved');
     expect(JSON.parse(submitted).intent.result.measurement).toEqual(measurement);
+    expect(JSON.parse(submitted).intent.result.reps?.basis).toBe('total');
   });
 });
 

@@ -3,11 +3,11 @@
   "trainer2VariantSource": "src/lib/engine/trainer2/program-catalog.json",
   "baselineCommit": "3a2e057d3a205241849827a1f7e7ca580787acaf",
   "totals": {
-    "canonical": 167,
+    "canonical": 173,
     "before": 48,
-    "after": 108,
+    "after": 114,
     "currentlySupported": 48,
-    "compatibleMissingIntegration": 60,
+    "compatibleMissingIntegration": 66,
     "missingOrConflictingMetadata": 48,
     "requiresNewCapability": 11
   },
@@ -8190,6 +8190,386 @@
           "repDefaults": {
             "min": 8,
             "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:dumbbell-walking-lunge",
+      "catalogKey": "dumbbell-walking-lunge",
+      "name": "Dumbbell Walking Lunge",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "PER_SIDE",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell"
+      ],
+      "movementPatterns": [
+        "lunge"
+      ],
+      "primaryMuscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Hamstrings",
+        "Calves",
+        "Core"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:dumbbell-walking-lunge",
+        "name": "Dumbbell Walking Lunge",
+        "equipment": [
+          "Dumbbell"
+        ],
+        "purpose": "lunge",
+        "aliases": [],
+        "repBasis": "perSide",
+        "loadKind": "externalLoad",
+        "convention": "perImplement",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "variation": "Alternating forward walking lunges; one dumbbell in each hand with equal loading. Count one forward lunge on each leg as one rep for that side; 8 reps per side means 16 lunges overall.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "lunge"
+          ],
+          "primaryMuscles": [
+            "Quads",
+            "Glutes"
+          ],
+          "secondaryMuscles": [
+            "Hamstrings",
+            "Calves",
+            "Core"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:bodyweight-nordic-hamstring-curl",
+      "catalogKey": "bodyweight-nordic-hamstring-curl",
+      "name": "Bodyweight Nordic Hamstring Curl",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_BODYWEIGHT",
+      "loadConvention": null,
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Hamstrings"
+      ],
+      "secondaryMuscles": [
+        "Glutes"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:bodyweight-nordic-hamstring-curl",
+        "name": "Bodyweight Nordic Hamstring Curl",
+        "equipment": [
+          "Bodyweight"
+        ],
+        "purpose": "flexion",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "bodyweight",
+        "convention": "bodyweightOnly",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "variation": "Kneeling with both ankles secured to fixed support; both legs together. One controlled lowering and return counts as one rep. No band, hand push-off assistance or added load.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "flexion"
+          ],
+          "primaryMuscles": [
+            "Hamstrings"
+          ],
+          "secondaryMuscles": [
+            "Glutes"
+          ],
+          "externalZeroMeaning": null,
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:bodyweight-45-degree-back-extension",
+      "catalogKey": "bodyweight-45-degree-back-extension",
+      "name": "Bodyweight 45-Degree Back Extension",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_BODYWEIGHT",
+      "loadConvention": null,
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine",
+        "Bodyweight"
+      ],
+      "movementPatterns": [
+        "extension"
+      ],
+      "primaryMuscles": [
+        "Glutes",
+        "Hamstrings",
+        "Lower Back"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:bodyweight-45-degree-back-extension",
+        "name": "Bodyweight 45-Degree Back Extension",
+        "equipment": [
+          "Machine",
+          "Bodyweight"
+        ],
+        "purpose": "extension",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "bodyweight",
+        "convention": "bodyweightOnly",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "variation": "On a fixed 45-degree back-extension bench with feet secured; both legs together. One controlled lower and return counts as one rep. No external load.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "extension"
+          ],
+          "primaryMuscles": [
+            "Glutes",
+            "Hamstrings",
+            "Lower Back"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": null,
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:bodyweight-glute-bridge",
+      "catalogKey": "bodyweight-glute-bridge",
+      "name": "Bodyweight Glute Bridge",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_BODYWEIGHT",
+      "loadConvention": null,
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Bodyweight"
+      ],
+      "movementPatterns": [
+        "hinge"
+      ],
+      "primaryMuscles": [
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Hamstrings"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:bodyweight-glute-bridge",
+        "name": "Bodyweight Glute Bridge",
+        "equipment": [
+          "Bodyweight"
+        ],
+        "purpose": "hinge",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "bodyweight",
+        "convention": "bodyweightOnly",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "variation": "Supine on the floor with both feet planted; lift and lower the hips together. One full lift and return counts as one rep. No external load or elevated bench.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "hinge"
+          ],
+          "primaryMuscles": [
+            "Glutes"
+          ],
+          "secondaryMuscles": [
+            "Hamstrings"
+          ],
+          "externalZeroMeaning": null,
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:single-arm-cable-bayesian-curl",
+      "catalogKey": "single-arm-cable-bayesian-curl",
+      "name": "Single-Arm Cable Bayesian Curl",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "PER_SIDE",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:single-arm-cable-bayesian-curl",
+        "name": "Single-Arm Cable Bayesian Curl",
+        "equipment": [
+          "Cable"
+        ],
+        "purpose": "flexion",
+        "aliases": [],
+        "repBasis": "perSide",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "variation": "Standing, one arm at a time, facing away from a low cable with the upper arm behind the torso. One curl and return counts as one rep for that side.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "flexion"
+          ],
+          "primaryMuscles": [
+            "Biceps"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:high-to-low-cable-wood-chop",
+      "catalogKey": "high-to-low-cable-wood-chop",
+      "name": "High-to-Low Cable Wood Chop",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_DISPLAYED",
+      "repBasis": "PER_SIDE",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Cable"
+      ],
+      "movementPatterns": [
+        "rotation"
+      ],
+      "primaryMuscles": [
+        "Abs",
+        "Core"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 20
+      },
+      "normalized": {
+        "id": "t2:high-to-low-cable-wood-chop",
+        "name": "High-to-Low Cable Wood Chop",
+        "equipment": [
+          "Cable"
+        ],
+        "purpose": "rotation",
+        "aliases": [],
+        "repBasis": "perSide",
+        "loadKind": "externalLoad",
+        "convention": "machineDisplayed",
+        "reps": {
+          "min": 8,
+          "max": 20
+        },
+        "variation": "Standing; both hands on one high cable handle. One diagonal pull down across the body and return is one rep per direction; perform equally in the opposite direction. Dynamic reps, not a hold.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "rotation"
+          ],
+          "primaryMuscles": [
+            "Abs",
+            "Core"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 20
           }
         }
       },

@@ -150,5 +150,32 @@
   "t2:hip-adduction-machine": [
     "hip adductor machine",
     "inner thigh machine"
+  ],
+  "t2:dumbbell-walking-lunge": [
+    "DB walking lunge",
+    "walking dumbbell lunge"
+  ],
+  "t2:bodyweight-nordic-hamstring-curl": [
+    "Nordic curl",
+    "unassisted Nordic hamstring curl"
+  ],
+  "t2:bodyweight-45-degree-back-extension": [
+    "45 degree back extension",
+    "Roman chair back extension",
+    "bodyweight hyperextension"
+  ],
+  "t2:bodyweight-glute-bridge": [
+    "floor glute bridge",
+    "unweighted glute bridge"
+  ],
+  "t2:single-arm-cable-bayesian-curl": [
+    "Bayesian curl",
+    "behind body cable curl",
+    "single arm Bayesian curl"
+  ],
+  "t2:high-to-low-cable-wood-chop": [
+    "cable wood chop",
+    "cable woodchopper",
+    "high to low cable chop"
   ]
 }

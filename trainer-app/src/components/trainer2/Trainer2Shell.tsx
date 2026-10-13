@@ -44,6 +44,24 @@ function Trainer2Navigation({ pathname, destination, bottomOffset }: { pathname:
   return <nav aria-label="Trainer2 navigation" className={styles.navigation} style={{ bottom: bottomOffset }}>
       <span className={styles.brand}>Trainer</span>
       {items.map(item => <Link key={item.label} href={item.href} prefetch={false} aria-current={active === item.label ? 'page' : undefined}
-        onClick={event => { if (new URL(item.href, location.origin).href === location.href) event.preventDefault(); }}>{item.label}</Link>)}
+        onClick={event => { if (new URL(item.href, location.origin).href === location.href) event.preventDefault(); }}>
+        <NavigationIcon label={item.label} /><span>{item.label}</span>
+      </Link>)}
     </nav>;
+}
+
+function NavigationIcon({ label }: { label: string }) {
+  return <svg className={styles.navIcon} aria-hidden="true" focusable="false" viewBox="0 0 24 24"
+    fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    {label === 'Training' && <g fill="currentColor" stroke="none">
+      <rect x="2" y="7" width="3" height="10" rx="1.5" /><rect x="5" y="4" width="3" height="16" rx="1.5" />
+      <rect x="8" y="10.5" width="8" height="3" /><rect x="16" y="4" width="3" height="16" rx="1.5" />
+      <rect x="19" y="7" width="3" height="10" rx="1.5" />
+    </g>}
+    {label === 'Program' && <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <path d="M14 2v6h6M8 12h8M8 16h8M8 8h2" /></>}
+    {label === 'Builder' && <><path d="M4 21h16M5 21v-6M10 21V9M15 21v-9M20 21V3" /></>}
+    {label === 'Settings' && <><path d="m9.5 3 .5-1h4l.5 3 2 1.2 2.8-.9 2 3.4-2.3 2v2.6l2.3 2-2 3.4-2.8-.9-2 1.2-.5 3h-4l-.5-3-2-1.2-2.8.9-2-3.4 2.3-2v-2.6l-2.3-2 2-3.4 2.8.9 2-1.2z" />
+      <circle cx="12" cy="12" r="3" /></>}
+  </svg>;
 }

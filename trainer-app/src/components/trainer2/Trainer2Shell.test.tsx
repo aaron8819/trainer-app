@@ -30,6 +30,11 @@ describe('Trainer2 shell destinations', () => {
     render(<Trainer2Shell><p>Empty account</p></Trainer2Shell>);
     expect(screen.getByRole('link', { name: 'Program' }).getAttribute('href')).toBe('/trainer2?view=program');
     expect(screen.getByRole('link', { name: 'Training' }).getAttribute('aria-current')).toBe('page');
+    expect(screen.getAllByRole('link').map(link => link.textContent)).toEqual(['Training', 'Program', 'Builder', 'Settings']);
+    for (const link of screen.getAllByRole('link')) {
+      expect(link.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+      expect(link.querySelector('svg')).toHaveAttribute('focusable', 'false');
+    }
     for (const link of screen.getAllByRole('link')) expect(link.getAttribute('href')).toMatch(/^\/trainer2(?:\/|\?|$)/);
   });
   it('recognizes direct Program URLs and scopes saved navigation to the reported plan', async () => {

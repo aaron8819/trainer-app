@@ -1,5 +1,5 @@
 :global(body):has(.screen) { background: #f6f5f1; }
-.screen { --ink: #171a18; --muted: #596159; --line: #dcded5; color: var(--ink); font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
+.screen { --ink: #171a18; --muted: #596159; --line: #dcded5; color: var(--ink); font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding-bottom: 40px; }
 .screen h1, .screen h2, .screen h3, .screen h4, .screen p { margin: 0; overflow-wrap: anywhere; }
 .screen h1 { font-size: 40px; line-height: 1.1; letter-spacing: -1.5px; font-weight: 650; }
 .screen h2 { font-size: 24px; line-height: 1.2; letter-spacing: -.6px; font-weight: 650; }

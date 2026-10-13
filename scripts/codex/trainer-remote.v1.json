@@ -14,8 +14,8 @@
   "vercel": {
     "teamId": "team_YPrwp64VBrZbh9mEcwGQV8D4",
     "teamSlug": "aaron8819s-projects",
-    "projectId": "prj_XtOD3yvnH76X62LEDKi2qKV7XFaj",
-    "projectName": "trainer-app",
+    "projectId": "prj_X0wMQ9Kh56C6M3ipmxFmucFyo1Yl",
+    "projectName": "trainer2-hosted-synthetic",
     "productionAlias": "trainer-app-indol.vercel.app"
   },
   "supabase": {

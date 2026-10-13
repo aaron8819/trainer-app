@@ -356,8 +356,8 @@ function New-VercelSuccessScenario {
         [string]$Account = 'aaron8819',
         [string]$TeamId = 'team_YPrwp64VBrZbh9mEcwGQV8D4',
         [string]$TeamSlug = 'aaron8819s-projects',
-        [string]$ProjectId = 'prj_XtOD3yvnH76X62LEDKi2qKV7XFaj',
-        [string]$ProjectName = 'trainer-app',
+        [string]$ProjectId = 'prj_X0wMQ9Kh56C6M3ipmxFmucFyo1Yl',
+        [string]$ProjectName = 'trainer2-hosted-synthetic',
         [string]$Alias = 'trainer-app-indol.vercel.app',
         [string]$ActiveState = 'READY',
         [string]$ActiveSha = '1111111111111111111111111111111111111111',
@@ -2336,7 +2336,7 @@ Invoke-Test 'Vercel REST success proves exact identity alias deployment and roll
     Assert-Equal $live.authentication.transport 'official-vercel-rest-api' 'REST transport label mismatch.'
     Assert-True $live.identity.match 'Exact Vercel identity did not match.'
     Assert-Equal $live.identity.observed.teamId 'team_YPrwp64VBrZbh9mEcwGQV8D4' 'Team identity mismatch.'
-    Assert-Equal $live.identity.observed.projectId 'prj_XtOD3yvnH76X62LEDKi2qKV7XFaj' 'Project identity mismatch.'
+    Assert-Equal $live.identity.observed.projectId 'prj_X0wMQ9Kh56C6M3ipmxFmucFyo1Yl' 'Project identity mismatch.'
     Assert-True $live.productionAlias.pointsToActiveDeployment 'Alias did not establish active production truth.'
     Assert-Equal $live.activeDeployment.id $scenario.activeId 'Active deployment ID mismatch.'
     Assert-Equal $live.activeDeployment.target 'production' 'Active deployment target mismatch.'
@@ -2411,7 +2411,7 @@ Invoke-Test 'Vercel team slug mismatch stops before project lookup' {
 Invoke-Test 'Vercel project identity and access failures stop before alias lookup' {
     foreach ($case in @('id', 'name', 'owner', 'inaccessible')) {
         $scenario = New-VercelSuccessScenario
-        $projectKey = '/v9/projects/prj_XtOD3yvnH76X62LEDKi2qKV7XFaj?teamId=team_YPrwp64VBrZbh9mEcwGQV8D4'
+        $projectKey = '/v9/projects/prj_X0wMQ9Kh56C6M3ipmxFmucFyo1Yl?teamId=team_YPrwp64VBrZbh9mEcwGQV8D4'
         if ($case -eq 'id') { $scenario.responses[$projectKey].data.id = 'prj_other' }
         if ($case -eq 'name') { $scenario.responses[$projectKey].data.name = 'other-project' }
         if ($case -eq 'owner') { $scenario.responses[$projectKey].data.accountId = 'team_other' }
@@ -2423,7 +2423,7 @@ Invoke-Test 'Vercel project identity and access failures stop before alias looku
 }
 
 Invoke-Test 'Vercel project-domain evidence handles empty arrays but blocks unavailable evidence' {
-    $key = '/v9/projects/prj_XtOD3yvnH76X62LEDKi2qKV7XFaj/domains?limit=100&teamId=team_YPrwp64VBrZbh9mEcwGQV8D4'
+    $key = '/v9/projects/prj_X0wMQ9Kh56C6M3ipmxFmucFyo1Yl/domains?limit=100&teamId=team_YPrwp64VBrZbh9mEcwGQV8D4'
     $scenario = New-VercelSuccessScenario
     $scenario.responses[$key].data.domains = @()
     $fixtureResult = Invoke-VercelProviderFixture -Scenario $scenario
@@ -2438,7 +2438,7 @@ Invoke-Test 'Vercel project-domain evidence handles empty arrays but blocks unav
 }
 
 Invoke-Test 'Vercel alias assignment mismatches fail closed before deployment details' {
-    $aliasKey = '/v4/aliases/trainer-app-indol.vercel.app?projectId=prj_XtOD3yvnH76X62LEDKi2qKV7XFaj&teamId=team_YPrwp64VBrZbh9mEcwGQV8D4'
+    $aliasKey = '/v4/aliases/trainer-app-indol.vercel.app?projectId=prj_X0wMQ9Kh56C6M3ipmxFmucFyo1Yl&teamId=team_YPrwp64VBrZbh9mEcwGQV8D4'
     foreach ($case in @('absent', 'wrong-alias', 'other-project', 'ambiguous')) {
         $scenario = New-VercelSuccessScenario
         if ($case -eq 'absent') { Add-FakeVercelResponse -Responses $scenario.responses -Key $aliasKey -Body $null -HttpStatus 404 }
@@ -2497,9 +2497,9 @@ Invoke-Test 'Vercel rollback candidate absence presence and pagination remain co
     Assert-True (-not $absent.Result.previousHealthyDeployment.safeToRollback) 'Absent candidate was called safe.'
 
     $scenario = New-VercelSuccessScenario -NoPrevious
-    $listKey = '/v7/deployments?projectId=prj_XtOD3yvnH76X62LEDKi2qKV7XFaj&target=production&limit=100&teamId=team_YPrwp64VBrZbh9mEcwGQV8D4'
+    $listKey = '/v7/deployments?projectId=prj_X0wMQ9Kh56C6M3ipmxFmucFyo1Yl&target=production&limit=100&teamId=team_YPrwp64VBrZbh9mEcwGQV8D4'
     $scenario.responses[$listKey].data.pagination.next = 456
-    Add-FakeVercelResponse -Responses $scenario.responses -Key '/v7/deployments?projectId=prj_XtOD3yvnH76X62LEDKi2qKV7XFaj&target=production&limit=100&until=456&teamId=team_YPrwp64VBrZbh9mEcwGQV8D4' -Body ([pscustomobject]@{
+    Add-FakeVercelResponse -Responses $scenario.responses -Key '/v7/deployments?projectId=prj_X0wMQ9Kh56C6M3ipmxFmucFyo1Yl&target=production&limit=100&until=456&teamId=team_YPrwp64VBrZbh9mEcwGQV8D4' -Body ([pscustomobject]@{
         deployments = @([pscustomobject]@{ uid = 'dpl_previouspage'; state = 'READY'; target = 'production'; created = 1750000000000; ready = 1750000060000; meta = [pscustomobject]@{ githubCommitSha = '2222222222222222222222222222222222222222' } })
         pagination = [pscustomobject]@{ next = $null }
     })

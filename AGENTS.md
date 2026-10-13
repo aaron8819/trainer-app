@@ -35,6 +35,9 @@ Optional unavailable skills are a normal fallback condition. Stop only when the 
 - Before creating or reusing a worktree, verify the exact path and branch, base revision, worktree registration, and dirty state. Do not write in a worktree containing overlapping changes.
 - Keep writes inside the authorized worktree. Do not clean up worktrees or branches unless that destructive action is explicitly authorized.
 - Scale preflight and reporting to the task. Do not apply release-grade ceremony to a read-only inspection or small isolated edit unless its risk requires it.
+- Keep one implementation owner from source changes through authorized release. Use read-only reviewers for independent review; do not hand work to a new chat merely to run checks or release it.
+- If a handoff is necessary, the outgoing owner stops writing and reports the exact worktree, branch, base/head/tree, dirty files, approvals, evidence and owned running resources. The incoming owner verifies that checkpoint before writing and preserves unfinished edits.
+- Carry the user's bounded authorization forward. Do not ask again for already approved review, CI or release steps. Obtain a new decision only for changed scope or a required action outside that authorization. Visual approval applies to the reviewed appearance; an invisible corrective fix needs affected verification, not another screenshot approval by default.
 
 ## Safety boundaries
 
@@ -69,9 +72,13 @@ Repair is a safety net, not a plan author.
 - Prefer the smallest focused verification that exercises the owning seam. Expand to TypeScript, integration, contract, audit, or full verification only when shared shapes, cross-layer behavior, persistence, or release risk justify it.
 - Before running an expensive hermetic check, inspect durable evidence for the exact current Git tree and equivalent verification definition. Reuse valid evidence; rerun only when it is absent, incomplete, insufficiently qualified, or invalidated.
 - The full credential-free inventory is an expensive PR/release-class CI check. Independent review covers ownership, assumptions, implementation, tests, and missing cases; it does not require mechanically rerunning that inventory for an unchanged verified tree.
+- Choose affected verification once from the diff and ownership seams using the existing command registry and verification selector. Include adjacent navigation and completed-review behavior when shared logger/shell styling changes. Run independent reads and checks concurrently when they do not share mutable resources; keep source changes, approvals and shared fixtures sequential.
+- Reuse a qualified task-owned environment and its existing dependencies when compatible. Preserve isolation, unique ports, source manifests and cleanup ownership; never reuse production targets or another task's resources.
+- Freeze source for the final affected browser run and capture all requested approval views from that environment, including the full changed surface. A later screenshot-only capture does not require repeating the test suite. Do not repeat broad local suites already covered by valid evidence or required CI for unrelated changes.
 - Compare branch failures with the base revision by test identity and environment before classifying them as regressions or baseline failures.
 - When detailed command selection matters, use repository-owned verification policy and scripts rather than copying long command recipes into this file.
 - Update canonical documentation only when behavior or contracts change, and only after code and tests establish the final behavior.
+- Complete authorized work in order: inspect and establish ownership; implement; run affected checks and independent review; obtain requested visual approval; push a draft PR; wait for applicable CI and resolve findings; merge the exact qualified head; verify deployment identity and availability read-only. Keep one concise candidate/release receipt with the tree, evidence paths, approvals, PR/CI, deployment and limitations. Never bypass required checks, infer release success from a merge, or replay migrations as part of a code-only release.
 
 ## Durable memory and retrospectives
 

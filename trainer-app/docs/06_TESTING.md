@@ -206,7 +206,7 @@ Sources of truth:
 - `npm run verify`: lint + type-check (`tsc --noEmit`) + `test:fast` + contract verification + completed-review matrix + version endpoint/verification tests + static mutation/write-gate checks
 - `npm run verify:completed-review`: canonical DTO/loader + immediate API/component + shared card + reopened workout-page matrix; this is included in `npm run verify`
 - `npm run verify:version`: deployment-version resolver + `/api/version` route + mocked-network production-verifier tests; this is included in `npm run verify`
-- `npm run verify:production-version -- --base-url <https-origin> --expected-sha <full-git-sha>`: explicit read-only live production evidence; never included in local `npm run verify`
+- `npm run verify:production-version -- --base-url <https-origin> --expected-sha <full-git-sha>`: explicit read-only live evidence only where `/api/version` is exposed; never included in local `npm run verify`. Trainer2 production excludes that route: use the provider identity and public availability checks in [07 Operations](07_OPERATIONS.md#production-identity-and-availability-verification).
 - `npm run verify:contracts`: docs/runtime enum drift check
 - Owner-scoped audit commands accept `--env-file .env.local --owner owner@local` so local audit scripts can load the intended runtime environment explicitly
 
@@ -330,8 +330,8 @@ architecture, runner image, and timezone remain descriptive and do not require a
 
 Reusable checks include credential-free inventory, import-only safety, TypeScript, lint, contracts,
 static invariants, and deterministic credential-free unit/integration suites when their exact
-definition is represented. Tree evidence alone never satisfies production `/api/version`, public
-health, Vercel deployment state, live external APIs, remote database state, live audits, or deployment
+definition is represented. Tree evidence alone never satisfies live production identity, public
+availability, Vercel deployment state, live external APIs, remote database state, live audits, or deployment
 mechanics.
 
 To discover credential-free evidence for tree `T`, inspect the PR check summary or list workflow-run

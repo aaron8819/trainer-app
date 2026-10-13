@@ -46,7 +46,7 @@ $env:VERCEL_TOKEN = Read-Host "Vercel token" -MaskInput
 Remove-Item Env:VERCEL_TOKEN
 ```
 
-The committed production identity is the Vercel team `team_YPrwp64VBrZbh9mEcwGQV8D4` / `aaron8819s-projects`, project `prj_XtOD3yvnH76X62LEDKi2qKV7XFaj` / `trainer-app`, and production alias `trainer-app-indol.vercel.app`. These are expected non-secret identifiers. Observed provider identity is reported separately.
+The committed production identity is the Vercel team `team_YPrwp64VBrZbh9mEcwGQV8D4` / `aaron8819s-projects`, project `prj_X0wMQ9Kh56C6M3ipmxFmucFyo1Yl` / `trainer2-hosted-synthetic`, and production alias `trainer-app-indol.vercel.app`. The project name is historical; this alias serves Trainer production. These are expected non-secret identifiers. Observed provider identity is reported separately.
 
 Before reading `VERCEL_TOKEN`, the public command requires all five values to be present and strictly valid. A missing, malformed, unsafe, redacted, or URL-bearing value returns a blocked version 1 report with `networkAccessed: false`, null live deployment evidence, and zero provider calls. If process-scoped `VERCEL_TOKEN` is absent, the command returns the same no-network blocked shape with a precise manual prerequisite and does not prompt. The operator sets and removes the variable; the script never persists, prints, fingerprints, creates, rotates, or removes the token.
 
@@ -59,6 +59,8 @@ GitHub deployment records and status contexts are repository control-plane evide
 The Deployment scope performs authenticated Vercel read-only REST collection after exact team, project, and production-alias identity validation. It does not log in, link projects, deploy, promote, rollback, change aliases or domains, inspect unrelated environment variables, or modify Vercel configuration. Never paste the token into chat, Git configuration, a committed `.env` file, or a command argument.
 
 Unavailable permissions, provider failures, ambiguous alias resolution, and unknown facts fail closed or remain explicitly unavailable. Local `.vercel/project.json` filename presence is non-authoritative evidence; ignored linkage contents are never read.
+
+For production release verification, resolve the alias through the authenticated provider, verify the expected project/team, READY production target and exact integrated Git SHA, then independently GET the public root and `/trainer2/auth`. The existing `-Deployment` scope supports provider identity with process-scoped authentication; connected provider read tools can establish the same facts when available. A missing credential is a blocker for that route, not permission to inspect credential files. GitHub status alone does not prove alias assignment. `/api/version` is excluded by the current Trainer2 production route allowlist and is not the production identity check. See `trainer-app/docs/07_OPERATIONS.md` for supported scope and limits.
 
 ## Exit codes
 

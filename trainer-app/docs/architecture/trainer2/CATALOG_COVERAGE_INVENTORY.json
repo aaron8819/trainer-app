@@ -3,11 +3,11 @@
   "trainer2VariantSource": "src/lib/engine/trainer2/program-catalog.json",
   "baselineCommit": "3a2e057d3a205241849827a1f7e7ca580787acaf",
   "totals": {
-    "canonical": 163,
+    "canonical": 167,
     "before": 48,
-    "after": 104,
+    "after": 108,
     "currentlySupported": 48,
-    "compatibleMissingIntegration": 56,
+    "compatibleMissingIntegration": 60,
     "missingOrConflictingMetadata": 48,
     "requiresNewCapability": 11
   },
@@ -7946,6 +7946,250 @@
           "repDefaults": {
             "min": 6,
             "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:straight-bar-curl",
+      "catalogKey": "straight-bar-curl",
+      "name": "Straight-Bar Curl",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Barbell"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [
+        "Forearms"
+      ],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:straight-bar-curl",
+        "name": "Straight-Bar Curl",
+        "equipment": [
+          "Barbell"
+        ],
+        "purpose": "flexion",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "barbellTotal",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "variation": "Standing; straight bar; both arms together.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "flexion"
+          ],
+          "primaryMuscles": [
+            "Biceps"
+          ],
+          "secondaryMuscles": [
+            "Forearms"
+          ],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:simultaneous-incline-dumbbell-curl",
+      "catalogKey": "simultaneous-incline-dumbbell-curl",
+      "name": "Incline Dumbbell Curl (Both Arms)",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "flexion"
+      ],
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:simultaneous-incline-dumbbell-curl",
+        "name": "Incline Dumbbell Curl (Both Arms)",
+        "equipment": [
+          "Dumbbell",
+          "Bench"
+        ],
+        "purpose": "flexion",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "perImplement",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "variation": "Seated on an incline bench; both arms curl together. One bilateral repetition counts as one rep.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "flexion"
+          ],
+          "primaryMuscles": [
+            "Biceps"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:two-hand-single-dumbbell-overhead-extension",
+      "catalogKey": "two-hand-single-dumbbell-overhead-extension",
+      "name": "Two-Hand Dumbbell Overhead Extension",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "IMPLEMENT_WEIGHT",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Dumbbell"
+      ],
+      "movementPatterns": [
+        "extension"
+      ],
+      "primaryMuscles": [
+        "Triceps"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:two-hand-single-dumbbell-overhead-extension",
+        "name": "Two-Hand Dumbbell Overhead Extension",
+        "equipment": [
+          "Dumbbell"
+        ],
+        "purpose": "extension",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "perImplement",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "variation": "Both hands hold one dumbbell overhead; both arms extend together.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "extension"
+          ],
+          "primaryMuscles": [
+            "Triceps"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:ez-bar-skull-crusher",
+      "catalogKey": "ez-bar-skull-crusher",
+      "name": "EZ-Bar Skull Crusher",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "BARBELL_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "EZ_Bar",
+        "Bench"
+      ],
+      "movementPatterns": [
+        "extension"
+      ],
+      "primaryMuscles": [
+        "Triceps"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 8,
+        "max": 15
+      },
+      "normalized": {
+        "id": "t2:ez-bar-skull-crusher",
+        "name": "EZ-Bar Skull Crusher",
+        "equipment": [
+          "EZ_Bar",
+          "Bench"
+        ],
+        "purpose": "extension",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "barbellTotal",
+        "reps": {
+          "min": 8,
+          "max": 15
+        },
+        "variation": "Lying on a bench; both arms extend together with an EZ bar.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "extension"
+          ],
+          "primaryMuscles": [
+            "Triceps"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": "notAllowed",
+          "repDefaults": {
+            "min": 8,
+            "max": 15
           }
         }
       },

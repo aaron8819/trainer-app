@@ -326,5 +326,97 @@
     "repBasis": "TOTAL",
     "variation": "Both arms together with equal loading. Record added plates per arm, excluding starting resistance: 45 lb each arm records as 45, not 90. Total bilateral reps.",
     "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD"
+  },
+  {
+    "catalogKey": "straight-bar-curl",
+    "name": "Straight-Bar Curl",
+    "equipment": [
+      "Barbell"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Biceps"
+    ],
+    "secondaryMuscles": [
+      "Forearms"
+    ],
+    "repRangeRecommendation": {
+      "min": 8,
+      "max": 15
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "BARBELL_TOTAL",
+    "repBasis": "TOTAL",
+    "variation": "Standing; straight bar; both arms together."
+  },
+  {
+    "catalogKey": "simultaneous-incline-dumbbell-curl",
+    "name": "Incline Dumbbell Curl (Both Arms)",
+    "equipment": [
+      "Dumbbell",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "flexion"
+    ],
+    "primaryMuscles": [
+      "Biceps"
+    ],
+    "secondaryMuscles": [],
+    "repRangeRecommendation": {
+      "min": 8,
+      "max": 15
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "IMPLEMENT_WEIGHT",
+    "repBasis": "TOTAL",
+    "variation": "Seated on an incline bench; both arms curl together. One bilateral repetition counts as one rep."
+  },
+  {
+    "catalogKey": "two-hand-single-dumbbell-overhead-extension",
+    "name": "Two-Hand Dumbbell Overhead Extension",
+    "equipment": [
+      "Dumbbell"
+    ],
+    "movementPatterns": [
+      "extension"
+    ],
+    "primaryMuscles": [
+      "Triceps"
+    ],
+    "secondaryMuscles": [],
+    "repRangeRecommendation": {
+      "min": 8,
+      "max": 15
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "IMPLEMENT_WEIGHT",
+    "repBasis": "TOTAL",
+    "variation": "Both hands hold one dumbbell overhead; both arms extend together."
+  },
+  {
+    "catalogKey": "ez-bar-skull-crusher",
+    "name": "EZ-Bar Skull Crusher",
+    "equipment": [
+      "EZ_Bar",
+      "Bench"
+    ],
+    "movementPatterns": [
+      "extension"
+    ],
+    "primaryMuscles": [
+      "Triceps"
+    ],
+    "secondaryMuscles": [],
+    "repRangeRecommendation": {
+      "min": 8,
+      "max": 15
+    },
+    "measurementProfile": "REPS_EXTERNAL_LOAD",
+    "loadConvention": "BARBELL_TOTAL",
+    "repBasis": "TOTAL",
+    "variation": "Lying on a bench; both arms extend together with an EZ bar."
   }
 ]

@@ -1,6 +1,6 @@
 # Trainer2 catalog coverage
 
-Trainer2 adds 13 bounded program variants in `src/lib/engine/trainer2/program-catalog.json`, for 104 selectable definitions across 163 identities (59 exclusions remain). The shared 150-entry library and all 48 frozen Trainer2 definitions are unchanged. Definition provenance and distinct plate-only conventions are recorded in [PROGRAM_SUPPORT](PROGRAM_SUPPORT.md).
+Trainer2 adds 17 bounded program variants in `src/lib/engine/trainer2/program-catalog.json`, for 108 selectable definitions across 167 identities (59 exclusions remain). The shared 150-entry library and all 48 frozen Trainer2 definitions are unchanged. Definition provenance and distinct plate-only conventions are recorded in [PROGRAM_SUPPORT](PROGRAM_SUPPORT.md).
 
 Common gym names and abbreviations are search-only aliases in
 `catalog-search-aliases.json`, applied by the same matcher for Builder and Swap.
@@ -39,6 +39,57 @@ Every exclusion lacks a reviewed recording tuple. Exact keys and fields are in t
 
 `catalog-coverage.test.ts` verifies every compatible definition against source, all 48 frozen definitions, missing/conflicting metadata, a future compatible identity, bench coverage, filtering, read preservation and measurement barriers. Retained builder/logger/history/swap tests protect prescriptions and ambiguity rules.
 
-`scripts/test-trainer2-exercise-swap.ts --confirm-disposable` now also calls `scripts/trainer2/verify-catalog-coverage.ts`. It provisions only its own PostgreSQL 17 container and synthetic owner/session, applies existing migrations/grants, verifies desktop/mobile builder → save/activate → start/log → finish/history → subsequent prefill, new bench swaps and Return to original, then round-trips all 91 definitions through acceptance, START, results and subsequent history/prefill. The existing races, lost-response recovery and populated pre-swap upgrade checks remain included.
+`scripts/test-trainer2-exercise-swap.ts --confirm-disposable` now also calls `scripts/trainer2/verify-catalog-coverage.ts`. It provisions only its own PostgreSQL 17 container and synthetic owner/session, applies existing migrations/grants, verifies desktop/mobile builder → save/activate → start/log → finish/history → subsequent prefill, new bench swaps and Return to original, then round-trips every currently selectable definition through acceptance, START, results and subsequent history/prefill. The existing races, lost-response recovery and populated pre-swap upgrade checks remain included.
 
 No Prisma/schema/grant migration or shared-catalog synchronization is required. Hosted release is separately authorized: independently review the exact candidate, qualify hosted protections/environment/roles and release the reviewed application source. Do not enable owner admission or modify existing sessions. Older application binaries do not understand newly authored catalogFacts; account for that contract in any rollback plan. No push, merge, deployment, hosted writes, V1 changes, Add set or execution Add exercise are part of this slice.
+
+## Common gym completeness batch (October 2026)
+
+Full coverage means selectable, searchable, explicitly recordable common gym executions, with equipment, muscles, movement and rep defaults; it does not mean qualifying every ambiguous library label. Existing movement families and major muscle groups already have selectable exercises. The remaining gap is often execution specificity, not an absent muscle group.
+
+Four Trainer2-only variants fill common accessory gaps without changing parent identities:
+
+| New key | Source metadata | Execution and recording |
+| --- | --- | --- |
+| straight-bar-curl | barbell-curl | Standing straight bar, both arms together; total reps, barbell total including bar |
+| simultaneous-incline-dumbbell-curl | incline-dumbbell-curl | Incline bench, both arms together; total bilateral reps, weight of each dumbbell |
+| two-hand-single-dumbbell-overhead-extension | overhead-dumbbell-extension | Both hands hold one dumbbell; total reps, that single dumbbell's weight |
+| ez-bar-skull-crusher | lying-triceps-extension-skull-crusher | Lying on bench, EZ bar, both arms together; total reps, bar total including bar |
+
+These are explicit authored recording definitions using existing contracts. Movement, muscle and rep recommendations are copied from the named canonical parents; no new stimulus claim is made. All require positive external load when supplied; blank remains unspecified. Existing logger convention labels explain weight entry. New titles contain execution/implement distinctions without weight-entry instructions. Generic parents remain excluded, preserving ambiguity rather than assigning them guessed load or rep meaning.
+
+Roles remain plan-owned and optional. The existing starter uses compound lat pulldowns as accessories, and does not infer position role from compound status or V1 main-lift eligibility. No starter or active plan is changed. The architecture reference's incline-curl example supports prioritizing that gap; reference proposals are not active-plan evidence.
+
+Normalized search aliases are unique and reference selectable IDs. The redundant assisted-pull-up alias was removed without changing search behavior. New aliases include incline DB curl, BB curl, overhead DB triceps extension and EZ skullcrusher; the already selectable adductor machine gains inner-thigh search terms.
+
+The 59 original exclusions remain: holds/carries/traversals need capability work or a separately reviewed dynamic execution; angled-bar and ambiguous machines need concrete recording conventions. The existing exercise-title.ts presentation layer already removes plate-recording instructions from reviewed visible titles while preserving captured names. Logger load labels retain those recording tips. That layer and frozen names are unchanged. No migration, database synchronization or production mutation is part of this batch.
+
+## Remaining 59 identities: useful-coverage audit
+
+This partition covers every excluded key exactly once. Exclusion count is not missing-movement count: 13 broad identities already have usable alternatives. The existing inventory classification calls Copenhagen a capability exclusion; this audit keeps it ambiguous because a dynamic rep variant may be possible. None of these classifications grant qualification.
+
+**Covered broad identities (13)** — Concrete supported alternatives exist. Preserve generic IDs; expose alternatives rather than inventing duplicates. Other executions under these broad labels still need separate definitions.
+
+`reverse-lunge`, `romanian-deadlift`, `standing-calf-raise`, `cable-lateral-raise`, `overhead-dumbbell-extension`, `lying-triceps-extension-skull-crusher`, `dumbbell-row`, `iso-lateral-high-row`, `iso-lateral-low-row`, `barbell-curl`, `incline-dumbbell-curl`, `preacher-curl`, `pallof-press`.
+
+**Rep-definition work (16)** — Specify implement, bodyweight versus added load, bilateral/per-side counting, and zero policy. Explicit dynamic rep executions fit current contracts; static Dragon Flag needs duration. No automatic qualification from names.
+
+`walking-lunge`, `stiff-legged-deadlift`, `single-leg-hip-thrust`, `glute-bridge`, `back-extension-45-degree`, `45-degree-back-extension-hamstring-bias`, `dumbbell-front-raise`, `cable-front-raise`, `bayesian-curl`, `spider-curl`, `wrist-curl`, `reverse-wrist-curl`, `bicycle-crunch`, `russian-twist`, `wood-chop`, `dragon-flag`.
+
+**Machine-definition work (11)** — Specify stack versus added plates, total versus per-arm loading, bilateral versus independent-arm execution, rep basis and zero. Existing Trainer2 machine conventions can represent explicit variants; do not infer starting resistance.
+
+`belt-squat`, `machine-hip-thrust`, `reverse-hyperextension`, `leg-press-calf-raise`, `incline-machine-press`, `iso-lateral-incline-press`, `iso-lateral-decline-press`, `iso-lateral-front-lat-pulldown`, `chest-supported-t-bar-row`, `seated-machine-shrug`, `torso-rotation-machine`.
+
+**Execution ambiguity / mixed capability (6)** — Separate bodyweight, added load, machine/band assistance, angled versus machine row, and dynamic versus static Copenhagen. Dynamic/bodyweight variants can fit today; band resistance/assistance is not a measured stack, and held Copenhagen needs duration.
+
+`sissy-squat`, `nordic-hamstring-curl`, `dip-chest-emphasis`, `dip-triceps-emphasis`, `t-bar-row`, `copenhagen-plank`.
+
+**Angled-bar load capability (3)** — Need a reviewed angled-bar load convention (plates or assembly basis) and matching logger/history validation. Existing barbell-total or machine-plate meaning must not be reused silently.
+
+`landmine-press`, `meadows-row`, `landmine-rotation`.
+
+**Duration / distance capability (10)** — Intended holds/carries/traversals require duration/distance targets and results, history and prefill semantics; sled load and unilateral carry basis also need review. Do not invent rep equivalents.
+
+`dead-hang`, `plank`, `rkc-plank`, `side-plank`, `farmers-walk`, `suitcase-carry`, `overhead-carry`, `sled-push`, `sled-pull`, `sled-drag`.
+
+**Highest-value next bounded batch:** explicit dumbbell walking lunge, bodyweight Nordic curl, bodyweight 45-degree back extension, bodyweight glute bridge, one-arm cable Bayesian curl, and cable wood chop. This improves unilateral leg, knee-flexion, posterior-chain, long-position curl and rotational-core choices instead of adding more nearly identical machine rows. Reuse parent muscle/movement/default metadata; capture per-side reps for unilateral executions and existing implement/stack/bodyweight conventions. Confirm any loaded/assisted execution separately; leave generic sources and active plans untouched. Dynamic Dragon Flag/Copenhagen, machine configuration variants, and angled-bar or duration/distance features follow after their own definition reviews.

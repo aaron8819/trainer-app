@@ -3,6 +3,18 @@ import aliases from './catalog-search-aliases.json';
 import { browseCatalog, catalog, catalogExercise, library, matchesCatalogSearch } from './catalog';
 import { canonicalJson } from '../../trainer2-contracts/canonical-json';
 
+it('keeps search aliases unique after the matcher normalizes punctuation and spacing', () => {
+  const owners = new Map<string, string>();
+  for (const [id, names] of Object.entries(aliases)) {
+    for (const name of names) {
+      const key = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+      expect(key).not.toBe('');
+      expect(owners.get(key), `Duplicate alias: ${name}`).toBeUndefined();
+      owners.set(key, id);
+    }
+  }
+});
+
 it.each(Object.entries(aliases))('%s aliases reach Builder and Swap without changing snapshots',
   (id, queries) => {
     const entry = catalog.find(candidate => candidate.id === id);
@@ -32,5 +44,5 @@ it('keeps explicit stack and per-arm searches distinct and preserves equipment f
 it('does not grant name-only objects another identity’s aliases', () => {
   expect(matchesCatalogSearch({ name: 'Custom exercise', aliases: [] }, 'BB RDL')).toBe(false);
   expect(library.filter(row => !row.selectable)).toHaveLength(59);
-  expect(catalog).toHaveLength(104);
+  expect(catalog).toHaveLength(108);
 });

@@ -96,8 +96,7 @@
     "low row per arm"
   ],
   "t2:machine-assisted-pull-up": [
-    "assisted pullup",
-    "assisted pull up"
+    "assisted pullup"
   ],
   "t2:incline-dumbbell-bench-press": [
     "incline DB bench",
@@ -129,5 +128,27 @@
   "t2:dumbbell-bench-press": [
     "flat DB bench",
     "flat dumbbell bench"
+  ],
+  "t2:straight-bar-curl": [
+    "straight bar biceps curl",
+    "BB curl",
+    "barbell curl"
+  ],
+  "t2:simultaneous-incline-dumbbell-curl": [
+    "incline DB curl",
+    "incline biceps curl"
+  ],
+  "t2:two-hand-single-dumbbell-overhead-extension": [
+    "overhead DB triceps extension",
+    "two hand overhead tricep extension",
+    "overhead dumbbell extension"
+  ],
+  "t2:ez-bar-skull-crusher": [
+    "EZ lying triceps extension",
+    "EZ skullcrusher"
+  ],
+  "t2:hip-adduction-machine": [
+    "hip adductor machine",
+    "inner thigh machine"
   ]
 }

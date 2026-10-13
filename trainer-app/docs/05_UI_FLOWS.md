@@ -10,6 +10,10 @@ Trainer2 bounded program variants and exact prescribed-load prefill: [definition
 Trainer2 pages. V1 `AppNavigation` excludes only `/trainer2` and its descendants;
 its remaining routes and presentation are unchanged. Trainer2 uses compact,
 non-sticky desktop navigation and a mobile bottom bar with safe-area clearance.
+The mobile bar uses decorative icons, muted labels and a green active underline.
+Its 72px row plus the device safe-area inset is reserved once by the shell;
+Training content adds ordinary spacing only. Keyboard-open state removes both
+the bar and shell padding.
 The existing visual-viewport signal hides the bar while a software keyboard is
 open. Open workout logging on execution routes omits shell navigation and its
 bottom clearance; the accessible Back to training link remains the return path.

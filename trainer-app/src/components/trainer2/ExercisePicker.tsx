@@ -1,6 +1,7 @@
 "use client";
 
 import { exerciseTitle } from './exercise-title';
+import { recordingSubtitle, orderRecordingVariants, unavailableRecordingCopy } from './recording-display';
 
 import { useEffect, useRef, useState } from 'react';
 import type { DraftDocument } from '@/lib/trainer2-contracts/draft';
@@ -59,14 +60,14 @@ export function ExercisePicker({
       });
     };
   }, [builder]);
-  const results = browseCatalog(query, equipment, current).filter(e => (!filter || e.equipment.includes(filter)) && byMuscle(e.id));
+  const results = orderRecordingVariants(browseCatalog(query, equipment, current)).filter(e => (!filter || e.equipment.includes(filter)) && byMuscle(e.id));
   const unavailable = library.filter(e => !e.selectable && matchesCatalogSearch(e, query) &&
     (!equipment.length || e.equipment.every(x => equipment.includes(x))) && (!filter || e.equipment.includes(filter)) && byMuscle(e.catalogId));
   return <dialog ref={dialog} onKeyDown={builder ? containSheetFocus : undefined} onCancel={close} aria-label={current ? 'Swap exercise' : 'Add exercise'} className={`${builder ? styles.sheet : ''} m-auto max-h-[90dvh] w-[calc(100%-1rem)] max-w-xl rounded-2xl p-0 shadow-xl backdrop:bg-slate-900/40`}>
     <div className="sticky top-0 z-10 space-y-3 border-b bg-white p-4">
       <div className="flex items-center justify-between gap-2"><h2 className="text-xl font-semibold">{current ? 'Swap exercise' : 'Add exercise'}</h2><button type="button" className={control} onClick={close}>Close picker</button></div>
       {current && <p className="text-sm text-slate-600">Replacing {current.name}. Compatible sets and reps stay; weight is cleared. Different movements use their own rep defaults.</p>}
-      {builder && <p className={styles.muted}>{library.filter(e => e.selectable).length} supported exercises. Unsupported entries are shown with their reason and cannot be selected.</p>}
+      {builder && <p className={styles.muted}>{library.filter(e => e.selectable).length} supported exercises. Unavailable entries appear below reviewed choices and cannot be selected.</p>}
       <input autoFocus aria-label="Search exercises" placeholder="Search exercises or aliases" className={`${control} w-full`} value={query} onChange={e => setQuery(e.target.value)} />
       <select aria-label="Filter picker equipment" className={`${control} w-full`} value={filter} onChange={e => setFilter(e.target.value)}><option value="">All available equipment</option>{equipmentOptions.map(e => <option key={e}>{e}</option>)}</select>
       {builder && <select aria-label="Filter picker muscles" className={`${control} w-full`} value={muscle} onChange={e => setMuscle(e.target.value)}><option value="">All muscles</option>{muscles.map(name => <option key={name}>{name}</option>)}</select>}
@@ -81,10 +82,10 @@ export function ExercisePicker({
     }}>
       {!results.length && <p role="status" className="py-6 text-slate-600">No matching exercises. Clear the search or broaden equipment preferences. Timed, distance, and unreviewed measurement variants are not included.</p>}
       {results.map(e => <button type="button" data-exercise key={e.id} className="block min-h-16 w-full rounded-xl border p-3 text-left hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-teal-600" onClick={() => choose(catalogExercise(e))}>
-        <span className="font-medium">{exerciseTitle(e)}</span><span className="block text-sm text-slate-500">{e.equipment.join(' + ')} · {e.repBasis === 'perSide' ? 'reps per side' : 'total reps'}{e.loadKind === 'assistance' ? ' · displayed assistance' : ''}{current?.kind === 'catalogSnapshot' && e.purpose === current.purpose ? ' · Suggested alternative' : ''}</span>
+        <span className="font-medium">{exerciseTitle(e)}</span><span className="block text-sm text-slate-500">{e.equipment.join(' + ')} · {recordingSubtitle(e)}{current?.kind === 'catalogSnapshot' && e.purpose === current.purpose ? ' · Suggested alternative' : ''}</span>
       </button>)}
       {unavailable.map(e => <div key={e.catalogId} className="rounded-xl border p-3 text-sm text-slate-500">
-        <span className="font-medium">{exerciseTitle(e)}</span><span className="block">{e.unavailableReason}</span>
+        <span className="font-medium">{exerciseTitle(e)}</span><span className="block">{unavailableRecordingCopy(e.unavailableReason)}</span>
       </div>)}
       {!qualifiedOnly && <details className="border-t pt-4"><summary className="cursor-pointer text-sm">Create custom exercise</summary><p className="my-2 text-sm text-slate-600">Saved as your description, with no catalog match. Review its rep and measurement details.</p><input aria-label="Custom exercise name" className={`${control} w-full`} value={custom} maxLength={200} onChange={e => setCustom(e.target.value)} /><button type="button" className={`${control} mt-2`} disabled={!custom.trim()} onClick={() => choose({
           kind: 'authoredDescription',

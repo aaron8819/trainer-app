@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { compatibleCatalogResult, compatibleLoggingLoad, startingPounds } from '@/lib/engine/trainer2/logging-prefill';
 import { pounds, loadLabel } from './pound-display';
+import { isSingleArmRecording, recordingTip } from './recording-display';
 import { z } from 'zod';
 import { performedResult, savedSetResult, resultMutationCommand, setResultResponse,
   type PerformedResult, type SavedSetResult, type SetResultCommand } from '@/lib/trainer2-contracts/set-results';
@@ -259,13 +260,18 @@ export function SetResultRow({ optionsMount, sessionAdded = false, assignment, a
   }
   const compact = (!skipped || !!saved || reopening || !!draft) && !historical && !readOnly && !!prescription && (activePanel || !saved);
   const f = draft?.form ?? (compact ? initialForm() : undefined), disabled = busy || !!draft?.pending || readOnly || locked || !ready;
+  const perSideLabel = exercise?.kind === 'catalogSnapshot' &&
+    isSingleArmRecording(exercise.catalogId) ? ' per arm' : ' per side';
+  // A corrected historical/custom form may use a different tuple. Its tip must follow that form.
+  const loadTip = exercise?.kind === 'catalogSnapshot' && f?.kind === 'externalLoad' ?
+    recordingTip({ ...exercise, convention: f.convention, repBasis: f.basis }) : undefined;
   const selectedRirPreset = f?.rir ? String(Number(f.rir)) : '';
   function adjust(field: 'reps' | 'load' | 'rir', delta: number) {
     const value = f?.[field] ?? '';
     if ((value === '' && delta < 0) || (value !== '' && !/^\d+(\.\d+)?$/.test(value))) return;
     change(field, String(Math.min(field === 'reps' ? 1000 : field === 'rir' ? 10 : 999999999, Math.max(0, Math.round((Number(value || 0) + delta) * 1e6) / 1e6))));
   }
-  const input = (field: 'reps' | 'load' | 'rir', label: string) => <label className="grid gap-1 text-sm">{field === 'load' ? 'Weight (lb)' : field === 'reps' ? `Reps${f?.basis === 'perSide' ? ' per side' : f?.basis === 'alternating' ? ' alternating' : ''}` : 'Actual RIR (optional)'}<input autoFocus={historical && field === 'reps'} onFocus={e => e.currentTarget.select()}
+  const input = (field: 'reps' | 'load' | 'rir', label: string) => <label className="grid gap-1 text-sm">{field === 'load' ? 'Weight (lb)' : field === 'reps' ? `Reps${f?.basis === 'perSide' ? perSideLabel : f?.basis === 'alternating' ? ' alternating' : ''}` : 'Actual RIR (optional)'}<input autoFocus={historical && field === 'reps'} onFocus={e => e.currentTarget.select()}
     className={control} aria-label={`Set ${number} ${label}`} inputMode={field === 'reps' ? 'numeric' : 'decimal'}
     value={f![field]} onChange={e => change(field, e.target.value)} /></label>;
   // Retain recovery state by identity without rendering inactive forms.
@@ -292,7 +298,7 @@ export function SetResultRow({ optionsMount, sessionAdded = false, assignment, a
     {(draft || compact) && f && <fieldset disabled={disabled} className="mt-2 space-y-3">
       <legend className="sr-only">{draft?.pending ? 'Pending confirmation' : 'Set values'}{draft?.base ? ` · editing v${draft.base.version}` : ''}</legend>
       {activePanel ? <>
-        <div><p className={fieldLabel}>Reps{!saved && ' (required)'}{f.basis === 'perSide' ? ' per side' : f.basis === 'alternating' ? ' alternating' : ''}<span className={styles.fieldHint}>{prescription?.reps.min}–{prescription?.reps.max} reps target</span></p><div className={styles.valueControl}>
+        <div><p className={fieldLabel}>Reps{!saved && ' (required)'}{f.basis === 'perSide' ? perSideLabel : f.basis === 'alternating' ? ' alternating' : ''}<span className={styles.fieldHint}>{prescription?.reps.min}–{prescription?.reps.max} reps target</span></p><div className={styles.valueControl}>
           <button type="button" className={stepControl} aria-label="Decrease reps" onClick={() => adjust('reps', -1)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 12h12" /></svg></button>
           <div className={styles.valueReadout}><input className={fieldControl} aria-label={`Set ${number} Actual reps`} aria-required={!saved} inputMode="numeric" value={f.reps} onFocus={e => e.currentTarget.select()} onChange={e => change('reps', e.target.value)} /><span aria-hidden="true">reps</span></div>
           <button type="button" className={stepControl} aria-label="Increase reps" onClick={() => adjust('reps', 1)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 12h12M12 6v12" /></svg></button>
@@ -308,6 +314,7 @@ export function SetResultRow({ optionsMount, sessionAdded = false, assignment, a
 
       {clearing && !historical && <label className="grid gap-1 text-sm">Reason for clearing<input className={control} aria-label={`Set ${number} correction reason`} maxLength={200} value={f.reason} onChange={e => change('reason', e.target.value)} /></label>}
 
+      {loadTip && <p className="text-sm text-slate-600">{loadTip}</p>}
       <div ref={actionBar} className={activePanel ? styles.actions : 'flex flex-wrap gap-2'}>
       {draft?.conflict ? <><button className={control} onClick={() => void reviewLatest()}>Review latest result</button>{reviewed && <div><p>Latest: {resultLabel(reviewed.latest?.result ?? null)}</p><button className={control} onClick={() => { store({ ...draft, ...(assignment ? { assignment } : {}), base: reviewed.latest, conflict: false }); setReviewed(null); setMessage('Input retained. Save only if this is your intended correction.'); }}>{draft.assignment && assignment && canonicalJson(draft.assignment) !== canonicalJson(assignment) ? `Use ${exercise?.name ?? "this exercise"} for my retained input` : "Use latest result for my correction"}</button></div>}</> : <button className={activePanel ? 'min-h-11 rounded-full bg-black px-5 py-2 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-40' : control} disabled={disabled || (!draft?.base && !saved && f.reps === '')} onClick={() => { if (!currentDraft.current) begin(); save(); }}>{busy && draft?.pending ? 'Saving…' : (draft ? draft.base : saved) ? activePanel ? 'Update set' : 'Save correction' : activePanel ? 'Log set' : 'Record set'}</button>}
       {activePanel && (saved ? <button className="min-h-11 rounded-full border border-slate-300 px-3 text-sm font-medium" onClick={onReturn}>Return to active set</button> : !skipped && <button className="min-h-11 rounded-full border border-slate-300 px-3 text-sm font-medium" onClick={skip}>Skip set</button>)}

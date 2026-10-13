@@ -130,3 +130,19 @@ Low/high rows inherit the corresponding canonical row metadata and horizontal_pu
 Visible titles are natural: Single-Arm Iso-Lateral Low Row, Iso-Lateral Low Row (Both Arms), their high-row/pulldown equivalents, and Glute Bridge Trainer. Weight-entry instructions stay in the existing logger convention labels and details, not those titles. Equal loading and rep counts are explicit; separate unequal left/right results would require another capability. No mode framework, schema, database catalog sync or active-plan change is introduced.
 
 catalog-requested-machines.test.ts covers all three primary/secondary pairs, metadata provenance, movement distinction, zero policy, cross-identity history barriers, cleared swap loads, old bilateral-per-arm preservation, diverging-row aliases and glute-machine/bodyweight separation. Catalog-wide qualification/swap tests and actual logger submissions include all seven new identities.
+
+## Recording choice presentation
+
+Builder, runtime Swap and swap previews show loading and rep-basis subtitles derived from the
+reviewed tuple. This distinguishes stack settings, plates per arm and combined plates before
+selection without rewriting catalog names or frozen snapshots. The three reviewed single-arm
+iso-lateral variants say "Reps per arm"; other per-side movements retain their existing meaning.
+Logger and preview tips explain 45 lb per arm versus 90 lb combined, without converting inputs.
+
+Builder promotes single-arm choices only within the result slots already occupied by that
+machine family. Runtime Swap excludes the effective current identity and puts reviewed choices
+before unavailable entries. Within the existing movement/muscle/equipment relevance ties, it
+prefers the current iso-lateral family and its single-arm choice. Search and equipment filters
+still apply first; no preference setting or global single-arm ranking is introduced. Return to
+original remains available after a swap, and the replaces label names the effective exercise.
+Unavailable UI copy is plain language; technical qualification reasons remain in the adapter.

@@ -20,7 +20,10 @@ export async function navigationJourney({ page, base, artifact, accountId, planI
       const box = (await link.boundingBox())!; assert(box.width >= 44 && box.height >= 44);
     }
     const boxes = await Promise.all((await nav.getByRole('link').all()).map(link => link.boundingBox()));
-    boxes.slice(1).forEach((box, index) => assert(box!.x >= boxes[index]!.x + boxes[index]!.width + 3));
+    // Mobile uses adjacent full-width targets; desktop retains its existing gap.
+    const minimumGap = width < 768 ? 0 : 3;
+    boxes.slice(1).forEach((box, index) =>
+      assert(box!.x >= boxes[index]!.x + boxes[index]!.width + minimumGap));
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await page.keyboard.press('Tab');
     await nav.getByRole('link', { name: active, exact: true }).focus();

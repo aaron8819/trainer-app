@@ -34,7 +34,10 @@
   ],
   "t2:chest-supported-machine-row-stack": [
     "chest supported row stack",
-    "machine row stack"
+    "machine row stack",
+    "diverging seated row",
+    "diverging seated machine row",
+    "diverging row stack"
   ],
   "t2:chest-supported-machine-row-plates-per-arm": [
     "chest supported row plates",
@@ -177,5 +180,34 @@
     "cable wood chop",
     "cable woodchopper",
     "high to low cable chop"
+  ],
+  "t2:single-arm-iso-lateral-low-row": [
+    "ISO low row single arm",
+    "single arm low row"
+  ],
+  "t2:bilateral-iso-lateral-low-row-total-plates": [
+    "ISO low row both arms",
+    "low row combined plates"
+  ],
+  "t2:single-arm-iso-lateral-front-lat-pulldown": [
+    "ISO front lat pulldown single arm",
+    "single arm front pulldown"
+  ],
+  "t2:bilateral-iso-lateral-front-lat-pulldown-total-plates": [
+    "ISO front lat pulldown both arms",
+    "front lat pulldown combined plates"
+  ],
+  "t2:single-arm-iso-lateral-high-row": [
+    "ISO high row single arm",
+    "single arm high row"
+  ],
+  "t2:bilateral-iso-lateral-high-row-total-plates": [
+    "ISO high row both arms",
+    "high row combined plates"
+  ],
+  "t2:plate-loaded-glute-bridge-trainer": [
+    "glute bridge machine plates",
+    "machine glute bridge",
+    "plate loaded glute bridge"
   ]
 }

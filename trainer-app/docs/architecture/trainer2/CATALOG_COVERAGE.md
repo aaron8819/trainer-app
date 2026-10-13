@@ -1,6 +1,6 @@
 # Trainer2 catalog coverage
 
-Trainer2 adds 23 bounded program variants in `src/lib/engine/trainer2/program-catalog.json`, for 114 selectable definitions across 173 identities (59 exclusions remain). The shared 150-entry library and all 48 frozen Trainer2 definitions are unchanged. Definition provenance and distinct plate-only conventions are recorded in [PROGRAM_SUPPORT](PROGRAM_SUPPORT.md).
+Trainer2 adds 30 bounded program variants in `src/lib/engine/trainer2/program-catalog.json`, for 121 selectable definitions across 180 identities (59 exclusions remain). The shared 150-entry library and all 48 frozen Trainer2 definitions are unchanged. Definition provenance and distinct plate-only conventions are recorded in [PROGRAM_SUPPORT](PROGRAM_SUPPORT.md).
 
 Common gym names and abbreviations are search-only aliases in
 `catalog-search-aliases.json`, applied by the same matcher for Builder and Swap.
@@ -83,19 +83,19 @@ Catalog-wide tests exercise every new definition through qualification, builder 
 
 ## Remaining 59 identities: useful-coverage audit
 
-This partition covers every excluded key exactly once. Exclusion count is not missing-movement count: 19 broad identities already have usable alternatives. The inventory classifies Copenhagen as a capability exclusion; this audit keeps it ambiguous because a dynamic rep variant may be possible. None of these classifications grant qualification.
+This partition covers every excluded key exactly once. Exclusion count is not missing-movement count: 21 broad identities already have usable alternatives. The inventory classifies Copenhagen as a capability exclusion; this audit keeps it ambiguous because a dynamic rep variant may be possible. None of these classifications grant qualification.
 
-**Covered broad identities (19)** — Concrete supported alternatives exist. Preserve generic IDs; expose alternatives rather than inventing duplicates. Other executions under these broad labels still need separate definitions.
+**Covered broad identities (21)** — Concrete supported alternatives exist. Preserve generic IDs; expose alternatives rather than inventing duplicates. Other executions under these broad labels still need separate definitions.
 
-`reverse-lunge`, `romanian-deadlift`, `standing-calf-raise`, `cable-lateral-raise`, `overhead-dumbbell-extension`, `lying-triceps-extension-skull-crusher`, `dumbbell-row`, `iso-lateral-high-row`, `iso-lateral-low-row`, `barbell-curl`, `incline-dumbbell-curl`, `preacher-curl`, `pallof-press`, `walking-lunge`, `nordic-hamstring-curl`, `back-extension-45-degree`, `glute-bridge`, `bayesian-curl`, `wood-chop`.
+`reverse-lunge`, `romanian-deadlift`, `standing-calf-raise`, `cable-lateral-raise`, `overhead-dumbbell-extension`, `lying-triceps-extension-skull-crusher`, `dumbbell-row`, `iso-lateral-high-row`, `iso-lateral-low-row`, `barbell-curl`, `incline-dumbbell-curl`, `preacher-curl`, `pallof-press`, `walking-lunge`, `nordic-hamstring-curl`, `back-extension-45-degree`, `glute-bridge`, `bayesian-curl`, `wood-chop`, `iso-lateral-front-lat-pulldown`, `machine-hip-thrust`.
 
 **Rep-definition work (11)** — Specify implement, bodyweight versus added load, bilateral/per-side counting, and zero policy. Explicit dynamic rep executions fit current contracts; static Dragon Flag needs duration. No automatic qualification from names.
 
 `stiff-legged-deadlift`, `single-leg-hip-thrust`, `45-degree-back-extension-hamstring-bias`, `dumbbell-front-raise`, `cable-front-raise`, `spider-curl`, `wrist-curl`, `reverse-wrist-curl`, `bicycle-crunch`, `russian-twist`, `dragon-flag`.
 
-**Machine-definition work (11)** — Specify stack versus added plates, total versus per-arm loading, bilateral versus independent-arm execution, rep basis and zero. Existing Trainer2 machine conventions can represent explicit variants; do not infer starting resistance.
+**Machine-definition work (9)** — Specify stack versus added plates, total versus per-arm loading, bilateral versus independent-arm execution, rep basis and zero. Existing Trainer2 machine conventions can represent explicit variants; do not infer starting resistance.
 
-`belt-squat`, `machine-hip-thrust`, `reverse-hyperextension`, `leg-press-calf-raise`, `incline-machine-press`, `iso-lateral-incline-press`, `iso-lateral-decline-press`, `iso-lateral-front-lat-pulldown`, `chest-supported-t-bar-row`, `seated-machine-shrug`, `torso-rotation-machine`.
+`belt-squat`, `reverse-hyperextension`, `leg-press-calf-raise`, `incline-machine-press`, `iso-lateral-incline-press`, `iso-lateral-decline-press`, `chest-supported-t-bar-row`, `seated-machine-shrug`, `torso-rotation-machine`.
 
 **Execution ambiguity / mixed capability (5)** — Separate bodyweight, added load, machine assistance, angled versus machine row, and dynamic versus static Copenhagen. Dynamic/bodyweight variants can fit today; held Copenhagen needs duration.
 
@@ -109,4 +109,24 @@ This partition covers every excluded key exactly once. Exclusion count is not mi
 
 `dead-hang`, `plank`, `rkc-plank`, `side-plank`, `farmers-walk`, `suitcase-carry`, `overhead-carry`, `sled-push`, `sled-pull`, `sled-drag`.
 
-**Remaining priorities:** explicit belt-squat, hip-thrust and incline-press machine configurations, then bodyweight dip executions and dynamic rotational/core definitions. These need concrete recording definitions, not a new global role rule. Broad-bodyweight parents now covered still exclude loaded/assisted variants; band-assisted Nordic, unequal side results, static holds, carries, sleds and angled-bar conventions are separate scope decisions. The ten additive definitions in these two batches complete the identified immediate rep-compatible gaps, not every possible gym execution.
+**Remaining priorities:** explicit belt-squat, other hip-thrust and incline-press machine configurations, then bodyweight dip executions and dynamic rotational/core definitions. These need concrete recording definitions, not a new global role rule. Broad-bodyweight parents now covered still exclude loaded/assisted variants; band-assisted Nordic, unequal side results, static holds, carries, sleds and angled-bar conventions are separate scope decisions. The additive definitions complete the reviewed immediate rep-compatible gaps and requested machines, not every possible gym execution.
+
+## Aaron's five machine requests
+
+| Requested movement | Primary supported definition | Secondary supported definition |
+| --- | --- | --- |
+| Diverging seated row, stack | Existing chest-supported-machine-row-stack; diverging seated row aliases | No duplicate recording identity: existing bilateral stack definition applies |
+| Iso-lateral low row, plates | single-arm-iso-lateral-low-row | bilateral-iso-lateral-low-row-total-plates |
+| Iso-lateral front lat pulldown, plates | single-arm-iso-lateral-front-lat-pulldown | bilateral-iso-lateral-front-lat-pulldown-total-plates |
+| Iso-lateral high row, plates | single-arm-iso-lateral-high-row | bilateral-iso-lateral-high-row-total-plates |
+| Glute bridge trainer, plates | plate-loaded-glute-bridge-trainer | Floor bodyweight glute bridge remains a distinct exercise |
+
+Aaron explicitly chose plates per arm with one arm at a time as primary, and both arms together with combined plates as secondary. Primary definitions use machinePlatesPerArm and perSide reps; one logged count applies equally to each arm. Secondary definitions use machineAddedPlatesTotal and total simultaneous reps. Forty-five pounds on each arm records as 45 for the primary and 90 for the combined bilateral definition. Zero means no added plates; blank is unspecified. Starting machine resistance is excluded and never inferred. Optional authored equipment setup remains separate.
+
+These six arm-machine definitions have distinct stable identities, so no history, prefill or progression converts or transfers numbers between them. The pre-existing both-arms/per-arm plate row identities are retained with their original total-rep meaning. They remain valid choices for that third recording execution and are not repurposed to satisfy either new definition.
+
+Low/high rows inherit the corresponding canonical row metadata and horizontal_pull movement. Front lat pulldown inherits iso-lateral-front-lat-pulldown metadata and vertical_pull movement; it is not relabeled as a chest-supported row. The stack-row alias points only to the existing chest-supported, both-arms-together, displayed-stack definition. Diverging describes that row variation, not a different load contract. No recorded name is rewritten. The glute trainer inherits machine-hip-thrust's Machine equipment, hinge, Glutes/Hamstrings and 6-12 defaults, with an explicit machine-supported bilateral hip-extension execution. It does not share floor-bridge load identity.
+
+Visible titles are natural: Single-Arm Iso-Lateral Low Row, Iso-Lateral Low Row (Both Arms), their high-row/pulldown equivalents, and Glute Bridge Trainer. Weight-entry instructions stay in the existing logger convention labels and details, not those titles. Equal loading and rep counts are explicit; separate unequal left/right results would require another capability. No mode framework, schema, database catalog sync or active-plan change is introduced.
+
+catalog-requested-machines.test.ts covers all three primary/secondary pairs, metadata provenance, movement distinction, zero policy, cross-identity history barriers, cleared swap loads, old bilateral-per-arm preservation, diverging-row aliases and glute-machine/bodyweight separation. Catalog-wide qualification/swap tests and actual logger submissions include all seven new identities.

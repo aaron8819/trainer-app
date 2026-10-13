@@ -22,6 +22,17 @@ describe('Explicit prescription load prefill', () => {
   const added = { kind: 'addedLoad' as const, convention: 'addedExternal' as const, zeroMeaning: 'noAddedLoad' as const, value: '10', unit: 'kg' as const };
   const dumbbell = { ...external, convention: 'perImplement' as const, zeroMeaning: 'notAllowed' as const };
   const cases = [
+    ...['low-row', 'front-lat-pulldown', 'high-row'].flatMap(movement => [
+      { id: `t2:single-arm-iso-lateral-${movement}`, measurement: {
+        ...external, convention: 'machinePlatesPerArm' as const, value: '45',
+        unit: 'lb' as const }, display: '45' },
+      { id: `t2:bilateral-iso-lateral-${movement}-total-plates`, measurement: {
+        ...external, convention: 'machineAddedPlatesTotal' as const, value: '90',
+        unit: 'lb' as const }, display: '90' },
+    ]),
+    { id: 't2:plate-loaded-glute-bridge-trainer', measurement: {
+      ...external, convention: 'machineAddedPlatesTotal' as const, value: '90',
+      unit: 'lb' as const }, display: '90' },
     ...['t2:straight-bar-curl', 't2:ez-bar-skull-crusher'].map(id => ({
       id, measurement: { ...external, convention: 'barbellTotal' as const,
         zeroMeaning: 'notAllowed' as const }, display: '22.05',

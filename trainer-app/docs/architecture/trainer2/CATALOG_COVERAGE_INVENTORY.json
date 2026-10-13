@@ -3,11 +3,11 @@
   "trainer2VariantSource": "src/lib/engine/trainer2/program-catalog.json",
   "baselineCommit": "3a2e057d3a205241849827a1f7e7ca580787acaf",
   "totals": {
-    "canonical": 173,
+    "canonical": 180,
     "before": 48,
-    "after": 114,
+    "after": 121,
     "currentlySupported": 48,
-    "compatibleMissingIntegration": 66,
+    "compatibleMissingIntegration": 73,
     "missingOrConflictingMetadata": 48,
     "requiresNewCapability": 11
   },
@@ -8570,6 +8570,467 @@
           "repDefaults": {
             "min": 8,
             "max": 20
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:single-arm-iso-lateral-low-row",
+      "catalogKey": "single-arm-iso-lateral-low-row",
+      "name": "Single-Arm Iso-Lateral Low Row",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_PLATES_PER_ARM",
+      "repBasis": "PER_SIDE",
+      "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD",
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Rear Delts"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:single-arm-iso-lateral-low-row",
+        "name": "Single-Arm Iso-Lateral Low Row",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "horizontal_pull",
+        "aliases": [],
+        "repBasis": "perSide",
+        "loadKind": "externalLoad",
+        "convention": "machinePlatesPerArm",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "variation": "Chest supported; one arm at a time with equal loading. Count reps per arm and perform the same reps on each side.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "horizontal_pull"
+          ],
+          "primaryMuscles": [
+            "Lats",
+            "Upper Back"
+          ],
+          "secondaryMuscles": [
+            "Biceps",
+            "Rear Delts"
+          ],
+          "externalZeroMeaning": "validZero",
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:bilateral-iso-lateral-low-row-total-plates",
+      "catalogKey": "bilateral-iso-lateral-low-row-total-plates",
+      "name": "Iso-Lateral Low Row (Both Arms)",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_ADDED_PLATES_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD",
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Rear Delts"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:bilateral-iso-lateral-low-row-total-plates",
+        "name": "Iso-Lateral Low Row (Both Arms)",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "horizontal_pull",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineAddedPlatesTotal",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "variation": "Chest supported; both arms move together with equal loading. One simultaneous pull and return counts as one bilateral rep.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "horizontal_pull"
+          ],
+          "primaryMuscles": [
+            "Lats",
+            "Upper Back"
+          ],
+          "secondaryMuscles": [
+            "Biceps",
+            "Rear Delts"
+          ],
+          "externalZeroMeaning": "validZero",
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:single-arm-iso-lateral-front-lat-pulldown",
+      "catalogKey": "single-arm-iso-lateral-front-lat-pulldown",
+      "name": "Single-Arm Iso-Lateral Front Lat Pulldown",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_PLATES_PER_ARM",
+      "repBasis": "PER_SIDE",
+      "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD",
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "vertical_pull"
+      ],
+      "primaryMuscles": [
+        "Lats"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Upper Back"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:single-arm-iso-lateral-front-lat-pulldown",
+        "name": "Single-Arm Iso-Lateral Front Lat Pulldown",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "vertical_pull",
+        "aliases": [],
+        "repBasis": "perSide",
+        "loadKind": "externalLoad",
+        "convention": "machinePlatesPerArm",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "variation": "Seated; one arm at a time with equal loading. Count reps per arm and perform the same reps on each side.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "vertical_pull"
+          ],
+          "primaryMuscles": [
+            "Lats"
+          ],
+          "secondaryMuscles": [
+            "Biceps",
+            "Upper Back"
+          ],
+          "externalZeroMeaning": "validZero",
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:bilateral-iso-lateral-front-lat-pulldown-total-plates",
+      "catalogKey": "bilateral-iso-lateral-front-lat-pulldown-total-plates",
+      "name": "Iso-Lateral Front Lat Pulldown (Both Arms)",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_ADDED_PLATES_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD",
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "vertical_pull"
+      ],
+      "primaryMuscles": [
+        "Lats"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Upper Back"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:bilateral-iso-lateral-front-lat-pulldown-total-plates",
+        "name": "Iso-Lateral Front Lat Pulldown (Both Arms)",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "vertical_pull",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineAddedPlatesTotal",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "variation": "Seated; both arms move together with equal loading. One simultaneous pull and return counts as one bilateral rep.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "vertical_pull"
+          ],
+          "primaryMuscles": [
+            "Lats"
+          ],
+          "secondaryMuscles": [
+            "Biceps",
+            "Upper Back"
+          ],
+          "externalZeroMeaning": "validZero",
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:single-arm-iso-lateral-high-row",
+      "catalogKey": "single-arm-iso-lateral-high-row",
+      "name": "Single-Arm Iso-Lateral High Row",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_PLATES_PER_ARM",
+      "repBasis": "PER_SIDE",
+      "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD",
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Upper Back",
+        "Lats"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Rear Delts"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:single-arm-iso-lateral-high-row",
+        "name": "Single-Arm Iso-Lateral High Row",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "horizontal_pull",
+        "aliases": [],
+        "repBasis": "perSide",
+        "loadKind": "externalLoad",
+        "convention": "machinePlatesPerArm",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "variation": "Chest supported; one arm at a time with equal loading. Count reps per arm and perform the same reps on each side.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "horizontal_pull"
+          ],
+          "primaryMuscles": [
+            "Upper Back",
+            "Lats"
+          ],
+          "secondaryMuscles": [
+            "Biceps",
+            "Rear Delts"
+          ],
+          "externalZeroMeaning": "validZero",
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:bilateral-iso-lateral-high-row-total-plates",
+      "catalogKey": "bilateral-iso-lateral-high-row-total-plates",
+      "name": "Iso-Lateral High Row (Both Arms)",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_ADDED_PLATES_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD",
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "primaryMuscles": [
+        "Upper Back",
+        "Lats"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Rear Delts"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:bilateral-iso-lateral-high-row-total-plates",
+        "name": "Iso-Lateral High Row (Both Arms)",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "horizontal_pull",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineAddedPlatesTotal",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "variation": "Chest supported; both arms move together with equal loading. One simultaneous pull and return counts as one bilateral rep.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "horizontal_pull"
+          ],
+          "primaryMuscles": [
+            "Upper Back",
+            "Lats"
+          ],
+          "secondaryMuscles": [
+            "Biceps",
+            "Rear Delts"
+          ],
+          "externalZeroMeaning": "validZero",
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:plate-loaded-glute-bridge-trainer",
+      "catalogKey": "plate-loaded-glute-bridge-trainer",
+      "name": "Glute Bridge Trainer",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_EXTERNAL_LOAD",
+      "loadConvention": "MACHINE_ADDED_PLATES_TOTAL",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": "MACHINE_DEFAULT_NO_ADDED_LOAD",
+      "equipment": [
+        "Machine"
+      ],
+      "movementPatterns": [
+        "hinge"
+      ],
+      "primaryMuscles": [
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Hamstrings"
+      ],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:plate-loaded-glute-bridge-trainer",
+        "name": "Glute Bridge Trainer",
+        "equipment": [
+          "Machine"
+        ],
+        "purpose": "hinge",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "externalLoad",
+        "convention": "machineAddedPlatesTotal",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "variation": "Both legs together on a plate-loaded glute bridge trainer; back supported by the machine. One hip lift and controlled return counts as one rep.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "hinge"
+          ],
+          "primaryMuscles": [
+            "Glutes"
+          ],
+          "secondaryMuscles": [
+            "Hamstrings"
+          ],
+          "externalZeroMeaning": "validZero",
+          "repDefaults": {
+            "min": 6,
+            "max": 12
           }
         }
       },

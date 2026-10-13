@@ -20,9 +20,9 @@ describe('complete canonical catalog integration', () => {
   it('qualifies every reviewed tuple without a second membership list', () => {
     expect(shared.exercises).toHaveLength(150);
     expect(baseline).toHaveLength(48);
-    expect(catalog).toHaveLength(114);
+    expect(catalog).toHaveLength(121);
     expect(library.filter(e => !e.selectable)).toHaveLength(59);
-    expect(new Set(library.map(e => e.catalogId)).size).toBe(173);
+    expect(new Set(library.map(e => e.catalogId)).size).toBe(180);
     const compatible = catalogSources.filter(e => 'measurementProfile' in e);
     expect(catalog.map(e => e.id).sort()).toEqual(compatible.map(e => 't2:' + e.catalogKey).sort());
     const future = { ...compatible[0], catalogKey: 'future-reviewed-exercise', name: 'Renamed arbitrary display' };

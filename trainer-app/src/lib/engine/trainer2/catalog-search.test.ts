@@ -44,5 +44,5 @@ it('keeps explicit stack and per-arm searches distinct and preserves equipment f
 it('does not grant name-only objects another identity’s aliases', () => {
   expect(matchesCatalogSearch({ name: 'Custom exercise', aliases: [] }, 'BB RDL')).toBe(false);
   expect(library.filter(row => !row.selectable)).toHaveLength(59);
-  expect(catalog).toHaveLength(114);
+  expect(catalog).toHaveLength(121);
 });

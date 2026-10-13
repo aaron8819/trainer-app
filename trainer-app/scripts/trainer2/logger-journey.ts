@@ -55,6 +55,15 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   await active.getByRole('button', { name: 'Log set', exact: true }).click();
   await expect(active.getByLabel('Set 2 Actual reps', { exact: true })).toHaveValue('8');
   await expect(active.getByLabel('Set 2 Actual load', { exact: true })).toHaveValue('132.28');
+  await active.getByRole('button', { name: 'Decrease reps', exact: true }).click();
+  await expect(active.getByLabel('Set 2 Actual reps', { exact: true })).toHaveValue('7');
+  await active.getByRole('button', { name: 'Increase reps', exact: true }).click();
+  await expect(active.getByLabel('Set 2 Actual reps', { exact: true })).toHaveValue('8');
+  await active.getByRole('button', { name: 'Increase load by 1 lb', exact: true }).click();
+  await expect(active.getByLabel('Set 2 Actual load', { exact: true })).toHaveValue('133.28');
+  await active.getByRole('button', { name: 'Decrease load by 1 lb', exact: true }).click();
+  await expect(active.getByLabel('Set 2 Actual load', { exact: true })).toHaveValue('132.28');
+  pass('All four centered square step controls adjust the corresponding value');
   const initial = await read();
   assert.equal(initial.results[0].result.rir, null, 'Unreported RIR must stay null');
   await expect(active.locator('button[aria-pressed="true"]')).toHaveCount(0);
@@ -63,6 +72,28 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   assert.equal(initial.results[0].result.measurement.value, '60');
   const timer = page.getByLabel('Rest timer', { exact: true });
   await expect(timer).toBeVisible();
+  for (const width of [1280, 390, 360, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.evaluate(() => scrollTo(0, 0));
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Timer overflow at ${width}px`);
+    for (const button of await timer.getByRole('button').all()) {
+      const box = await button.boundingBox();
+      assert(box && box.width >= 44 && box.height >= 44 && box.x >= 0 && box.x + box.width <= width, `Timer tap target at ${width}px`);
+    }
+    await page.screenshot({ path: resolve(artifact, `timer-viewport-${width}.png`), fullPage: false });
+    await shot(`timer-logger-${width}`);
+    await queue.screenshot({ path: resolve(artifact, `queue-${width}.png`) });
+  }
+  pass('Active timer and queue fit desktop, 390px, 360px and 320px; timer targets are at least 44px');
+  const deadlineKey = `trainer2-rest:${accountId}:${executionId}`;
+  const deadlineBefore = await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).deadline, deadlineKey);
+  await active.getByRole('button', { name: 'History', exact: true }).click();
+  await expect(history).toBeVisible();
+  await history.press('Escape');
+  await expect(history).not.toBeVisible();
+  assert.equal(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).deadline, deadlineKey), deadlineBefore);
+  await expect(timer).toBeVisible();
+  pass('History dismisses with Escape while the timer deadline remains unchanged');
   await page.setViewportSize({ width: 390, height: 480 });
   await active.getByLabel('Set 2 Actual reps', { exact: true }).focus();
   await active.getByRole('button', { name: 'Log set', exact: true }).scrollIntoViewIfNeeded();
@@ -149,6 +180,12 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   // The current unlogged exercise can swap and restore without touching logged identities.
   await active.getByRole('button', { name: 'Swap', exact: true }).click();
   const swap = page.getByRole('dialog', { name: 'Swap exercise', exact: true });
+  const swapDeadline = await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).deadline, deadlineKey);
+  await swap.press('Escape');
+  await expect(swap).not.toBeVisible();
+  assert.equal(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).deadline, deadlineKey), swapDeadline);
+  await active.getByRole('button', { name: 'Swap', exact: true }).click();
+  pass('Swap dismisses with Escape without changing the rest deadline');
   await swap.getByLabel('Search library').fill('row');
   await swap.getByRole('button', { name: /Chest.*Supported.*Dumbbell Row/i }).click();
   await swap.getByRole('button', { name: 'Confirm swap', exact: true }).click();

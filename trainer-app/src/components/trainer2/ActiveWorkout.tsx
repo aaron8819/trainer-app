@@ -174,10 +174,10 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
               || execution.results.some(r => r.targetId === s.id))).map(s => s.id).join(',');
           return <div key={owned.id} className={styles.queueRow}>
             <button className="flex min-h-11 w-full items-center justify-between gap-3 text-left hover:text-slate-700 focus-visible:rounded-md" onClick={() => select(items.find(s => !execution.results.some(r => r.targetId === s.id && r.result) && (!execution.skips?.some(k => k.targetId === s.id) || execution.results.some(r => r.targetId === s.id)))?.id ?? items[0].id, true)}><span className="font-semibold">{exerciseTitle(position.exercise)}{sets.filter(s => s.number === 1 && s.position.exercise.kind === position.exercise.kind && s.position.exercise.name === position.exercise.name).length > 1 && ` · occurrence ${sets.filter(s => s.number === 1 && s.position.exercise.name === position.exercise.name).findIndex(s => s.positionId === owned.id)+1}`}</span><span className="shrink-0 text-xs tabular-nums text-slate-500">{recordedCount}/{items.length} logged</span></button>
+            <MuscleTags exercise={position.exercise} />
             <ExerciseQueueDisclosure unresolved={unresolved}>
             {swap && <p className="mb-2 text-xs text-slate-600">{swap.content.restoreOriginal ? `Returned to original: ${exerciseTitle(original.exercise)}` : `${exerciseTitle(original.exercise)} → ${exerciseTitle(position.exercise)} · Swapped for today`}</p>}
-            <MuscleTags exercise={position.exercise} />
-            <div className="mt-2 flex flex-wrap gap-1.5">{items.map(s => {
+            <div className={styles.queueSets}>{items.map(s => {
               const skipped = execution.skips?.some(k => k.targetId === s.id) && !execution.results.some(r => r.targetId === s.id);
               const saved = execution.results.find(r => r.targetId === s.id);
               return <button key={s.id} aria-label={`${exerciseTitle(position.exercise)}, set ${s.number}, ${saved?.result ? 'recorded' : skipped ? 'skipped' : 'unrecorded'}${inputStates[s.id] ? ', retained input' : ''}`} aria-pressed={selected === s.id}

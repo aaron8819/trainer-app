@@ -76,6 +76,13 @@ describe('Explicit prescription load prefill', () => {
       refresh={async () => [{ ...saved, actionId: JSON.parse(submitted).actionId, result: JSON.parse(submitted).intent.result }]} />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeEnabled());
     expect(screen.getByLabelText('Set 1 Actual load', { exact: true })).toHaveValue(display);
+    if (id === 't2:single-arm-iso-lateral-low-row') {
+      expect(screen.getByText(/Reps.*per arm/)).toBeVisible();
+      expect(screen.getByText(/working arm.*enter 45 lb/)).toBeVisible();
+    }
+    if (id === 't2:bilateral-iso-lateral-low-row-total-plates') {
+      expect(screen.getByText(/45 lb on each arm.*enter 90 lb/)).toBeVisible();
+    }
     fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
     await screen.findByText('Saved');
     expect(recordSetResultCommand.parse(JSON.parse(submitted)).intent.result.measurement).toEqual(measurement);

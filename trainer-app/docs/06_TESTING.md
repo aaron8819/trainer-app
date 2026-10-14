@@ -943,3 +943,26 @@ and is explicitly excluded from standalone entrypoint coverage. Registration is
 side-effect documentation, not authorization to execute a disposable fixture.
 Current inventory counts come from the generated classification/aggregate reports,
 not historical slice counts in this document.
+
+## Isolated parallel Trainer2 acceptance
+
+The required `Trainer2 disposable combined acceptance` check aggregates the
+production build/admission job and three independent browser jobs: equipment,
+empty plus populated navigation, and logger. Each browser job has its own
+checkout, disposable database, allocated ports and process ownership. Browser
+journeys still use their existing development-server fixture; the production
+artifact is built once and reused by the existing admission scenarios. These
+outputs are separate evidence and must not be described as browser tests of the
+production build.
+
+The aggregate runs even after producer failure. It requires both job families to
+succeed, all four exact-head/run/attempt artifacts, clean matching commit/tree
+receipts, successful exit evidence, all four fixture reports and every existing
+fixture cleanup step. Missing, failed, skipped, cancelled or mismatched evidence
+blocks qualification. The existing required check name and all browser assertions
+remain. A matrix failure does not cancel other journey evidence.
+
+This separates wall-clock work rather than reducing coverage. The prior measured
+serial job took 390 seconds; new critical-path and runner-time savings require a
+hosted run of this candidate. No change-aware skipping or cache/build-mode change
+is included.

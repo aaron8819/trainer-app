@@ -145,7 +145,10 @@ function createEvidenceFixture(
   return {
     ...value,
     repositoryState: { worktreeClean: true },
-    environment: { ...value.environment, node: "v22.20.0" },
+    environment: {
+      ...value.environment,
+      node: `v${value.verificationDefinition.nodeMajor}.0.0`,
+    },
   };
 }
 
@@ -940,7 +943,7 @@ describe("exact-tree verification evidence", () => {
         ...produced.environment,
         os: "linux 6.11.0",
         architecture: "x64",
-        node: "v22.20.0",
+        node: `v${produced.verificationDefinition.nodeMajor}.0.0`,
         runnerImage: "ubuntu24",
       },
     };
@@ -1236,6 +1239,16 @@ describe("exact-tree verification evidence", () => {
         ...value,
         status: "qualified_pass",
         qualification: null,
+      }),
+    ],
+    [
+      "producer Node major contradicts its definition",
+      (value: CredentialFreeVerificationEvidence) => ({
+        ...value,
+        environment: {
+          ...value.environment,
+          node: `v${value.verificationDefinition.nodeMajor + 1}.0.0`,
+        },
       }),
     ],
     [

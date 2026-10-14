@@ -20,16 +20,24 @@ export async function navigationJourney({ page, base, artifact, accountId, planI
       const box = (await link.boundingBox())!; assert(box.width >= 44 && box.height >= 44);
     }
     const boxes = await Promise.all((await nav.getByRole('link').all()).map(link => link.boundingBox()));
-    // Mobile uses adjacent full-width targets; desktop retains its existing gap.
-    const minimumGap = width < 768 ? 0 : 3;
-    boxes.slice(1).forEach((box, index) =>
-      assert(box!.x >= boxes[index]!.x + boxes[index]!.width + minimumGap));
+    // Mobile keeps adjacent horizontal targets; desktop stacks sidebar destinations.
+    boxes.slice(1).forEach((box, index) => {
+      const previous = boxes[index]!;
+      if (width < 768) assert(box!.x >= previous.x + previous.width);
+      else assert(box!.y >= previous.y + previous.height + 3);
+    });
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await page.keyboard.press('Tab');
     await nav.getByRole('link', { name: active, exact: true }).focus();
     assert.notEqual(await nav.getByRole('link', { name: active, exact: true }).evaluate(el => getComputedStyle(el).outlineStyle), 'none');
-    if (width < 768) assert.equal(await nav.evaluate(el => getComputedStyle(el).position), 'fixed');
-    else assert.equal(await nav.evaluate(el => getComputedStyle(el).position), 'static');
+    assert.equal(await nav.count(), 1);
+    assert.equal(await nav.evaluate(el => getComputedStyle(el).position), 'fixed');
+    if (width >= 768) {
+      const sidebar = (await nav.boundingBox())!;
+      const content = (await page.locator('[data-trainer2-shell] > main').boundingBox())!;
+      assert.equal(sidebar.x, 0);
+      assert(content.x >= sidebar.x + sidebar.width);
+    }
   };
   if (!executionId) {
     assert.equal(await db.trainer2Plan.count({ where: { accountId } }), 0);

@@ -899,3 +899,22 @@ Exercise-swap policy coverage lives in `src/lib/engine/trainer2/exercise-swap.te
 Trainer2 execution-local Add exercise ownership, identity, command, UI and migration/recovery requirements are documented in [ADD_EXERCISE.md](architecture/trainer2/ADD_EXERCISE.md).
 
 Trainer2 equipment journey: run repository-local `node node_modules/tsx/dist/cli.mjs scripts/test-trainer2-equipment-recording.ts --confirm-disposable` from `trainer-app`. It creates only an owned local fixture, requires no inherited database target, and verifies Builder to Logger to history/prefill plus cleanup. See [equipment support](architecture/trainer2/PROGRAM_SUPPORT.md#equipment-recording-extension).
+
+## Shared Trainer2 fixture setup and advisory coverage
+
+`src/lib/operations/trainer2-fixture.ts` is a pure test-only helper used by the
+Home/Program and equipment runners. It reports command rejection codes without
+printing payloads. For a fresh START, history targets come from execution-owned
+identity mappings; rep basis, load convention and zero policy come from the frozen
+catalog snapshot. It does not author swapped or session-added targets. Its golden
+preflight protects the existing 60.123456 kg to 135 lb starting-load boundary before
+expensive setup. Fixture resource creation and cleanup remain owned by the runners.
+
+The repository verification selector includes `coveragePreview`, defined only by
+`scripts/codex/trainer-policy.v1.json`. CI uploads the same selector's JSON as an
+advisory report. Unknown paths and shared auth, persistence, contract, engine or
+fixture/tooling changes retain all three proposed browser journeys. Inert raster
+assets can propose fewer journeys; layout/manifest code remains conservative.
+This report does not execute or skip checks: current verification selection, full
+credential-free inventory, production artifact and all browser gates remain intact.
+Any future gate reduction requires separately reviewed implementation and evidence.

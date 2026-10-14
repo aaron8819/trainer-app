@@ -14,6 +14,8 @@ import { skipOccurrence } from '../../src/lib/api/trainer2/skip-occurrence';
 import { advanceWeek } from '../../src/lib/api/trainer2/advance-week';
 import { reviewedResults } from '../../src/lib/trainer2-contracts/workout-finish';
 
+import { acceptedFixtureResult } from '../../src/lib/operations/trainer2-fixture';
+
 const expect = baseExpect.configure({ timeout: 30_000 });
 const variants = ['hack-squat-plates-added', 'seated-calf-raise-plates-added', 'smith-machine-standing-calf-raise-plates-added', 'iso-lateral-low-row-plates-per-arm'];
 const values = ['0.000000', '50.125000', '0', '45'];
@@ -39,7 +41,7 @@ export async function equipmentJourney({ page, base, home, artifact, accountId, 
   pass: (value: string) => void; db: PrismaClient; reader: PrismaClient; principal: { accountId: string; sessionId: string };
 }) {
   const envelope = () => ({ schemaVersion: 1, actionId: randomUUID(), deviceId: randomUUID(), originatingAccountId: accountId, ownershipEpoch: 0, dependsOn: [] });
-  const accepted = <T>(response: { outcome: { status: string; result?: T } }): T => { assert.equal(response.outcome.status, 'Accepted'); return response.outcome.result!; };
+  const accepted = acceptedFixtureResult;
   await page.goto(home);
   const card = page.getByRole('region', { name: 'Exercise 1', exact: true });
   await card.getByText('Equipment starting resistance', { exact: true }).click();

@@ -18,7 +18,6 @@ import { advanceWeek } from '../../src/lib/api/trainer2/advance-week';
 import { reviewedResults } from '../../src/lib/trainer2-contracts/workout-finish';
 import { createHypertrophyPlan } from '../../src/lib/engine/trainer2/plan-builder';
 import { saveSetResult } from '../../src/lib/api/trainer2/set-results';
-import { executionPositions } from '../../src/lib/engine/trainer2/execution-targets';
 import { expandWorkoutDefaults } from '../../src/lib/engine/trainer2/plan-builder';
 import { makeVerifier } from '../../src/lib/api/trainer2/sessions';
 import { authWebPlatformEnvironment } from './auth-web-environment';
@@ -29,10 +28,17 @@ import { randomBytes } from 'node:crypto';
 import { browserShutdownEvidence } from './browser-shutdown-evidence';
 import { isolatedLinuxJob, ownLinuxGroup, observeChild, bounded } from './isolated-linux-lifecycle';
 
+import {
+  acceptedFixtureResult,
+  fixtureHistorySets,
+  validateFixtureStartingLoad,
+} from '../../src/lib/operations/trainer2-fixture';
+
 const expect=baseExpect.configure({timeout:30_000});
 
 // Separate disposable fixture per invocation. Uses released owners, never configured targets.
 export async function runHomeProgramFixture(preview: boolean, surfacesOnly = false, loggerJourney?: (context: { page: import('@playwright/test').Page; base: string; home: string; artifact: string; accountId: string; planId: string; executionId: string; pass: (value: string) => void; db: PrismaClient; reader: PrismaClient; principal: { accountId: string; sessionId: string } }) => Promise<void>, emptyAccount = false, equipmentDraft?: DraftDocument) {
+  if (loggerJourney && !equipmentDraft && !emptyAccount) validateFixtureStartingLoad();
   const linuxJob = isolatedLinuxJob(process.platform, process.env);
   let linuxServer: ReturnType<typeof ownLinuxGroup> | undefined;
   let linuxBrowser: ReturnType<typeof observeChild> | undefined;
@@ -55,7 +61,7 @@ export async function runHomeProgramFixture(preview: boolean, surfacesOnly = fal
   const nativeData=resolve(artifact,'postgres-data');let nativeStarted=false;
   const pass=(s:string)=>{checks.push(s);writeFileSync(resolve(artifact,'checks.json'),JSON.stringify({source,checks},null,2));console.log('PASS '+s);};
   const command=(exe:string,args:string[],env:NodeJS.ProcessEnv={...authWebPlatformEnvironment(process.env),NODE_ENV:'test'})=>{const out=spawnSync(exe,args,{env,windowsHide:true,encoding:'utf8',timeout:120_000,maxBuffer:5_000_000});assert.equal(out.status,0,`Fixture command failed: ${exe} ${args[0]}: ${out.error?.message??out.stderr.replaceAll(password,'[fixture-secret]')}`);return out.stdout.trim();};
-  const accepted=<T>(r:{outcome:{status:string;result?:T}}):T=>{assert.equal(r.outcome.status,'Accepted');return r.outcome.result!;};
+  const accepted = acceptedFixtureResult;
   const envelope=()=>({schemaVersion:1,actionId:randomUUID(),deviceId:randomUUID(),originatingAccountId:accountId,ownershipEpoch:0,dependsOn:[]});
   try {
     let port:string;
@@ -106,7 +112,11 @@ export async function runHomeProgramFixture(preview: boolean, surfacesOnly = fal
       const first=await start(0);await finish(first.executionId);
       if (loggerJourney) {
         const prior = await start(1), read = (await readExecution(reader!, principal, prior.executionId))!;
-        for (const target of executionPositions(read)[0].targets) accepted(await saveSetResult(db!, principal, { ...envelope(), commandType: 'RecordSetResult', target: { executionId: prior.executionId, targetId: target.id }, expected: { resultVersion: 0 }, intent: { result: { reps: { value: 10, basis: 'total' }, measurement: { kind: 'externalLoad', value: '60.123456', unit: 'kg', convention: 'perImplement', zeroMeaning: 'validZero' }, rir: '3' } } }));
+        const history = fixtureHistorySets(read.initial);
+        for (const target of history.targets) accepted(await saveSetResult(db!, principal, {
+          ...envelope(), commandType: 'RecordSetResult', target,
+          expected: { resultVersion: 0 }, intent: { result: history.result },
+        }));
         await finish(prior.executionId);
       } else await skip(1);
       open = preview || loggerJourney ? await start(3) : null;

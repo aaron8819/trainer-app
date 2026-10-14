@@ -157,6 +157,51 @@ function Read-Worktrees {
     $result.ToArray()
 }
 
+function Get-TrainerCoveragePreview {
+    param(
+        [Parameter(Mandatory = $true)][object]$Policy,
+        [AllowEmptyCollection()][string[]]$ChangedPath = @()
+    )
+    $all = @('equipment', 'navigation', 'logger')
+    $selected = [System.Collections.Generic.HashSet[string]]::new()
+    $reasons = [System.Collections.Generic.List[object]]::new()
+    $configuration = $Policy.verification.PSObject.Properties['coveragePreview']
+    foreach ($rawPath in $ChangedPath) {
+        $path = ConvertTo-TrainerRepositoryPath -Path $rawPath
+        $matched = $false
+        if ($null -ne $configuration -and $path -notmatch '(^|/)\.\.(/|$)|:') {
+            foreach ($rule in @($configuration.Value.rules)) {
+                if (@($rule.patterns | Where-Object {
+                    Test-TrainerPolicyPattern -Path $path -Pattern ([string]$_)
+                }).Count -eq 0) { continue }
+                $matched = $true
+                $reasons.Add([pscustomobject]@{ path = $path; rule = [string]$rule.name })
+                foreach ($journey in @($rule.journeys)) {
+                    if ($all -notcontains $journey) {
+                        throw "Unknown advisory browser journey '$journey'."
+                    }
+                    [void]$selected.Add([string]$journey)
+                }
+            }
+        }
+        if (-not $matched) {
+            foreach ($journey in $all) { [void]$selected.Add($journey) }
+            $reasons.Add([pscustomobject]@{ path = $path; rule = 'conservative-fallback' })
+        }
+    }
+    [pscustomobject][ordered]@{
+        version = 1
+        reportOnly = $true
+        gatesUnchanged = $true
+        fullInventoryRetained = $true
+        productionArtifactRetained = $true
+        currentJourneys = $all
+        recommendedJourneys = @($all | Where-Object { $selected.Contains($_) })
+        potentiallyAvoidableJourneys = @($all | Where-Object { -not $selected.Contains($_) })
+        reasons = $reasons.ToArray()
+    }
+}
+
 function Read-TrainerPolicy {
     param([Parameter(Mandatory = $true)][string]$Path)
 
@@ -356,6 +401,7 @@ Export-ModuleMember -Function @(
     'Get-NormalizedPath',
     'ConvertTo-TrainerRepositoryPath',
     'Test-TrainerPolicyPattern',
+    'Get-TrainerCoveragePreview',
     'Get-DirtyPaths',
     'Read-Worktrees',
     'Read-TrainerPolicy',

@@ -364,6 +364,8 @@ function Write-HumanPlan {
     Write-Output 'Release checks (never executed by Phase 3):'
     if (@($Plan.release).Count -eq 0) { Write-Output '  - none' }
     foreach ($command in @($Plan.release)) { Write-Output "  - [$($command.id)] $($command.command)" }
+    Write-Output ('Browser coverage proposal (report only; gates unchanged): ' + `
+        ($Plan.coveragePreview.recommendedJourneys -join ', '))
     Write-Output 'Prerequisites:'
     if (@($Plan.preconditions).Count -eq 0) { Write-Output '  - none' }
     foreach ($precondition in @($Plan.preconditions)) {
@@ -551,6 +553,8 @@ try {
             explicitPathsCombined = $hasExplicitPaths
             manifestCombined = $null -ne $manifest
         }
+        coveragePreview = Get-TrainerCoveragePreview -Policy $policy `
+            -ChangedPath @($changedPaths | ForEach-Object { $_.path })
         changedPaths = @($changedPaths)
         matchedRules = $matchedRules.ToArray()
         implementation = @($implementation)

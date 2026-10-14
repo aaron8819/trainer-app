@@ -137,6 +137,97 @@
       ],
       "nonHermeticChecks": ["production-version", "production-health", "deployment-status", "external-api", "remote-database", "live-audit"]
     },
+    "coveragePreview": {
+      "version": 1,
+      "reportOnly": true,
+      "journeys": [
+        "equipment",
+        "navigation",
+        "logger"
+      ],
+      "rules": [
+        {
+          "name": "shared-safety",
+          "patterns": [
+            "trainer-app/prisma/**",
+            "trainer-app/src/lib/api/**",
+            "trainer-app/src/app/api/**",
+            "trainer-app/src/lib/engine/**",
+            "trainer-app/src/lib/session-semantics/**",
+            "trainer-app/src/lib/trainer2-contracts/**",
+            "trainer-app/src/app/trainer2/auth/**",
+            "trainer-app/scripts/trainer2/**",
+            "trainer-app/src/lib/operations/**",
+            "scripts/codex/**",
+            ".github/workflows/**",
+            "trainer-app/package*.json",
+            "trainer-app/vitest*"
+          ],
+          "journeys": [
+            "equipment",
+            "navigation",
+            "logger"
+          ]
+        },
+        {
+          "name": "navigation",
+          "patterns": [
+            "trainer-app/src/components/trainer2/Trainer2Shell*",
+            "trainer-app/src/components/trainer2/TrainingHomeFrame*"
+          ],
+          "journeys": [
+            "navigation",
+            "logger"
+          ]
+        },
+        {
+          "name": "logger-recording",
+          "patterns": [
+            "trainer-app/src/components/trainer2/SetResultRow*",
+            "trainer-app/src/components/trainer2/ActiveWorkout*"
+          ],
+          "journeys": [
+            "equipment",
+            "navigation",
+            "logger"
+          ]
+        },
+        {
+          "name": "logger-presentation",
+          "patterns": [
+            "trainer-app/src/components/trainer2/Logger.module.css",
+            "trainer-app/src/components/trainer2/RestBar*",
+            "trainer-app/src/components/trainer2/rest-state*"
+          ],
+          "journeys": [
+            "navigation",
+            "logger"
+          ]
+        },
+        {
+          "name": "inert-assets",
+          "patterns": [
+            "trainer-app/public/*.png",
+            "trainer-app/src/app/apple-icon.png",
+            "trainer-app/src/app/icon.png",
+            "trainer-app/public/*.ico",
+            "trainer-app/public/*.jpg",
+            "trainer-app/public/*.webp",
+            "trainer-app/public/*.woff",
+            "trainer-app/public/*.woff2"
+          ],
+          "journeys": []
+        },
+        {
+          "name": "documentation",
+          "patterns": [
+            "trainer-app/docs/**",
+            "README.md"
+          ],
+          "journeys": []
+        }
+      ]
+    },
     "pathRules": [
       {
         "name": "database-backup-tooling",

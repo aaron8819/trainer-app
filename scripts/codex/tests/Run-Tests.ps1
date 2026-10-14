@@ -769,6 +769,73 @@ Invoke-Test 'non-canonical worktree reporting' {
     finally { Remove-TestRepository -Fixture $fixture }
 }
 
+Invoke-Test 'report-only coverage selects shared risks and keeps actual gates' {
+    Import-Module $sourceModule -Force
+    $policy = Read-TrainerPolicy -Path $sourcePolicy
+    foreach ($path in @(
+        'trainer-app/src/lib/api/trainer2/sessions.ts',
+        'trainer-app/src/app/trainer2/auth/page.tsx',
+        'trainer-app/prisma/schema.prisma',
+        'trainer-app/prisma/migrations/example/migration.sql',
+        'trainer-app/src/components/trainer2/SetResultRow.tsx',
+        'trainer-app/src/lib/engine/trainer2/logging-prefill.ts'
+    )) {
+        $preview = Get-TrainerCoveragePreview -Policy $policy -ChangedPath @($path)
+        Assert-Equal ($preview.recommendedJourneys -join ',') 'equipment,navigation,logger' $path
+        Assert-True $preview.reportOnly 'Preview became executable.'
+        Assert-True $preview.fullInventoryRetained 'Inventory gate was removed.'
+        Assert-True $preview.productionArtifactRetained 'Production artifact was removed.'
+    }
+    foreach ($path in @(
+        'trainer-app/src/components/trainer2/Trainer2Shell.tsx',
+        'trainer-app/src/components/trainer2/TrainingHomeFrame.tsx',
+        'trainer-app/src/components/trainer2/Logger.module.css'
+    )) {
+        $preview = Get-TrainerCoveragePreview -Policy $policy -ChangedPath @($path)
+        Assert-Equal ($preview.recommendedJourneys -join ',') 'navigation,logger' $path
+    }
+    foreach ($path in @('trainer-app/public/icon.png', 'trainer-app/public/icons/mobile.ico',
+        'trainer-app/src/app/apple-icon.png')) {
+        $preview = Get-TrainerCoveragePreview -Policy $policy -ChangedPath @($path)
+        Assert-Equal $preview.recommendedJourneys.Count 0 $path
+        Assert-Equal $preview.currentJourneys.Count 3 'Current browser gates were narrowed.'
+    }
+    foreach ($path in @('trainer-app/public/client.js', 'trainer-app/public/image.svg',
+        'trainer-app/public/../secret.png', 'unknown/feature.ts',
+        'trainer-app/src/app/layout.tsx', 'trainer-app/src/app/manifest.ts')) {
+        $preview = Get-TrainerCoveragePreview -Policy $policy -ChangedPath @($path)
+        Assert-Equal $preview.recommendedJourneys.Count 3 "Unsafe narrow coverage: $path"
+    }
+    $mixed = Get-TrainerCoveragePreview -Policy $policy -ChangedPath @(
+        'trainer-app/public/icon.png', 'trainer-app/src/lib/api/trainer2/sessions.ts')
+    Assert-Equal $mixed.recommendedJourneys.Count 3 'Asset masked a shared change.'
+    $windows = Get-TrainerCoveragePreview -Policy $policy -ChangedPath @(
+        'trainer-app\src\components\trainer2\Trainer2Shell.tsx')
+    Assert-Equal ($windows.recommendedJourneys -join ',') 'navigation,logger' 'Separator drift.'
+}
+
+Invoke-Test 'report-only coverage does not change execution selection or add side effects' {
+    $fixture = New-TestRepository
+    try {
+        $path = 'trainer-app/public/icon.png'
+        $result = Invoke-Verification -Fixture $fixture -ChangedPath @($path) -Json
+        Assert-Equal $result.ExitCode 0 'Advisory plan failed.'
+        $plan = $result.Text | ConvertFrom-Json
+        Assert-True $plan.inspectionOnly 'Report ran commands.'
+        Assert-Equal $plan.execution.results.Count 0 'Report executed verification.'
+        Assert-True ($plan.implementation.id -contains 'verify') 'Existing fallback was removed.'
+        Assert-Equal $plan.coveragePreview.recommendedJourneys.Count 0 'Asset preview is broad.'
+        $workflow = Get-Content -Raw (Join-Path $sourceRoot '../../.github/workflows/credential-free-inventory.yml')
+        Assert-True ($workflow.Contains('Report affected verification coverage (advisory)')) 'CI uses no preview.'
+        Assert-True ($workflow.Contains('Invoke-TrainerVerification.ps1 -BaseRef origin/master -Json')) 'CI has a second selector.'
+        foreach ($name in @('Combined equipment journey', 'Empty and populated navigation',
+            'Logger swap resume finish', 'Validate and aggregate credential-free inventory')) {
+            Assert-True ($workflow.Contains($name)) "Removed gate: $name"
+        }
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
 Invoke-Test 'path verification selection and deduplication' {
     $fixture = New-TestRepository
     try {

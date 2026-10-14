@@ -1,87 +1,56 @@
-# Trainer Repository Guidance
+# Trainer repository guidance
 
-## Scope and entry points
+## Start here
 
-- Most active code lives in `trainer-app/`; run app, test, Prisma, and audit commands there.
-- Start documentation discovery at `trainer-app/docs/00_START_HERE.md`.
-- Keep routes and pages thin. Put DB-backed orchestration and read models in `trainer-app/src/lib/api`, pure domain logic in `trainer-app/src/lib/engine`, shared session meaning in `trainer-app/src/lib/session-semantics`, and persistence work in `trainer-app/prisma`.
-- Route detail to the owning document: `02_DOMAIN_ENGINE.md` for engine behavior, `03_DATA_SCHEMA.md` for persistence, `04_API_CONTRACTS.md` for routes/contracts, `05_UI_FLOWS.md` for UI flows, `06_TESTING.md` for verification, `07_OPERATIONS.md` for operational safety, and `09_AUDIT_PLAYBOOK.md` for audit usage, all under `trainer-app/docs/`.
+Read this policy, then the [task and verification command guide](scripts/codex/README.md#task-and-verification).
+Most active code and package commands live in `trainer-app/`. Read the
+[domain index](trainer-app/docs/00_START_HERE.md), owning code, nearby tests and relevant
+`.codex/skills` only when the task needs them. `CLAUDE.md` and README are pointers, not extra checklists.
+Current code, schema and tests establish implemented behavior; north-star and archived documents
+are direction or history. Search with `rg` before editing and change the rightful owner.
 
-## Startup model
+## Ownership and authorization
 
-1. Understand the user request together with the applicable instruction hierarchy.
-2. Classify the task type, scope, authorization, and risk.
-3. Load only skills relevant to that task.
-4. Read `.codex/napkin.md` only when repository instructions require memory or prior repository failure patterns are materially relevant.
-5. Inspect the actual ownership seams, current implementation, nearby tests, and other repository evidence needed for the task.
-6. Plan or implement only within the authorized scope.
-7. Apply verification proportional to the affected seams and risk.
-8. Record a retrospective or memory lesson only when writing is authorized and a genuinely new durable lesson exists.
+- Keep one implementation owner through the authorized PR, CI recovery, review, merge and read-only
+  deployment verification. Reviewers remain read-only. Carry bounded authorization forward;
+  ask again only for materially changed scope or a required action outside it.
+- Honor the requested environment. Prefer an isolated cloud checkout; no personal PC is required.
+  For linked worktrees, use the primary checkout's sibling `.worktrees/trainer/<task>` and a
+  `codex/<task>` branch. A task-owned standalone cloud clone is also isolated.
+- Before writing, verify the exact checkout, branch, base/head, registered worktrees and dirty state.
+  Preserve unrelated tracked, untracked, ignored and machine-local files. Never write over overlapping
+  work or clean up someone else's branches, worktrees, sessions or resources.
+- A necessary handoff includes checkout, branch, base/head/tree, dirty files, approvals, evidence and
+  owned resources. The outgoing owner stops writing; the incoming owner verifies the checkpoint.
+- Database inspection is read-only by default and needs task scope. Migrations, SQL, seeds, repairs,
+  backfills and fixture database writes need authorization for the exact environment and action.
+  Deployment, provider writes and destructive cleanup remain bounded by the user's authorization and
+  [operations safety](trainer-app/docs/07_OPERATIONS.md). Tooling never creates authority.
 
-Optional unavailable skills are a normal fallback condition. Stop only when the task truly depends on the missing capability; otherwise continue with the best safe repository-native workflow.
+## Canonical boundaries
 
-## Authority and design direction
+Keep routes thin, DB orchestration/read models in `src/lib/api`, pure domain logic in `src/lib/engine`,
+shared session meaning in `src/lib/session-semantics`, and persistence in `prisma`.
+Do not duplicate domain truth or turn diagnostics/audit artifacts into runtime policy.
+[Architecture](trainer-app/docs/01_ARCHITECTURE.md) owns the detailed identity, receipt, accepted-seed,
+lifecycle and runtime boundaries. Use the five retained specialist skills when their stated triggers
+apply; do not add another orchestration layer. Repository memory is optional context, not policy.
 
-- Current code, schema, and tests are authoritative for confirmed present behavior.
-- Explicitly labeled north-star documents describe intended architectural direction.
-- North-star direction may guide design, but do not report it as implemented behavior without repository evidence.
-- When intended direction and implementation differ, state the distinction and identify the owning seam instead of silently choosing one.
-- Prefer changing the rightful owner over patching downstream consumers. If ownership or the source of truth remains unclear after investigation, stop before writing.
+## Verification and completion
 
-## Authorization and worktrees
-
-- Respect the user’s requested scope and preserve unrelated tracked, untracked, ignored, and machine-local files.
-- Use an isolated Trainer worktree for implementation work, normally under `C:\Users\aabloch\claude\vibe-coding\.worktrees\trainer\<task>` on a `codex/<task>` branch.
-- Before creating or reusing a worktree, verify the exact path and branch, base revision, worktree registration, and dirty state. Do not write in a worktree containing overlapping changes.
-- Keep writes inside the authorized worktree. Do not clean up worktrees or branches unless that destructive action is explicitly authorized.
-- Scale preflight and reporting to the task. Do not apply release-grade ceremony to a read-only inspection or small isolated edit unless its risk requires it.
-- Keep one implementation owner from source changes through authorized release. Use read-only reviewers for independent review; do not hand work to a new chat merely to run checks or release it.
-- If a handoff is necessary, the outgoing owner stops writing and reports the exact worktree, branch, base/head/tree, dirty files, approvals, evidence and owned running resources. The incoming owner verifies that checkpoint before writing and preserves unfinished edits.
-- Carry the user's bounded authorization forward. Do not ask again for already approved review, CI or release steps. Obtain a new decision only for changed scope or a required action outside that authorization. Visual approval applies to the reviewed appearance; an invisible corrective fix needs affected verification, not another screenshot approval by default.
-
-## Safety boundaries
-
-- Database inspection is read-only by default. Migrations, direct SQL, seeds, repairs, backfills, acceptance commands, or any other database mutation require explicit authorization for the exact environment and action.
-- Destructive cleanup, deployment, release, remote-provider writes, and production actions require their specialized safety gates and explicit scope. See `trainer-app/docs/07_OPERATIONS.md` and repository-owned tooling under `scripts/`.
-- Never let audit tooling, diagnostics, previews, or debug artifacts mutate planning, generation, replay, persistence, or production behavior as a side effect.
-
-## Planning and runtime truth
-
-Keep these layers distinct:
-
-```text
-Planner authors intent.
-Materializer translates intent.
-Acceptance judges a candidate.
-Accepted seed stores executable truth.
-Runtime executes accepted truth.
-Logs capture performed reality.
-Audit and review provide evidence.
-Repair is a safety net, not a plan author.
-```
-
-- When an immutable `MesocycleSeedRevision` exists, its `seedPayload` is the authoritative accepted executable truth.
-- `slotPlanSeedJson` is compatibility or historical data in that case, not a competing runtime authority.
-- Planner metadata, diagnostics, accepted intent, provenance, audit sidecars, and readouts are explanatory evidence unless a reviewed production seam explicitly promotes them.
-- Runtime edits are session-local deviations unless an authorized canonical acceptance or reseed path promotes them.
-
-## Tooling and verification
-
-- Search before editing. Use `rg` for symbols and `rg --files` for file discovery; inspect the current surface, owning implementation, nearby tests, and callsites before changing behavior.
-- Use repository-local dependencies, package scripts, and deterministic tooling. Do not recommend routine ad hoc `npx` execution or silently fall back to global or network-fetched tools.
-- Prefer the smallest focused verification that exercises the owning seam. Expand to TypeScript, integration, contract, audit, or full verification only when shared shapes, cross-layer behavior, persistence, or release risk justify it.
-- Before running an expensive hermetic check, inspect durable evidence for the exact current Git tree and equivalent verification definition. Reuse valid evidence; rerun only when it is absent, incomplete, insufficiently qualified, or invalidated.
-- The full credential-free inventory is an expensive PR/release-class CI check. Independent review covers ownership, assumptions, implementation, tests, and missing cases; it does not require mechanically rerunning that inventory for an unchanged verified tree.
-- Choose affected verification once from the diff and ownership seams using the existing command registry and verification selector. Include adjacent navigation and completed-review behavior when shared logger/shell styling changes. Run independent reads and checks concurrently when they do not share mutable resources; keep source changes, approvals and shared fixtures sequential.
-- Reuse a qualified task-owned environment and its existing dependencies when compatible. Preserve isolation, unique ports, source manifests and cleanup ownership; never reuse production targets or another task's resources.
-- Freeze source for the final affected browser run and capture all requested approval views from that environment, including the full changed surface. A later screenshot-only capture does not require repeating the test suite. Do not repeat broad local suites already covered by valid evidence or required CI for unrelated changes.
-- Compare branch failures with the base revision by test identity and environment before classifying them as regressions or baseline failures.
-- When detailed command selection matters, use repository-owned verification policy and scripts rather than copying long command recipes into this file.
-- Update canonical documentation only when behavior or contracts change, and only after code and tests establish the final behavior.
-- Complete authorized work in order: inspect and establish ownership; implement; run affected checks and independent review; obtain requested visual approval; push a draft PR; wait for applicable CI and resolve findings; merge the exact qualified head; verify deployment identity and availability read-only. Keep one concise candidate/release receipt with the tree, evidence paths, approvals, PR/CI, deployment and limitations. Never bypass required checks, infer release success from a merge, or replay migrations as part of a code-only release.
-
-## Durable memory and retrospectives
-
-- `.codex/napkin.md` is concise repository memory, not a second policy manual or project-status log.
-- Read it only when prior failure patterns are relevant. Add or consolidate a lesson only when it is new, durable, repository-specific, non-obvious, and not better enforced by policy, documentation, a skill, or tooling.
-- Retrospectives are conditional and concise. Use observable evidence from the completed work and include an actionable workflow improvement only when the session produced a reusable lesson.
+- Use exact lockfile dependencies and repository-local scripts. Choose explicit owning-test paths for
+  focused feedback; legacy `test:fast` is not general Trainer2 coverage. The command guide owns selection.
+- Publish an authorized draft after focused checks so hosted acceptance starts early. Final affected
+  browser/visual acceptance and independent review belong before merge, not before draft publication.
+  Freeze the source for the final affected browser run and capture the full requested changed surface.
+- Keep the full parallel hosted inventory, production build/admission, browser/recovery and cleanup
+  gates. Coverage selection remains advisory. A proposed or skipped check is never a passed check.
+- Reuse valid exact-tree evidence with equivalent definitions and environments. Rerun evidence invalidated
+  by source, dependency, configuration, base or relevant environment changes; do not repeat an unchanged
+  full local suite just to duplicate hosted evidence. Compare failures with the base by test identity.
+- Before merge, verify a current integrated candidate, successful applicable CI, independent review and
+  any requested visual approval. Merge only the qualified head within approved scope. Verify merged-tree
+  correspondence and deployment identity/availability read-only; a merge does not prove deployment.
+- Keep the PR summary concise: exact source/tree, checks actually passed, CI, review, production target,
+  elapsed work/waiting, reused evidence and gaps. Update the owning docs with executable contracts.
+  Never replay migrations as part of a code-only release.

@@ -1,5 +1,9 @@
 # 00 Start Here
 
+For task startup, follow [AGENTS.md](../../AGENTS.md) and the
+[task and verification guide](../../scripts/codex/README.md#task-and-verification).
+This file is the domain-document index, not another execution checklist.
+
 Trainer2 Skip Workout: [eligibility, audited resolution, endpoint, exact retry, UI and verification](architecture/trainer2/SKIP_WORKOUT.md).
 
 Trainer2 empty execution discard: [lifecycle, command, retained attempts, fresh start and verification](architecture/trainer2/DISCARD_EMPTY_EXECUTION.md).

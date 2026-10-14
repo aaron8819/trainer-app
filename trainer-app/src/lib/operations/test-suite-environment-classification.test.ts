@@ -125,7 +125,7 @@ function validateCredentialFreeWorkflow(workflow: CredentialFreeWorkflow): strin
       errors.push(`${jobId}-checkout`);
     }
     const setupNode = workflowStep(workflow, jobId, "Set up Node.js");
-    if (setupNode?.uses !== "actions/setup-node@v7" || setupNode.with?.["node-version"] !== 22) {
+    if (setupNode?.uses !== "actions/setup-node@v7" || setupNode.with?.["node-version"] !== "24.21.0") {
       errors.push(`${jobId}-node`);
     }
     if (workflowStep(workflow, jobId, "Install exact dependencies")?.run !== "npm ci") {

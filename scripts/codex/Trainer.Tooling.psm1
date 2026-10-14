@@ -29,6 +29,36 @@ function Get-NormalizedPath {
     )
 }
 
+# Relative policy roots are anchored to the primary checkout, never the caller's cwd.
+function Resolve-TrainerWorktreeRoot {
+    param([Parameter(Mandatory = $true)][object]$Policy,
+        [Parameter(Mandatory = $true)][string]$RepositoryRoot)
+    $configured = [string]$Policy.repository.canonicalWorktreeRoot
+    if ([System.IO.Path]::IsPathRooted($configured)) {
+        return Get-NormalizedPath -Path $configured
+    }
+    $common = (Invoke-GitRead -WorkingDirectory $RepositoryRoot -Arguments @(
+        'rev-parse', '--path-format=absolute', '--git-common-dir')).Output[0]
+    $primary = Split-Path -Parent $common
+    Get-NormalizedPath -Path (Join-Path $primary $configured)
+}
+
+function Get-TrainerPathComparison {
+    param([bool]$Windows = $IsWindows)
+    if ($Windows) { return [System.StringComparison]::OrdinalIgnoreCase }
+    [System.StringComparison]::Ordinal
+}
+
+function Resolve-TrainerExecutableName {
+    param([Parameter(Mandatory = $true)][string]$Name,
+        [bool]$Windows = $IsWindows)
+    if ($Name -in @('npm', 'npm.cmd')) {
+        if ($Windows) { return 'npm.cmd' }
+        return 'npm'
+    }
+    $Name
+}
+
 function ConvertTo-TrainerRepositoryPath {
     param([Parameter(Mandatory = $true)][string]$Path)
 
@@ -109,7 +139,7 @@ function Read-Worktrees {
 
     foreach ($record in $records) {
         $normalized = Get-NormalizedPath -Path $record.path
-        $isPrimary = $null -ne $primaryPath -and $normalized -ieq $primaryPath
+        $isPrimary = $null -ne $primaryPath -and $normalized.Equals($primaryPath, (Get-TrainerPathComparison))
         $compliance = $null
         $complianceReason = 'Unable to determine canonical-path compliance.'
         if ($isPrimary) {
@@ -117,7 +147,7 @@ function Read-Worktrees {
         }
         elseif ($normalized.StartsWith(
                 $canonicalNormalized + [System.IO.Path]::DirectorySeparatorChar,
-                [System.StringComparison]::OrdinalIgnoreCase
+                (Get-TrainerPathComparison)
             )) {
             $compliance = $true
             $complianceReason = 'Path is under the canonical Trainer worktree root.'
@@ -380,7 +410,7 @@ function Get-ExecutableCapability {
 
     $command = $null
     foreach ($candidate in $CommandNames) {
-        $command = Get-Command $candidate -CommandType Application -ErrorAction SilentlyContinue |
+        $command = Get-Command (Resolve-TrainerExecutableName -Name $candidate) -CommandType Application -ErrorAction SilentlyContinue |
             Select-Object -First 1
         if ($null -ne $command) { break }
     }
@@ -434,6 +464,9 @@ function Get-ExecutableCapability {
 Export-ModuleMember -Function @(
     'Invoke-GitRead',
     'Get-NormalizedPath',
+    'Resolve-TrainerWorktreeRoot',
+    'Get-TrainerPathComparison',
+    'Resolve-TrainerExecutableName',
     'ConvertTo-TrainerRepositoryPath',
     'Test-TrainerPolicyPattern',
     'Get-TrainerCoveragePreview',

@@ -182,7 +182,7 @@ SetLog / logged performance
 - Plan finalization changes only the generated plan's current-mesocycle readiness identity. Strength finalization also creates immutable accepted seed revision 1 from the generated executable seed in that same serializable transaction. It does not select the plan, rewrite an existing accepted revision, or mutate workout/receipt/history evidence. Archive is a soft `MacroCycle.archivedAt` transition and is forbidden for the selected plan.
 - Lifecycle state transitions (`ACTIVE_ACCUMULATION` -> `ACTIVE_DELOAD` -> `AWAITING_HANDOFF` -> `COMPLETED`) are executed through `transitionMesocycleState()` via `src/lib/api/mesocycle-lifecycle.ts` (state module: `src/lib/api/mesocycle-lifecycle-state.ts`), invoked from `src/app/api/workouts/save/route.ts` after first transition into a performed status.
 - Plan-type lifecycle policy is exhaustive in `src/lib/plan-types.ts`. Hypertrophy retains the existing explicit successor-handoff flow. The first Strength increment is one complete four-to-six-week block, so finishing its deload closes that mesocycle and plan as `COMPLETED` instead of routing a Strength plan into the hypertrophy-specific successor authoring flow.
-- Deload completion no longer auto-creates the successor mesocycle. The lifecycle transition only closes the source mesocycle into `AWAITING_HANDOFF` and freezes handoff artifacts through `enterMesocycleHandoffInTransaction()` in `src/lib/api/mesocycle-handoff.ts`.
+- Deload completion never auto-creates a successor. Compatible non-V4 hypertrophy closes into `AWAITING_HANDOFF` through `enterMesocycleHandoffInTransaction()` in `src/lib/api/mesocycle-handoff.ts`; Strength and proven final finite accepted-V4 plans complete directly. Failed V4 authority proof fails closed. The lifecycle owner and its tests decide the path, not a blanket handoff rule.
 - Handoff ownership is intentionally split:
   - frozen closeout summary + recommended next-cycle seed: `handoffSummaryJson` on the closed mesocycle
   - editable pending draft: `nextSeedDraftJson` on the same closed mesocycle while state is `AWAITING_HANDOFF`
@@ -302,3 +302,18 @@ Execution & Evidence owns today-only exercise substitutions through the existing
 
 
 Trainer2 execution-local Add exercise ownership, identity, command, UI and migration/recovery requirements are documented in [ADD_EXERCISE.md](architecture/trainer2/ADD_EXERCISE.md).
+
+
+## Identity and specialist ownership
+
+Legacy app routes resolve owner identity through `resolveOwner()` in
+`src/lib/api/workout-context.ts`; Trainer2 uses its separate principal/admission boundary documented
+in [PRINCIPAL_BOUNDARY](architecture/trainer2/PRINCIPAL_BOUNDARY.md). Never substitute one for the other.
+Receipt semantics belong to `selectionMetadata.sessionDecisionReceipt`, next-session derivation to
+`loadNextWorkoutContext()`, and session interpretation to `deriveSessionSemantics()`. Closed-cycle
+save/log/resume fences stay at workflow/write boundaries. Read-side consumers use canonical helpers;
+`advancesSplit` is write-side truth, not permission to invent read-side policy or new workout enums.
+
+The five retained `.codex/skills` cover architecture ownership, receipt integrity, accepted-seed/runtime
+truth, V2 planner promotion boundaries and authorized audit interpretation. Their trigger descriptions
+control when to load them; the [root policy](../../AGENTS.md) owns the general workflow.

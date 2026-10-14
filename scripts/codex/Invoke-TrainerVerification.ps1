@@ -258,7 +258,7 @@ function Invoke-CapturedProcess {
         [Parameter(Mandatory = $true)][string]$WorkingDirectory
     )
 
-    $resolvedExecutable = $Executable
+    $resolvedExecutable = Resolve-TrainerExecutableName -Name $Executable
     if (-not [System.IO.Path]::IsPathRooted($resolvedExecutable)) {
         $localCandidate = Join-Path $WorkingDirectory $resolvedExecutable
         if (Test-Path -LiteralPath $localCandidate -PathType Leaf) {
@@ -449,6 +449,9 @@ try {
     })
 
     $warnings = [System.Collections.Generic.List[string]]::new()
+    if (@($changedPaths | Where-Object { $_.path -like 'trainer-app/src/*' }).Count -gt 0) {
+        $warnings.Add('Run explicit owning-test paths for changed application behavior. Registry checks and legacy test:fast alone do not qualify arbitrary Trainer2 changes; full hosted inventory remains required.')
+    }
     $blockers = [System.Collections.Generic.List[string]]::new()
     $matchedRules = [System.Collections.Generic.List[object]]::new()
     $implementationSelection = @{}

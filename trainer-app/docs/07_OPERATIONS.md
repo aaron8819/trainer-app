@@ -747,3 +747,13 @@ The [equipment runner](../scripts/test-trainer2-equipment-recording.ts) creates 
 Equipment workers run directly with the repository-installed TypeScript loader. An IPC cleanup-complete receipt starts a five-second exit grace period; a stalled worker is stopped through its previously captured, generation-qualified tree and its actual close is then observed. A timeout or earlier cleanup failure keeps the failed disposition. Native termination request errors remain in the observer receipt while other qualified members continue cleanup; every captured generation must still signal its kernel handle. An intentional browser force fallback records its actual native exit code separately from successful fixture and controller exits.
 
 Combined navigation/equipment candidate compatibility: new equipment snapshots and load conventions are incompatible with the older reader. Any eventual rollout must update both primary and recovery compatibly before either reads new snapshots. This isolated qualification authorizes no deployment; historical preview/process preservation remains FAILED with unknown attribution.
+
+
+## Authorized development environment
+
+Ordinary cloud editing and credential-free tests require no copied `.env` or database seed.
+For an explicitly authorized local-development target only, configure its environment deliberately,
+run the separately approved migration workflow, and use `npm run db:seed` only if that exact seed and
+target were authorized. `npm ci` already runs Prisma generation through `postinstall`; explicit
+`npm run prisma:generate` is available when schema work needs it. `npm run dev` starts a development
+server. Never use production credentials or production data in disposable test fixtures.

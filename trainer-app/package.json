@@ -5,6 +5,7 @@
     "scripts": {
         "predev": "prisma generate",
         "dev": "next dev",
+        "prebuild": "node scripts/report-build-runtime.mjs",
         "build": "next build",
         "start": "next start",
         "lint": "eslint . --cache --cache-location .eslintcache",

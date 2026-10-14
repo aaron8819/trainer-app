@@ -137,10 +137,10 @@ try {
         'rev-parse', '--show-toplevel'
     )
     $checkoutPath = Get-NormalizedPath -Path $repositoryProbe.Output[0]
-    $canonicalRoot = Get-NormalizedPath -Path $policy.repository.canonicalWorktreeRoot
+    $canonicalRoot = Resolve-TrainerWorktreeRoot -Policy $policy -RepositoryRoot $checkoutPath
     $worktrees = @(Read-Worktrees -RepositoryRoot $checkoutPath -CanonicalRoot $canonicalRoot)
     $currentWorktree = @($worktrees | Where-Object {
-        (Get-NormalizedPath -Path $_.path) -ieq $checkoutPath
+        (Get-NormalizedPath -Path $_.path).Equals($checkoutPath, (Get-TrainerPathComparison))
     }) | Select-Object -First 1
     if ($null -eq $currentWorktree) {
         throw "Current checkout is not present in git worktree inventory: $checkoutPath"
@@ -243,7 +243,7 @@ try {
         $blockers.Add('Prisma migration directory is missing.')
     }
 
-    $prismaCliPath = Join-Path $trainerAppPath 'node_modules\.bin\prisma.cmd'
+    $prismaCliPath = Join-Path $trainerAppPath $(if ($IsWindows) { 'node_modules/.bin/prisma.cmd' } else { 'node_modules/.bin/prisma' })
     $prismaPackagePath = Join-Path $trainerAppPath 'node_modules\prisma\package.json'
     $prismaVersion = $null
     if (Test-Path -LiteralPath $prismaPackagePath -PathType Leaf) {

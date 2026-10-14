@@ -504,6 +504,36 @@ describe('Logger correction regressions', () => {
     view.rerender(<SetResultRow {...ui} saved={{ ...prior, version: 2 }} />);
     expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('11');
   });
+  it('labels only a compatible first-set history suggestion and preserves edited weight', async () => {
+    const prescription = { ...target, measurement: null };
+    const view = render(<SetResultRow {...ui} activePanel prescription={prescription}
+      firstSetLoad={prior} />);
+    await screen.findByRole('button', { name: 'Log set' });
+    expect(screen.getByText(/Suggested starting load:/)).toHaveTextContent('135 lb');
+    expect(screen.getByText(/Suggested starting load:/)).toHaveTextContent('Last time');
+    const input = screen.getByLabelText('Set 1 Actual load');
+    expect(input).toHaveAccessibleDescription(/Suggested starting load/);
+    fireEvent.change(input, { target: { value: '77' } });
+    view.rerender(<SetResultRow {...ui} activePanel prescription={prescription}
+      firstSetLoad={{ ...prior, version: 2 }} />);
+    expect(input).toHaveValue('77');
+    view.rerender(<SetResultRow {...ui} activePanel prescription={target}
+      firstSetLoad={prior} />);
+    expect(screen.queryByText(/Suggested starting load:/)).toBeNull();
+  });
+  it('omits the hint for absent history, incompatible loads and later sets', async () => {
+    const prescription = { ...target, measurement: null };
+    const view = render(<SetResultRow {...ui} activePanel prescription={prescription} />);
+    await screen.findByRole('button', { name: 'Log set' });
+    expect(screen.queryByText(/Suggested starting load:/)).toBeNull();
+    view.rerender(<SetResultRow {...ui} activePanel prescription={prescription}
+      firstSetLoad={{ ...prior, result: { ...prior.result,
+        measurement: { ...m, convention: 'perImplement' } } }} />);
+    expect(screen.queryByText(/Suggested starting load:/)).toBeNull();
+    view.rerender(<SetResultRow {...ui} activePanel number={2}
+      prescription={prescription} firstSetLoad={prior} />);
+    expect(screen.queryByText(/Suggested starting load:/)).toBeNull();
+  });
   it('prefers prescription over history; history only supplies first-set weight; blank decrement is not zero', async () => {
     const view = render(<SetResultRow {...ui} firstSetLoad={prior} />);
     await screen.findByRole('button', { name: 'Log set' });

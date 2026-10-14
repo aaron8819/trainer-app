@@ -140,7 +140,7 @@ try {
     $canonicalRoot = Resolve-TrainerWorktreeRoot -Policy $policy -RepositoryRoot $checkoutPath
     $worktrees = @(Read-Worktrees -RepositoryRoot $checkoutPath -CanonicalRoot $canonicalRoot)
     $currentWorktree = @($worktrees | Where-Object {
-        (Get-NormalizedPath -Path $_.path) -ieq $checkoutPath
+        (Get-NormalizedPath -Path $_.path).Equals($checkoutPath, (Get-TrainerPathComparison))
     }) | Select-Object -First 1
     if ($null -eq $currentWorktree) {
         throw "Current checkout is not present in git worktree inventory: $checkoutPath"

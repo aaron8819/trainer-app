@@ -1733,12 +1733,30 @@ Invoke-Test 'startup pointers and portable command ownership stay consolidated' 
     $claude = Get-Content -Raw (Join-Path $root 'CLAUDE.md')
     Assert-True ($claude.Length -lt 600) 'CLAUDE became a second policy.'
     Import-Module $sourceModule -Force
+    Assert-Equal (Get-TrainerPathComparison -Windows $true) ([System.StringComparison]::OrdinalIgnoreCase) 'Windows paths must ignore case.'
+    Assert-Equal (Get-TrainerPathComparison -Windows $false) ([System.StringComparison]::Ordinal) 'Linux paths must preserve case.'
     Assert-Equal (Resolve-TrainerExecutableName -Name 'npm' -Windows $true) 'npm.cmd' 'Windows npm resolution mismatch.'
     Assert-Equal (Resolve-TrainerExecutableName -Name 'npm.cmd' -Windows $false) 'npm' 'Linux npm resolution mismatch.'
     $policy = Get-Content -Raw $sourcePolicy | ConvertFrom-Json
     foreach ($name in @('application-write', 'shared-seam-write')) {
         Assert-True ($policy.classifications.$name.implementationChecks -notcontains 'test-fast') 'Generic legacy coverage returned.'
     }
+}
+
+Invoke-Test 'logical npm executes natively from an isolated path with spaces' {
+    $fixture = New-TestRepository -PathWithSpaces
+    try {
+        Set-FixtureVerificationCommand -Fixture $fixture -Id 'git-diff-check' -Executable 'npm'
+        $policy = Get-Content -Raw $fixture.Policy | ConvertFrom-Json -Depth 100
+        $policy.commands.'git-diff-check'.invocation.arguments = @('--version')
+        $policy | ConvertTo-Json -Depth 100 | Set-Content $fixture.Policy -Encoding utf8NoBOM
+        $result = Invoke-Verification -Fixture $fixture -ChangedPath @('execute/example.txt') -Run -Json
+        $plan = $result.Text | ConvertFrom-Json
+        Assert-Equal $result.ExitCode 0 "Native npm invocation failed: $($result.Text)"
+        Assert-Equal $plan.execution.results[0].status 'passed' 'npm was not executed.'
+        Assert-True ($plan.execution.results[0].stdout -match '\d+\.\d+\.\d+') 'npm version output missing.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
 }
 
 Invoke-Test 'relative worktree root is stable from primary and linked cloud checkouts' {

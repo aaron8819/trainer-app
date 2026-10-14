@@ -112,7 +112,7 @@ try {
         $blockers.Add("Requested base '$BaseBranch' does not resolve to a commit.")
     }
 
-    $pathRegistered = @($worktrees | Where-Object { (Get-NormalizedPath -Path $_.path) -ieq $proposedWorktreePath }).Count -gt 0
+    $pathRegistered = @($worktrees | Where-Object { (Get-NormalizedPath -Path $_.path).Equals($proposedWorktreePath, (Get-TrainerPathComparison)) }).Count -gt 0
     $pathExists = Test-Path -LiteralPath $proposedWorktreePath
     $pathConflict = $pathRegistered -or $pathExists
     if ($pathRegistered) {
@@ -154,7 +154,7 @@ try {
         if (($worktree.canonicalPathCompliant -eq $false) -and (-not $worktree.primary)) {
             $warnings.Add("Registered worktree is outside the canonical root: $($worktree.path)")
         }
-        if ($worktree.dirty -and (-not $worktree.primary) -and ((Get-NormalizedPath -Path $worktree.path) -ine $currentCheckoutPath)) {
+        if ($worktree.dirty -and (-not $worktree.primary) -and (-not (Get-NormalizedPath -Path $worktree.path).Equals($currentCheckoutPath, (Get-TrainerPathComparison)))) {
             $warnings.Add("Unrelated registered worktree is dirty: $($worktree.path)")
         }
     }

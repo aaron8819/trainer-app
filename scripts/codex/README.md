@@ -72,3 +72,14 @@ For production release verification, resolve the alias through the authenticated
 A failing check rollup is an integration blocker in a valid report and exits `1`; it is not a tooling execution failure. Authentication or identity blockers are reported without remediation.
 
 Supabase authenticated reads, a full cross-system traceability verdict, and every remote write remain later, separately authorized phases.
+
+### Plan status and retained qualification
+
+`Invoke-TrainerVerification.ps1` returns a valid plan independently of whether
+checks ran. `success` means the plan/executor succeeded; inspect `qualification`
+for passed/pending checks and `checksPassed`. Full `verify`, release-only checks
+and commands outside implementation authority are still not executed by `-Run`.
+`coveredCommands` explains same-phase children represented by a selected parent;
+a plan-only parent cannot remove a runnable child. Browser coverage remains an
+advisory report, with no CI gates removed. The existing registry also labels
+disposable runners and internal helpers; it grants no execution authorization.

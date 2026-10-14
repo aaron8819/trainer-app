@@ -24,5 +24,6 @@ it('omits V1 navigation and supplies install metadata in V2 production', () => {
   expect(renderToStaticMarkup(<RootLayout>content</RootLayout>)).not.toContain('V1 navigation fixture');
   expect(generateMetadata()).toMatchObject({ manifest: '/manifest.webmanifest',
     appleWebApp: { capable: true, title: 'Trainer', statusBarStyle: 'default' },
-    icons: { apple: '/apple-icon.png' } });
+  });
+  expect(generateMetadata().icons).toBeUndefined();
 });

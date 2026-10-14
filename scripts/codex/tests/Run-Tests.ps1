@@ -29,6 +29,19 @@ function Resolve-TestApplicationExecutable {
     [string]$command.Source
 }
 
+function New-TestCommand {
+    param([string]$Path, [string]$WindowsBody, [string]$UnixBody)
+    if ($IsWindows) {
+        Set-Content -LiteralPath $Path -Value $WindowsBody -Encoding ascii
+        return $Path
+    }
+    $Path = [System.IO.Path]::ChangeExtension($Path, 'sh')
+    Set-Content -LiteralPath $Path -Value ("#!/bin/sh`n" + $UnixBody) -Encoding utf8NoBOM
+    & chmod +x $Path
+    if ($LASTEXITCODE -ne 0) { throw 'Could not prepare owned test executable.' }
+    $Path
+}
+
 function Invoke-GitFixture {
     param(
         [Parameter(Mandatory = $true)][string]$Repository,
@@ -873,7 +886,7 @@ Invoke-Test 'path verification selection and deduplication' {
         $manifest = $result.Text | ConvertFrom-Json
         $ids = @($manifest.verification.implementation.id)
         Assert-True ($ids -contains 'verify-contracts') 'Contract verification was not selected.'
-        Assert-True ($ids -contains 'test-fast') 'Shared seam verification was not selected.'
+        Assert-True (-not ($ids -contains 'test-fast')) 'Legacy test:fast must not qualify arbitrary shared seams.'
         Assert-Equal $ids.Count (@($ids | Select-Object -Unique).Count) 'Implementation commands were not deduplicated.'
     }
     finally { Remove-TestRepository -Fixture $fixture }
@@ -1087,7 +1100,7 @@ Invoke-Test 'tool version detection preserves paths with spaces' {
         $toolDirectory = Join-Path $fixture.Sandbox 'tools with spaces'
         New-Item -ItemType Directory -Path $toolDirectory -Force | Out-Null
         $toolPath = Join-Path $toolDirectory 'fixture-tool.cmd'
-        Set-Content -LiteralPath $toolPath -Value '@echo fixture-tool 9.8.7' -Encoding ascii
+        $toolPath = New-TestCommand -Path $toolPath -WindowsBody '@echo fixture-tool 9.8.7' -UnixBody 'echo fixture-tool 9.8.7'
         Import-Module $fixture.Module -Force
         $capability = Get-ExecutableCapability `
             -Id 'fixture-tool' `
@@ -1111,16 +1124,16 @@ Invoke-Test 'doctor never invokes npx download GitHub Vercel or database access'
         $vercelSentinel = Join-Path $fixture.Sandbox 'vercel-invoked.txt'
         $databaseSentinel = Join-Path $fixture.Sandbox 'database-invoked.txt'
         $npxSentinel = Join-Path $fixture.Sandbox 'npx-non-version-invoked.txt'
-        Set-Content -LiteralPath (Join-Path $toolDirectory 'gh.cmd') -Value ('@echo invoked>"{0}"' -f $githubSentinel) -Encoding ascii
-        Set-Content -LiteralPath (Join-Path $toolDirectory 'vercel.cmd') -Value ('@echo invoked>"{0}"' -f $vercelSentinel) -Encoding ascii
-        Set-Content -LiteralPath (Join-Path $toolDirectory 'psql.cmd') -Value ('@if "%1"=="--version" (echo psql fixture 1.0) else (echo invoked>"{0}")' -f $databaseSentinel) -Encoding ascii
-        Set-Content -LiteralPath (Join-Path $toolDirectory 'npx.cmd') -Value ('@if "%1"=="--version" (echo 1.0.0) else (echo invoked>"{0}")' -f $npxSentinel) -Encoding ascii
+        $ghTool = New-TestCommand -Path (Join-Path $toolDirectory 'gh.cmd') -WindowsBody ('@echo invoked>"{0}"' -f $githubSentinel) -UnixBody ('echo invoked>"{0}"' -f $githubSentinel)
+        $vercelTool = New-TestCommand -Path (Join-Path $toolDirectory 'vercel.cmd') -WindowsBody ('@echo invoked>"{0}"' -f $vercelSentinel) -UnixBody ('echo invoked>"{0}"' -f $vercelSentinel)
+        $psqlTool = New-TestCommand -Path (Join-Path $toolDirectory 'psql.cmd') -WindowsBody ('@if "%1"=="--version" (echo psql fixture 1.0) else (echo invoked>"{0}")' -f $databaseSentinel) -UnixBody ('if [ "$1" = "--version" ]; then echo psql fixture 1.0; else echo invoked>"{0}"; fi' -f $databaseSentinel)
+        $npxTool = New-TestCommand -Path (Join-Path $toolDirectory 'npx.cmd') -WindowsBody ('@if "%1"=="--version" (echo 1.0.0) else (echo invoked>"{0}")' -f $npxSentinel) -UnixBody ('if [ "$1" = "--version" ]; then echo 1.0.0; else echo invoked>"{0}"; fi' -f $npxSentinel)
         $policy = Get-Content -Raw -LiteralPath $fixture.Policy | ConvertFrom-Json
         $policy.doctor.tools = @(
-            [pscustomobject][ordered]@{ id = 'npx'; name = 'npx'; commandNames = @('npx.cmd', 'npx'); requiredFor = @(); missingHint = 'fixture'; presenceOnly = $false },
-            [pscustomobject][ordered]@{ id = 'psql'; name = 'psql'; commandNames = @('psql.cmd', 'psql'); requiredFor = @(); missingHint = 'fixture'; presenceOnly = $false },
-            [pscustomobject][ordered]@{ id = 'vercel'; name = 'Vercel'; commandNames = @('vercel.cmd', 'vercel'); requiredFor = @(); missingHint = 'fixture'; presenceOnly = $true },
-            [pscustomobject][ordered]@{ id = 'gh'; name = 'GitHub'; commandNames = @('gh.cmd', 'gh'); requiredFor = @(); missingHint = 'fixture'; presenceOnly = $true }
+            [pscustomobject][ordered]@{ id = 'npx'; name = 'npx'; commandNames = @($npxTool); requiredFor = @(); missingHint = 'fixture'; presenceOnly = $false },
+            [pscustomobject][ordered]@{ id = 'psql'; name = 'psql'; commandNames = @($psqlTool); requiredFor = @(); missingHint = 'fixture'; presenceOnly = $false },
+            [pscustomobject][ordered]@{ id = 'vercel'; name = 'Vercel'; commandNames = @($vercelTool); requiredFor = @(); missingHint = 'fixture'; presenceOnly = $true },
+            [pscustomobject][ordered]@{ id = 'gh'; name = 'GitHub'; commandNames = @($ghTool); requiredFor = @(); missingHint = 'fixture'; presenceOnly = $true }
         )
         $policy | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $fixture.Policy -Encoding utf8NoBOM
         $result = Invoke-Doctor -Fixture $fixture -Json -PathPrefix $toolDirectory
@@ -1162,9 +1175,10 @@ Invoke-Test 'test executable discovery is deterministic and fails truthfully' {
     $originalPath = $env:PATH
     try {
         New-Item -ItemType Directory -Path $firstDirectory, $secondDirectory, $emptyDirectory -Force | Out-Null
-        $firstExecutable = Join-Path $firstDirectory 'pwsh.exe'
-        $secondExecutable = Join-Path $secondDirectory 'pwsh.exe'
+        $firstExecutable = Join-Path $firstDirectory $(if ($IsWindows) { 'pwsh.exe' } else { 'pwsh' })
+        $secondExecutable = Join-Path $secondDirectory $(if ($IsWindows) { 'pwsh.exe' } else { 'pwsh' })
         New-Item -ItemType File -Path $firstExecutable, $secondExecutable -Force | Out-Null
+        if (-not $IsWindows) { & chmod +x $firstExecutable $secondExecutable }
 
         $env:PATH = $firstDirectory
         Assert-Equal (Resolve-TestApplicationExecutable -Name 'pwsh') $firstExecutable 'Single PowerShell resolution mismatch.'
@@ -1397,7 +1411,7 @@ Invoke-Test 'planning mode executes nothing and does not mutate repository' {
     try {
         $sentinel = Join-Path $fixture.Sandbox 'planning-executed.txt'
         $tool = Join-Path $fixture.Sandbox 'planning-tool.cmd'
-        Set-Content -LiteralPath $tool -Value ('@echo executed>"{0}"' -f $sentinel) -Encoding ascii
+        $tool = New-TestCommand -Path $tool -WindowsBody ('@echo executed>"{0}"' -f $sentinel) -UnixBody ('echo executed>"{0}"' -f $sentinel)
         Set-FixtureVerificationCommand -Fixture $fixture -Id 'git-diff-check' -Executable $tool
         $beforeStatus = (Invoke-GitFixture -Repository $fixture.Repository -Arguments @('status', '--porcelain=v1', '--untracked-files=all')) -join "`n"
         $beforeRefs = (Invoke-GitFixture -Repository $fixture.Repository -Arguments @('show-ref')) -join "`n"
@@ -1417,7 +1431,7 @@ Invoke-Test 'Run executes only an approved local implementation command' {
     try {
         $sentinel = Join-Path $fixture.Sandbox 'approved-executed.txt'
         $tool = Join-Path $fixture.Sandbox 'approved-tool.cmd'
-        Set-Content -LiteralPath $tool -Value ('@echo approved>"{0}"' -f $sentinel) -Encoding ascii
+        $tool = New-TestCommand -Path $tool -WindowsBody ('@echo approved>"{0}"' -f $sentinel) -UnixBody ('echo approved>"{0}"' -f $sentinel)
         Set-FixtureVerificationCommand -Fixture $fixture -Id 'git-diff-check' -Executable $tool
         $result = Invoke-Verification -Fixture $fixture -ChangedPath @('execute/example.txt') -Run -Json
         $plan = $result.Text | ConvertFrom-Json
@@ -1435,7 +1449,7 @@ Invoke-Test 'unsafe production-write and mutation-escalated commands are skipped
     try {
         $sentinel = Join-Path $fixture.Sandbox 'unsafe-executed.txt'
         $tool = Join-Path $fixture.Sandbox 'unsafe-tool.cmd'
-        Set-Content -LiteralPath $tool -Value ('@echo unsafe>"{0}"' -f $sentinel) -Encoding ascii
+        $tool = New-TestCommand -Path $tool -WindowsBody ('@echo unsafe>"{0}"' -f $sentinel) -UnixBody ('echo unsafe>"{0}"' -f $sentinel)
         Set-FixtureVerificationCommand -Fixture $fixture -Id 'git-diff-check' -Executable $tool -Profile 'production-write'
         $production = Invoke-Verification -Fixture $fixture -ChangedPath @('execute/example.txt') -Run -Json
         $productionPlan = $production.Text | ConvertFrom-Json
@@ -1458,7 +1472,7 @@ Invoke-Test 'release command is always skipped' {
     try {
         $sentinel = Join-Path $fixture.Sandbox 'release-executed.txt'
         $tool = Join-Path $fixture.Sandbox 'release-tool.cmd'
-        Set-Content -LiteralPath $tool -Value ('@echo release>"{0}"' -f $sentinel) -Encoding ascii
+        $tool = New-TestCommand -Path $tool -WindowsBody ('@echo release>"{0}"' -f $sentinel) -UnixBody ('echo release>"{0}"' -f $sentinel)
         Set-FixtureVerificationCommand -Fixture $fixture -Id 'git-diff-check' -Executable $tool
         $policy = Get-Content -Raw -LiteralPath $fixture.Policy | ConvertFrom-Json -Depth 100
         $policy.verification.pathRules[0].implementation = @()
@@ -1478,7 +1492,7 @@ Invoke-Test 'release-tier command miswired as implementation is skipped' {
     try {
         $sentinel = Join-Path $fixture.Sandbox 'release-tier-executed.txt'
         $tool = Join-Path $fixture.Sandbox 'release-tier-tool.cmd'
-        Set-Content -LiteralPath $tool -Value ('@echo release-tier>"{0}"' -f $sentinel) -Encoding ascii
+        $tool = New-TestCommand -Path $tool -WindowsBody ('@echo release-tier>"{0}"' -f $sentinel) -UnixBody ('echo release-tier>"{0}"' -f $sentinel)
         Set-FixtureVerificationCommand -Fixture $fixture -Id 'git-diff-check' -Executable $tool
         $policy = Get-Content -Raw -LiteralPath $fixture.Policy | ConvertFrom-Json -Depth 100
         $policy.commands.'git-diff-check'.verificationTier = 'release'
@@ -1498,7 +1512,7 @@ Invoke-Test 'missing prerequisite blocks execution but not planning' {
     try {
         $sentinel = Join-Path $fixture.Sandbox 'prerequisite-executed.txt'
         $tool = Join-Path $fixture.Sandbox 'prerequisite-tool.cmd'
-        Set-Content -LiteralPath $tool -Value ('@echo executed>"{0}"' -f $sentinel) -Encoding ascii
+        $tool = New-TestCommand -Path $tool -WindowsBody ('@echo executed>"{0}"' -f $sentinel) -UnixBody ('echo executed>"{0}"' -f $sentinel)
         Set-FixtureVerificationCommand -Fixture $fixture -Id 'git-diff-check' -Executable $tool -Requirements @{ requiresNode = $true }
         $planning = Invoke-Verification -Fixture $fixture -ChangedPath @('execute/example.txt') -Json
         Assert-Equal $planning.ExitCode 0 'Missing prerequisites must not block planning.'
@@ -1517,8 +1531,8 @@ Invoke-Test 'child exit propagates and execution stops on first failure' {
         $secondSentinel = Join-Path $fixture.Sandbox 'second-executed.txt'
         $firstTool = Join-Path $fixture.Sandbox 'first-fail.cmd'
         $secondTool = Join-Path $fixture.Sandbox 'second-pass.cmd'
-        Set-Content -LiteralPath $firstTool -Value '@echo first failed&@exit /b 7' -Encoding ascii
-        Set-Content -LiteralPath $secondTool -Value ('@echo second>"{0}"' -f $secondSentinel) -Encoding ascii
+        $firstTool = New-TestCommand -Path $firstTool -WindowsBody '@echo first failed&@exit /b 7' -UnixBody 'echo first failed; exit 7'
+        $secondTool = New-TestCommand -Path $secondTool -WindowsBody ('@echo second>"{0}"' -f $secondSentinel) -UnixBody ('echo second>"{0}"' -f $secondSentinel)
         Set-FixtureVerificationCommand -Fixture $fixture -Id 'git-diff-check' -Executable $firstTool
         $policy = Get-Content -Raw -LiteralPath $fixture.Policy | ConvertFrom-Json -Depth 100
         $second = $policy.commands.'test-fast'
@@ -1682,7 +1696,6 @@ Invoke-Test 'Trainer skill inventory, routing, and doctrine contracts stay conso
 
     $seedAuthorityPaths = @(
         '.codex\skills\seed-runtime-source-of-truth\SKILL.md',
-        'CLAUDE.md',
         'trainer-app\docs\01_ARCHITECTURE.md',
         'trainer-app\docs\03_DATA_SCHEMA.md',
         'trainer-app\docs\04_API_CONTRACTS.md'
@@ -1708,6 +1721,40 @@ Invoke-Test 'Trainer skill inventory, routing, and doctrine contracts stay conso
     $auditText = $skillTextByName['audit-workflow']
     Assert-True ($auditText.Contains('Never infer database, production, artifact-write, or destructive authorization')) 'Audit router does not preserve explicit authorization boundaries.'
     Assert-True ($auditText.Contains('report the missing audit as an unresolved validation gate')) 'Audit router does not preserve the unresolved output-validation gate.'
+}
+
+Invoke-Test 'startup pointers and portable command ownership stay consolidated' {
+    $root = [System.IO.Path]::GetFullPath((Join-Path $sourceRoot '../..'))
+    foreach ($path in @('AGENTS.md', 'CLAUDE.md', 'trainer-app/README.md', 'trainer-app/docs/00_START_HERE.md', 'trainer-app/docs/06_TESTING.md')) {
+        $text = Get-Content -Raw (Join-Path $root $path)
+        Assert-True ($text.Contains('scripts/codex/README.md#task-and-verification')) "Missing command-owner link: $path"
+        Assert-True (-not $text.Contains('C:\Users\aabloch')) "Personal PC assumption: $path"
+    }
+    $claude = Get-Content -Raw (Join-Path $root 'CLAUDE.md')
+    Assert-True ($claude.Length -lt 600) 'CLAUDE became a second policy.'
+    Import-Module $sourceModule -Force
+    Assert-Equal (Resolve-TrainerExecutableName -Name 'npm' -Windows $true) 'npm.cmd' 'Windows npm resolution mismatch.'
+    Assert-Equal (Resolve-TrainerExecutableName -Name 'npm.cmd' -Windows $false) 'npm' 'Linux npm resolution mismatch.'
+    $policy = Get-Content -Raw $sourcePolicy | ConvertFrom-Json
+    foreach ($name in @('application-write', 'shared-seam-write')) {
+        Assert-True ($policy.classifications.$name.implementationChecks -notcontains 'test-fast') 'Generic legacy coverage returned.'
+    }
+}
+
+Invoke-Test 'relative worktree root is stable from primary and linked cloud checkouts' {
+    $fixture = New-TestRepository -PathWithSpaces
+    try {
+        $policy = Get-Content -Raw $fixture.Policy | ConvertFrom-Json
+        $policy.repository.canonicalWorktreeRoot = '../.worktrees/trainer'
+        Import-Module $fixture.Module -Force
+        $expected = Get-NormalizedPath (Join-Path $fixture.Sandbox '.worktrees/trainer')
+        Assert-Equal (Resolve-TrainerWorktreeRoot -Policy $policy -RepositoryRoot $fixture.Repository) $expected 'Primary root mismatch.'
+        $linked = Join-Path $expected 'owned-task'
+        Invoke-GitFixture -Repository $fixture.Repository -Arguments @('worktree', 'add', '-b', 'codex/owned-task', $linked) | Out-Null
+        Assert-Equal (Resolve-TrainerWorktreeRoot -Policy $policy -RepositoryRoot $linked) $expected 'Linked root drifted.'
+        Assert-True (Test-Path (Join-Path $fixture.Repository 'trainer-app/package.json')) 'Primary was modified.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
 }
 
 Invoke-Test 'remote identity JSON parses and default offline status matches HTTPS origin' {

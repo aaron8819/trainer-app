@@ -100,7 +100,7 @@ try {
         $classificationPolicy = $classificationProperty.Value
     }
 
-    $canonicalRoot = Get-NormalizedPath -Path $policy.repository.canonicalWorktreeRoot
+    $canonicalRoot = Resolve-TrainerWorktreeRoot -Policy $policy -RepositoryRoot $currentCheckoutPath
     $proposedWorktreePath = Get-NormalizedPath -Path (Join-Path $canonicalRoot $Name)
     $proposedBranch = "$($policy.repository.branchPrefix)$Name"
     $worktrees = @(Read-Worktrees -RepositoryRoot $currentCheckoutPath -CanonicalRoot $canonicalRoot)

@@ -2,6 +2,12 @@ Trainer2 real-owner access: [supported transition, empty Training home, epoch/se
 
 # 06 Testing
 
+Normal startup and command selection live in the
+[task and verification guide](../../scripts/codex/README.md#task-and-verification).
+Choose explicit owning-test paths for focused Trainer2 feedback; `test:fast` covers only its retained
+legacy owners. Publish authorized drafts before final browser/visual acceptance so hosted CI starts
+early. Do not rerun a full local inventory merely to duplicate qualified exact-candidate hosted evidence.
+
 Trainer2 Home/Program visual integration: [focused disposable journey, screenshots and separate retained preview](architecture/trainer2/HOME_PROGRAM_DESIGN.md#verification-and-local-preview).
 
 Trainer2 current-week selection: [eligibility, responsive Program, immutable start, migration/recovery and disposable verification](architecture/trainer2/CURRENT_WEEK_SELECTION.md).
@@ -964,5 +970,8 @@ remain. A matrix failure does not cancel other journey evidence.
 
 This separates wall-clock work rather than reducing coverage. The prior measured
 serial job took 390 seconds; new critical-path and runner-time savings require a
-hosted run of this candidate. No change-aware skipping or cache/build-mode change
-is included.
+hosted run of this candidate. No change-aware skipping is included. The build now uses the package `npm run build`
+Turbopack path, matching Vercel. Source/base/tree, lockfile hash, Node/npm/Next versions and build ID
+are checked by the aggregate; missing, stale-base, wrong-tree and wrong-runtime evidence fail closed.
+The base must be an ancestor of the tested head and must still be current before merge.
+All five existing artifact-admission scenarios remain; these do not prove a production browser journey.

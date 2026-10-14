@@ -1,4 +1,52 @@
-# Trainer Codex remote status
+# Trainer command guide
+
+
+## Task and verification
+
+[AGENTS.md](../../AGENTS.md) is the operating policy. This is the one normal command path;
+[06_TESTING.md](../../trainer-app/docs/06_TESTING.md) owns detailed test contracts and fixture limits.
+Use PowerShell 7 (`pwsh`) on Linux or Windows. No personal-PC path is required.
+
+1. Inspect current default branch, open work, exact checkout and dirty state. Use a task-owned cloud
+   clone or a linked worktree under the primary checkout's sibling `.worktrees/trainer/<task>`.
+   Relative policy roots resolve from the primary checkout, even when called in a linked worktree.
+   `Start-TrainerTask.ps1` proposes and inspects; it does not create a checkout or authorize writes.
+2. From the repo root, inspect the task and capabilities:
+   ```sh
+   pwsh -NoProfile -File scripts/codex/Start-TrainerTask.ps1 -Name <task> -Classification shared-seam-write -BaseBranch origin/master -Json
+   pwsh -NoProfile -File scripts/codex/Invoke-TrainerDoctor.ps1 -Json
+   ```
+   Use the real classification. An already-created branch/path is reported as a proposed-creation
+   conflict, not permission to overwrite it. Doctor checks tool availability, never logs in or repairs.
+3. In `trainer-app/`, run `npm ci`, then `npm run test -- <owning-test-paths>`. Choose explicit tests
+   from the implementation and consumers. `test:fast` remains the legacy selection-v2,
+   explainability and template-session set; it is not proof for arbitrary Trainer2 changes.
+   Do not load `.env`, seed or provision a database for credential-free work.
+4. From the repo root, select applicable checks:
+   ```sh
+   pwsh -NoProfile -File scripts/codex/Invoke-TrainerVerification.ps1 -BaseRef origin/master -Json
+   pwsh -NoProfile -File scripts/codex/Invoke-TrainerVerification.ps1 -BaseRef origin/master -Run -Json
+   pwsh -NoProfile -File scripts/codex/Test-TrainerCommandRegistry.ps1
+   pwsh -NoProfile -File scripts/codex/tests/Run-Tests.ps1
+   ```
+   The final two commands apply to tooling/policy changes; they are also hosted on Linux and Windows.
+   Registry invocations use logical `npm`, resolved to `npm.cmd` only on Windows. Shell arguments
+   remain separated. Full `verify` and protected operations are planned, never silently executed.
+5. Publish an authorized draft after focused feedback. Its PR workflow runs the single full hosted
+   inventory and parallel disposable acceptance. Browser/visual completion is a pre-merge gate when
+   relevant, not a pre-draft gate. Independent review can proceed while CI runs.
+6. Before authorized merge, recheck that the current default-branch base is included in the candidate;
+   integrate drift and refresh invalidated evidence. Retain qualified exact-tree evidence rather than
+   repeating a full local suite. Recheck merged-tree correspondence, then use the read-only deployment
+   procedure below. A plan's `success` and `qualification.checksPassed` cover only listed registry
+   checks, not manually selected owning tests, independent review, browser approval or deployment.
+
+Runtime versions are printed by `npm run build` on both CI and Vercel. The production job calls that
+same package script, records source/base/tree, lockfile, Node/npm/Next and build ID, and retains all five
+artifact-admission scenarios. Browser groups remain development-mode fixture evidence; production
+TLS/browser qualification is separate future work.
+
+## Remote status
 
 `Invoke-TrainerRemoteStatus.ps1` is the single public remote-status command.
 

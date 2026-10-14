@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import { isolatedLinuxJob } from '../../../scripts/trainer2/isolated-linux-lifecycle';
 import {
-  requireComponent, requireExits, requireFixtures, requireSuccessfulJobs,
+  requireComponent, requireExits, requireFixtures, requireSuccessfulJobs, requireBase, requireBuild,
 } from '../../../scripts/aggregate-trainer2-acceptance.mjs';
 
 const head = 'a'.repeat(40);
@@ -52,6 +52,32 @@ describe('parallel acceptance fails closed', () => {
     }
     writeFileSync(join(path, 'logger.exit'), '0\n');
     expect(() => requireExits(path, ['logger'])).not.toThrow();
+  });
+  it('rejects absent or stale base and incomplete deployed-build evidence', () => {
+    const path = fixture();
+    const base = 'c'.repeat(40);
+    expect(() => requireBase(path, base)).toThrow();
+    writeFileSync(join(path, 'base.txt'), base);
+    expect(() => requireBase(path, base)).not.toThrow();
+    expect(() => requireBase(path, head)).toThrow();
+    expect(() => requireBase(path, '')).toThrow();
+    const build = { command: 'npm run build', packageBuild: 'next build',
+      node: 'v22.20.0', npm: '10.9.3', next: '16.1.6', lockfileHash: 'lock', buildId: 'built-id' };
+    expect(() => requireBuild(path, 'lock', 22)).toThrow();
+    const write = (value: unknown): void => writeFileSync(join(path, 'build.json'), JSON.stringify(value));
+    write(build);
+    expect(() => requireBuild(path, 'lock', 22)).toThrow();
+    writeFileSync(join(path, 'production-build.log'), 'Next.js 16.1.6 (Turbopack)');
+    expect(requireBuild(path, 'lock', 22)).toEqual(build);
+    for (const override of [{ command: 'next build --webpack' }, { packageBuild: 'next build --webpack' },
+      { node: 'v20.1.0' }, { node: 'unknown' }, { npm: '' }, { next: '' },
+      { lockfileHash: 'stale' }, { buildId: '' }]) {
+      write({ ...build, ...override });
+      expect(() => requireBuild(path, 'lock', 22)).toThrow();
+    }
+    write(build);
+    writeFileSync(join(path, 'production-build.log'), 'Next.js 16.1.6 (webpack)');
+    expect(() => requireBuild(path, 'lock', 22)).toThrow();
   });
   it('requires all fixture reports and successful teardown before qualification', () => {
     const path = fixture();
@@ -110,6 +136,15 @@ describe('parallel acceptance fails closed', () => {
       })).toBe(true);
       expect(job.steps.find(step => step.uses === 'actions/checkout@v7')?.with?.ref)
         .toBe('${{ github.event.pull_request.head.sha }}');
+    }
+    const production = workflow.jobs['trainer2-production-artifact'];
+    const buildStep = production.steps.find(step => step.name === 'Build synthetic V2 production artifact');
+    expect(buildStep?.run).toContain('npm run build >');
+    expect(buildStep?.run).not.toContain('--webpack');
+    expect(production.steps.some(step => step.name === 'Record successful build identity')).toBe(true);
+    for (const job of [production, browser]) {
+      expect(job.steps.find(step => step.name === 'Record exact source')?.run)
+        .toContain('git merge-base --is-ancestor');
     }
     expect(browser.steps.some(step =>
       step.name === 'Build synthetic V2 production artifact')).toBe(false);

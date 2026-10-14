@@ -3,7 +3,7 @@
   "version": 1,
   "repository": {
     "name": "Trainer",
-    "canonicalWorktreeRoot": "C:\\Users\\aabloch\\claude\\vibe-coding\\.worktrees\\trainer",
+    "canonicalWorktreeRoot": "../.worktrees/trainer",
     "branchPrefix": "codex/"
   },
   "classifications": {
@@ -28,7 +28,7 @@
         "writesAllowed": false
       },
       "productionWritesMayEverBeAllowed": false,
-      "implementationChecks": ["test-fast", "git-diff-check"],
+      "implementationChecks": ["git-diff-check"],
       "releaseChecks": ["verify"],
       "warnings": [],
       "authorizationRequirements": ["Use an isolated canonical worktree for implementation."]
@@ -41,7 +41,7 @@
         "writesAllowed": false
       },
       "productionWritesMayEverBeAllowed": false,
-      "implementationChecks": ["test-fast", "git-diff-check"],
+      "implementationChecks": ["git-diff-check"],
       "releaseChecks": ["verify"],
       "warnings": ["Confirm the canonical owner seam and review all affected consumers before implementation."],
       "authorizationRequirements": ["Use an isolated canonical worktree and serialize overlapping shared-seam changes."]
@@ -231,6 +231,12 @@
     },
     "pathRules": [
       {
+        "name": "legacy-fast-owners",
+        "patterns": ["trainer-app/src/lib/engine/selection-v2/**", "trainer-app/src/lib/engine/explainability/**", "trainer-app/src/lib/api/template-session*"],
+        "implementation": ["test-fast"],
+        "release": []
+      },
+      {
         "name": "database-backup-tooling",
         "patterns": ["scripts/database/**"],
         "implementation": ["database-backup-tests", "git-diff-check"],
@@ -314,13 +320,13 @@
       {
         "name": "route-boundary",
         "patterns": ["trainer-app/src/app/api/**"],
-        "implementation": ["test-fast"],
+        "implementation": ["git-diff-check"],
         "release": ["verify"]
       },
       {
         "name": "shared-domain-seams",
         "patterns": ["trainer-app/src/lib/api/**", "trainer-app/src/lib/engine/**", "trainer-app/src/lib/session-semantics/**", "trainer-app/src/lib/progression/**"],
-        "implementation": ["test-fast"],
+        "implementation": ["git-diff-check"],
         "release": ["verify"]
       },
       {
@@ -421,7 +427,7 @@
       "requiresNode": true,
       "requiresNpm": true,
       "requiresPowerShell": false,
-      "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "test:environment-classification"] }
+      "invocation": { "workingDirectory": "trainer-app", "executable": "npm", "arguments": ["run", "test:environment-classification"] }
     },
     "npm-test-inventory-credential-free": {
       "command": "npm run test:inventory:credential-free",
@@ -441,7 +447,7 @@
       "requiresNode": true,
       "requiresNpm": true,
       "requiresPowerShell": false,
-      "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "test:inventory:credential-free"] }
+      "invocation": { "workingDirectory": "trainer-app", "executable": "npm", "arguments": ["run", "test:inventory:credential-free"] }
     },
     "git-diff-check": {
       "command": "git diff --check",
@@ -481,7 +487,7 @@
       "requiresNode": true,
       "requiresNpm": true,
       "requiresPowerShell": false,
-      "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "test:fast"] }
+      "invocation": { "workingDirectory": "trainer-app", "executable": "npm", "arguments": ["run", "test:fast"] }
     },
     "verify-contracts": {
       "command": "npm run verify:contracts",
@@ -501,7 +507,7 @@
       "requiresNode": true,
       "requiresNpm": true,
       "requiresPowerShell": false,
-      "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "verify:contracts"] }
+      "invocation": { "workingDirectory": "trainer-app", "executable": "npm", "arguments": ["run", "verify:contracts"] }
     },
     "verify-completed-review": {
       "command": "npm run verify:completed-review",
@@ -521,7 +527,7 @@
       "requiresNode": true,
       "requiresNpm": true,
       "requiresPowerShell": false,
-      "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "verify:completed-review"] }
+      "invocation": { "workingDirectory": "trainer-app", "executable": "npm", "arguments": ["run", "verify:completed-review"] }
     },
     "verify-version": {
       "command": "npm run verify:version",
@@ -541,7 +547,7 @@
       "requiresNode": true,
       "requiresNpm": true,
       "requiresPowerShell": false,
-      "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "verify:version"] }
+      "invocation": { "workingDirectory": "trainer-app", "executable": "npm", "arguments": ["run", "verify:version"] }
     },
     "verify": {
       "command": "npm run verify",
@@ -561,7 +567,7 @@
       "requiresNode": true,
       "requiresNpm": true,
       "requiresPowerShell": false,
-      "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "verify"] }
+      "invocation": { "workingDirectory": "trainer-app", "executable": "npm", "arguments": ["run", "verify"] }
     },
     "prisma-generate": {
       "command": "npm run prisma:generate",
@@ -581,7 +587,7 @@
       "requiresNode": true,
       "requiresNpm": true,
       "requiresPowerShell": false,
-      "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "prisma:generate"] }
+      "invocation": { "workingDirectory": "trainer-app", "executable": "npm", "arguments": ["run", "prisma:generate"] }
     },
     "test-migration-integrity": {
       "command": "npm run test:migration-integrity",
@@ -601,7 +607,7 @@
       "requiresNode": true,
       "requiresNpm": true,
       "requiresPowerShell": false,
-      "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "test:migration-integrity"] }
+      "invocation": { "workingDirectory": "trainer-app", "executable": "npm", "arguments": ["run", "test:migration-integrity"] }
     },
     "verify-finisher-schema-drift": {
       "command": "npm run verify:finisher-schema-drift",
@@ -621,7 +627,7 @@
       "requiresNode": true,
       "requiresNpm": true,
       "requiresPowerShell": false,
-      "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "verify:finisher-schema-drift"] }
+      "invocation": { "workingDirectory": "trainer-app", "executable": "npm", "arguments": ["run", "verify:finisher-schema-drift"] }
     },
     "test-audit-matrix": {
       "command": "npm run test:audit:matrix",
@@ -641,7 +647,7 @@
       "requiresNode": true,
       "requiresNpm": true,
       "requiresPowerShell": false,
-      "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "test:audit:matrix"] }
+      "invocation": { "workingDirectory": "trainer-app", "executable": "npm", "arguments": ["run", "test:audit:matrix"] }
     },
     "audit-future-week": {
       "command": "npm run audit:workout -- --env-file .env.local --mode future-week --owner owner@local",
@@ -661,7 +667,7 @@
       "requiresNode": true,
       "requiresNpm": true,
       "requiresPowerShell": false,
-      "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "audit:workout", "--", "--env-file", ".env.local", "--mode", "future-week", "--owner", "owner@local"] }
+      "invocation": { "workingDirectory": "trainer-app", "executable": "npm", "arguments": ["run", "audit:workout", "--", "--env-file", ".env.local", "--mode", "future-week", "--owner", "owner@local"] }
     }
   },
   "doctor": {
@@ -919,6 +925,7 @@
 
     { "id": "npm-predev", "packageScript": "predev", "command": "prisma generate", "sourceLocation": "trainer-app/package.json#scripts.predev", "entrypoint": null, "profile": "local-artifact-write", "flagEscalations": [], "notes": "Generates local Prisma client artifacts." },
     { "id": "npm-dev", "packageScript": "dev", "command": "next dev", "sourceLocation": "trainer-app/package.json#scripts.dev", "entrypoint": null, "profile": "network-local-artifact-write", "flagEscalations": [], "notes": "Starts a local development server and writes build/cache artifacts." },
+    { "id": "npm-prebuild", "packageScript": "prebuild", "command": "node scripts/report-build-runtime.mjs", "sourceLocation": "trainer-app/package.json#scripts.prebuild", "entrypoint": "trainer-app/scripts/report-build-runtime.mjs", "profile": "read-only", "flagEscalations": [], "notes": "Prints only Node/npm versions for build parity evidence." },
     { "id": "npm-build", "packageScript": "build", "command": "next build", "sourceLocation": "trainer-app/package.json#scripts.build", "entrypoint": null, "profile": "local-artifact-write", "flagEscalations": [], "notes": "Writes the local Next.js build output." },
     { "id": "npm-start", "packageScript": "start", "command": "next start", "sourceLocation": "trainer-app/package.json#scripts.start", "entrypoint": null, "profile": "network-read-only", "flagEscalations": [], "notes": "Starts a local server from existing build output." },
     { "id": "npm-lint", "packageScript": "lint", "command": "eslint . --cache --cache-location .eslintcache", "sourceLocation": "trainer-app/package.json#scripts.lint", "entrypoint": null, "profile": "local-artifact-write", "flagEscalations": [], "notes": "Writes the local ESLint cache." },

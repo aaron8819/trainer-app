@@ -769,6 +769,103 @@ Invoke-Test 'non-canonical worktree reporting' {
     finally { Remove-TestRepository -Fixture $fixture }
 }
 
+Invoke-Test 'report-only coverage selects shared risks and keeps actual gates' {
+    Import-Module $sourceModule -Force
+    $policy = Read-TrainerPolicy -Path $sourcePolicy
+    foreach ($path in @(
+        'trainer-app/src/lib/api/trainer2/sessions.ts',
+        'trainer-app/src/app/trainer2/auth/page.tsx',
+        'trainer-app/prisma/schema.prisma',
+        'trainer-app/prisma/migrations/example/migration.sql',
+        'trainer-app/src/components/trainer2/SetResultRow.tsx',
+        'trainer-app/src/lib/engine/trainer2/logging-prefill.ts'
+    )) {
+        $preview = Get-TrainerCoveragePreview -Policy $policy -ChangedPath @($path)
+        Assert-Equal ($preview.recommendedJourneys -join ',') 'equipment,navigation,logger' $path
+        Assert-True $preview.reportOnly 'Preview became executable.'
+        Assert-True $preview.fullInventoryRetained 'Inventory gate was removed.'
+        Assert-True $preview.productionArtifactRetained 'Production artifact was removed.'
+    }
+    foreach ($path in @(
+        'trainer-app/src/components/trainer2/Trainer2Shell.tsx',
+        'trainer-app/src/components/trainer2/TrainingHomeFrame.tsx',
+        'trainer-app/src/components/trainer2/Logger.module.css'
+    )) {
+        $preview = Get-TrainerCoveragePreview -Policy $policy -ChangedPath @($path)
+        Assert-Equal ($preview.recommendedJourneys -join ',') 'navigation,logger' $path
+    }
+    foreach ($path in @('trainer-app/public/icon.png', 'trainer-app/public/icons/mobile.ico',
+        'trainer-app/src/app/apple-icon.png')) {
+        $preview = Get-TrainerCoveragePreview -Policy $policy -ChangedPath @($path)
+        Assert-Equal $preview.recommendedJourneys.Count 0 $path
+        Assert-Equal $preview.currentJourneys.Count 3 'Current browser gates were narrowed.'
+    }
+    foreach ($path in @('trainer-app/public/client.js', 'trainer-app/public/image.svg',
+        'trainer-app/public/../secret.png', 'unknown/feature.ts',
+        'trainer-app/src/app/layout.tsx', 'trainer-app/src/app/manifest.ts')) {
+        $preview = Get-TrainerCoveragePreview -Policy $policy -ChangedPath @($path)
+        Assert-Equal $preview.recommendedJourneys.Count 3 "Unsafe narrow coverage: $path"
+    }
+    $mixed = Get-TrainerCoveragePreview -Policy $policy -ChangedPath @(
+        'trainer-app/public/icon.png', 'trainer-app/src/lib/api/trainer2/sessions.ts')
+    Assert-Equal $mixed.recommendedJourneys.Count 3 'Asset masked a shared change.'
+    $windows = Get-TrainerCoveragePreview -Policy $policy -ChangedPath @(
+        'trainer-app\src\components\trainer2\Trainer2Shell.tsx')
+    Assert-Equal ($windows.recommendedJourneys -join ',') 'navigation,logger' 'Separator drift.'
+}
+
+Invoke-Test 'report-only coverage does not change execution selection or add side effects' {
+    $fixture = New-TestRepository
+    try {
+        $path = 'trainer-app/public/icon.png'
+        $result = Invoke-Verification -Fixture $fixture -ChangedPath @($path) -Json
+        Assert-Equal $result.ExitCode 0 'Advisory plan failed.'
+        $plan = $result.Text | ConvertFrom-Json
+        Assert-True $plan.inspectionOnly 'Report ran commands.'
+        Assert-Equal $plan.execution.results.Count 0 'Report executed verification.'
+        Assert-True ($plan.implementation.id -contains 'verify') 'Existing fallback was removed.'
+        Assert-Equal $plan.coveragePreview.recommendedJourneys.Count 0 'Asset preview is broad.'
+        $workflow = Get-Content -Raw (Join-Path $sourceRoot '../../.github/workflows/credential-free-inventory.yml')
+        Assert-True ($workflow.Contains('Report affected verification coverage (advisory)')) 'CI uses no preview.'
+        Assert-True ($workflow.Contains('Invoke-TrainerVerification.ps1 -BaseRef origin/master -Json')) 'CI has a second selector.'
+        foreach ($name in @('Combined equipment journey', 'Empty and populated navigation',
+            'Logger swap resume finish', 'Validate and aggregate credential-free inventory')) {
+            Assert-True ($workflow.Contains($name)) "Removed gate: $name"
+        }
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+
+Invoke-Test 'coverage reconciliation preserves execution eligibility and truthful qualification' {
+    Import-Module $sourceModule -Force
+    $policy = Read-TrainerPolicy -Path $sourcePolicy
+    $verify = [pscustomobject]@{ id = 'verify'; executableInRunMode = $false; reasons = @() }
+    $fast = [pscustomobject]@{ id = 'test-fast'; executableInRunMode = $true; reasons = @() }
+    $contracts = [pscustomobject]@{ id = 'verify-contracts'; executableInRunMode = $false; reasons = @() }
+    $result = Resolve-TrainerCommandCoverage -Policy $policy -Commands @($fast, $contracts, $verify)
+    Assert-Equal ($result.commands.id -join ',') 'test-fast,verify' 'Planned parent hid a runnable check.'
+    Assert-Equal $result.covered[0].coveredBy 'verify' 'Coverage provenance missing.'
+    $verify.executableInRunMode = $true
+    $result = Resolve-TrainerCommandCoverage -Policy $policy -Commands @($fast, $contracts, $verify)
+    Assert-Equal ($result.commands.id -join ',') 'verify' 'Nested coverage repeats.'
+    $qualification = Get-TrainerCheckQualification -Commands @($fast, $verify) -Results @(
+        [pscustomobject]@{ id = 'test-fast'; status = 'passed' })
+    Assert-True (-not $qualification.checksPassed) 'Partial execution claimed full qualification.'
+    Assert-Equal $qualification.status 'partial' 'Partial qualification missing.'
+    Assert-Equal ($qualification.pending -join ',') 'verify' 'Planned check vanished.'
+    $package = Get-Content -Raw (Join-Path $sourceRoot '../../trainer-app/package.json') | ConvertFrom-Json
+    Assert-True ($package.scripts.verify.Contains('npm run verify:fast')) 'Verify composition drift.'
+    foreach ($script in @('verify:completed-review', 'verify:version')) {
+        Assert-True ($package.scripts.verify.Contains("npm run $script")) "Verify lost $script."
+    }
+    foreach ($script in @('test:fast', 'verify:contracts')) {
+        Assert-True ($package.scripts.'verify:fast'.Contains("npm run $script")) "Verify-fast lost $script."
+    }
+    $empty = Get-TrainerCheckQualification
+    Assert-True (-not $empty.checksPassed) 'No execution claimed a pass.'
+}
+
 Invoke-Test 'path verification selection and deduplication' {
     $fixture = New-TestRepository
     try {
@@ -1122,6 +1219,8 @@ Invoke-Test 'verification JSON contract and explicit paths' {
         Assert-Equal $plan.version 1 'Verification version mismatch.'
         Assert-True $plan.inspectionOnly 'Planning JSON must be inspection-only.'
         Assert-True (-not $plan.runRequested) 'Planning JSON runRequested must be false.'
+        Assert-True (-not $plan.qualification.checksPassed) 'Planning claimed executed checks passed.'
+        Assert-Equal $plan.qualification.status 'not-qualified' 'Planning qualification missing.'
         Assert-Equal @($plan.changedPaths).Count 2 'Repeatable changed paths were not retained.'
         Assert-True ($plan.implementation.id -contains 'verify-contracts') 'Contract check missing.'
         Assert-True ($plan.implementation.id -contains 'prisma-generate') 'Prisma check missing.'
@@ -1326,6 +1425,7 @@ Invoke-Test 'Run executes only an approved local implementation command' {
         Assert-True (Test-Path -LiteralPath $sentinel) 'Approved command did not execute.'
         Assert-Equal $plan.execution.results[0].status 'passed' 'Approved command result missing.'
         Assert-Equal $plan.execution.results[0].exitCode 0 'Approved command exit code mismatch.'
+        Assert-True $plan.qualification.checksPassed 'The only selected passing check was not qualified.'
     }
     finally { Remove-TestRepository -Fixture $fixture }
 }
@@ -2725,7 +2825,7 @@ Invoke-Test 'registry parses and covers committed command surfaces' {
     Assert-Equal $report.packageScriptsRegistered $report.packageScripts 'Every package script must be registered.'
     Assert-Equal @($report.errors).Count 0 'Registry validator reported errors.'
     Assert-True ($report.commandsRegistered -ge $report.packageScripts) 'Registry command count is unexpectedly small.'
-    Assert-Equal @($report.ignoredEntrypoints).Count 9 'Documented internal-entrypoint ignore count mismatch.'
+    Assert-Equal @($report.ignoredEntrypoints).Count 10 'Documented internal-entrypoint ignore count mismatch.'
     Assert-True $report.remoteIdentityContractValid 'Registry did not validate the remote identity contract.'
     Assert-True $report.remoteStatusRegistered 'Registry did not validate the remote status command.'
 }

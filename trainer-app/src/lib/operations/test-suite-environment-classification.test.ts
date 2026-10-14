@@ -599,6 +599,31 @@ describe("pull-request CI contract", () => {
     expect(workflowSource).not.toMatch(/^\s+run:\s+.*\bvitest\b/m);
   });
 
+  it("keeps advisory coverage independent from required failure propagation", () => {
+    const workflow = parseWorkflow(workflowSource);
+    const report = workflow.jobs?.["verification-coverage-report"];
+    expect(report).toMatchObject({ "continue-on-error": true, "timeout-minutes": 5 });
+    const checkout = report?.steps?.find(step => step.uses === "actions/checkout@v7");
+    expect(checkout?.with?.ref).toBe("${{ github.event.pull_request.head.sha }}");
+    const run = workflowStep(workflow, "verification-coverage-report",
+      "Report affected verification coverage (advisory)");
+    expect(run?.run).toContain("Invoke-TrainerVerification.ps1 -BaseRef origin/master -Json");
+    const upload = workflowStep(workflow, "verification-coverage-report",
+      "Retain advisory verification report");
+    expect(upload).toMatchObject({ if: "${{ always() }}", uses: "actions/upload-artifact@v4",
+      with: { path: "trainer-app/artifacts/verification-selection/plan.json" } });
+    for (const id of ["credential-free-shard", "import-safety", "credential-free-inventory",
+      "trainer2-combined-acceptance"]) {
+      expect(JSON.stringify(workflow.jobs?.[id]?.needs ?? []))
+        .not.toContain("verification-coverage-report");
+    }
+    const required = workflowStep(workflow, "credential-free-inventory",
+      "Validate and aggregate credential-free inventory");
+    expect(required).toBeDefined();
+    required!["continue-on-error"] = true;
+    expect(validateCredentialFreeWorkflow(workflow)).toContain("continue-on-error");
+  });
+
   it("rejects missing or misplaced workflow contract fields", () => {
     const cases: Array<{
       label: string;

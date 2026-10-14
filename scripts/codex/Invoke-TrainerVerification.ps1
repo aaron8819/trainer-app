@@ -341,7 +341,10 @@ function Write-HumanPlan {
     param([Parameter(Mandatory = $true)][object]$Plan)
 
     Write-Output 'Trainer verification plan'
-    Write-Output "Success: $($Plan.success)"
+    Write-Output "Plan / executor success: $($Plan.success)"
+    Write-Output "Check qualification: $($Plan.qualification.status)"
+    Write-Output "All selected checks passed: $($Plan.qualification.checksPassed)"
+    Write-Output "Pending checks: $($Plan.qualification.pending -join ', ')"
     Write-Output "Inspection only: $($Plan.inspectionOnly)"
     Write-Output "Run requested: $($Plan.runRequested)"
     Write-Output "Checkout: $($Plan.repository.checkoutPath)"
@@ -364,6 +367,8 @@ function Write-HumanPlan {
     Write-Output 'Release checks (never executed by Phase 3):'
     if (@($Plan.release).Count -eq 0) { Write-Output '  - none' }
     foreach ($command in @($Plan.release)) { Write-Output "  - [$($command.id)] $($command.command)" }
+    Write-Output ('Browser coverage proposal (report only; gates unchanged): ' + `
+        ($Plan.coveragePreview.recommendedJourneys -join ', '))
     Write-Output 'Prerequisites:'
     if (@($Plan.preconditions).Count -eq 0) { Write-Output '  - none' }
     foreach ($precondition in @($Plan.preconditions)) {
@@ -520,6 +525,10 @@ try {
     $release = @($orderedIds | Where-Object { $releaseSelection.ContainsKey($_) } | ForEach-Object {
         Get-CommandPlanItem -Policy $policy -Id $_ -Reasons @($releaseSelection[$_]) -ReleaseOnly $true
     })
+    $implementationCoverage = Resolve-TrainerCommandCoverage -Policy $policy -Commands $implementation
+    $releaseCoverage = Resolve-TrainerCommandCoverage -Policy $policy -Commands $release
+    $implementation = @($implementationCoverage.commands)
+    $release = @($releaseCoverage.commands)
     $preconditions = @(Get-PrerequisitePlan -Commands $implementation)
     $skipped = [System.Collections.Generic.List[object]]::new()
     foreach ($command in @($implementation + $release)) {
@@ -551,6 +560,10 @@ try {
             explicitPathsCombined = $hasExplicitPaths
             manifestCombined = $null -ne $manifest
         }
+        coveredCommands = @($implementationCoverage.covered + $releaseCoverage.covered)
+        qualification = Get-TrainerCheckQualification -Commands @($implementation + $release)
+        coveragePreview = Get-TrainerCoveragePreview -Policy $policy `
+            -ChangedPath @($changedPaths | ForEach-Object { $_.path })
         changedPaths = @($changedPaths)
         matchedRules = $matchedRules.ToArray()
         implementation = @($implementation)
@@ -648,6 +661,8 @@ try {
             if ($result.exitCode -ne 0) { $failed = $true }
         }
         $plan.execution.results = $results.ToArray()
+        $plan.qualification = Get-TrainerCheckQualification -Commands @($implementation + $release) `
+            -Results $plan.execution.results
         $plan.execution.status = if ($failed) { 'failed' } elseif (@($plan.blockers).Count -gt 0) { 'blocked' } else { 'completed' }
         $plan.success = (-not $failed) -and @($plan.blockers).Count -eq 0
     }

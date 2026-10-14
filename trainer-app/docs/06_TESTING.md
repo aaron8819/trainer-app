@@ -18,9 +18,9 @@ Trainer2 empty execution discard: [lifecycle, command, retained attempts, fresh 
 
 Trainer2 historical result correction: [command, immutable history, completed readback, permissions and verification](architecture/trainer2/HISTORICAL_SET_CORRECTIONS.md).
 
-Trainer2 finish: `node node_modules/tsx/dist/cli.mjs scripts/test-trainer2-workout-finish.ts --confirm-disposable` exercises disposable PostgreSQL and browser journeys. FinishWorkout.test.tsx is credential-free. Inventory: 406 total, 367 credential-free, 34 import-only and five DB-required; see [finish verification scope](architecture/trainer2/WORKOUT_FINISH.md).
+Trainer2 finish: `node node_modules/tsx/dist/cli.mjs scripts/test-trainer2-workout-finish.ts --confirm-disposable` exercises disposable PostgreSQL and browser journeys. FinishWorkout.test.tsx is credential-free. Historical finish-slice inventory: 406 total, 367 credential-free, 34 import-only and five DB-required; see [finish verification scope](architecture/trainer2/WORKOUT_FINISH.md).
 
-Trainer2 result verification: [contract and disposable runner](architecture/trainer2/SET_RESULTS.md). Inventory is now 405 Vitest files = 366 credential-free + 34 import-only + 5 DB-required. The new SetResultRow suite is credential-free; the registered PostgreSQL/Edge harness is separate.
+Trainer2 result verification: [contract and disposable runner](architecture/trainer2/SET_RESULTS.md). Historical result-slice inventory was 405 Vitest files = 366 credential-free + 34 import-only + 5 DB-required. The new SetResultRow suite is credential-free; the registered PostgreSQL/Edge harness is separate.
 
 Trainer2 local activation: [current contract, immutable approval, instruction scope, API/UI behavior and verification](architecture/trainer2/ACTIVATION.md).
 
@@ -899,3 +899,47 @@ Exercise-swap policy coverage lives in `src/lib/engine/trainer2/exercise-swap.te
 Trainer2 execution-local Add exercise ownership, identity, command, UI and migration/recovery requirements are documented in [ADD_EXERCISE.md](architecture/trainer2/ADD_EXERCISE.md).
 
 Trainer2 equipment journey: run repository-local `node node_modules/tsx/dist/cli.mjs scripts/test-trainer2-equipment-recording.ts --confirm-disposable` from `trainer-app`. It creates only an owned local fixture, requires no inherited database target, and verifies Builder to Logger to history/prefill plus cleanup. See [equipment support](architecture/trainer2/PROGRAM_SUPPORT.md#equipment-recording-extension).
+
+## Shared Trainer2 fixture setup and advisory coverage
+
+`src/lib/operations/trainer2-fixture.ts` is a pure test-only helper used by the
+Home/Program and equipment runners. It reports command rejection codes without
+printing payloads. For a fresh START, history targets come from execution-owned
+identity mappings; rep basis, load convention and zero policy come from the frozen
+catalog snapshot. It does not author swapped or session-added targets. Its golden
+preflight protects the existing 60.123456 kg to 135 lb starting-load boundary before
+expensive setup. Fixture resource creation and cleanup remain owned by the runners.
+
+The repository verification selector includes `coveragePreview`, defined only by
+`scripts/codex/trainer-policy.v1.json`. CI uploads the same selector's JSON as an
+advisory report. Unknown paths and shared auth, persistence, contract, engine or
+fixture/tooling changes retain all three proposed browser journeys. Inert raster
+assets can propose fewer journeys; layout/manifest code remains conservative.
+This report does not execute or skip checks: current verification selection, full
+credential-free inventory, production artifact and all browser gates remain intact.
+Any future gate reduction requires separately reviewed implementation and evidence.
+
+## Verification planning and command coverage
+
+The selector's `success` and execution `completed` fields describe valid planning
+and completion of eligible execution, respectively. They do not mean every selected
+check passed. Human output explicitly labels this distinction; JSON `qualification`
+reports passed and pending IDs and claims `checksPassed` only when every retained
+selected command passed in this invocation. This does not import or invent reused
+evidence. Release checks and plan-only full `verify` remain pending until qualified
+separately; `-Run` does not gain release, database or network authority.
+
+The policy's `commandCoverage` records that `verify` contains `test-fast`, contracts,
+completed-review and version checks via package scripts. Selection avoids redundant
+children within each phase only when the parent is runnable, or the child is also
+plan-only. A planned parent never hides a runnable child. Removed children retain
+`coveredCommands` provenance. Across phases, focused implementation results and a
+later full release check remain separate; stale evidence must not be assumed valid.
+The browser `coveragePreview` remains advisory and all CI gates remain unchanged.
+
+Operational entrypoints are registered in `trainer-policy.v1.json`; internal
+`test-trainer2-real-access-browser.ts` exports a consumed helper rather than a CLI
+and is explicitly excluded from standalone entrypoint coverage. Registration is
+side-effect documentation, not authorization to execute a disposable fixture.
+Current inventory counts come from the generated classification/aggregate reports,
+not historical slice counts in this document.

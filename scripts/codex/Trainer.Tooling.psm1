@@ -157,6 +157,86 @@ function Read-Worktrees {
     $result.ToArray()
 }
 
+function Get-TrainerCoveragePreview {
+    param(
+        [Parameter(Mandatory = $true)][object]$Policy,
+        [AllowEmptyCollection()][string[]]$ChangedPath = @()
+    )
+    $all = @('equipment', 'navigation', 'logger')
+    $selected = [System.Collections.Generic.HashSet[string]]::new()
+    $reasons = [System.Collections.Generic.List[object]]::new()
+    $configuration = $Policy.verification.PSObject.Properties['coveragePreview']
+    foreach ($rawPath in $ChangedPath) {
+        $path = ConvertTo-TrainerRepositoryPath -Path $rawPath
+        $matched = $false
+        if ($null -ne $configuration -and $path -notmatch '(^|/)\.\.(/|$)|:') {
+            foreach ($rule in @($configuration.Value.rules)) {
+                if (@($rule.patterns | Where-Object {
+                    Test-TrainerPolicyPattern -Path $path -Pattern ([string]$_)
+                }).Count -eq 0) { continue }
+                $matched = $true
+                $reasons.Add([pscustomobject]@{ path = $path; rule = [string]$rule.name })
+                foreach ($journey in @($rule.journeys)) {
+                    if ($all -notcontains $journey) {
+                        throw "Unknown advisory browser journey '$journey'."
+                    }
+                    [void]$selected.Add([string]$journey)
+                }
+            }
+        }
+        if (-not $matched) {
+            foreach ($journey in $all) { [void]$selected.Add($journey) }
+            $reasons.Add([pscustomobject]@{ path = $path; rule = 'conservative-fallback' })
+        }
+    }
+    [pscustomobject][ordered]@{
+        version = 1
+        reportOnly = $true
+        gatesUnchanged = $true
+        fullInventoryRetained = $true
+        productionArtifactRetained = $true
+        currentJourneys = $all
+        recommendedJourneys = @($all | Where-Object { $selected.Contains($_) })
+        potentiallyAvoidableJourneys = @($all | Where-Object { -not $selected.Contains($_) })
+        reasons = $reasons.ToArray()
+    }
+}
+
+
+function Resolve-TrainerCommandCoverage {
+    param([object]$Policy, [AllowEmptyCollection()][object[]]$Commands = @())
+    $retained = [System.Collections.Generic.List[object]]::new()
+    $covered = [System.Collections.Generic.List[object]]::new()
+    foreach ($command in $Commands) {
+        $parent = @($Commands | Where-Object {
+            $coverage = $Policy.verification.PSObject.Properties['commandCoverage']
+            $rule = if ($null -ne $coverage) { $coverage.Value.PSObject.Properties[$_.id] }
+            $null -ne $rule -and $command.id -in @($rule.Value) -and
+                ($_.executableInRunMode -or -not $command.executableInRunMode)
+        }) | Select-Object -First 1
+        if ($null -ne $parent) {
+            $covered.Add([pscustomobject]@{ id = $command.id; coveredBy = $parent.id;
+                reasons = $command.reasons })
+        } else { $retained.Add($command) }
+    }
+    [pscustomobject]@{ commands = $retained.ToArray(); covered = $covered.ToArray() }
+}
+
+function Get-TrainerCheckQualification {
+    param([AllowEmptyCollection()][object[]]$Commands = @(),
+        [AllowEmptyCollection()][object[]]$Results = @())
+    $passed = @($Results | Where-Object status -eq 'passed' | ForEach-Object id)
+    $pending = @($Commands | ForEach-Object id | Sort-Object -Unique |
+        Where-Object { $_ -notin $passed })
+    [pscustomobject]@{
+        checksPassed = $Commands.Count -gt 0 -and $pending.Count -eq 0
+        passed = $passed; pending = $pending
+        status = if ($Commands.Count -eq 0) { 'no-checks-selected' }
+            elseif ($pending.Count -eq 0) { 'passed' }
+            elseif ($passed.Count -gt 0) { 'partial' } else { 'not-qualified' }
+    }
+}
+
 function Read-TrainerPolicy {
     param([Parameter(Mandatory = $true)][string]$Path)
 
@@ -356,6 +436,9 @@ Export-ModuleMember -Function @(
     'Get-NormalizedPath',
     'ConvertTo-TrainerRepositoryPath',
     'Test-TrainerPolicyPattern',
+    'Get-TrainerCoveragePreview',
+    'Resolve-TrainerCommandCoverage',
+    'Get-TrainerCheckQualification',
     'Get-DirtyPaths',
     'Read-Worktrees',
     'Read-TrainerPolicy',

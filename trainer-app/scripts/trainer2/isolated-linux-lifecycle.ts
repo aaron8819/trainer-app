@@ -5,7 +5,8 @@ export function isolatedLinuxJob(platform: string, env: Readonly<Record<string, 
   if (platform !== 'linux' || env.TRAINER2_ISOLATED_LINUX_JOB !== '1' ||
       env.CI !== 'true' || env.GITHUB_ACTIONS !== 'true' ||
       env.RUNNER_ENVIRONMENT !== 'github-hosted' ||
-      env.GITHUB_JOB !== 'trainer2-combined-acceptance') {
+      !['trainer2-combined-acceptance', 'trainer2-production-artifact', 'trainer2-browser']
+        .includes(env.GITHUB_JOB ?? '')) {
     throw new Error('Fixture requires Windows ownership or explicit isolated Linux CI');
   }
   return true;

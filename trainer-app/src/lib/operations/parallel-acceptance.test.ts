@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
+import { isolatedLinuxJob } from '../../../scripts/trainer2/isolated-linux-lifecycle';
 import {
   requireComponent, requireExits, requireFixtures, requireSuccessfulJobs,
 } from '../../../scripts/aggregate-trainer2-acceptance.mjs';
@@ -103,6 +104,10 @@ describe('parallel acceptance fails closed', () => {
     for (const id of ['trainer2-production-artifact', 'trainer2-browser']) {
       const job = workflow.jobs[id];
       expect(job.needs).toBeUndefined();
+      expect(isolatedLinuxJob('linux', {
+        TRAINER2_ISOLATED_LINUX_JOB: '1', CI: 'true', GITHUB_ACTIONS: 'true',
+        RUNNER_ENVIRONMENT: 'github-hosted', GITHUB_JOB: id,
+      })).toBe(true);
       expect(job.steps.find(step => step.uses === 'actions/checkout@v7')?.with?.ref)
         .toBe('${{ github.event.pull_request.head.sha }}');
     }

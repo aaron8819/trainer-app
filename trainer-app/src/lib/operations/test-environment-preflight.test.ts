@@ -1558,6 +1558,13 @@ describe("command coverage honesty", () => {
     }
 
     const exactConfirmationEntrypoints = new Set([
+      "trainer-app/scripts/demo-trainer2-logger-design.ts",
+      "trainer-app/scripts/test-trainer2-equipment-recording.ts",
+      "trainer-app/scripts/test-trainer2-logger-design.ts",
+      "trainer-app/scripts/test-trainer2-navigation.ts",
+      "trainer-app/scripts/test-trainer2-program-support.ts",
+      "trainer-app/scripts/test-trainer2-training-home-loading.ts",
+      "trainer-app/scripts/test-trainer2-week-acl.mjs",
       "trainer-app/scripts/test-workout-mutations-postgres.ts",
       "trainer-app/scripts/test-multi-plan-foundation-postgres.ts",
       "trainer-app/scripts/test-v4-custom-plan-postgres.ts",

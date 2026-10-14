@@ -139,6 +139,12 @@ describe('parallel acceptance fails closed', () => {
     }
     const production = workflow.jobs['trainer2-production-artifact'];
     const buildStep = production.steps.find(step => step.name === 'Build synthetic V2 production artifact');
+    const invalidIcon = production.steps.find(step =>
+      step.name === 'Reject isolated known-invalid RGB favicon');
+    expect(invalidIcon?.run).toContain('test "$result" -ne 0');
+    expect(invalidIcon?.run).toContain('test "$result" -ne 124');
+    expect(invalidIcon?.run).toContain('test "$result" -ne 137');
+    expect(invalidIcon?.run).toContain('The PNG is not in RGBA format');
     expect(buildStep?.run).toContain('npm run build >');
     expect(buildStep?.run).not.toContain('--webpack');
     expect(production.steps.some(step => step.name === 'Record successful build identity')).toBe(true);

@@ -47,7 +47,12 @@ separate from Chromium viewport and visual-viewport-signal checks.
 Saved-plan entry arms its initial read after mount replay, while retaining the
 once-only draft initialization and existing unmount/read-generation protection.
 This prevents a development Strict Mode client transition from discarding its
-only initial read and staying on Loading plan. It does not submit a command.
+only initial read. The route, saved-plan read and initial workout read retain the
+Training Home frame with in-place placeholders. No progress or workout controls
+appear until validated data is ready; read failures retry in the same frame.
+GET refreshes do not change browser history. Accepted saves still bookmark the
+saved plan. Pending command recovery and the existing no-active-plan screen are
+unchanged. Loading never submits a command.
 
 Trainer2 load display and user load authoring use pounds only in Builder (including advanced fields), saved review, Program, Logger and History. No kg selector is exposed. Untouched legacy kg values and frozen snapshots remain internally intact; explicit load edits save lb with the same measurement meaning. See [program support and pounds-only presentation](architecture/trainer2/PROGRAM_SUPPORT.md).
 

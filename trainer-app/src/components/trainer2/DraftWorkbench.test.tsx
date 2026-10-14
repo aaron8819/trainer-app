@@ -30,6 +30,42 @@ const reviewed = (name = plan.name, revisionNumber = 1) => {
 const state = reviewed;
 afterEach(() => { cleanup(); sessionStorage.clear(); vi.unstubAllGlobals(); window.history.replaceState(null, '', '/'); });
 describe('builder save recovery', () => {
+  it('keeps Training Home visible while a plan read is pending and retries failures in place', async () => {
+    let resolveRead!: (value: ReturnType<typeof json>) => void;
+    const fetcher = vi.fn().mockImplementationOnce(() => new Promise(resolve => {
+      resolveRead = resolve;
+    })).mockResolvedValue(json(state()));
+    vi.stubGlobal('fetch', fetcher);
+    render(<DraftWorkbench accountId="account-a" ownershipEpoch={0}
+      initialPlanId={state().planId} />);
+    expect(screen.getByRole('heading', { name: 'Ready when you are.' })).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent('Getting your training ready');
+    expect(screen.queryByLabelText('Plan name')).toBeNull();
+    expect(screen.queryByText('You have no plan yet.')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+    await act(async () => resolveRead(json({}, false)));
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not load this plan');
+    click('Try again');
+    await waitFor(() => expect(screen.getByLabelText('Plan name')).toHaveValue(plan.name));
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls.every(call => !call[1]?.method)).toBe(true);
+  });
+  it('does not rewrite navigation history when a delayed plan read completes', async () => {
+    let resolveRead!: (value: ReturnType<typeof json>) => void;
+    const fetcher = vi.fn(() => new Promise(resolve => { resolveRead = resolve; }));
+    vi.stubGlobal('fetch', fetcher);
+    render(<DraftWorkbench accountId="account-a" ownershipEpoch={0}
+      initialPlanId={state().planId} />);
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+    window.history.replaceState(null, '', '/trainer2/auth');
+    const history = vi.spyOn(window.history, 'replaceState');
+    await act(async () => resolveRead(json(state())));
+    expect(history).not.toHaveBeenCalled();
+    expect(window.location.pathname).toBe('/trainer2/auth');
+    expect(window.location.search).toBe('');
+    history.mockRestore();
+  });
   it('loads a saved draft during a Strict Mode client mount without writing or allocating a new draft', async () => {
     const fetcher = vi.fn().mockResolvedValue(json(state()));
     vi.stubGlobal('fetch', fetcher);
@@ -251,6 +287,7 @@ describe('exact reviewed activation', () => {
       .mockResolvedValueOnce(json(next));
     vi.stubGlobal('fetch', fetcher); const view = mount(); click('Save plan'); await saved(); click('Review plan');
     await screen.findByRole('heading', { name: 'Saved plan checks passed' }); click('Activate plan');
+    window.history.replaceState(null, '', `/trainer2/dev/drafts?planId=${next.planId}`);
     view.rerender(<DraftWorkbench accountId="account-a" ownershipEpoch={0} initialPlanId={next.planId} />); await saved();
     await act(async () => deliver(json(acceptedActivation(submitted))));
     expect(screen.getByLabelText('Plan name')).toHaveValue('Other bookmarked plan');

@@ -27,6 +27,7 @@ import { ActiveWorkout } from './ActiveWorkout';
 import { SetResultRow, resultLabel } from './SetResultRow';
 import { control } from './DraftEditor';
 import { TrainingOverview, PlannedWorkout } from './TrainingOverview';
+import { TrainingHomeLoading } from './TrainingHomeLoading';
 import { effortSummary, targetLabel, trainingUrl } from './training-summary';
 import { fetchWithRecovery } from './request-recovery';
 import { useTrainer2Destination } from './Trainer2Shell';
@@ -167,6 +168,9 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
   }
   const lastSkipped = next?.occurrences.filter(o => o.status === 'Skipped').at(-1);
   const selectedWorkout = document?.occurrences.find(o => o.id === selectedId) ?? (next?.occurrence?.id === selectedId ? next.occurrence : null);
+  if (document && !next && !executionId && !pending) return <TrainingHomeLoading
+    name={document.name} program={program} error={failed ? message : undefined}
+    onRetry={() => void load()} />;
   return <div className="space-y-4">{finishedMessage && <p role="status" className="rounded-xl bg-teal-100 p-4 text-teal-950">Workout finished. <a className="underline" href={url(finishedMessage)}>View saved results</a></p>}{message && (!document || !next || executionId || program) && <p role="status">{message}</p>}
     {pending && (!document || !next || executionId || program) && <button className={control} disabled={busy} onClick={() => void submit(pending)}>Check again</button>}
     {failed && !pending && (!document || !next || executionId || program) && <button className={control} onClick={() => void load()}>Reload workout</button>}

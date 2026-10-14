@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID, webcrypto } from 'node:crypto';
 import { mergeExecutionRead, Workout, WorkoutPrescription } from './Workout';
@@ -45,6 +45,33 @@ describe('Add set recovery', () => {
   });
 });
 describe('Workout start consumer', () => {
+  it('keeps the home layout through a delayed workout read without exposing start controls', async () => {
+    const document = createHypertrophyPlan();
+    let resolveRead!: (value: Response) => void;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(resolve => { resolveRead = resolve; })));
+    render(<Workout accountId={accountId} ownershipEpoch={0} planId={planId}
+      document={document} />);
+    expect(screen.getByRole('heading', { name: 'Ready when you are.' })).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent('Getting your training ready');
+    expect(screen.queryByRole('button', { name: 'Start workout' })).toBeNull();
+    expect(screen.queryByRole('progressbar')).toBeNull();
+    await act(async () => resolveRead(response({ ...next, occurrence: document.occurrences[0],
+      occurrences: document.occurrences.map(o => ({ occurrenceId: o.id, name: o.name,
+        stageName: 'Week 1', status: 'Pending', skip: null })) })));
+    await screen.findByRole('region', { name: 'Week progress' });
+    expect(screen.queryByText('Getting your training ready…')).toBeNull();
+  });
+  it('keeps failed initial workout reads in the home layout and retries only the read', async () => {
+    const fetcher = vi.fn().mockResolvedValue(response({}, 500));
+    vi.stubGlobal('fetch', fetcher);
+    render(<Workout accountId={accountId} ownershipEpoch={0} planId={planId}
+      document={createHypertrophyPlan()} />);
+    await screen.findByRole('alert');
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    expect(fetcher.mock.calls.every(call => !call[1]?.method)).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Start workout' })).toBeNull();
+  });
   it.each(['foreign', 'duplicate', 'missing recommendation'])('fails closed on %s eligibility in the read response', async variant => {
     const eligibleOccurrenceIds = variant === 'foreign' ? [occurrence.id, randomUUID()] : variant === 'duplicate' ? [occurrence.id, occurrence.id] : [];
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({ ...next, eligibleOccurrenceIds })));

@@ -51,7 +51,7 @@ describe('Workout start consumer', () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise(resolve => { resolveRead = resolve; })));
     render(<Workout accountId={accountId} ownershipEpoch={0} planId={planId}
       document={document} />);
-    expect(screen.getByRole('heading', { name: 'Ready when you are.' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Training' })).toBeVisible();
     expect(screen.getByRole('status')).toHaveTextContent('Getting your training ready');
     expect(screen.queryByRole('button', { name: 'Start workout' })).toBeNull();
     expect(screen.queryByRole('progressbar')).toBeNull();

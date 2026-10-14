@@ -236,7 +236,8 @@ export async function runHomeProgramFixture(preview: boolean, surfacesOnly = fal
     await expect(page.getByText('Loading workout…', {exact:true})).toBeVisible();await page.screenshot({path:resolve(artifact,'loading-320.png'),fullPage:true});releaseRead();await page.unrouteAll({behavior:'wait'});
     await expect(page.getByRole('button',{name:'Start workout',exact:true})).toBeEnabled();
     for(const width of [390,320]){await page.setViewportSize({width,height:844});await expect(page.getByRole('heading',{name:longName,exact:true})).toBeVisible();
-      await expect(page.getByText(/8–12 reps per side.*0 RIR.*40 lb assistance/)).toBeVisible();
+      await expect(page.locator('[data-workout-preview]').getByText(/8–12 reps per side.*0 RIR/)).toBeVisible();
+      await expect(page.locator('[data-workout-preview]')).not.toContainText('40 lb assistance');
       await page.screenshot({path:resolve(artifact,`long-name-${width}.png`),fullPage:true});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
     await page.getByRole('link',{name:'View Program',exact:true}).focus();await page.keyboard.press('Tab');
     assert(await page.evaluate(()=>getComputedStyle(document.activeElement!).outlineStyle!=='none'));

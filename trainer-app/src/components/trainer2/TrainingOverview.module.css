@@ -66,3 +66,45 @@
 .loadingChoices { display: grid; gap: 8px; }
 .loadingChoice { display: flex; align-items: center; gap: 14px; padding: 16px; min-height: 84px; border: 2px solid var(--line); border-radius: 16px; background: white; }
 .loadingCircle { width: 38px; height: 38px; border-radius: 50%; background: #efefe8; flex-shrink: 0; }
+
+.workoutPreview { display: grid; gap: 20px; }
+.previewHeading { display: grid; gap: 8px; }
+.previewHeading h3 { font-size: 30px; font-weight: 700; letter-spacing: -.7px; }
+.previewActions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.previewActions > section > button { width: 100%; }
+.previewActions:has(section > div), .previewActions:has([role="status"]) { display: block; }
+.previewActions:not(:has(section button)) { grid-template-columns: 1fr; }
+.actionIcon { width: 18px; height: 18px; margin-right: 8px; }
+.exerciseHeading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.exerciseHeading h3 { font-size: 18px; letter-spacing: -.3px; }
+.screen .exerciseHeading button { border: 0; background: none; padding: 6px 0; font-size: 14px; color: #596159; }
+.exerciseCards { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 10px; }
+.exerciseCards details { border: 1px solid #dcded5; border-radius: 15px; background: #fff; overflow: hidden; }
+.exerciseCards summary { display: flex; align-items: center; gap: 12px; padding: 16px; cursor: pointer; list-style: none; min-height: 78px; }
+.exerciseCards summary::-webkit-details-marker { display: none; }
+.exerciseCards details[open] summary { background: #eef2e8; border-bottom: 1px solid #dcded5; }
+.exerciseNumber { display: grid; place-items: center; width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%; background: #f0f2eb; font-size: 14px; font-weight: 650; }
+.exerciseSummary { min-width: 0; flex: 1; }
+.exerciseSummary h4 { font-size: 16px; font-weight: 700; line-height: 1.3; margin-bottom: 5px; }
+.exerciseSummary > span { display: block; color: #596159; font-size: 14px; line-height: 1.4; }
+.chevron { width: 18px; height: 18px; flex-shrink: 0; color: #596159; transition: transform .15s; }
+.exerciseCards details[open] .chevron { transform: rotate(90deg); }
+.exerciseInformation { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 16px; }
+.exerciseInformation > div { border-radius: 10px; background: #f7f8f4; padding: 12px; min-width: 0; }
+.exerciseInformation p { color: #596159; font-size: 12px; margin-bottom: 5px; }
+.exerciseInformation strong { font-size: 14px; font-weight: 600; }
+@media (max-width: 799px) { .previewActions, .exerciseInformation { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .chevron { transition: none; } }
+
+.previewHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.workoutPreview > h2 { font-size: 34px; font-weight: 700; letter-spacing: -.8px; }
+.workoutPreview > .support { margin-top: -14px; }
+.exerciseHeading h3 { font-size: 20px; }
+.exerciseNumber { width: 38px; height: 38px; font-size: 16px; }
+@media (min-width: 1000px) { .layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1.8fr); } }
+@media (max-width: 600px) { .exerciseCards summary { padding: 16px 12px; gap: 12px; } }
+.trainingTitle { margin: 0 0 20px; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+.trainingTitle .eyebrow { display: none; }
+.screen .trainingTitle h1 { font-size: 24px; letter-spacing: -.5px; }
+.trainingTitle .subtitle { grid-column: 1; grid-row: 2; font-size: 14px; }
+.trainingTitle :is(.textLink, .loadingLink) { grid-column: 2; grid-row: 1 / span 2; align-self: center; }

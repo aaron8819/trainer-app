@@ -38,7 +38,7 @@ describe('builder save recovery', () => {
     vi.stubGlobal('fetch', fetcher);
     render(<DraftWorkbench accountId="account-a" ownershipEpoch={0}
       initialPlanId={state().planId} />);
-    expect(screen.getByRole('heading', { name: 'Ready when you are.' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Training' })).toBeVisible();
     expect(screen.getByRole('status')).toHaveTextContent('Getting your training ready');
     expect(screen.queryByLabelText('Plan name')).toBeNull();
     expect(screen.queryByText('You have no plan yet.')).toBeNull();

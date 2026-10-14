@@ -204,3 +204,6 @@
   .queueRow > button:first-child { flex-wrap: wrap; gap: 4px; }
   .screen .queueSets > button { padding-inline: 12px; }
 }
+
+.startingLoadHint { margin: 6px 0; color: #596159; font-size: 14px; line-height: 1.4; }
+.startingLoadHint strong { color: #171a18; font-weight: 650; }

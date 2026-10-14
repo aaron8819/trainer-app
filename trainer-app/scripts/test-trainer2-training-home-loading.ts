@@ -64,7 +64,7 @@ async function main(): Promise<void> {
         await page.goto(`${base}/trainer2`);
         await plan.arrived;
         await expect(loading).toBeVisible();
-        await expect(page.getByRole('heading', { name: 'Ready when you are.' })).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Training' })).toBeVisible();
         await expect(page.getByRole('button', { name: 'Start workout', exact: true })).toHaveCount(0);
         await expect(page.getByText('You have no plan yet.')).toHaveCount(0);
         await expect(page.getByRole('progressbar')).toHaveCount(0);
@@ -101,7 +101,7 @@ async function main(): Promise<void> {
         const error = failedUrl === draftUrl ? 'Could not load this plan' : 'Could not load this workout';
         await expect(page.getByRole('alert').filter({ hasText: error })).toBeVisible();
         await expect(page.getByRole('button', { name: 'Try again', exact: true })).toBeVisible();
-        await expect(page.getByRole('heading', { name: 'Ready when you are.' })).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Training' })).toBeVisible();
         fail = false;
         await page.getByRole('button', { name: 'Try again', exact: true }).click();
         await expect(ready).toBeVisible();

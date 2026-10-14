@@ -215,21 +215,23 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
       const previewMessage = message || (selectedRow?.status === 'Skipped' ? 'Explicitly skipped. The saved prescription is retained below.' : next.execution && !selectedOpen ? 'Finish or discard the open workout before starting another.' : next.lifecycle === 'Completed' ? 'Program complete. Saved workouts remain available for review.' : '');
       const eligible = !!selectedWorkout && (next.eligibleOccurrenceIds ?? [next.occurrence?.id]).includes(selectedWorkout.id);
       const previewWorkout = selectedOpen ? next.execution!.initial.occurrence : selectedWorkout;
-      const preview = <div className="space-y-4">
-        <div className={styles.row}><p className={styles.eyebrow}>{selectedRow?.status === 'Finished' || selectedRow?.status === 'Skipped' ? 'Workout review' : 'Workout preview'}</p>
+      const preview = <div className={styles.workoutPreview} data-workout-preview>
+        <div className={styles.previewHeading}><p className={styles.eyebrow}>{selectedRow?.status === 'Finished' || selectedRow?.status === 'Skipped' ? 'Workout review' : 'Workout preview'}</p>
           <span className={styles.tag}>{selectedOpen ? 'In progress' : selectedRow?.status === 'Finished' ? 'Finished' : selectedRow?.status ?? 'No workout selected'}</span></div>
         <h2>{previewWorkout?.name ?? (next.lifecycle === 'Completed' ? 'Plan complete' : 'Week complete')}</h2>
         {previewWorkout && <p className={styles.support}>{previewWorkout.positions.length} exercises · {previewWorkout.positions.reduce((n, p) => n + p.targets.length, 0)} sets</p>}
+        <div className={styles.previewActions}>
         {pending && document ? <button className={styles.primary} disabled={busy} onClick={() => void submit(pending)}>Check again</button> : failed && document ? <button className={styles.primary} onClick={() => void load()}>Reload workout</button> : selectedOpen ? <a className={styles.primary} href={url(next.execution!.executionId)}>Resume workout</a> :
           selectedRow?.executionId ? <a className={styles.primary} href={url(selectedRow.executionId)}>View results</a> :
-          eligible ? <button className={styles.primary} disabled={busy || !!pending || failed || !!next.execution || skipLocked || advanceLocked} onClick={start}>Start workout</button> : null}
-        {document && previewMessage && <p role="status" className={styles.previewFeedback}>{previewMessage}</p>}
-        {!document && message === '' && !previewWorkout && <p className={styles.support}>Program complete. Saved workouts remain available for review.</p>}
+          eligible ? <button className={styles.primary} disabled={busy || !!pending || failed || !!next.execution || skipLocked || advanceLocked} onClick={start}><svg className={styles.actionIcon} aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M8 4v16l12-8z" /></svg>Start workout</button> : null}
         <SkipWorkout key={`skip:${accountId}:${next.planId}`} next={next} selectedOccurrence={selectedWorkout ?? undefined} ownershipEpoch={ownershipEpoch}
           blocked={busy || failed || !!pending || advanceLocked} onLock={setSkipLocked} refresh={async (command, planCompleted) => {
             const value = await load(undefined, command, planCompleted); if (!value || !('occurrences' in value)) throw new Error('Plan read failed');
           }} />
-        {previewWorkout && <PlannedWorkout workout={previewWorkout} design={!!document} />}
+        </div>
+        {document && previewMessage && <p role="status" className={styles.previewFeedback}>{previewMessage}</p>}
+        {!document && message === '' && !previewWorkout && <p className={styles.support}>Program complete. Saved workouts remain available for review.</p>}
+        {previewWorkout && <PlannedWorkout workout={previewWorkout} design={!!document} hideLoad />}
       </div>;
       const advancement = <AdvanceWeek key={`advance:${accountId}:${next.planId}`} next={next} ownershipEpoch={ownershipEpoch}
         blocked={busy || failed || !!pending || (!program && skipLocked)} onLock={setAdvanceLocked} refresh={async () => {

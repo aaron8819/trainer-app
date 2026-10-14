@@ -219,6 +219,7 @@ function Invoke-RemoteStatus {
     if ($GitHub) { $arguments += '-GitHub' }
     if ($Deployment) { $arguments += '-Deployment' }
     if ($PSBoundParameters.ContainsKey('Branch')) { $arguments += @('-Branch', $Branch) }
+    $pwshExecutable = Resolve-TestApplicationExecutable -Name 'pwsh'
     $previousPath = $env:PATH
     $previousVercelToken = [Environment]::GetEnvironmentVariable('VERCEL_TOKEN', [EnvironmentVariableTarget]::Process)
     try {
@@ -226,7 +227,7 @@ function Invoke-RemoteStatus {
         if ($PathPrefix) {
             $env:PATH = if ($ReplacePath) { $PathPrefix } else { $PathPrefix + [System.IO.Path]::PathSeparator + $env:PATH }
         }
-        $output = @(& pwsh @arguments 2>&1)
+        $output = @(& $pwshExecutable @arguments 2>&1)
         $exitCode = $LASTEXITCODE
     }
     finally {
@@ -2115,6 +2116,14 @@ Invoke-Test 'GitHub scope requires an available gh executable' {
             Split-Path -Parent (Resolve-TestApplicationExecutable -Name 'git')
             "$env:SystemRoot\System32"
         ) | Select-Object -Unique
+        if (-not $IsWindows) {
+            # Linux runners keep git and gh together in /usr/bin. Expose only git.
+            $isolatedPath = Join-Path $fixture.Sandbox 'git-only-bin'
+            New-Item -ItemType Directory -Path $isolatedPath | Out-Null
+            New-Item -ItemType SymbolicLink -Path (Join-Path $isolatedPath 'git') `
+                -Target (Resolve-TestApplicationExecutable -Name 'git') | Out-Null
+            $pathParts = @($isolatedPath)
+        }
         $result = Invoke-RemoteStatus -Fixture $fixture -GitHub -Json -Branch 'codex/remote-github-status' -PathPrefix ($pathParts -join [System.IO.Path]::PathSeparator) -ReplacePath
         $report = $result.Text | ConvertFrom-Json
         Assert-Equal $result.ExitCode 1 'Missing gh must return a valid blocked report.'

@@ -220,7 +220,7 @@ Sources of truth:
 
 Every pull request targeting `master` runs the `credential-free-inventory` GitHub Actions check
 from `.github/workflows/credential-free-inventory.yml`. The workflow checks out full Git history,
-uses Node.js 22, fixes `TZ` to `America/Chicago` for the repository's local-week test semantics,
+uses Node.js 24.21.0 and npm 11.19.0 (measured in the Vercel preview build), fixes `TZ` to `America/Chicago` for the repository's local-week test semantics,
 installs the exact lockfile with `npm ci`, and runs four native Vitest credential-free shards plus
 one concurrent import-safety job on separate hosted runners. Each component still uses forks,
 isolation, and `maxWorkers=1` through the credential-safe launcher. Sharding partitions files only:

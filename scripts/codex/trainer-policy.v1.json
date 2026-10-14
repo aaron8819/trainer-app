@@ -88,7 +88,7 @@
           "requiredPullRequestRunsPerCandidateTree": 1,
           "definition": {
             "packageScript": "test:inventory:aggregate",
-            "nodeMajor": 22,
+            "nodeMajor": 24,
             "workers": 1,
             "pool": "forks",
             "isolation": true,

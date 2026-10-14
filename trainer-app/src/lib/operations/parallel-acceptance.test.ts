@@ -120,6 +120,13 @@ describe('parallel acceptance fails closed', () => {
         strategy?: { 'fail-fast': boolean; 'max-parallel': number; matrix: { journey: string[] } };
         steps: { uses?: string; name?: string; run?: string; with?: Record<string, unknown> }[] }>;
     };
+    for (const job of Object.values(workflow.jobs)) {
+      const setup = job.steps.find(step => step.uses === 'actions/setup-node@v7');
+      if (!setup) continue;
+      expect(setup.with?.['node-version']).toBe('24.21.0');
+      expect(job.steps.find(step => step.name === 'Match deployed npm runtime')?.run)
+        .toBe('npm install --global npm@11.19.0');
+    }
     const aggregate = workflow.jobs['trainer2-combined-acceptance'];
     expect(aggregate.name).toBe('Trainer2 disposable combined acceptance');
     expect(aggregate.if).toBe('${{ always() }}');

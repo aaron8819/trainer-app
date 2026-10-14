@@ -212,6 +212,7 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
     {next && !execution && (() => {
       const selectedRow = next.occurrences.find(o => o.occurrenceId === selectedWorkout?.id);
       const selectedOpen = !!selectedWorkout && !!next.execution && selectedWorkout.id === next.execution.initial.occurrence.id;
+      const previewMessage = message || (selectedRow?.status === 'Skipped' ? 'Explicitly skipped. The saved prescription is retained below.' : next.execution && !selectedOpen ? 'Finish or discard the open workout before starting another.' : next.lifecycle === 'Completed' ? 'Program complete. Saved workouts remain available for review.' : '');
       const eligible = !!selectedWorkout && (next.eligibleOccurrenceIds ?? [next.occurrence?.id]).includes(selectedWorkout.id);
       const previewWorkout = selectedOpen ? next.execution!.initial.occurrence : selectedWorkout;
       const preview = <div className="space-y-4">
@@ -222,7 +223,7 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
         {pending && document ? <button className={styles.primary} disabled={busy} onClick={() => void submit(pending)}>Check again</button> : failed && document ? <button className={styles.primary} onClick={() => void load()}>Reload workout</button> : selectedOpen ? <a className={styles.primary} href={url(next.execution!.executionId)}>Resume workout</a> :
           selectedRow?.executionId ? <a className={styles.primary} href={url(selectedRow.executionId)}>View results</a> :
           eligible ? <button className={styles.primary} disabled={busy || !!pending || failed || !!next.execution || skipLocked || advanceLocked} onClick={start}>Start workout</button> : null}
-        {document && <p role="status" className={styles.previewFeedback}>{message || (selectedRow?.status === 'Skipped' ? 'Explicitly skipped. The saved prescription is retained below.' : next.execution && !selectedOpen ? 'Finish or discard the open workout before starting another.' : next.lifecycle === 'Completed' ? 'Program complete. Saved workouts remain available for review.' : 'Start only when you are ready. This preview does not record work.')}</p>}
+        {document && previewMessage && <p role="status" className={styles.previewFeedback}>{previewMessage}</p>}
         {!document && message === '' && !previewWorkout && <p className={styles.support}>Program complete. Saved workouts remain available for review.</p>}
         <SkipWorkout key={`skip:${accountId}:${next.planId}`} next={next} selectedOccurrence={selectedWorkout ?? undefined} ownershipEpoch={ownershipEpoch}
           blocked={busy || failed || !!pending || advanceLocked} onLock={setSkipLocked} refresh={async (command, planCompleted) => {

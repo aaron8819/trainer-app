@@ -80,7 +80,7 @@ export function TrainingOverview({ document, next, program = false, selectedId, 
               <span aria-hidden="true">{selectedId === o.id ? '↗' : '›'}</span>
             </button>
           </article>)}</div>
-          <p className={styles.note}>{next.execution ? 'An open workout is waiting. Resume it, or preview another workout.' : 'Selecting and reviewing a workout does not start it. Start when you are ready.'}</p>
+          {next.execution && <p className={styles.note}>An open workout is waiting. Resume it, or preview another workout.</p>}
         </>}
       </section>
       {program ? <section aria-label={group?.stage.name ?? 'Week workouts'}>

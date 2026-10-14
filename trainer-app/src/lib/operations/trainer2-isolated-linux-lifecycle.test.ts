@@ -17,6 +17,22 @@ describe('isolated Linux fixture lifecycle (synthetic only)', () => {
     }
     expect(() => isolatedLinuxJob('win32', env)).toThrow();
   });
+  it('admits only named acceptance producers on explicit hosted Linux runners', () => {
+    for (const job of ['trainer2-combined-acceptance', 'trainer2-production-artifact',
+      'trainer2-browser']) {
+      const producer = { ...env, GITHUB_JOB: job };
+      expect(isolatedLinuxJob('linux', producer)).toBe(true);
+      for (const key of Object.keys(producer)) {
+        expect(() => isolatedLinuxJob('linux', { ...producer, [key]: undefined })).toThrow();
+      }
+      expect(() => isolatedLinuxJob('linux', {
+        ...producer, RUNNER_ENVIRONMENT: 'self-hosted',
+      })).toThrow();
+    }
+    for (const job of ['arbitrary', 'trainer2-browser-extra', '', 'credential-free-shard']) {
+      expect(() => isolatedLinuxJob('linux', { ...env, GITHUB_JOB: job })).toThrow();
+    }
+  });
   it('signals only its freshly spawned group once and observes actual close', async () => {
     const worker = child(); const calls: Array<[number, string | number]> = [];
     const owned = ownLinuxGroup(worker, (pid, signal) => {

@@ -22,7 +22,7 @@ export function generateMetadata(): Metadata {
     ...(production ? {
       manifest: "/manifest.webmanifest",
       appleWebApp: { capable: true, title: "Trainer", statusBarStyle: "default" as const },
-      icons: { apple: "/apple-icon.png" },
+      // Next.js supplies the content-hashed apple-icon.png metadata.
     } : {}),
   };
 }

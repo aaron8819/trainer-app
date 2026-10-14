@@ -10,19 +10,19 @@ describe("Trainer web app manifest", () => {
       display: "standalone",
       icons: [
         {
-          src: "/icons/trainer-icon-192.png",
+          src: "/icons/trainer-icon-192-f2986690.png",
           sizes: "192x192",
           type: "image/png",
           purpose: "any",
         },
         {
-          src: "/icons/trainer-icon-512.png",
+          src: "/icons/trainer-icon-512-f2986690.png",
           sizes: "512x512",
           type: "image/png",
           purpose: "any",
         },
         {
-          src: "/icons/trainer-icon-512.png",
+          src: "/icons/trainer-icon-maskable-512-f2986690.png",
           sizes: "512x512",
           type: "image/png",
           purpose: "maskable",

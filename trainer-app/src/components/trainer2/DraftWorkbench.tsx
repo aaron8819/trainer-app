@@ -14,6 +14,8 @@ import { validateReviewResponse, INVALID_REVIEW_MESSAGE, type SavedPlanResponse 
 
 import { activationResponse, activatePlanCommand, type ActivatePlanCommand, type InstructionCommand } from '@/lib/trainer2-contracts/activation';
 import { Workout } from './Workout';
+import { TrainingHomeLoading } from './TrainingHomeLoading';
+import { TrainingHomeFrame } from './TrainingHomeFrame';
 import { Instructions } from './Instructions';
 import { useTrainer2Destination } from './Trainer2Shell';
 
@@ -26,6 +28,7 @@ function Workbench({ accountId, ownershipEpoch, initialPlanId = '', view, hosted
   const [templateOpen, setTemplateOpen] = useState(!initialPlanId);
   const [recoveryReady, setRecoveryReady] = useState(false);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [form, setForm] = useState<DraftDocument | null>(null);
   const [planId, setPlanId] = useState(initialPlanId);
   const [message, setMessage] = useState(initialPlanId ? 'Loading plan…' : 'Unsaved changes');
@@ -67,11 +70,11 @@ function Workbench({ accountId, ownershipEpoch, initialPlanId = '', view, hosted
       const validated = await validateReviewResponse(result, { accountId, planId: id });
       if (request !== reviewRequest.current) return;
       const intent = readSavedDocument(validated.intent);
-      setLoaded(validated); setForm(structuredClone(intent)); setPlanId(id); setStale(false); bookmark(id); if (validated.state.lifecycle !== 'Draft') { clearDraftRecovery(id); }
+      setLoaded(validated); setForm(structuredClone(intent)); setPlanId(id); setStale(false); if (validated.state.lifecycle !== 'Draft') { clearDraftRecovery(id); }
       setMessage(validated.state.lifecycle === 'Completed' ? 'Plan complete' : validated.state.lifecycle === 'Active' ? 'Plan active' : 'Saved');
-    } catch { if (request !== reviewRequest.current) return; setMessage(accepted === 'activate' ? 'Activation was accepted, but current state could not be loaded. Reload the latest version.' : accepted ? 'Your plan was saved, but could not be reloaded. Reload the latest version.' : 'Could not load this plan. Check your connection and reload.'); }
+    } catch { if (request !== reviewRequest.current) return; setLoadFailed(true); setMessage(accepted === 'activate' ? 'Activation was accepted, but current state could not be loaded. Reload the latest version.' : accepted ? 'Your plan was saved, but could not be reloaded. Reload the latest version.' : 'Could not load this plan. Check your connection and reload.'); }
   }
-  async function reload() { if (!planId || uncertain || !beginRequest()) return; try { await refresh(planId); } finally { endRequest(); } }
+  async function reload() { if (!planId || uncertain || !beginRequest()) return; setLoadFailed(false); try { await refresh(planId); } finally { endRequest(); } }
   useEffect(() => {
     if (mounted.current) return; mounted.current = true;
     try {
@@ -210,14 +213,13 @@ function Workbench({ accountId, ownershipEpoch, initialPlanId = '', view, hosted
     <h1 className="text-3xl font-semibold">{form.name}</h1><p role="status" className="rounded-2xl bg-[#dce7ca] p-5">Program {loaded.state.lifecycle.toLowerCase()}. Starting workouts and advancing weeks are unavailable in this state. Saved prescriptions remain inspectable. Pause/resume controls are not supported by the released application.</p>
     <DraftReview intent={form} /><a className={control} href="/trainer2/dev/drafts?view=builder">Create a new draft</a>
   </div></main>;
-  if (active && loaded && form) return <main className="min-h-screen bg-[#f6f5f1] text-[#171a18]"><div className="mx-auto max-w-[1064px] space-y-5 px-[14px] py-5 min-[350px]:px-5 sm:px-7">
-    <p className="text-2xl font-bold tracking-tight">Trainer<span className="ml-1 align-top text-sm font-normal">2</span></p>
+  if (active && loaded && form) return <TrainingHomeFrame>
     <Workout key={accountId + ':' + loaded.planId} accountId={accountId} ownershipEpoch={ownershipEpoch} planId={loaded.planId} document={form} program={view === 'program'} />
-  </div></main>;
-  if (initialPlanId && !loaded && !uncertain && !conflict) return <main className="min-h-screen bg-[#f6f5f1] px-5 py-8 text-[#171a18]"><div className="mx-auto max-w-4xl space-y-5">
-    <h1 className="text-3xl font-semibold">Your training</h1><p role="status" className="min-h-12 rounded-2xl bg-[#dce7ca] p-5">{message}</p>
-    {!busy && <button className={control} onClick={() => void reload()}>Reload latest version</button>}
-  </div></main>;
+  </TrainingHomeFrame>;
+  if (initialPlanId && !loaded && !uncertain && !conflict) return <TrainingHomeFrame>
+    <TrainingHomeLoading program={view === 'program'} error={loadFailed ? message : undefined}
+      onRetry={() => void reload()} />
+  </TrainingHomeFrame>;
   if (templateOpen && form) return <main className={styles.shell}><div className={styles.content}>
     <header className={styles.header}><p className="text-2xl font-bold">Trainer²</p><h1>Build a plan</h1><p className={styles.muted}>Start with a complete template. Customize what you need.</p></header>
     <section className={styles.template}><p className={styles.muted}>STRENGTH & HYPERTROPHY</p><h2>Five-week hypertrophy</h2><p>Four workouts per week. Four accumulation weeks, then a deload.</p>

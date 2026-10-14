@@ -58,3 +58,11 @@
 @media (max-width: 350px) { .screen h1 { font-size: 30px; } .card { padding: 16px; } .hero h2 { font-size: 25px; } }
 
 .previewFeedback { min-height: 66px; color: var(--muted); font-size: 15px; }
+.loadingLine { height: 14px; width: 72%; border-radius: 7px; background: #e4e7dd; }
+.loadingLink { height: 44px; width: 104px; }
+.loadingHero { min-height: 214px; align-content: start; }
+.hero .loadingLine { background: #c8d3ba; }
+.preview .loadingLine { margin: 16px 0 28px; }
+.loadingChoices { display: grid; gap: 8px; }
+.loadingChoice { display: flex; align-items: center; gap: 14px; padding: 16px; min-height: 84px; border: 2px solid var(--line); border-radius: 16px; background: white; }
+.loadingCircle { width: 38px; height: 38px; border-radius: 50%; background: #efefe8; flex-shrink: 0; }

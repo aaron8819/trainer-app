@@ -557,6 +557,6 @@ it('keeps saved program exercise cards load-free without changing authored targe
   expect(container).toHaveTextContent(/reps/);
   const details = container.querySelector('details')!;
   fireEvent.click(details.querySelector('summary')!);
-  expect(container).toHaveTextContent(workout.positions[0].role);
+  expect(container).toHaveTextContent(workout.positions[0].role!);
   expect(JSON.stringify(workout)).toBe(before);
 });

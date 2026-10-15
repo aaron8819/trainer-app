@@ -11,7 +11,38 @@ import { effortSummary, trainingUrl, targetGroups, type WorkoutIntent } from './
 import styles from './TrainingOverview.module.css';
 import Link from 'next/link';
 
-export function PlannedWorkout({ workout, design = false, hideLoad = false }: { workout: WorkoutIntent; design?: boolean; hideLoad?: boolean }) {
+export function PlannedWorkout({ workout, design = false, hideLoad = false, program = false }: { workout: WorkoutIntent; design?: boolean; hideLoad?: boolean; program?: boolean }) {
+  if (program) return <section aria-label="Planned workout">
+    <h3 className="sr-only">Planned workout</h3>
+    <ul className={styles.programExercises}>{workout.positions.map(p => <li key={p.id}>
+      <details>
+        <summary>
+          <span className={styles.programExerciseHeading}>
+            <span><h4>{exerciseTitle(p.exercise)}</h4>
+              {targetGroups(p.targets.map(t => ({ ...t, measurement: null }))).map(g =>
+                <span className={styles.programPrescription} key={g.first}>
+                  {g.count} × {g.label}
+                </span>)}
+            </span>
+            <svg aria-hidden="true" className={styles.chevron} viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="m9 5 7 7-7 7" />
+            </svg>
+          </span>
+          <span className={styles.programExerciseFooter}>
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="1.6">
+              <path d="M14 3H5v18h14V8z M14 3v5h5 M8 12h8 M8 16h8" />
+            </svg>
+            Exercise details
+          </span>
+        </summary>
+        <p className={styles.programExerciseInformation}>
+          {p.role}{p.exercise.variation ? ` · ${p.exercise.variation}` : ''}
+        </p>
+      </details>
+    </li>)}</ul>
+  </section>;
   if (design && hideLoad) return <WorkoutPreviewExercises key={workout.id} workout={workout} />;
   const prescriptions = (p: WorkoutIntent['positions'][number]) => targetGroups(
     hideLoad ? p.targets.map(t => ({ ...t, measurement: null })) : p.targets,
@@ -97,7 +128,7 @@ export function TrainingOverview({ document, next, program = false, selectedId, 
               <span className={styles.programWorkoutMeta}><span className={styles.tag}>{status(o)}</span><span>{o.positions.length} exercises · {o.positions.reduce((n, p) => n + p.targets.length, 0)} sets</span></span><span className={styles.programDisclosure} aria-hidden="true">▸</span>
             </summary>
             {row?.skip && <p className={styles.support}>Explicitly skipped · {new Date(row.skip.skippedAt).toLocaleDateString()}</p>}
-            <PlannedWorkout workout={o} design />
+            <PlannedWorkout workout={o} design program />
             {o.id === next.execution?.initial.occurrence.id ? <a className={styles.primary} href={`/trainer2/dev/executions/${next.execution.executionId}`}>Resume workout</a> :
               row?.executionId ? <a className={styles.secondary} href={`/trainer2/dev/executions/${row.executionId}`}>View results</a> : <a className={styles.secondary} href={trainingUrl(next.planId)}>Back to current-week selection</a>}
           </details>;

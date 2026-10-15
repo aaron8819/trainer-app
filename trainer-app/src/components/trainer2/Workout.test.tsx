@@ -540,3 +540,23 @@ it('keeps program browsing read-only and session status visible before expansion
   expect(JSON.stringify(document)).toBe(before);
   expect(screen.queryByRole('button', { name: 'Start workout' })).toBeNull();
 });
+
+
+it('keeps saved program exercise cards load-free without changing authored targets', () => {
+  const workout = createHypertrophyPlan().occurrences[0];
+  workout.positions = [workout.positions[0]];
+  workout.positions[0].targets[0].measurement = {
+    kind: 'assistance', value: '40', unit: 'lb',
+    convention: 'displayedAssistance', zeroMeaning: 'noAssistance',
+  };
+  const before = JSON.stringify(workout);
+  const { container } = render(<PlannedWorkout workout={workout} design program />);
+  expect(screen.getByRole('heading', { name: workout.positions[0].exercise.name })).toBeVisible();
+  expect(screen.getByText('Exercise details')).toBeVisible();
+  expect(container).not.toHaveTextContent(/load unspecified|confirm when logging|40 lb|means easier/i);
+  expect(container).toHaveTextContent(/reps/);
+  const details = container.querySelector('details')!;
+  fireEvent.click(details.querySelector('summary')!);
+  expect(container).toHaveTextContent(workout.positions[0].role);
+  expect(JSON.stringify(workout)).toBe(before);
+});

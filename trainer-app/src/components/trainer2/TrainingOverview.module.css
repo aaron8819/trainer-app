@@ -133,6 +133,11 @@
 .programWorkout[open] .programDisclosure { transform: rotate(45deg); }
 @media (max-width: 799px) {
   .program { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .programHero { padding: 18px; gap: 12px; }
+  .programHero .row { gap: 8px; align-items: center; }
+  .programHero h2 { font-size: 22px; margin-top: 2px; }
+  .programHero .programWeekHeading { display: none; }
+  .programHero .support { font-size: 14px; }
   .program .weeks { display: flex; overflow-x: auto; padding: 3px; }
   .program .weeks button { flex: 0 0 78px; }
   .programTitle h1 { font-size: 30px; }

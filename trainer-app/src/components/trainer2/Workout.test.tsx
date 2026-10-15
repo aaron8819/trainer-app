@@ -531,11 +531,11 @@ it('keeps program browsing read-only and session status visible before expansion
     })),
   };
   render(<TrainingOverview document={document} next={read} program onSelect={onSelect} />);
-  expect(screen.getByRole('heading', { name: 'Week 1 of 5' })).toBeVisible();
+  expect(screen.getByRole('heading', { name: 'One clear plan.' })).toBeVisible();
   expect(screen.getByText('Finished', { exact: true })).toBeVisible();
   expect(screen.getByText('Skipped', { exact: true })).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: /^Week 2/ }));
-  expect(screen.getByRole('heading', { name: 'Week 2 of 5' })).toBeVisible();
+  expect(screen.getByRole('heading', { name: 'Week 2 workouts' })).toBeVisible();
   expect(onSelect).not.toHaveBeenCalled();
   expect(JSON.stringify(document)).toBe(before);
   expect(screen.queryByRole('button', { name: 'Start workout' })).toBeNull();

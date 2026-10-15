@@ -59,12 +59,10 @@ export function TrainingOverview({ document, next, program = false, selectedId, 
       <section className={styles.stack}>
         <section className={`${styles.card} ${styles.hero} ${program ? styles.programHero : ''}`} aria-label="Week progress">
           <div className={styles.row}><div><p className={styles.eyebrow}>{group?.deload ? 'Deload' : group?.stage.name ?? 'Training week'}</p>
-            <h2>{program ? `Week ${weekIndex + 1} of ${groups.length}` : `Week ${currentIndex + 1} of ${groups.length}`}</h2></div>
+            <h2>{program ? 'One clear plan.' : `Week ${currentIndex + 1} of ${groups.length}`}</h2></div>
             {program && <span className={styles.tag}>Saved · {next.lifecycle} · read-only</span>}
           </div>
           {program ? <>
-            <p className={styles.support}>{count} workouts in this week</p>
-            <div className={styles.programWeekHeading}>Browse your program</div>
             <nav aria-label="Program weeks" className={styles.weeks}>{groups.map((g, i) => <button key={`${g.stage.id}:${i}`} type="button"
               aria-label={`Week ${i + 1}${g.deload ? ' Deload' : ''}`} aria-current={i === weekIndex ? 'page' : undefined} aria-pressed={i === weekIndex} className={i === weekIndex ? styles.selected : ''}
               onClick={() => setBrowsedWeek(i)}>W{i + 1}<small>{g.deload ? 'Deload' : effortSummary({ ...g.workouts[0].occurrence, positions: g.workouts.flatMap(w => w.occurrence.positions) }).replace('Target ', '')}</small></button>)}</nav>
@@ -94,9 +92,9 @@ export function TrainingOverview({ document, next, program = false, selectedId, 
         <div className={styles.sectionHead}><h2>Week {weekIndex + 1} workouts</h2><span>{finished} finished · {skipped} skipped</span></div>
         <div className={styles.programGrid}>{group?.workouts.map(({ occurrence: o }) => {
           const row = next.occurrences.find(r => r.occurrenceId === o.id);
-          return <details key={o.id} data-occurrence-id={o.id} className={`${styles.card} ${styles.programWorkout}`}>
+          return <details key={o.id} data-occurrence-id={o.id} data-status={status(o)} className={`${styles.card} ${styles.programWorkout}`}>
             <summary className={styles.workoutSummary}>{o.name}
-              <span className={styles.programWorkoutMeta}><span className={styles.tag}>{status(o)}</span><span>{o.positions.length} exercises · {o.positions.reduce((n, p) => n + p.targets.length, 0)} sets</span></span><span className={styles.programDisclosure} aria-hidden="true">+</span>
+              <span className={styles.programWorkoutMeta}><span className={styles.tag}>{status(o)}</span><span>{o.positions.length} exercises · {o.positions.reduce((n, p) => n + p.targets.length, 0)} sets</span></span><span className={styles.programDisclosure} aria-hidden="true">▸</span>
             </summary>
             {row?.skip && <p className={styles.support}>Explicitly skipped · {new Date(row.skip.skippedAt).toLocaleDateString()}</p>}
             <PlannedWorkout workout={o} design />

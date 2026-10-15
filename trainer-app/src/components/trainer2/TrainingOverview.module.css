@@ -108,3 +108,35 @@
 .screen .trainingTitle h1 { font-size: 24px; letter-spacing: -.5px; }
 .trainingTitle .subtitle { grid-column: 1; grid-row: 2; font-size: 14px; }
 .trainingTitle :is(.textLink, .loadingLink) { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+/* Program keeps the shared training controllers and shell; only its layout changes. */
+.programTitle { gap: 8px; margin-top: 4px; }
+.programTitle h1 { max-width: 820px; font-size: 34px; letter-spacing: -.9px; }
+.programTitle .subtitle { font-size: 15px; }
+.program { grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); align-items: start; }
+.programHero { background: #fff; border-color: var(--line); gap: 18px; }
+.programHero h2 { font-size: 28px; }
+.programHero .tag { font-size: 12px; font-weight: 500; }
+.programWeekHeading { border-top: 1px solid var(--line); padding-top: 18px; font-size: 14px; font-weight: 650; }
+.program .weeks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 0; gap: 8px; overflow: visible; }
+.program .weeks button { min-width: 0; border-radius: 12px; padding: 12px 8px; text-align: left; }
+.program .weeks small { margin-top: 4px; font-size: 12px; }
+.programGrid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.programWorkout { padding: 0; border-radius: 16px; overflow: hidden; }
+.programWorkout > :not(summary) { margin-left: 24px; margin-right: 24px; }
+.programWorkout > :last-child { margin-bottom: 24px; width: auto; }
+.programWorkout .workoutSummary { position: relative; padding: 22px 60px 22px 24px; list-style: none; font-size: 20px; }
+.workoutSummary::-webkit-details-marker { display: none; }
+.programWorkout[open] .workoutSummary { border-bottom: 1px solid var(--line); background: #f3f5ed; }
+.programWorkoutMeta { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px; color: var(--muted); font-size: 14px; font-weight: 400; }
+.programWorkoutMeta .tag { font-size: 12px; }
+.programDisclosure { position: absolute; right: 24px; top: 24px; font-size: 24px; font-weight: 400; line-height: 1; }
+.programWorkout[open] .programDisclosure { transform: rotate(45deg); }
+@media (max-width: 799px) {
+  .program { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .program .weeks { display: flex; overflow-x: auto; padding: 3px; }
+  .program .weeks button { flex: 0 0 78px; }
+  .programTitle h1 { font-size: 30px; }
+  .programWorkout .workoutSummary { padding: 20px 48px 20px 20px; font-size: 18px; }
+  .programWorkout > :not(summary) { margin-left: 20px; margin-right: 20px; }
+  .programDisclosure { right: 20px; top: 22px; }
+}

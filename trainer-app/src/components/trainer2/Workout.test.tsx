@@ -514,3 +514,49 @@ it('renders long names, zero RIR and assistance semantics from exact targets in 
   expect(screen.getByRole('heading',{name})).toBeVisible();expect(screen.getByText(/8.*12 reps per side.*0 RIR.*40 lb assistance/)).toBeVisible();
   expect(screen.getByText(/more weight means easier/)).toBeVisible();
 });
+
+it('keeps program browsing read-only and session status visible before expansion', () => {
+  const document = createHypertrophyPlan();
+  const before = JSON.stringify(document);
+  const onSelect = vi.fn();
+  const read = {
+    ...next,
+    occurrence: document.occurrences[0],
+    occurrences: document.occurrences.map((o, i) => ({
+      occurrenceId: o.id,
+      name: o.name,
+      stageName: document.stages.find(s => s.id === o.stageId)!.name,
+      status: i === 0 ? 'Finished' as const : i === 1 ? 'Skipped' as const : 'Pending' as const,
+      skip: null,
+    })),
+  };
+  render(<TrainingOverview document={document} next={read} program onSelect={onSelect} />);
+  expect(screen.getByRole('heading', { name: 'One clear plan.' })).toBeVisible();
+  expect(screen.getByText('Finished', { exact: true })).toBeVisible();
+  expect(screen.getByText('Skipped', { exact: true })).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: /^Week 2/ }));
+  expect(screen.getByRole('heading', { name: 'Week 2 workouts' })).toBeVisible();
+  expect(onSelect).not.toHaveBeenCalled();
+  expect(JSON.stringify(document)).toBe(before);
+  expect(screen.queryByRole('button', { name: 'Start workout' })).toBeNull();
+});
+
+
+it('keeps saved program exercise cards load-free without changing authored targets', () => {
+  const workout = createHypertrophyPlan().occurrences[0];
+  workout.positions = [workout.positions[0]];
+  workout.positions[0].targets[0].measurement = {
+    kind: 'assistance', value: '40', unit: 'lb',
+    convention: 'displayedAssistance', zeroMeaning: 'noAssistance',
+  };
+  const before = JSON.stringify(workout);
+  const { container } = render(<PlannedWorkout workout={workout} design program />);
+  expect(screen.getByRole('heading', { name: workout.positions[0].exercise.name })).toBeVisible();
+  expect(screen.getByText('Exercise details')).toBeVisible();
+  expect(container).not.toHaveTextContent(/load unspecified|confirm when logging|40 lb|means easier/i);
+  expect(container).toHaveTextContent(/reps/);
+  const details = container.querySelector('details')!;
+  fireEvent.click(details.querySelector('summary')!);
+  expect(container).toHaveTextContent(workout.positions[0].role!);
+  expect(JSON.stringify(workout)).toBe(before);
+});

@@ -103,6 +103,17 @@ export async function navigationJourney({ page, base, artifact, accountId, planI
   await page.getByRole('link', { name: 'Open active plan', exact: true }).click();
   await expect(page.getByRole('link', { name: 'Back to training', exact: true })).toBeVisible();
   await trace('Saved Program entered');
+  for (const width of [1280, 390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    await surface('Program', width);
+    await shot(`program-overview-${width}`);
+    const session = page.locator('details[data-occurrence-id]').first();
+    await session.locator(':scope > summary').click();
+    await expect(session.getByRole('region', { name: 'Planned workout' })).toBeVisible();
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await shot(`program-session-${width}`);
+    await session.locator(':scope > summary').click();
+  }
   await surface('Program', 320); await shot('saved-program-320');
   const retainedBuilderId = JSON.parse(Object.values(builderPending)[0]).command.target.planId;
   await expect(nav.getByRole('link', { name: 'Builder', exact: true })).toHaveAttribute('href', `/trainer2/dev/drafts?view=builder&planId=${retainedBuilderId}`);

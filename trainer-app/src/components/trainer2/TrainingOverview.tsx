@@ -11,7 +11,38 @@ import { effortSummary, trainingUrl, targetGroups, type WorkoutIntent } from './
 import styles from './TrainingOverview.module.css';
 import Link from 'next/link';
 
-export function PlannedWorkout({ workout, design = false, hideLoad = false }: { workout: WorkoutIntent; design?: boolean; hideLoad?: boolean }) {
+export function PlannedWorkout({ workout, design = false, hideLoad = false, program = false }: { workout: WorkoutIntent; design?: boolean; hideLoad?: boolean; program?: boolean }) {
+  if (program) return <section aria-label="Planned workout">
+    <h3 className="sr-only">Planned workout</h3>
+    <ul className={styles.programExercises}>{workout.positions.map(p => <li key={p.id}>
+      <details>
+        <summary>
+          <span className={styles.programExerciseHeading}>
+            <span><h4>{exerciseTitle(p.exercise)}</h4>
+              {targetGroups(p.targets.map(t => ({ ...t, measurement: null }))).map(g =>
+                <span className={styles.programPrescription} key={g.first}>
+                  {g.count} × {g.label}
+                </span>)}
+            </span>
+            <svg aria-hidden="true" className={styles.chevron} viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="m9 5 7 7-7 7" />
+            </svg>
+          </span>
+          <span className={styles.programExerciseFooter}>
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="1.6">
+              <path d="M14 3H5v18h14V8z M14 3v5h5 M8 12h8 M8 16h8" />
+            </svg>
+            Exercise details
+          </span>
+        </summary>
+        <p className={styles.programExerciseInformation}>
+          {p.role}{p.exercise.variation ? ` · ${p.exercise.variation}` : ''}
+        </p>
+      </details>
+    </li>)}</ul>
+  </section>;
   if (design && hideLoad) return <WorkoutPreviewExercises key={workout.id} workout={workout} />;
   const prescriptions = (p: WorkoutIntent['positions'][number]) => targetGroups(
     hideLoad ? p.targets.map(t => ({ ...t, measurement: null })) : p.targets,
@@ -50,17 +81,17 @@ export function TrainingOverview({ document, next, program = false, selectedId, 
     next.occurrences.find(r => r.occurrenceId === o.id)?.status === 'Finished' ? 'Finished' :
     next.occurrences.find(r => r.occurrenceId === o.id)?.status === 'Skipped' ? 'Skipped' : 'Pending';
   return <div className={styles.screen}>
-    <header className={`${styles.title} ${program ? '' : styles.trainingTitle}`}><p className={styles.eyebrow}>{program ? 'Program' : 'Your training'}</p>
+    <header className={`${styles.title} ${program ? styles.programTitle : styles.trainingTitle}`}><p className={styles.eyebrow}>{program ? 'Program' : 'Your training'}</p>
       <h1>{program ? document.name : next.lifecycle === 'Completed' ? 'Program complete' : 'Training'}</h1>
       <p className={styles.subtitle}>{program ? 'Your saved prescriptions, week by week.' : document.name}</p>
       <Link className={styles.textLink} href={program ? trainingUrl(next.planId) : `${trainingUrl(next.planId)}&view=program`}>{program ? 'Back to training' : 'View Program'}</Link>
     </header>
     <div className={program ? styles.program : styles.layout}>
       <section className={styles.stack}>
-        <section className={`${styles.card} ${styles.hero}`} aria-label="Week progress">
+        <section className={`${styles.card} ${styles.hero} ${program ? styles.programHero : ''}`} aria-label="Week progress">
           <div className={styles.row}><div><p className={styles.eyebrow}>{group?.deload ? 'Deload' : group?.stage.name ?? 'Training week'}</p>
             <h2>{program ? 'One clear plan.' : `Week ${currentIndex + 1} of ${groups.length}`}</h2></div>
-            {program && <span className={styles.tag}>Saved · {next.lifecycle === 'Completed' ? 'Completed' : 'Active'} · read-only</span>}
+            {program && <span className={styles.tag}>Saved · {next.lifecycle} · read-only</span>}
           </div>
           {program ? <>
             <nav aria-label="Program weeks" className={styles.weeks}>{groups.map((g, i) => <button key={`${g.stage.id}:${i}`} type="button"
@@ -92,11 +123,12 @@ export function TrainingOverview({ document, next, program = false, selectedId, 
         <div className={styles.sectionHead}><h2>Week {weekIndex + 1} workouts</h2><span>{finished} finished · {skipped} skipped</span></div>
         <div className={styles.programGrid}>{group?.workouts.map(({ occurrence: o }) => {
           const row = next.occurrences.find(r => r.occurrenceId === o.id);
-          return <details key={o.id} data-occurrence-id={o.id} className={styles.card}>
-            <summary className={styles.workoutSummary}>{o.name}</summary>
-            <div className={styles.cardMeta}><span className={styles.tag}>{status(o)}</span><span>{o.positions.length} exercises · {o.positions.reduce((n, p) => n + p.targets.length, 0)} sets</span></div>
+          return <details key={o.id} data-occurrence-id={o.id} data-status={status(o)} className={`${styles.card} ${styles.programWorkout}`}>
+            <summary className={styles.workoutSummary}>{o.name}
+              <span className={styles.programWorkoutMeta}><span className={styles.tag}>{status(o)}</span><span>{o.positions.length} exercises · {o.positions.reduce((n, p) => n + p.targets.length, 0)} sets</span></span><span className={styles.programDisclosure} aria-hidden="true">▸</span>
+            </summary>
             {row?.skip && <p className={styles.support}>Explicitly skipped · {new Date(row.skip.skippedAt).toLocaleDateString()}</p>}
-            <PlannedWorkout workout={o} design />
+            <PlannedWorkout workout={o} design program />
             {o.id === next.execution?.initial.occurrence.id ? <a className={styles.primary} href={`/trainer2/dev/executions/${next.execution.executionId}`}>Resume workout</a> :
               row?.executionId ? <a className={styles.secondary} href={`/trainer2/dev/executions/${row.executionId}`}>View results</a> : <a className={styles.secondary} href={trainingUrl(next.planId)}>Back to current-week selection</a>}
           </details>;

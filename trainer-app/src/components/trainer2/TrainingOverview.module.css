@@ -108,3 +108,77 @@
 .screen .trainingTitle h1 { font-size: 24px; letter-spacing: -.5px; }
 .trainingTitle .subtitle { grid-column: 1; grid-row: 2; font-size: 14px; }
 .trainingTitle :is(.textLink, .loadingLink) { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+/* Saved Program follows the supplied reference without changing training controllers. */
+.programTitle { gap: 7px; margin: 4px 0 18px; }
+.programTitle h1 { max-width: 900px; font-size: 28px; letter-spacing: -.8px; }
+.programTitle .subtitle { font-size: 14px; }
+.program { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+.programHero { background: #dce7ca; border-color: #d1ddc1; padding: 20px; gap: 12px; border-radius: 16px; }
+.programHero h2 { font-size: 25px; margin-top: 3px; }
+.programHero .tag { background: #f3f6ed; font-size: 12px; font-weight: 600; }
+.programHero .support { font-size: 12px; }
+.program .weeks { display: flex; gap: 5px; overflow-x: auto; padding: 2px; }
+.program .weeks button { flex: 1 0 44px; min-width: 44px; border-radius: 8px; padding: 9px 4px; text-align: center; font-size: 14px; }
+.program .weeks small { margin-top: 2px; font-size: 12px; overflow-wrap: anywhere; }
+.program > section > .sectionHead h2 { font-size: 20px; }
+.programGrid { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+.programWorkout { padding: 0; border-radius: 13px; overflow: hidden; }
+.programWorkout[open] { grid-row: span 3; }
+.programWorkout > :not(summary) { margin-left: 18px; margin-right: 18px; }
+.programWorkout > :last-child { margin-bottom: 16px; width: auto; }
+.programWorkout .workoutSummary { position: relative; padding: 14px 16px 13px 34px; list-style: none; font-size: 17px; }
+.workoutSummary::-webkit-details-marker { display: none; }
+.programWorkout[open] .workoutSummary { background: #f9faf7; }
+.programWorkoutMeta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 7px; color: var(--muted); font-size: 12px; font-weight: 400; }
+.programWorkoutMeta .tag { font-size: 12px; padding: 3px 6px; }
+.programWorkout[data-status="Finished"] .programWorkoutMeta .tag { background: #e4edda; color: #315a31; }
+.programDisclosure { position: absolute; left: 16px; top: 15px; font-size: 15px; font-weight: 400; line-height: 1.4; }
+.programWorkout[open] .programDisclosure { transform: rotate(90deg); }
+.programWorkout .prescriptions { margin-top: 0; }
+.programWorkout .prescriptions li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, .8fr); column-gap: 12px; padding: 12px 0; }
+.programWorkout .prescriptions h4 { grid-column: 1; grid-row: 1; font-size: 13px; }
+.programWorkout .prescriptions li > p { grid-column: 2; font-size: 12px; margin-top: 0; }
+.programWorkout .prescriptions li > details { grid-column: 3; grid-row: 1 / span 2; min-width: 0; }
+.programWorkout .prescriptions summary { font-size: 12px; padding: 0; }
+.programWorkout .prescriptions details p { font-size: 12px; }
+.programWorkout > :last-child:is(a) { min-height: 44px; border-radius: 8px; padding: 8px; font-size: 14px; }
+@media (max-width: 799px) {
+  .programTitle h1 { font-size: 25px; line-height: 1.17; }
+  .programTitle .textLink { font-size: 14px; }
+  .programHero { padding: 16px 12px; gap: 11px; }
+  .programHero .row { gap: 8px; }
+  .programHero h2 { font-size: 23px; }
+  .programHero .support { font-size: 12px; }
+  .program .weeks { gap: 4px; }
+  .program .weeks button { font-size: 13px; padding: 8px 3px; }
+  .program .weeks small { font-size: 11px; }
+  .programGrid { grid-template-columns: minmax(0, 1fr); gap: 9px; }
+  .programWorkout[open] { grid-row: auto; }
+  .program > section > .sectionHead { gap: 6px; }
+  .program > section > .sectionHead h2 { font-size: 18px; }
+  .program > section > .sectionHead > span { font-size: 12px; }
+  .programWorkout .workoutSummary { padding: 14px 12px 14px 28px; font-size: 15px; }
+  .programWorkoutMeta { display: inline-flex; margin: 0 0 0 7px; gap: 6px; vertical-align: middle; }
+  .programWorkoutMeta .tag { font-size: 11px; }
+  .programDisclosure { left: 12px; top: 15px; font-size: 14px; }
+  .programWorkout > :not(summary) { margin-left: 14px; margin-right: 14px; }
+  .programWorkout .prescriptions li { display: block; padding: 10px 0; }
+  .programWorkout .prescriptions h4 { font-size: 14px; }
+  .programWorkout .prescriptions li > p { font-size: 13px; margin-top: 3px; }
+  .programWorkout .prescriptions summary { font-size: 12px; padding-top: 4px; }
+}
+
+/* Saved workout cards keep load decisions in the logger. */
+.programExercises { list-style: none; padding: 0; margin: 0 0 16px; display: grid; gap: 10px; }
+.programExercises li { min-width: 0; }
+.programExercises details { border: 1px solid var(--line); border-radius: 12px; background: white; }
+.programExercises summary { list-style: none; padding: 14px; cursor: pointer; }
+.programExercises summary::-webkit-details-marker { display: none; }
+.programExerciseHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.programExerciseHeading > span { min-width: 0; }
+.programExerciseHeading h4 { font-size: 16px; line-height: 1.3; font-weight: 650; }
+.programPrescription { display: block; font-size: 14px; color: var(--muted); margin-top: 5px; overflow-wrap: anywhere; }
+.programExerciseFooter { display: flex; align-items: center; gap: 9px; border-top: 1px solid var(--line); margin-top: 12px; padding-top: 10px; min-height: 36px; font-size: 14px; }
+.programExerciseFooter svg { width: 20px; height: 20px; flex-shrink: 0; }
+.programExerciseInformation { border-top: 1px solid var(--line); padding: 12px 14px; font-size: 14px; color: var(--muted); }
+.programExercises details[open] .chevron { transform: rotate(90deg); }

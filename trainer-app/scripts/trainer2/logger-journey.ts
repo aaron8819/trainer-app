@@ -309,9 +309,13 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   await page.locator('[data-occurrence-id] > summary').last().click();
   for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 }); await assertPoundSurface(page);
-    await expect(page.getByText(/132.28 lb per implement/).first()).toBeVisible();
+    const preview = page.locator('[data-occurrence-id]').last()
+      .getByRole('region', { name: 'Planned workout' });
+    await expect(preview).toBeVisible();
+    await expect(preview.getByText(/reps/).first()).toBeVisible();
+    await expect(preview).not.toContainText(/\b(?:lb|kg)\b|Load unspecified|confirm when logging/);
     await shot(`lb-program-${width}`);
   }
-  pass('Untouched legacy kg Program and History show pounds only at 390px and 320px');
+  pass('Legacy kg Program previews preserve prescriptions without load copy at 390px and 320px');
   await lbOnlyBuilderJourney({ page, base, artifact, db, reader, principal, pass });
 }

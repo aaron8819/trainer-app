@@ -10,15 +10,15 @@ export function TrainingHomeLoading({
   onRetry?: () => void;
 }) {
   return <div className={styles.screen} aria-busy={!error}>
-    <header className={`${styles.title} ${program ? '' : styles.trainingTitle}`}>
+    <header className={`${styles.title} ${program ? styles.programTitle : styles.trainingTitle}`}>
       <p className={styles.eyebrow}>{program ? 'Program' : 'Your training'}</p>
       <h1>{program ? name ?? 'Program' : 'Training'}</h1>
       <p className={styles.subtitle}>{name ?? 'Your training, one workout at a time.'}</p>
       <span className={styles.loadingLink} aria-hidden="true" />
     </header>
-    <div className={styles.layout}>
+    <div className={program ? styles.program : styles.layout}>
       <section className={styles.stack}>
-        <section className={`${styles.card} ${styles.hero} ${styles.loadingHero}`}>
+        <section className={`${styles.card} ${styles.hero} ${styles.loadingHero} ${program ? styles.programHero : ''}`}>
           <p role={error ? 'alert' : 'status'}>
             {error ?? 'Getting your training ready…'}
           </p>

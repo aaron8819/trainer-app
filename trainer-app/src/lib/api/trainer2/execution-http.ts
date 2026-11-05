@@ -32,7 +32,7 @@ export async function executionHttp(request: Request, operation: 'AdvanceWeek' |
       const key = id.parse(target);
       const result = await db.$transaction(async tx => {
         await tx.$executeRaw`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`;
-        return operation === 'ReadExerciseHistory' ? readExerciseHistory(tx, principal, key, id.parse(new URL(request.url).searchParams.get('positionId'))) : operation === 'ReadExecution' ? readExecutionWithPrevious(tx, principal, key) : readNextWorkout(tx, principal, key);
+        return operation === 'ReadExerciseHistory' ? readExerciseHistory(tx, principal, key, id.parse(new URL(request.url).searchParams.get('positionId')), new URL(request.url).searchParams.has('cursor') ? id.parse(new URL(request.url).searchParams.get('cursor')) : undefined) : operation === 'ReadExecution' ? readExecutionWithPrevious(tx, principal, key) : readNextWorkout(tx, principal, key);
       });
       return json(result ?? { error: 'NOT_FOUND' }, result ? 200 : 404);
     }

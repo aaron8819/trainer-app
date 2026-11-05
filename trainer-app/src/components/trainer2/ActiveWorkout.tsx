@@ -109,10 +109,13 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
   const historyPositionId = active?.positionId;
   const [historyData, setHistoryData] = useState<ExerciseHistoryRead | null>(null);
   const [historyError, setHistoryError] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [olderError, setOlderError] = useState(false);
+  const olderRequest = useRef<AbortController | null>(null);
   useEffect(() => {
     if (!historyOpen || !historyPositionId) return;
     const controller = new AbortController();
-    setHistoryData(null); setHistoryError(false);
+    setHistoryData(null); setHistoryError(false); setOlderError(false); setLoadingOlder(false);
     fetch(`/api/trainer2/executions/${execution.executionId}/history?positionId=${encodeURIComponent(historyPositionId)}`, { signal: controller.signal, cache: 'no-store' })
       .then(response => { if (!response.ok) throw new Error('History unavailable'); return response.json(); })
       .then(value => {
@@ -120,9 +123,22 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
         if (data.executionId !== execution.executionId || data.positionId !== historyPositionId) throw new Error('History identity mismatch');
         if (!controller.signal.aborted) setHistoryData(data);
       }).catch(() => { if (!controller.signal.aborted) setHistoryError(true); });
-    return () => controller.abort();
+    return () => { controller.abort(); olderRequest.current?.abort(); olderRequest.current = null; };
   }, [historyOpen, historyPositionId, execution.executionId]);
   const historySessions = historyData?.sessions ?? [];
+  function loadOlderHistory() {
+    if (!historyData?.nextCursor || !historyPositionId || loadingOlder) return;
+    const cursor = historyData.nextCursor, controller = new AbortController();
+    olderRequest.current = controller; setLoadingOlder(true); setOlderError(false);
+    fetch(`/api/trainer2/executions/${execution.executionId}/history?positionId=${encodeURIComponent(historyPositionId)}&cursor=${encodeURIComponent(cursor)}`, { signal: controller.signal, cache: 'no-store' })
+      .then(response => { if (!response.ok) throw new Error('History unavailable'); return response.json(); })
+      .then(value => {
+        const page = exerciseHistoryRead.parse(value);
+        if (page.executionId !== execution.executionId || page.positionId !== historyPositionId) throw new Error('History identity mismatch');
+        if (!controller.signal.aborted) setHistoryData(current => current?.nextCursor === cursor ? { ...page, sessions: [...current.sessions, ...page.sessions] } : current);
+      }).catch(() => { if (!controller.signal.aborted) setOlderError(true); })
+      .finally(() => { if (!controller.signal.aborted) { setLoadingOlder(false); olderRequest.current = null; } });
+  }
   function onSubmission(id: string) {
     const start = selection.current;
     return (results: SavedSetResult[], skips: SetSkip[] = execution.skips ?? []) => {
@@ -156,8 +172,9 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
         <dialog ref={historyDialog} onCancel={() => setHistoryOpen(false)} aria-label="Exercise history" className={styles.historyDialog}>
           <div className={styles.sheetHead}><h2>History</h2><button type="button" onClick={() => setHistoryOpen(false)}>Close history</button></div>
           <div className={styles.sheetBody}>
-          {historyError ? <p role="alert">History could not be loaded. Close and reopen to retry.</p> : !historyData ? <p role="status">Loading history...</p> : historySessions.length ? <>{active && <EquipmentResistance exercise={active.position.exercise} />}
+          {historyError ? <p role="alert">History could not be loaded. Close and reopen to retry.</p> : !historyData ? <p role="status">Loading history...</p> : <>{active && <EquipmentResistance exercise={active.position.exercise} />}
             <p className="mb-2 text-xs text-slate-600">Select sessions to compare. Latest saved results shown.</p>
+            {!historySessions.length && <p>No comparable results found in the workouts checked.</p>}
             {historySessions.map((prior, sessionIndex) => {
               const historyMeanings = [...new Set(prior.sets.flatMap(r => { const m = r.result.measurement; return m && 'value' in m ? [loadLabel(m).split(' lb ')[1]] : []; }))];
               return <details key={prior.executionId} open={sessionIndex === 0 ? true : undefined} className="border-b border-slate-200">
@@ -170,7 +187,7 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
                   })}</tbody></table>
                 <a className="inline-block min-h-11 py-2 underline" href={`/trainer2/dev/executions/${prior.executionId}`}>View source workout</a>
               </details>;
-            })}{historyData.limited && <p className="mt-3 text-xs text-slate-500">History is limited to recent matching workouts; some earlier results may be unavailable.</p>}</> : <p>No comparable results found{historyData.limited ? ' in the available recent workouts' : ''}.</p>}
+            })}{historyData.limited && <p className="mt-3 text-xs text-slate-500">History stops where an earlier workout has ambiguous exercise occurrences.</p>}{historyData.nextCursor && <button type="button" className="mt-3 min-h-11 rounded-lg border border-slate-300 px-3 text-sm font-semibold" disabled={loadingOlder} onClick={loadOlderHistory}>{loadingOlder ? 'Loading...' : 'Load older workouts'}</button>}{olderError && <p role="alert" className="mt-2 text-sm">Older history could not be loaded. Try again.</p>}</>}
 
           </div></dialog>
       </>}

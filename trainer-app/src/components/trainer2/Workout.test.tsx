@@ -263,8 +263,9 @@ it('compares multiple history sessions without changing unsaved logger inputs', 
     reps: reps === null ? null : { value: reps, basis: 'total' }, rir,
     measurement: load === null ? null : { kind: 'externalLoad', value: load, unit: 'lb', convention: 'machinePlatesPerArm', zeroMeaning: 'validZero' },
   });
-  const fetcher = vi.fn().mockResolvedValue(response({ executionId: value.executionId, positionId, limited: false, sessions: [
+  const fetcher = vi.fn().mockResolvedValueOnce(response({ executionId: value.executionId, positionId, limited: false, nextCursor: firstId, sessions: [
     { executionId: firstId, workoutName: 'Deload workout', finishedAt: '2026-10-08T12:00:00.000Z', deload: true, sets: [{ number: 1, result: result('0.000000', 8, '2') }] },
+  ] })).mockResolvedValueOnce(response({ executionId: value.executionId, positionId, limited: false, nextCursor: null, sessions: [
     { executionId: secondId, workoutName: 'Earlier workout', finishedAt: '2026-10-01T12:00:00.000Z', deload: null, sets: [{ number: 2, result: result('50.125000', null, null) }] },
   ] }));
   vi.stubGlobal('fetch', fetcher);
@@ -279,18 +280,42 @@ it('compares multiple history sessions without changing unsaved logger inputs', 
   const dialog = screen.getByRole('dialog', { name: 'Exercise history' });
   expect(await within(dialog).findByText(/Deload workout/, { selector: 'summary' })).toHaveTextContent('Deload');
   expect(within(dialog).getByText('0 lb')).toBeVisible();
-  const earlier = within(dialog).getByText(/Earlier workout/, { selector: 'summary' });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Load older workouts' }));
+  const earlier = await within(dialog).findByText(/Earlier workout/, { selector: 'summary' });
   fireEvent.click(earlier);
   expect(within(dialog).getByText('50.125 lb')).toBeVisible();
   expect(within(dialog).getByText('0 lb')).toBeVisible();
   expect(within(dialog).getAllByText('plates added per arm')[0]).toBeInTheDocument();
-  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(fetcher.mock.calls[1][0]).toContain(`cursor=${firstId}`);
   expect(fetcher.mock.calls[0][0]).toContain(`positionId=${positionId}`);
   fireEvent.click(within(dialog).getByRole('button', { name: 'Close history' }));
   expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('7');
   expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('42');
   expect(value.results).toEqual([]);
   expect(JSON.stringify(localStorage)).toBe(storageBefore);
+});
+it('cancels an older history page on close and ignores it after reopening', async () => {
+  const value = activeFixture(), positionId = value.initial.positions[0].id, cursor = randomUUID();
+  let finishOlder!: (value: Response) => void;
+  const empty = { executionId: value.executionId, positionId, limited: false, nextCursor: null, sessions: [] };
+  const fetcher = vi.fn().mockResolvedValueOnce(response({ ...empty, nextCursor: cursor }))
+    .mockImplementationOnce(() => new Promise<Response>(resolve => { finishOlder = resolve; }))
+    .mockResolvedValueOnce(response(empty));
+  vi.stubGlobal('fetch', fetcher);
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function (this: HTMLDialogElement) { this.setAttribute('open', ''); } });
+  Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: function (this: HTMLDialogElement) { this.removeAttribute('open'); } });
+  render(<ActiveHarness value={value} read={async () => []} />);
+  fireEvent.click(screen.getByRole('button', { name: 'History' }));
+  const dialog = screen.getByRole('dialog', { name: 'Exercise history' });
+  fireEvent.click(await within(dialog).findByRole('button', { name: 'Load older workouts' }));
+  const signal = fetcher.mock.calls[1][1].signal as AbortSignal;
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Close history' }));
+  expect(signal.aborted).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'History' }));
+  await within(dialog).findByText('No comparable results found in the workouts checked.');
+  await act(async () => { finishOlder(response({ ...empty, nextCursor: cursor })); });
+  expect(within(dialog).queryByRole('button', { name: 'Load older workouts' })).not.toBeInTheDocument();
 });
 describe('Single active set and queue', () => {
   it('renders one editor, preserves drafts by identity, and restores selection on remount', async () => {

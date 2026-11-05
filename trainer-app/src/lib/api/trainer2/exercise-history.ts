@@ -10,22 +10,24 @@ import { readExecution } from './execution';
 import type { ServerPrincipal } from './principal';
 
 // A bounded, presentation-only read. Ambiguous occurrences stop the search, as in the existing prefill path.
-export async function readExerciseHistory(tx: Prisma.TransactionClient, principal: ServerPrincipal, executionId: string, positionId: string): Promise<ExerciseHistoryRead | null> {
+export async function readExerciseHistory(tx: Prisma.TransactionClient, principal: ServerPrincipal, executionId: string, positionId: string, cursor?: string): Promise<ExerciseHistoryRead | null> {
   const current = await readExecution(tx, principal, executionId);
   if (!current || current.lifecycle === 'Discarded') return null;
   const ownedCurrent = executionPositions(current).find(p => p.id === positionId);
   const position = effectiveOccurrence(current).positions.find(p => p.id === ownedCurrent?.displayPositionId);
   if (!position) return null;
-  const output: ExerciseHistoryRead = { executionId, positionId, limited: false, sessions: [] };
+  const output: ExerciseHistoryRead = { executionId, positionId, limited: false, nextCursor: null, sessions: [] };
   if (position.exercise.kind !== 'catalogSnapshot') return output;
-  const candidates = await tx.trainer2ExecutionFinish.findMany({ where: { accountId: principal.accountId, executionId: { not: executionId }, finishedAt: { lte: new Date(current.initial.startedAt) } }, orderBy: [{ finishedAt: 'desc' }, { executionId: 'asc' }], take: 51, select: { executionId: true } });
-  output.limited = candidates.length > 50;
+  const boundary = cursor ? await tx.trainer2ExecutionFinish.findFirst({ where: { accountId: principal.accountId, executionId: cursor, finishedAt: { lte: new Date(current.initial.startedAt) } }, select: { executionId: true, finishedAt: true } }) : null;
+  if (cursor && (!boundary || cursor === executionId)) return null;
+  const candidates = await tx.trainer2ExecutionFinish.findMany({ where: { accountId: principal.accountId, executionId: { not: executionId }, finishedAt: { lte: new Date(current.initial.startedAt) }, ...(boundary ? { OR: [{ finishedAt: { lt: boundary.finishedAt } }, { finishedAt: boundary.finishedAt, executionId: { gt: boundary.executionId } }] } : {}) }, orderBy: [{ finishedAt: 'desc' }, { executionId: 'asc' }], take: 6, select: { executionId: true } });
+  if (candidates.length > 5) output.nextCursor = candidates[4].executionId;
   const currentResults = current.results.flatMap(r => r.result && ownedCurrent?.targets.some(t => t.id === r.targetId) ? [r.result] : []);
-  for (const candidate of candidates.slice(0, 50)) {
+  for (const candidate of candidates.slice(0, 5)) {
     const source = await readExecution(tx, principal, candidate.executionId);
     if (source?.lifecycle !== 'Finished' || !source.finish) continue;
     const matches = effectiveOccurrence(source).positions.filter(p => sameLoggingExercise(p.exercise, position.exercise));
-    if (matches.length > 1) { output.limited = true; break; }
+    if (matches.length > 1) { output.limited = true; output.nextCursor = null; break; }
     if (!matches.length) continue;
     const match = matches[0], owned = executionPositions(source).find(p => p.displayPositionId === match.id);
     if (!owned) continue;
@@ -48,7 +50,6 @@ export async function readExerciseHistory(tx: Prisma.TransactionClient, principa
       if (parsed.success && parsed.data.occurrences.some(o => o.id === source.initial.occurrence.id && o.stageId === source.initial.stage.id)) deload = parsed.data.builder?.weeks.find(w => w.stageId === source.initial.stage.id)?.deload ?? null;
     }
     output.sessions.push({ executionId: source.executionId, workoutName: source.initial.occurrence.name, finishedAt: source.finish.finishedAt, deload, sets });
-    if (output.sessions.length === 10) { output.limited = true; break; }
   }
   return output;
 }

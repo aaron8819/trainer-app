@@ -24,7 +24,7 @@ it('reads bounded account-scoped sessions, verifies deload evidence and retains 
   const tx = { trainer2ExecutionFinish: { findMany }, trainer2PlanRevision: { findFirst } } as unknown as Prisma.TransactionClient;
   const principal = { accountId: 'owner', sessionId: 'session' };
   const data = await readExerciseHistory(tx, principal, currentId, positionId);
-  expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 51, where: expect.objectContaining({ accountId: 'owner' }) }));
+  expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 6, where: expect.objectContaining({ accountId: 'owner' }) }));
   expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: source.initial.revisionId, planId: source.initial.planId, accountId: 'owner' } }));
   expect(data?.sessions[0]).toMatchObject({ executionId: sourceId, deload: true, sets: [{ number: 1, result }, { number: 2, result: { measurement: null, rir: null } }] });
   mocks.read.mockResolvedValueOnce(current).mockResolvedValueOnce(source);
@@ -38,13 +38,31 @@ it('bounds history scanning and rejects positions outside the owned execution', 
   const position = createHypertrophyPlan().occurrences[0].positions[0];
   const executionId = randomUUID(), positionId = randomUUID();
   const current = { executionId, lifecycle: 'Open', contentHash: 'a'.repeat(64), results: [], initial: { startedAt: '2026-10-15T12:00:00.000Z', occurrence: { positions: [position] }, positions: [{ id: positionId, sourcePositionId: position.id, targets: [] }] } } as unknown as ExecutionRead;
-  const findMany = vi.fn().mockResolvedValue(Array.from({ length: 51 }, () => ({ executionId: randomUUID() })));
+  const findMany = vi.fn().mockResolvedValue(Array.from({ length: 6 }, () => ({ executionId: randomUUID() })));
   const tx = { trainer2ExecutionFinish: { findMany } } as unknown as Prisma.TransactionClient;
   const principal = { accountId: 'owner', sessionId: 'session' };
   mocks.read.mockResolvedValueOnce(current).mockResolvedValue(null);
-  expect(await readExerciseHistory(tx, principal, executionId, positionId)).toEqual({ executionId, positionId, sessions: [], limited: true });
-  expect(mocks.read).toHaveBeenCalledTimes(51);
+  expect(await readExerciseHistory(tx, principal, executionId, positionId)).toEqual({ executionId, positionId, sessions: [], limited: false, nextCursor: expect.any(String) });
+  expect(mocks.read).toHaveBeenCalledTimes(6);
   mocks.read.mockResolvedValueOnce(current);
   expect(await readExerciseHistory(tx, principal, executionId, randomUUID())).toBeNull();
+  expect(findMany).toHaveBeenCalledTimes(1);
+});
+
+it('scopes pagination cursors to the owner and continues after the exact date and identity', async () => {
+  const position = createHypertrophyPlan().occurrences[0].positions[0];
+  const executionId = randomUUID(), positionId = randomUUID(), cursor = randomUUID();
+  const current = { executionId, lifecycle: 'Open', contentHash: 'a'.repeat(64), results: [], initial: { startedAt: '2026-10-15T12:00:00.000Z', occurrence: { positions: [position] }, positions: [{ id: positionId, sourcePositionId: position.id, targets: [] }] } } as unknown as ExecutionRead;
+  const finishedAt = new Date('2026-10-01T12:00:00.000Z');
+  const findFirst = vi.fn().mockResolvedValue({ executionId: cursor, finishedAt });
+  const findMany = vi.fn().mockResolvedValue([]);
+  const tx = { trainer2ExecutionFinish: { findFirst, findMany } } as unknown as Prisma.TransactionClient;
+  const principal = { accountId: 'owner', sessionId: 'session' };
+  mocks.read.mockResolvedValueOnce(current);
+  expect(await readExerciseHistory(tx, principal, executionId, positionId, cursor)).toEqual({ executionId, positionId, sessions: [], limited: false, nextCursor: null });
+  expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ accountId: 'owner', executionId: cursor }) }));
+  expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 6, where: expect.objectContaining({ OR: [{ finishedAt: { lt: finishedAt } }, { finishedAt, executionId: { gt: cursor } }] }) }));
+  findFirst.mockResolvedValueOnce(null); mocks.read.mockResolvedValueOnce(current);
+  expect(await readExerciseHistory(tx, principal, executionId, positionId, randomUUID())).toBeNull();
   expect(findMany).toHaveBeenCalledTimes(1);
 });

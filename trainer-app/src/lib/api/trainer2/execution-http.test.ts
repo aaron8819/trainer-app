@@ -85,6 +85,25 @@ it.each([['Accepted',200],['Conflict',409],['Rejected',422]])('routes skip throu
   expect(mocks.context).toHaveBeenCalledWith(request,'write');expect(mocks.skip).toHaveBeenCalledWith(db,principal,input);
   expect(mocks.start).not.toHaveBeenCalled();expect(mocks.discard).not.toHaveBeenCalled();
 });
+it('validates history position and cursor in a read-only context without session renewal', async () => {
+  const executionId = randomUUID(), sql = vi.fn();
+  mocks.context.mockResolvedValue({ db: { $transaction: (f: (tx: unknown) => unknown) => f({ $executeRaw: sql }) }, principal: { accountId: 'trusted', sessionId: 'session' } });
+  const invalidPosition = await executionHttp(new Request('http://localhost/history?positionId=bad'), 'ReadExerciseHistory', executionId);
+  expect(invalidPosition.status).toBe(400);
+  expect(mocks.context).toHaveBeenCalledWith(expect.any(Request), 'read', false);
+  const invalidCursor = await executionHttp(new Request(`http://localhost/history?positionId=${randomUUID()}&cursor=bad`), 'ReadExerciseHistory', executionId);
+  expect(invalidCursor.status).toBe(400);
+  expect(sql.mock.calls[0][0][0]).toContain('READ ONLY');
+  expect(mocks.start).not.toHaveBeenCalled(); expect(mocks.save).not.toHaveBeenCalled();
+});
+it('rejects history reads when the trusted session is unauthorized', async () => {
+  const { DraftAccessError } = await import('./principal');
+  mocks.context.mockRejectedValue(new DraftAccessError('UNAUTHORIZED'));
+  const result = await executionHttp(new Request(`http://localhost/history?positionId=${randomUUID()}`), 'ReadExerciseHistory', randomUUID());
+  expect(result.status).toBe(403);
+  expect(await result.json()).toEqual({ error: 'UNAUTHORIZED' });
+  expect(mocks.read).not.toHaveBeenCalled();
+});
 import { readExecutionWithPrevious } from './previous-performance';
 import { createHypertrophyPlan } from '../../engine/trainer2/plan-builder';
 import type { ExecutionRead } from '../../trainer2-contracts/execution';

@@ -2,6 +2,7 @@ import { AdmissionInfrastructureError, infrastructureReason } from './admission-
 import { previewExerciseSwap, swapExercise } from './exercise-swap';
 import { skipSet } from './skip-set';
 import { readExecutionWithPrevious } from './previous-performance';
+import { readExerciseHistory } from './exercise-history';
 import { skipOccurrence } from './skip-occurrence';
 import { discardEmptyExecution } from './discard-execution';
 import { finishExecution } from './workout-finish';
@@ -17,7 +18,7 @@ import { addSet } from './add-set';
 import { addExercise } from './add-exercise';
 import { advanceWeek } from './advance-week';
 
-export async function executionHttp(request: Request, operation: 'AdvanceWeek' | 'AddExercise' | 'AddSet' | 'SwapExercise' | 'PreviewExerciseSwap' | 'SkipSet' | 'SkipOccurrence' | 'DiscardEmptyExecution' | 'CorrectHistoricalSetResult' | 'FinishExecution' | 'StartOccurrence' | 'SaveSetResult' | 'ReadExecution' | 'ReadNext', target?: string) {
+export async function executionHttp(request: Request, operation: 'AdvanceWeek' | 'AddExercise' | 'AddSet' | 'SwapExercise' | 'PreviewExerciseSwap' | 'SkipSet' | 'SkipOccurrence' | 'DiscardEmptyExecution' | 'CorrectHistoricalSetResult' | 'FinishExecution' | 'StartOccurrence' | 'SaveSetResult' | 'ReadExecution' | 'ReadNext' | 'ReadExerciseHistory', target?: string) {
   const started = Date.now();
   let stage = 'admission';
   const json = (body: unknown, status: number) => Response.json(body, { status,
@@ -25,13 +26,13 @@ export async function executionHttp(request: Request, operation: 'AdvanceWeek' |
   try {
     if (operation === 'PreviewExerciseSwap') assertSessionMutationOrigin(request);
     const purpose = operation === 'AdvanceWeek' || operation === 'AddExercise' || operation === 'AddSet' || operation === 'SwapExercise' || operation === 'SkipSet' || operation === 'SkipOccurrence' || operation === 'DiscardEmptyExecution' || operation === 'CorrectHistoricalSetResult' || operation === 'StartOccurrence' || operation === 'SaveSetResult' || operation === 'FinishExecution' ? 'write' : 'read';
-    const { db, principal } = operation === 'PreviewExerciseSwap' ? await requestContext(request, purpose, false) : await requestContext(request, purpose);
+    const { db, principal } = operation === 'PreviewExerciseSwap' || operation === 'ReadExerciseHistory' ? await requestContext(request, purpose, false) : await requestContext(request, purpose);
     stage = 'transaction';
-    if (operation === 'ReadExecution' || operation === 'ReadNext') {
+    if (operation === 'ReadExecution' || operation === 'ReadNext' || operation === 'ReadExerciseHistory') {
       const key = id.parse(target);
       const result = await db.$transaction(async tx => {
         await tx.$executeRaw`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`;
-        return operation === 'ReadExecution' ? readExecutionWithPrevious(tx, principal, key) : readNextWorkout(tx, principal, key);
+        return operation === 'ReadExerciseHistory' ? readExerciseHistory(tx, principal, key, id.parse(new URL(request.url).searchParams.get('positionId'))) : operation === 'ReadExecution' ? readExecutionWithPrevious(tx, principal, key) : readNextWorkout(tx, principal, key);
       });
       return json(result ?? { error: 'NOT_FOUND' }, result ? 200 : 404);
     }

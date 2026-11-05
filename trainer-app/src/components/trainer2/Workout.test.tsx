@@ -256,26 +256,41 @@ function activeTransport(results: SavedSetResult[]) {
     return response({ replayed: false, outcomeCursor: '1', outcome: { status: 'Accepted', actionId: c.actionId, commandType: c.commandType, acceptedSequence: '1', result: { executionId: saved.executionId, targetId: saved.targetId, performedSetId: saved.performedSetId, version: saved.version } } });
   });
 }
-it('trims History modal loads while retaining exact stored historical precision', async () => {
-  const value = activeFixture(), previousId = randomUUID();
-  const results = ['0.000000', '50.125000'].map(load => ({
-    executionId: previousId, targetId: randomUUID(), performedSetId: randomUUID(),
-    actionId: randomUUID(), version: 1, recordedAt: '2026-10-01T12:00:00.000Z', reason: null,
-    result: { reps: { value: 8, basis: 'total' as const }, rir: '2',
-      measurement: { kind: 'externalLoad' as const, value: load, unit: 'lb' as const,
-        convention: 'machinePlatesPerArm' as const, zeroMeaning: 'validZero' as const } },
-  }));
-  value.previous = [{ positionId: value.initial.occurrence.positions[0].id,
-    sourcePositionId: randomUUID(), executionId: previousId, workoutName: 'Previous workout',
-    finishedAt: '2026-10-01T12:00:00.000Z', results }];
-  const view = render(<ActiveHarness value={value} read={async () => value.results} />);
-  const history = view.container.querySelector<HTMLElement>('dialog[aria-label="Exercise history"]');
-  if (!history) throw new Error('History modal missing');
-  expect(within(history).getByText('0 lb', { exact: true })).toBeInTheDocument();
-  expect(within(history).getByText('50.125 lb', { exact: true })).toBeInTheDocument();
-  expect(within(history).getByText('plates added per arm', { exact: true })).toBeInTheDocument();
-  expect(results.map(result => result.result.measurement.value))
-    .toEqual(['0.000000', '50.125000']);
+it('compares multiple history sessions without changing unsaved logger inputs', async () => {
+  const value = activeFixture(), positionId = value.initial.positions[0].id;
+  const firstId = randomUUID(), secondId = randomUUID();
+  const result = (load: string | null, reps: number | null, rir: string | null) => ({
+    reps: reps === null ? null : { value: reps, basis: 'total' }, rir,
+    measurement: load === null ? null : { kind: 'externalLoad', value: load, unit: 'lb', convention: 'machinePlatesPerArm', zeroMeaning: 'validZero' },
+  });
+  const fetcher = vi.fn().mockResolvedValue(response({ executionId: value.executionId, positionId, limited: false, sessions: [
+    { executionId: firstId, workoutName: 'Deload workout', finishedAt: '2026-10-08T12:00:00.000Z', deload: true, sets: [{ number: 1, result: result('0.000000', 8, '2') }] },
+    { executionId: secondId, workoutName: 'Earlier workout', finishedAt: '2026-10-01T12:00:00.000Z', deload: null, sets: [{ number: 2, result: result('50.125000', null, null) }] },
+  ] }));
+  vi.stubGlobal('fetch', fetcher);
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function (this: HTMLDialogElement) { this.setAttribute('open', ''); } });
+  Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: function (this: HTMLDialogElement) { this.removeAttribute('open'); } });
+  render(<ActiveHarness value={value} read={async () => value.results} />);
+  fireEvent.change(screen.getByLabelText('Set 1 Actual reps'), { target: { value: '7' } });
+  fireEvent.change(screen.getByLabelText('Set 1 Actual load'), { target: { value: '42' } });
+  expect(fetcher).not.toHaveBeenCalled();
+  const storageBefore = JSON.stringify(localStorage);
+  fireEvent.click(screen.getByRole('button', { name: 'History' }));
+  const dialog = screen.getByRole('dialog', { name: 'Exercise history' });
+  expect(await within(dialog).findByText(/Deload workout/, { selector: 'summary' })).toHaveTextContent('Deload');
+  expect(within(dialog).getByText('0 lb')).toBeVisible();
+  const earlier = within(dialog).getByText(/Earlier workout/, { selector: 'summary' });
+  fireEvent.click(earlier);
+  expect(within(dialog).getByText('50.125 lb')).toBeVisible();
+  expect(within(dialog).getByText('0 lb')).toBeVisible();
+  expect(within(dialog).getAllByText('plates added per arm')[0]).toBeInTheDocument();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(fetcher.mock.calls[0][0]).toContain(`positionId=${positionId}`);
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Close history' }));
+  expect(screen.getByLabelText('Set 1 Actual reps')).toHaveValue('7');
+  expect(screen.getByLabelText('Set 1 Actual load')).toHaveValue('42');
+  expect(value.results).toEqual([]);
+  expect(JSON.stringify(localStorage)).toBe(storageBefore);
 });
 describe('Single active set and queue', () => {
   it('renders one editor, preserves drafts by identity, and restores selection on remount', async () => {

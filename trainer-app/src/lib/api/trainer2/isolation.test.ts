@@ -54,9 +54,10 @@ describe("Trainer2 boundary", () => {
     expect(seen.size).toBeGreaterThan(6);
     const routeFiles = [...seen].filter(p => p.endsWith("route.ts"));
     // All current Trainer2 API route modules must stay within the isolated graph.
-    expect(routeFiles).toHaveLength(19);
+    expect(routeFiles).toHaveLength(20);
     for (const route of ["add-exercise", "add-set", "swap-exercise-preview", "swap-exercise", "skip-set"])
       expect(routeFiles).toContain(resolve(app, `app/api/trainer2/executions/${route}/route.ts`));
+    expect(routeFiles).toContain(resolve(app, "app/api/trainer2/executions/[executionId]/history/route.ts"));
     expect(routeFiles).toContain(resolve(app, "app/api/trainer2/executions/corrections/route.ts"));
     expect(routeFiles).toContain(resolve(app, "app/api/trainer2/executions/discard/route.ts"));
     expect(routeFiles).toContain(resolve(app, "app/api/trainer2/occurrences/skip/route.ts"));

@@ -78,6 +78,13 @@ export function DraftEditor({ document: doc, disabled, onChange }: { document: D
     <p>Session order defines the finite endpoint independently of stage order.</p>
     {doc.occurrences.map((o, i) => <fieldset id={`edit-${o.id}`} tabIndex={-1} key={o.id} className="space-y-4 rounded border p-4"><legend>Session {i + 1}</legend>
       <TextField label="Session name" value={o.name} onChange={v => update(d => { d.occurrences[i].name = v; })} />
+      <label className="block">Warm-up · optional · no logging needed
+        <textarea className={control} maxLength={2000} value={o.warmup ?? ''}
+          onChange={event => update(d => {
+            if (event.target.value.trim()) d.occurrences[i].warmup = event.target.value;
+            else delete d.occurrences[i].warmup;
+          })} />
+      </label>
       <label className="block">Assigned stage <select aria-label="Assigned stage" className={control} value={o.stageId} onChange={e => update(d => { d.occurrences[i].stageId = e.target.value; })}>{doc.stages.map((s, j) => <option key={s.id} value={s.id}>{j + 1}. {s.name || "Unnamed stage"}</option>)}</select></label>
       <Order index={i} length={doc.occurrences.length} move={v => update(d => move(d.occurrences, i, v))} />
       <button type="button" className={control} onClick={() => update(d => { d.occurrences.splice(i, 1); })}>Remove session</button>

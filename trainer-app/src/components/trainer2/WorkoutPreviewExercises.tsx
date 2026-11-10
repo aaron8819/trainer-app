@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { WorkoutWarmup } from './WorkoutWarmup';
 import { exerciseTitle } from './exercise-title';
 import { targetGroups, type WorkoutIntent } from './training-summary';
 import styles from './TrainingOverview.module.css';
@@ -10,6 +11,7 @@ export function WorkoutPreviewExercises({ workout }: { workout: WorkoutIntent })
   const allOpen = workout.positions.length > 0 && expanded.size === workout.positions.length;
   const listId = `preview-exercises-${workout.id}`;
   return <section aria-label="Planned workout">
+    <WorkoutWarmup text={workout.warmup} />
     <div className={styles.exerciseHeading}>
       <h3>Exercises</h3>
       <button type="button" aria-controls={listId} aria-expanded={allOpen}

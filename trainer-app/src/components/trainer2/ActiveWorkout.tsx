@@ -1,5 +1,6 @@
 'use client';
 import { exerciseTitle } from './exercise-title';
+import { WorkoutWarmup } from './WorkoutWarmup';
 import { EquipmentResistance } from './EquipmentSetup';
 import styles from './Logger.module.css';
 import { canonicalJson } from '@/lib/trainer2-contracts/canonical-json';
@@ -158,6 +159,7 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
     else groups.push({ id: owned.id, role, positions: [owned] });
   }
   return <>
+    <WorkoutWarmup text={execution.initial.occurrence.warmup} />
     <div ref={timer} className={styles.timerSlot}><RestBar storageKey={timerKey} state={rest} onChange={setRest} /></div>
     <section ref={panel} aria-label="Active set" style={{ overflowAnchor: 'none' }} className={styles.card}>
       {active && <EquipmentResistance exercise={active.position.exercise} />}

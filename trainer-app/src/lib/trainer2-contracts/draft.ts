@@ -54,7 +54,10 @@ export const weekEdits = z.object({ removed: z.array(id), order: z.boolean(),
   targets: z.record(id, z.array(z.enum(['reps', 'measurement', 'rir', 'restSeconds', 'classification', 'required'])).min(1)).optional(),
 }).strict();
 export const position = z.object({ id, sourceKey: id.optional(), role: role.optional(), exercise, targets: z.array(target).max(100) }).strict();
+// Display-only preparation; never an exercise position or a recordable target.
+export const warmup = z.string().min(1).max(2000).refine(v => v.trim().length > 0);
 export const occurrence = z.object({ id, stageId: id, name: label, workoutKey: id.optional(), weekOverride: z.boolean().optional(),
+  warmup: warmup.optional(),
   overrides: weekEdits.optional(),
   positions: z.array(position).max(100) }).strict();
 export const stage = z.object({ id, name: label }).strict();
@@ -68,7 +71,7 @@ export const builder = z.object({ version: z.literal(1), template: z.literal("hy
   starterVersion: z.literal(1).optional(), equipment: z.array(label).optional(),
   weeks: z.array(z.object({ stageId: id, deload: z.boolean(), rir: target.shape.rir }).strict()).length(5)
     .refine(weeks => weeks.every((week, i) => week.deload === (i === 4)), "The supported schedule ends with one deload week"),
-  workouts: z.array(z.object({ key: id, name: label, rows: z.array(z.object({
+  workouts: z.array(z.object({ key: id, name: label, warmup: warmup.optional(), rows: z.array(z.object({
     key: id, exercise: position.shape.exercise, role: role.optional(), sets: z.int().min(1).max(20), prescription: target.omit({ id: true }),
   }).strict()).max(20) }).strict()).length(4),
 }).strict();
@@ -140,6 +143,7 @@ export const draftDocument = savedDraftDocument.superRefine((doc, ctx) => {
 });
 export type DraftDocument = z.infer<typeof draftDocument>;
 export const editOperation = z.discriminatedUnion("op", [
+  z.object({ op: z.literal('setOccurrenceWarmup'), occurrenceId: id, warmup: warmup.nullable() }).strict(),
   z.object({ op: z.literal('setProgressionIntent'), progression: progressionIntent.nullable() }).strict(),
   z.object({ op: z.literal('setWeekEdits'), occurrenceId: id, overrides: weekEdits.optional() }).strict(),
   z.object({ op: z.literal('editPositionRole'), positionId: id, role: role.optional() }).strict(),

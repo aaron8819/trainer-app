@@ -55,8 +55,10 @@ export function expandWorkoutDefaults(document: DraftDocument, id: IdFactory = (
   const doc = structuredClone(document);
   if (!doc.builder) return doc;
   for (const o of doc.occurrences) {
-    if (o.weekOverride) continue;
     const workout = doc.builder.workouts.find(w => w.key === o.workoutKey);
+    if (!workout) throw new Error('Missing workout relationship');
+    if (workout.warmup === undefined) delete o.warmup; else o.warmup = workout.warmup;
+    if (o.weekOverride) continue;
     const week = doc.builder.weeks.find(w => w.stageId === o.stageId);
     if (!workout || !week) throw new Error('Missing workout relationship');
     o.name = workout.name;

@@ -1,6 +1,7 @@
 'use client';
 
 import { exerciseTitle } from './exercise-title';
+import { WorkoutWarmup } from './WorkoutWarmup';
 import { LocalDateTime } from './LocalDateTime';
 import { EquipmentResistance } from './EquipmentSetup';
 import { AdvanceWeek } from './AdvanceWeek';
@@ -50,7 +51,7 @@ export function mergeExecutionRead(current: ExecutionRead | null, value: Executi
 
 export function WorkoutPrescription({ workout, resultRow, previous }: { workout: DraftDocument['occurrences'][number]; resultRow?: (positionId: string, targetId: string, number: number) => ReactNode; previous?: (positionId: string) => ReactNode }) {
   if (!resultRow) return <PlannedWorkout workout={workout} />;
-  return <div className="space-y-4"><h3 className="text-xl font-semibold">{workout.name}</h3>{workout.positions.map(p =>
+  return <div className="space-y-4"><h3 className="text-xl font-semibold">{workout.name}</h3><WorkoutWarmup text={workout.warmup} />{workout.positions.map(p =>
     <section key={p.id} className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4"><div className="flex flex-wrap justify-between gap-1"><h4 className="font-semibold">{exerciseTitle(p.exercise)}</h4><span className="text-xs text-slate-500">{p.role}</span></div>
       <EquipmentResistance exercise={p.exercise} />
       {p.exercise.variation && <p className="text-sm text-slate-600">{p.exercise.variation}</p>}

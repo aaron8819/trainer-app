@@ -45,6 +45,22 @@ describe('Add set recovery', () => {
   });
 });
 describe('Workout start consumer', () => {
+  it('shows the captured warm-up before the active exercise without recording it', () => {
+    const execution = activeFixture();
+    execution.initial.occurrence.warmup = 'Supported Cossack squats';
+    const before = JSON.stringify(execution);
+    const refresh = vi.fn();
+    render(<ActiveWorkout execution={execution} ownershipEpoch={0} locked={false}
+      inputStates={{}} onInputState={vi.fn()} refresh={refresh}
+      refreshExecution={async () => execution} />);
+    const warmup = screen.getByRole('region', { name: 'Warm-up' });
+    expect(warmup).toHaveTextContent('Supported Cossack squats');
+    expect(warmup.compareDocumentPosition(screen.getByRole('region', { name: 'Active set' }))
+      & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(warmup.querySelector('input,button')).toBeNull();
+    expect(refresh).not.toHaveBeenCalled();
+    expect(JSON.stringify(execution)).toBe(before);
+  });
   it('keeps the home layout through a delayed workout read without exposing start controls', async () => {
     const document = createHypertrophyPlan();
     let resolveRead!: (value: Response) => void;

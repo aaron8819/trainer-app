@@ -293,6 +293,8 @@ describe("test-suite environment manifest", () => {
     expect(selection.credentialFree).toContain("src/lib/api/trainer2/isolation.test.ts");
     expect(selection.credentialFree).toContain("src/components/trainer2/DraftWorkbench.test.tsx");
     expect(selection.credentialFree).toContain("src/components/trainer2/DraftEditor.test.tsx");
+    expect(selection.credentialFree).toContain("src/components/trainer2/WorkoutWarmup.test.tsx");
+    expect(selection.credentialFree).toContain("src/lib/engine/trainer2/warmup.test.ts");
     expect(selection.credentialFree).toContain(
       "src/lib/operations/credential-free-inventory-runner.test.ts"
     );

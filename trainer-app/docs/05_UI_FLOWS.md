@@ -4,6 +4,21 @@ Trainer2 bounded program variants and exact prescribed-load prefill: [definition
 
 # 05 UI Flows
 
+## Optional unlogged workout warm-up
+
+`PlanBuilder.tsx` exposes optional warm-up text for each recurring workout, applied to all
+five weeks even when the exercise editor is scoped to one week. Clearing removes it.
+`DraftEditor.tsx` supports the same text per occurrence for non-builder documents.
+`draft.ts` bounds nonblank text to 2,000 characters; absence stays absent on old documents.
+`plan-builder.ts` expands shared text, and `planning.ts` applies `setOccurrenceWarmup`
+through the ordinary immutable draft revision path. No database migration is required.
+
+`WorkoutWarmup.tsx` displays text before exercises in saved previews, draft review and the
+active logger. The logger uses the immutable start snapshot's occurrence. Warm-up text has
+no exercise or target identity, logging controls, completion requirement or progression effect.
+This supports reminders such as supported Cossack squats without adding logged working sets.
+Existing active plans cannot be edited through the draft editor and are not backfilled.
+
 ## Trainer2 navigation shell
 
 `src/app/trainer2/layout.tsx` mounts the presentation-only `Trainer2Shell` for all

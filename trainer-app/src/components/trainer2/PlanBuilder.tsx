@@ -264,6 +264,22 @@ export function PlanBuilder({
       setPending(null);
     }} cancel={() => setPending(null)} />}
     {notice && <p role="status" className="text-sm text-teal-800">{notice}</p>}
+    <label className="my-4 block text-sm font-medium">Warm-up · optional · all weeks
+      <textarea className={`${control} mt-2 block w-full`} maxLength={2000}
+        value={workout.warmup ?? ''}
+        placeholder="e.g. Supported Cossack squats — your warm-up instructions"
+        onChange={event => {
+          const next = structuredClone(doc);
+          const shared = next.builder!.workouts[workoutIndex];
+          if (event.target.value.trim()) shared.warmup = event.target.value;
+          else delete shared.warmup;
+          onChange(expandWorkoutDefaults(next));
+        }} />
+      <span className="mt-1 block font-normal text-slate-600">
+        Shown before the first exercise. No logging needed. Applies to every week of this workout,
+        including when editing a single week. Clear to remove.
+      </span>
+    </label>
     <div>{rows.map((r, i) => <section key={r.key} aria-label={`Exercise ${i + 1}`} className={styles.card}>
       <p className={styles.muted}>{String(i + 1).padStart(2, '0')} · {occurrence ? (r.position?.sourceKey ? (occurrence.overrides?.fields[r.key]?.length ? 'Week-only fields: ' + occurrence.overrides.fields[r.key].join(', ') : 'Inherited workout prescription') : 'Independent week-only exercise') : 'Workout prescription'} · {r.role ?? 'Exercise'}</p>
       <h3>{exerciseTitle(r.exercise) || 'Choose exercise'}</h3><EquipmentResistance exercise={r.exercise} />

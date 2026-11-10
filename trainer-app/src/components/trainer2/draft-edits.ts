@@ -20,6 +20,9 @@ export function draftEdits(before: DraftDocument, after: DraftDocument): Operati
   for (const o of after.occurrences) {
     const old = before.occurrences.find(n => n.id === o.id);
     if (!old) { ops.push({ op: "addOccurrence", occurrence: o }); continue; }
+    if (old.warmup !== o.warmup) ops.push({
+      op: 'setOccurrenceWarmup', occurrenceId: o.id, warmup: o.warmup ?? null,
+    });
     if (!same(old.overrides, o.overrides)) ops.push({ op: 'setWeekEdits', occurrenceId: o.id, ...(o.overrides ? { overrides: o.overrides } : {}) });
     if (o.weekOverride !== undefined && old.weekOverride !== o.weekOverride) ops.push({ op: "setWeekOverride", occurrenceId: o.id, weekOverride: o.weekOverride });
     if (old.name !== o.name || old.stageId !== o.stageId) ops.push({ op: "editOccurrence", occurrenceId: o.id, name: o.name, stageId: o.stageId });

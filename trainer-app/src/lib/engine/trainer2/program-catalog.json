@@ -496,6 +496,31 @@
     "variation": "On a fixed 45-degree back-extension bench with feet secured; both legs together. One controlled lower and return counts as one rep. No external load."
   },
   {
+    "catalogKey": "45-degree-back-extension",
+    "name": "45-Degree Back Extension",
+    "equipment": [
+      "Machine",
+      "Bodyweight"
+    ],
+    "movementPatterns": [
+      "extension"
+    ],
+    "primaryMuscles": [
+      "Glutes",
+      "Hamstrings",
+      "Lower Back"
+    ],
+    "secondaryMuscles": [],
+    "repRangeRecommendation": {
+      "min": 6,
+      "max": 12
+    },
+    "measurementProfile": "REPS_BODYWEIGHT_PLUS_LOAD",
+    "loadConvention": "ADDED_EXTERNAL_LOAD",
+    "repBasis": "TOTAL",
+    "variation": "Fixed 45-degree bench, feet secured, both legs together. One controlled lower and return is one rep. Log total external weight held (e.g. plates); 0 means bodyweight only."
+  },
+  {
     "catalogKey": "bodyweight-glute-bridge",
     "name": "Bodyweight Glute Bridge",
     "equipment": [

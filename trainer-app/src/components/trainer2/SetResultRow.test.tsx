@@ -621,3 +621,96 @@ describe('Logger correction regressions', () => {
     expect(resultMutationCommand.safeParse({ ...c, commandType: 'CorrectSetResult', intent: { result: null, reason: 'Erroneous entry' } }).success).toBe(true);
   });
 });
+
+describe('Remember confirmed set options', () => {
+  const exercise = { kind: 'authoredDescription' as const, name: 'Standing calf raise (machine/load to calibrate)', variation: 'Standing' };
+  const prescription = { id: randomUUID(), classification: 'working' as const, required: true, reps: { min: 10, max: 15, basis: 'total' as const }, measurement: null, rir: '3', restSeconds: '120' };
+  const machine: SavedSetResult = { ...saved, result: { reps: { value: 12, basis: 'perSide' }, measurement: { kind: 'externalLoad', convention: 'machineDisplayed', zeroMeaning: 'validZero', unit: 'kg', value: '35' }, rir: '2' } };
+  it('carries load type, basis and exact measured load to the next authored set without changing history', async () => {
+    const original = JSON.stringify(machine);
+    let submitted = '';
+    vi.stubGlobal('fetch', vi.fn((_url, init) => { submitted = init.body; return response(accepted(submitted)); }));
+    render(<SetResultRow {...props} number={2} activePanel exercise={exercise} prescription={prescription} preceding={[machine]} rememberedOptions={machine}
+      refresh={async () => [{ ...saved, actionId: JSON.parse(submitted).actionId, result: JSON.parse(submitted).intent.result }]} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log set' })).toBeEnabled());
+    expect(screen.getByLabelText('Set 2 actual load type')).toHaveValue('externalLoad');
+    expect(screen.getByLabelText('Set 2 load basis')).toHaveValue('machineDisplayed');
+    expect(screen.getByLabelText('Set 2 rep basis')).toHaveValue('perSide');
+    expect(screen.getByLabelText('Set 2 Actual load', { exact: true })).toHaveValue('77.16');
+    fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
+    await screen.findByText('Saved');
+    expect(JSON.parse(submitted).intent.result.measurement).toEqual(machine.result!.measurement);
+    expect(JSON.stringify(machine)).toBe(original);
+  });
+  it('remembers options in a future workout without inventing performed weight/reps, and permits a new choice', async () => {
+    const { rerender } = render(<SetResultRow {...props} activePanel exercise={exercise} prescription={prescription} rememberedOptions={machine} refresh={async () => []} />);
+    await waitFor(() => expect(screen.getByLabelText('Set 1 actual load type')).toBeEnabled());
+    expect(screen.getByLabelText('Set 1 actual load type')).toHaveValue('externalLoad');
+    expect(screen.getByLabelText('Set 1 Actual load', { exact: true })).toHaveValue('');
+    fireEvent.change(screen.getByLabelText('Set 1 actual load type'), { target: { value: 'bodyweight' } });
+    rerender(<SetResultRow {...props} activePanel exercise={exercise} prescription={prescription} rememberedOptions={machine} refresh={async () => []} />);
+    expect(screen.getByLabelText('Set 1 actual load type')).toHaveValue('bodyweight');
+  });
+  it('does not replace saved actuals or an explicit incompatible prescription', async () => {
+    const { rerender } = render(<SetResultRow {...props} activePanel saved={{ ...saved, result: { ...result, measurement: { kind: 'bodyweight', convention: 'bodyweightOnly' } } }} exercise={exercise} prescription={prescription} rememberedOptions={machine} refresh={async () => []} />);
+    await waitFor(() => expect(screen.getByLabelText('Set 1 actual load type')).toHaveValue('bodyweight'));
+    rerender(<SetResultRow {...props} activePanel exercise={exercise} prescription={{ ...prescription, measurement: { kind: 'addedLoad', value: '0', unit: 'lb', convention: 'addedExternal', zeroMeaning: 'noAddedLoad' } }} rememberedOptions={machine} refresh={async () => []} />);
+    expect(screen.getByLabelText('Set 1 actual load type')).toHaveValue('addedLoad');
+  });
+});
+
+it('retains selected machine options when optional weight is blank and reuses them after logging', async () => {
+  const exercise = { kind: 'authoredDescription' as const, name: 'Calf raise', variation: 'Standing' };
+  const prescription = { id: randomUUID(), classification: 'working' as const, required: true, reps: { min: 10, max: 15, basis: 'total' as const }, measurement: null, rir: '3', restSeconds: '120' };
+  let submitted = '';
+  vi.stubGlobal('fetch', vi.fn((_url, init) => { submitted = init.body; return response(accepted(submitted)); }));
+  const { unmount } = render(<SetResultRow {...props} activePanel exercise={exercise} prescription={prescription}
+    refresh={async () => [{ ...saved, actionId: JSON.parse(submitted).actionId, result: JSON.parse(submitted).intent.result }]} />);
+  await waitFor(() => expect(screen.getByLabelText('Set 1 actual load type')).toBeEnabled());
+  fireEvent.change(screen.getByLabelText('Set 1 actual load type'), { target: { value: 'externalLoad' } });
+  fireEvent.change(screen.getByLabelText('Set 1 load basis'), { target: { value: 'machineDisplayed' } });
+  fireEvent.change(screen.getByLabelText('Set 1 Actual reps', { exact: true }), { target: { value: '12' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
+  await screen.findByText('Saved');
+  const result = JSON.parse(submitted).intent.result;
+  expect(result.measurement).toBeNull();
+  expect(result.loggingOptions).toEqual({ kind: 'externalLoad', convention: 'machineDisplayed', zeroMeaning: 'validZero' });
+  unmount();
+  render(<SetResultRow {...props} number={2} targetId={randomUUID()} activePanel exercise={exercise} prescription={prescription} rememberedOptions={{ ...saved, result }} refresh={async () => []} />);
+  expect(await screen.findByLabelText('Set 2 actual load type')).toHaveValue('externalLoad');
+  expect(screen.getByLabelText('Set 2 load basis')).toHaveValue('machineDisplayed');
+  expect(screen.getByLabelText('Set 2 Actual load', { exact: true })).toHaveValue('');
+});
+
+it('does not erase locked catalog load and rep semantics with old missing actual fields', async () => {
+  const exercise = catalogExercise(catalog.find(e => e.id === 't2:single-arm-cable-lateral-raise')!);
+  if (exercise.kind !== 'catalogSnapshot') throw new Error('catalog');
+  const prescription = { id: randomUUID(), classification: 'working' as const, required: true, reps: { min: 10, max: 15, basis: exercise.repBasis }, measurement: null, rir: '3', restSeconds: '120' };
+  render(<SetResultRow {...props} activePanel exercise={exercise} prescription={prescription} rememberedOptions={{ ...saved, result: { reps: null, measurement: null, rir: '2' } }} refresh={async () => []} />);
+  expect(await screen.findByLabelText('Set 1 actual load type')).toHaveValue(exercise.loadKind);
+  expect(screen.getByLabelText('Set 1 rep basis')).toHaveValue(exercise.repBasis);
+  expect(screen.getByLabelText('Set 1 Actual load', { exact: true })).toBeVisible();
+});
+
+it('rejects contradictory or malformed remembered options without changing actual-result validation', () => {
+  const loggingOptions = { kind: 'externalLoad', convention: 'machineDisplayed', zeroMeaning: 'validZero' };
+  expect(performedResult.safeParse({ ...result, loggingOptions }).success).toBe(true);
+  expect(performedResult.safeParse({ ...result, loggingOptions: { ...loggingOptions, value: '0' } }).success).toBe(false);
+  expect(performedResult.safeParse({ ...result, loggingOptions: { ...loggingOptions, convention: 'addedExternal' } }).success).toBe(false);
+  expect(performedResult.safeParse({ ...result, loggingOptions, measurement: { ...loggingOptions, value: '100', unit: 'lb' } }).success).toBe(false);
+  expect(performedResult.safeParse({ reps: null, measurement: null, rir: null, loggingOptions }).success).toBe(false);
+});
+
+it('does not create a metadata-only correction for an unchanged legacy blank-load catalog result', async () => {
+  const exercise = catalogExercise(catalog.find(e => e.id === 't2:single-arm-cable-lateral-raise')!);
+  if (exercise.kind !== 'catalogSnapshot') throw new Error('catalog');
+  const prior = { ...saved, result: { reps: { value: 12, basis: exercise.repBasis }, measurement: null, rir: '3' } };
+  const prescription = { id: randomUUID(), classification: 'working' as const, required: true, reps: { min: 10, max: 15, basis: exercise.repBasis }, measurement: null, rir: '3', restSeconds: '120' };
+  const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
+  render(<SetResultRow {...props} activePanel saved={prior} exercise={exercise} prescription={prescription} refresh={async () => [prior]} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Update set' })).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: 'Update set' }));
+  await screen.findByText('Results are up to date. No values changed.');
+  expect(fetch).not.toHaveBeenCalled();
+  expect(prior.result).not.toHaveProperty('loggingOptions');
+});

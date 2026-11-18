@@ -235,3 +235,23 @@ it.each([['Accepted',200],['Conflict',409],['Rejected',422]])('routes AdvanceWee
   const request=new Request('http://localhost/advance',{method:'POST',body:JSON.stringify(input)});
   expect((await executionHttp(request,'AdvanceWeek')).status).toBe(http);expect(mocks.context).toHaveBeenCalledWith(request,'write');expect(mocks.advance).toHaveBeenCalledWith(db,principal,input);
 });
+
+it('remembers the last confirmed authored options only within the same program, across reloads', async () => {
+  const planId = randomUUID(), currentId = randomUUID(), sourceId = randomUUID(), targetId = randomUUID();
+  const p = { ...createHypertrophyPlan().occurrences[0].positions[0], exercise: { kind: 'authoredDescription', name: 'Standing calf raise (machine/load to calibrate)', variation: 'Standing' } };
+  const current = { executionId: currentId, lifecycle: 'Open', results: [], initial: { planId, positions: [], startedAt: '2026-11-18T12:00:00.000Z', occurrence: { positions: [p] } } } as unknown as ExecutionRead;
+  const result = { executionId: sourceId, targetId, version: 1, recordedAt: '2026-11-17T12:00:00.000Z', result: { reps: { value: 12, basis: 'total' }, measurement: { kind: 'externalLoad', convention: 'machineDisplayed', zeroMeaning: 'validZero', value: '100', unit: 'lb' }, rir: '3' } };
+  const older = { ...result, targetId: randomUUID(), recordedAt: '2026-11-17T11:00:00.000Z', result: { ...result.result, measurement: { ...result.result.measurement, convention: 'perImplement' } } };
+  const source = { executionId: sourceId, lifecycle: 'Finished', finish: { finishedAt: '2026-11-17T13:00:00.000Z' }, initial: { planId, occurrence: { positions: [p] }, positions: [{ sourcePositionId: p.id, targets: [{ id: targetId, sourceTargetId: p.targets[0].id }, { id: older.targetId, sourceTargetId: p.targets[1].id }] }] }, results: [older, result] };
+  const tx = { trainer2ExecutionFinish: { findMany: vi.fn().mockResolvedValue([{ executionId: sourceId }]) } } as unknown as Prisma.TransactionClient;
+  for (let i = 0; i < 2; i++) {
+    mocks.read.mockResolvedValueOnce(current).mockResolvedValueOnce(source);
+    expect((await readExecutionWithPrevious(tx, { accountId: 'trusted', sessionId: 'fixture' }, currentId))?.setOptions).toEqual([{ positionId: p.id, executionId: sourceId, result }]);
+  }
+  mocks.read.mockResolvedValueOnce({ ...current, initial: { ...current.initial, occurrence: { positions: [p, { ...p, id: randomUUID() }] } } }).mockResolvedValueOnce(source);
+  expect((await readExecutionWithPrevious(tx, { accountId: 'trusted', sessionId: 'fixture' }, currentId))?.setOptions).toEqual([]);
+  mocks.read.mockResolvedValueOnce(current).mockResolvedValueOnce({ ...source, initial: { ...source.initial, planId: randomUUID() } });
+  expect((await readExecutionWithPrevious(tx, { accountId: 'trusted', sessionId: 'fixture' }, currentId))?.setOptions).toEqual([]);
+  mocks.read.mockResolvedValueOnce(current).mockResolvedValueOnce({ ...source, initial: { ...source.initial, occurrence: { positions: [p, { ...p, id: randomUUID() }] } } });
+  expect((await readExecutionWithPrevious(tx, { accountId: 'trusted', sessionId: 'fixture' }, currentId))?.setOptions).toEqual([]);
+});

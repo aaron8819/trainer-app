@@ -32,3 +32,19 @@ node node_modules/tsx/dist/cli.mjs scripts/demo-trainer2-home-program.ts --confi
 The surfaces launcher isolates the remaining mobile/read/focus checks without rerunning the core lifecycle journey. Each launcher validates exact confirmation before importing database code. The native cluster explicitly uses UTC to match the released container fixture and Prisma timestamp transport. Each invocation creates its own loopback PostgreSQL 17 cluster (the installed Windows PostgreSQL 17 runtime when available, otherwise a disposable container), restricted connections, synthetic owner/session and separate Next port. The verification journey uses real application reads/commands and stops its own browser, app and database runtime. The preview intentionally retains its app and synthetic database until Enter, Ctrl+C or creation of the `stopFile` printed in `preview.json`; a full restart creates fresh synthetic data. Its printed Home URL and auth URL are invocation-specific; the synthetic passcode is `trainer2-local-review`. Sign in at that auth URL, then open Home. Existing services, profiles and the prototype on 4318 are untouched.
 
 The journey covers read-only selection, exact preview, explicit Start, authoritative Resume, Program browsing at desktop/390px/320px, finished/skipped inspection, explicit advancement, lost accepted Start replay after reload, final completion, load semantics, long names, loading/error recovery, keyboard focus and final-card clearance. Screenshots and source manifests are saved under invocation-specific `artifacts/trainer2/home-program-verify-*`. Focused component tests additionally protect terminal selection, paused saved state and durable recovery. Browser emulation does not qualify physical iPhone/Safari or a real mobile keyboard.
+
+## Completed program access
+
+Training and Program headers expose **Program history**, linking to the authenticated
+account-wide list at `/trainer2?view=program`. The list separates current plans
+from **Completed programs**, using persisted lifecycle only. Each entry shows its
+saved name and revision save date (not a claimed completion date). Navigation
+metadata is owned by `src/lib/api/trainer2/training-home.ts`, scoped to the authorized
+account and exact plan/revision pair; missing labels fall back to “Saved program”.
+Opening an accepted/completed plan uses its existing validated `view=program`
+read, week selector and View results links. Browsing never changes the active
+program or historical prescriptions. Existing explicitly authorized result-correction
+capabilities are unchanged. No migration, backfill, activation or training write
+is performed by list/history navigation. The disposable navigation journey covers
+a completed plan beside an active successor at desktop/390px/320px, result access,
+Back, reload and repeated visits, asserting unchanged plan rows and execution count.

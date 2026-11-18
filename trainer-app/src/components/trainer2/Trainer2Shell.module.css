@@ -52,3 +52,7 @@
   .navIcon { display: block; width: 24px; height: 24px; flex-shrink: 0; }
   .navigation a[aria-current] { color: #173b29; background: #e9eee3; font-weight: 650; }
 }
+.home > .card + .card { margin-top: 24px; }
+.planList { display: grid; gap: 16px; }
+.planList li + li { border-top: 1px solid #dcded5; padding-top: 16px; }
+.planList h3 { font-weight: 650; overflow-wrap: anywhere; }

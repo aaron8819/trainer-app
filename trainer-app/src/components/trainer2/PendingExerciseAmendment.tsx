@@ -24,7 +24,7 @@ export function PendingExerciseAmendment({ next, ownershipEpoch, refresh, onLock
       }
       setReady(true);
     } catch { setMessage('Stored update could not be recovered. Keep this tab open and reload before editing.'); }
-      return () => { generation.current++; };
+    return () => { generation.current++; };
   }, [key, next.accountId, next.planId]);
   useEffect(() => { onLock(!ready || busy || !!pending); }, [ready, busy, pending, onLock]);
   async function review() {
@@ -37,7 +37,7 @@ export function PendingExerciseAmendment({ next, ownershipEpoch, refresh, onLock
       const value = amendmentPreview.parse(await response.json());
       if (value.planId !== next.planId || value.expected.planRevisionId !== next.revisionId) throw new Error('Unbound preview');
       if (token === generation.current) setPreview(value);
-    } catch { if (token === generation.current) { setMessage('The pending workouts changed. Reload and review again.'); await refresh(); } }
+    } catch { if (token === generation.current) { setMessage('The pending workouts changed. Reload and review again.'); try { await refresh(); } catch { /* Retain the reload guidance when readback is unavailable. */ } } }
     finally { inFlight.current = false; if (token === generation.current) setBusy(false); }
   }
   async function submit(command: AmendPendingExerciseCommand) {

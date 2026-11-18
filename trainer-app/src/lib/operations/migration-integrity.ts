@@ -43,6 +43,7 @@ export const EXPECTED_MIGRATION_CHAIN = [
   "20261002010000_trainer2_add_exercise",
   "20261004010000_trainer2_current_week_selection",
   "20261004020000_trainer2_explicit_week_advance",
+  "20261118010000_trainer2_pending_exercise_amendment",
 ] as const;
 
 export type LedgerRow = {
@@ -520,6 +521,17 @@ export const PENDING_ARCHITECTURE_MANIFEST: readonly PendingMigrationExpectation
       { kind: "function", name: "trainer2_authored_weeks", definitionIncludes: ["lag", "sum"] },
       { kind: "function", name: "trainer2_current_week_eligible", replacesExisting: true, definitionIncludes: ["trainer2_authored_weeks", "currentWeekIndex", "trainer2_occurrence_resolved"] },
       ...["trainer2_week_immutable","trainer2_week_guard","trainer2_week_seal"].map(name=>({kind:"trigger" as const,table:"Trainer2WeekAdvance",name,definitionIncludes:[name]})),
+    ],
+  },
+  {
+    migration: "20261118010000_trainer2_pending_exercise_amendment", effect: "objects",
+    objects: [
+      { kind: "table", name: "Trainer2PlanExerciseAmendment" },
+      { kind: "function", name: "trainer2_amendment_binding", definitionIncludes: ["Trainer2PlanExerciseAmendment", "version"] },
+      { kind: "function", name: "trainer2_amended_occurrence", definitionIncludes: ["Trainer2PlanExerciseAmendment", "replacements"] },
+      { kind: "function", name: "trainer2_start_guard", replacesExisting: true, definitionIncludes: ["trainer2_amended_occurrence", "TRAINER2_START_AMENDMENT"] },
+      { kind: "function", name: "trainer2_check_acceptance", replacesExisting: true, definitionIncludes: ["AmendPendingExercise", "Trainer2PlanExerciseAmendment"] },
+      ...["trainer2_amendment_immutable", "trainer2_amendment_guard", "trainer2_amendment_seal"].map(name => ({ kind: "trigger" as const, table: "Trainer2PlanExerciseAmendment", name, definitionIncludes: [name] })),
     ],
   },
 ] as const;

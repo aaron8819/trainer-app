@@ -206,17 +206,17 @@ describe("migration integrity", () => {
     );
   });
 
-  it("accepts the conventional chain with explicit-week advancement pending", () => {
+  it("accepts the conventional chain with pending-exercise amendment pending", () => {
     const result = report();
 
     expect(EXPECTED_MIGRATION_CHAIN.at(-1)).toBe(
-      "20261004020000_trainer2_explicit_week_advance",
+      "20261118010000_trainer2_pending_exercise_amendment",
     );
     expect(result.chain).toMatchObject({
       checkedIn: EXPECTED_MIGRATION_CHAIN.length,
       applied: EXPECTED_MIGRATION_CHAIN.length - 1,
       pending: 1,
-      pendingNames: ["20261004020000_trainer2_explicit_week_advance"],
+      pendingNames: ["20261118010000_trainer2_pending_exercise_amendment"],
       exactExpectedChain: true,
     });
     expect(result.migrationIntegrityValid).toBe(true);

@@ -1,4 +1,3 @@
-import { amendPendingExercise, previewPendingExerciseAmendment } from './plan-exercise-amendment';
 import { AdmissionInfrastructureError, infrastructureReason } from './admission-diagnostics';
 import { previewExerciseSwap, swapExercise } from './exercise-swap';
 import { skipSet } from './skip-set';
@@ -18,6 +17,7 @@ import { InvalidStartSnapshot, readNextWorkout, startOccurrence } from './execut
 import { addSet } from './add-set';
 import { addExercise } from './add-exercise';
 import { advanceWeek } from './advance-week';
+import { amendPendingExercise, previewPendingExerciseAmendment } from './plan-exercise-amendment';
 
 export async function executionHttp(request: Request, operation: 'AmendPendingExercise' | 'PreviewPendingExerciseAmendment' | 'AdvanceWeek' | 'AddExercise' | 'AddSet' | 'SwapExercise' | 'PreviewExerciseSwap' | 'SkipSet' | 'SkipOccurrence' | 'DiscardEmptyExecution' | 'CorrectHistoricalSetResult' | 'FinishExecution' | 'StartOccurrence' | 'SaveSetResult' | 'ReadExecution' | 'ReadNext' | 'ReadExerciseHistory', target?: string) {
   const started = Date.now();

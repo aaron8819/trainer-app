@@ -195,6 +195,9 @@ export function ActiveWorkout({ execution, ownershipEpoch, locked, onInputState,
       </>}
       {sets.map(s => <SetResultRow optionsMount={optionsMount} sessionAdded={execution.additions?.some(a => a.content.target.id === s.id) || execution.exerciseAdditions?.some(a => a.content.position.targets.some(t => t.id === s.id))} key={`${s.id}:${currentAssignment(execution, s.positionId).version}:${inputEpoch}`} assignment={currentAssignment(execution, s.positionId)} active={selected === s.id} activePanel accountId={execution.initial.accountId} ownershipEpoch={ownershipEpoch} executionId={execution.executionId}
         targetId={s.id} number={s.number} saved={execution.results.find(r => r.targetId === s.id)} prescription={s.target} exercise={s.position.exercise}
+        rememberedOptions={execution.results.filter(r => r.result && r.targetId !== s.id && sets.some(p => p.positionId === s.positionId && p.id === r.targetId) && (!r.assignment || canonicalJson(r.assignment) === canonicalJson(currentAssignment(execution, s.positionId))))
+          .sort((a, b) => b.recordedAt.localeCompare(a.recordedAt) || b.targetId.localeCompare(a.targetId))[0]
+          ?? execution.setOptions?.find(h => h.positionId === s.position.id)?.result}
         firstSetLoad={execution.firstSetLoads?.find(h => h.positionId === s.position.id)?.result}
         preceding={sets.filter(p => p.positionId === s.positionId && p.number < s.number).reverse().flatMap(p => execution.results.filter(r => r.targetId === p.id && (!r.assignment || canonicalJson(r.assignment) === canonicalJson(currentAssignment(execution, s.positionId)))))}
         skipped={execution.skips?.find(k => k.targetId === s.id)} refreshExecution={refreshExecution} onReturn={() => select(firstUnrecorded(execution.results), true)}

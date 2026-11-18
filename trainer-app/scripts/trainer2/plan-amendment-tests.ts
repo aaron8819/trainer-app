@@ -12,7 +12,7 @@ import { discardEmptyExecution } from '../../src/lib/api/trainer2/discard-execut
 import { amendPendingExercise, previewPendingExerciseAmendment } from '../../src/lib/api/trainer2/plan-exercise-amendment';
 import { acceptCommand } from '../../src/lib/api/trainer2/command';
 import { reviewedResults } from '../../src/lib/trainer2-contracts/workout-finish';
-import { canonicalJson, integrityHash } from '../../src/lib/api/trainer2/integrity';
+import { canonicalJson, integrityHash, commandBinding } from '../../src/lib/api/trainer2/integrity';
 import { catalog, catalogExercise } from '../../src/lib/engine/trainer2/catalog';
 import type { AmendPendingExerciseCommand, AmendmentContent } from '../../src/lib/trainer2-contracts/plan-exercise-amendment';
 import type { ServerPrincipal } from '../../src/lib/api/trainer2/principal';
@@ -135,6 +135,39 @@ export async function verifyPlanAmendments({ db, reader, admin, principal, pass 
   await assert.rejects(() => rawInsert(startedContent, { ...rawCommand, intent: { ...rawCommand.intent, positions: [position(0)] } }));
   await assert.rejects(() => rawInsert(rawPreview.content, rawCommand, true));
   assert.equal((await rows()).length, 2);
+  // Reach the actual deferred amendment seal: both envelope and payload are valid,
+  // and the payload INSERT must succeed before testing absent/non-Accepted outcomes.
+  for (const outcomeStatus of [null, 'Rejected'] as const) {
+    const sealCommand = { ...rawCommand, actionId: randomUUID() };
+    const content = rawPreview.content, canonical = canonicalJson(content), hash = integrityHash(canonical);
+    const beforeRows = await rows();
+    const beforeState = await reader.trainer2AccountTrainingState.findUniqueOrThrow({ where: { accountId: principal.accountId } });
+    let inserted = false, outcomeInserted = false;
+    await assert.rejects(() => db.$transaction(async tx => {
+      await tx.$queryRaw`SELECT "accountId" FROM "Trainer2AccountTrainingState" WHERE "accountId"=${principal.accountId} FOR UPDATE`;
+      await tx.trainer2DurableAction.create({ data: { accountId: principal.accountId, actionId: sealCommand.actionId, ...commandBinding(sealCommand) } });
+      await tx.$executeRaw`INSERT INTO "Trainer2PlanExerciseAmendment" ("accountId","planId","revisionId","actionId","version","instructionEpoch","contentHash","canonicalContent","content")
+        VALUES (${principal.accountId},${planId}::uuid,${plan.revisionId}::uuid,${sealCommand.actionId}::uuid,3,${sealCommand.expected.instructionEpoch},${hash},${canonical},${JSON.stringify(content)}::jsonb)`;
+      assert.equal((await tx.$queryRaw<{ n: number }[]>`SELECT count(*)::integer AS n FROM "Trainer2PlanExerciseAmendment" WHERE "accountId"=${principal.accountId} AND "actionId"=${sealCommand.actionId}::uuid`)[0].n, 1);
+      inserted = true;
+      if (outcomeStatus) {
+        await tx.trainer2ActionOutcome.create({ data: { accountId: principal.accountId, actionId: sealCommand.actionId, status: outcomeStatus,
+          outcome: { status: outcomeStatus, actionId: sealCommand.actionId, commandType: 'AmendPendingExercise', code: 'SYNTHETIC_REJECTION' } } });
+        outcomeInserted = true;
+      }
+      // Force this named seal before other deferred action/account checks so the
+      // assertion cannot pass because of an unrelated missing-outcome constraint.
+      await tx.$executeRaw`SET CONSTRAINTS trainer2_amendment_seal IMMEDIATE`;
+    }), /TRAINER2_AMENDMENT_OUTCOME/);
+    assert.equal(inserted, true, 'Valid amendment must reach deferred seal');
+    assert.equal(outcomeInserted, outcomeStatus === 'Rejected');
+    assert.deepEqual(await rows(), beforeRows, 'Seal failure must roll back payload');
+    assert.equal(await reader.trainer2DurableAction.count({ where: { accountId: principal.accountId, actionId: sealCommand.actionId } }), 0);
+    assert.equal(await reader.trainer2ActionOutcome.count({ where: { accountId: principal.accountId, actionId: sealCommand.actionId } }), 0);
+    assert.deepEqual(await reader.trainer2AccountTrainingState.findUniqueOrThrow({ where: { accountId: principal.accountId } }), beforeState,
+      'Seal failure must roll back outcome cursor and acceptance counters');
+  }
+  pass('Deferred amendment seal rejects valid payload with missing or Rejected outcome and rolls back all writes');
   await assert.rejects(() => db.$executeRaw`UPDATE "Trainer2PlanExerciseAmendment" SET "version"=99 WHERE "planId"=${planId}::uuid`);
   await assert.rejects(() => reader.$executeRaw`DELETE FROM "Trainer2PlanExerciseAmendment" WHERE "planId"=${planId}::uuid`);
   const providerProbe = await admin.connect();

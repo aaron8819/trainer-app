@@ -46,10 +46,10 @@ export async function pendingExerciseAmendmentJourney({page,base,artifact,reader
   await expect(active.getByLabel('Set 1 Actual load',{exact:true})).toBeVisible();
   await active.getByLabel('Set 1 Actual reps',{exact:true}).fill('12');
   await active.getByLabel('Set 1 Actual load',{exact:true}).fill('0');
-  await expect(active.getByRole('button',{name:'Log',exact:true})).toBeEnabled();
+  await expect(active.getByRole('button',{name:'Log set',exact:true})).toBeEnabled();
   await page.screenshot({path:resolve(artifact,'pending-amendment-start-bodyweight-320.png'),fullPage:true});
   await active.getByLabel('Set 1 Actual load',{exact:true}).fill('25');
-  await active.getByRole('button',{name:'Log',exact:true}).click();
+  await active.getByRole('button',{name:'Log set',exact:true}).click();
   await expect.poll(async()=> (await readExecution(reader,principal,executionId))!.results[0]?.result?.measurement).toEqual({kind:'addedLoad',value:'25',unit:'lb',convention:'addedExternal',zeroMeaning:'noAddedLoad'});
   assert.equal(canonicalJson(await readExecution(reader,principal,fixture.completedExecutionId)),canonicalJson(history));
   pass('Program future-only amendment preview/confirm/reload at390/320, unchanged accepted source/completed history, bound START and0/25lb logging');

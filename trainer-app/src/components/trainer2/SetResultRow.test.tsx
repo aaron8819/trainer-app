@@ -22,6 +22,9 @@ describe('Explicit prescription load prefill', () => {
   const added = { kind: 'addedLoad' as const, convention: 'addedExternal' as const, zeroMeaning: 'noAddedLoad' as const, value: '10', unit: 'kg' as const };
   const dumbbell = { ...external, convention: 'perImplement' as const, zeroMeaning: 'notAllowed' as const };
   const cases = [
+    ...['0', '25', '45'].map(value => ({
+      id: 't2:45-degree-back-extension', measurement: { ...added, value, unit: 'lb' as const }, display: value,
+    })),
     ...['low-row', 'front-lat-pulldown', 'high-row'].flatMap(movement => [
       { id: `t2:single-arm-iso-lateral-${movement}`, measurement: {
         ...external, convention: 'machinePlatesPerArm' as const, value: '45',
@@ -687,4 +690,27 @@ it('does not erase locked catalog load and rep semantics with old missing actual
   expect(await screen.findByLabelText('Set 1 actual load type')).toHaveValue(exercise.loadKind);
   expect(screen.getByLabelText('Set 1 rep basis')).toHaveValue(exercise.repBasis);
   expect(screen.getByLabelText('Set 1 Actual load', { exact: true })).toBeVisible();
+});
+
+it('rejects contradictory or malformed remembered options without changing actual-result validation', () => {
+  const loggingOptions = { kind: 'externalLoad', convention: 'machineDisplayed', zeroMeaning: 'validZero' };
+  expect(performedResult.safeParse({ ...result, loggingOptions }).success).toBe(true);
+  expect(performedResult.safeParse({ ...result, loggingOptions: { ...loggingOptions, value: '0' } }).success).toBe(false);
+  expect(performedResult.safeParse({ ...result, loggingOptions: { ...loggingOptions, convention: 'addedExternal' } }).success).toBe(false);
+  expect(performedResult.safeParse({ ...result, loggingOptions, measurement: { ...loggingOptions, value: '100', unit: 'lb' } }).success).toBe(false);
+  expect(performedResult.safeParse({ reps: null, measurement: null, rir: null, loggingOptions }).success).toBe(false);
+});
+
+it('does not create a metadata-only correction for an unchanged legacy blank-load catalog result', async () => {
+  const exercise = catalogExercise(catalog.find(e => e.id === 't2:single-arm-cable-lateral-raise')!);
+  if (exercise.kind !== 'catalogSnapshot') throw new Error('catalog');
+  const prior = { ...saved, result: { reps: { value: 12, basis: exercise.repBasis }, measurement: null, rir: '3' } };
+  const prescription = { id: randomUUID(), classification: 'working' as const, required: true, reps: { min: 10, max: 15, basis: exercise.repBasis }, measurement: null, rir: '3', restSeconds: '120' };
+  const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
+  render(<SetResultRow {...props} activePanel saved={prior} exercise={exercise} prescription={prescription} refresh={async () => [prior]} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Update set' })).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: 'Update set' }));
+  await screen.findByText('Results are up to date. No values changed.');
+  expect(fetch).not.toHaveBeenCalled();
+  expect(prior.result).not.toHaveProperty('loggingOptions');
 });

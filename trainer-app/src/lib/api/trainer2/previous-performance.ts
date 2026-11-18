@@ -39,7 +39,7 @@ export async function readExecutionWithPrevious(tx: Prisma.TransactionClient, pr
   const firstSetLoads: NonNullable<ExecutionRead['firstSetLoads']> = [];
   const setOptions: NonNullable<ExecutionRead['setOptions']> = [];
   const optionPositions = effectiveOccurrence(current).positions;
-  const optionsResolved = new Set<string>();
+  const optionsResolved = new Set(optionPositions.filter(p => optionPositions.filter(other => sameSetOptionsPosition(p, other)).length > 1).map(p => p.id));
   const wanted = effectiveOccurrence(current).positions.filter(p => p.exercise.kind === 'catalogSnapshot');
   const ambiguous = new Set<string>();
   if (!optionPositions.length || current.lifecycle === 'Discarded') return { ...current, previous, firstSetLoads, setOptions };

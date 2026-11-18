@@ -182,3 +182,5 @@
 .programExerciseFooter svg { width: 20px; height: 20px; flex-shrink: 0; }
 .programExerciseInformation { border-top: 1px solid var(--line); padding: 12px 14px; font-size: 14px; color: var(--muted); }
 .programExercises details[open] .chevron { transform: rotate(90deg); }
+
+.trainingTitle .historyLink { grid-column: 1 / -1; grid-row: 3; justify-self: start; }

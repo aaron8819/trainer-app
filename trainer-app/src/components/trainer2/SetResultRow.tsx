@@ -251,6 +251,9 @@ export function SetResultRow({ optionsMount, sessionAdded = false, assignment, a
       const retained = d.base?.result ? d.base.result.measurement : d.carriedMeasurement;
       const original = retained !== undefined ? formFor({ reps: null, measurement: retained, rir: null }) : undefined;
       const untouched = original && ['load', 'kind', 'unit', 'convention', 'zeroMeaning'].every(k => d.form[k as keyof Form] === original[k as keyof Form]);
+      if (!clear && d.base?.result && saved?.version === d.base.version && canonicalJson(d.form) === canonicalJson(initialForm())) {
+        store(null); setMessage('Results are up to date. No values changed.'); return;
+      }
       const result = clear ? null : parseForm(d.form, untouched ? retained : undefined);
       if (!d.base && !result?.reps) { setMessage('Enter reps to log a set. Load may be left blank.'); return; }
       if (result && d.base?.result && canonicalJson(result) === canonicalJson(d.base.result)) {

@@ -27,12 +27,18 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   return <main className={styles.home}>
     <header className={styles.title}><h1>{program ? 'Program' : 'Training'}</h1>
       <p className={styles.subtitle}>{program ? 'Your saved plans and prescriptions.' : 'Your training, one workout at a time.'}</p></header>
-    <section className={styles.card} aria-label={program ? 'Saved programs' : 'Training plans'}>
-    {home.plans.length === 0 ? <><h2>{program ? 'No program yet' : 'Ready when you are'}</h2><p>You have no plan yet. Create a plan to build your training program.</p></> :
-      <ul>{home.plans.map(plan => <li key={plan.id}>
-        <Link className={styles.planLink} href={`/trainer2/dev/drafts?planId=${encodeURIComponent(plan.id)}${program && plan.lifecycle !== 'Draft' ? '&view=program' : ''}`}>Open {plan.lifecycle.toLowerCase()} plan</Link>
-      </li>)}</ul>}
-    <Link className={styles.primary} href="/trainer2/dev/drafts?view=builder">Create plan</Link>
-    </section>
+    {(['current', 'completed'] as const).map(group => {
+      const plans = home.plans.filter(plan => (plan.lifecycle === 'Completed') === (group === 'completed'));
+      return <section key={group} className={styles.card} aria-label={group === 'completed' ? 'Completed programs' : 'Current programs'}>
+        <h2>{group === 'completed' ? 'Completed programs' : home.plans.length ? 'Current programs' : program ? 'No program yet' : 'Ready when you are'}</h2>
+        {group === 'completed' && <p>Review previous programs, saved prescriptions and workout results. Opening history does not change your current program.</p>}
+        {plans.length ? <ul className={styles.planList}>{plans.map(plan => <li key={plan.id}>
+          <h3>{plan.name ?? 'Saved program'}</h3>
+          <p>{plan.lifecycle}{plan.savedAt ? ` · Saved ${plan.savedAt.slice(0, 10)}` : ''}</p>
+          <Link className={styles.planLink} href={`/trainer2/dev/drafts?planId=${encodeURIComponent(plan.id)}${plan.lifecycle !== 'Draft' ? '&view=program' : ''}`}>Open {plan.lifecycle.toLowerCase()} plan</Link>
+        </li>)}</ul> : <p>{group === 'completed' ? 'No completed programs yet.' : home.plans.length ? 'No current program.' : 'You have no plan yet. Create a plan to build your training program.'}</p>}
+        {group === 'current' && <Link className={styles.primary} href="/trainer2/dev/drafts?view=builder">Create plan</Link>}
+      </section>;
+    })}
   </main>;
 }

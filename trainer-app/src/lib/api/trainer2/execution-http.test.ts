@@ -248,6 +248,8 @@ it('remembers the last confirmed authored options only within the same program, 
     mocks.read.mockResolvedValueOnce(current).mockResolvedValueOnce(source);
     expect((await readExecutionWithPrevious(tx, { accountId: 'trusted', sessionId: 'fixture' }, currentId))?.setOptions).toEqual([{ positionId: p.id, executionId: sourceId, result }]);
   }
+  mocks.read.mockResolvedValueOnce({ ...current, initial: { ...current.initial, occurrence: { positions: [p, { ...p, id: randomUUID() }] } } }).mockResolvedValueOnce(source);
+  expect((await readExecutionWithPrevious(tx, { accountId: 'trusted', sessionId: 'fixture' }, currentId))?.setOptions).toEqual([]);
   mocks.read.mockResolvedValueOnce(current).mockResolvedValueOnce({ ...source, initial: { ...source.initial, planId: randomUUID() } });
   expect((await readExecutionWithPrevious(tx, { accountId: 'trusted', sessionId: 'fixture' }, currentId))?.setOptions).toEqual([]);
   mocks.read.mockResolvedValueOnce(current).mockResolvedValueOnce({ ...source, initial: { ...source.initial, occurrence: { positions: [p, { ...p, id: randomUUID() }] } } });

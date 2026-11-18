@@ -112,3 +112,26 @@ describe('practical lower-body and cable coverage', () => {
       .toEqual(['t2:dumbbell-walking-lunge']);
   });
 });
+
+describe('back extension with optional plates', () => {
+  it('uses added load for both bodyweight and plates without reinterpreting the old identity', () => {
+    const old = catalogExercise(catalog.find(e => e.id === 't2:bodyweight-45-degree-back-extension')!);
+    const entry = catalog.find(e => e.id === 't2:45-degree-back-extension')!;
+    const next = catalogExercise(entry);
+    expect(entry.name).toBe('45-Degree Back Extension');
+    expect(entry.loadKind).toBe('addedLoad');
+    expect(entry.convention).toBe('addedExternal');
+    expect(entry.repBasis).toBe('total');
+    for (const value of ['0', '25', '45']) {
+      expect(compatibleCatalogResult({ reps: { value: 10, basis: 'total' }, rir: null,
+        measurement: { kind: 'addedLoad', convention: 'addedExternal',
+          zeroMeaning: 'noAddedLoad', value, unit: 'lb' } }, next)).toBe(true);
+    }
+    expect(old).toMatchObject({ name: 'Bodyweight 45-Degree Back Extension',
+      loadKind: 'bodyweight', convention: 'bodyweightOnly' });
+    expect(sameLoggingExercise(old, next)).toBe(false);
+    expect(browseCatalog('45 degree back extension', [], old).map(e => e.id)).toContain(entry.id);
+    expect(compatibleCatalogResult({ reps: { value: 10, basis: 'total' }, rir: null,
+      measurement: { kind: 'bodyweight', convention: 'bodyweightOnly' } }, old)).toBe(true);
+  });
+});

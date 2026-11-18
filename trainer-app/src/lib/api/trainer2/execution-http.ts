@@ -17,16 +17,17 @@ import { InvalidStartSnapshot, readNextWorkout, startOccurrence } from './execut
 import { addSet } from './add-set';
 import { addExercise } from './add-exercise';
 import { advanceWeek } from './advance-week';
+import { amendPendingExercise, previewPendingExerciseAmendment } from './plan-exercise-amendment';
 
-export async function executionHttp(request: Request, operation: 'AdvanceWeek' | 'AddExercise' | 'AddSet' | 'SwapExercise' | 'PreviewExerciseSwap' | 'SkipSet' | 'SkipOccurrence' | 'DiscardEmptyExecution' | 'CorrectHistoricalSetResult' | 'FinishExecution' | 'StartOccurrence' | 'SaveSetResult' | 'ReadExecution' | 'ReadNext' | 'ReadExerciseHistory', target?: string) {
+export async function executionHttp(request: Request, operation: 'AmendPendingExercise' | 'PreviewPendingExerciseAmendment' | 'AdvanceWeek' | 'AddExercise' | 'AddSet' | 'SwapExercise' | 'PreviewExerciseSwap' | 'SkipSet' | 'SkipOccurrence' | 'DiscardEmptyExecution' | 'CorrectHistoricalSetResult' | 'FinishExecution' | 'StartOccurrence' | 'SaveSetResult' | 'ReadExecution' | 'ReadNext' | 'ReadExerciseHistory', target?: string) {
   const started = Date.now();
   let stage = 'admission';
   const json = (body: unknown, status: number) => Response.json(body, { status,
     headers: { 'Cache-Control': 'private, no-store', Vary: 'Cookie, Authorization' } });
   try {
-    if (operation === 'PreviewExerciseSwap') assertSessionMutationOrigin(request);
-    const purpose = operation === 'AdvanceWeek' || operation === 'AddExercise' || operation === 'AddSet' || operation === 'SwapExercise' || operation === 'SkipSet' || operation === 'SkipOccurrence' || operation === 'DiscardEmptyExecution' || operation === 'CorrectHistoricalSetResult' || operation === 'StartOccurrence' || operation === 'SaveSetResult' || operation === 'FinishExecution' ? 'write' : 'read';
-    const { db, principal } = operation === 'PreviewExerciseSwap' || operation === 'ReadExerciseHistory' ? await requestContext(request, purpose, false) : await requestContext(request, purpose);
+    if ((operation === 'PreviewExerciseSwap' || operation === 'PreviewPendingExerciseAmendment')) assertSessionMutationOrigin(request);
+    const purpose = operation === 'AmendPendingExercise' || operation === 'AdvanceWeek' || operation === 'AddExercise' || operation === 'AddSet' || operation === 'SwapExercise' || operation === 'SkipSet' || operation === 'SkipOccurrence' || operation === 'DiscardEmptyExecution' || operation === 'CorrectHistoricalSetResult' || operation === 'StartOccurrence' || operation === 'SaveSetResult' || operation === 'FinishExecution' ? 'write' : 'read';
+    const { db, principal } = (operation === 'PreviewExerciseSwap' || operation === 'PreviewPendingExerciseAmendment') || operation === 'ReadExerciseHistory' ? await requestContext(request, purpose, false) : await requestContext(request, purpose);
     stage = 'transaction';
     if (operation === 'ReadExecution' || operation === 'ReadNext' || operation === 'ReadExerciseHistory') {
       const key = id.parse(target);
@@ -37,15 +38,15 @@ export async function executionHttp(request: Request, operation: 'AdvanceWeek' |
       return json(result ?? { error: 'NOT_FOUND' }, result ? 200 : 404);
     }
     const text = await request.text();
-    if (text.length > (operation === 'FinishExecution' || operation === 'DiscardEmptyExecution' ? 2000000 : 10000)) return json({ error: 'COMMAND_TOO_LARGE' }, 413);
-    if (operation === 'PreviewExerciseSwap') {
+    if (text.length > (operation === 'FinishExecution' || operation === 'DiscardEmptyExecution' || operation === 'AmendPendingExercise' || operation === 'PreviewPendingExerciseAmendment' ? 2000000 : 10000)) return json({ error: 'COMMAND_TOO_LARGE' }, 413);
+    if ((operation === 'PreviewExerciseSwap' || operation === 'PreviewPendingExerciseAmendment')) {
       const value = await db.$transaction(async tx => {
         await tx.$executeRaw`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`;
-        return previewExerciseSwap(tx, principal, JSON.parse(text));
+        return (operation === 'PreviewPendingExerciseAmendment' ? previewPendingExerciseAmendment : previewExerciseSwap)(tx, principal, JSON.parse(text));
       });
       return json(value, 200);
     }
-    const result = await (operation === 'AdvanceWeek' ? advanceWeek : operation === 'AddExercise' ? addExercise : operation === 'AddSet' ? addSet : operation === 'SwapExercise' ? swapExercise : operation === 'SkipSet' ? skipSet : operation === 'SkipOccurrence' ? skipOccurrence : operation === 'DiscardEmptyExecution' ? discardEmptyExecution : operation === 'CorrectHistoricalSetResult' ? correctHistoricalSetResult : operation === 'FinishExecution' ? finishExecution : operation === 'SaveSetResult' ? saveSetResult : startOccurrence)(db, principal, JSON.parse(text));
+    const result = await (operation === 'AmendPendingExercise' ? amendPendingExercise : operation === 'AdvanceWeek' ? advanceWeek : operation === 'AddExercise' ? addExercise : operation === 'AddSet' ? addSet : operation === 'SwapExercise' ? swapExercise : operation === 'SkipSet' ? skipSet : operation === 'SkipOccurrence' ? skipOccurrence : operation === 'DiscardEmptyExecution' ? discardEmptyExecution : operation === 'CorrectHistoricalSetResult' ? correctHistoricalSetResult : operation === 'FinishExecution' ? finishExecution : operation === 'SaveSetResult' ? saveSetResult : startOccurrence)(db, principal, JSON.parse(text));
     return json(result, result.outcome.status === 'Accepted' ? 200 : result.outcome.status === 'Conflict' ? 409 : 422);
   } catch (error) {
     if (error instanceof DraftAccessError) return json({ error: error.message }, 403);

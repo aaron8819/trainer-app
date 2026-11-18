@@ -37,7 +37,7 @@ import {
 const expect=baseExpect.configure({timeout:30_000});
 
 // Separate disposable fixture per invocation. Uses released owners, never configured targets.
-export async function runHomeProgramFixture(preview: boolean, surfacesOnly = false, loggerJourney?: (context: { page: import('@playwright/test').Page; base: string; home: string; artifact: string; accountId: string; planId: string; executionId: string; pass: (value: string) => void; db: PrismaClient; reader: PrismaClient; principal: { accountId: string; sessionId: string } }) => Promise<void>, emptyAccount = false, equipmentDraft?: DraftDocument) {
+export async function runHomeProgramFixture(preview: boolean, surfacesOnly = false, loggerJourney?: (context: { page: import('@playwright/test').Page; base: string; home: string; artifact: string; accountId: string; planId: string; executionId: string; pass: (value: string) => void; admin: Pool; db: PrismaClient; reader: PrismaClient; principal: { accountId: string; sessionId: string } }) => Promise<void>, emptyAccount = false, equipmentDraft?: DraftDocument) {
   if (loggerJourney && !equipmentDraft && !emptyAccount) validateFixtureStartingLoad();
   const linuxJob = isolatedLinuxJob(process.platform, process.env);
   let linuxServer: ReturnType<typeof ownLinuxGroup> | undefined;
@@ -166,7 +166,7 @@ export async function runHomeProgramFixture(preview: boolean, surfacesOnly = fal
     await context.addCookies([{name:'__Host-trainer2-session',value:`${sessionId}.${secret}`,domain:'127.0.0.1',path:'/',httpOnly:true,secure:true,sameSite:'Strict'}]);
     const page=await context.newPage(), errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(30_000);
     if (loggerJourney) {
-      try { await loggerJourney({ page, base, home, artifact, accountId, planId, executionId: open?.executionId ?? '', pass, db: db!, reader: reader!, principal }); }
+      try { await loggerJourney({ page, base, home, artifact, accountId, planId, executionId: open?.executionId ?? '', pass, admin: admin!, db: db!, reader: reader!, principal }); }
       catch (error) { await page.screenshot({ path: resolve(artifact, 'failed-page.png'), fullPage: true }).catch(() => {}); writeFileSync(resolve(artifact, 'failed-dom.txt'), await page.locator('body').innerText().catch(() => 'Unavailable')); throw error; }
       if (linuxJob && equipmentDraft) {
         const { verifyPasscodeRecovery } = await import('./verify-passcode-recovery');

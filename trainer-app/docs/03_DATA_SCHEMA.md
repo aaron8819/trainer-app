@@ -435,3 +435,5 @@ Forward migration `20260930010000_trainer2_exercise_swap` adds append-only `Trai
 
 
 Trainer2 execution-local Add exercise ownership, identity, command, UI and migration/recovery requirements are documented in [ADD_EXERCISE.md](architecture/trainer2/ADD_EXERCISE.md).
+
+See [Pending exercise amendments](architecture/trainer2/PENDING_EXERCISE_AMENDMENTS.md) for the append-only pending-program change, START provenance and separately migrated release boundary.

@@ -640,3 +640,5 @@ Trainer2 added-plate measurements include `machineAddedPlatesTotal`; catalog sna
 
 
 Trainer2 `GET /api/trainer2/executions/[executionId]/history?positionId=...` provides an on-demand, read-only comparison for an execution-owned exercise position. It checks account and session authorization, reads at most five prior finished workouts per page and returns comparable sessions in finished-date order, with an account-scoped cursor for older pages. It uses exact catalog snapshots and compatible measurement semantics, stops at ambiguous exercise occurrences, and marks the result limited when the scan is truncated or ambiguous. A deload flag is supplied only from the matching integrity-checked saved plan revision. Missing result fields remain null; partial sets are included only in sessions with a fully comparable anchor. Contract and owner: `src/lib/trainer2-contracts/exercise-history.ts` and `src/lib/api/trainer2/exercise-history.ts`.
+
+See [Pending exercise amendments](architecture/trainer2/PENDING_EXERCISE_AMENDMENTS.md) for the append-only pending-program change, START provenance and separately migrated release boundary.

@@ -757,3 +757,5 @@ run the separately approved migration workflow, and use `npm run db:seed` only i
 target were authorized. `npm ci` already runs Prisma generation through `postinstall`; explicit
 `npm run prisma:generate` is available when schema work needs it. `npm run dev` starts a development
 server. Never use production credentials or production data in disposable test fixtures.
+
+See [Pending exercise amendments](architecture/trainer2/PENDING_EXERCISE_AMENDMENTS.md) for the append-only pending-program change, START provenance and separately migrated release boundary.

@@ -517,3 +517,5 @@ Trainer2 active-set cards use paired rep/load controls and an optional segmented
 
 
 Trainer2 active-set History loads on demand and presents a newest-first list of comparable past workouts. Multiple sessions can remain expanded, with recorded sets and missing fields shown independently; only a saved plan's verified deload marker produces a Deload badge. A Load older workouts control fetches further pages, and the read states when ambiguity prevents older comparisons. Opening, expanding, and closing History does not edit the current set or its rest timer (`src/components/trainer2/ActiveWorkout.tsx`, `src/lib/api/trainer2/exercise-history.ts`).
+
+See [Pending exercise amendments](architecture/trainer2/PENDING_EXERCISE_AMENDMENTS.md) for the append-only pending-program change, START provenance and separately migrated release boundary.

@@ -1,3 +1,4 @@
+import { amendmentBinding, amendmentPosition } from './plan-exercise-amendment';
 import { exerciseAddition } from './add-exercise';
 import { setAddition } from './add-set';
 import { executionPositions, baseExecutionPositions, originalPositions } from '../engine/trainer2/execution-targets';
@@ -18,7 +19,7 @@ export const START_POLICY = 'trainer2-start-v1';
 export const startOccurrenceCommand = createDraftCommand.pick({ schemaVersion: true, actionId: true,
   originatingAccountId: true, deviceId: true, ownershipEpoch: true, dependsOn: true }).extend({
   commandType: z.literal('StartOccurrence'), target: z.object({ planId: id, occurrenceId: id }).strict(),
-  expected: z.object({ planRevisionId: id, instructionEpoch: z.int().min(0) }).strict(), intent: z.object({}).strict(),
+  expected: z.object({ planRevisionId: id, instructionEpoch: z.int().min(0), amendmentVersion: z.int().min(0).optional() }).strict(), intent: z.object({}).strict(),
 }).strict();
 export type StartOccurrenceCommand = z.infer<typeof startOccurrenceCommand>;
 
@@ -26,7 +27,7 @@ export type StartOccurrenceCommand = z.infer<typeof startOccurrenceCommand>;
 export const initialPrescription = z.object({ schemaVersion: z.literal(1), kind: z.literal('START'),
   provenance: z.literal('VERIFIED_START'), policyVersion: z.literal(START_POLICY),
   accountId: z.string().min(1), executionId: id, planId: id, revisionId: id, sourceContentHash: hash,
-  startedAt: z.iso.datetime(), stage, occurrence, progression: progressionIntent, instructions: instructionSnapshot,
+  amendment: amendmentBinding.optional(), startedAt: z.iso.datetime(), stage, occurrence, progression: progressionIntent, instructions: instructionSnapshot,
   positions: z.array(z.object({ id, sourcePositionId: id,
     targets: z.array(z.object({ id, sourceTargetId: id }).strict()) }).strict()),
 }).strict().superRefine((s, ctx) => {
@@ -159,6 +160,7 @@ export const startResponse = z.object({ replayed: z.boolean(), outcomeCursor: cu
   ]),
 }).strict();
 export const nextWorkoutRead = z.object({ acceptedSequence: skipBinding.shape.acceptedSequence, occurrences: z.array(occurrenceResolutionRead).min(1), accountId: z.string().min(1), planId: id, revisionId: id,
+  amendment: amendmentBinding.nullable().optional(), effectiveOccurrences: z.array(occurrence).optional(), amendmentCandidates: z.array(amendmentPosition).optional(),
   week: weekRead.optional(), eligibleOccurrenceIds: z.array(id).optional(),
   instructionEpoch: z.int().min(0), lifecycle: z.enum(['Active', 'Completed']), occurrence: occurrence.nullable(), execution: executionRead.nullable() }).strict().refine(v => (v.week ? (v.lifecycle !== 'Completed' || v.occurrence === null) && (v.week.ready === (v.occurrence === null)) : (v.lifecycle === 'Completed') === (v.occurrence === null)) && (!v.execution || v.execution.lifecycle === 'Open') &&
   new Set(v.occurrences.map(o => o.occurrenceId)).size === v.occurrences.length &&

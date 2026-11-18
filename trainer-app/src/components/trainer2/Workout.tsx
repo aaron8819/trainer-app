@@ -1,5 +1,6 @@
 'use client';
 
+import { PendingExerciseAmendment } from './PendingExerciseAmendment';
 import { exerciseTitle } from './exercise-title';
 import { WorkoutWarmup } from './WorkoutWarmup';
 import { LocalDateTime } from './LocalDateTime';
@@ -70,6 +71,7 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
   const [busy, setBusy] = useState(false), [skipLocked, setSkipLocked] = useState(true);
   const [message, setMessage] = useState('Loading workout…');
   const [advanceLocked, setAdvanceLocked] = useState(true);
+  const [amendmentLocked, setAmendmentLocked] = useState(true);
   const [swapLocked, setSwapLocked] = useState(false);
   const [finishedMessage, setFinishedMessage] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -161,18 +163,19 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
     finally { inFlight.current = false; if (token === generation.current) setBusy(false); }
   }
   function start() {
-    if (!next || !selectedWorkout || next.execution || !(next.eligibleOccurrenceIds ?? [next.occurrence?.id]).includes(selectedWorkout.id) || busy || pending || failed || skipLocked || advanceLocked) return;
+    if (!next || !selectedWorkout || next.execution || !(next.eligibleOccurrenceIds ?? [next.occurrence?.id]).includes(selectedWorkout.id) || busy || pending || failed || skipLocked || advanceLocked || amendmentLocked) return;
     const command: StartOccurrenceCommand = { schemaVersion: 1, commandType: 'StartOccurrence', actionId: crypto.randomUUID(),
       deviceId: crypto.randomUUID(), originatingAccountId: accountId, ownershipEpoch, dependsOn: [],
-      target: { planId: next.planId, occurrenceId: selectedWorkout.id }, expected: { planRevisionId: next.revisionId, instructionEpoch: next.instructionEpoch }, intent: {} };
+      target: { planId: next.planId, occurrenceId: selectedWorkout.id }, expected: { planRevisionId: next.revisionId, instructionEpoch: next.instructionEpoch, amendmentVersion: next.amendment?.version ?? 0 }, intent: {} };
     void submit(command);
   }
   const lastSkipped = next?.occurrences.filter(o => o.status === 'Skipped').at(-1);
-  const selectedWorkout = document?.occurrences.find(o => o.id === selectedId) ?? (next?.occurrence?.id === selectedId ? next.occurrence : null);
+  const effectiveDocument = document && next?.effectiveOccurrences ? { ...document, occurrences: next.effectiveOccurrences } : document;
+  const selectedWorkout = effectiveDocument?.occurrences.find(o => o.id === selectedId) ?? (next?.occurrence?.id === selectedId ? next.occurrence : null);
   if (document && !next && !executionId && !pending) return <TrainingHomeLoading
     name={document.name} program={program} error={failed ? message : undefined}
     onRetry={() => void load()} />;
-  return <div className="space-y-4">{finishedMessage && <p role="status" className="rounded-xl bg-teal-100 p-4 text-teal-950">Workout finished. <a className="underline" href={url(finishedMessage)}>View saved results</a></p>}{message && (!document || !next || executionId || program) && <p role="status">{message}</p>}
+  return <div className="space-y-4">{next && !executionId && <PendingExerciseAmendment key={`amendment:${accountId}:${next.planId}`} next={next} ownershipEpoch={ownershipEpoch} onLock={setAmendmentLocked} refresh={async () => { const result = await load(); if (!result || !("occurrences" in result)) throw new Error("Read failed"); return result; }} />}{finishedMessage && <p role="status" className="rounded-xl bg-teal-100 p-4 text-teal-950">Workout finished. <a className="underline" href={url(finishedMessage)}>View saved results</a></p>}{message && (!document || !next || executionId || program) && <p role="status">{message}</p>}
     {pending && (!document || !next || executionId || program) && <button className={control} disabled={busy} onClick={() => void submit(pending)}>Check again</button>}
     {failed && !pending && (!document || !next || executionId || program) && <button className={control} onClick={() => void load()}>Reload workout</button>}
     {execution && <section className={logger.screen}><h2 className="text-xl font-semibold">{execution.lifecycle === 'Discarded' ? 'Workout attempt discarded' : execution.lifecycle === 'Finished' ? 'Workout finished' : execution.initial.occurrence.name}</h2>
@@ -224,9 +227,9 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
         <div className={styles.previewActions}>
         {pending && document ? <button className={styles.primary} disabled={busy} onClick={() => void submit(pending)}>Check again</button> : failed && document ? <button className={styles.primary} onClick={() => void load()}>Reload workout</button> : selectedOpen ? <a className={styles.primary} href={url(next.execution!.executionId)}>Resume workout</a> :
           selectedRow?.executionId ? <a className={styles.primary} href={url(selectedRow.executionId)}>View results</a> :
-          eligible ? <button className={styles.primary} disabled={busy || !!pending || failed || !!next.execution || skipLocked || advanceLocked} onClick={start}><svg className={styles.actionIcon} aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M8 4v16l12-8z" /></svg>Start workout</button> : null}
+          eligible ? <button className={styles.primary} disabled={busy || !!pending || failed || !!next.execution || skipLocked || advanceLocked || amendmentLocked} onClick={start}><svg className={styles.actionIcon} aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><path d="M8 4v16l12-8z" /></svg>Start workout</button> : null}
         <SkipWorkout key={`skip:${accountId}:${next.planId}`} next={next} selectedOccurrence={selectedWorkout ?? undefined} ownershipEpoch={ownershipEpoch}
-          blocked={busy || failed || !!pending || advanceLocked} onLock={setSkipLocked} refresh={async (command, planCompleted) => {
+          blocked={busy || failed || !!pending || advanceLocked || amendmentLocked} onLock={setSkipLocked} refresh={async (command, planCompleted) => {
             const value = await load(undefined, command, planCompleted); if (!value || !('occurrences' in value)) throw new Error('Plan read failed');
           }} />
         </div>
@@ -235,10 +238,10 @@ export function Workout({ accountId, ownershipEpoch, planId, executionId, onPlan
         {previewWorkout && <PlannedWorkout workout={previewWorkout} design={!!document} hideLoad />}
       </div>;
       const advancement = <AdvanceWeek key={`advance:${accountId}:${next.planId}`} next={next} ownershipEpoch={ownershipEpoch}
-        blocked={busy || failed || !!pending || (!program && skipLocked)} onLock={setAdvanceLocked} refresh={async () => {
+        blocked={busy || failed || !!pending || amendmentLocked || (!program && skipLocked)} onLock={setAdvanceLocked} refresh={async () => {
           const value = await load(); if (!value || !('occurrences' in value)) throw new Error('Plan read failed'); return value;
         }} />;
-      return document ? <TrainingOverview document={document} next={next} program={program} selectedId={selectedId ?? undefined}
+      return document ? <TrainingOverview document={effectiveDocument!} next={next} program={program} selectedId={selectedId ?? undefined}
         locked={busy || !!pending || failed || skipLocked} onSelect={setSelectedId} preview={preview} advancement={advancement} /> :
         <>{!program && preview}{advancement}</>;
     })()}

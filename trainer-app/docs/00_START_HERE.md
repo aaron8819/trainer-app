@@ -84,3 +84,5 @@ Archived roadmap/design logs:
 - Do not copy enum values into multiple files; reference `docs/contracts/runtime-contracts.json`
 - Prefer short invariants over speculative roadmap language
 - Before archiving roadmap/design docs, migrate durable invariants and contracts into canonical docs `01-09`.
+
+Trainer2 future-only back-extension updates: [Pending exercise amendments](architecture/trainer2/PENDING_EXERCISE_AMENDMENTS.md).

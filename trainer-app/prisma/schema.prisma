@@ -1500,3 +1500,20 @@ model Trainer2WeekAdvance {
   @@id([accountId, actionId])
   @@unique([planId, fromWeek])
 }
+
+// Prospective replacements; never alter accepted revision documents or START history.
+model Trainer2PlanExerciseAmendment {
+  accountId String
+  planId String @db.Uuid
+  revisionId String @db.Uuid
+  actionId String @db.Uuid
+  version Int
+  instructionEpoch Int
+  contentHash String
+  canonicalContent String
+  content Json @db.JsonB
+  createdTx BigInt @default(dbgenerated("txid_current()"))
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@id([accountId, actionId])
+  @@unique([planId, version])
+}

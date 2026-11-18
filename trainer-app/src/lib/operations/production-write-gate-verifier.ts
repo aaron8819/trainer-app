@@ -16,6 +16,7 @@ export const APPLICATION_MUTATION_ROUTES = new Map<string, string>([
   ["trainer2/executions/add-set/route.ts#POST", "set_logging"],
   ["trainer2/executions/add-exercise/route.ts#POST", "set_logging"],
   ["trainer2/executions/swap-exercise/route.ts#POST", "set_logging"],
+  ["trainer2/plans/amend-exercise/route.ts#POST", "workout_structural_edit"],
   ["trainer2/drafts/create/route.ts#POST", "trainer2_draft"],
   ["trainer2/drafts/edit/route.ts#POST", "trainer2_draft"],
   ["profile/setup/route.ts#POST", "application_configuration"],
@@ -67,6 +68,7 @@ export const APPLICATION_MUTATION_ROUTES = new Map<string, string>([
 
 export const READ_ONLY_NON_GET_ROUTES = new Set([
   "trainer2/executions/swap-exercise-preview/route.ts#POST",
+  "trainer2/plans/amend-exercise-preview/route.ts#POST",
   "mesocycles/[id]/setup-preview/route.ts#POST",
   "workouts/[id]/add-exercise-preview/route.ts#POST",
 ]);

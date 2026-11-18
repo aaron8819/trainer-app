@@ -194,16 +194,27 @@ async function main() {
         const upgradedDrift=await schemaDiff(url('postgres'),'prisma/schema.prisma');
         details.upgradedSchemaDrift=upgradedDrift;
         const databaseOnlyWeekRelations=['Trainer2WeekAdvance_accountId_actionId_fkey','Trainer2WeekAdvance_accountId_planId_revisionId_fkey'];
-        const expectedDrift={...candidateDrift,issues:[...candidateDrift.issues,...databaseOnlyWeekRelations.map(name=>'unexpected-statement:ALTER TABLE "Trainer2WeekAdvance" DROP CONSTRAINT "'+name+'"')].sort()};
+        const databaseOnlyAmendmentRelations=['Trainer2PlanExerciseAmendment_accountId_actionId_fkey','Trainer2PlanExerciseAmendment_accountId_planId_revisionId_fkey'];
+        const expectedDrift={...candidateDrift,issues:[...candidateDrift.issues,...databaseOnlyWeekRelations.map(name=>'unexpected-statement:ALTER TABLE "Trainer2WeekAdvance" DROP CONSTRAINT "'+name+'"'),...databaseOnlyAmendmentRelations.map(name=>'unexpected-statement:ALTER TABLE "Trainer2PlanExerciseAmendment" DROP CONSTRAINT "'+name+'"')].sort()};
         assert.deepEqual({...upgradedDrift,issues:[...upgradedDrift.issues].sort()},expectedDrift,'Explicit-week migration changed unexpected model/schema drift');
         await admin!.query('GRANT EXECUTE ON FUNCTION trainer2_current_week_eligible(text,uuid,jsonb,text) TO trainer2_draft_runtime');
         await admin!.query(readFileSync('prisma/trainer2-week-advance-grants.sql','utf8'));
+        await admin!.query(readFileSync('prisma/trainer2-plan-amendment-grants.sql','utf8'));
         await runtime!.$disconnect(); await reader!.$disconnect();
         runtime=new PrismaClient({adapter:new PrismaPg({connectionString:url('trainer2_draft_runtime')})});
         reader=new PrismaClient({adapter:new PrismaPg({connectionString:url('trainer2_draft_reader')})});
         return {db:runtime,reader};
       },
       restart: async () => { assert(restartWeb); await restartWeb(); } });
+    if (!diagnoseAdmission && !diagnoseAdvancement && !diagnoseRecovery) {
+      const { verifyPlanAmendments } = await import('./trainer2/plan-amendment-tests');
+      const fixture = await verifyPlanAmendments({ db: runtime!, reader: reader!, admin, principal, pass });
+      const { pendingExerciseAmendmentJourney } = await import('./trainer2/plan-amendment-journey');
+      const { context, base } = await openBrowser();
+      const page = await context.newPage();
+      await pendingExerciseAmendmentJourney({ page, base, artifact, reader: reader!, principal, fixture, pass });
+      await page.close();
+    }
     const sourceAfter = verificationSource();
     assert.equal(sourceAfter.manifestHash, source.manifestHash, 'Source changed during qualification');
     details.sourceAfter = sourceAfter;

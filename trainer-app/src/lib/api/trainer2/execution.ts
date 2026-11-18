@@ -1,3 +1,5 @@
+import { readPlanAmendments } from './plan-amendments-read';
+import { amendedOccurrence, pendingBackExtensionPositions } from '../../engine/trainer2/plan-exercise-amendment';
 import { readExerciseAdditions } from './exercise-additions-read';
 import { readSetAdditions } from './set-additions-read';
 import { readExerciseSwaps } from './exercise-swap';
@@ -60,14 +62,18 @@ export async function readExecution(tx: DB, principal: ServerPrincipal, executio
 }
 export async function readNextWorkout(tx: DB, principal: ServerPrincipal, planId: string) {
   await authorizeAccount(tx, principal);
-  const { plan, revision, intent } = await activeSource(tx, principal.accountId, planId, true);
+  const { plan, revision, intent: originalIntent } = await activeSource(tx, principal.accountId, planId, true);
+  const amendments = await readPlanAmendments(tx, principal.accountId, planId);
+  const intent = { ...originalIntent, occurrences: originalIntent.occurrences.map(o => amendedOccurrence(o, amendments.contents)) };
   const open = await tx.trainer2Execution.findFirst({ where: { accountId: principal.accountId, lifecycle: 'Open' } });
   const resolution = await readOccurrenceResolution(tx, principal.accountId, planId);
   const state = await tx.trainer2AccountTrainingState.findUniqueOrThrow({ where: { accountId: principal.accountId } });
+  const started = await tx.trainer2Execution.findMany({ where: { accountId: principal.accountId, planId }, select: { occurrenceId: true } });
+  const candidates = plan.lifecycle === 'Active' ? pendingBackExtensionPositions(intent, new Set([...resolution.resolvedIds, ...started.map(e => e.occurrenceId)])) : [];
   const weeks = authoredWeeks(intent.occurrences), week = weeks[plan.currentWeekIndex];
   if (!week) throw new InvalidStartSnapshot();
   const eligible = eligibleCurrentWeekOccurrences(intent.occurrences, resolution.resolvedIds, plan.currentWeekIndex);
-  return { accountId: principal.accountId, planId, revisionId: revision.id, acceptedSequence: state.acceptedSequence.toString(),
+  return { amendment: amendments.binding, effectiveOccurrences: intent.occurrences, amendmentCandidates: candidates, accountId: principal.accountId, planId, revisionId: revision.id, acceptedSequence: state.acceptedSequence.toString(),
     week: { index: plan.currentWeekIndex, firstOccurrenceId: week[0].id, occurrenceIds: week.map(o => o.id),
       ready: week.every(o => resolution.resolvedIds.has(o.id)),
       final: plan.currentWeekIndex === weeks.length - 1 },
@@ -84,7 +90,10 @@ export async function readNextWorkout(tx: DB, principal: ServerPrincipal, planId
 export async function startOccurrence(db: PrismaClient, principal: ServerPrincipal, input: unknown) {
   const command = startOccurrenceCommand.parse(input);
   return acceptCommand(db, principal, input, command, async tx => {
-    const { plan, revision, intent } = await activeSource(tx, principal.accountId, command.target.planId);
+    const { plan, revision, intent: originalIntent } = await activeSource(tx, principal.accountId, command.target.planId);
+    const amendments = await readPlanAmendments(tx, principal.accountId, command.target.planId);
+    if ((command.expected.amendmentVersion ?? 0) !== (amendments.binding?.version ?? 0)) throw new CommandFailure('STALE_AMENDMENT', true);
+    const intent = { ...originalIntent, occurrences: originalIntent.occurrences.map(o => amendedOccurrence(o, amendments.contents)) };
     if (revision.id !== command.expected.planRevisionId) throw new CommandFailure('STALE_REVISION', true);
     const occurrence = intent.occurrences.find(o => o.id === command.target.occurrenceId);
     if (!occurrence) throw new CommandFailure('OCCURRENCE_NOT_FOUND');
@@ -103,7 +112,7 @@ export async function startOccurrence(db: PrismaClient, principal: ServerPrincip
     const executionId = randomUUID();
     const initial = initialPrescription.parse({ schemaVersion: 1, kind: 'START', provenance: 'VERIFIED_START', policyVersion: START_POLICY,
       accountId: principal.accountId, executionId, planId: command.target.planId, revisionId: revision.id, sourceContentHash: revision.contentHash,
-      startedAt: startedAt.toISOString(), stage: intent.stages.find(s => s.id === occurrence.stageId), occurrence,
+      ...(amendments.binding ? { amendment: amendments.binding } : {}), startedAt: startedAt.toISOString(), stage: intent.stages.find(s => s.id === occurrence.stageId), occurrence,
       progression: intent.progression, instructions, positions: occurrence.positions.map(p => ({ id: randomUUID(), sourcePositionId: p.id,
         targets: p.targets.map(t => ({ id: randomUUID(), sourceTargetId: t.id })) })) });
     const canonicalContent = canonicalJson(initial), contentHash = integrityHash(canonicalContent);

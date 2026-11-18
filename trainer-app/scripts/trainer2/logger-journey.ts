@@ -206,19 +206,19 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   await expect(swap).not.toBeVisible();
   // Keep a real untouched-position replacement for the leave/resume/finish review.
   await active.getByRole('button', { name: 'Swap', exact: true }).click();
-  await swap.getByLabel('Search library').fill('chest supported dumbbell row');
-  await swap.getByRole('button', { name: /Chest.*Supported.*Dumbbell Row/i }).click();
+  await swap.getByLabel('Search library').fill('45-Degree Back Extension');
+  await swap.getByRole('button').filter({ has: page.getByText('45-Degree Back Extension', { exact: true }) }).click();
   await swap.getByRole('button', { name: 'Confirm swap', exact: true }).click();
   await expect(swap).not.toBeVisible();
   const swapped = await validateExecutionRead(await read(), accountId, executionId);
   const keptSwap = swapped.swaps!.at(-1)!;
   assert.equal(keptSwap.content.exercise.kind, 'catalogSnapshot');
   assert(keptSwap.content.exercise.kind === 'catalogSnapshot');
-  assert.equal(keptSwap.content.exercise.catalogId, 't2:chest-supported-dumbbell-row');
+  assert.equal(keptSwap.content.exercise.catalogId, 't2:45-degree-back-extension');
   await page.goto(home);
   await page.getByRole('link', { name: 'Resume workout', exact: true }).click();
   await expect(page).toHaveURL(url);
-  await expect(active.getByRole('heading', { name: /Chest.*Supported.*Dumbbell Row/i }))
+  await expect(active.getByRole('heading', { name: '45-Degree Back Extension', exact: true }))
     .toBeVisible();
   const resumed = await validateExecutionRead(await read(), accountId, executionId);
   assert.deepEqual(resumed.swaps, swapped.swaps);
@@ -253,7 +253,11 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   assert(!selected.results.some(result => result.targetId === swappedTarget));
   await page.setViewportSize({ width: 390, height: 500 });
   await active.getByLabel('Set 1 Actual reps', { exact: true }).fill('10');
-  await active.getByLabel('Set 1 Actual load', { exact: true }).fill('40');
+  await active.getByLabel('Set 1 Actual load', { exact: true }).fill('0');
+  await expect(active.getByLabel('Set 1 Actual load', { exact: true })).toHaveValue('0');
+  await expect(active.getByRole('button', { name: 'Log set', exact: true })).toBeEnabled();
+  await shot('back-extension-bodyweight-390');
+  await active.getByLabel('Set 1 Actual load', { exact: true }).fill('25');
   await active.getByRole('button', { name: '0 RIR', exact: true }).click();
   await active.getByRole('button', { name: 'Log set', exact: true }).scrollIntoViewIfNeeded();
   await shot('reduced-height-390');
@@ -268,6 +272,9 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   assert.equal(logged.results.length, selected.results.length + 1);
   assert.deepEqual(logged.results.filter(result => result.targetId !== swappedTarget), selected.results);
   const loggedSwap = logged.results.find(result => result.targetId === swappedTarget);
+  assert.deepEqual(loggedSwap?.result?.measurement, { kind: 'addedLoad', convention: 'addedExternal',
+    zeroMeaning: 'noAddedLoad', value: '25', unit: 'lb' });
+  pass('Generic back extension survives swap/resume; zero enables logging and 25 lb records added plates only');
   assert.equal(loggedSwap?.assignment?.actionId, keptSwap.actionId);
   assert.equal(loggedSwap?.assignment?.version, keptSwap.version);
   await expect(active.getByRole('heading', { name: 'Ready to finish' })).not.toBeVisible();

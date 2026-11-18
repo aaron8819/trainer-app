@@ -209,5 +209,10 @@
     "glute bridge machine plates",
     "machine glute bridge",
     "plate loaded glute bridge"
+  ],
+  "t2:45-degree-back-extension": [
+    "weighted back extension",
+    "plate back extension",
+    "hyperextension"
   ]
 }

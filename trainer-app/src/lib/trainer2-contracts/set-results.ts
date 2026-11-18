@@ -4,10 +4,18 @@ import { id, measurement, target, createDraftCommand } from './draft';
 
 const commandEnvelope = createDraftCommand.pick({ schemaVersion: true, actionId: true, originatingAccountId: true, deviceId: true, ownershipEpoch: true, dependsOn: true });
 
+// Retain chosen form semantics when optional weight is blank. This is not a
+// performed measurement and must never be treated as a zero or a load suggestion.
+export const loggingOptions = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('externalLoad'), convention: z.enum(['barbellTotal', 'perImplement', 'machineDisplayed', 'machinePlatesPerArm', 'machineAddedPlatesTotal', 'smithPlatesTotal']), zeroMeaning: z.enum(['validZero', 'notAllowed']) }).strict(),
+  z.object({ kind: z.literal('addedLoad'), convention: z.literal('addedExternal'), zeroMeaning: z.literal('noAddedLoad') }).strict(),
+  z.object({ kind: z.literal('assistance'), convention: z.literal('displayedAssistance'), zeroMeaning: z.literal('noAssistance') }).strict(),
+]);
 export const performedResult = z.object({
   reps: z.object({ value: z.int().min(0).max(1000), basis: target.shape.reps.shape.basis }).strict().nullable(),
   measurement: measurement.nullable(), rir: target.shape.rir,
-}).strict().refine(r => r.reps !== null || r.measurement !== null || r.rir !== null, 'Enter at least one actual result');
+  loggingOptions: loggingOptions.optional(),
+}).strict().refine(r => !r.loggingOptions || r.measurement === null, 'Logging options apply only when weight is unspecified').refine(r => r.reps !== null || r.measurement !== null || r.rir !== null, 'Enter at least one actual result');
 const recordedResult = performedResult.refine(r => r.reps !== null, 'Enter reps to log a set');
 const correctionReason = z.string().min(1).max(200).refine(v => v.trim().length > 0).optional();
 const setTarget = z.object({ executionId: id, targetId: id }).strict();

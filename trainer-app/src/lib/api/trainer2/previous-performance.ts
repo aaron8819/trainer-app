@@ -1,6 +1,6 @@
 import { executionPositions } from '../../engine/trainer2/execution-targets';
 import { effectiveOccurrence } from '../../engine/trainer2/exercise-swap';
-import { sameLoggingExercise, compatibleLoggingLoad } from '../../engine/trainer2/logging-prefill';
+import { sameLoggingExercise, compatibleLoggingLoad, sameSetOptionsPosition } from '../../engine/trainer2/logging-prefill';
 import type { Prisma } from '@prisma/client';
 import type { ExecutionRead } from '../../trainer2-contracts/execution';
 import type { PerformedResult } from '../../trainer2-contracts/set-results';
@@ -37,13 +37,31 @@ export async function readExecutionWithPrevious(tx: Prisma.TransactionClient, pr
   if (!current) return null;
   const previous: NonNullable<ExecutionRead['previous']> = [];
   const firstSetLoads: NonNullable<ExecutionRead['firstSetLoads']> = [];
+  const setOptions: NonNullable<ExecutionRead['setOptions']> = [];
+  const optionPositions = effectiveOccurrence(current).positions;
+  const optionsResolved = new Set<string>();
   const wanted = effectiveOccurrence(current).positions.filter(p => p.exercise.kind === 'catalogSnapshot');
   const ambiguous = new Set<string>();
-  if (!wanted.length || current.lifecycle === 'Discarded') return { ...current, previous, firstSetLoads };
+  if (!optionPositions.length || current.lifecycle === 'Discarded') return { ...current, previous, firstSetLoads, setOptions };
   const candidates = await tx.trainer2ExecutionFinish.findMany({ where: { accountId: principal.accountId, executionId: { not: executionId }, finishedAt: { lte: new Date(current.initial.startedAt) } }, orderBy: [{ finishedAt: 'desc' }, { executionId: 'asc' }], select: { executionId: true } });
   for (const candidate of candidates) {
     const source = await readExecution(tx, principal, candidate.executionId);
     if (source?.lifecycle !== 'Finished' || !source.finish) continue;
+    if (current.initial.planId && source.initial.planId === current.initial.planId) {
+      for (const position of optionPositions.filter(p => !optionsResolved.has(p.id))) {
+        const matches = effectiveOccurrence(source).positions.filter(p => sameSetOptionsPosition(position, p));
+        // Never let an older occurrence silently disambiguate a newer one.
+        if (matches.length > 1) { optionsResolved.add(position.id); continue; }
+        if (!matches.length) continue;
+        const owned = executionPositions(source).find(p => p.displayPositionId === matches[0].id);
+        const result = source.results.filter(r => r.result && owned?.targets.some(t => t.id === r.targetId))
+          .sort((a, b) => b.recordedAt.localeCompare(a.recordedAt) || b.targetId.localeCompare(a.targetId))[0];
+        if (result) {
+          setOptions.push({ positionId: position.id, executionId: source.executionId, result });
+          optionsResolved.add(position.id);
+        }
+      }
+    }
     for (const position of wanted.filter(p => !ambiguous.has(p.id))) {
       const decision = resolvePreviousPosition(position, effectiveOccurrence(source).positions);
       if (decision.status === 'ambiguous') { ambiguous.add(position.id); continue; }
@@ -73,7 +91,7 @@ export async function readExecutionWithPrevious(tx: Prisma.TransactionClient, pr
       if (results.length) previous.push({ positionId: position.id, sourcePositionId: match.id, executionId: source.executionId,
         workoutName: source.initial.occurrence.name, finishedAt: source.finish.finishedAt, results });
     }
-    if (wanted.every(p => ambiguous.has(p.id) || (previous.some(h => h.positionId === p.id) && firstSetLoads.some(h => h.positionId === p.id)))) break;
+    if (optionPositions.every(p => optionsResolved.has(p.id) || !current.initial.planId) && wanted.every(p => ambiguous.has(p.id) || (previous.some(h => h.positionId === p.id) && firstSetLoads.some(h => h.positionId === p.id)))) break;
   }
-  return { ...current, previous, firstSetLoads };
+  return { ...current, previous, firstSetLoads, setOptions };
 }

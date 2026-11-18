@@ -1,3 +1,4 @@
+import { setOptionsJourney } from './set-options-journey';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
@@ -9,7 +10,7 @@ import { exerciseTitle } from '../../src/components/trainer2/exercise-title';
 import { currentAssignment } from '../../src/lib/engine/trainer2/exercise-swap';
 
 const expect = baseExpect.configure({ timeout: 30_000 });
-export async function loggerJourney({ page, base, home, artifact, accountId, executionId, db, reader, principal, pass }: {
+export async function loggerJourney({ page, base, home, artifact, accountId, planId, executionId, db, reader, principal, pass }: {
   page: Page; base: string; home: string; artifact: string; accountId: string; planId: string; executionId: string; pass: (value: string) => void;
   db: PrismaClient; reader: PrismaClient; principal: { accountId: string; sessionId: string };
 }) {
@@ -318,4 +319,5 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   }
   pass('Legacy kg Program previews preserve prescriptions without load copy at 390px and 320px');
   await lbOnlyBuilderJourney({ page, base, artifact, db, reader, principal, pass });
+  await setOptionsJourney({ page, base, artifact, planId, db, reader, principal, pass });
 }

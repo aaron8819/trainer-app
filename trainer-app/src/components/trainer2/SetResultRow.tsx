@@ -4,7 +4,7 @@ import { assignmentBinding, type AssignmentBinding } from '@/lib/trainer2-contra
 import type { ExecutionRead } from '@/lib/trainer2-contracts/execution';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { compatibleCatalogResult, compatibleLoggingLoad, startingPounds } from '@/lib/engine/trainer2/logging-prefill';
+import { compatibleCatalogResult, compatibleLoggingLoad, compatibleSetOptions, startingPounds } from '@/lib/engine/trainer2/logging-prefill';
 import { pounds, loadLabel } from './pound-display';
 import { isSingleArmRecording, recordingTip } from './recording-display';
 import { z } from 'zod';
@@ -29,9 +29,9 @@ type Form = z.infer<typeof formSchema>;
 const draftSchema = z.object({ assignment: assignmentBinding.optional(), form: formSchema, base: savedSetResult.nullable(), pending: z.union([resultMutationCommand, skipSetCommand]).nullable(), skipActionId: z.string().uuid().optional(), conflict: z.boolean(), carriedMeasurement: performedResult.shape.measurement.optional() }).strict();
 type Draft = z.infer<typeof draftSchema>;
 function formFor(r?: PerformedResult | null): Form {
-  const m = r?.measurement;
+  const m = r?.measurement ?? r?.loggingOptions;
   return { reps: r?.reps?.value.toString() ?? '', basis: r?.reps?.basis ?? 'total',
-    load: m && 'value' in m ? pounds(m.value, m.unit) : '', kind: m?.kind ?? 'unspecified',
+    load: r?.measurement && 'value' in r.measurement ? pounds(r.measurement.value, r.measurement.unit) : '', kind: m?.kind ?? 'unspecified',
     unit: 'lb', zeroMeaning: m?.kind === 'externalLoad' ? m.zeroMeaning : 'validZero', convention: m?.kind === 'externalLoad' ? m.convention : 'barbellTotal',
     rir: r?.rir ?? '', reason: '' };
 }
@@ -41,13 +41,17 @@ function parseForm(f: Form, retainedMeasurement?: PerformedResult['measurement']
     { kind: f.kind, value: f.load, unit: f.unit,
       convention: f.kind === 'externalLoad' ? f.convention : f.kind === 'addedLoad' ? 'addedExternal' : 'displayedAssistance',
       zeroMeaning: f.kind === 'externalLoad' ? (f.zeroMeaning ?? 'validZero') : f.kind === 'addedLoad' ? 'noAddedLoad' : 'noAssistance' };
-  return performedResult.parse({ reps: f.reps === '' ? null : { value: Number(f.reps), basis: f.basis }, measurement, rir: f.rir || null });
+  const loggingOptions = !measurement && !['unspecified', 'bodyweight'].includes(f.kind) ? {
+    kind: f.kind, convention: f.kind === 'externalLoad' ? f.convention : f.kind === 'addedLoad' ? 'addedExternal' : 'displayedAssistance',
+    zeroMeaning: f.kind === 'externalLoad' ? f.zeroMeaning ?? 'validZero' : f.kind === 'addedLoad' ? 'noAddedLoad' : 'noAssistance',
+  } : undefined;
+  return performedResult.parse({ reps: f.reps === '' ? null : { value: Number(f.reps), basis: f.basis }, measurement, rir: f.rir || null, ...(loggingOptions ? { loggingOptions } : {}) });
 }
 export function resultLabel(r: PerformedResult | null) {
   if (!r) return 'Cleared as erroneous · no current performed result';
   return `${loadLabel(r.measurement)} × ${r.reps ? `${r.reps.value}${r.reps.basis === 'perSide' ? ' per side' : r.reps.basis === 'alternating' ? ' alternating' : ''}` : 'reps unspecified'} · ${r.rir === null ? 'RIR unspecified' : `${r.rir} RIR`}`;
 }
-export function SetResultRow({ optionsMount, sessionAdded = false, assignment, accountId, ownershipEpoch, executionId, targetId, number, saved, refresh, readOnly = false, locked = false, onInputState, historical = false, history = [], finishVersion, retainedOnly = false, prescription, exercise, active = true, activePanel = false, onSubmission, preceding, onRecorded, firstSetLoad, skipped, refreshExecution, onReturn }: {
+export function SetResultRow({ optionsMount, sessionAdded = false, assignment, accountId, ownershipEpoch, executionId, targetId, number, saved, refresh, readOnly = false, locked = false, onInputState, historical = false, history = [], finishVersion, retainedOnly = false, prescription, exercise, active = true, activePanel = false, onSubmission, preceding, onRecorded, firstSetLoad, rememberedOptions, skipped, refreshExecution, onReturn }: {
   optionsMount?: HTMLElement | null;
   sessionAdded?: boolean;
   assignment?: AssignmentBinding;
@@ -55,6 +59,7 @@ export function SetResultRow({ optionsMount, sessionAdded = false, assignment, a
   active?: boolean; activePanel?: boolean;
   preceding?: SavedSetResult[];
   firstSetLoad?: SavedSetResult;
+  rememberedOptions?: SavedSetResult;
   onRecorded?: (record: SavedSetResult) => void;
   onSubmission?: () => (results: SavedSetResult[], skips?: SetSkip[]) => void;
   prescription?: DraftDocument['occurrences'][number]['positions'][number]['targets'][number];
@@ -121,7 +126,7 @@ export function SetResultRow({ optionsMount, sessionAdded = false, assignment, a
   function initialForm(): Form {
     const f = formFor(saved?.result);
     if (exercise?.kind === 'catalogSnapshot' && exercise.catalogFacts && !saved?.result?.reps) f.basis = exercise.repBasis;
-    if (saved?.result?.measurement) return f;
+    if (saved?.result?.measurement || saved?.result?.loggingOptions) return f;
     if (!saved) f.basis = prescription?.reps.basis ?? 'total';
     const m = prescription?.measurement;
     if (m) { f.kind = m.kind; if ('value' in m && (number === 1 || sessionAdded) && !saved) f.load = pounds(m.value, m.unit); if (m.kind === 'externalLoad') { f.convention = m.convention; f.zeroMeaning = m.zeroMeaning; } }
@@ -131,15 +136,25 @@ export function SetResultRow({ optionsMount, sessionAdded = false, assignment, a
       if (['barbellTotal', 'perImplement', 'machineDisplayed', 'machinePlatesPerArm', 'machineAddedPlatesTotal', 'smithPlatesTotal'].includes(exercise.convention)) f.convention = exercise.convention as Form['convention'];
     }
     if (saved) return f;
+    const remembered = rememberedOptions?.result ?? preceding?.find(r => r.result)?.result;
+    if (remembered && prescription && exercise && compatibleSetOptions(remembered, prescription, exercise)) {
+      const options = formFor(remembered);
+      if (remembered.reps) f.basis = options.basis;
+      // Legacy missing actual fields do not replace reviewed catalog defaults.
+      if (remembered.measurement || remembered.loggingOptions || exercise.kind === 'authoredDescription') {
+        f.kind = options.kind; f.convention = options.convention; f.zeroMeaning = options.zeroMeaning;
+      }
+    }
     f.reps = prescription && prescription.reps.min === prescription.reps.max ? String(prescription.reps.min) : '';
     // Prefill current intent only for an unresolved set; saved results and drafts own actuals.
     f.rir = prescription?.rir ?? '';
     if ((number === 1 || sessionAdded) && !m && prescription && exercise && firstSetLoad?.result?.measurement &&
-      compatibleLoggingLoad(firstSetLoad.result.measurement, prescription, exercise)) f.load = startingPounds(firstSetLoad.result.measurement) ?? '';
+      compatibleLoggingLoad(firstSetLoad.result.measurement, prescription, exercise) && firstSetLoad.result.measurement.kind === f.kind &&
+      (firstSetLoad.result.measurement.kind !== 'externalLoad' || (firstSetLoad.result.measurement.convention === f.convention && firstSetLoad.result.measurement.zeroMeaning === f.zeroMeaning))) f.load = startingPounds(firstSetLoad.result.measurement) ?? '';
     // Nearest recorded target in this position's saved order, never another exercise or an older compatible fallback.
     const candidate = preceding?.find(r => r.result), value = candidate?.result;
     const prior = value && (!value.reps || value.reps.basis === f.basis) &&
-      (!value.measurement || (prescription && exercise && compatibleLoggingLoad(value.measurement, prescription, exercise))) ? candidate : undefined;
+      (!value.measurement || (prescription && exercise && compatibleSetOptions(value, prescription, exercise) && value.measurement.kind === f.kind && (value.measurement.kind !== 'externalLoad' || (value.measurement.convention === f.convention && value.measurement.zeroMeaning === f.zeroMeaning)))) ? candidate : undefined;
     if (prior?.result) {
       const p = formFor(prior.result);
       f.reps = p.reps; f.load = p.load;
@@ -152,7 +167,7 @@ export function SetResultRow({ optionsMount, sessionAdded = false, assignment, a
     // An explicit prescription is exact intent, not a rounded history suggestion.
     // Reuse unchanged-measurement preservation after converting its display to lb.
     const carriedMeasurement = !saved && prior?.measurement && prescription && exercise &&
-      (!prior.reps || prior.reps.basis === form.basis) && compatibleLoggingLoad(prior.measurement, prescription, exercise)
+      (!prior.reps || prior.reps.basis === form.basis) && compatibleSetOptions(prior, prescription, exercise) && prior.measurement.kind === form.kind && (prior.measurement.kind !== 'externalLoad' || (prior.measurement.convention === form.convention && prior.measurement.zeroMeaning === form.zeroMeaning))
       ? prior.measurement : !saved && (number === 1 || sessionAdded)
         ? prescription?.measurement ?? undefined : undefined;
     return { ...(assignment ? { assignment } : {}), form, ...(skipped ? { skipActionId: skipped.actionId } : {}), base: saved ?? null, pending: null, conflict: false, ...(carriedMeasurement ? { carriedMeasurement } : {}) };

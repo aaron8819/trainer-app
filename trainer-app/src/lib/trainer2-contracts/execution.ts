@@ -48,6 +48,7 @@ export const executionRead = z.object({ executionId: id, lifecycle: z.enum(['Ope
   additions: z.array(setAddition).optional(),
   swaps: z.array(exerciseSwap).optional(),
   skips: z.array(setSkip).optional(),
+  setOptions: z.array(z.object({ positionId: id, executionId: id, result: savedSetResult }).strict()).optional(),
   firstSetLoads: z.array(z.object({ positionId: id, executionId: id, result: savedSetResult }).strict()).optional(),
   previous: z.array(previousPerformance).optional(), contentHash: hash, initial: initialPrescription, results: z.array(savedSetResult), history: z.array(savedSetResult).optional() }).strict().refine(v =>
     v.executionId === v.initial.executionId && (v.lifecycle === 'Discarded' ? !!v.discard && v.discard.actorAccountId === v.initial.accountId && v.results.length === 0 && v.history?.length === 0 : !v.discard) && (v.lifecycle === 'Finished' ? !!v.finish : !v.finish) && new Set(v.results.map(r => r.targetId)).size === v.results.length &&
@@ -60,6 +61,9 @@ export async function validateExecutionRead(input: unknown, accountId: string, e
     value.contentHash !== await digest(value.initial) || value.initial.instructions.contentHash !== await digest(value.initial.instructions.document))
     throw new Error('Invalid saved workout response');
   if (value.previous?.some(p => p.executionId === value.executionId || !originalPositions(value).some(o => o.id === p.positionId) || p.results.some(r => r.executionId !== p.executionId || !r.result) || p.finishedAt > value.initial.startedAt) || new Set(value.previous?.map(p => p.positionId)).size !== (value.previous?.length ?? 0)) throw new Error('Invalid previous performance');
+  if (value.setOptions?.some(p => p.executionId === value.executionId || p.result.executionId !== p.executionId ||
+    !p.result.result || !originalPositions(value).some(o => o.id === p.positionId)) ||
+    new Set(value.setOptions?.map(p => p.positionId)).size !== (value.setOptions?.length ?? 0)) throw new Error('Invalid remembered set options');
   if (value.firstSetLoads?.some(p => p.executionId === value.executionId || p.result.executionId !== p.executionId ||
     !p.result.result?.measurement || !('value' in p.result.result.measurement) ||
     !originalPositions(value).some(o => o.id === p.positionId)) ||

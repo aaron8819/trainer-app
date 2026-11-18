@@ -1,6 +1,6 @@
 # Trainer2 catalog coverage
 
-Trainer2 adds 30 bounded program variants in `src/lib/engine/trainer2/program-catalog.json`, for 121 selectable definitions across 180 identities (59 exclusions remain). The shared 150-entry library and all 48 frozen Trainer2 definitions are unchanged. Definition provenance and distinct plate-only conventions are recorded in [PROGRAM_SUPPORT](PROGRAM_SUPPORT.md).
+Trainer2 adds 31 bounded program variants in `src/lib/engine/trainer2/program-catalog.json`, for 122 selectable definitions across 181 identities (59 exclusions remain). The shared 150-entry library and all 48 frozen Trainer2 definitions are unchanged. Definition provenance and distinct plate-only conventions are recorded in [PROGRAM_SUPPORT](PROGRAM_SUPPORT.md).
 
 Common gym names and abbreviations are search-only aliases in
 `catalog-search-aliases.json`, applied by the same matcher for Builder and Swap.
@@ -146,3 +146,16 @@ prefers the current iso-lateral family and its single-arm choice. Search and equ
 still apply first; no preference setting or global single-arm ranking is introduced. Return to
 original remains available after a swap, and the replaces label names the effective exercise.
 Unavailable UI copy is plain language; technical qualification reasons remain in the adapter.
+
+## Back extension with optional external load
+
+Trainer2's `45-degree-back-extension` variant is displayed as **45-Degree Back Extension**.
+It uses `REPS_BODYWEIGHT_PLUS_LOAD` / `ADDED_EXTERNAL_LOAD` / `TOTAL`: enter only
+external weight held (for example, the combined plates), with `0` explicitly meaning
+bodyweight and no added load. Blank remains unspecified, not a recorded zero.
+The existing `bodyweight-45-degree-back-extension` definition, saved snapshots and
+performed results remain unchanged. The generic variant is available through the
+existing draft editor and eligible today-only Swap flow. It does not automatically
+rewrite an accepted plan or an execution; normal swap eligibility still applies.
+Historical bodyweight-only results are not silently converted to numeric loads or
+used as compatible load suggestions for the new recording identity.

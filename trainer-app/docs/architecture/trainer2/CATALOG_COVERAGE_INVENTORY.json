@@ -3,11 +3,11 @@
   "trainer2VariantSource": "src/lib/engine/trainer2/program-catalog.json",
   "baselineCommit": "3a2e057d3a205241849827a1f7e7ca580787acaf",
   "totals": {
-    "canonical": 180,
+    "canonical": 181,
     "before": 48,
-    "after": 121,
+    "after": 122,
     "currentlySupported": 48,
-    "compatibleMissingIntegration": 73,
+    "compatibleMissingIntegration": 74,
     "missingOrConflictingMetadata": 48,
     "requiresNewCapability": 11
   },
@@ -8373,6 +8373,71 @@
           "max": 12
         },
         "variation": "On a fixed 45-degree back-extension bench with feet secured; both legs together. One controlled lower and return counts as one rep. No external load.",
+        "catalogFacts": {
+          "movementPatterns": [
+            "extension"
+          ],
+          "primaryMuscles": [
+            "Glutes",
+            "Hamstrings",
+            "Lower Back"
+          ],
+          "secondaryMuscles": [],
+          "externalZeroMeaning": null,
+          "repDefaults": {
+            "min": 6,
+            "max": 12
+          }
+        }
+      },
+      "missingFields": [],
+      "reason": null,
+      "recommendation": null
+    },
+    {
+      "catalogId": "t2:45-degree-back-extension",
+      "catalogKey": "45-degree-back-extension",
+      "name": "45-Degree Back Extension",
+      "status": "compatibleMissingIntegration",
+      "supportedAfter": true,
+      "measurementProfile": "REPS_BODYWEIGHT_PLUS_LOAD",
+      "loadConvention": "ADDED_EXTERNAL_LOAD",
+      "repBasis": "TOTAL",
+      "zeroLoadMeaning": null,
+      "equipment": [
+        "Machine",
+        "Bodyweight"
+      ],
+      "movementPatterns": [
+        "extension"
+      ],
+      "primaryMuscles": [
+        "Glutes",
+        "Hamstrings",
+        "Lower Back"
+      ],
+      "secondaryMuscles": [],
+      "prescription": {
+        "min": 6,
+        "max": 12
+      },
+      "normalized": {
+        "id": "t2:45-degree-back-extension",
+        "name": "45-Degree Back Extension",
+        "equipment": [
+          "Machine",
+          "Bodyweight"
+        ],
+        "purpose": "extension",
+        "aliases": [],
+        "repBasis": "total",
+        "loadKind": "addedLoad",
+        "convention": "addedExternal",
+        "reps": {
+          "min": 6,
+          "max": 12
+        },
+        "variation": "Fixed 45-degree bench, feet secured, both legs together. One controlled lower and return is one rep. Log total external weight held (e.g. plates); 0 means bodyweight only.",
         "catalogFacts": {
           "movementPatterns": [
             "extension"

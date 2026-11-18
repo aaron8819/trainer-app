@@ -3,10 +3,11 @@ import { resolve } from 'node:path';
 import { writeFileSync } from 'node:fs';
 import { expect as baseExpect, type Page } from '@playwright/test';
 import type { PrismaClient } from '@prisma/client';
+import { programHistoryJourney } from './program-history-journey';
 const expect = baseExpect.configure({ timeout: 30_000 });
 
-export async function navigationJourney({ page, base, artifact, accountId, planId, executionId, db, pass }: {
-  page: Page; base: string; home: string; artifact: string; accountId: string; planId: string; executionId: string; db: PrismaClient; pass: (value: string) => void;
+export async function navigationJourney({ page, base, artifact, accountId, planId, executionId, db, reader, principal, pass }: {
+  page: Page; base: string; home: string; artifact: string; accountId: string; planId: string; executionId: string; db: PrismaClient; reader: PrismaClient; principal: { accountId: string; sessionId: string }; pass: (value: string) => void;
 }) {
   const nav = page.getByRole('navigation', { name: 'Trainer2 navigation', exact: true });
   const shot = async (name: string) => page.screenshot({ path: resolve(artifact, `${name}.png`), fullPage: true });
@@ -180,6 +181,7 @@ export async function navigationJourney({ page, base, artifact, accountId, planI
     await expect(page.getByRole('button', { name: 'Sign out every device' })).toBeVisible();
     await expect(nav).toHaveCount(0); await shot(`device-access-${width}`);
   }
+  await programHistoryJourney({ page, base, artifact, db, reader, principal, planId, pass });
   pass('Active Logger/rest/actions, History modal focus return, completed review and minimal device access at desktop/390/320; sign-out controls inspected without revocation');
   for (const width of [1280, 390, 320]) {
     await page.setViewportSize({ width, height: 844 });

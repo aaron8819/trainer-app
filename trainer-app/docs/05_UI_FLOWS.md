@@ -40,7 +40,10 @@ Authenticated default Training entry opens the account's existing `Active` plan
 directly; production `/` reaches this same entry through its existing rewrite.
 Accounts with no active plan retain the plan list/empty state. Explicit
 `view=program` retains the list, and builder, settings and direct plan URLs remain
-intentional destinations. This redirect reads lifecycle only; it does not activate,
+intentional destinations. Training/Program expose **Program history** to reach the
+account-wide list, with separate current/completed sections and saved-name/date
+labels. Completed entries open the existing saved Program view and workout result
+links without changing the active plan. This redirect uses persisted lifecycle; it does not activate,
 replace, start or log anything. Session lifetime/renewal policy is unchanged.
 
 Training and Program support an account without plans at `/trainer2` and

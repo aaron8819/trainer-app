@@ -89,6 +89,7 @@ export function TrainingOverview({ document, next, program = false, selectedId, 
       <h1>{program ? document.name : next.lifecycle === 'Completed' ? 'Program complete' : 'Training'}</h1>
       <p className={styles.subtitle}>{program ? 'Your saved prescriptions, week by week.' : document.name}</p>
       <Link className={styles.textLink} href={program ? trainingUrl(next.planId) : `${trainingUrl(next.planId)}&view=program`}>{program ? 'Back to training' : 'View Program'}</Link>
+      <Link className={`${styles.textLink} ${styles.historyLink}`} href="/trainer2?view=program">Program history</Link>
     </header>
     <div className={program ? styles.program : styles.layout}>
       <section className={styles.stack}>

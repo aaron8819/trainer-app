@@ -66,3 +66,25 @@ it('does not hide infrastructure failures as an entry redirect', async () => {
   fixture.home.mockRejectedValue(new Error('Synthetic read failure'));
   await expect(page()).rejects.toThrow('Synthetic read failure');
 });
+
+it('separates completed programs from current plans and links history to saved read-only review', async () => {
+  fixture.home.mockResolvedValue({ plans: [
+    { ...active, name: 'Current block', savedAt: '2026-11-01T00:00:00.000Z' },
+    { id: 'past / plan', lifecycle: 'Completed', name: 'Previous block', savedAt: '2026-10-01T00:00:00.000Z' },
+  ] });
+  const document = new DOMParser().parseFromString(renderToStaticMarkup(await page('program')), 'text/html');
+  const completed = document.querySelector('[aria-label="Completed programs"]')!;
+  expect(completed.textContent).toContain('Previous block');
+  expect(completed.textContent).not.toContain('Current block');
+  expect(completed.querySelector('a')?.getAttribute('href'))
+    .toBe('/trainer2/dev/drafts?planId=past%20%2F%20plan&view=program');
+  expect(document.querySelector('[aria-label="Current programs"]')?.textContent).toContain('Current block');
+  expect(document.querySelectorAll('form, button')).toHaveLength(0);
+});
+
+it('explains the empty completed history without hiding the current program', async () => {
+  fixture.home.mockResolvedValue({ plans: [active] });
+  const html = renderToStaticMarkup(await page('program'));
+  expect(html).toContain('No completed programs yet.');
+  expect(html).toContain('Open active plan');
+});

@@ -207,7 +207,7 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   // Keep a real untouched-position replacement for the leave/resume/finish review.
   await active.getByRole('button', { name: 'Swap', exact: true }).click();
   await swap.getByLabel('Search library').fill('45-Degree Back Extension');
-  await swap.getByRole('button', { name: /^45-Degree Back Extension/ }).click();
+  await swap.getByRole('button').filter({ has: page.getByText('45-Degree Back Extension', { exact: true }) }).click();
   await swap.getByRole('button', { name: 'Confirm swap', exact: true }).click();
   await expect(swap).not.toBeVisible();
   const swapped = await validateExecutionRead(await read(), accountId, executionId);
@@ -274,7 +274,7 @@ export async function loggerJourney({ page, base, home, artifact, accountId, exe
   const loggedSwap = logged.results.find(result => result.targetId === swappedTarget);
   assert.deepEqual(loggedSwap?.result?.measurement, { kind: 'addedLoad', convention: 'addedExternal',
     zeroMeaning: 'noAddedLoad', value: '25', unit: 'lb' });
-  pass('Generic back extension survives swap/resume; bodyweight zero is accepted and 25 lb records added plates only');
+  pass('Generic back extension survives swap/resume; zero enables logging and 25 lb records added plates only');
   assert.equal(loggedSwap?.assignment?.actionId, keptSwap.actionId);
   assert.equal(loggedSwap?.assignment?.version, keptSwap.version);
   await expect(active.getByRole('heading', { name: 'Ready to finish' })).not.toBeVisible();

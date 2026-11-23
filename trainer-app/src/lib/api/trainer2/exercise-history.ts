@@ -5,9 +5,32 @@ import { sameLoggingExercise } from '../../engine/trainer2/logging-prefill';
 import { savedDraftDocument } from '../../trainer2-contracts/draft';
 import type { ExerciseHistoryRead } from '../../trainer2-contracts/exercise-history';
 import { canonicalJson, integrityHash } from './integrity';
+import { catalog, catalogExercise } from '../../engine/trainer2/catalog';
+import type { ExecutionRead } from '../../trainer2-contracts/execution';
+import type { PerformedResult } from '../../trainer2-contracts/set-results';
 import { compatiblePrevious } from './previous-performance';
 import { readExecution } from './execution';
 import type { ServerPrincipal } from './principal';
+
+type Position = ExecutionRead['initial']['occurrence']['positions'][number];
+const legacyBackExtension = catalogExercise(catalog.find(e => e.id === 't2:bodyweight-45-degree-back-extension')!);
+const plateOptionalBackExtension = catalogExercise(catalog.find(e => e.id === 't2:45-degree-back-extension')!);
+
+function isLegacyBackExtension(current: Position, source: Position) {
+  return sameLoggingExercise(current.exercise, plateOptionalBackExtension) &&
+    sameLoggingExercise(source.exercise, legacyBackExtension);
+}
+
+function historyCompatible(current: Position, source: Position, result: PerformedResult, currentResults: PerformedResult[]) {
+  if (!isLegacyBackExtension(current, source)) return compatiblePrevious(current, source, result, currentResults);
+  // For this exact legacy movement, bodyweight is equivalent to no plates.
+  // Use that equivalence only to qualify the comparison; return the recorded
+  // bodyweight measurement unchanged and never use this rule for prefill.
+  if (result.measurement?.kind !== 'bodyweight' || result.measurement.convention !== 'bodyweightOnly') return false;
+  return compatiblePrevious(current, current, {
+    ...result, measurement: { kind: 'addedLoad', convention: 'addedExternal', zeroMeaning: 'noAddedLoad', value: '0', unit: 'lb' },
+  }, currentResults);
+}
 
 // A bounded, presentation-only read. Ambiguous occurrences stop the search, as in the existing prefill path.
 export async function readExerciseHistory(tx: Prisma.TransactionClient, principal: ServerPrincipal, executionId: string, positionId: string, cursor?: string): Promise<ExerciseHistoryRead | null> {
@@ -26,7 +49,7 @@ export async function readExerciseHistory(tx: Prisma.TransactionClient, principa
   for (const candidate of candidates.slice(0, 5)) {
     const source = await readExecution(tx, principal, candidate.executionId);
     if (source?.lifecycle !== 'Finished' || !source.finish) continue;
-    const matches = effectiveOccurrence(source).positions.filter(p => sameLoggingExercise(p.exercise, position.exercise));
+    const matches = effectiveOccurrence(source).positions.filter(p => sameLoggingExercise(p.exercise, position.exercise) || isLegacyBackExtension(position, p));
     if (matches.length > 1) { output.limited = true; output.nextCursor = null; break; }
     if (!matches.length) continue;
     const match = matches[0], owned = executionPositions(source).find(p => p.displayPositionId === match.id);
@@ -37,7 +60,7 @@ export async function readExerciseHistory(tx: Prisma.TransactionClient, principa
       if (!saved?.result || (!saved.assignment && assignment.version > 0) || (saved.assignment && canonicalJson(saved.assignment) !== canonicalJson(assignment))) return [];
       return [{ number: index + 1, result: saved.result }];
     });
-    const anchor = candidates.find(s => compatiblePrevious(position, match, s.result, currentResults));
+    const anchor = candidates.find(s => historyCompatible(position, match, s.result, currentResults));
     if (!anchor) continue;
     const sets = candidates.filter(s => {
       const r = s.result, a = anchor.result;

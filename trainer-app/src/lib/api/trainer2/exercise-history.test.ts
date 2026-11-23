@@ -2,6 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { Prisma } from '@prisma/client';
 import { createHypertrophyPlan } from '../../engine/trainer2/plan-builder';
+import { catalog, catalogExercise } from '../../engine/trainer2/catalog';
+import { currentAssignment, replacementContent } from '../../engine/trainer2/exercise-swap';
+import type { ExerciseSwap } from '../../trainer2-contracts/exercise-swap';
+import type { PerformedResult } from '../../trainer2-contracts/set-results';
 import type { ExecutionRead } from '../../trainer2-contracts/execution';
 import { canonicalJson, integrityHash } from './integrity';
 
@@ -65,4 +69,49 @@ it('scopes pagination cursors to the owner and continues after the exact date an
   findFirst.mockResolvedValueOnce(null); mocks.read.mockResolvedValueOnce(current);
   expect(await readExerciseHistory(tx, principal, executionId, positionId, randomUUID())).toBeNull();
   expect(findMany).toHaveBeenCalledTimes(1);
+});
+
+it.each(['legacy', 'plate-optional'] as const)('shows sets performed on the %s back extension swapped into Lower A from Lower B', async (variant) => {
+  const plan = createHypertrophyPlan();
+  const deadlift = catalog.find(e => e.id === 't2:barbell-romanian-deadlift')!;
+  const generic = catalog.find(e => e.id === 't2:45-degree-back-extension')!;
+  const selected = variant === 'legacy' ? catalog.find(e => e.id === 't2:bodyweight-45-degree-back-extension')! : generic;
+  const sourcePosition = { ...plan.occurrences[0].positions[0], exercise: catalogExercise(deadlift) };
+  const currentPosition = { ...sourcePosition, id: randomUUID(), exercise: catalogExercise(generic),
+    targets: sourcePosition.targets.map(t => ({ ...t, measurement: null })) };
+  const buildExecution = (position: typeof sourcePosition, name: string, startedAt: string, hash: string) => ({
+    executionId: randomUUID(), lifecycle: 'Open', contentHash: hash.repeat(64),
+    initial: { startedAt, occurrence: { name, positions: [position] },
+      positions: [{ id: randomUUID(), sourcePositionId: position.id,
+        targets: position.targets.map(t => ({ id: randomUUID(), sourceTargetId: t.id })) }] },
+    results: [],
+  }) as unknown as ExecutionRead;
+  const current = buildExecution(currentPosition, 'Lower B', '2026-11-23T17:14:00.000Z', 'a');
+  const source = buildExecution(sourcePosition, 'Lower A', '2026-11-18T18:29:00.000Z', 'b');
+  const sourceOwned = source.initial.positions[0], currentOwned = current.initial.positions[0];
+  const swap = { positionId: sourceOwned.id, version: 1, actionId: randomUUID(), contentHash: 'c'.repeat(64),
+    content: replacementContent(source, sourceOwned.id, selected) } as ExerciseSwap;
+  const swapped = { ...source, lifecycle: 'Finished', swaps: [swap], finish: { finishedAt: '2026-11-18T19:28:00.000Z' } } as ExecutionRead;
+  const assignment = currentAssignment(swapped, sourceOwned.id);
+  const result: PerformedResult = { reps: { value: 10, basis: 'total' },
+    measurement: variant === 'legacy' ? { kind: 'bodyweight', convention: 'bodyweightOnly' } :
+      { kind: 'addedLoad', convention: 'addedExternal', zeroMeaning: 'noAddedLoad', value: '25', unit: 'lb' }, rir: null };
+  swapped.results = [
+    ...sourceOwned.targets.slice(0, 2).map(t => ({ targetId: t.id, result, assignment })),
+    { targetId: sourceOwned.targets[2].id, result, assignment: { ...assignment, version: 0 } },
+  ] as ExecutionRead['results'];
+  current.results = [{ targetId: currentOwned.targets[0].id,
+    result: { reps: { value: 12, basis: 'total' }, measurement: null, rir: null } }] as ExecutionRead['results'];
+  const tx = { trainer2ExecutionFinish: { findMany: vi.fn().mockResolvedValue([{ executionId: source.executionId }]) },
+    trainer2PlanRevision: { findFirst: vi.fn().mockResolvedValue(null) } } as unknown as Prisma.TransactionClient;
+  const principal = { accountId: 'owner', sessionId: 'session' };
+  mocks.read.mockResolvedValueOnce(current).mockResolvedValueOnce(swapped);
+  const history = await readExerciseHistory(tx, principal, current.executionId, currentOwned.id);
+  expect(history?.sessions[0]).toMatchObject({ workoutName: 'Lower A',
+    sets: [{ number: 1, result }, { number: 2, result }] });
+
+  // The original prescribed deadlift no longer owns these results.
+  const deadliftQuery = buildExecution(sourcePosition, 'Other', '2026-11-23T17:14:00.000Z', 'd');
+  mocks.read.mockResolvedValueOnce(deadliftQuery).mockResolvedValueOnce(swapped);
+  expect((await readExerciseHistory(tx, principal, deadliftQuery.executionId, deadliftQuery.initial.positions[0].id))?.sessions).toEqual([]);
 });
